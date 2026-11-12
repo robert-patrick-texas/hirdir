@@ -1,4 +1,4 @@
-"""The routes of release 0.1.0: health, signing in, accounts and the audit trail."""
+"""The routes that came first: health, signing in, accounts and the audit trail."""
 
 import platform
 import sqlite3

@@ -15,12 +15,14 @@ and CLI's types are generated from it.
 |---|---|
 | Names | `snake_case` fields, plural kebab-case paths: `/catalog-entries`, `/device-groups` |
 | Record routes | `GET /items`, `POST /items`, `GET /items/{hid}`, `PATCH /items/{hid}`, `POST /items/{hid}/retire` |
-| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}` |
+| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000. `fields` arrives with export in 0.3.0 |
+| Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
-| Updates | `PATCH` with only the fields to change and the `row_version` it was read at |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, `422` invalid input with a list of fields |
+| Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
+| Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422` |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | `POST` routes that create accept `Idempotency-Key` |
+| Idempotency | `POST` routes that create accept `Idempotency-Key`, from 0.3.0 |
 
 ### Routes
 
@@ -38,7 +40,7 @@ and CLI's types are generated from it.
 | Purchases | `/purchase-requests`, `/purchase-requests/{hid}/lines`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `/registrations` |
 | Capacity | `/capacity-lines`, `GET /reports/capacity` |
-| Labels and lists | `/tags`, `/choices`, `/settings`, `/lifecycle-rules` |
+| Labels and lists | `/tags`, `/choices`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `POST /exports` |
 | Reports | `GET /reports/summary`, `/reports/end-of-life`, `/reports/coverage`, `/reports/duplicates` |
@@ -77,26 +79,36 @@ One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
 
 | Operator | Applies to | Meaning |
 |---|---|---|
-| `eq`, `ne` | any | equal, ignoring case for text |
+| `eq`, `ne` | any | equal, ignoring case for text. `ne` also finds a blank |
 | `in` | any | one of a list |
 | `contains`, `prefix` | text | |
 | `glob` | text | `*` and `?` |
-| `regex` | text | bounded; see [architecture.md](architecture.md) |
+| `regex` | text | bounded; see [architecture.md](architecture.md). Matches anywhere in the value unless anchored with `^` and `$` |
 | `lt`, `lte`, `gt`, `gte`, `between` | numbers, dates | |
 | `empty` | any | `true` for blank, `false` for not blank |
-| `has` | tags | carries the tag |
+| `has` | tags | carries the tag. `empty` on `tags` finds records with none |
 | `within` | region, site, location | at or beneath the named place, by HID or path |
 
 Fields are the record's own, plus dotted fields of related records that the route
 allows (`catalog.pid`, `catalog.vendor`, `owner.label`, `contract.number`,
 `group.name`, `address`, `network.label`) and `effective.<field>` for inherited ones.
 `mac_address` and `address` accept any common notation and are normalized before
-comparison. A field or operator the route does not allow is a `422`.
+comparison. A field or operator the route does not allow is a `422`. Every comparison
+of text ignores case, a regular expression included. A field that is a fixed choice,
+such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
-`sort` is a list such as `["site", "-effective.ldos"]`.
+A filter nests at most 8 deep and holds at most 100 conditions. Its JSON Schema is
+`contract/filter.schema.json`.
+
+`sort` is a list such as `["site", "-effective.ldos"]`, written `sort=site,-effective.ldos`
+in a URL. Text sorts without regard to case, blank values come last in either
+direction, and rows that tie keep a steady order, so paging never repeats or skips one.
+On the item list, `name` filters and sorts by the hostname when the name is blank.
 
 The short form used by the CLI and by `filter=` in a URL is one condition per
 `field:op:value`, joined by AND: `lifecycle_state:in:Test,Prod hostname:prefix:site2-`.
+A value runs to the start of the next condition, so it may hold spaces, and the values
+of `in` and `between` are separated by commas. `filter=` also takes the JSON form.
 
 ## Import and export
 

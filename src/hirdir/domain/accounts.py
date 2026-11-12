@@ -23,8 +23,8 @@ from hirdir.domain.errors import (
     NotFound,
     SignInDelayed,
     SignInRefused,
-    StaleVersion,
 )
+from hirdir.domain.records import touch as _touch
 
 USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 LAST_USED_GRANULARITY_SECONDS = 60
@@ -45,18 +45,6 @@ class Principal:
 
 def _key(text: str) -> str:
     return text.strip().casefold()
-
-
-def _touch(record: Any, context: AuditContext, expected_version: int | None) -> None:
-    """Refuse a stale edit, then mark record as changed by the caller."""
-    if expected_version is not None and record.row_version != expected_version:
-        raise StaleVersion(
-            f"this record is at version {record.row_version}, "
-            f"and the change was made against version {expected_version}"
-        )
-    record.row_version += 1
-    record.updated_at = clock.now()
-    record.updated_by = context.actor_hid
 
 
 # --- roles -------------------------------------------------------------------------

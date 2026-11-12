@@ -13,7 +13,13 @@ from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import accounts, audit
 
 ADMIN_CODE = "admin-code"
+INVENTORY_CODE = "inventory-code"
 VIEWER_CODE = "viewer-code"
+USERS = (
+    ("ada", ADMIN_CODE, "admin"),
+    ("ivy", INVENTORY_CODE, "inventory"),
+    ("vic", VIEWER_CODE, "viewer"),
+)
 
 
 @pytest.fixture
@@ -33,9 +39,9 @@ def db(config: Config) -> Iterator:
 
 @pytest.fixture
 def client(config: Config) -> Iterator[TestClient]:
-    """A client of the application, with one Admin and one View-only user in place."""
+    """A client of the application, with one user of each role in place."""
     with make_sessions(make_engine(config.database_url))() as session:
-        for name, code, role in (("ada", ADMIN_CODE, "admin"), ("vic", VIEWER_CODE, "viewer")):
+        for name, code, role in USERS:
             user, _ = accounts.create_user(session, audit.SYSTEM, username=name, access_code=code)
             accounts.grant_role(session, audit.SYSTEM, role=role, user_hid=user.hid)
         session.commit()
@@ -57,6 +63,20 @@ def admin(client: TestClient) -> dict[str, str]:
 
 
 @pytest.fixture
+def inventory(client: TestClient) -> dict[str, str]:
+    """Headers of a signed-in Inventory user."""
+    return sign_in(client, "ivy", INVENTORY_CODE)
+
+
+@pytest.fixture
 def viewer(client: TestClient) -> dict[str, str]:
     """Headers of a signed-in View-only user."""
     return sign_in(client, "vic", VIEWER_CODE)
+
+
+@pytest.fixture
+def make(client: TestClient, inventory: dict[str, str]):
+    """A maker of inventory records, signed in with the Inventory role."""
+    from tests.api.inventory import Maker
+
+    return Maker(client, inventory)

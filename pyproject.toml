@@ -12,6 +12,7 @@ dependencies = [
     "fastapi",
     "httpx",
     "pyjwt",
+    "regex>=2026.11.9",
     "sqlalchemy",
     "typer",
     "uvicorn",
@@ -21,7 +22,12 @@ dependencies = [
 hirdir = "hirdir.cli.main:app"
 
 [dependency-groups]
-dev = ["pytest", "ruff", "ty"]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest",
+    "ruff",
+    "ty",
+]
 docs = ["markdown-it-py", "mdit-py-plugins", "pygments"]
 
 [build-system]

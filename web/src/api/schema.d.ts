@@ -132,6 +132,296 @@ export interface paths {
       };
     };
   };
+  "/api/v1/catalog-entries": {
+    /** List catalog entries, by vendor and PID unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CatalogEntryOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a catalog entry. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CatalogEntryCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CatalogEntryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/catalog-entries/query": {
+    /** List catalog entries, with the filter and sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CatalogEntryOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/catalog-entries/{hid}": {
+    /** Return one catalog entry. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CatalogEntryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a catalog entry. Every item of the model shows a changed date or amount
+     * at once, and no item is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CatalogEntryPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CatalogEntryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/catalog-entries/{hid}/retire": {
+    /** Retire a catalog entry. Items of the model keep it. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CatalogEntryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/choices": {
+    /** List the choices of one list, or of every list, in their order. */
+    get: {
+      parameters: {
+        query?: {
+          list?: string;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChoiceOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Add a value to a list. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ChoiceCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ChoiceOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/choices/{hid}": {
+    /** Remove a choice that no record holds. One in use can only be made inactive. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a choice's label or place, or stop offering it. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ChoicePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChoiceOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/health/live": {
     /** Say that the process is running. Needs no sign-in. */
     get: {
@@ -171,6 +461,450 @@ export interface paths {
         503: {
           content: {
             "application/json": components["schemas"]["Health"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items": {
+    /**
+     * List items, by name unless a sort says otherwise.
+     *
+     * Drafts, retired items and items in Archived are left out unless asked for.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ItemOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create an item. What is not given stays blank. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ItemCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ItemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/query": {
+    /** List items, with the filter and sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ItemOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}": {
+    /** Return one item, whatever its status. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ItemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change an item. Null clears a field, and a cleared field that inherits does so again. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ItemPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ItemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/history": {
+    /** List every change made to one item, newest first. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_AuditEventOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/retire": {
+    /** Retire an item. Its record and history are kept. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ItemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/transition": {
+    /** Move an item to another lifecycle state, recording who, when, from, to and why. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["Transition"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ItemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/lifecycle-rules": {
+    /** List what each lifecycle state allows, in the order of the lifecycle. */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["LifecycleRuleOut"][];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/lifecycle-rules/{hid}": {
+    /** Change what a state allows and where an item may move from it. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["LifecycleRulePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["LifecycleRuleOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/owners": {
+    /** List owners, by label unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_OwnerOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create an owner. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnerCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/owners/{hid}": {
+    /** Return one owner. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change an owner. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnerPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/owners/{hid}/retire": {
+    /** Retire an owner. Items keep it. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
           };
         };
       };
@@ -263,6 +997,156 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["ServiceTokenOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/settings": {
+    /** List every setting with the value in force. */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SettingOut"][];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/settings/{key}": {
+    /** Give a setting a value. Null returns it to its default. */
+    put: {
+      parameters: {
+        query?: never;
+        path: {
+          key: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SettingSet"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SettingOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/tags": {
+    /** List every tag by label, with the number of records that carry it. */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TagOut"][];
+          };
+        };
+      };
+    };
+    /** Create a tag. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TagCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["TagOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/tags/{hid}": {
+    /** Remove a tag that no record carries. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a tag. A new label shows on every record that carries the tag. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["TagPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TagOut"];
           };
         };
         /** Validation Error */
@@ -673,6 +1557,125 @@ export interface paths {
       };
     };
   };
+  "/api/v1/vendors": {
+    /** List vendors, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_VendorOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a vendor. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VendorCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["VendorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/vendors/{hid}": {
+    /** Return one vendor. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["VendorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a vendor. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VendorPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["VendorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
 }
 
 /** Every record the routes take and return. */
@@ -708,6 +1711,127 @@ export interface components {
       record_type: string;
       request_id: string;
       via: string;
+    };
+    /** The values in force of the fields a catalog entry inherits. */
+    CatalogEffective: {
+      stack_discount_pct: components["schemas"]["EffectiveValue"];
+    };
+    /** A new catalog entry: one vendor and product ID. */
+    CatalogEntryCreate: {
+      annual_support_cost?: string | null;
+      description?: string | null;
+      end_of_hw_support?: string | null;
+      end_of_sale?: string | null;
+      end_of_sw_support?: string | null;
+      est_value?: string | null;
+      function?: string | null;
+      kind?: string;
+      ldos?: string | null;
+      model_name?: string | null;
+      pid: string;
+      record_status?: "draft" | "active";
+      review_status?: string;
+      stack_discount_pct?: string | null;
+      successor_hid?: string | null;
+      support_weight?: string | null;
+      tags?: string[];
+      type?: string | null;
+      vendor_hid: string;
+    };
+    /** What is true of every item of one model. */
+    CatalogEntryOut: {
+      annual_support_cost: string | null;
+      created_at: string;
+      description: string | null;
+      effective: components["schemas"]["CatalogEffective"];
+      end_of_hw_support: string | null;
+      end_of_sale: string | null;
+      end_of_sw_support: string | null;
+      est_value: string | null;
+      function: string | null;
+      hid: string;
+      kind: string;
+      ldos: string | null;
+      model_name: string | null;
+      pid: string;
+      record_status: "draft" | "active" | "retired";
+      review_status: string;
+      row_version: number;
+      stack_discount_pct: string | null;
+      successor_hid: string | null;
+      support_weight: string | null;
+      tags: string[];
+      type: string | null;
+      updated_at: string;
+      vendor: components["schemas"]["VendorRef"];
+      vendor_hid: string;
+    };
+    /** Fields of a catalog entry to change, and the version they were read at. */
+    CatalogEntryPatch: {
+      annual_support_cost?: string | null;
+      description?: string | null;
+      end_of_hw_support?: string | null;
+      end_of_sale?: string | null;
+      end_of_sw_support?: string | null;
+      est_value?: string | null;
+      function?: string | null;
+      kind?: string | null;
+      ldos?: string | null;
+      model_name?: string | null;
+      pid?: string | null;
+      record_status?: "draft" | "active" | null;
+      review_status?: string | null;
+      row_version: number;
+      stack_discount_pct?: string | null;
+      successor_hid?: string | null;
+      support_weight?: string | null;
+      tags?: string[] | null;
+      type?: string | null;
+      vendor_hid?: string | null;
+    };
+    /** A catalog entry, as shown on an item. */
+    CatalogRef: {
+      function: string | null;
+      hid: string;
+      kind: string;
+      model_name: string | null;
+      pid: string;
+      type: string | null;
+      vendor: string;
+      vendor_hid: string;
+    };
+    /** A new value for a list. */
+    ChoiceCreate: {
+      active?: boolean;
+      label?: string;
+      list: string;
+      sort?: number;
+      value: string;
+    };
+    /** One value of one editable list. */
+    ChoiceOut: {
+      active: boolean;
+      created_at: string;
+      hid: string;
+      label: string;
+      list: string;
+      row_version: number;
+      sort: number;
+      updated_at: string;
+      value: string;
+    };
+    /** Fields of a choice to change, and the version they were read at. */
+    ChoicePatch: {
+      active?: boolean | null;
+      label?: string | null;
+      row_version: number;
+      sort?: number | null;
+    };
+    /** A value in force, and where it came from. */
+    EffectiveValue: {
+      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source_hid: string | null;
+      value: string | null;
     };
     /** A role to grant to exactly one user or one group. */
     GrantCreate: {
@@ -771,14 +1895,247 @@ export interface components {
       detail?: string;
       status: string;
     };
+    /**
+     * A new item. Only what identifies it is needed: a serial number with a catalog
+     * entry, or an asset tag, a name or a hostname. Everything else may be left blank.
+     */
+    ItemCreate: {
+      annual_support_cost?: string | null;
+      asset_tag?: string | null;
+      catalog_entry_hid?: string | null;
+      comments?: string | null;
+      delivered_on?: string | null;
+      description?: string | null;
+      /** Left out, the state's own on entry. */
+      disposition?: string | null;
+      end_of_hw_support?: string | null;
+      end_of_sale?: string | null;
+      end_of_sw_support?: string | null;
+      est_value?: string | null;
+      expected_online?: boolean | null;
+      fqdn?: string | null;
+      hostname?: string | null;
+      in_service_on?: string | null;
+      ldos?: string | null;
+      lifecycle_state?: string | null;
+      /** In any common notation. */
+      mac_address?: string | null;
+      name?: string | null;
+      owner_hid?: string | null;
+      procured_on?: string | null;
+      quantity?: number;
+      record_status?: "draft" | "active";
+      serial_number?: string | null;
+      state_reason?: string | null;
+      support_weight?: string | null;
+      tags?: string[];
+      warranty_end?: string | null;
+      warranty_start?: string | null;
+    };
+    /** The values in force of the fields an item inherits from its catalog entry. */
+    ItemEffective: {
+      annual_support_cost: components["schemas"]["EffectiveValue"];
+      end_of_hw_support: components["schemas"]["EffectiveValue"];
+      end_of_sale: components["schemas"]["EffectiveValue"];
+      end_of_sw_support: components["schemas"]["EffectiveValue"];
+      est_value: components["schemas"]["EffectiveValue"];
+      ldos: components["schemas"]["EffectiveValue"];
+      support_weight: components["schemas"]["EffectiveValue"];
+    };
+    /**
+     * One tracked thing. A field that inherits holds the item's own value, and
+     * `effective` holds the value in force with its source.
+     */
+    ItemOut: {
+      annual_support_cost: string | null;
+      asset_tag: string | null;
+      catalog: components["schemas"]["CatalogRef"] | null;
+      catalog_entry_hid: string | null;
+      comments: string | null;
+      created_at: string;
+      created_by: string | null;
+      delivered_on: string | null;
+      description: string | null;
+      disposition: string | null;
+      effective: components["schemas"]["ItemEffective"];
+      end_of_hw_support: string | null;
+      end_of_sale: string | null;
+      end_of_sw_support: string | null;
+      est_value: string | null;
+      expected_online: boolean | null;
+      fqdn: string | null;
+      hid: string;
+      hostname: string | null;
+      in_service_on: string | null;
+      ldos: string | null;
+      lifecycle_state: string | null;
+      /** Twelve lower-case hex digits. */
+      mac_address: string | null;
+      /** Blank shows the hostname. */
+      name: string | null;
+      owner: components["schemas"]["OwnerRef"] | null;
+      owner_hid: string | null;
+      procured_on: string | null;
+      quantity: number;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      serial_number: string | null;
+      state_changed_at: string | null;
+      state_reason: string | null;
+      support_weight: string | null;
+      tags: string[];
+      updated_at: string;
+      updated_by: string | null;
+      warranty_end: string | null;
+      warranty_start: string | null;
+    };
+    /**
+     * Fields of an item to change, and the version they were read at.
+     *
+     * The lifecycle state is not among them: it is changed by a transition.
+     */
+    ItemPatch: {
+      annual_support_cost?: string | null;
+      asset_tag?: string | null;
+      catalog_entry_hid?: string | null;
+      comments?: string | null;
+      delivered_on?: string | null;
+      description?: string | null;
+      disposition?: string | null;
+      end_of_hw_support?: string | null;
+      end_of_sale?: string | null;
+      end_of_sw_support?: string | null;
+      est_value?: string | null;
+      expected_online?: boolean | null;
+      fqdn?: string | null;
+      hostname?: string | null;
+      in_service_on?: string | null;
+      ldos?: string | null;
+      mac_address?: string | null;
+      name?: string | null;
+      owner_hid?: string | null;
+      procured_on?: string | null;
+      quantity?: number | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      serial_number?: string | null;
+      support_weight?: string | null;
+      tags?: string[] | null;
+      warranty_end?: string | null;
+      warranty_start?: string | null;
+    };
+    /** What one lifecycle state allows, and where an item may move from it. */
+    LifecycleRuleOut: {
+      /** The dispositions an item in this state may have. */
+      dispositions: string[];
+      /** Set on entry when the item's own is not allowed. */
+      entry_disposition: string | null;
+      /** The intent set on entry, where it may be either. */
+      entry_online: boolean | null;
+      hid: string;
+      /** An item keeps the disposition it came with, which is then allowed too. */
+      keeps_disposition: boolean;
+      /** Dispositions that may be expected online. */
+      may_be_online: string[];
+      /** Dispositions that are always expected online. */
+      must_be_online: string[];
+      /** The states an item may move to from this one. */
+      next_states: string[];
+      row_version: number;
+      sort: number;
+      state: string;
+      updated_at: string;
+    };
+    /** Fields of a lifecycle rule to change, and the version they were read at. */
+    LifecycleRulePatch: {
+      dispositions?: string[] | null;
+      entry_disposition?: string | null;
+      entry_online?: boolean | null;
+      keeps_disposition?: boolean | null;
+      may_be_online?: string[] | null;
+      must_be_online?: string[] | null;
+      next_states?: string[] | null;
+      row_version: number;
+    };
+    /** What a list route takes, as a body, for a filter too large for a URL. */
+    ListQuery: {
+      /** A filter tree. See contract/filter.schema.json. */
+      filter?: {
+        [key: string]: unknown;
+      } | null;
+      include_archived?: boolean;
+      include_drafts?: boolean;
+      limit?: number;
+      offset?: number;
+      /** Field names, `-` in front for descending. */
+      sort?: string[];
+    };
+    /** A new owner. */
+    OwnerCreate: {
+      exception_reason?: string | null;
+      is_external?: boolean;
+      label: string;
+      organization?: string | null;
+      record_status?: "draft" | "active";
+    };
+    /** Who answers for an item. */
+    OwnerOut: {
+      created_at: string;
+      exception_reason: string | null;
+      hid: string;
+      is_external: boolean;
+      label: string;
+      organization: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of an owner to change, and the version they were read at. */
+    OwnerPatch: {
+      exception_reason?: string | null;
+      is_external?: boolean | null;
+      label?: string | null;
+      organization?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+    };
+    /** An owner, as named on another record. */
+    OwnerRef: {
+      hid: string;
+      label: string;
+    };
     Page_AuditEventOut_: {
       items: components["schemas"]["AuditEventOut"][];
       limit: number;
       offset: number;
       total: number;
     };
+    Page_CatalogEntryOut_: {
+      items: components["schemas"]["CatalogEntryOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ItemOut_: {
+      items: components["schemas"]["ItemOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_OwnerOut_: {
+      items: components["schemas"]["OwnerOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_UserOut_: {
       items: components["schemas"]["UserOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_VendorOut_: {
+      items: components["schemas"]["VendorOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -795,6 +2152,10 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** The version a record was read at, for an action that takes nothing else. */
+    RowVersion: {
+      row_version: number;
     };
     /** A new service token. */
     ServiceTokenCreate: {
@@ -822,10 +2183,66 @@ export interface components {
       token: string;
       user: components["schemas"]["UserOut"];
     };
+    /** A setting: the value in force, its default, and what it means. */
+    SettingOut: {
+      default: unknown;
+      is_default: boolean;
+      key: string;
+      meaning: string;
+      /** 0 for a setting that has never been changed. */
+      row_version: number;
+      updated_at: string | null;
+      updated_by: string | null;
+      value: unknown;
+    };
+    /** A new value for a setting. Null returns it to its default. */
+    SettingSet: {
+      row_version: number;
+      value?: unknown;
+    };
     /** A username and access code. */
     SignIn: {
       access_code: string;
       username: string;
+    };
+    /** A new tag. */
+    TagCreate: {
+      /** In the form #1f6feb. */
+      colour?: string | null;
+      description?: string | null;
+      label: string;
+    };
+    /** A tag, and how many records carry it. */
+    TagOut: {
+      colour: string | null;
+      created_at: string;
+      description: string | null;
+      hid: string;
+      label: string;
+      row_version: number;
+      updated_at: string;
+      uses: number;
+    };
+    /** Fields of a tag to change, and the version they were read at. */
+    TagPatch: {
+      colour?: string | null;
+      description?: string | null;
+      label?: string | null;
+      row_version: number;
+    };
+    /** A move to another lifecycle state. */
+    Transition: {
+      /** Left out, kept or set as the new state has it. */
+      disposition?: string | null;
+      /** Left out, set as the new state has it. */
+      expected_online?: boolean | null;
+      /** A move the rules do not list. Admin only, with a reason. */
+      force?: boolean;
+      /** A value of the state_reason list. */
+      reason?: string | null;
+      row_version: number;
+      /** The state to move to. */
+      to: string;
     };
     /** A new user. */
     UserCreate: {
@@ -874,6 +2291,34 @@ export interface components {
       loc: (string | number)[];
       msg: string;
       type: string;
+    };
+    /** A new vendor. */
+    VendorCreate: {
+      aliases?: string[];
+      name: string;
+      notes?: string | null;
+    };
+    /** A manufacturer, a support provider, or both. */
+    VendorOut: {
+      aliases: string[];
+      created_at: string;
+      hid: string;
+      name: string;
+      notes: string | null;
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of a vendor to change, and the version they were read at. */
+    VendorPatch: {
+      aliases?: string[] | null;
+      name?: string | null;
+      notes?: string | null;
+      row_version: number;
+    };
+    /** A vendor, as named on another record. */
+    VendorRef: {
+      hid: string;
+      name: string;
     };
   };
 }

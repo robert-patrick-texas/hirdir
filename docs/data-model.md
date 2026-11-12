@@ -15,6 +15,8 @@ to every interface, so it is made here first.
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are ISO 8601 in UTC. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
+| Decimals | Money has two places, support weight three, a percentage two. In JSON a decimal is text, `"18000.00"`, so that nothing is lost on the way to a browser. |
+| Blank | A blank text field is stored as nothing at all, and is `null` in JSON. |
 | Text keys | Compared without regard to case or surrounding space. The text as entered is what is stored and shown. |
 | History | The past value of any field is answered from `audit_events`. Only group membership and contract coverage keep their own date ranges, because reports ask about them directly. |
 | Portability | Column types and constraints are limited to what SQLite and PostgreSQL both support. |
@@ -51,7 +53,7 @@ to inheriting.
 
 ### `vendors`
 
-A manufacturer, a support provider, or both.
+A manufacturer, a support provider, or both. A name or alias belongs to one vendor only.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -68,7 +70,7 @@ What is true of every item of one model. Unique on (`vendor_hid`, `pid`).
 | `vendor_hid` | reference | required |
 | `pid` | text | required. The product ID as the vendor writes it: `C9300-48P` |
 | `model_name` | text | "Catalyst 9300 48-port PoE+" |
-| `kind` | choice | `hardware`, `virtual_machine`, `software`, `service` |
+| `kind` | choice | `hardware`, `virtual_machine`, `software`, `service`. Left out, `hardware` |
 | `type` | choice | switch, router, firewall, wireless-controller, access-point, phone, server, test-equipment, power-supply, module, application, and so on |
 | `function` | choice | access, aggregation, core, edge, management, and so on |
 | `description` | text | "access, 48-port" |
@@ -79,11 +81,13 @@ What is true of every item of one model. Unique on (`vendor_hid`, `pid`).
 | `stack_discount_pct` | 0 to 100 | blank inherits the global setting |
 | `successor_hid` | reference | the model that replaces this one, for refresh planning |
 | `review_status` | choice | `reviewed`, or `unreviewed` when an import created it |
+| `record_status` | choice | see Conventions |
 
 ### `items`
 
 One tracked thing. At least one of `serial_number` with `catalog_entry_hid`,
-`asset_tag`, `name` or `hostname` is required.
+`asset_tag`, `name` or `hostname` is required. Everything else may be blank, the three
+lifecycle fields included.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -108,9 +112,14 @@ One tracked thing. At least one of `serial_number` with `catalog_entry_hid`,
 | `warranty_start`, `warranty_end` | date | |
 | `est_value`, `support_weight`, `annual_support_cost` | override | blank inherits |
 | `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | override | blank inherits |
+| `record_status` | choice | see Conventions |
 
 A **major item** is one with `parent_item_hid` blank. `is_major` is derived and is
 available as a filter and a column.
+
+Release 0.2.0 has every field above except `parent_item_hid` and `position`, which
+arrive with minor items in 0.4.0, `location_hid` in 0.5.0 and `purchase_line_hid` in
+0.6.0.
 
 ### `item_replacements`
 
@@ -202,7 +211,12 @@ level that has any supplies all of them.
 | `owners.organization` | text | |
 | `owners.is_external` | boolean | an owner outside the operations team |
 | `owners.exception_reason` | text | required when `is_external` |
+| `owners.record_status` | choice | see Conventions |
 | `owner_members.contact_hid`, `role`, `priority` | | `role` is `primary` or `alternate`; exactly one primary |
+
+The owner itself is in release 0.2.0, because an item needs one to point to. Its
+members arrive with contacts in 0.5.0, and so does the marked exception on an item that
+is given to an external owner.
 
 ### `contracts` and `contract_coverage`
 
@@ -279,15 +293,24 @@ The resource units of a line are `quantity` × `units_each`, a fixed amount.
 
 ### `tags` and `tag_links`
 
-A tag is a `label` (unique), an optional `colour` and a `description`. A link names the
-tag, the record type and the record's HID. A filter `has_tag` works on every list.
+A tag is a `label` (unique), an optional `colour` written `#1f6feb`, and a
+`description`. A link names the tag, the record type and the record's HID. The filter
+`tags has <label>` works on every list of a record that takes tags. A tag is made before
+it is used: a label that is not yet a tag is refused, not created. A tag that is on any
+record cannot be removed.
 
 ### `choices` and `settings`
 
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
 lists are `catalog_type`, `catalog_function`, `state_reason`, `contact_role`,
-`location_kind`, `replacement_reason` and `capacity_category`. A value in use cannot be removed, only made
-inactive.
+`location_kind`, `replacement_reason` and `capacity_category`. A value is lower-case
+letters, digits, hyphens and underscores, and is what is stored on a record; the label
+is what people read. A value in use cannot be removed, only made inactive, and an
+inactive value is no longer offered while the records that hold it keep it.
+
+A setting has a default, written in the code. The database keeps a row only for a
+setting that has been given a value, and setting it to nothing returns it to the
+default.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -298,7 +321,10 @@ inactive.
 | `weight_states` | Test, Prod, Down | states that carry support weight |
 | `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
 | `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
-| `session_hours` | 12 | life of a session token |
+
+The life of a session token, `session_hours`, is in the configuration file and not
+here, because it is needed before the database can be asked. See
+[architecture.md](architecture.md).
 
 ### Access records
 
@@ -348,6 +374,38 @@ data (`lifecycle_rules`) and loaded with these defaults. Any move is allowed to 
 Admin with a reason. The default moves follow the diagram left to right, plus: Test and
 Prod to Down and back, any state from Assigned onward to Pending-Removal, and
 Pending-Removal back to Assigned for an item that is found or returned.
+
+### `lifecycle_rules`
+
+One row for each of the nine states. An Admin may change a row; the states themselves
+are fixed.
+
+| Field | Type | Notes |
+|---|---|---|
+| `state` | text, unique | one of the nine |
+| `dispositions` | list | the dispositions an item in this state may have; empty means it has none |
+| `keeps_disposition` | boolean | an item keeps the disposition it came with, which is then allowed as well: Down and Pending-Removal |
+| `may_be_online` | list | the dispositions that may be expected online in this state |
+| `must_be_online` | list | the dispositions that are always expected online: Production in Prod |
+| `entry_disposition`, `entry_online` | choice, boolean | the "set on entry" column above |
+| `next_states` | list | the states an item may move to from this one |
+
+The three lifecycle fields of an item may all be blank: a piece of test equipment with
+an owner and nothing else is a complete record. An item with no state has no
+disposition and no intent, is in no count, and may be given any state as its first.
+
+**On entry to a state**, when the caller names neither field: the item keeps its
+disposition if the new state allows it, and takes `entry_disposition` if it does not.
+So an item found again in Pending-Removal as Excess is still Excess in Assigned, and a
+spare that went Down is still a spare when it returns to Prod. The intent is
+`entry_online`, bounded by what the disposition may and must be. A caller may name the
+disposition and the intent with the move, and the result must be a combination the
+state allows.
+
+**A change of state** is made by a transition, never by an edit, so that every one
+records who, when, from, to and why. The why is a value of the `state_reason` list. It
+is asked for on a forced move and is optional otherwise. A change of disposition or
+intent within a state is an ordinary edit, checked against the same row.
 
 An item **should be monitored** when it is a major item in Test or Prod and
 `expected_online` is true. That is an expectation for reports to compare against, not a

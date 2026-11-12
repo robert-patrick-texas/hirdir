@@ -3,6 +3,8 @@
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from hirdir.db import dialect
+
 SQLITE_PRAGMAS = {
     "journal_mode": "wal",
     "foreign_keys": 1,
@@ -12,7 +14,10 @@ SQLITE_PRAGMAS = {
 
 
 def make_engine(url: str) -> Engine:
-    """Create the engine for url. A SQLite connection gets hirdir's pragmas every time."""
+    """Create the engine for url.
+
+    A SQLite connection gets hirdir's pragmas and SQL functions every time.
+    """
     engine = create_engine(url)
     if engine.dialect.name == "sqlite":
 
@@ -22,6 +27,7 @@ def make_engine(url: str) -> Engine:
             for name, value in SQLITE_PRAGMAS.items():
                 cursor.execute(f"PRAGMA {name}={value}")
             cursor.close()
+            dialect.prepare_sqlite(dbapi_connection)
 
     return engine
 

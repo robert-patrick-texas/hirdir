@@ -25,7 +25,7 @@ of ours. There is no second service, no queue and no cache in the MVP.
 | Server | FastAPI on Uvicorn, Pydantic models | one worker |
 | Database access | SQLAlchemy 2 with Alembic migrations | |
 | Database | SQLite in WAL mode | PostgreSQL as an option LATER |
-| CLI | Typer, with httpx to call the API | same package as the server |
+| CLI | Typer, with httpx to call the API | same package as the server. The server's tests use httpx2; the CLI follows in 0.3.0 |
 | Web UI | TypeScript, React, built with Vite | npm; Node is needed to build, never to run |
 | Grid | AG Grid Community | infinite row model: the server sorts, filters and pages |
 | Reverse proxy | nginx from Ubuntu | not shipped by `hirdir` |
@@ -160,11 +160,15 @@ rendered as text, never as HTML.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, and upsert. The test suite
   runs against SQLite; a PostgreSQL run is added with that option.
-- **Regular expressions.** SQLite gets a `REGEXP` function from the application. It
+- **Regular expressions.** SQLite gets a matching function from the application. It
   uses a linear-time engine (RE2) when a production release of its Python binding
   exists for the Python in use, and otherwise the `regex` package with a per-match
   time limit. Patterns are at most 200 characters. A pattern that cannot be compiled or
   runs out of time is a `422`, never a stalled database.
+
+  For Python 3.15 it is the `regex` package: `google-re2`, the binding from the RE2
+  project, has no release for it yet. One match may take 50 ms, and all the matches of
+  one request together one second.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. `hirdir admin restore
   FILE` puts one back. Copying backups off the host is the host's job.

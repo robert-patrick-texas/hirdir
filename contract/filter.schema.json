@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hirdir/filter/1",
+  "title": "hirdir filter",
+  "description": "A filter is a tree. A leaf is a condition on one field. A branch joins its parts with AND or with OR. Which fields a list allows, and which operators each field takes, is checked by the server and answered with 422.",
+  "$ref": "#/$defs/node",
+  "$defs": {
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/condition" },
+        { "$ref": "#/$defs/all" },
+        { "$ref": "#/$defs/any" }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "required": ["field", "op"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "A field of the record, a dotted field of a related record such as catalog.pid, or effective.<field> for the value in force of a field that inherits."
+        },
+        "op": {
+          "enum": ["eq", "ne", "in", "empty", "contains", "prefix", "glob", "regex", "lt", "lte", "gt", "gte", "between", "has", "within"]
+        },
+        "value": {
+          "description": "One value. A list for in, two values for between, true or false for empty.",
+          "type": ["string", "number", "boolean", "array"],
+          "items": { "type": ["string", "number", "boolean"] }
+        }
+      }
+    },
+    "all": {
+      "type": "object",
+      "required": ["and"],
+      "additionalProperties": false,
+      "properties": { "and": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } }
+    },
+    "any": {
+      "type": "object",
+      "required": ["or"],
+      "additionalProperties": false,
+      "properties": { "or": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } } }
+    }
+  }
+}

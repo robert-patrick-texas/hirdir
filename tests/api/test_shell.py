@@ -12,7 +12,7 @@ API = "/api/v1"
 def test_no_response_sets_a_cookie_and_every_one_is_hardened(
     client: TestClient, admin: dict, viewer: dict
 ) -> None:
-    document = client.app.openapi()["paths"]
+    document = client.get(f"{API}/openapi.json", headers=admin).json()["paths"]
     paths = sorted(path for path, item in document.items() if "get" in item and "{" not in path)
     assert f"{API}/users" in paths
     for path in [*paths, "/", "/some/page", f"{API}/no-such-route"]:
