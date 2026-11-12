@@ -1,0 +1,24 @@
+# Build output
+/html/
+/dist/
+/build/
+/src/hirdir/static/
+*.deb
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Local data: never committed
+*.db
+*.db-wal
+*.db-shm
+/.publish-guard
+*.local
+.env
