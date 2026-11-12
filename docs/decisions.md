@@ -50,12 +50,14 @@ marked as replaced, not removed.
 | D-37 | Each endpoint carries only its own support weight. A controller gets nothing extra for the endpoints it manages. (Was O-02.) |
 | D-38 | For software and services, quantity multiplies both weight and cost. (Was O-03.) |
 | D-39 | Support weight is demand, balanced against resource units supplied by staff positions, professional services, smart hands, tools and add-on services including agentic AI. The sum of those lines is the capacity available, for the infrastructure and for other work. The purpose is right-sizing the team. |
+| D-40 | Work that is not infrastructure, such as projects, a merger or acquisition, or an organizational transition, is entered as demand lines. The balance is supply against infrastructure plus other work. (Was P-20.) |
+| D-41 | A staff line is a kind of position and a count. No capacity is attributed to a named person at this phase. View-only may read capacity lines; Inventory may edit them. (Was P-22.) |
 
 ## Proposed
 
 Each of these is the working answer. One marked **confirm** changes behaviour that
-people will notice, and deserves a look before the release that builds it. P-01 to P-04
-were confirmed and are now D-33 to D-36.
+people will notice, and deserves a look before the release that builds it. P-01 to P-04,
+P-20 and P-22 were confirmed and are now D-33 to D-36, D-40 and D-41.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
@@ -73,9 +75,9 @@ were confirmed and are now D-33 to D-36.
 | P-16 | Fiscal year starts in January unless the setting says otherwise. | Neutral default. | 0.6.0 |
 | P-17 | The scale target is 50,000 items. | Phones and access points are counted. | 1.0.0 |
 | P-18 | Test equipment has an owner and nothing more: no check-out, no calibration dates. | Stood unanswered at its default. | — |
-| P-20 **confirm** | Work that is not infrastructure is entered as demand lines, so the balance is supply against infrastructure plus other work. One setting converts support weight into resource units. | The supply also does other work, and leaving that out would overstate what is free. | 0.6.0 |
 | P-21 | A capacity line may be a draft, may carry an annual cost, a vendor, dates and a region or site. The report shows the balance with and without drafts. | Drafts already exist for items and sites and give what-if comparisons for free. | 0.6.0 |
-| P-22 | A staff line is a kind of position and a count, never a named person. View-only may read capacity lines; Inventory may edit them. | Keeps personnel detail out of the inventory. | 0.6.0 |
+| P-23 **confirm** | Units per position are fixed numbers. Seniority is handled by a separate staff line per level, each with its own units, with one mid-level position as 1.0 by convention. | It needs nothing beyond what 0.6.0 already builds, and the numbers stay visible and easy to argue with. | 0.6.0 |
+| P-24 **confirm** | A tool or service that makes people more effective is, for now, a supply line with its estimated gain. After the MVP it may be a multiplier line on chosen staff lines, computed as in [data-model.md](data-model.md): on base units, with a share of positions using it, not compounding. A tool that takes work to run is an inventory item whose support weight is already demand. | A multiplier ties the gain to the people it amplifies, which matters when the question is how many positions. It also needs calibration that only experience with the fixed numbers will give. | after 1.0.0 |
 | P-19 | Regular expressions use a linear-time engine when its binding has a production release for the Python in use, otherwise a time-limited one. | Which one is available changes with the Python version, and the dependency rule decides. | 0.2.0 |
 
 ## Open
@@ -83,4 +85,4 @@ were confirmed and are now D-33 to D-36.
 | ID | Question | Needed by |
 |---|---|---|
 | O-01 | Which monitoring system is integrated first, and does `hirdir` send to it or read from it? | after 1.0.0 |
-| O-04 | What is one resource unit: one full-time position, or something finer? And how much support weight does one unit carry? Both are plain numbers that can be set at any time, but the examples and the seeded data should use the scale the team already speaks in. | 0.6.0 |
+| O-05 | How much support weight does one resource unit, a mid-level position, carry? It is one setting, changeable at any time; the example uses 300 as a placeholder. | 0.6.0 |

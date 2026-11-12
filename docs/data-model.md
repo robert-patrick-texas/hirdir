@@ -251,7 +251,7 @@ A source of resource units, or a call on them other than the infrastructure.
 |---|---|---|
 | `side` | choice | `supply` or `demand` |
 | `category` | choice | supply: `staff`, `professional_services`, `smart_hands`, `tools`, `services`. demand: `other_work` |
-| `name` | text | "Network engineer positions", "Escalation partner", "AI assistant" |
+| `name` | text | "Senior network engineer", "Escalation partner", "AI assistant" |
 | `quantity` | decimal, default 1 | positions, contracted blocks of hours, subscriptions |
 | `units_each` | decimal | resource units that one of `quantity` provides or consumes |
 | `annual_cost` | money | optional, for comparing options |
@@ -261,8 +261,21 @@ A source of resource units, or a call on them other than the infrastructure.
 | `notes` | text | |
 | `record_status` | choice | a `draft` line is a what-if |
 
-The resource units of a line are `quantity` × `units_each`. A staff line names a kind
-of position and a number of them, never a person.
+The resource units of a line are `quantity` × `units_each`, a fixed amount.
+
+- **Staff.** A line names a kind of position and a number of them, never a person. Levels
+  are separate lines with their own `units_each`. By convention one mid-level position
+  is 1.0, and the other levels are set against it.
+- **Tools and services that do work.** A supply line with the units they provide.
+- **Tools and services that take work to run.** These are items in the inventory with a
+  support weight, so their burden is already in the demand. It is not entered again as a
+  negative supply line.
+- **Tools and services that make people more effective.** For now, a supply line with the
+  estimated gain in units. LATER, a multiplier line: `effect` = `multiply`, a `factor`,
+  a `share` of the positions using it, and the staff lines it applies to. Its units are
+  (`factor` − 1) × `share` × the base units of those lines. Multipliers each work on the
+  base units and do not compound, so the result does not depend on their order, and a
+  cut in the staff lines shrinks the gain with it.
 
 ### `tags` and `tag_links`
 
@@ -400,16 +413,19 @@ Worked example, with `weight_per_resource_unit` at 300 and a support weight of 2
 | Line | Side | Category | Quantity | Units each | Units |
 |---|---|---|--:|--:|--:|
 | Infrastructure (computed) | demand | | | | 8.0 |
-| Projects and requests | demand | other_work | 1 | 2.0 | 2.0 |
-| Network engineer positions | supply | staff | 6 | 1.0 | 6.0 |
+| Site consolidation project | demand | other_work | 1 | 1.5 | 1.5 |
+| Organization transition | demand | other_work | 1 | 0.5 | 0.5 |
+| Junior network engineer | supply | staff | 2 | 0.6 | 1.2 |
+| Network engineer | supply | staff | 3 | 1.0 | 3.0 |
+| Senior network engineer | supply | staff | 1 | 1.8 | 1.8 |
 | Escalation partner | supply | professional_services | 1 | 1.0 | 1.0 |
 | Colocation smart hands | supply | smart_hands | 1 | 0.5 | 0.5 |
 | Automation and tooling | supply | tools | 1 | 1.5 | 1.5 |
 | AI assistant (draft) | supply | services | 1 | 1.0 | 1.0 |
 
 Demand is 10.0. Active supply is 9.0: a balance of −1.0 and coverage of 90%. With the
-draft line, supply is 10.0 and the balance is zero. Of the active supply, two thirds is
-the team's own positions.
+draft line, supply is 10.0 and the balance is zero. Of the active supply, 6.0 units, two
+thirds, is the team's own six positions.
 
 ## Indexes
 

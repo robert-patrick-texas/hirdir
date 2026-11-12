@@ -271,7 +271,8 @@ as AI.
 - **R14.1** The support weight of the infrastructure (R6.3) is the **demand** it places
   on the team, expressed in resource units.
 - **R14.2** **Supply** is entered as capacity lines, each in a category:
-  - **Staff**: full-time positions on the operations team.
+  - **Staff**: full-time positions on the operations team, one line for each kind or
+    level of position.
   - **Professional services**: support staff outside the team, such as a vendor's
     advanced services or a partner contractor held for escalation.
   - **Smart hands**: on-site physical work done by a colocation provider on a ticket,
@@ -282,14 +283,17 @@ as AI.
   optionally an annual cost, a vendor, start and end dates, and a region or site it
   serves.
 - **R14.4** The sum of the supply lines is the resource units available. They support
-  the infrastructure and also do other work, so work that is not infrastructure is
-  entered as demand lines of its own.
+  the infrastructure and also do other work. Projects, a merger or acquisition, an
+  organizational transition and the like keep people busy beyond day-to-day support, so
+  each is entered as a demand line of its own.
 - **R14.5** The capacity report MUST show demand, supply by category, the balance and
   the ratio between them, and how much of the supply is the team's own positions against
   outside assistance, tools and services.
 - **R14.6** A line MAY be a draft. The report compares the balance with and without the
   drafts, which answers "what if we add this service" or "what if that contract ends".
 - **R14.7** LATER: a dated record of the balance, to show the trend.
+- **R14.8** LATER: a line that multiplies the capacity of chosen staff lines instead of
+  adding a fixed amount, for tools and AI that make people more effective.
 
 ## Qualities
 
