@@ -1,0 +1,22 @@
+# The image packaging/build-deb.sh builds the package in: a clean Ubuntu 26.04 with
+# the tools that assemble and inspect the package, and nothing of hirdir.
+#
+#   uv        installs the bundled CPython, the locked dependencies and builds the wheel
+#   binutils  readelf, for the check that no bundled binary needs a newer glibc
+#   lintian   checks the finished package
+#   systemd   systemd-analyze, which verifies the units
+#
+# It is built with no context: docker build - < packaging/container/Dockerfile.build
+
+# uv, at the version in use on the build host. packaging/build-deb.sh passes it in, so
+# the package is built by the same uv that wrote the lock file, and "make upgrade",
+# which updates uv on the host, moves this with it.
+ARG UV_VERSION
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+FROM ubuntu:26.04
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        binutils ca-certificates lintian systemd \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=uv /uv /usr/local/bin/uv

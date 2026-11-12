@@ -5,8 +5,10 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** design. No release yet. The pages below are the specification the first
-release is being built from.
+**Status:** release 0.1.0, the skeleton: the package installs and runs behind nginx,
+people sign in, and an Admin manages accounts, groups, roles and service tokens. The
+inventory itself arrives with 0.2.0. The order of work is in the
+[build plan](docs/build-plan.md).
 
 ![Lifecycle workflow](images/lifecycle-workflow.png)
 
@@ -31,6 +33,7 @@ release is being built from.
 
 | Page | Content |
 |---|---|
+| [Install and operate](docs/install.md) | Installing the package, nginx, accounts, backup, upgrade |
 | [Requirements](docs/requirements.md) | What the product must do, and what it leaves alone |
 | [Data model](docs/data-model.md) | The records, inheritance, identity, lifecycle, counting and weight |
 | [Architecture](docs/architecture.md) | The software, access, the package and how it is tested |
@@ -50,3 +53,7 @@ release is being built from.
 | Access | Username and access code for now; three roles; no cookies |
 
 Every example in this repository is fictional.
+
+## Licence
+
+[Apache License 2.0](LICENSE.md).

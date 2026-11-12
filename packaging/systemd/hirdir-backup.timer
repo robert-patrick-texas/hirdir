@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily backup of the hirdir database
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

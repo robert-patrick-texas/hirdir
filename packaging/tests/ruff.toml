@@ -1,0 +1,7 @@
+# The tests in this directory are linted as the tests under tests/ are. The project's
+# pyproject.toml grants the same three exceptions to "tests/**", a pattern that does
+# not reach packaging/tests.
+extend = "../../pyproject.toml"
+
+[lint.extend-per-file-ignores]
+"*.py" = ["S101", "S105", "S106"]

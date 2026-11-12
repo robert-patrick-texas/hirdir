@@ -1,0 +1,42 @@
+[Unit]
+Description=hirdir inventory server
+After=network.target
+
+[Service]
+Type=exec
+User=hirdir
+Group=hirdir
+ExecStart=/opt/hirdir/venv/bin/hirdir admin serve
+Restart=on-failure
+RestartSec=3
+
+# The database, the signing key and the backups live in /var/lib/hirdir. Nothing in
+# it is readable by other users.
+StateDirectory=hirdir
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/hirdir
+UMask=0027
+
+# The service writes to its state directory and nowhere else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hirdir
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

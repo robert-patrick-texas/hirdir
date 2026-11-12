@@ -118,14 +118,22 @@ of every user.
 ### Throttling
 
 Access codes may be short in the MVP, so guessing is slowed on the server: after five
-failures in a row for one username or from one address, each further attempt waits
-twice as long as the last, up to five minutes. Failures are audit events.
+failures in a row for one username or from one address, each further failure doubles
+the wait before another attempt is looked at, from one second up to five minutes. An
+attempt made during the wait is refused with `429` and a `Retry-After` header, whether
+or not its code is right. A successful sign-in clears the count. Failures and refusals
+are audit events. The counts are held in memory, so a restart of the service clears
+them.
 
 ### Service tokens
 
 A service account is a user that cannot sign in with a code. An Admin creates named
-tokens for it. A token is 32 random bytes shown once, stored as a SHA-256 hash, sent as
-a bearer token like a session, and can carry an expiry and be revoked alone.
+tokens for it. A token is 32 random bytes with the prefix `hsv_`, shown once, stored as
+a SHA-256 hash, sent as a bearer token like a session, and can carry an expiry and be
+revoked alone.
+
+An installation always keeps one person who holds Admin and can sign in: a change that
+would remove the last one is refused.
 
 ### What comes later
 
@@ -175,7 +183,7 @@ rendered as text, never as HTML.
 | `/etc/hirdir/config.toml` | configuration (a conffile) |
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
 | `/etc/nginx/snippets/hirdir.conf` | the `location` block above (a conffile) |
-| `/usr/lib/systemd/system/hirdir.service` | runs as user `hirdir`, listens on `127.0.0.1:8715` |
+| `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
 | `/var/lib/hirdir/` | database, signing key, backups (created at install, never shipped) |
 | `/usr/share/doc/hirdir/` | this documentation as HTML, and the release notes |
@@ -226,6 +234,7 @@ host as an alternative runner for the same script.
 [server]
 listen = "127.0.0.1:8715"
 trusted_proxies = ["127.0.0.1", "::1"]
+state_dir = "/var/lib/hirdir"        # a relative path is taken from this file's directory
 
 [database]
 url = "sqlite:////var/lib/hirdir/hirdir.db"

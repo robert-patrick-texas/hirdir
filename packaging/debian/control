@@ -1,0 +1,20 @@
+Package: hirdir
+Version: @VERSION@
+Architecture: amd64
+Maintainer: hirdir maintainers <noreply@example.invalid>
+Installed-Size: @SIZE@
+Depends: libc6 (>= @GLIBC@), adduser, ca-certificates, tzdata
+Recommends: nginx
+Section: admin
+Priority: optional
+Description: network equipment lifecycle and inventory platform
+ hirdir is an inventory of the equipment, virtual machines, software and
+ services a network operations team answers for, from the purchase request
+ to disposal. It serves a web UI and a versioned API from one process, and
+ keeps its records in SQLite.
+ .
+ This package carries its own Python interpreter and every Python
+ dependency under /opt/hirdir. It installs a systemd service that listens
+ on 127.0.0.1:8715, a daily backup timer, and nginx snippets that publish
+ the service under a URL prefix on a site that already terminates TLS.
+ Run hirdir-setup to add it to such a site.

@@ -22,3 +22,5 @@ node_modules/
 /.publish-guard
 *.local
 .env
+/dev-data/
+/contract/.cache/

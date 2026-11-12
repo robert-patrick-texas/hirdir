@@ -1,0 +1,36 @@
+# Overrides for the hirdir package, installed as /usr/share/lintian/overrides/hirdir.
+# Each one is explained above its line. Any other lintian error fails the build
+# (packaging/container/build.sh runs lintian --fail-on error).
+
+# hirdir installs under /opt/hirdir by decision (D-01, D-10): the package carries its
+# own Python interpreter and every Python dependency, apart from the system's Python.
+hirdir: dir-or-file-in-opt [opt/hirdir/*]
+
+# The bundled CPython is the python-build-standalone build that uv installs. It links
+# bzip2, expat, ncurses, zlib and zstd statically, so that it depends on no library
+# version of the system. It is replaced with each release of hirdir, not by the
+# distribution's security updates.
+hirdir: embedded-library * [opt/hirdir/python/bin/python3.*]
+
+# The interpreter and the compiled modules of the bundled wheels are shipped exactly
+# as their projects publish them, so that they match the hashes uv checks. Stripping
+# them would also break the interpreter, whose executable carries its own symbols.
+hirdir: unstripped-binary-or-object [opt/hirdir/python/*]
+hirdir: unstripped-binary-or-object [opt/hirdir/venv/lib/*]
+
+# python-build-standalone builds the interpreter's executable without PIE.
+hirdir: hardening-no-pie [opt/hirdir/python/bin/python3.*]
+
+# The commands in the private environment, and hirdir-setup, must be run by the
+# bundled interpreter and never by /usr/bin/python3.
+hirdir: unusual-interpreter /opt/hirdir/venv/bin/python [opt/hirdir/venv/bin/*]
+hirdir: unusual-interpreter /opt/hirdir/venv/bin/python [usr/sbin/hirdir-setup]
+
+# A module of CPython's standard library that still starts with "#!/usr/bin/env python".
+# It is imported, never run.
+hirdir: unusual-interpreter python [opt/hirdir/python/lib/python3.*/encodings/rot_13.py]
+
+# "hirdir --help" and "hirdir-setup --help" describe the commands, and the HTML
+# documentation in /usr/share/doc/hirdir/html covers them.
+hirdir: no-manual-page [usr/bin/hirdir]
+hirdir: no-manual-page [usr/sbin/hirdir-setup]

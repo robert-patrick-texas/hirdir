@@ -1,0 +1,86 @@
+#!/bin/sh
+# postrm for hirdir.
+#
+# "apt remove" keeps the configuration in /etc/hirdir and the data in /var/lib/hirdir,
+# and masks the units as dh_installsystemd does, which remembers whether they were
+# enabled. "apt purge" removes the data, the configuration, what hirdir-setup added to
+# nginx, and the hirdir user.
+set -e
+
+UNITS="hirdir.service hirdir-backup.timer"
+INCLUDE='^[[:space:]]*include[[:space:]]+snippets/hirdir\.conf;[[:space:]]*# added by hirdir-setup'
+
+remove_from_nginx() {
+    # The snippet is gone, so a site that still includes it would stop nginx from
+    # loading its configuration. Take out the line hirdir-setup added, which carries
+    # its mark, and the site that hirdir-setup --self-signed wrote.
+    [ -d /etc/nginx ] || return 0
+    changed=no
+    for directory in /etc/nginx/sites-available /etc/nginx/conf.d; do
+        [ -d "$directory" ] || continue
+        for file in "$directory"/*; do
+            if [ -f "$file" ] && [ ! -L "$file" ] && grep -Eq "$INCLUDE" "$file"; then
+                sed -E -i "\\|$INCLUDE|d" "$file"
+                changed=yes
+            fi
+        done
+    done
+    site=/etc/nginx/sites-available/hirdir-self-signed
+    if [ -f "$site" ] && head -n 1 "$site" | grep -q '^# Written by hirdir-setup --self-signed'; then
+        rm -f "$site" /etc/nginx/sites-enabled/hirdir-self-signed
+        changed=yes
+    fi
+    # Reload nginx only when it accepts what is left. deb-systemd-invoke obeys a
+    # policy-rc.d and does nothing for a unit that is not running.
+    if [ "$changed" = yes ] && [ -d /run/systemd/system ] && command -v nginx >/dev/null \
+        && nginx -t >/dev/null 2>&1; then
+        deb-systemd-invoke reload nginx.service >/dev/null 2>&1 || true
+    fi
+}
+
+case "$1" in
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null || true
+        fi
+        if command -v deb-systemd-helper >/dev/null; then
+            # shellcheck disable=SC2086  # UNITS is a list of unit names.
+            deb-systemd-helper mask $UNITS >/dev/null || true
+        fi
+        ;;
+    purge)
+        if command -v deb-systemd-helper >/dev/null; then
+            # shellcheck disable=SC2086  # UNITS is a list of unit names.
+            deb-systemd-helper purge $UNITS >/dev/null || true
+            # shellcheck disable=SC2086
+            deb-systemd-helper unmask $UNITS >/dev/null || true
+        fi
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null || true
+        fi
+        remove_from_nginx
+        # The database, the signing key and the backups; then the configuration with
+        # the throwaway certificate of hirdir-setup --self-signed.
+        rm -rf /var/lib/hirdir /etc/hirdir
+        # Byte-code that a command run between prerm and here might have written.
+        rm -rf /opt/hirdir
+        if getent passwd hirdir >/dev/null; then
+            if command -v deluser >/dev/null; then
+                deluser --quiet --system hirdir >/dev/null || true
+            else
+                userdel hirdir >/dev/null 2>&1 || true
+            fi
+        fi
+        if getent group hirdir >/dev/null; then
+            groupdel hirdir >/dev/null 2>&1 || true
+        fi
+        ;;
+    upgrade | failed-upgrade | abort-install | abort-upgrade | disappear)
+        ;;
+    *)
+        echo "postrm called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

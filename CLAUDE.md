@@ -5,7 +5,7 @@ Instructions for an agent building this project. Read this page, then
 
 ## Where we are
 
-Design is written; no code yet. The next release is the first row of the table in
+The next release is the first row of the table in
 [docs/build-plan.md](docs/build-plan.md) that has no file in `docs/releases/`.
 
 ## Authority

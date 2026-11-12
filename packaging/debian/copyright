@@ -1,0 +1,43 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: hirdir
+Upstream-Contact: hirdir maintainers <noreply@example.invalid>
+
+Files: *
+Copyright: 2026 the hirdir authors
+License: Apache-2.0
+
+Files: opt/hirdir/python/*
+Copyright: 2001-2026 Python Software Foundation
+License: PSF-2.0
+Comment: CPython, as built by the python-build-standalone project. The libraries
+ linked into it (among them OpenSSL, SQLite, zlib, bzip2, xz, libffi, ncurses and
+ expat) carry their own licences, which are listed in
+ /opt/hirdir/python/lib/python3*/LICENSE.txt.
+
+Files: opt/hirdir/venv/lib/*
+Copyright: The authors of each bundled Python package
+License: various
+ The Python packages under /opt/hirdir/venv carry their own licences. Each
+ one's licence is in its *.dist-info directory. The web UI inside the hirdir
+ package bundles JavaScript libraries, whose licence notices are kept in the
+ built files.
+
+License: PSF-2.0
+ Python Software Foundation License Version 2. The full text is in
+ /opt/hirdir/python/lib/python3*/LICENSE.txt.
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ use this file except in compliance with the License. You may obtain a copy
+ of the License at
+ .
+     http://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ License for the specific language governing permissions and limitations
+ under the License.
+ .
+ On Debian and Ubuntu systems the full text of the Apache License, Version
+ 2.0 is in /usr/share/common-licenses/Apache-2.0.

@@ -207,7 +207,11 @@ hirdir admin migrate
 hirdir admin backup
 hirdir admin restore FILE
 hirdir admin check                               # schema version, integrity, settings
+hirdir admin serve                               # what the service runs
 ```
+
+Run as root, an admin command first steps down to the user that owns the state
+directory, so it never leaves behind a file the service cannot write.
 
 ## Web UI
 

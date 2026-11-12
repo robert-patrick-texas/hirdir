@@ -1,0 +1,36 @@
+# Configuration of hirdir. Every key is optional, and each one below is commented out
+# and shows its default. To change a value, remove the "# " in front of the key, edit
+# it, and restart the service:
+#
+#     sudo systemctl restart hirdir
+#
+# Values that people change in the course of work are settings in the database,
+# edited in the web UI by an Admin. They are not in this file.
+
+[server]
+# The address and port the service listens on. nginx reaches it here: keep
+# /etc/nginx/conf.d/hirdir.conf in step.
+# listen = "127.0.0.1:8715"
+
+# The addresses whose X-Forwarded-* headers are believed. Only the proxy belongs here.
+# trusted_proxies = ["127.0.0.1", "::1"]
+
+# Where the database, the signing key and the backups are kept. The systemd units
+# let the service write to /var/lib/hirdir and nowhere else, so a change here needs
+# the same change to ReadWritePaths in a drop-in for hirdir.service and
+# hirdir-backup.service. A relative path is taken from this file's directory.
+# state_dir = "/var/lib/hirdir"
+
+[database]
+# url = "sqlite:////var/lib/hirdir/hirdir.db"
+
+[access]
+# How long a session lasts before the user signs in again.
+# session_hours = 12
+
+# How many wrong access codes in a row are answered at once. The next ones are delayed.
+# sign_in_failures_before_delay = 5
+
+[backup]
+# How many of the newest backups "hirdir admin backup" keeps in /var/lib/hirdir/backups.
+# keep = 14

@@ -1,0 +1,108 @@
+#!/bin/sh
+# postinst for hirdir.
+#
+# On a first install: creates the hirdir user and /var/lib/hirdir, compiles the
+# byte-code, creates the signing key, runs the migrations, enables and starts the
+# service and the backup timer, and prints what to do next.
+#
+# On an upgrade: stops the service, backs the database up, runs the migrations and
+# starts the service again. If the migration fails, the upgrade stops and the message
+# says where the backup is.
+set -e
+
+STATE=/var/lib/hirdir
+PYTHON=/opt/hirdir/venv/bin/python
+HIRDIR=/opt/hirdir/venv/bin/hirdir
+UNITS="hirdir.service hirdir-backup.timer"
+
+case "$1" in
+    configure)
+        if ! getent passwd hirdir >/dev/null; then
+            adduser --system --group --home "$STATE" --no-create-home --quiet hirdir
+        fi
+        install -d -o hirdir -g hirdir -m 0750 "$STATE"
+
+        # The package ships no byte-code. Compile it once here: the service cannot
+        # write under /opt, and a command run by root must not leave files there that
+        # dpkg does not know. prerm removes what this writes.
+        "$PYTHON" -m compileall -q -j 0 /opt/hirdir/python/lib /opt/hirdir/venv/lib \
+            >/dev/null 2>&1 || true
+
+        backup=""
+        if [ -n "$2" ]; then
+            # Nothing may write to the database while its schema changes.
+            if [ -d /run/systemd/system ]; then
+                deb-systemd-invoke stop hirdir.service >/dev/null || true
+            fi
+            # The SQLite file named by the configuration, when there is one already.
+            database=$("$PYTHON" -c 'from hirdir import config
+path = config.load().database_path
+print(path if path is not None and path.is_file() else "")')
+            if [ -n "$database" ]; then
+                if ! backup=$(umask 0027 && "$HIRDIR" admin backup); then
+                    echo "hirdir: the backup of $database before the upgrade failed." >&2
+                    echo "hirdir: nothing was migrated and the service is stopped. Put the" >&2
+                    echo "hirdir: cause right, then run: sudo dpkg --configure hirdir" >&2
+                    exit 1
+                fi
+                echo "hirdir: the database as it was before this upgrade is kept at $backup"
+            fi
+        fi
+
+        # The key that signs session tokens, readable by the hirdir user alone. An
+        # existing key is left as it is, so sessions survive an upgrade.
+        runuser -u hirdir -- "$PYTHON" -c 'from hirdir import config
+from hirdir.auth import tokens
+tokens.load_or_create_key(config.load().secret_key_path)'
+
+        # Run as root, hirdir admin carries on as the owner of the state directory.
+        # The umask keeps the database from being readable by other users.
+        if ! (umask 0027 && "$HIRDIR" admin migrate); then
+            echo "hirdir: the migration failed, and the service was not started." >&2
+            if [ -n "$backup" ]; then
+                echo "hirdir: the database as it was before the upgrade is at $backup" >&2
+                echo "hirdir: to go back, install the previous package and run:" >&2
+                echo "hirdir:     sudo hirdir admin restore $backup" >&2
+            fi
+            exit 1
+        fi
+        ;;
+    abort-upgrade | abort-remove | abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+# Enable the service and the backup timer, and start or restart them, in the way
+# dh_installsystemd does: an administrator's "systemctl disable" is remembered, a
+# policy-rc.d is obeyed, and nothing is started where systemd is not running.
+for unit in $UNITS; do
+    deb-systemd-helper unmask "$unit" >/dev/null || true
+    if deb-systemd-helper --quiet was-enabled "$unit"; then
+        deb-systemd-helper enable "$unit" >/dev/null || true
+    else
+        deb-systemd-helper update-state "$unit" >/dev/null || true
+    fi
+done
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+    if [ -n "$2" ]; then action=restart; else action=start; fi
+    # shellcheck disable=SC2086  # UNITS is a list of unit names.
+    deb-systemd-invoke "$action" $UNITS >/dev/null || true
+fi
+
+if [ "$1" = "configure" ] && [ -z "$2" ]; then
+    cat <<'MSG'
+
+hirdir is installed and listens on 127.0.0.1:8715 (systemctl status hirdir).
+Create the first Admin, and note the access code it prints:
+    sudo hirdir admin create-user --role admin NAME
+Add hirdir to an nginx site that already terminates TLS:
+    sudo hirdir-setup
+
+MSG
+fi
+
+exit 0

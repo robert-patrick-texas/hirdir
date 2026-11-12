@@ -41,7 +41,9 @@ A hold is never left in place silently.
 
 1. `make upgrade`.
 2. Set the version.
-3. `make check`, `make deb`, `make package-test`, `make acceptance`.
+3. `make check`, `make acceptance`, `make docs`, `make deb`, `make e2e`. The last installs
+   the package in a container and runs every package check and the browser scenarios;
+   `make package-test` is the same without the browser.
 4. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
    template below.
 5. `make docs`, and read the built pages once.
@@ -81,7 +83,7 @@ One to three sentences that say what this release is.
 | Python, shipped in the package | 3.15.2 |
 | Its Python packages | fastapi x.y.z, sqlalchemy x.y.z, ... and the N they need |
 | SQLite, as built into that Python | x.y.z |
-| TypeScript, Vite, React, AG Grid Community | ... |
+| TypeScript, Vite, React (and AG Grid Community from 0.2.0) | ... |
 | Node, which builds the web UI | ... |
 | uv, ruff, ty | ... |
 | The build and test container's base | ubuntu:26.04 |

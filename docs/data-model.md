@@ -297,7 +297,7 @@ inactive.
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |
 | `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
-| `weight_per_resource_unit` | 1 | how much support weight one resource unit carries |
+| `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
 | `session_hours` | 12 | life of a session token |
 
 ### Access records
@@ -408,7 +408,8 @@ of four switches.
 With drafts included, draft lines and draft items are counted as if active, and the
 report shows both results side by side.
 
-Worked example, with `weight_per_resource_unit` at 300 and a support weight of 2,400:
+Worked example, with `weight_per_resource_unit` at its default of 300 and a support
+weight of 2,400:
 
 | Line | Side | Category | Quantity | Units each | Units |
 |---|---|---|--:|--:|--:|

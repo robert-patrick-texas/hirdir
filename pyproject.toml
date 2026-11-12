@@ -1,0 +1,53 @@
+[project]
+name = "hirdir"
+dynamic = ["version"]
+description = "Network equipment lifecycle and inventory platform"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.15"
+dependencies = [
+    "alembic",
+    "argon2-cffi",
+    "fastapi",
+    "httpx",
+    "pyjwt",
+    "sqlalchemy",
+    "typer",
+    "uvicorn",
+]
+
+[project.scripts]
+hirdir = "hirdir.cli.main:app"
+
+[dependency-groups]
+dev = ["pytest", "ruff", "ty"]
+docs = ["markdown-it-py", "mdit-py-plugins", "pygments"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/hirdir/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hirdir"]
+artifacts = ["src/hirdir/static/**"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "S", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ty.environment]
+python-version = "3.15"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
