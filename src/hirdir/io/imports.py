@@ -1,7 +1,8 @@
 """Previewing and applying a change to many records: a file, or a bulk edit.
 
 A preview is made by doing the work for real, through the same functions as any other
-change, inside a savepoint that is then undone. What it reports is therefore what an
+change, where none of it is kept: in a savepoint that is then undone, or for a large
+file on a copy of the database, so that nobody waits for it. What it reports is therefore what an
 apply will do, and no rule is written twice. Apply does the same work again, compares
 every row with what was previewed, and keeps the result only when they all agree.
 """
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.auth.roles import Role
+from hirdir.db import engine
 from hirdir.db.models import ImportJob, ImportRow
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
@@ -32,6 +34,9 @@ SOURCES = ("file", "bulk")
 # large file costs no more for each row than a small one.
 LET_GO_EVERY = 500
 MAX_PROBLEMS = 50
+# A preview of more rows than this is worked on a copy of the database, so that it
+# holds nobody up while it works. See `engine.trial`.
+IN_PLACE_UP_TO = 100
 REFUSALS = (Invalid, Conflict, NotFound, NotAllowed)
 
 
@@ -198,11 +203,8 @@ def preview_rows(
 ) -> ImportJob:
     """Work the rows without keeping anything, and store what they would do."""
     working = replace(context, via="import") if source == "file" else context
-    undone = db.begin_nested()
-    try:
-        results = _work(db, working, role, which, mode, rows)
-    finally:
-        undone.rollback()
+    with engine.trial(db, in_place=len(rows) <= IN_PLACE_UP_TO) as trying:
+        results = _work(trying, working, role, which, mode, rows)
     job = ImportJob(
         source=source,
         entity=which.name,

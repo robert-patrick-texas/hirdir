@@ -646,3 +646,75 @@ def test_export_leaves_out_what_a_list_leaves_out(files: Files, make: Maker) -> 
     names = lambda **more: [row["name"] for row in table(files.export("items", **more))]  # noqa: E731
     assert names() == ["active"]
     assert names(include_drafts=True, include_archived=True) == ["active", "draft", "gone"]
+
+
+# --- a large preview holds nobody up -------------------------------------------------
+
+
+def test_a_large_preview_is_tried_on_a_copy_and_holds_no_other_change_up(
+    files: Files, make: Maker, catalog: dict, config, monkeypatch
+) -> None:
+    from hirdir.db.engine import make_engine, make_sessions
+    from hirdir.domain import audit, owners
+    from hirdir.io import imports
+
+    work = imports._work
+    saved_meanwhile: list[str] = []
+
+    def work_while_another_saves(trying, *arguments, **more):
+        results = work(trying, *arguments, **more)
+        # The rows are worked and not yet undone. Somebody else saves a change now.
+        with make_sessions(make_engine(config.database_url))() as another:
+            another.connection().exec_driver_sql("PRAGMA busy_timeout=200")
+            label = f"Voice Services {len(saved_meanwhile) + 1}"
+            owner = owners.create_owner(another, audit.SYSTEM, {"label": label})
+            another.commit()
+            saved_meanwhile.append(owner.hid)
+        return results
+
+    monkeypatch.setattr(imports, "_work", work_while_another_saves)
+    monkeypatch.setattr(imports, "IN_PLACE_UP_TO", 1)
+    text = (
+        "vendor,pid,serial_number,owner\n"
+        "Cisco,C9300-48P,S1,Network Engineering\n"
+        "Juniper,EX4400-48P,J1,\n"
+        "Cisco,C9300-48P,S2,Nobody\n"
+    )
+    preview = files.preview("items", text)
+    assert len(saved_meanwhile) == 1
+    assert counts(preview["job"]) == (2, 0, 0, 1)
+    assert preview["rows"][1]["notes"][0] == "creates the vendor Juniper, to be reviewed"
+    assert make.get("/items")["total"] == 0
+    assert make.get("/vendors")["total"] == 1
+    monkeypatch.setattr(imports, "_work", work)
+    assert files.apply(preview, skip_rejected=True)["status"] == "applied"
+    assert make.get("/items")["total"] == 2
+    # Tried in place, the same preview is the same, and it does hold the other up.
+    monkeypatch.setattr(imports, "_work", work_while_another_saves)
+    monkeypatch.setattr(imports, "IN_PLACE_UP_TO", 100)
+    busy = files.preview("items", text.replace("S1", "S8"), expect=503)
+    assert busy["title"] == "Busy"
+    assert len(saved_meanwhile) == 1
+
+
+def test_a_change_that_waits_too_long_behind_another_is_told_to_try_again(
+    client: TestClient, make: Maker, inventory: dict[str, str], config, monkeypatch
+) -> None:
+    from sqlalchemy import text
+
+    from hirdir.db import engine as engine_module
+
+    holder = engine_module.make_engine(config.database_url)
+    monkeypatch.setitem(engine_module.SQLITE_PRAGMAS, "busy_timeout", 100)
+    client.app.state.engine.dispose()
+    with holder.connect() as writing:
+        writing.execute(text("BEGIN IMMEDIATE"))
+        waited = client.post(f"{API}/owners", json={"label": "Late"}, headers=inventory)
+        writing.execute(text("ROLLBACK"))
+    assert waited.status_code == 503
+    assert waited.headers["retry-after"] == "5"
+    assert waited.json()["title"] == "Busy"
+    assert make.get("/owners")["total"] == 0
+    assert (
+        client.post(f"{API}/owners", json={"label": "Late"}, headers=inventory).status_code == 201
+    )

@@ -171,6 +171,15 @@ rendered as text, never as HTML.
   then undone. What it reports is therefore what an apply will do, and no rule is
   written twice. Apply does the same work again, compares each row with what was
   previewed, and keeps the result only when they agree.
+
+  SQLite has one writer at a time, and a transaction that writes holds every other
+  writer up until it ends, also when it ends by being undone. A preview of more than a
+  hundred rows is therefore worked on a copy of the database, made with SQLite's
+  online backup in the service's private temporary directory and thrown away
+  afterwards, so that nobody waits for a preview. An apply cannot be spared the same
+  way: it is one transaction, and while it works, about five seconds for each thousand
+  rows, another change waits. One that waits longer than `busy_timeout` is answered
+  `503` with `Retry-After`, and nothing of it was done. Reading is never held up.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, and upsert. The test suite

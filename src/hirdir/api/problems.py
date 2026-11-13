@@ -5,16 +5,18 @@ from collections.abc import Mapping
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException
 
 from hirdir.api import idempotent
+from hirdir.db import dialect
 from hirdir.domain import errors
 from hirdir.domain.accounts import NotSignedIn
 from hirdir.io import files
 
 MEDIA_TYPE = "application/problem+json"
+BUSY_RETRY_SECONDS = 5
 
 
 def problem(
@@ -69,6 +71,19 @@ def install(app: FastAPI) -> None:
         # Two changes were made against one version at the same moment, and the
         # database let the other one through first.
         return problem(409, "Stale version", "this record was changed by someone else a moment ago")
+
+    @app.exception_handler(OperationalError)
+    async def _busy(_: Request, error: OperationalError) -> JSONResponse:
+        # One change is stored at a time. This one waited behind another, such as a
+        # large import being applied, for as long as it may, and was not made.
+        if not dialect.is_busy(error):
+            raise error
+        return problem(
+            503,
+            "Busy",
+            "another change is being stored and this one was not made; try again in a moment",
+            headers={"Retry-After": str(BUSY_RETRY_SECONDS)},
+        )
 
     @app.exception_handler(IntegrityError)
     async def _collision(_: Request, error: IntegrityError) -> JSONResponse:

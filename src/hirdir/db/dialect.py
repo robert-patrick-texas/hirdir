@@ -128,6 +128,15 @@ def _sqlite_fold(value: Any) -> str | None:
     return None if value is None else str(value).lower()
 
 
+def is_busy(error: Exception) -> bool:
+    """Say whether a statement failed because another writer held the database too long.
+
+    SQLite lets one transaction write at a time. A second waits as long as
+    `busy_timeout` says, and is then refused. Nothing of the second was done.
+    """
+    return "database is locked" in str(getattr(error, "orig", error))
+
+
 def prepare_sqlite(dbapi_connection: Any) -> None:
     """Give a new SQLite connection the functions this module's SQL calls."""
     dbapi_connection.create_function("hirdir_regexp", 2, _sqlite_regexp)
