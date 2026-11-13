@@ -1,11 +1,12 @@
 """Time, in the two forms hirdir stores: aware UTC datetimes and integer milliseconds."""
 
+import re
 import time
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-# Where the reader's own time zone is not known, times are shown in this one. An
-# installation changes it with the `time_zone` setting. Times are never shown in UTC.
+# Every time is shown in the application's time zone, so that everybody refers to the
+# same time. It is the `time_zone` setting, and this zone until that is changed.
 DEFAULT_ZONE = "America/New_York"
 
 
@@ -19,17 +20,33 @@ def now_ms() -> int:
     return time.time_ns() // 1_000_000
 
 
-def for_reader(moment: datetime, zone: str | None = None) -> str:
-    """Return a moment as a person reads it: local time with the zone's short name.
+def shown(moment: datetime, zone: str = DEFAULT_ZONE) -> str:
+    """Return a moment as a person reads it: the application's time, with the zone's name."""
+    return moment.astimezone(ZoneInfo(zone)).strftime("%Y-%m-%d %H:%M:%S %Z")
 
-    The zone is the one named, or else the zone of the machine this runs on, which is
-    the reader's own at a command line. A machine that keeps its clock in UTC says
-    nothing about where its reader is, so the default zone stands in for it.
+
+def stamp(moment: datetime, zone: str = DEFAULT_ZONE) -> str:
+    """Return a moment for a file name: the application's time with its offset from UTC.
+
+    `20261112T210000-0500`. The offset keeps two names apart in the hour that comes
+    twice when the clocks go back.
     """
-    if zone is not None:
-        local = moment.astimezone(ZoneInfo(zone))
-    else:
-        local = moment.astimezone()
-        if local.tzname() == "UTC":
-            local = moment.astimezone(ZoneInfo(DEFAULT_ZONE))
-    return local.strftime("%Y-%m-%d %H:%M:%S %Z")
+    return moment.astimezone(ZoneInfo(zone)).strftime("%Y%m%dT%H%M%S%z")
+
+
+_STAMP = re.compile(r"(\d{8}T\d{6})(Z|[+-]\d{4})")
+
+
+def of_stamp(text: str) -> datetime | None:
+    """Return the moment a stamp in a file name stands for, or None when it holds none.
+
+    Reads the stamps of this version and the `...Z` stamps that earlier versions wrote.
+    """
+    found = _STAMP.search(text)
+    if found is None:
+        return None
+    offset = "+0000" if found[2] == "Z" else found[2]
+    try:
+        return datetime.strptime(found[1] + offset, "%Y%m%dT%H%M%S%z")
+    except ValueError:
+        return None

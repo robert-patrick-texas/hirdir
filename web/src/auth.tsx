@@ -13,7 +13,7 @@ import {
 import { useNavigate } from "react-router";
 import { type ApiError, api, type Schemas, sessions } from "./api";
 import { Problem } from "./components/Problem";
-import { setFallbackZone } from "./lib/format";
+import { setZone } from "./lib/format";
 import { toApiError } from "./lib/hooks";
 import { SignIn } from "./pages/SignIn";
 
@@ -67,22 +67,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
       return;
     }
     const controller = new AbortController();
-    api.request("get", "/api/v1/auth/me", { signal: controller.signal }).then(
-      (user) => {
-        if (!controller.signal.aborted) setKnown({ token, user });
+    // Every time on every page is in the application's time zone, so it is known
+    // before the first page is shown. Someone who may not read settings gets the default.
+    const zone = api.request("get", "/api/v1/settings", { signal: controller.signal }).then(
+      (settings) => settings.find((setting) => setting.key === "time_zone")?.value,
+      () => undefined,
+    );
+    const me = api.request("get", "/api/v1/auth/me", { signal: controller.signal });
+    Promise.all([me, zone]).then(
+      ([user, timeZone]) => {
+        if (controller.signal.aborted) return;
+        setZone(timeZone);
+        setKnown({ token, user });
       },
       (thrown: unknown) => {
         if (!controller.signal.aborted) setError(toApiError(thrown));
-      },
-    );
-    // Times are shown in the reader's own zone. The installation's zone is what they
-    // fall back on, and is asked for once, without holding the page up for it.
-    api.request("get", "/api/v1/settings", { signal: controller.signal }).then(
-      (settings) => {
-        setFallbackZone(settings.find((setting) => setting.key === "time_zone")?.value);
-      },
-      () => {
-        // Not allowed to read settings, or not reachable: the default zone stands.
       },
     );
     return () => controller.abort();

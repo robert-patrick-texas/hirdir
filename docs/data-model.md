@@ -13,9 +13,9 @@ to every interface, so it is made here first.
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
 | Removal | Items, sites, locations, contacts, owners, contracts and catalog entries are never deleted while anything refers to them. They carry `record_status`. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
-| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. A person is shown local time with the name of the zone, `2026-01-31 14:05:09 EST`: the reader's own zone, or the `time_zone` setting where the reader's is not known. |
+| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
-| Decimals | Money has two places, support weight up to three, a percentage up to two. In JSON a decimal is written as text, `"18000.00"`, so that nothing is lost on the way to a browser. A number is accepted on the way in. |
+| Decimals | Two places: money, support weight and percentages alike. In JSON a decimal is written as text, `"18000.00"`, so that nothing is lost on the way to a browser. A number is accepted on the way in. |
 | Blank | A blank text field is stored as nothing at all, and is `null` in JSON. |
 | Text keys | Compared without regard to case or surrounding space. The text as entered is what is stored and shown. |
 | History | The past value of any field is answered from `audit_events`. Only group membership and contract coverage keep their own date ranges, because reports ask about them directly. |
@@ -317,7 +317,7 @@ and is refused, not rounded, when it has more.
 |---|---|---|
 | `stack_discount_pct` | 50 | applied to stack members whose model sets none |
 | `currency` | USD | label only |
-| `time_zone` | America/New_York | the zone times are shown in where the reader's own is not known |
+| `time_zone` | America/New_York | the application's time zone: every time is shown in it, to everybody |
 | `fiscal_year_start_month` | 1 | for reports grouped by fiscal year |
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |
@@ -394,7 +394,8 @@ are fixed.
 
 The three lifecycle fields of an item may all be blank: a piece of test equipment with
 an owner and nothing else is a complete record. An item with no state has no
-disposition and no intent, is in no count, and may be given any state as its first.
+disposition and no intent, may be given any state as its first, and is counted like any
+other item in the view: a blank does not take it out of a count.
 
 **On entry to a state**, when the caller names neither field: the item keeps its
 disposition if the new state allows it, and takes `entry_disposition` if it does not.
@@ -438,7 +439,7 @@ For a set of items chosen by any filter:
 
 | Measure | Definition |
 |---|---|
-| Component count | Major items with `record_status` active, in `count_states`, of `count_kinds`. |
+| Component count | Major items of `count_kinds` in the view, whose state is one of `count_states` or is blank. The view decides whether drafts and retired records are among them; unless asked, they are not. |
 | Managed-node count | Of those: each current stack or cluster counts as one, and each item in neither counts as one. |
 | Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). |
 | Estimated value | Sum of effective `est_value` × `quantity` over all items in the set, major and minor. |

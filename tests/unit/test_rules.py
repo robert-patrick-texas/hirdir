@@ -202,24 +202,36 @@ def test_one_match_never_runs_past_what_is_left_of_the_budget() -> None:
     assert "too long" in budget.failure
 
 
-def test_a_moment_is_shown_in_local_time_and_never_in_utc(monkeypatch) -> None:
-    import time
+def test_a_moment_is_shown_in_the_applications_time_zone() -> None:
     from datetime import UTC, datetime
 
     from hirdir import clock
 
     winter = datetime(2026, 1, 31, 19, 5, 9, tzinfo=UTC)
     summer = datetime(2026, 7, 31, 18, 5, 9, tzinfo=UTC)
-    assert clock.for_reader(winter, "America/New_York") == "2026-01-31 14:05:09 EST"
-    assert clock.for_reader(summer, "America/New_York") == "2026-07-31 14:05:09 EDT"
-    assert clock.for_reader(winter, "Europe/Berlin") == "2026-01-31 20:05:09 CET"
-    for zone, expected in (
-        ("America/Chicago", "2026-01-31 13:05:09 CST"),
-        # A machine on UTC says nothing about its reader: the default zone stands in.
-        ("UTC", "2026-01-31 14:05:09 EST"),
+    assert clock.DEFAULT_ZONE == "America/New_York"
+    assert clock.shown(winter) == "2026-01-31 14:05:09 EST"
+    assert clock.shown(summer) == "2026-07-31 14:05:09 EDT"
+    assert clock.shown(winter, "Europe/Berlin") == "2026-01-31 20:05:09 CET"
+
+
+def test_a_stamp_in_a_file_name_is_read_back_whatever_zone_wrote_it() -> None:
+    from datetime import UTC, datetime
+
+    from hirdir import clock
+
+    moment = datetime(2026, 11, 13, 2, 0, 0, tzinfo=UTC)
+    assert clock.stamp(moment) == "20261112T210000-0500"
+    assert clock.stamp(moment, "Europe/Berlin") == "20261113T030000+0100"
+    for name in (
+        "hirdir-20261112T210000-0500.db",
+        "hirdir-20261113T030000+0100.db",
+        "hirdir-20261113T020000Z.db",
     ):
-        monkeypatch.setenv("TZ", zone)
-        time.tzset()
-        assert clock.for_reader(winter) == expected
-    monkeypatch.undo()
-    time.tzset()
+        assert clock.of_stamp(name) == moment, name
+    assert clock.of_stamp("hirdir-by-hand.db") is None
+    # The hour that comes twice when the clocks go back gives two names, in order.
+    first = datetime(2026, 11, 1, 5, 30, tzinfo=UTC)
+    second = datetime(2026, 11, 1, 6, 30, tzinfo=UTC)
+    assert clock.stamp(first) == "20261101T013000-0400"
+    assert clock.stamp(second) == "20261101T013000-0500"

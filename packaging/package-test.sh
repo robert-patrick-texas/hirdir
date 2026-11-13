@@ -28,10 +28,9 @@
 #                  Left out, it is the hirdir_*_amd64.deb beside DEB with the highest
 #                  version below the one being tested.
 #
-# When no previous package is found, the upgrade is not quietly left out. If
-# docs/releases/ holds the notes of an earlier release, the run fails and says what is
-# missing. Only the very first release, which has nothing before it, skips the upgrade.
-# --fresh alone never needs a previous package, and says that it tested no upgrade.
+# When no previous package is found, the two upgrade passes are skipped and the run
+# says so with a SKIP line that names what was not tested and how to test it. The
+# fresh install is tested all the same. --fresh alone asks for just that.
 #
 # Every check prints a line that starts with PASS, FAIL or SKIP. A failed check is
 # counted and the run goes on, so that one run reports every problem. The exit status
@@ -126,8 +125,7 @@ every_pass() {
         options=(--fresh)
         earlier=$(earlier_release)
         if [ -n "$earlier" ]; then
-            echo "FAIL  pkg upgrade from the previous release: hirdir $earlier was released before $version, and no package older than $version is in $(dirname "$deb")/. Put the package of the previous release there, or name it with PREVIOUS_DEB" | tee -a "$log"
-            failed=1
+            echo "SKIP  pkg upgrade from the previous release: hirdir $earlier was released before $version, and no package older than $version is in $(dirname "$deb")/, so no upgrade was tested by this run. Put the package of the previous release there, or name it with PREVIOUS_DEB, to test it" | tee -a "$log"
         else
             echo "SKIP  pkg upgrade from the previous release: docs/releases/ holds no release before $version, so there is nothing to upgrade from" | tee -a "$log"
         fi

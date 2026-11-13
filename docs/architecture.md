@@ -181,13 +181,18 @@ rendered as text, never as HTML.
   one request together one second. Compiling is bounded too: the counted repeats of a
   pattern, `{n}` and `{n,m}`, multiplied together, may come to at most 100, because a
   pattern such as `(?:a{3000}){3000}` costs gigabytes before any match is tried.
-- **Text without regard to case.** SQLite's own `lower()` knows the letters A to Z
-  only, so the application gives SQLite a folding function and every comparison and
-  sort of text goes through it. PostgreSQL uses its `lower()`.
+- **Text without regard to case.** Text is compared as if it were all in lower case.
+  SQLite's own `lower()` knows the letters A to Z only, so the application gives SQLite
+  one that knows every alphabet, and every comparison and sort of text goes through
+  it. PostgreSQL uses its `lower()`.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent. Every update of a row names the `row_version` it was read at.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
-  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. `hirdir admin restore
+  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. A backup is named
+  for when it was made, in the application's time zone with its offset from UTC:
+  `hirdir-20261111T210000-0500.db`. Which are the last 14 is told from the moment in
+  each name, so a change of time zone, or the hour that comes twice in the autumn, puts
+  none out of order. `hirdir admin restore
   FILE` puts one back. Copying backups off the host is the host's job.
 
 ## Package
@@ -264,12 +269,10 @@ Importing `examples/` and a filtered export join the passes with 0.3.0.
 
 **The previous release** is the package named by `PREVIOUS_DEB`. Left unset, it is the
 `hirdir_*_amd64.deb` in `dist/` with the highest version below the one under test, so
-keeping each release's package in `dist/` is all it takes. When none is found and
-`docs/releases/` holds the notes of an earlier release, `make package-test` fails and
-says what is missing: an upgrade that was not tested is never a pass. Only the first
-release, which has nothing before it, skips the upgrade. Run by hand with `--fresh`,
-the script makes the fresh pass alone, needs no previous package, and says that it
-tested no upgrade.
+keeping each release's package in `dist/` is all it takes. When none is found, the two
+upgrade passes are skipped: the run prints a `SKIP` line that says no upgrade was
+tested and how to test it, and goes on with the fresh install. Run by hand with
+`--fresh`, the script makes the fresh pass alone and says the same.
 
 Every check prints a line that starts with `PASS`, `FAIL` or `SKIP`, each pass ends
 with its counts, and the run ends with the counts of all three and every `FAIL` and

@@ -81,7 +81,7 @@ def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() ->
     assert len(printed) == 8
 
     # As an upgrade from 0.1.0 prints it, with the backup the page uses as its example.
-    backup = "/var/lib/hirdir/backups/hirdir-20261112T020000Z.db"
+    backup = "/var/lib/hirdir/backups/hirdir-20261111T210000-0500.db"
     message = "\n".join(printed).replace("$backup", backup).replace("$2", "0.1.0")
     assert "$" not in message
     install = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")

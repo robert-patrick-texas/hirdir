@@ -5,6 +5,7 @@
 // data, so this file needs nothing from the grid and can be tested without a browser.
 
 import { all, any, type Condition, type FilterNode, type Kind, type Operator } from "./filter";
+import { appZone, momentIn } from "./format";
 
 /** What the translation needs to know of a column. */
 export interface QueryColumn {
@@ -77,14 +78,14 @@ function day(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : "";
 }
 
-/** The moment a day starts in the reader's own time zone, as the server reads moments. */
+/** The moment a day starts in the application's time zone, as the server reads moments. */
 export function startOfDay(date: string, plusDays = 0): string {
   const [year = 0, month = 1, dayOfMonth = 1] = date.split("-").map(Number);
-  return new Date(year, month - 1, dayOfMonth + plusDays).toISOString();
+  return momentIn(appZone(), year, month, dayOfMonth + plusDays).toISOString();
 }
 
 function moments(field: string, type: string, from: string, to: string): FilterNode | null {
-  // A timestamp is compared with the reader's own days, as the times on the page are shown.
+  // A timestamp is compared with the application's days, as the times on the page are shown.
   const within = (first: string, last: string): FilterNode => ({
     and: [
       { field, op: "gte", value: startOfDay(first) },

@@ -209,7 +209,7 @@ hirdir report capacity --include-drafts
 |---|---|
 | Server and token | `--url` and `--token`, or `HIRDIR_URL` and `HIRDIR_TOKEN`, or `~/.config/hirdir/config.toml`, in that order |
 | Output | A table on a terminal. `--format json` or `csv` for scripts. Data on stdout, messages on stderr |
-| Times | In a message or a table, local time with the name of the zone: that of the machine the command runs on, or America/New_York when that machine keeps UTC. `--format json` and `csv` carry what the API sends, in UTC |
+| Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | Secrets | Never echoed, never in logs |
@@ -274,10 +274,11 @@ Cell-range selection and editing in the grid are LATER.
 
 ### Times
 
-Every time on a page is in the reader's own time zone, as the browser reports it, and
-carries the zone's short name. Pointing at a time shows it written out in full with the
-name of the zone. When the browser does not say, or says UTC, the installation's
-`time_zone` setting is used. A filter on a time is in the reader's own days.
+Every time on a page is in the application's time zone, the `time_zone` setting, and
+carries the zone's short name. It is the same for everybody, whatever zone their own
+machine is in, so two people who speak of a time mean the same moment. Pointing at a
+time shows it written out in full with the name of the zone. A filter on a time is in
+the days of that zone, and so is a time that is typed in.
 
 ### Waiting
 

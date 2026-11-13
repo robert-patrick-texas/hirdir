@@ -45,7 +45,7 @@ class UTCDateTime(TypeDecorator):
 class Scaled(TypeDecorator):
     """A decimal kept as a whole number of its smallest step.
 
-    Money is kept in hundredths and weights in thousandths, so a sum is exact and a
+    Money, weights and percentages are kept in hundredths, so a sum is exact and a
     comparison means the same on SQLite and on PostgreSQL.
     """
 
@@ -69,7 +69,7 @@ class Scaled(TypeDecorator):
 
 
 MONEY_PLACES = 2
-WEIGHT_PLACES = 3
+WEIGHT_PLACES = 2
 PERCENT_PLACES = 2
 
 

@@ -33,9 +33,9 @@ Money = Annotated[
 ]
 Weight = Annotated[
     Decimal,
-    Field(ge=0, max_digits=15, decimal_places=3),
+    Field(ge=0, max_digits=15, decimal_places=2),
     PlainSerializer(_plain, return_type=str, when_used="json"),
-    WithJsonSchema({"type": "string", "pattern": r"^\d{1,12}(\.\d{1,3})?$", "examples": ["1.5"]}),
+    WithJsonSchema({"type": "string", "pattern": r"^\d{1,13}(\.\d{1,2})?$", "examples": ["1.5"]}),
 ]
 Percent = Annotated[
     Decimal,

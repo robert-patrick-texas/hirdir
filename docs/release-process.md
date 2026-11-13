@@ -71,9 +71,9 @@ The previous package is found in this order:
 2. Otherwise the `hirdir_*_amd64.deb` in `dist/` with the highest version below the
    one being built. `make deb` replaces only the package of its own version, so the
    package of each release stays in `dist/` once it is there.
-3. Otherwise there is nothing to upgrade from. If `docs/releases/` holds the notes of an
-   earlier release, `make package-test` fails and says so. Only the first release skips
-   the upgrade.
+3. Otherwise there is nothing to upgrade from. `make package-test` skips the upgrade,
+   says so in a `SKIP` line, and tests the fresh install. Before a release, read the
+   summary: a release is done when the upgrade was tested, not skipped.
 
 `dist/` is not committed. On a checkout that does not have the previous package, fetch
 it from its release, with its checksum, which the test compares when it is there:

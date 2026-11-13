@@ -209,7 +209,7 @@ function entrySpecs(lists: {
       name: "support_weight",
       label: "Support weight",
       kind: "decimal",
-      places: 3,
+      places: 2,
       hint: "The relative effort to support one unit",
     },
     {

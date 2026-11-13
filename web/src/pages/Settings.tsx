@@ -4,7 +4,7 @@ import { CheckGroupField, TextField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
 import { Time } from "../components/Time";
-import { formatValue } from "../lib/format";
+import { formatValue, setZone } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { stateNames } from "../lib/lifecycle";
 import { useRules } from "../lib/lists";
@@ -82,7 +82,10 @@ function SettingForm({ setting, options, onChanged, onReload }: SettingFormProps
         body: { row_version: setting.row_version, value },
       }),
     );
-    if (result.ok) onChanged(done);
+    if (!result.ok) return;
+    // The times on every page follow this setting from now on.
+    if (setting.key === "time_zone") setZone(value ?? setting.default);
+    onChanged(done);
   }
 
   async function submit(event: FormEvent) {

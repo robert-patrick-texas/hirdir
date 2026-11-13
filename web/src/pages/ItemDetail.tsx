@@ -536,7 +536,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         places: 2,
         heading: "Overrides of what the catalog entry says",
       },
-      { name: "support_weight", label: "Support weight", kind: "decimal", places: 3 },
+      { name: "support_weight", label: "Support weight", kind: "decimal", places: 2 },
       { name: "annual_support_cost", label: "Annual support cost", kind: "decimal", places: 2 },
       { name: "end_of_sale", label: "End of sale", kind: "date" },
       { name: "end_of_sw_support", label: "End of software support", kind: "date" },

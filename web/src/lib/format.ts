@@ -9,7 +9,7 @@ export function formatValue(value: unknown): string {
   if (value === null || value === undefined) return NONE;
   if (typeof value === "string") {
     if (value === "") return '""';
-    // A moment in an audit change is shown as every other moment is: in local time.
+    // A moment in an audit change is shown as every other moment is.
     return MOMENT.test(value) ? formatTime(value) : value;
   }
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
@@ -37,12 +37,12 @@ export function formatChanges(
 }
 
 /**
- * Where the reader's own time zone is not known, times are shown in the installation's
- * `time_zone` setting, and in this zone until that has been read. Never in UTC.
+ * Every time is shown in the application's time zone, so that everybody refers to the
+ * same time whatever zone they sit in. It is the installation's `time_zone` setting, and
+ * this zone until that has been read.
  */
 export const DEFAULT_ZONE = "America/New_York";
-const SAYS_NOTHING = new Set(["UTC", "Etc/UTC", "Etc/UCT", "Etc/Universal", "Etc/Zulu"]);
-let fallbackZone = DEFAULT_ZONE;
+let zoneInUse = DEFAULT_ZONE;
 
 function isZone(zone: string): boolean {
   try {
@@ -53,26 +53,14 @@ function isZone(zone: string): boolean {
   }
 }
 
-/** Take the installation's `time_zone` setting as the zone to fall back on. */
-export function setFallbackZone(zone: unknown): void {
-  fallbackZone = typeof zone === "string" && isZone(zone) ? zone : DEFAULT_ZONE;
+/** Take the installation's `time_zone` setting as the zone every time is shown in. */
+export function setZone(zone: unknown): void {
+  zoneInUse = typeof zone === "string" && isZone(zone) ? zone : DEFAULT_ZONE;
 }
 
-/**
- * The time zone the reader's times are shown in: the browser's own, or the
- * installation's when the browser does not say. A browser that reports UTC says nothing
- * about where its reader is, so that is taken as not saying.
- */
-export function readerZone(own: string | undefined = browserZone()): string {
-  return own && !SAYS_NOTHING.has(own) && isZone(own) ? own : fallbackZone;
-}
-
-function browserZone(): string | undefined {
-  try {
-    return new Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return undefined;
-  }
+/** The application's time zone: the one every time on a page is shown in. */
+export function appZone(): string {
+  return zoneInUse;
 }
 
 const SHORT: Intl.DateTimeFormatOptions = {
@@ -100,10 +88,10 @@ function formatter(zone: string, options: Intl.DateTimeFormatOptions): Intl.Date
 }
 
 /**
- * A moment in the reader's own time zone, with the zone's short name, as
+ * A moment in the application's time zone, with the zone's short name, as
  * `2026-01-31 14:05:09 EST`. Blank when there is none.
  */
-export function formatTime(iso: string | null | undefined, zone: string = readerZone()): string {
+export function formatTime(iso: string | null | undefined, zone: string = appZone()): string {
   if (!iso) return "";
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
@@ -114,14 +102,46 @@ export function formatTime(iso: string | null | undefined, zone: string = reader
 }
 
 /** The same moment written out in full, with the name of the zone it is shown in. */
-export function formatTimeLong(
-  iso: string | null | undefined,
-  zone: string = readerZone(),
-): string {
+export function formatTimeLong(iso: string | null | undefined, zone: string = appZone()): string {
   if (!iso) return "";
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
   return `${formatter(zone, LONG).format(at)} (${zone})`;
+}
+
+/** What a zone's clocks show at a moment, as if that reading were a time in UTC. */
+function reading(at: number, zone: string): number {
+  const part: Record<string, number> = {};
+  for (const { type, value } of formatter(zone, SHORT).formatToParts(new Date(at))) {
+    part[type] = Number(value);
+  }
+  const { year = 0, month = 1, day = 1, hour = 0, minute = 0, second = 0 } = part;
+  return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+/**
+ * The moment at which a zone's clocks show a date and a time of day. A day of the month
+ * past the end of the month runs on into the next, as it does for a Date.
+ */
+export function momentIn(
+  zone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): Date {
+  const wanted = Date.UTC(year, month - 1, day, hour, minute, second);
+  let at = wanted;
+  // The zone's offset is not known until the moment is: two steps find it, also on the
+  // day the clocks change.
+  for (let step = 0; step < 3; step += 1) {
+    const off = wanted - reading(at, zone);
+    if (off === 0) break;
+    at += off;
+  }
+  return new Date(at);
 }
 
 /** "1 second", "2 seconds". */

@@ -162,11 +162,14 @@ describe("columnFilter: dates", () => {
     });
   });
 
-  it("compares a moment with the reader's own days", () => {
+  it("compares a moment with the days of the application's time zone", () => {
     const start = startOfDay("2026-03-01");
     const next = startOfDay("2026-03-01", 1);
-    expect(start).toBe(new Date(2026, 2, 1).toISOString());
-    expect(next).toBe(new Date(2026, 2, 2).toISOString());
+    expect(start).toBe("2026-03-01T05:00:00.000Z");
+    expect(next).toBe("2026-03-02T05:00:00.000Z");
+    // The day the clocks go forward is an hour short.
+    expect(startOfDay("2026-03-08")).toBe("2026-03-08T05:00:00.000Z");
+    expect(startOfDay("2026-03-08", 1)).toBe("2026-03-09T04:00:00.000Z");
     expect(columnFilter(CHANGED, dated("equals", "2026-03-01 00:00:00"))).toEqual({
       and: [
         { field: "updated_at", op: "gte", value: start },

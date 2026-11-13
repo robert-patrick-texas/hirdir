@@ -305,7 +305,7 @@ as AI.
 | Availability | One host. A restart loses no committed change. |
 | Recovery | A backup restores to a clean host with one documented command. |
 | Ease | Nothing a person does waits on the application where that can be avoided. The first page is small, and pages open without a visible load. |
-| Times | Shown in the reader's local time with the zone named, never in UTC. America/New_York where the reader's zone is not known. |
+| Times | Shown in the application's time zone with the zone named, the same for everybody. America/New_York unless an Admin sets another. |
 | Audit | Every change is kept. Nothing expires before a retention feature exists. |
 | Browser | Current Firefox, Chrome and Edge. Keyboard reachable, visible focus, labelled inputs. |
 

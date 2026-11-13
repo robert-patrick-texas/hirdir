@@ -7,7 +7,7 @@ const SPECS: FieldSpec[] = [
   { name: "quantity", label: "Quantity", kind: "integer" },
   { name: "ldos", label: "LDoS", kind: "date" },
   { name: "est_value", label: "Estimated value", kind: "decimal", places: 2 },
-  { name: "support_weight", label: "Support weight", kind: "decimal", places: 3 },
+  { name: "support_weight", label: "Support weight", kind: "decimal", places: 2 },
   { name: "is_external", label: "External", kind: "boolean" },
   { name: "expected_online", label: "Expected online", kind: "tristate" },
   { name: "owner_hid", label: "Owner", kind: "choice", blank: "No owner" },
@@ -178,7 +178,7 @@ describe("buildPatch", () => {
       "quantity",
       "support_weight",
     ]);
-    expect(built.errors.support_weight).toContain("at most 3 digits after the point");
+    expect(built.errors.support_weight).toContain("at most 2 digits after the point");
     expect(built.body).toEqual({ row_version: 7, name: "site2-sw-access-01b" });
   });
 

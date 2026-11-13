@@ -126,12 +126,15 @@ sudo systemctl restart hirdir
 
 A timer backs the database up every day into `/var/lib/hirdir/backups/` and keeps the
 newest 14. An upgrade puts its own backup in the same directory, and it counts as one
-of the 14. Copying those files off the host is up to you.
+of the 14. A backup is named for when it was made, in the application's time zone:
+`hirdir-20261111T210000-0500.db` was made at 21:00 on 11 November, five hours behind
+UTC. Backups made by 0.2.0 carry a time in UTC, marked `Z`, and are kept in order with
+the rest. Copying those files off the host is up to you.
 
 ```bash
 sudo hirdir admin backup                   # one more backup, now; prints its path
 sudo systemctl stop hirdir
-sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
+sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db
 sudo systemctl start hirdir
 ```
 
@@ -159,7 +162,7 @@ The upgrade does four things, in this order:
    changes.
 2. It backs the database up into `/var/lib/hirdir/backups/` and says where:
    `hirdir: the database as it was before this upgrade is kept at
-   /var/lib/hirdir/backups/hirdir-20261112T020000Z.db`.
+   /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db`.
 3. It applies the schema changes of the new version.
 4. It starts the service again.
 
@@ -202,12 +205,12 @@ sudo dpkg --configure hirdir
 
 ```text
 hirdir: the migration failed, and the service was not started.
-hirdir: the database as it was before the upgrade is at /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
+hirdir: the database as it was before the upgrade is at /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db
 hirdir: A migration that fails is undone as a whole. To go back, install the
 hirdir: package of version 0.1.0 again and put that backup in its place:
 hirdir:     sudo apt install --allow-downgrades ./hirdir_0.1.0_amd64.deb
 hirdir:     sudo systemctl stop hirdir
-hirdir:     sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
+hirdir:     sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db
 hirdir:     sudo systemctl start hirdir
 ```
 

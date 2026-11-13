@@ -8,6 +8,7 @@ import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { Time } from "../components/Time";
+import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { roleLabel } from "../lib/roles";
 
@@ -289,8 +290,11 @@ function Tokens({ user }: { user: User }) {
     setSecret(null);
     const body: Schemas["ServiceTokenCreate"] = { name: name.trim() };
     if (expires !== "") {
-      // The field holds local time. The server is sent the same moment with its offset.
-      const at = new Date(expires);
+      // The field holds a time in the application's zone. The server is sent that moment.
+      const [year = 0, month = 1, day = 1, hour = 0, minute = 0] = expires
+        .split(/[-T:]/)
+        .map(Number);
+      const at = momentIn(appZone(), year, month, day, hour, minute);
       body.expires_at = Number.isNaN(at.getTime()) ? expires : at.toISOString();
     }
     const result = await create.run(() =>
@@ -403,7 +407,7 @@ function Tokens({ user }: { user: User }) {
           type="datetime-local"
           value={expires}
           onChange={setExpires}
-          hint="In your own time zone. Leave empty for a token that does not expire."
+          hint={`In ${appZone()} time. Leave empty for a token that does not expire.`}
           error={fields.expires_at}
         />
         <p className="actions">

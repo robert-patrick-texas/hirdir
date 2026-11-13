@@ -7,7 +7,6 @@ goes through the API.
 import os
 import shutil
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -15,12 +14,13 @@ import typer
 import uvicorn
 from sqlalchemy import text
 
+from hirdir import clock
 from hirdir import config as config_module
 from hirdir.auth.roles import Role
 from hirdir.config import Config
 from hirdir.db import migrate as migrations
 from hirdir.db.engine import SQLITE_PRAGMAS, make_engine, make_sessions
-from hirdir.domain import accounts, audit
+from hirdir.domain import accounts, audit, settings
 from hirdir.domain.errors import DomainError
 
 DEV_CONFIG = '[server]\nstate_dir = "."\n'
@@ -184,13 +184,34 @@ def backup() -> None:
     if not source.is_file():
         raise _fail(f"there is no database at {source}")
     config.backup_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    target = config.backup_dir / f"hirdir-{stamp}.db"
+    target = config.backup_dir / f"hirdir-{clock.stamp(clock.now(), _time_zone(config))}.db"
     _copy_database(source, target)
-    kept = sorted(config.backup_dir.glob("hirdir-*.db"))
+    kept = sorted(config.backup_dir.glob("hirdir-*.db"), key=_made_at)
     for old in kept[: -config.backup_keep]:
         old.unlink()
     typer.echo(str(target))
+
+
+def _time_zone(config: Config) -> str:
+    """Return the application's time zone, or the default where it cannot be read.
+
+    A backup is taken before a migration too, when the database may be older than the
+    settings themselves.
+    """
+    try:
+        with make_sessions(make_engine(config.database_url))() as db:
+            return settings.value(db, "time_zone")
+    except Exception:
+        return clock.DEFAULT_ZONE
+
+
+def _made_at(path: Path) -> float:
+    """Return when a backup was made: from its name, or from the file when it has none.
+
+    The names are not put in order as text, because their zone can change.
+    """
+    moment = clock.of_stamp(path.name)
+    return moment.timestamp() if moment is not None else path.stat().st_mtime
 
 
 @admin.command()

@@ -99,6 +99,7 @@ def test_catalog_entry_refuses_what_it_cannot_hold(make: Maker) -> None:
         ("function", "decoration"),
         ("est_value", "-1"),
         ("est_value", "1.234"),
+        ("support_weight", "0.125"),
         ("stack_discount_pct", "101"),
         ("ldos", "next year"),
         ("review_status", "maybe"),

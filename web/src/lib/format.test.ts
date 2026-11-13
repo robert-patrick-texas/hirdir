@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appZone,
   DEFAULT_ZONE,
   formatChange,
   formatChanges,
@@ -8,9 +9,9 @@ import {
   formatTimeLong,
   formatValue,
   itemName,
+  momentIn,
   plural,
-  readerZone,
-  setFallbackZone,
+  setZone,
 } from "./format";
 
 describe("formatChange", () => {
@@ -105,28 +106,57 @@ describe("formatTime", () => {
   });
 });
 
-describe("readerZone", () => {
-  it("is the browser's own zone when it names one", () => {
-    expect(readerZone("Europe/Berlin")).toBe("Europe/Berlin");
-    expect(readerZone("America/Chicago")).toBe("America/Chicago");
+describe("the application's time zone", () => {
+  it("is America/New_York until the installation's setting says otherwise", () => {
+    setZone(undefined);
+    expect(appZone()).toBe("America/New_York");
+    expect(DEFAULT_ZONE).toBe("America/New_York");
+    expect(formatTime("2026-01-31T19:05:09Z")).toBe("2026-01-31 14:05:09 EST");
   });
 
-  it("is the installation's zone, and never UTC, when the browser does not say", () => {
-    setFallbackZone(undefined);
-    for (const silent of [undefined, "", "UTC", "Etc/UTC", "Mars/Olympus"]) {
-      expect(readerZone(silent)).toBe(DEFAULT_ZONE);
-    }
-    expect(DEFAULT_ZONE).toBe("America/New_York");
-    setFallbackZone("Europe/Berlin");
-    expect(readerZone("UTC")).toBe("Europe/Berlin");
-    setFallbackZone("no such zone");
-    expect(readerZone(undefined)).toBe(DEFAULT_ZONE);
+  it("is the setting once it is read, for every time, whatever zone the browser is in", () => {
+    setZone("America/Chicago");
+    expect(appZone()).toBe("America/Chicago");
+    expect(formatTime("2026-01-31T19:05:09Z")).toBe("2026-01-31 13:05:09 CST");
+    expect(formatTimeLong("2026-01-31T19:05:09Z")).toContain("(America/Chicago)");
+    setZone("no such zone");
+    expect(appZone()).toBe(DEFAULT_ZONE);
+    setZone(undefined);
+  });
+});
+
+describe("momentIn", () => {
+  const zone = "America/New_York";
+
+  it("finds the moment a zone's clocks show a date and time", () => {
+    expect(momentIn(zone, 2026, 1, 31).toISOString()).toBe("2026-01-31T05:00:00.000Z");
+    expect(momentIn(zone, 2026, 7, 31).toISOString()).toBe("2026-07-31T04:00:00.000Z");
+    expect(momentIn(zone, 2026, 12, 31, 17, 30).toISOString()).toBe("2026-12-31T22:30:00.000Z");
+    expect(momentIn("Europe/Berlin", 2026, 1, 31).toISOString()).toBe("2026-01-30T23:00:00.000Z");
+    expect(momentIn("Asia/Kolkata", 2026, 1, 31).toISOString()).toBe("2026-01-30T18:30:00.000Z");
+  });
+
+  it("is right on the days the clocks change", () => {
+    // In 2026 the clocks go forward on 8 March and back on 1 November.
+    expect(momentIn(zone, 2026, 3, 8).toISOString()).toBe("2026-03-08T05:00:00.000Z");
+    expect(momentIn(zone, 2026, 3, 9).toISOString()).toBe("2026-03-09T04:00:00.000Z");
+    expect(momentIn(zone, 2026, 11, 1).toISOString()).toBe("2026-11-01T04:00:00.000Z");
+    expect(momentIn(zone, 2026, 11, 2).toISOString()).toBe("2026-11-02T05:00:00.000Z");
+  });
+
+  it("runs a day past the end of a month on into the next", () => {
+    expect(momentIn(zone, 2026, 1, 32).toISOString()).toBe("2026-02-01T05:00:00.000Z");
+  });
+
+  it("reads back as the time it was asked for", () => {
+    const at = momentIn(zone, 2026, 6, 15, 9, 45, 30);
+    expect(formatTime(at.toISOString(), zone)).toBe("2026-06-15 09:45:30 EDT");
   });
 });
 
 describe("a moment in an audit change", () => {
-  it("is shown in local time like every other", () => {
-    setFallbackZone(undefined);
+  it("is shown in the application's time like every other", () => {
+    setZone(undefined);
     const shown = formatValue("2026-01-31T19:05:09.123456Z");
     expect(shown).toBe(formatTime("2026-01-31T19:05:09.123456Z"));
     expect(shown).not.toContain("T19");

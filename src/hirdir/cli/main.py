@@ -48,9 +48,17 @@ def sign_in(
     target.token = session["token"]
     path = client.save_target(target)
     role = session["user"]["role"] or "no role"
-    until = clock.for_reader(datetime.fromisoformat(session["expires_at"]))
+    until = clock.shown(datetime.fromisoformat(session["expires_at"]), _zone(target))
     typer.echo(f"signed in as {session['user']['username']} ({role}) until {until}")
     typer.echo(f"session kept in {path}", err=True)
+
+
+def _zone(target: client.Target) -> str:
+    """Return the application's time zone, as the server has it set."""
+    for setting in client.call(target, "GET", "/settings"):
+        if setting["key"] == "time_zone":
+            return setting["value"]
+    return clock.DEFAULT_ZONE
 
 
 @app.command("sign-out")

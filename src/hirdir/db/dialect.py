@@ -125,7 +125,7 @@ def _sqlite_regexp(pattern: str | None, value: Any) -> bool | None:
 
 
 def _sqlite_fold(value: Any) -> str | None:
-    return None if value is None else str(value).casefold()
+    return None if value is None else str(value).lower()
 
 
 def prepare_sqlite(dbapi_connection: Any) -> None:
@@ -180,9 +180,9 @@ def _fold_postgresql(element: fold, compiler: Any, **kw: Any) -> str:
 
 
 def folded(expression: Any) -> ColumnElement[str]:
-    """Return expression as it is compared when case does not count.
+    """Return expression as it is compared when case does not count: in lower case.
 
-    The database folds both sides of a comparison, so the two always agree with each
+    The database lowers both sides of a comparison, so the two always agree with each
     other, in whatever alphabet.
     """
     return fold(expression)
