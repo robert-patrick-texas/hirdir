@@ -13,6 +13,7 @@ from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
 
 RECORD_STATUSES = ("draft", "active", "retired")
+MONEY_FIELDS = ("est_value", "annual_support_cost")
 
 
 def key(text: str) -> str:
@@ -32,12 +33,19 @@ def clean(value: Any) -> Any:
     return value
 
 
-def jsonable(value: Any) -> Any:
-    """Return value in the form it takes in an audit event."""
+def decimal_text(name: str, value: Decimal) -> str:
+    """Write a decimal as every interface shows it: money with two places, the rest plain."""
+    if name in MONEY_FIELDS:
+        return f"{value:.2f}"
+    return format(value.normalize(), "f")
+
+
+def jsonable(value: Any, name: str = "") -> Any:
+    """Return the value of the field called name in the form it takes in an audit event."""
     if isinstance(value, datetime | date):
         return value.isoformat()
     if isinstance(value, Decimal):
-        return str(value)
+        return decimal_text(name, value)
     return value
 
 
@@ -61,7 +69,7 @@ def _stored_only(name: str) -> bool:
 def differences(record: Any, values: dict[str, Any]) -> list[dict[str, Any]]:
     """Return a change for each of values that differs from what record holds."""
     return [
-        change(name, jsonable(getattr(record, name)), jsonable(new))
+        change(name, jsonable(getattr(record, name), name), jsonable(new, name))
         for name, new in values.items()
         if getattr(record, name) != new and not _stored_only(name)
     ]
@@ -88,7 +96,7 @@ def created(
     db.add(record)
     db.flush()
     changes = [
-        change((names or {}).get(name, name), None, jsonable(getattr(record, name)))
+        change((names or {}).get(name, name), None, jsonable(getattr(record, name), name))
         for name in fields
         if getattr(record, name) not in (None, [], "")
     ]

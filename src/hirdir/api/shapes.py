@@ -13,11 +13,9 @@ from sqlalchemy.orm import Session
 
 from hirdir.api import records as shapes
 from hirdir.db.models import CatalogEntry, Choice, Item, LifecycleRule, Owner, Tag, Vendor
-from hirdir.domain import inheritance, settings, tags
+from hirdir.domain import inheritance, records, settings, tags
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-
-MONEY = ("est_value", "annual_support_cost")
 
 
 def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
@@ -30,7 +28,7 @@ def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
 def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
     value = effective.value
     if isinstance(value, Decimal):
-        text = f"{value:.2f}" if name in MONEY else format(value.normalize(), "f")
+        text = records.decimal_text(name, value)
     elif isinstance(value, date):
         text = value.isoformat()
     else:

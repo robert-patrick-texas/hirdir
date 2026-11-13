@@ -84,7 +84,11 @@ def _checked_vendor(db: Session, fields: dict[str, Any], vendor: Vendor | None) 
     for name in names:
         taken = find_vendor(db, name)
         if taken is not None and (vendor is None or taken.hid != vendor.hid):
-            raise Conflict(f"{name} is already the vendor {taken.name}")
+            field = "name" if name == values.get("name") else "aliases"
+            raise Conflict(
+                f"{name} is already the vendor {taken.name}",
+                {field: f"{name} is a name of the vendor {taken.name}"},
+            )
     if "notes" in fields:
         values["notes"] = records.clean(fields["notes"])
     return values
@@ -167,7 +171,10 @@ def _checked_entry(
             )
         )
         if taken is not None and (entry is None or taken.hid != entry.hid):
-            raise Conflict(f"this vendor already has the PID {taken.pid}: {taken.hid}")
+            raise Conflict(
+                f"this vendor already has the PID {taken.pid}: {taken.hid}",
+                {"pid": "this vendor already has an entry with this PID"},
+            )
     for name in TEXTS:
         if name in fields:
             values[name] = records.clean(fields[name])

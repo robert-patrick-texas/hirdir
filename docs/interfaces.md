@@ -20,7 +20,7 @@ and CLI's types are generated from it.
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | `POST` routes that create accept `Idempotency-Key`, from 0.3.0 |
 
@@ -40,7 +40,7 @@ and CLI's types are generated from it.
 | Purchases | `/purchase-requests`, `/purchase-requests/{hid}/lines`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `/registrations` |
 | Capacity | `/capacity-lines`, `GET /reports/capacity` |
-| Labels and lists | `/tags`, `/choices`, `PUT /settings/{key}`, `/lifecycle-rules` |
+| Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `POST /exports` |
 | Reports | `GET /reports/summary`, `/reports/end-of-life`, `/reports/coverage`, `/reports/duplicates` |
@@ -248,7 +248,7 @@ directory, so it never leaves behind a file the service cannot write.
 | Import | Upload, preview, apply, past jobs |
 | Capacity | Demand beside supply by category, the balance and coverage, with and without drafts; the lines, editable |
 | Reports | Summary, end of life, coverage, duplicates |
-| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules |
+| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 
 ### The grid

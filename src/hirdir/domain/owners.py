@@ -33,7 +33,10 @@ def _checked(db: Session, fields: dict[str, Any], owner: Owner | None) -> dict[s
             raise Invalid("the label is not acceptable", {"label": "must not be blank"})
         taken = db.scalar(select(Owner).where(Owner.label_key == records.key(label)))
         if taken is not None and (owner is None or taken.hid != owner.hid):
-            raise Conflict(f"there is already an owner {taken.label}")
+            raise Conflict(
+                f"there is already an owner {taken.label}",
+                {"label": "another owner has this label"},
+            )
         values["label"] = label
         values["label_key"] = records.key(label)
     for name in ("organization", "exception_reason"):

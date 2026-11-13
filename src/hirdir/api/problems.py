@@ -60,7 +60,7 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(errors.Conflict)
     async def _conflict(_: Request, error: errors.Conflict) -> JSONResponse:
         title = "Stale version" if isinstance(error, errors.StaleVersion) else "Conflict"
-        return problem(409, title, str(error))
+        return problem(409, title, str(error), error.fields)
 
     @app.exception_handler(StaleDataError)
     async def _stale(_: Request, error: StaleDataError) -> JSONResponse:

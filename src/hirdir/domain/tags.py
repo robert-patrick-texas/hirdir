@@ -42,7 +42,9 @@ def _checked(db: Session, fields: dict[str, Any], except_hid: str | None = None)
             )
         taken = db.scalar(select(Tag).where(Tag.label_key == records.key(label)))
         if taken is not None and taken.hid != except_hid:
-            raise Conflict(f"there is already a tag {taken.label}")
+            raise Conflict(
+                f"there is already a tag {taken.label}", {"label": "another tag has this label"}
+            )
         values["label"] = label
         values["label_key"] = records.key(label)
     if "colour" in fields:

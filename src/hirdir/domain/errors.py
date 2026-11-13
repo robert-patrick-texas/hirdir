@@ -10,7 +10,14 @@ class NotFound(DomainError):
 
 
 class Conflict(DomainError):
-    """The change collides with the present state: a duplicate, or a rule it would break."""
+    """The change collides with the present state: a duplicate, or a rule it would break.
+
+    `fields` names the field that collides, where there is one.
+    """
+
+    def __init__(self, message: str, fields: dict[str, str] | None = None) -> None:
+        super().__init__(message)
+        self.fields = fields or {}
 
 
 class StaleVersion(Conflict):

@@ -445,3 +445,53 @@ def test_no_rule_may_make_excess_online(client: TestClient, make: Maker, admin: 
     null = {"row_version": prod["row_version"], "keeps_disposition": None}
     answer = client.patch(f"{API}/lifecycle-rules/{prod['hid']}", json=null, headers=admin)
     assert "keeps_disposition" in errors(answer.json())
+
+
+# --- what the web UI needed and did not get --------------------------------------------------
+
+
+def test_a_conflict_names_the_field_that_collides(make: Maker) -> None:
+    cisco = make.vendor("Cisco", aliases=["CSCO"])
+    entry = make.entry(cisco)
+    make.item(catalog_entry_hid=entry["hid"], serial_number="FCW0000X001", asset_tag="AT-000123")
+    make.owner("Network Engineering")
+    make.tag("core")
+    twin = {"catalog_entry_hid": entry["hid"], "serial_number": "FCW0000X001"}
+    for path, body, field in (
+        ("/items", twin, "serial_number"),
+        ("/items", {"name": "x", "asset_tag": "AT-000123"}, "asset_tag"),
+        ("/vendors", {"name": "cisco"}, "name"),
+        ("/vendors", {"name": "Arista", "aliases": ["csco"]}, "aliases"),
+        ("/catalog-entries", {"vendor_hid": cisco["hid"], "pid": "c9300-48p"}, "pid"),
+        ("/owners", {"label": "network engineering"}, "label"),
+        ("/tags", {"label": "CORE"}, "label"),
+        ("/choices", {"list": "catalog_type", "value": "switch"}, "value"),
+    ):
+        problem = make.post(path, body, 409)
+        assert list(errors(problem)) == [field], (path, problem)
+
+
+def test_history_writes_an_amount_as_the_record_shows_it(make: Maker) -> None:
+    entry = make.entry(
+        make.vendor(), est_value="18000", support_weight="1.50", stack_discount_pct=30
+    )
+    assert (entry["est_value"], entry["support_weight"], entry["stack_discount_pct"]) == (
+        "18000.00",
+        "1.5",
+        "30",
+    )
+    make.patch(
+        f"/catalog-entries/{entry['hid']}",
+        {"row_version": 1, "est_value": "18500", "support_weight": 2, "stack_discount_pct": "30.0"},
+    )
+    update, create = make.audit(record_type="catalog_entry")
+    made = {change["field"]: change["new"] for change in create["changes"]}
+    assert (made["est_value"], made["support_weight"], made["stack_discount_pct"]) == (
+        "18000.00",
+        "1.5",
+        "30",
+    )
+    assert update["changes"] == [
+        {"field": "est_value", "old": "18000.00", "new": "18500.00"},
+        {"field": "support_weight", "old": "1.5", "new": "2"},
+    ]

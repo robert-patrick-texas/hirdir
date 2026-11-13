@@ -157,13 +157,15 @@ def _check_unique(
         if twin is not None:
             raise Conflict(
                 f"there is already an item of this vendor and PID with the serial number "
-                f"{twin.serial_number}: {twin.hid}"
+                f"{twin.serial_number}: {twin.hid}",
+                {"serial_number": "another item of this vendor and PID has this serial number"},
             )
     if asset_tag_key:
         twin = db.scalar(select(Item).where(Item.asset_tag_key == asset_tag_key, Item.hid != own))
         if twin is not None:
             raise Conflict(
-                f"there is already an item with the asset tag {twin.asset_tag}: {twin.hid}"
+                f"there is already an item with the asset tag {twin.asset_tag}: {twin.hid}",
+                {"asset_tag": "another item has this asset tag"},
             )
 
 

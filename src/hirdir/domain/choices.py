@@ -99,7 +99,10 @@ def create_choice(
         select(Choice).where(Choice.list_name == list_name, Choice.value_key == value)
     )
     if taken is not None:
-        raise Conflict(f"{list_name} already has the value {value}")
+        raise Conflict(
+            f"{list_name} already has the value {value}",
+            {"value": "the list already has this value"},
+        )
     choice = Choice(
         list_name=list_name,
         value=value,
