@@ -25,8 +25,17 @@ runner = CliRunner()
 @pytest.fixture
 def run(client: TestClient, inventory: dict[str, str], monkeypatch, tmp_path: Path):
     """Run `hirdir` as the Inventory user, with its calls going to the test client."""
-    monkeypatch.setattr(cli_client.httpx2, "request", client.request)
-    monkeypatch.setattr(cli_client.httpx2, "stream", client.stream)
+    # The test client takes no timeout: the command's own is left out on the way.
+    monkeypatch.setattr(
+        cli_client.httpx2,
+        "request",
+        lambda method, url, timeout=None, **more: client.request(method, url, **more),
+    )
+    monkeypatch.setattr(
+        cli_client.httpx2,
+        "stream",
+        lambda method, url, timeout=None, **more: client.stream(method, url, **more),
+    )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("HIRDIR_URL", "http://testserver")
     monkeypatch.setenv("HIRDIR_TOKEN", inventory["Authorization"].removeprefix("Bearer "))
@@ -213,7 +222,7 @@ def test_exit_codes_tell_access_from_a_conflict_from_no_server(
     file = tmp_path / "items.csv"
     file.write_text("vendor,pid,serial_number,comments\nCisco,C9300-48P,FCW0000X001,noted\n")
     # A row changed between the preview and the apply is a conflict: exit 5.
-    request = client.request
+    request = cli_client.httpx2.request
 
     def changed_in_between(method: str, url: str, **more: Any):
         if url.endswith("/apply"):

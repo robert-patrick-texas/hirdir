@@ -698,23 +698,23 @@ def test_a_large_preview_is_tried_on_a_copy_and_holds_no_other_change_up(
 
 
 def test_a_change_that_waits_too_long_behind_another_is_told_to_try_again(
-    client: TestClient, make: Maker, inventory: dict[str, str], config, monkeypatch
+    make: Maker, inventory: dict[str, str], config, monkeypatch
 ) -> None:
     from sqlalchemy import text
 
+    from hirdir.app import create_app
     from hirdir.db import engine as engine_module
 
     holder = engine_module.make_engine(config.database_url)
+    # An application that waits a tenth of a second for its turn, and not five.
     monkeypatch.setitem(engine_module.SQLITE_PRAGMAS, "busy_timeout", 100)
-    client.app.state.engine.dispose()
-    with holder.connect() as writing:
+    with TestClient(create_app(config)) as impatient, holder.connect() as writing:
         writing.execute(text("BEGIN IMMEDIATE"))
-        waited = client.post(f"{API}/owners", json={"label": "Late"}, headers=inventory)
+        waited = impatient.post(f"{API}/owners", json={"label": "Late"}, headers=inventory)
         writing.execute(text("ROLLBACK"))
-    assert waited.status_code == 503
-    assert waited.headers["retry-after"] == "5"
-    assert waited.json()["title"] == "Busy"
-    assert make.get("/owners")["total"] == 0
-    assert (
-        client.post(f"{API}/owners", json={"label": "Late"}, headers=inventory).status_code == 201
-    )
+        assert waited.status_code == 503
+        assert waited.headers["retry-after"] == "5"
+        assert waited.json()["title"] == "Busy"
+        assert make.get("/owners")["total"] == 0
+        again = impatient.post(f"{API}/owners", json={"label": "Late"}, headers=inventory)
+        assert again.status_code == 201
