@@ -209,6 +209,10 @@ rendered as text, never as HTML.
   each name, so a change of time zone, or the hour that comes twice in the autumn, puts
   none out of order. `hirdir admin restore
   FILE` puts one back. Copying backups off the host is the host's job.
+- **Reset.** `hirdir admin reset` is the one place where records are deleted. It is a
+  command on the server, with no route behind it, and runs only while the service is
+  stopped, after a backup. Every table is named in `domain/reset.py` as one that a
+  reset clears or one that it keeps, and a test fails when a new table is in neither.
 
 ## Package
 
@@ -326,7 +330,9 @@ repository's.
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before
 the import and restores it afterwards, with `hirdir admin backup` and `hirdir admin
-restore`.
+restore`. In between, with the examples still loaded, `hirdir admin reset` is
+tried as an operator would use it: it must refuse while the service runs, change
+nothing without the word `reset`, and then clear the inventory and keep the accounts.
 
 The client commands of the CLI are run in the container, from the package, while the
 examples are loaded: `hirdir export` and `hirdir items list` must write the very file

@@ -22,6 +22,10 @@ def shape(directive: setup.Directive) -> tuple:
     return (directive.name, tuple(directive.args), tuple(children))
 
 
+# Tables of the configuration that are newer than the shipped file, which is left as it is.
+NOT_IN_THE_SHIPPED_FILE = ("files",)
+
+
 def test_the_snippet_holds_the_location_block_of_the_architecture_page() -> None:
     """The block under "URL prefix", and the upload limit that "Package" tells of.
 
@@ -99,7 +103,14 @@ def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path
     }
     documented = re.search(r"## Configuration.*?```toml\n(.*?)```", ARCHITECTURE, re.DOTALL)
     assert documented is not None
-    assert tomllib.loads(uncommented) == tomllib.loads(documented.group(1))
+    known = tomllib.loads(documented.group(1))
+    # The file is a conffile. dpkg asks about a conffile that was edited on the host
+    # whenever a new version ships a different one, and an upgrade with nobody to answer
+    # stops there. So a key that a later release adds is documented and is not put into
+    # the shipped file: see P-59 in docs/decisions.md.
+    newer = {table: known.pop(table) for table in NOT_IN_THE_SHIPPED_FILE}
+    assert newer == {"files": {"max_megabytes": config.Config.max_file_megabytes}}
+    assert tomllib.loads(uncommented) == known
     assert len(keys) == 7
 
     as_shipped = tmp_path / "shipped.toml"

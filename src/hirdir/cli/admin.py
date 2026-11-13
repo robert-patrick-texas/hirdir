@@ -6,6 +6,7 @@ goes through the API.
 
 import os
 import shutil
+import socket
 import sqlite3
 from pathlib import Path
 from typing import Annotated
@@ -21,6 +22,7 @@ from hirdir.config import Config
 from hirdir.db import migrate as migrations
 from hirdir.db.engine import SQLITE_PRAGMAS, make_engine, make_sessions
 from hirdir.domain import accounts, audit, settings
+from hirdir.domain import reset as reset_rules
 from hirdir.domain.errors import DomainError
 
 DEV_CONFIG = '[server]\nstate_dir = "."\n'
@@ -176,10 +178,8 @@ def _integrity(path: Path) -> str:
         return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
 
 
-@admin.command()
-def backup() -> None:
-    """Copy the database into the backup directory and keep only the newest few."""
-    config = _load()
+def _backup(config: Config) -> Path:
+    """Copy the database into the backup directory, keep only the newest few, return it."""
     source = _sqlite_path(config)
     if not source.is_file():
         raise _fail(f"there is no database at {source}")
@@ -193,7 +193,13 @@ def backup() -> None:
     kept = sorted(config.backup_dir.glob("hirdir-*.db"), key=_made_at)
     for old in kept[: -config.backup_keep]:
         old.unlink()
-    typer.echo(str(target))
+    return target
+
+
+@admin.command()
+def backup() -> None:
+    """Copy the database into the backup directory and keep only the newest few."""
+    typer.echo(str(_backup(_load())))
 
 
 def _time_zone(config: Config) -> str:
@@ -238,6 +244,77 @@ def restore(file: Path) -> None:
     target.chmod(0o600)
     migrations.upgrade(config.database_url)
     typer.echo(f"restored {file} to {target}")
+
+
+def _is_serving(config: Config) -> bool:
+    """Say whether something answers where the service listens."""
+    try:
+        with socket.create_connection(config.host_port, timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+@admin.command()
+def reset(
+    everything: Annotated[
+        bool,
+        typer.Option(
+            "--everything",
+            help="Accounts, settings and the audit trail as well: back to a fresh installation.",
+        ),
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", help="Go on without asking. For a script.")] = False,
+) -> None:
+    """Clear the inventory, to start over after trying things out. Stop the service first.
+
+    Removes every item, catalog entry, vendor, owner and tag, the stored imports and
+    the history of those records. Accounts, roles, settings, choices and lifecycle
+    rules stay, unless --everything is given. A backup is taken first.
+    """
+    config = _load()
+    target = _sqlite_path(config)
+    if not target.is_file():
+        raise _fail(f"there is no database at {target}")
+    if _is_serving(config):
+        raise _fail(
+            f"the service is running on {config.listen}: stop it first, with "
+            "`sudo systemctl stop hirdir`, so that nobody is at work while the inventory goes"
+        )
+    engine = make_engine(config.database_url)
+    with make_sessions(engine)() as db:
+        held = reset_rules.counts(db)
+        accounts_held = len(accounts.list_users(db, limit=1_000_000)[0])
+    typer.echo("This removes, for good:")
+    for name, count in held.items():
+        typer.echo(f"  {count:>8,}  {name.replace('_', ' ')}")
+    typer.echo("  and the history of those records.")
+    if everything:
+        typer.echo(
+            f"  and, with --everything, the {accounts_held} accounts, the groups, roles and "
+            "tokens, the settings, the choices, the lifecycle rules and the whole audit trail."
+        )
+    else:
+        typer.echo("Accounts, roles, settings, choices and lifecycle rules stay.")
+    if not yes and typer.prompt('Type "reset" to go on', default="", show_default=False) != "reset":
+        raise _fail("nothing was changed")
+    kept = _backup(config)
+    typer.echo(f"backup: {kept}")
+    if everything:
+        engine.dispose()
+        for file in (target, Path(f"{target}-wal"), Path(f"{target}-shm")):
+            file.unlink(missing_ok=True)
+        migrations.upgrade(config.database_url)
+        target.chmod(0o600)
+        typer.echo("the database is as a fresh installation has it: create the first Admin with")
+        typer.echo("  hirdir admin create-user --role admin NAME")
+    else:
+        with make_sessions(engine)() as db:
+            reset_rules.clear_inventory(db, audit.SYSTEM, kept.name)
+            db.commit()
+        engine.dispose()
+        typer.echo("the inventory is empty. Accounts and settings are as they were.")
+    typer.echo(f"to put back what was there: hirdir admin restore {kept}")
 
 
 @admin.command()

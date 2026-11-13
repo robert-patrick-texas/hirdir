@@ -285,12 +285,23 @@ hirdir admin reset-access-code NAME
 hirdir admin migrate
 hirdir admin backup
 hirdir admin restore FILE
+hirdir admin reset                               # clear the inventory; --everything for all
 hirdir admin check                               # schema version, integrity, settings
 hirdir admin serve                               # what the service runs
 ```
 
 Run as root, an admin command first steps down to the user that owns the state
 directory, so it never leaves behind a file the service cannot write.
+
+`hirdir admin reset` is for a site that has loaded test data and wants to start over.
+It is on the server and nowhere else: no page and no route of the API clears anything.
+It refuses while the service is running, says what it will remove and how many, takes a
+backup, and goes on only when the word `reset` is typed, or `--yes` is given by a
+script. It removes the items, catalog entries, vendors, owners, tags and stored imports,
+and the audit events of those records, and writes one audit event that says so and
+names the backup. Accounts, groups, roles, service tokens, settings, choices and
+lifecycle rules stay. `--everything` removes those too and leaves the database as a
+fresh installation has it, with no account and an empty audit trail.
 
 ## Web UI
 

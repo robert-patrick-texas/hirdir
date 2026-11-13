@@ -1249,6 +1249,16 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
     out.writelines(b"row-%06d\n" % number for number in range(1, 100_002))' "$work"
 }
 
+# Whether the database holds items, vendors and accounts, read from the file itself with
+# the Python of the package, because the service is stopped when this is asked.
+inventory_left() {
+    inside /opt/hirdir/venv/bin/python -c '
+import sqlite3
+held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
+count = lambda table: held.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+print("some" if count("items") else "none", "some" if count("vendors") else "none", count("users") > 0)'
+}
+
 # export_request FORMAT FILTER [COLUMN...]: the body of POST /exports for items, sorted
 # by host name.
 export_request() {
@@ -1380,7 +1390,23 @@ files() {
 
     client_commands "$filter"
 
+    # hirdir admin reset is how a site clears test data, on the server and nowhere else.
+    # Here it clears the examples, before the backup puts back what the checks need.
+    local code=0
+    inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
+    expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
+        "$code $(grep -c 'stop it first' "$work/reset.out")" "1 1"
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
+    code=0
+    inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing" \
+        "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 some some True"
+    code=0
+    inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
+    expect "pkg hirdir admin reset --yes clears the inventory and keeps the accounts" \
+        "$code $(inventory_left)" "0 none none True"
+    expect "pkg it took a backup first and says how to put it back" \
+        "$(grep -c '^backup: /var/lib/hirdir/backups/hirdir-' "$work/reset.out") $(grep -c 'hirdir admin restore /var/lib/hirdir/backups/hirdir-' "$work/reset.out")" "1 1"
     check "pkg hirdir admin restore of the backup taken before the examples were imported" \
         inside hirdir admin restore "${before:-/nonexistent}"
     check "pkg systemctl start hirdir" inside systemctl start hirdir.service

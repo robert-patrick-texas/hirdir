@@ -89,6 +89,8 @@ restarts both:
 max_megabytes = 50
 ```
 
+The `[files]` table is not in the file as the package ships it: add it at the end.
+
 ```nginx
 # /etc/nginx/snippets/hirdir.conf
 client_max_body_size 50m;
@@ -165,11 +167,11 @@ one file for each kind of record, as CSV and as JSON, the same records in both. 
 are the files of [Examples](../examples/README.md). Use them to try an import, and take
 the columns from them for a file of your own.
 
-**Load them into an installation you can throw away.** Nothing is deleted from an
-inventory, so the only way to be rid of the examples again is a backup taken before
-they were loaded. On an installation that is to be kept, run `sudo hirdir admin backup`
-first, and put that backup back afterwards as [Backup and restore](#backup-and-restore)
-has it.
+**Load them where the inventory can be cleared again.** Nothing is deleted from an
+inventory in the web UI or through the API. On the server, `sudo hirdir admin reset`
+clears the whole inventory, the examples and anything else in it: see
+[Start over](#start-over). Where real records are already in, do not load the examples
+beside them.
 
 Sign in as a user who holds Inventory or Admin, then load the files in this order,
 because a record names the ones it refers to:
@@ -202,7 +204,8 @@ The answer is the preview: what each row would do, and the HID of the stored job
 ## Configuration
 
 `/etc/hirdir/config.toml`. Every key is optional and is shown there commented out with
-its default. Restart the service after a change:
+its default, but for `max_megabytes` under `[files]`, which is newer than the file and
+is described under [Uploads](#uploads). Restart the service after a change:
 
 ```bash
 sudo systemctl restart hirdir
@@ -226,6 +229,33 @@ sudo systemctl start hirdir
 
 `restore` checks the file first and keeps the database as it was beside the restored
 one, named `hirdir.db.before-restore`.
+
+## Start over
+
+A site that has loaded the examples, or test data of its own, clears the inventory and
+begins again. This is done on the server and cannot be done from the web UI or the
+API, whatever role a person holds.
+
+```bash
+sudo systemctl stop hirdir
+sudo hirdir admin reset                    # says what goes, backs up, asks for the word "reset"
+sudo systemctl start hirdir
+```
+
+`reset` refuses while the service is running. It removes every item, catalog entry,
+vendor, owner and tag, the stored imports, and the history of those records. It keeps
+the accounts, groups, roles and service tokens, so people sign in as before, and the
+settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it
+takes first is one of the 14 that are kept, and its path is printed: `hirdir admin
+restore` puts it back.
+
+```bash
+sudo hirdir admin reset --everything       # back to a fresh installation
+sudo hirdir admin create-user --role admin NAME
+```
+
+`--everything` removes the accounts, the settings and the audit trail as well. The
+signing key and the backups stay. `--yes` goes on without asking, for a script.
 
 ## Check
 

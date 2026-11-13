@@ -66,7 +66,9 @@ later, for example a Last Day of Support date on its model.
 3. **One set of rules.** The web UI, the API, the CLI and file imports go through the
    same validation and the same permission checks on the server.
 4. **Nothing is silently lost.** Every change is recorded with who, when, what was and
-   what is. Items are archived, not deleted.
+   what is. Items are archived, not deleted. The one exception is made on the server
+   itself, by an operator who clears a trial inventory with `hirdir admin reset`, and
+   it takes a backup first.
 5. **Intent and observation are separate.** The inventory records what should be. A
    later release compares that with what discovery and monitoring report.
 
