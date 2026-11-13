@@ -10,14 +10,16 @@
 # run one after another and a summary of them all ends the run.
 #
 #   --upgrade          install the previous release, put accounts, a group, a role grant,
-#                      a service token, audit events and a changed configuration into
-#                      it, upgrade it with apt, and see that all of it is still there
-#                      and still works; then everything the fresh pass does
+#                      a service token, audit events, a vendor with a catalog entry and
+#                      an item, and a changed configuration into it, upgrade it with apt,
+#                      and see that all of it is still there and still works, under the
+#                      prefix it had; then everything the fresh pass does
 #   --failed-upgrade   install the previous release and make the migration of the new
 #                      one fail: the upgrade must stop and name the backup, and the way
 #                      back that its message gives must work
 #   --fresh            install on a system that never had hirdir, as a new
-#                      installation does, and exercise it
+#                      installation does, and exercise it: the examples imported and
+#                      exported through nginx, then the inventory made by hand
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -37,8 +39,12 @@
 # is 0 only when no check failed. The container and its image are always removed.
 #
 # A check that belongs to a scenario of docs/build-plan.md carries its number, S01 or
-# S02 for the package and sign-in, S06 to S11 for the inventory. The others, marked
-# pkg, are about the package alone.
+# S02 for the package and sign-in, S06 to S11 for the inventory, S12, S13 and S16 for
+# files. The others, marked pkg, are about the package alone.
+#
+# The files are sent with curl, as the API takes them. The client commands of the
+# command line (hirdir import, hirdir export, hirdir items) have no checks here yet:
+# client_commands() is where they go, and until then it prints a SKIP line.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -266,6 +272,14 @@ api() {
     fi
 }
 
+# send PATH FILE [TYPE]: POST a file as the body of a request to the API under $prefix,
+# which is how an import is sent. PATH carries the query. The type is text/csv unless
+# given. A large file has two minutes.
+send() {
+    authorized POST "$prefix/api/v1$1" --header "Content-Type: ${3:-text/csv}" \
+        --data-binary "@$2" --max-time 120
+}
+
 # json_field KEY: the value of a top-level key of the JSON in $work/body. A string is
 # printed as it is, anything else as JSON.
 json_field() {
@@ -289,6 +303,30 @@ try:
 except Exception as error:
     value = f"<{type(error).__name__}: {error}>"
 print(value if isinstance(value, str) else json.dumps(value, sort_keys=True))' "$work/body" "$1"
+}
+
+# table EXPRESSION [FILE]: the value of a Python expression over a CSV file, which is the
+# body of the last response when none is named. The expression calls the names of the
+# columns head, and the rows, each a dict by column, rows.
+table() {
+    python3 -c '
+import csv, json, sys
+try:
+    with open(sys.argv[2], encoding="utf-8", newline="") as source:
+        reader = csv.DictReader(source)
+        rows = list(reader)
+        head = list(reader.fieldnames or [])
+    value = eval(sys.argv[1])
+except Exception as error:
+    value = f"<{type(error).__name__}: {error}>"
+print(value if isinstance(value, str) else json.dumps(value, sort_keys=True))' "$1" "${2:-$work/body}"
+}
+
+# job_counts: what the import job in the last response says: its status, how many rows
+# it has, and how many of them create, update, find their record unchanged and are
+# rejected. An apply answers with the job, and a preview with the job and its rows.
+job_counts() {
+    json '(lambda j: [j["status"], j["row_count"], j["created"], j["updated"], j["unchanged"], j["rejected"]])(d.get("job", d))'
 }
 
 # keep NAME: keep the JSON of the last response for unchanged to compare with.
@@ -404,6 +442,29 @@ wait_local_ready() {
     return 1
 }
 
+# past_nginx BYTES: send a CSV file of that many bytes as an import, with the token in
+# $token, straight to the service on its loopback port inside the container. Prints the
+# status and the content type of the answer, which is hirdir's own and not nginx's.
+past_nginx() {
+    inside /opt/hirdir/python/bin/python3 -I -c '
+import sys, urllib.error, urllib.request
+
+head = b"label\n"
+request = urllib.request.Request(
+    "http://127.0.0.1:8715/api/v1/imports/preview?entity=tags",
+    data=head + b"x" * (int(sys.argv[2]) - len(head)),
+    method="POST",
+    headers={"Content-Type": "text/csv", "Authorization": "Bearer " + sys.argv[1]},
+)
+try:
+    answer = urllib.request.urlopen(request, timeout=60)
+except urllib.error.HTTPError as error:
+    answer = error
+except OSError as error:
+    sys.exit(f"000 {error}")
+print(answer.code, answer.headers.get("Content-Type"))' "$token" "$1" 2>&1
+}
+
 # create_user NAME: create an Admin with hirdir admin. Sets $code to its access code.
 create_user() {
     inside hirdir admin create-user --role admin "$1" >"$work/create-user.log" 2>&1 || true
@@ -430,12 +491,26 @@ connection.execute(sys.argv[1])
 connection.commit()' "$1"
 }
 
+# schema_sum FILE: one checksum of the schema of a SQLite file in the container: every
+# table, index and trigger, statement for statement. A migration that was undone as a
+# whole leaves it as it was, also where it changes a table and does not create one.
+schema_sum() {
+    inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
+import hashlib, sqlite3, sys
+
+rows = sqlite3.connect(sys.argv[1]).execute(
+    "SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name"
+).fetchall()
+print(hashlib.sha256(repr(rows).encode()).hexdigest())' "$1" 2>&1 | tail -n 1
+}
+
 # The schema revision the installed hirdir finds in its database.
 revision_now() { inside hirdir admin check 2>/dev/null | sed -n 's/^schema revision: *\([^ ]*\) .*/\1/p'; }
 
 # migrations QUESTION [REVISION]: read the migrations the package under test carries.
 #   head             the newest revision
 #   created REVISION the table that the migrations after REVISION create last, or nothing
+#   tables REVISION  every table that the migrations after REVISION create, in order
 migrations() {
     dpkg-deb --fsys-tarfile "$deb" |
         tar --extract --to-stdout --wildcards '*/site-packages/hirdir/db/migrations/versions/*.py' |
@@ -452,7 +527,14 @@ if sys.argv[1] == "head":
     print(max(tables, default=""))
 else:
     later = [name for revision in sorted(tables) if revision > sys.argv[2] for name in tables[revision]]
-    print(later[-1] if later else "")' "$@"
+    print(" ".join(later) if sys.argv[1] == "tables" else later[-1] if later else "")' "$@"
+}
+
+# shipped_snippet PACKAGE: the nginx snippet a package ships. From 0.3.0 it is the text
+# that hirdir-setup --renew writes out, and before that it was a conffile.
+shipped_snippet() {
+    dpkg-deb --fsys-tarfile "$1" | tar --extract --to-stdout \
+        ./usr/share/hirdir/nginx/snippet.conf ./etc/nginx/snippets/hirdir.conf 2>/dev/null || true
 }
 
 # The version of hirdir that dpkg has installed, or nothing.
@@ -460,12 +542,16 @@ installed_version() { inside dpkg-query -W -f "\${Version}" hirdir 2>/dev/null |
 
 apt_get() { inside apt-get -o Dpkg::Use-Pty=0 --yes "$@" >"$work/apt.log" 2>&1; }
 
-# What is in the three conffiles of the package, and whether dpkg left a second copy
-# of any of them beside it.
+# What is in the two conffiles of the package, and whether dpkg left a second copy of
+# either beside it, or of the nginx snippet, which was a conffile up to 0.2.1.
 conffiles() {
-    inside bash -c 'sha256sum /etc/hirdir/config.toml /etc/nginx/conf.d/hirdir.conf /etc/nginx/snippets/hirdir.conf;
+    inside bash -c 'sha256sum /etc/hirdir/config.toml /etc/nginx/conf.d/hirdir.conf;
         ls /etc/hirdir /etc/nginx/conf.d /etc/nginx/snippets | grep -E "\.dpkg-|\.ucf-" || true' 2>&1
 }
+
+# The nginx snippet of the installation, without the three lines that hold the prefix.
+# What is left is the same under every prefix, and is what a version ships.
+snippet_body() { inside grep -v '# prefix$' /etc/nginx/snippets/hirdir.conf 2>&1 || true; }
 
 # ---- the container --------------------------------------------------------------------
 
@@ -549,6 +635,7 @@ install_previous() {
 
 failed_upgrade() {
     local witness_code revision_before planted tables_before backup good_backup command body
+    local schema_before snippet_before created name database=/var/lib/hirdir/hirdir.db
 
     section "the previous release, $previous_version, with an account in it"
     previous_package
@@ -580,7 +667,9 @@ failed_upgrade() {
     else
         fail "pkg a table named $planted, which the migration creates last, is put in its way"
     fi
-    tables_before=$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")
+    tables_before=$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")
+    schema_before=$(schema_sum "$database")
+    snippet_before=$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)
 
     section "the upgrade to $version, whose migration fails"
     if apt_get install /srv/debs/hirdir-new.deb; then
@@ -611,7 +700,13 @@ failed_upgrade() {
     expect "pkg the service was not started" "$(inside systemctl is-active hirdir.service 2>&1)" inactive
     expect "pkg the database still says revision $revision_before" "$(revision_now)" "$revision_before"
     expect "pkg the failed migration was undone as a whole: none of its tables is left behind" \
-        "$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
+        "$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
+    expect "pkg and no table from before is changed: the schema is, statement for statement, as it was" \
+        "$(schema_sum "$database")" "$schema_before"
+    expect "pkg and the account is still in it" \
+        "$(sqlite_value "$database" "SELECT count(*) FROM users WHERE username = 'upgrade-witness'")" 1
+    expect "pkg the upgrade that stopped left the nginx snippet as $previous_version had it" \
+        "$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)" "$snippet_before"
 
     section "the way back that the message gives"
     if apt_get install --allow-downgrades /srv/debs/hirdir-previous.deb; then
@@ -626,7 +721,7 @@ failed_upgrade() {
     check "pkg hirdir admin restore BACKUP succeeds" inside hirdir admin restore "${backup:-/nonexistent}"
     check "pkg systemctl start hirdir succeeds" inside systemctl start hirdir.service
     expect "pkg the database has the tables it had before the upgrade was tried, and no more" \
-        "$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
+        "$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
     check "pkg hirdir admin check of $previous_version exits 0" inside hirdir admin check
     if wait_local_ready; then
         pass "pkg $previous_version serves again"
@@ -649,6 +744,16 @@ failed_upgrade() {
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok installed"
     expect "pkg the schema is at revision $head" "$(revision_now)" "$head"
     check "pkg hirdir admin check exits 0" inside hirdir admin check
+    created=""
+    for name in $(migrations tables "$revision_before"); do
+        created="${created:+$created }$(sqlite_value "$database" "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
+    done
+    expect "pkg every table that the migration creates is there now" \
+        "$created" "$(migrations tables "$revision_before")"
+    # No nginx is installed in this pass. The snippet is written all the same, for the
+    # day there is one.
+    expect "pkg the nginx snippet is the one $version ships, though no nginx is installed" \
+        "$(snippet_body | sha256sum)" "$(shipped_snippet "$deb" | grep -v '# prefix$' | sha256sum)"
     if wait_local_ready; then
         pass "pkg $version serves"
     else
@@ -673,6 +778,11 @@ failed_upgrade() {
     check "pkg dpkg --configure hirdir succeeds" inside dpkg --configure hirdir
     expect "pkg dpkg holds hirdir $previous_version as installed" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$previous_version install ok installed"
+    # The older package takes the nginx snippet for its conffile again. dpkg must not
+    # ask about it: there is nobody to answer, and the installation would stop there.
+    expect "pkg dpkg kept the nginx snippet that $version wrote, and left no second copy of it" \
+        "$(snippet_body | sha256sum) $(inside bash -c 'ls /etc/nginx/snippets | grep -c "\.dpkg-"' 2>&1)" \
+        "$(shipped_snippet "$deb" | grep -v '# prefix$' | sha256sum) 0"
     expect "pkg the schema is at revision $revision_before again" "$(revision_now)" "$revision_before"
     if wait_local_ready; then
         pass "pkg $previous_version serves again"
@@ -767,6 +877,7 @@ previous_release() {
         witness_weight=1.25
         if [ "$previous_version" = 0.2.0 ]; then witness_weight=0.125; fi
         api POST /vendors '{"name": "Upgrade Witness Networks"}'
+        expect "pkg $previous_version holds a vendor" "$status" 201
         api POST /catalog-entries "{\"vendor_hid\": \"$(json_field hid)\", \"pid\": \"UW-48P\", \"est_value\": \"18000.00\", \"support_weight\": \"$witness_weight\"}"
         expect "pkg $previous_version holds a catalog entry with a value and a support weight of $witness_weight" "$status" 201
         witness_entry=$(json_field hid)
@@ -806,11 +917,23 @@ previous_release() {
     expect "pkg $previous_version now holds the accounts, the group, the grants and the token" \
         "$held" "3 users, 1 group with 1 member, 3 role grants, 1 service token"
     check "pkg and an audit event for each thing done ($events_before events)" test "$events_before" -ge 10
+    if [ -n "$witness_entry" ]; then
+        api GET /vendors
+        keep vendors
+    fi
+    # A previous release whose snippet sets no limit leaves nginx at its own, a megabyte.
+    # The same file is sent again after the upgrade, when nginx must let it through.
+    if ! shipped_snippet "$previous" | grep -q client_max_body_size; then
+        large_file "$work/large-upgraded.csv" "Upgrade Witness Networks" UW-48P
+        send "/imports/preview?entity=items&file_name=large-upgraded.csv" "$work/large-upgraded.csv"
+        expect "pkg behind the nginx snippet of $previous_version a file of $(megabytes "$work/large-upgraded.csv") is refused by nginx, with its 413 page" \
+            "$status $(header content-type)" "413 text/html"
+    fi
     conffiles_before=$(conffiles)
 }
 
 upgrade() {
-    local backup
+    local backup renewed created name
 
     section "apt upgrades $previous_version to $version"
     if apt_get install /srv/debs/hirdir-new.deb; then
@@ -835,17 +958,41 @@ upgrade() {
         bash -c "! grep -q 'hirdir admin create-user' '$work/install.log'"
     check "pkg the upgrade prints no warning that a unit file changed on disk" \
         bash -c "! grep -q 'daemon-reload' '$work/install.log'"
-    expect "pkg the three conffiles are as the operator left them, with no second copy beside them" \
+    expect "pkg the two conffiles are as the operator left them, and dpkg left no second copy of them or of the nginx snippet" \
         "$(conffiles | sha256sum)" "$(printf '%s\n' "$conffiles_before" | sha256sum)"
+
+    # The nginx snippet is no conffile, because hirdir-setup writes the prefix into it:
+    # dpkg would have stopped this upgrade to ask about it. The package writes it again
+    # as the new version ships it, keeps the prefix, and has nginx reload.
+    expect "pkg the nginx snippet is the one $version ships, in all but its prefix" \
+        "$(snippet_body | sha256sum)" "$(shipped_snippet "$deb" | grep -v '# prefix$' | sha256sum)"
+    expect "pkg and its three prefix lines still say $prefix, as the operator had it" \
+        "$(inside grep -c "$prefix.*# prefix\$" /etc/nginx/snippets/hirdir.conf 2>&1)" 3
+    renewed="hirdir: /etc/nginx/snippets/hirdir.conf is now as this version of hirdir ships it, for $prefix/. nginx was reloaded."
+    if [ "$(shipped_snippet "$previous" | sha256sum)" != "$(shipped_snippet "$deb" | sha256sum)" ]; then
+        check "pkg the upgrade says that it wrote the snippet again, for $prefix/, and that nginx was reloaded" \
+            grep -qxF "$renewed" "$work/install.log"
+    else
+        check "pkg $version ships the snippet $previous_version did, and the upgrade says nothing of it" \
+            bash -c "! grep -q 'snippets/hirdir.conf' '$work/install.log'"
+    fi
+    check "pkg nginx accepts its configuration" inside nginx -t
+    expect "pkg hirdir-setup --renew finds nothing left to change" "$(inside hirdir-setup --renew --yes 2>&1)" \
+        "Nothing to change: /etc/nginx/snippets/hirdir.conf is as this version of hirdir ships it, for $prefix/"
 
     expect "pkg hirdir admin check: the migration brought the schema from $revision_before to $head" \
         "$(inside hirdir admin check 2>&1 | sed -n 's/^schema revision: *//p')" "$head (this version expects $head)"
     check "pkg hirdir admin check exits 0" inside hirdir admin check
+    created=""
+    for name in $(migrations tables "$revision_before"); do
+        created="${created:+$created }$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
+    done
+    expect "pkg every table that the migration creates is there" "$created" "$(migrations tables "$revision_before")"
     expect "pkg hirdir.service is running again" "$(inside systemctl is-active hirdir.service 2>&1)" active
     if wait_ready; then
-        pass "pkg the readiness probe answers through nginx under $prefix/, where nginx was left alone"
+        pass "pkg the readiness probe answers through nginx under $prefix/, the prefix from before"
     else
-        fail "pkg the readiness probe answers through nginx under $prefix/, where nginx was left alone (got $status)"
+        fail "pkg the readiness probe answers through nginx under $prefix/, the prefix from before (got $status)"
     fi
 
     token=$old_session
@@ -856,9 +1003,23 @@ upgrade() {
     expect "pkg GET $prefix/api/v1/about says version $version and schema revision $head" \
         "$status $(json_field version) $(json_field schema_revision)" "200 $version $head"
 
+    # An import on the upgraded installation, under the prefix from before, where nobody
+    # has run hirdir-setup or reloaded nginx since the upgrade: a file larger than the
+    # megabyte nginx takes when it is left to itself. It is previewed and not applied,
+    # so the inventory stays as it was carried over. The examples are imported below,
+    # with everything else the fresh pass does.
+    large_file "$work/large-upgraded.csv" "Upgrade Witness Networks" UW-48P
+    send "/imports/preview?entity=items&file_name=large-upgraded.csv" "$work/large-upgraded.csv"
+    expect "pkg under $prefix/, where the upgrade alone changed nginx, a file of $(megabytes "$work/large-upgraded.csv") is taken and previewed: $large_rows items to create" \
+        "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
+
     if [ -n "$witness_entry" ]; then
         local weight_after=$witness_weight row_version
         if [ "$previous_version" = 0.2.0 ]; then weight_after=0.13; fi
+        api GET /vendors
+        expect "pkg the vendor from before is as it was" "$status $(unchanged vendors)" "200 same"
+        expect "pkg and every vendor there was is marked reviewed" \
+            "$(json '[len(d["items"]), sorted({v.get("review_status") for v in d["items"]})]')" '[1, ["reviewed"]]'
         api GET "/catalog-entries/$witness_entry"
         expect "pkg the catalog entry from before has its value, and its support weight to two places" \
             "$status $(json_field est_value) $(json_field support_weight)" "200 18000.00 $weight_after"
@@ -922,6 +1083,11 @@ install_fresh() {
     check "S01 the install says how to add the site" grep -q 'sudo hirdir-setup' "$work/install.log"
     check "pkg a first install takes no backup, because there is nothing to back up" \
         bash -c "! grep -q 'the database as it was' '$work/install.log'"
+    expect "pkg the install wrote the nginx snippet, /etc/nginx/snippets/hirdir.conf, as the package ships it" \
+        "$(inside bash -c 'cmp /etc/nginx/snippets/hirdir.conf /usr/share/hirdir/nginx/snippet.conf && stat -c "%a %U:%G" /etc/nginx/snippets/hirdir.conf' 2>&1)" \
+        "644 root:root"
+    check "pkg and says nothing of it, nor of nginx, which no site of it is in yet" \
+        bash -c "! grep -Eq 'snippets/hirdir.conf|nginx was reloaded' '$work/install.log'"
 }
 
 installed() {
@@ -935,12 +1101,26 @@ installed() {
     expect "S01 the service runs as user hirdir" "$(inside ps -o user= -p "$main_pid" 2>&1)" hirdir
     expect "S01 /var/lib/hirdir belongs to hirdir, mode 0750" \
         "$(inside stat -c '%a %U:%G' /var/lib/hirdir 2>&1)" "750 hirdir:hirdir"
+    # Made by the package, so that its mode does not depend on who takes the first backup.
+    expect "pkg so does /var/lib/hirdir/backups, which the package makes" \
+        "$(inside stat -c '%a %U:%G' /var/lib/hirdir/backups 2>&1)" "750 hirdir:hirdir"
     check "S01 the install compiled the byte-code, so nothing writes under /opt later" \
         inside bash -c 'test -d /opt/hirdir/venv/lib/python3.*/site-packages/hirdir/__pycache__'
     check "pkg the regex package's compiled module is installed and loads in the package's Python" \
         inside /opt/hirdir/venv/bin/python -c 'import regex._regex'
     expect "pkg nothing of the development tools is installed" \
-        "$(inside bash -c 'ls /opt/hirdir/venv/lib/python3.*/site-packages /opt/hirdir/venv/bin | grep -Ei "^(httpx2|httpcore2|pytest|_pytest|ruff|ty)([-.]|$)"' 2>&1)" ""
+        "$(inside bash -c 'ls /opt/hirdir/venv/lib/python3.*/site-packages /opt/hirdir/venv/bin | grep -Ei "^(pytest|_pytest|ruff|ty)([-.]|$)"' 2>&1)" ""
+    # The command line calls the API with httpx2 from 0.3.0. httpx, which it took the
+    # place of, is no longer shipped.
+    check "pkg httpx2, which the command line calls the API with, is installed and loads" \
+        inside /opt/hirdir/venv/bin/python -c 'import httpx2'
+    expect "pkg httpx and httpcore, which httpx2 took the place of, are not installed" \
+        "$(inside bash -c 'ls /opt/hirdir/venv/lib/python3.*/site-packages | grep -Ei "^(httpx|httpcore)([-.]|$)"' 2>&1)" ""
+    # /etc/nginx/snippets/hirdir.conf is not among them: postinst writes it. After an
+    # upgrade from a version that had it as a conffile, dpkg lists it as obsolete.
+    expect "pkg dpkg knows two conffiles of hirdir: its configuration and the nginx upstream" \
+        "$(inside dpkg-query -W -f "\${Conffiles}\n" hirdir 2>&1 | grep -v ' obsolete$' | awk 'NF {print $1}' | sort | xargs)" \
+        "/etc/hirdir/config.toml /etc/nginx/conf.d/hirdir.conf"
 }
 
 # ---- hirdir-setup ---------------------------------------------------------------------
@@ -1022,6 +1202,227 @@ through_nginx() {
     fi
     request GET /hirdir
     expect "S01 GET /hirdir redirects to /hirdir/" "$status $(header location)" "301 /hirdir/"
+}
+
+# ---- files: import and export -----------------------------------------------------------
+
+# The files of examples/ in the order they load in. A record names the ones it refers to.
+load_order=(tags vendors catalog-entries owners items)
+large_rows=150
+
+# large_file PATH VENDOR PID: write a CSV file of items of that model which is larger
+# than the megabyte nginx takes when it is left to itself. Every name in it is invented.
+large_file() {
+    python3 -c '
+import csv, sys
+
+path, vendor, pid, count = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+note = "One of the rows of a file that the package test sends, to see that a file of more than a megabyte passes nginx. "
+with open(path, "w", encoding="utf-8", newline="") as out:
+    rows = csv.writer(out)
+    rows.writerow(["vendor", "pid", "serial_number", "hostname", "comments"])
+    for number in range(1, count + 1):
+        serial, host = f"PKG0000X{number:03d}", f"pkgtest-sw-{number:03d}"
+        rows.writerow([vendor, pid, serial, host, (note * 80)[:8000]])' "$1" "$2" "$3" "$large_rows"
+}
+
+# megabytes FILE: its size, as in "1.2 MB".
+megabytes() { python3 -c 'import os, sys; print(f"{os.path.getsize(sys.argv[1]) / 1048576:.1f} MB")' "$1"; }
+
+# limit_files: write the files that the limits of a file are tried with. They are those
+# of docs/interfaces.md: 20 MB and 100,000 rows. The first two files name a column that
+# no record has, so hirdir refuses each at its first line, whatever its size.
+limit_files() {
+    python3 -c '
+import sys
+
+work = sys.argv[1]
+limit = 20 * 1024 * 1024
+head, line = b"no_such_column\n", b"x" * 99 + b"\n"
+for name, size in (("at-the-limit.csv", limit), ("over-the-limit.csv", limit + 1)):
+    with open(f"{work}/{name}", "wb") as out:
+        out.write(head)
+        out.write(line * ((size - len(head)) // len(line)))
+        out.write(b"y" * ((size - len(head)) % len(line)))
+with open(f"{work}/too-many-rows.csv", "wb") as out:
+    out.write(b"label\n")
+    out.writelines(b"row-%06d\n" % number for number in range(1, 100_002))' "$work"
+}
+
+# export_request FORMAT FILTER [COLUMN...]: the body of POST /exports for items, sorted
+# by host name.
+export_request() {
+    python3 -c '
+import json, sys
+
+body = {"entity": "items", "format": sys.argv[1], "filter": sys.argv[2], "sort": ["hostname"]}
+if sys.argv[3:]:
+    body["columns"] = sys.argv[3:]
+print(json.dumps(body))' "$@"
+}
+
+# The examples are imported into an inventory that does not hold them, as scenario S12
+# has it, and the checks that follow this section make records of the same names by
+# hand. So the database is backed up first and put back at the end, with the commands
+# an operator has for it. Nothing can be deleted from an inventory.
+files() {
+    section "files: examples/ imported and exported through nginx under $prefix/"
+    local before items_before name entity rows item_rows hid filter wanted exported limit
+
+    expect "pkg the package ships the CSV and JSON files of examples/ in /usr/share/doc/hirdir/examples/, each as the repository has it" \
+        "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && sha256sum -- * | LC_ALL=C sort' 2>&1)" \
+        "$(cd examples && sha256sum -- *.csv *.json | LC_ALL=C sort)"
+    before=$(inside hirdir admin backup 2>/dev/null || true)
+    check "pkg hirdir admin backup keeps the inventory as it is before any file is imported (${before:-no backup})" \
+        inside test -s "${before:-/nonexistent}"
+    api GET '/items?include_archived=true&include_drafts=true&limit=1'
+    items_before=$(json_field total)
+
+    for name in "${load_order[@]}"; do
+        entity=${name//-/_}
+        rows=$(table 'len(rows)' "examples/$name.csv")
+        send "/imports/preview?entity=$entity&file_name=$name.csv" "examples/$name.csv"
+        expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows is to be created" \
+            "$status $(job_counts)" "201 [\"previewed\", $rows, $rows, 0, 0, 0]"
+        hid=$(json 'd["job"]["hid"]')
+        api POST "/imports/$hid/apply"
+        expect "S12 POST $prefix/api/v1/imports/{hid}/apply creates the $rows" \
+            "$status $(job_counts)" "200 [\"applied\", $rows, $rows, 0, 0, 0]"
+    done
+    item_rows=$(table 'len(rows)' examples/items.csv)
+    api GET '/items?include_archived=true&include_drafts=true&limit=1'
+    expect "S12 the item list holds the $item_rows items of the examples, beside the $items_before there were" \
+        "$status $(json_field total)" "200 $((items_before + item_rows))"
+
+    for name in "${load_order[@]}"; do
+        entity=${name//-/_}
+        rows=$(table 'len(rows)' "examples/$name.csv")
+        send "/imports/preview?entity=$entity&file_name=$name.csv" "examples/$name.csv"
+        expect "S13 examples/$name.csv a second time: each of its $rows rows finds its record unchanged" \
+            "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+        hid=$(json 'd["job"]["hid"]')
+        # A JSON file names its entity in its envelope, so the URL leaves it out.
+        send "/imports/preview?file_name=$name.json" "examples/$name.json" application/json
+        expect "S13 and examples/$name.json, the same records as JSON: unchanged as well" \
+            "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+    done
+    api POST "/imports/$hid/apply"
+    expect "S13 applied, the second import of examples/items.csv changes nothing" \
+        "$status $(job_counts)" "200 [\"applied\", $item_rows, 0, 0, $item_rows, 0]"
+
+    # A filtered export. What it must hold is read from examples/items.csv, with the
+    # same filter written in Python.
+    filter='lifecycle_state:eq:Prod catalog.pid:glob:C93*'
+    wanted=$(table '[r["hostname"] for r in sorted(rows, key=lambda r: r["hostname"]) if r["lifecycle_state"] == "Prod" and r["pid"].startswith("C93")]' examples/items.csv)
+    expect "pkg the examples hold items for that filter to find, and others for it to leave out" \
+        "$(table '0 < len([r for r in rows if r["lifecycle_state"] == "Prod" and r["pid"].startswith("C93")]) < len(rows)' examples/items.csv)" true
+    api POST /exports "$(export_request csv "$filter")"
+    expect "S16 POST $prefix/api/v1/exports as CSV, items in Prod of a model like C93*, by host name: the rows the examples have for it" \
+        "$status $(table '[r["hostname"] for r in rows]')" "200 $wanted"
+    expect "S16 it comes as a CSV file to keep" \
+        "$(header content-type | cut -d';' -f1) $(header content-disposition | grep -c '^attachment; filename=".*\.csv"$')" "text/csv 1"
+    expect "S16 hid is its first column, and every row has an HID of its own" \
+        "$(table '[head[0], len({r["hid"] for r in rows if r["hid"]}) == len(rows)]')" '["hid", true]'
+    cp "$work/body" "$work/export.csv"
+    exported=$(table '[r["hid"] for r in rows]' "$work/export.csv")
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$filter" --data-urlencode 'sort=hostname'
+    expect "S16 and they are the items that the list gives for the same filter, in the same order" \
+        "$status $(json '[i["hid"] for i in d["items"]]')" "200 $exported"
+    api POST /exports "$(export_request json "$filter" hostname serial_number)"
+    expect "S16 the same export as JSON with two columns named: the envelope of an import, and hid first in every record" \
+        "$status $(header content-type | cut -d';' -f1) $(json '[d["schema"], d["entity"], sorted({tuple(r) for r in d["records"]})]')" \
+        '200 application/json ["hirdir/1", "items", [["hid", "hostname", "serial_number"]]]'
+    expect "S16 with the same items in the same order" "$(json '[r["hid"] for r in d["records"]]')" "$exported"
+
+    # The form of an export that is made to be imported back: the values the records
+    # hold themselves, and each row with its HID.
+    api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_archived": true, "include_drafts": true}'
+    cp "$work/body" "$work/round-trip.csv"
+    rows=$(table 'len(rows)' "$work/round-trip.csv")
+    check "pkg an export of every item with its own values, the archived one and the draft among them, holds the $item_rows of the examples ($rows rows)" \
+        test "$rows" -ge "$item_rows"
+    send "/imports/preview?entity=items&file_name=round-trip.csv" "$work/round-trip.csv"
+    expect "pkg imported back as it is, every row finds its record by HID, unchanged" \
+        "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+
+    # nginx refuses a body of more than a megabyte unless it is told otherwise, and the
+    # snippet of the package tells it: client_max_body_size 20m.
+    large_file "$work/large.csv" Cisco C9300-48P
+    check "pkg a file of $large_rows items is written that is larger than 1 MB ($(megabytes "$work/large.csv"))" \
+        test "$(stat -c %s "$work/large.csv")" -gt 1048576
+    send "/imports/preview?entity=items&file_name=large.csv" "$work/large.csv"
+    expect "pkg nginx lets it through under $prefix/, and it is previewed: $large_rows items to create" \
+        "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
+    hid=$(json 'd["job"]["hid"]')
+    authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
+    expect "pkg and applied, with an Idempotency-Key" \
+        "$status $(job_counts)" "200 [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
+    authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
+    expect "pkg sent again with the same key, the apply is answered with the first answer and marked as replayed" \
+        "$status $(header idempotency-replayed) $(job_counts)" "200 true [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-sw-*' --data-urlencode 'limit=1'
+    expect "pkg and the $large_rows items are there once" "$status $(json_field total)" "200 $large_rows"
+
+    limit_files
+    limit=$((20 * 1024 * 1024))
+    send '/imports/preview?entity=tags' "$work/at-the-limit.csv"
+    expect "pkg a body of exactly 20 MB passes nginx and is answered by hirdir, which refuses the file for its unknown column" \
+        "$status $(header content-type) $(json 'd["errors"][0]["field"]')" "422 application/problem+json column"
+    send '/imports/preview?entity=tags' "$work/over-the-limit.csv"
+    expect "pkg a body of 20 MB and one byte is refused by nginx: a 413 with the page of nginx, which is not a problem document and has no request ID of hirdir" \
+        "$status $(header content-type) request-id:$(header x-request-id)" "413 text/html request-id:"
+    expect "pkg sent straight to the service, past nginx, a body of that size is refused by hirdir itself: a 413 that is a problem document" \
+        "$(past_nginx $((limit + 1)))" "413 application/problem+json"
+    send '/imports/preview?entity=tags' "$work/too-many-rows.csv"
+    expect "pkg a file of 100,001 rows, which nginx takes, is refused by hirdir with its own 413, and nginx passes that on as it is" \
+        "$status $(header content-type) $(json_field title)" "413 application/problem+json Too large"
+    check "pkg with the request ID that every answer of hirdir carries" test -n "$(header x-request-id)"
+
+    client_commands
+
+    check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
+    check "pkg hirdir admin restore of the backup taken before the examples were imported" \
+        inside hirdir admin restore "${before:-/nonexistent}"
+    check "pkg systemctl start hirdir" inside systemctl start hirdir.service
+    if wait_ready; then
+        pass "pkg hirdir answers again through nginx"
+    else
+        fail "pkg hirdir answers again through nginx (got $status)"
+    fi
+    api GET '/items?include_archived=true&include_drafts=true&limit=1'
+    expect "pkg and the item list is as it was before the examples, for the checks that follow" \
+        "$status $(json_field total)" "200 $items_before"
+    api GET /tags
+    expect "pkg with no tag left of those the examples brought" "$status $(json 'len(d)')" "200 0"
+}
+
+# ---- the client commands ----------------------------------------------------------------
+
+# THE CHECKS OF THE CLIENT COMMANDS GO HERE.
+#
+# hirdir import, hirdir export and hirdir items were being written when the checks of
+# import and export above were, and were not in the tree. So files() drives the API with
+# curl, and nothing in this script runs a client command of 0.3.0. What belongs here,
+# run in the container with HIRDIR_URL=https://127.0.0.1$prefix and HIRDIR_TOKEN, before
+# files() puts the backup back:
+#
+#   S12, S13   "hirdir import FILE --entity NAME" previews and changes nothing, and with
+#              "--apply" loads: the same counts as POST /imports/preview and apply give
+#   S16        "hirdir export items --filter ... --format csv" and "--format json" hold
+#              the rows and the columns that POST /exports gives for the same filter,
+#              each with hid first
+#   also       "hirdir items list --filter ...", "hirdir items show", "hirdir items set
+#              ... --apply", and the exit codes of docs/interfaces.md: 4 for a rejected
+#              row, 5 for a preview that is out of date
+#
+# Until they are written this prints one SKIP line in each pass that comes here, so that
+# no run reads as if the command line had been tested.
+client_commands() {
+    if inside hirdir import --help >/dev/null 2>&1; then
+        skip "S16 hirdir import, hirdir export and hirdir items, run against the installed package: this package has the commands, and the checks of them are not written yet. Import and export were tested through the API alone. The checks go in client_commands() of $self"
+    else
+        skip "S16 hirdir import, hirdir export and hirdir items, run against the installed package: the hirdir of this package has no import command, so the client commands of $version are not in it. Import and export were tested through the API alone. The checks go in client_commands() of $self"
+    fi
 }
 
 # ---- the inventory ------------------------------------------------------------------------
@@ -1353,8 +1754,8 @@ SITE
     fi
     check "pkg hirdir-setup --prefix /hirdir --yes puts the packaged prefix back" \
         inside hirdir-setup --prefix /hirdir --yes
-    check "pkg the snippet is again as the package installed it" \
-        inside bash -c 'dpkg --verify hirdir | grep -q snippets/hirdir.conf; test $? -eq 1'
+    check "pkg the snippet is again as the package ships it" \
+        inside cmp /etc/nginx/snippets/hirdir.conf /usr/share/hirdir/nginx/snippet.conf
     prefix=/hirdir
 
     # A site that hirdir cannot be added to: it has the same location already.
@@ -1392,7 +1793,8 @@ purge() {
         fail "S01 the package purges"
         tail -n 20 "$work/apt.log"
     fi
-    for path in /opt/hirdir /var/lib/hirdir /etc/hirdir /usr/bin/hirdir /etc/nginx/snippets/hirdir.conf; do
+    for path in /opt/hirdir /var/lib/hirdir /etc/hirdir /usr/bin/hirdir /etc/nginx/snippets/hirdir.conf \
+        /etc/nginx/conf.d/hirdir.conf /usr/share/hirdir /usr/share/doc/hirdir; do
         check "S01 the purge leaves no $path" inside test ! -e "$path"
     done
     check "S01 the purge leaves no hirdir user" bash -c "! docker exec '$container' getent passwd hirdir"
@@ -1440,6 +1842,7 @@ else
     installed
     setup
     through_nginx
+    files
     inventory
     reinstall
     state

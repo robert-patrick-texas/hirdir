@@ -1,6 +1,7 @@
 """The parsing and editing that hirdir-setup does, without nginx or a host to change."""
 
 import re
+import subprocess
 from pathlib import Path
 
 import hirdir_setup as setup
@@ -305,3 +306,239 @@ def test_purging_the_package_finds_what_hirdir_setup_wrote() -> None:
     assert setup.SELF_SIGNED_MARK.rstrip(".") in postrm
     assert str(setup.SELF_SIGNED_SITE) in postrm
     assert str(setup.SELF_SIGNED_DIR).startswith("/etc/hirdir/")
+    # The snippet is written by postinst and is no conffile, so postrm removes it.
+    assert f"rm -f {setup.SNIPPET}\n" in postrm
+
+
+# --- the snippet at an install and at an upgrade ---------------------------------------
+
+# The snippets of earlier versions, each named for the last version that shipped it.
+EARLIER = sorted((PACKAGING / "tests" / "snippets").glob("*.conf"))
+# The snippet this version ships, by the hash hirdir-setup knows a snippet by. When
+# packaging/nginx/snippet.conf changes, three things go together: the text it had is
+# kept in packaging/tests/snippets/ under the last version that shipped it, this value
+# is added to SHIPPED_BEFORE in hirdir_setup.py, and the new value is written here.
+# Without the first two, an upgrade would take the snippet of a host for one edited by
+# hand and leave it as it was.
+SHIPPED_NOW = "d15e6122c83438ceaae535e5af86611aa0364a6756d94e4eb115a73387590735"
+
+
+def test_a_changed_snippet_is_not_shipped_without_remembering_the_one_before() -> None:
+    assert setup.body_hash(SNIPPET) == SHIPPED_NOW, "see the comment on SHIPPED_NOW"
+    assert SHIPPED_NOW not in setup.SHIPPED_BEFORE
+    kept = {setup.body_hash(path.read_text(encoding="utf-8")) for path in EARLIER}
+    assert kept == set(setup.SHIPPED_BEFORE)
+
+
+def test_the_body_of_a_snippet_is_the_same_under_every_prefix() -> None:
+    assert len(setup.body(SNIPPET).splitlines()) == len(SNIPPET.splitlines()) - 3
+    for prefix in ("/inventory", "/tools/inventory", "/"):
+        assert setup.body(setup.with_prefix(SNIPPET, prefix)) == setup.body(SNIPPET)
+
+
+@pytest.mark.parametrize("prefix", ["/hirdir", "/inventory", "/tools/inventory", "/"])
+@pytest.mark.parametrize("earlier", EARLIER, ids=lambda path: path.stem)
+def test_the_snippet_of_an_earlier_version_is_renewed_under_the_prefix_it_has(
+    earlier: Path, prefix: str
+) -> None:
+    before = setup.with_prefix(earlier.read_text(encoding="utf-8"), prefix)
+    after = setup.renewed(before, SNIPPET)
+    assert after == setup.with_prefix(SNIPPET, prefix)
+    assert setup.snippet_prefix(after) == prefix
+    assert "client_max_body_size" not in before
+    assert "client_max_body_size 20m;" in after
+    # Renewed a second time, it is left as it is.
+    assert setup.renewed(after, SNIPPET) == after
+
+
+def test_with_no_snippet_on_the_host_the_shipped_one_is_written() -> None:
+    assert setup.renewed(None, SNIPPET) == SNIPPET
+    assert setup.renewed(None, SNIPPET, "/inventory/") == setup.with_prefix(SNIPPET, "/inventory")
+
+
+def test_a_prefix_given_with_renew_takes_the_place_of_the_one_the_snippet_has() -> None:
+    before = setup.with_prefix(EARLIER[0].read_text(encoding="utf-8"), "/inventory")
+    assert setup.renewed(before, SNIPPET, "/tools") == setup.with_prefix(SNIPPET, "/tools")
+
+
+@pytest.mark.parametrize("source", [SNIPPET, *(path.read_text("utf-8") for path in EARLIER)])
+def test_a_snippet_edited_by_hand_is_left_as_it_is(source: str) -> None:
+    edited = setup.with_prefix(source, "/inventory").replace(
+        "    proxy_set_header Host", "    proxy_read_timeout 300s;\n    proxy_set_header Host"
+    )
+    assert edited != setup.with_prefix(source, "/inventory")
+    with pytest.raises(setup.SetupError, match="left as it is") as refused:
+        setup.renewed(edited, SNIPPET)
+    assert str(setup.TEMPLATE) in str(refused.value)
+
+
+class Host:
+    """A host for --renew: the two files in a directory of the test, and an nginx that
+    answers as the test says. No command is run."""
+
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.snippet = tmp_path / "etc" / "nginx" / "snippets" / "hirdir.conf"
+        self.template = tmp_path / "share" / "snippet.conf"
+        self.template.parent.mkdir(parents=True)
+        self.template.write_text(SNIPPET, encoding="utf-8")
+        self.nginx = tmp_path / "nginx"
+        self.site = str(tmp_path / "etc" / "nginx" / "site")
+        self.includes = True  # Whether a site includes the snippet.
+        self.loads = True  # Whether nginx accepts its configuration before the change.
+        self.accepts = True  # Whether it accepts it afterwards.
+        self.commands: list[list[str]] = []
+        monkeypatch.setattr(setup, "SNIPPET", self.snippet)
+        monkeypatch.setattr(setup, "TEMPLATE", self.template)
+        monkeypatch.setattr(setup, "NGINX", str(self.nginx))
+        monkeypatch.setattr(setup, "_run", self.run)
+
+    def install_nginx(self) -> None:
+        self.nginx.write_text("", encoding="utf-8")
+
+    def run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+        self.commands.append(command)
+        code, out, err = 0, "", ""
+        if command == [str(self.nginx), "-T"]:
+            files = {self.site: TLS_SITE}
+            if self.includes and self.snippet.is_file():
+                files[str(self.snippet)] = self.snippet.read_text(encoding="utf-8")
+            out = dump(files)
+            code = 0 if self.loads else 1
+        elif command == [str(self.nginx), "-t"]:
+            code, err = (0, "") if self.accepts else (1, "nginx: [emerg] unknown directive")
+        return subprocess.CompletedProcess(command, code, out, err)
+
+    def renew(self, *options: str) -> int:
+        return setup._renew(setup._arguments(["--renew", "--yes", *options]))
+
+    def reloaded(self) -> bool:
+        return any("reload" in command for command in self.commands)
+
+
+@pytest.fixture
+def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Host:
+    return Host(tmp_path, monkeypatch)
+
+
+def test_renew_writes_the_snippet_on_a_host_without_nginx(
+    host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert host.renew() == 0
+    assert host.snippet.read_text(encoding="utf-8") == SNIPPET
+    assert host.snippet.stat().st_mode & 0o777 == 0o644
+    assert "nginx is not installed" in capsys.readouterr().out
+    assert host.commands == []
+
+    assert host.renew() == 0
+    assert capsys.readouterr().out.startswith("Nothing to change: ")
+
+
+def test_renew_keeps_the_prefix_and_reloads_nginx_when_a_site_includes_the_snippet(
+    host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    host.install_nginx()
+    host.snippet.parent.mkdir(parents=True)
+    before = setup.with_prefix(EARLIER[0].read_text(encoding="utf-8"), "/inventory")
+    host.snippet.write_text(before, encoding="utf-8")
+
+    assert host.renew() == 0
+    assert host.snippet.read_text(encoding="utf-8") == setup.with_prefix(SNIPPET, "/inventory")
+    shown = capsys.readouterr().out
+    assert "+    client_max_body_size 20m;" in shown
+    last = shown.splitlines()[-1]
+    assert last.startswith(f"{host.snippet} is now as this version of hirdir ships it, for ")
+    assert "for /inventory/. " in last
+    assert host.reloaded()
+
+
+def test_renew_leaves_the_reload_to_the_package_when_told_to(
+    host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    host.install_nginx()
+    host.snippet.parent.mkdir(parents=True)
+    host.snippet.write_text(EARLIER[0].read_text(encoding="utf-8"), encoding="utf-8")
+
+    assert host.renew("--no-reload") == 0
+    assert host.snippet.read_text(encoding="utf-8") == SNIPPET
+    # postinst prints this line, and says itself whether it had nginx reload.
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        f"{host.snippet} is now as this version of hirdir ships it, for /hirdir/."
+    )
+    assert [command[1:] for command in host.commands] == [["-T"], ["-t"]]
+    assert not host.reloaded()
+
+
+def test_renew_reloads_nothing_when_no_site_includes_the_snippet(
+    host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    host.install_nginx()
+    host.includes = False
+
+    assert host.renew() == 0
+    assert host.snippet.read_text(encoding="utf-8") == SNIPPET
+    assert "No site includes it yet" in capsys.readouterr().out
+    assert not host.reloaded()
+
+
+def test_renew_puts_the_snippet_back_when_nginx_refuses_the_new_one(host: Host) -> None:
+    host.install_nginx()
+    host.accepts = False
+    host.snippet.parent.mkdir(parents=True)
+    before = setup.with_prefix(EARLIER[0].read_text(encoding="utf-8"), "/inventory")
+    host.snippet.write_text(before, encoding="utf-8")
+
+    with pytest.raises(setup.SetupError, match="every file was put back"):
+        host.renew()
+    assert host.snippet.read_text(encoding="utf-8") == before
+    assert not host.reloaded()
+
+
+def test_renew_leaves_the_snippet_when_nginx_is_already_out_of_order(host: Host) -> None:
+    host.install_nginx()
+    host.loads = False
+    host.snippet.parent.mkdir(parents=True)
+    before = EARLIER[0].read_text(encoding="utf-8")
+    host.snippet.write_text(before, encoding="utf-8")
+
+    with pytest.raises(setup.SetupError, match="does not accept its configuration"):
+        host.renew()
+    assert host.snippet.read_text(encoding="utf-8") == before
+
+
+def test_renew_still_writes_a_first_snippet_when_nginx_is_out_of_order(host: Host) -> None:
+    host.install_nginx()
+    host.loads = False
+
+    assert host.renew() == 0
+    assert host.snippet.read_text(encoding="utf-8") == SNIPPET
+    assert not host.reloaded()
+
+
+def test_renew_leaves_a_snippet_edited_by_hand_and_says_where_the_shipped_one_is(
+    host: Host,
+) -> None:
+    host.install_nginx()
+    host.snippet.parent.mkdir(parents=True)
+    edited = SNIPPET.replace("client_max_body_size 20m;", "client_max_body_size 5m;")
+    host.snippet.write_text(edited, encoding="utf-8")
+
+    with pytest.raises(setup.SetupError, match="left as it is") as refused:
+        host.renew()
+    assert str(host.template) in str(refused.value)
+    assert host.snippet.read_text(encoding="utf-8") == edited
+    assert host.commands == []
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--renew", "--site", "/etc/nginx/sites-enabled/example"],
+        ["--renew", "--self-signed"],
+        ["--renew", "--remove"],
+        ["--no-reload"],
+        ["--no-reload", "--prefix", "/inventory"],
+    ],
+)
+def test_options_that_do_not_go_together_are_refused(options: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        setup._arguments(options)

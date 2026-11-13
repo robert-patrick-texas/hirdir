@@ -7,10 +7,13 @@ from pathlib import Path
 import hirdir_setup as setup
 
 from hirdir import config
+from hirdir.io import files
 
 PACKAGING = Path(__file__).resolve().parents[1]
 ROOT = PACKAGING.parent
 ARCHITECTURE = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+INSTALL = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+MB = 1024 * 1024
 
 
 def shape(directive: setup.Directive) -> tuple:
@@ -20,11 +23,57 @@ def shape(directive: setup.Directive) -> tuple:
 
 
 def test_the_snippet_holds_the_location_block_of_the_architecture_page() -> None:
+    """The block under "URL prefix", and the upload limit that "Package" tells of.
+
+    The block shows what the prefix needs. It may show the upload limit as well, and
+    nothing else may be in the snippet that the page does not tell of.
+    """
     documented = re.search(r"```nginx\n(.*?)```", ARCHITECTURE, re.DOTALL)
     assert documented is not None
     (wanted,) = setup.parse(documented.group(1))
     packaged = setup.parse((PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8"))
-    assert shape(wanted) in [shape(directive) for directive in packaged]
+    location = next(d for d in packaged if d.args == ["^~", "/hirdir/"])
+    assert shape(location)[:2] == shape(wanted)[:2]
+    assert set(shape(wanted)[2]) <= set(shape(location)[2])
+    upload_limit = ("client_max_body_size", ("20m",), ())
+    assert upload_limit in shape(location)[2]
+    assert set(shape(location)[2]) - set(shape(wanted)[2]) <= {upload_limit}
+    assert "`client_max_body_size 20m;`" in ARCHITECTURE
+
+
+def test_nginx_takes_a_body_as_large_as_an_import_may_be_and_no_larger() -> None:
+    """The limit of the snippet is the limit of the application, which is where the rule is."""
+    packaged = setup.parse((PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8"))
+    location = next(d for d in packaged if d.args == ["^~", "/hirdir/"])
+    assert location.block is not None
+    (limit,) = [d.args for d in location.block if d.name == "client_max_body_size"]
+    assert files.MAX_BYTES % MB == 0
+    assert limit == [f"{files.MAX_BYTES // MB}m"]
+    # The install page tells an operator the same number.
+    assert f"{files.MAX_BYTES // MB} MB" in INSTALL
+
+
+def test_the_snippet_is_shipped_as_a_template_that_postinst_writes_out() -> None:
+    """It is no conffile: dpkg would ask about one whose prefix hirdir-setup has changed."""
+    build = (PACKAGING / "container" / "build.sh").read_text(encoding="utf-8")
+    assert f'packaging/nginx/snippet.conf "$STAGE{setup.TEMPLATE}"\n' in build
+    # Every file the build stages under /etc is made a conffile, so this one is not staged.
+    assert "(cd \"$STAGE\" && find etc -type f | sed 's|^|/|'" in build
+    assert f"$STAGE{setup.SNIPPET}" not in build
+    assert f'install -d "$STAGE{setup.SNIPPET.parent}"\n' in build
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    assert f"\nSNIPPET={setup.SNIPPET}\n" in postinst
+    assert "$(hirdir-setup --renew --no-reload --yes)" in postinst
+
+
+def test_the_examples_are_shipped_where_the_install_page_says() -> None:
+    build = (PACKAGING / "container" / "build.sh").read_text(encoding="utf-8")
+    assert "local doc=$STAGE/usr/share/doc/hirdir\n" in build
+    assert 'install -Dm644 -t "$doc/examples" "${examples[@]}"\n' in build
+    assert "/usr/share/doc/hirdir/examples/" in INSTALL
+    for name in ("tags", "vendors", "catalog-entries", "owners", "items"):
+        assert (ROOT / "examples" / f"{name}.csv").is_file()
+        assert (ROOT / "examples" / f"{name}.json").is_file()
 
 
 def test_the_snippet_redirects_the_prefix_without_its_slash() -> None:
@@ -89,6 +138,42 @@ def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() ->
     assert f"sudo hirdir admin restore {backup}\n" in install
 
 
+def test_the_install_page_shows_what_an_upgrade_says_of_the_nginx_snippet() -> None:
+    """Both messages of docs/install.md are those the package prints, word for word."""
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    shipped = (PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8")
+    setup_source = (PACKAGING / "hirdir_setup.py").read_text(encoding="utf-8")
+
+    # A snippet that the upgrade wrote again: the last line of hirdir-setup --renew
+    # --no-reload, and what postinst adds when it had nginx reload.
+    assert 'done = f"{SNIPPET} is now as this version of hirdir ships it, for {where}."' in (
+        setup_source
+    )
+    assert 'reloaded=" nginx was reloaded."' in postinst
+    assert 'echo "hirdir: $(printf \'%s\\n\' "$renewed" | tail -n 1)$reloaded"' in postinst
+    said = (
+        f"`hirdir: {setup.SNIPPET} is now as this version of hirdir ships it, for /hirdir/. "
+        "nginx was reloaded.`"
+    )
+    assert said in " ".join(INSTALL.split())
+
+    # A snippet edited by hand: what hirdir-setup says, then what postinst adds.
+    edited = shipped.replace("client_max_body_size 20m;", "client_max_body_size 5m;")
+    try:
+        setup.renewed(edited, shipped)
+    except setup.SetupError as error:
+        refused = f"hirdir-setup: {error}"
+    else:
+        raise AssertionError("a snippet edited by hand was taken for a shipped one")
+    function = postinst[postinst.index("renew_snippet() {") :]
+    function = function[: function.index("return 0")]
+    printed = re.findall(r'^\s*echo "(hirdir: .*)" >&2$', function, re.M)
+    assert len(printed) == 3
+    message = "\n".join([refused, *printed]).replace("$SNIPPET", str(setup.SNIPPET))
+    assert "$" not in message
+    assert f"```text\n{message}\n```" in INSTALL
+
+
 def test_an_upgrade_backs_up_before_it_migrates_and_restarts_after() -> None:
     """The order the architecture and install pages give: stop, back up, migrate, start."""
     postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
@@ -96,6 +181,9 @@ def test_an_upgrade_backs_up_before_it_migrates_and_restarts_after() -> None:
         "deb-systemd-invoke stop hirdir.service",
         '"$HIRDIR" admin backup',
         '"$HIRDIR" admin migrate',
+        # The nginx snippet only once the migration is done: an upgrade that stops
+        # there has changed nothing of nginx's.
+        'renew_snippet "$2"',
         'deb-systemd-invoke "$action" $UNITS',
     ]
     places = [postinst.index(step) for step in steps]

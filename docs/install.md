@@ -14,7 +14,7 @@ behind these steps is in [architecture.md](architecture.md).
 ## Install
 
 ```bash
-sudo apt install ./hirdir_0.2.1_amd64.deb
+sudo apt install ./hirdir_0.3.0_amd64.deb
 ```
 
 This creates the `hirdir` user, the state directory `/var/lib/hirdir`, the database and
@@ -51,11 +51,34 @@ TLS, shows the one line it will add to the site you choose, checks the result wi
 | `--prefix /inventory` | Serve under another prefix. `/` serves at the root of the site |
 | `--yes` | Ask nothing |
 | `--remove` | Take `hirdir` out of the site again |
+| `--renew` | Write the nginx snippet again as this version ships it, under the prefix it has. The package does this itself at install and at each upgrade |
 | `--self-signed` | Create a site with a throwaway certificate. For test containers only |
 
 The prefix lives in one file, `/etc/nginx/snippets/hirdir.conf`. Running
 `sudo hirdir-setup --prefix /inventory` again later moves `hirdir` and needs no
 restart of the service.
+
+That file is written by the package and by `hirdir-setup`, from
+`/usr/share/hirdir/nginx/snippet.conf`. Change the prefix in it with `hirdir-setup`
+and leave the rest as it is: an upgrade writes the file again as the new version ships
+it and keeps the prefix, but a file that was changed by hand in anything else is left
+alone, and then lacks whatever the new version added.
+
+### Uploads
+
+An import sends its file through nginx as the body of a request. `hirdir` takes a file
+of up to 20 MB, and the snippet tells nginx to let that much through, where nginx left
+to itself stops at 1 MB:
+
+```nginx
+client_max_body_size 20m;
+```
+
+A larger file is refused by nginx, with `413 Request Entity Too Large` and a page of
+its own, and never reaches `hirdir`. If a load balancer or another proxy stands in
+front of nginx, it has to let 20 MB through as well. When an import of a file between 1
+and 20 MB is answered with that page, the snippet is not the one this version ships:
+`sudo hirdir-setup --renew` says why and puts it right.
 
 ## Sign in
 
@@ -113,6 +136,47 @@ The routes and the filter grammar are on the [interfaces](interfaces.md) page. T
 `hirdir` command reads the same token from `HIRDIR_TOKEN`, and the server from
 `HIRDIR_URL`.
 
+## Try it with the examples
+
+The package carries a small, fictional inventory in `/usr/share/doc/hirdir/examples/`:
+one file for each kind of record, as CSV and as JSON, the same records in both. They
+are the files of [Examples](../examples/README.md). Use them to try an import, and take
+the columns from them for a file of your own.
+
+**Load them into an installation you can throw away.** Nothing is deleted from an
+inventory, so the only way to be rid of the examples again is a backup taken before
+they were loaded. On an installation that is to be kept, run `sudo hirdir admin backup`
+first, and put that backup back afterwards as [Backup and restore](#backup-and-restore)
+has it.
+
+Sign in as a user who holds Inventory or Admin, then load the files in this order,
+because a record names the ones it refers to:
+
+```bash
+cd /usr/share/doc/hirdir
+hirdir import examples/tags.csv --entity tags --apply
+hirdir import examples/vendors.csv --entity vendors --apply
+hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
+hirdir import examples/owners.csv --entity owners --apply
+hirdir import examples/items.csv --entity items --apply
+```
+
+Without `--apply` a command shows what the file would do and changes nothing. Loaded a
+second time, every row is `unchanged`.
+
+A script sends a file straight to the API, with a token whose service account holds
+Inventory. The file is the body of the request:
+
+```bash
+curl -H "Authorization: Bearer $HIRDIR_TOKEN" -H 'Content-Type: text/csv' \
+    --data-binary @/usr/share/doc/hirdir/examples/tags.csv \
+    'https://inventory.example.net/hirdir/api/v1/imports/preview?entity=tags'
+```
+
+The answer is the preview: what each row would do, and the HID of the stored job.
+`POST /api/v1/imports/<that HID>/apply` then loads it. The rules of an import are under
+"Import and export" on the [interfaces](interfaces.md#import-and-export) page.
+
 ## Configuration
 
 `/etc/hirdir/config.toml`. Every key is optional and is shown there commented out with
@@ -156,7 +220,7 @@ curl -s http://127.0.0.1:8715/api/v1/health/ready
 sudo apt install ./hirdir_<new version>_amd64.deb
 ```
 
-The upgrade does four things, in this order:
+The upgrade does five things, in this order:
 
 1. It stops the service, so that nothing writes to the database while its schema
    changes.
@@ -164,16 +228,32 @@ The upgrade does four things, in this order:
    `hirdir: the database as it was before this upgrade is kept at
    /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db`.
 3. It applies the schema changes of the new version.
-4. It starts the service again.
+4. It writes `/etc/nginx/snippets/hirdir.conf` again as the new version ships it, under
+   the prefix the file has. When that changes the file, it reloads nginx and says so:
+   `hirdir: /etc/nginx/snippets/hirdir.conf is now as this version of hirdir ships it,
+   for /hirdir/. nginx was reloaded.`
+5. It starts the service again.
 
 It keeps every account, user group, role grant, service token and audit event, so
 access codes and service tokens go on working. It keeps the key that signs sessions,
 so people who are signed in stay signed in, with the session they have. It leaves
-`/etc/hirdir/config.toml` and the two nginx files as you have them, so `hirdir` stays
-under the prefix it had and `hirdir-setup` is not run again.
+`/etc/hirdir/config.toml` and `/etc/nginx/conf.d/hirdir.conf` as you have them, and
+the site that includes the snippet. `hirdir` stays under the prefix it had, and
+`hirdir-setup` is not run again.
 
-Installing the version that is already installed does the same four things and changes
-nothing in the database.
+Step 4 is checked with `nginx -t` before nginx is reloaded, and the snippet is put back
+as it was when nginx objects. A snippet that was changed by hand in more than its
+prefix is not written again. The upgrade goes on and says so:
+
+```text
+hirdir-setup: /etc/nginx/snippets/hirdir.conf differs from what hirdir ships in more than its prefix, so it is left as it is. This version ships /usr/share/hirdir/nginx/snippet.conf: bring over by hand what is new there, then run: sudo nginx -t && sudo systemctl reload nginx
+hirdir: /etc/nginx/snippets/hirdir.conf was left as it was, for the reason given above.
+hirdir: nginx refuses an import of more than 1 MB until it is as this version
+hirdir: ships it. With the cause put right, run: sudo hirdir-setup --renew
+```
+
+Installing the version that is already installed does the same five things and changes
+nothing in the database or in the snippet.
 
 Afterwards, `sudo hirdir admin check` names the schema revision the database is at and
 the one this version expects, and exits with an error when they differ.
@@ -200,6 +280,31 @@ Every time is now shown in one time zone, the same for everybody: the `time_zone
 setting, which is America/New_York until an Admin changes it under Admin, Settings.
 Backups are named in that zone from now on. Those that 0.2.0 made keep their names and
 their place in the order.
+
+### From 0.2.1 to 0.3.0
+
+The schema goes from revision `0003` to `0004`. Three tables are added: `import_jobs`
+and `import_rows`, which hold the previews of imports and bulk edits, and
+`idempotency_keys`, which holds the answers to requests that may be sent twice. A
+vendor gains `review_status`, as a catalog entry has, and every vendor there is so far
+is `reviewed`. Nothing else that 0.2.1 stored is changed.
+
+nginx now lets a file of up to 20 MB through to `hirdir`, for imports: see
+[Uploads](#uploads). The line that does it is new in `/etc/nginx/snippets/hirdir.conf`,
+which this upgrade writes again and keeps under the prefix it had, and nginx is
+reloaded. Up to 0.2.1 that file was a conffile of the package. It no longer is,
+because `hirdir-setup --prefix` changes it, and apt would have stopped this upgrade to
+ask about every such file. As it is, apt asks nothing. `dpkg --status hirdir` lists the
+file as `obsolete` from now on, and that is as it should be.
+
+The package now carries the files of `examples/` in
+`/usr/share/doc/hirdir/examples/`: see
+[Try it with the examples](#try-it-with-the-examples).
+
+Going back to 0.2.1 is as under
+[Going back to the release before](#going-back-to-the-release-before). The backup of
+this upgrade is at revision `0003`. The snippet stays as 0.3.0 wrote it, which 0.2.1
+serves under just as well, and apt asks nothing about it.
 
 ### If the upgrade stops
 
@@ -257,5 +362,6 @@ sudo apt remove hirdir        # keeps /var/lib/hirdir and /etc/hirdir
 sudo apt purge hirdir         # removes them, and the hirdir user
 ```
 
-A purge also takes the `include` line out of the nginx site if it is still there, so
-that nginx is never left pointing at a snippet that no longer exists.
+A purge also removes `/etc/nginx/snippets/hirdir.conf`, and takes the `include` line
+out of the nginx site if it is still there, so that nginx is never left pointing at a
+snippet that no longer exists.

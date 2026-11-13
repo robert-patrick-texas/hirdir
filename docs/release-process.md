@@ -44,10 +44,13 @@ A hold is never left in place silently.
 3. `make check`, `make acceptance`, `make docs`, `make deb`, `make e2e`. The last installs
    the package in containers and runs every package check, the upgrade from the
    previous release among them, and the browser scenarios; `make package-test` is the
-   same without the browser. See "The previous release's package" below.
+   same without the browser. See "The previous release's package" below. `make deb`
+   builds the web UI and the documentation first, because the package carries both.
 4. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
    template below.
-5. `make docs`, and read the built pages once.
+5. `make docs`, and read the built pages once. Then `make deb` and `make package-test`
+   once more: the package carries the notes of its own release, so the one that is
+   published is built after they are written, and it is the one that was tested.
 6. Commit, tag `v<version>`, push.
 7. `gh release create v<version> --notes-file docs/releases/v<version>.md` with
    `dist/hirdir_<version>_amd64.deb` and `dist/hirdir_<version>_amd64.deb.sha256`
@@ -59,10 +62,16 @@ Pushing to `main` publishes the documentation. Nothing else is automatic.
 
 A release is not done until `make package-test` has upgraded the previous release to
 it. The test installs the previous release in a container, fills it with accounts, a
-group, a role grant, a service token and audit events, upgrades it with apt, and checks
-that all of it is still there and still works. It also makes the new version's
-migration fail, to see that the upgrade stops, names its backup and can be undone. The
-passes are described under "Testing" in [architecture.md](architecture.md#testing).
+group, a role grant, a service token, a vendor with a catalog entry and an item, and
+audit events, upgrades it with apt, and checks that all of it is still there and still
+works. It also makes the new version's migration fail, to see that the upgrade stops,
+names its backup and can be undone. It does that by putting a table in the way of one
+the new version creates, so a release that creates no table skips that pass and says
+so. The passes are described under "Testing" in
+[architecture.md](architecture.md#testing).
+
+The run ends with its counts and with every `FAIL` and `SKIP` line once more. Read each
+`SKIP` line before a release: it names something that this run did not test.
 
 The previous package is found in this order:
 
@@ -139,7 +148,8 @@ Rules for the notes:
 language's code lines into three columns by path: Product (`src/`, `web/`,
 `packaging/` files that are installed), Tests (`tests/`, `web/**/*.test.*`) and Tooling
 (`scripts/`, the Makefile, build and CI files). Generated files and lock files are left
-out.
+out: the built web UI, the OpenAPI document in `contract/`, and the CSV and JSON files
+of `examples/`, which `make examples` writes.
 
 **Versions** is read from what was built, not from what was asked for: the interpreter
 and the installed packages inside the `.deb`, `sqlite3.sqlite_version` from that
@@ -152,9 +162,13 @@ beneath the table.
   `dist/`, for the upgrade test. Without the package of this version the Python rows
   come from `.python-version` and `uv.lock`, and a line on standard error says so.
 - The Python packages are the ones the package installs, so a package that only the
-  development or the documentation group asks for, such as pytest, ruff, ty or httpx2,
-  never appears. The direct dependencies are those of `pyproject.toml`; `regex` joins
-  them with 0.2.0.
+  development or the documentation group asks for, such as pytest, ruff or ty, never
+  appears. The direct dependencies are those of `pyproject.toml`. `regex` joins them
+  with 0.2.0. With 0.3.0 so does httpx2, which the command line calls the API with: it
+  takes the place of httpx, and brings httpcore2 where httpx brought httpcore.
+- Read from `uv.lock`, the packages are those that are installed on Linux. A package
+  that another one asks for on some other platform alone is left out, as it is from
+  the `.deb`: httpx2 asks for one in a browser.
 - The web UI's row names TypeScript, Vite and React, and AG Grid Community beside them
   once `web/package-lock.json` installs `ag-grid-community`. Its binding for React,
   `ag-grid-react`, is published at the grid's version and is not named apart; if the
@@ -166,8 +180,12 @@ beneath the table.
 Every Markdown file in the repository is published as an HTML page.
 
 - `scripts/build_docs.py` renders them into `html/` (not committed). `README.md`
-  becomes `index.html`; `docs/x.md` becomes `docs/x.html`. Each page gets the same
-  navigation and a link back to the repository.
+  becomes `index.html`; `docs/x.md` becomes `docs/x.html`. A `README.md` in a directory
+  is that directory's `index.html`, so `examples/README.md` becomes
+  `examples/index.html`. Each page gets the same navigation and a link back to the
+  repository.
+- A link to a file that is not a page, such as a CSV file of `examples/`, leads to the
+  file on GitHub.
 - Links between Markdown files are rewritten to the pages. A link or anchor that does
   not resolve fails the build.
 - Pictures live in `images/` at the top of the repository and are used with a relative
@@ -175,12 +193,15 @@ Every Markdown file in the repository is published as an HTML page.
   `../images/...` from `docs/`. PNG and JPEG are copied to the site as they are, so the
   same link works on GitHub and on the published page.
 - The pages use relative URLs and no JavaScript, so they work on GitHub Pages, under any
-  path behind a web server, from `/usr/share/doc/hirdir/` and straight from a folder.
+  path behind a web server, from `/usr/share/doc/hirdir/html/`, where the package puts
+  them, and straight from a folder.
 - `.github/workflows/docs.yml` builds and deploys to GitHub Pages on each push to
   `main` that touches Markdown or images.
 - `make docs` builds locally; `make docs-watch` rebuilds on change.
 - Navigation order is the `LEADING` and `TRAILING` lists at the top of the script.
-  Release notes are listed newest first under one heading.
+  Examples comes after Interfaces, which describes the files. A page that is in neither
+  list follows the leading ones, by its path. Release notes are listed newest first
+  under one heading.
 
 ## Publishing rule
 

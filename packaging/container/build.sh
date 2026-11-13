@@ -4,7 +4,7 @@
 # because it installs into /opt/hirdir.
 #
 # Inputs:
-#   /in/source.tar        the source tree, with src/hirdir/static and html when built
+#   /in/source.tar        the source tree, with examples, and src/hirdir/static and html when built
 #   HIRDIR_VERSION        the version, as "make -s version" prints it
 #   SOURCE_DATE_EPOCH     the time every packaged file is given
 #   HOST_UID, HOST_GID    the owner of the file written to /out
@@ -181,7 +181,13 @@ stage_files() {
     install -Dm755 packaging/hirdir_setup.py "$STAGE/usr/sbin/hirdir-setup"
     install -Dm644 packaging/config.toml "$STAGE/etc/hirdir/config.toml"
     install -Dm644 packaging/nginx/upstream.conf "$STAGE/etc/nginx/conf.d/hirdir.conf"
-    install -Dm644 packaging/nginx/snippet.conf "$STAGE/etc/nginx/snippets/hirdir.conf"
+    # The snippet that holds the URL prefix is not a conffile: hirdir-setup rewrites its
+    # prefix, and dpkg would ask about every such file at each upgrade that changes the
+    # snippet. The package ships the text here, and postinst has "hirdir-setup --renew"
+    # write /etc/nginx/snippets/hirdir.conf from it with the prefix that file has. The
+    # directory is shipped, so that it is there on a host that has no nginx yet.
+    install -Dm644 packaging/nginx/snippet.conf "$STAGE/usr/share/hirdir/nginx/snippet.conf"
+    install -d "$STAGE/etc/nginx/snippets"
     local units=$STAGE/usr/lib/systemd/system
     install -Dm644 -t "$units" packaging/systemd/hirdir.service \
         packaging/systemd/hirdir-backup.service packaging/systemd/hirdir-backup.timer
@@ -195,6 +201,12 @@ stage_files() {
         "  * Release $HIRDIR_VERSION." "" \
         " -- $maintainer  $(date -u -R -d "@$SOURCE_DATE_EPOCH")" |
         gzip -9 --no-name >"$doc/changelog.gz"
+    # The fictional inventory of examples/, as CSV and as JSON: something to try an
+    # import with, and the columns of each kind of record to start a file of one's own.
+    # Its README is among the HTML pages, as examples/index.html.
+    local examples=(examples/*.csv examples/*.json)
+    [ -f "${examples[0]}" ] || die "there is no examples/ directory with its CSV files"
+    install -Dm644 -t "$doc/examples" "${examples[@]}"
     if [ -f html/index.html ]; then
         cp -r html "$doc/html"
         # A marker for the site that publishes these pages; it means nothing here.

@@ -222,25 +222,52 @@ rendered as text, never as HTML.
 | `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site |
 | `/etc/hirdir/config.toml` | configuration (a conffile) |
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
-| `/etc/nginx/snippets/hirdir.conf` | the `location` block above (a conffile) |
+| `/usr/share/hirdir/nginx/snippet.conf` | the nginx snippet as this version ships it: the `location` block above, under `/hirdir`, with the upload limit |
+| `/etc/nginx/snippets/hirdir.conf` | that snippet under the prefix of this host. Written at install and at each upgrade, never shipped, and not a conffile |
 | `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
 | `/var/lib/hirdir/` | database, signing key, backups (created at install, never shipped) |
 | `/usr/share/doc/hirdir/` | this documentation as HTML, and the release notes |
+| `/usr/share/doc/hirdir/examples/` | the CSV and JSON files of `examples/`, to try an import with and to start a file from |
 
 The package carries Python and every Python dependency. It depends on `libc6`,
 `adduser`, `ca-certificates` and `tzdata`, and recommends `nginx`; apt supplies those.
 
-**On install** the maintainer script creates the user and the state directory, creates
-the signing key, runs the migrations, enables and starts the service, and prints two
+**On install** the maintainer script creates the user, the state directory and its
+backup directory, both for the `hirdir` user alone, creates the signing key, runs the
+migrations, writes the nginx snippet, enables and starts the service, and prints two
 lines: how to create the first Admin (`sudo hirdir admin create-user --role admin
 NAME`), and how to add the site (`sudo hirdir-setup`).
 
 **On upgrade** it stops the service, backs the database up into
-`/var/lib/hirdir/backups/` and says where, runs the migrations, and starts the service
-again. The signing key and the three conffiles are left as they are, so sessions and
-service tokens go on working and `hirdir` stays under its prefix. Installing the same
-version again takes the same steps and changes nothing in the database.
+`/var/lib/hirdir/backups/` and says where, runs the migrations, writes the nginx
+snippet again under the prefix it has, and starts the service again. The signing key
+and the two conffiles are left as they are, so sessions and service tokens go on
+working, and `hirdir` stays under its prefix. Installing the same version again takes
+the same steps and changes nothing in the database.
+
+**The nginx snippet** holds the `location` block shown under "URL prefix" and one line
+more, `client_max_body_size 20m;`. An import sends its file as the body of a request
+and `hirdir` takes a file of up to 20 MB, where nginx left to itself refuses a body of
+more than 1 MB. nginx is given the limit of the application and no more. A body over
+20 MB is therefore refused by nginx, with a `413` and the page of nginx, and never
+reaches `hirdir`, whose own `413` is a problem document. A higher limit in nginx would
+let the application answer, but it answers as soon as it has read 20 MB and closes the
+connection with the rest unread, which nginx, still sending, can turn into a `502`.
+
+The snippet is not a conffile, because `hirdir-setup --prefix` writes the prefix into
+it. dpkg asks about a conffile that was changed on the host whenever a new version
+ships another: an upgrade would stop to ask an operator about a file they never
+edited, and an upgrade with nobody to answer would fail there. The package ships the
+text in `/usr/share/hirdir/nginx/snippet.conf` instead, and `hirdir-setup --renew`
+writes `/etc/nginx/snippets/hirdir.conf` from it with the prefix that file already
+has. The maintainer script runs it at install and at each upgrade, once the migrations
+are done, so that an upgrade that stops there has changed nothing of nginx's. The
+result is tested with `nginx -t`: when nginx objects, the file is put back as it was.
+When it changed at an upgrade, nginx is reloaded and the upgrade says so. A snippet
+that differs from every snippet the package has shipped in more than its three prefix
+lines was edited by hand. It is left alone, and the message says where the shipped
+one is. A purge removes the snippet with the rest.
 
 A failed migration stops the upgrade with the backup's path in the message, and leaves
 the service stopped. The migrations of one upgrade run in one transaction, so a failure
@@ -252,8 +279,9 @@ newer one has migrated. The steps for an operator are under "Upgrade" in
 
 **`hirdir-setup`** reads `nginx -T`, lists the sites that already terminate TLS, and
 adds `include snippets/hirdir.conf;` to the one chosen, after showing the change.
-`--prefix /inventory` rewrites the snippet's two prefix lines. `--self-signed` creates a
-site with a throwaway certificate, for test containers only.
+`--prefix /inventory` rewrites the snippet's three prefix lines. `--renew` writes the
+snippet again as this version ships it, under the prefix it has. `--self-signed`
+creates a site with a throwaway certificate, for test containers only.
 
 A container image is LATER. It runs the same package contents with the database on a
 volume.
@@ -265,7 +293,7 @@ volume.
 | `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest` over `tests/unit`, `tests/api` and `packaging/tests`, and the web UI's type check, lint and unit tests |
 | `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
-| `make deb` | builds the package, and writes its SHA-256 and lintian's report beside it |
+| `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
 | `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
 
@@ -275,11 +303,31 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`; every account, group, grant, token and audit event is as it was; the session token, the access codes and the service token from before still work; the conffiles are untouched and nginx still serves under the old prefix. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped. The commands of the message are then run, the previous release must serve again, and with the table gone the upgrade must go through. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before) |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, a vendor with a catalog entry and an item, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there; every account, group, grant, token and audit event is as it was, and so are the vendor, the catalog entry and the item, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the two conffiles are untouched and dpkg asked nothing; the nginx snippet is the new version's under the old prefix, the upgrade said that it reloaded nginx, and a file of more than a megabyte, which nginx refused before the upgrade, is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The table is the one the migration creates last. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again, and with the table gone the upgrade must go through. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet. When no migration of the new version creates a table, the pass has nothing to put in the way and says so in a `SKIP` line |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
-Importing `examples/` and a filtered export join the passes with 0.3.0.
+**Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
+prefix. The files of `examples/` are sent in load order to `POST /imports/preview` and
+applied: every row is created. Sent a second time, as CSV and as JSON, every row is
+unchanged. A filtered export is taken as CSV and as JSON: its rows are those the
+examples hold for the filter and those the list gives, and `hid` comes first. An export
+of stored values is imported back unchanged. A file of more than a megabyte is imported,
+and its apply sent twice with an `Idempotency-Key`. Then the limits: a body of exactly
+20 MB passes nginx and is answered by `hirdir`; one byte more is refused by nginx with
+its own `413`; the same body sent straight to the service is refused by `hirdir` with a
+`413` problem document; and a file of 100,001 rows is refused by `hirdir` with its own
+`413`, which nginx passes on. The package's copy of `examples/` is compared with the
+repository's.
+
+The examples are imported into an inventory that does not hold them, and the checks
+that follow make records of the same names by hand. So the pass takes a backup before
+the import and restores it afterwards, with `hirdir admin backup` and `hirdir admin
+restore`.
+
+The client commands of the CLI have no checks in these passes yet. Where they belong,
+each pass prints a `SKIP` line that says so, so that no run reads as if the command
+line had been tested.
 
 **The previous release** is the package named by `PREVIOUS_DEB`. Left unset, it is the
 `hirdir_*_amd64.deb` in `dist/` with the highest version below the one under test, so

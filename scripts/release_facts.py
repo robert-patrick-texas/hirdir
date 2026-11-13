@@ -73,6 +73,8 @@ def run(*cmd: str, cwd: Path | None = None) -> str:
 
 # Generated output and lock files, which nobody wrote by hand.
 LEFT_OUT_DIRS = ("src/hirdir/static/", "html/", "dist/", "contract/")
+# A directory of generated data that also holds a page written by hand.
+GENERATED_DATA = ("examples/",)
 # The licence is Markdown, and is not documentation.
 LEFT_OUT_NAMES = {"uv.lock", "package-lock.json", "LICENSE.md"}
 # Markdown is the documentation, and it is counted in the sentence under the table.
@@ -100,7 +102,13 @@ TOOLING_FILES = {"Makefile", "pyproject.toml"}
 
 
 def left_out(path: str) -> bool:
-    """Whether a tracked file is generated output or a lock file."""
+    """Whether a tracked file is generated output or a lock file.
+
+    The CSV and JSON files of examples/ are written by ``make examples`` and never by
+    hand. The page that describes them is documentation like any other.
+    """
+    if path.startswith(GENERATED_DATA) and not path.endswith(".md"):
+        return True
     return path.startswith(LEFT_OUT_DIRS) or path.rsplit("/", 1)[-1] in LEFT_OUT_NAMES
 
 
@@ -271,15 +279,17 @@ def listed_python(listing: str) -> str | None:
 
 
 def _marker_excludes_linux(marker: str) -> bool:
-    """Whether a dependency's marker limits it to Windows or macOS.
+    """Whether a dependency's marker limits it to a platform that is not Linux.
 
-    This reads only the simple markers uv writes for platform-only packages. Any other
-    marker is taken to apply, which can at worst count a package too many.
+    Windows and macOS, and the browser, where httpx2 asks for a package of its own
+    (``sys_platform == 'emscripten'``). This reads only the simple markers uv writes for
+    platform-only packages. Any other marker is taken to apply, which can at worst count
+    a package too many.
     """
     if " or " in marker:
         return False
     names = r"(?:sys_platform|platform_system|os_name)"
-    others = r"(?:win32|cygwin|darwin|Windows|Darwin|nt)"
+    others = r"(?:win32|cygwin|darwin|emscripten|wasi|Windows|Darwin|Emscripten|nt)"
     return re.search(rf"{names}\s*==\s*'{others}'", marker) is not None
 
 

@@ -11,9 +11,11 @@ UNITS="hirdir.service hirdir-backup.timer"
 INCLUDE='^[[:space:]]*include[[:space:]]+snippets/hirdir\.conf;[[:space:]]*# added by hirdir-setup'
 
 remove_from_nginx() {
-    # The snippet is gone, so a site that still includes it would stop nginx from
-    # loading its configuration. Take out the line hirdir-setup added, which carries
-    # its mark, and the site that hirdir-setup --self-signed wrote.
+    # The snippet that postinst wrote is no conffile, so dpkg does not remove it. With
+    # it gone, a site that still includes it would stop nginx from loading its
+    # configuration. Take out the line hirdir-setup added, which carries its mark, and
+    # the site that hirdir-setup --self-signed wrote.
+    rm -f /etc/nginx/snippets/hirdir.conf
     [ -d /etc/nginx ] || return 0
     changed=no
     for directory in /etc/nginx/sites-available /etc/nginx/conf.d; do

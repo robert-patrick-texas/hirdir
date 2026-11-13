@@ -67,6 +67,8 @@ LEADING: list[tuple[str, str | None]] = [
     ("docs/data-model.md", None),
     ("docs/architecture.md", None),
     ("docs/interfaces.md", None),
+    # The files that Interfaces describes under "Import and export".
+    ("examples/README.md", None),
     ("docs/build-plan.md", None),
     ("docs/release-process.md", None),
     ("docs/decisions.md", None),

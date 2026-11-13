@@ -1,9 +1,9 @@
 #!/bin/sh
 # postinst for hirdir.
 #
-# On a first install: creates the hirdir user and /var/lib/hirdir, compiles the
-# byte-code, creates the signing key, runs the migrations, enables and starts the
-# service and the backup timer, and prints what to do next.
+# On a first install: creates the hirdir user, /var/lib/hirdir and its backup directory,
+# compiles the byte-code, creates the signing key, runs the migrations, enables and
+# starts the service and the backup timer, and prints what to do next.
 #
 # On an upgrade, and when the same version is installed again: stops the service, backs
 # the database up, runs the migrations and starts the service again. If the migration
@@ -11,19 +11,57 @@
 # backup is and how to go back to the version that was installed before. A migration
 # that fails is undone as a whole. The way back restores the backup all the same, so
 # that going back never depends on that.
+#
+# Both times, once the migrations are done: writes /etc/nginx/snippets/hirdir.conf as
+# this version ships it, under the URL prefix that file already has, and on an upgrade
+# has nginx reload when the file changed.
 set -e
 
 STATE=/var/lib/hirdir
 PYTHON=/opt/hirdir/venv/bin/python
 HIRDIR=/opt/hirdir/venv/bin/hirdir
 UNITS="hirdir.service hirdir-backup.timer"
+SNIPPET=/etc/nginx/snippets/hirdir.conf
+
+# The nginx snippet that holds the URL prefix is not a conffile, because hirdir-setup
+# rewrites the prefix in it and dpkg would then ask about it at an upgrade. It is
+# written here instead, by "hirdir-setup --renew": from the snippet this version ships,
+# under the prefix the file has, tested with "nginx -t" and put back as it was if nginx
+# objects. A snippet that was edited by hand is left alone, and the message says so.
+# None of this stops an installation: hirdir runs without nginx.
+#
+# renew_snippet OLD_VERSION: OLD_VERSION is empty on a first install.
+renew_snippet() {
+    before=$(cksum "$SNIPPET" 2>/dev/null || true)
+    if ! renewed=$(hirdir-setup --renew --no-reload --yes); then
+        echo "hirdir: $SNIPPET was left as it was, for the reason given above." >&2
+        echo "hirdir: nginx refuses an import of more than 1 MB until it is as this version" >&2
+        echo "hirdir: ships it. With the cause put right, run: sudo hirdir-setup --renew" >&2
+        return 0
+    fi
+    # A first install has no site that includes the snippet yet, and nothing to say.
+    if [ -z "$1" ] || [ "$before" = "$(cksum "$SNIPPET" 2>/dev/null || true)" ]; then
+        return 0
+    fi
+    reloaded=""
+    # deb-systemd-invoke obeys a policy-rc.d, as the units below do.
+    if [ -d /run/systemd/system ] && command -v nginx >/dev/null \
+        && systemctl --quiet is-active nginx.service && nginx -t >/dev/null 2>&1 \
+        && deb-systemd-invoke reload nginx.service >/dev/null 2>&1; then
+        reloaded=" nginx was reloaded."
+    fi
+    echo "hirdir: $(printf '%s\n' "$renewed" | tail -n 1)$reloaded"
+}
 
 case "$1" in
     configure)
         if ! getent passwd hirdir >/dev/null; then
             adduser --system --group --home "$STATE" --no-create-home --quiet hirdir
         fi
-        install -d -o hirdir -g hirdir -m 0750 "$STATE"
+        # The backup directory too, and here: "hirdir admin backup" makes it when it is
+        # missing, with whatever umask it is run under, and run by hand as root that
+        # leaves a directory that other users may list.
+        install -d -o hirdir -g hirdir -m 0750 "$STATE" "$STATE/backups"
 
         # The package ships no byte-code. Compile it once here: the service cannot
         # write under /opt, and a command run by root must not leave files there that
@@ -76,6 +114,10 @@ tokens.load_or_create_key(config.load().secret_key_path)'
             fi
             exit 1
         fi
+
+        # After the migration, so that an upgrade that stops there has changed nothing
+        # of nginx's, and the version that was installed before is gone back to as it was.
+        renew_snippet "$2"
         ;;
     abort-upgrade | abort-remove | abort-deconfigure)
         ;;

@@ -10,11 +10,15 @@ change is shown as a diff first. After writing, it runs `nginx -t`: when that pa
 nginx is reloaded, and when it fails every file is put back as it was.
 
 Running it again with the same options changes nothing.
+
+The snippet itself is written by `--renew`, from the one the package ships and with the
+prefix it already has. The package runs that when it is installed and at each upgrade.
 """
 
 import argparse
 import contextlib
 import difflib
+import hashlib
 import os
 import re
 import subprocess
@@ -30,6 +34,8 @@ OPENSSL = "/usr/bin/openssl"
 
 NGINX_DIR = Path("/etc/nginx")
 SNIPPET = NGINX_DIR / "snippets" / "hirdir.conf"
+# The snippet as this version of the package ships it, under the prefix /hirdir.
+TEMPLATE = Path("/usr/share/hirdir/nginx/snippet.conf")
 INCLUDE = "snippets/hirdir.conf"
 # The postrm of the package looks for this mark when the package is purged.
 MARK = "# added by hirdir-setup"
@@ -56,6 +62,15 @@ REDIRECT_LINE = re.compile(
 INCLUDE_ONLY_LINE = re.compile(
     r"^\s*include\s+[\"']?(?:/etc/nginx/)?snippets/hirdir\.conf[\"']?\s*;\s*(#.*)?$"
 )
+
+# The snippets that earlier versions shipped, each as the SHA-256 of its text without the
+# three lines that hold the prefix (see `body`). A snippet on a host that is one of
+# these, or the one this version ships, was changed by this tool alone, and --renew
+# replaces it. When packaging/nginx/snippet.conf changes, the hash it had is added
+# here and its text is kept in packaging/tests/snippets/. A test fails until then.
+SHIPPED_BEFORE = {
+    "f0423e2580520437726031bcab33d473cf25b6c97fe590c3fd40d035590ffae6": "0.1.0 to 0.2.1",
+}
 
 
 class SetupError(Exception):
@@ -329,6 +344,54 @@ def with_prefix(text: str, prefix: str) -> str:
         redirect = f"location = {prefix} {{ absolute_redirect off; return 301 {prefix}/; }}"
         out.append(f"{redirect}    # prefix")
     return "\n".join(out) + "\n"
+
+
+def body(text: str) -> str:
+    """Return a snippet without the three lines that hold the prefix.
+
+    These are the lines `with_prefix` rewrites or leaves out, so two snippets with the
+    same body differ in their prefix and in nothing else.
+    """
+    kept: list[str] = []
+    seen_location = False
+    for line in text.splitlines():
+        if REDIRECT_LINE.match(line) or HEADER_LINE.match(line):
+            continue
+        if not seen_location and LOCATION_LINE.match(line):
+            seen_location = True
+            continue
+        kept.append(line)
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return "\n".join(kept)
+
+
+def body_hash(text: str) -> str:
+    """Return the SHA-256 that names a snippet whatever its prefix."""
+    return hashlib.sha256(body(text).encode("utf-8")).hexdigest()
+
+
+def shipped(text: str, template: str) -> bool:
+    """Say whether a snippet is one the package shipped, now or before, under any prefix."""
+    found = body_hash(text)
+    return found == body_hash(template) or found in SHIPPED_BEFORE
+
+
+def renewed(before: str | None, template: str, prefix: str | None = None) -> str:
+    """Return the snippet as this version ships it, under the prefix it has or is given.
+
+    `before` is the snippet on the host, or None when there is none. One that was edited
+    by hand is not replaced: the error says so, and where the shipped one is.
+    """
+    if before is not None and not shipped(before, template):
+        raise SetupError(
+            f"{SNIPPET} differs from what hirdir ships in more than its prefix, so it is "
+            f"left as it is. This version ships {TEMPLATE}: bring over by hand what is "
+            "new there, then run: sudo nginx -t && sudo systemctl reload nginx"
+        )
+    if prefix is None:
+        prefix = snippet_prefix(template if before is None else before)
+    return with_prefix(template, normalise_prefix(prefix))
 
 
 def self_signed_site(ipv6: bool) -> str:
@@ -653,9 +716,57 @@ def _remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _renew(args: argparse.Namespace) -> int:
+    """Write the snippet as this version of the package ships it, keeping its prefix.
+
+    nginx is asked whether it accepts the result, and is reloaded when a site includes
+    the snippet. Where nginx is not installed the file is written all the same, for the
+    day it is.
+    """
+    if not TEMPLATE.is_file():
+        raise SetupError(f"{TEMPLATE} does not exist. Is the hirdir package installed?")
+    template = TEMPLATE.read_text(encoding="utf-8")
+    before = SNIPPET.read_text(encoding="utf-8") if SNIPPET.is_file() else None
+    after = renewed(before, template, args.prefix)
+    prefix = snippet_prefix(after)
+    where = "/" if prefix == "/" else f"{prefix}/"
+    if after == before:
+        print(f"Nothing to change: {SNIPPET} is as this version of hirdir ships it, for {where}")
+        return 0
+    plan = Plan(changes=[Change(SNIPPET, before, after)])
+    plan.show()
+    if not _confirm("Write the snippet as shown?", args.yes):
+        print("Nothing was changed.")
+        return 1
+    done = f"{SNIPPET} is now as this version of hirdir ships it, for {where}."
+    if not Path(NGINX).is_file():
+        _put(SNIPPET, after)
+        print(f"{done} nginx is not installed, so nothing was reloaded.")
+        return 0
+    try:
+        files = loaded_files()
+    except SetupError:
+        if before is not None:
+            raise
+        # A snippet that is new is in no site yet, so it cannot be what nginx objects to.
+        _put(SNIPPET, after)
+        print(f"{done} nginx does not accept its configuration as it is now, for other reasons.")
+        return 0
+    _apply(plan)
+    if args.no_reload:
+        print(done)
+    elif str(SNIPPET) in files:
+        print(f"{done} {_reload_nginx()}")
+    else:
+        print(f"{done} No site includes it yet. To add hirdir to one: sudo hirdir-setup")
+    return 0
+
+
 def _add(args: argparse.Namespace) -> int:
     if not SNIPPET.is_file():
-        raise SetupError(f"{SNIPPET} does not exist. Is the hirdir package installed?")
+        raise SetupError(
+            f"{SNIPPET} does not exist. Write it again with: sudo hirdir-setup --renew"
+        )
     if args.self_signed:
         print(SELF_SIGNED_WARNING)
     plan = _plan_add(args)
@@ -698,9 +809,24 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--yes", action="store_true", help="make the changes without asking")
     parser.add_argument("--remove", action="store_true", help="take hirdir out of nginx again")
+    parser.add_argument(
+        "--renew",
+        action="store_true",
+        help=f"write {SNIPPET} again as this version of hirdir ships it, keeping its "
+        "prefix; the package does this itself when it is installed and at each upgrade",
+    )
+    parser.add_argument(
+        "--no-reload",
+        action="store_true",
+        help="with --renew: leave it to the caller to reload nginx, as the package's scripts do",
+    )
     args = parser.parse_args(argv)
-    if args.remove and (args.site or args.prefix or args.self_signed):
+    if args.remove and (args.site or args.prefix or args.self_signed or args.renew):
         parser.error("--remove is used on its own, or with --yes")
+    if args.renew and (args.site or args.self_signed):
+        parser.error("--renew is used on its own, or with --prefix, --no-reload and --yes")
+    if args.no_reload and not args.renew:
+        parser.error("--no-reload goes with --renew")
     if args.self_signed and args.site:
         parser.error("--self-signed creates its own site; leave --site out")
     return args
@@ -713,7 +839,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("hirdir-setup: run this as root: sudo hirdir-setup", file=sys.stderr)
         return 1
     try:
-        return _remove(args) if args.remove else _add(args)
+        if args.remove:
+            return _remove(args)
+        return _renew(args) if args.renew else _add(args)
     except SetupError as error:
         # What was shown so far comes first, also when the output is not a terminal.
         sys.stdout.flush()

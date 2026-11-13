@@ -11,8 +11,8 @@
 #                     what is built.
 #
 # The container is given the files the build reads and nothing else: the Python
-# source with the built web UI in src/hirdir/static, the lock, packaging/, and the
-# HTML documentation in html/ when "make docs" has produced it. packaging/container/
+# source with the built web UI in src/hirdir/static, the lock, packaging/, examples/, and
+# the HTML documentation in html/ when "make docs" has produced it. packaging/container/
 # build.sh does the work there, and writes lintian's full report beside the package.
 # The package's SHA-256 is written beside it as well, as <package>.sha256.
 #
@@ -37,7 +37,7 @@ name=hirdir_${version}_amd64
 # of one commit agree, or now where there is no commit to ask.
 epoch=$(git log -1 --format=%ct 2>/dev/null || date +%s)
 
-paths=(.python-version .gitignore pyproject.toml uv.lock README.md src packaging)
+paths=(.python-version .gitignore pyproject.toml uv.lock README.md src packaging examples)
 if [ -f src/hirdir/static/index.html ]; then
     web_ui="with the web UI"
 else
