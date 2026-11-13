@@ -42,10 +42,10 @@ acceptance:     ## the scenarios of docs/build-plan.md against a server started 
 e2e:            ## package-test, with the browser scenarios run against the fresh install
 	packaging/package-test.sh --e2e
 
-deb: web        ## build dist/hirdir_<version>_amd64.deb in a clean container
+deb: web docs   ## build dist/hirdir_<version>_amd64.deb in a clean container, with the web UI and the documentation of this tree
 	packaging/build-deb.sh
 
-package-test:   ## install the package in systemd containers and exercise it through nginx: upgraded from the previous release, and fresh
+package-test:   ## install the package in systemd containers and exercise it through nginx: upgraded from the previous release, with a migration that fails, and fresh
 	packaging/package-test.sh
 
 docs:           ## render every .md file into html/
