@@ -179,7 +179,13 @@ stage_files() {
     cp -a "$OPT" "$STAGE/opt/hirdir"
     ln -s /opt/hirdir/venv/bin/hirdir "$STAGE/usr/bin/hirdir"
     install -Dm755 packaging/hirdir_setup.py "$STAGE/usr/sbin/hirdir-setup"
-    install -Dm644 packaging/config.toml "$STAGE/etc/hirdir/config.toml"
+    # The settings file is not a conffile either. A release that adds a setting ships a
+    # different file, and dpkg would ask every site that had edited its own. The package
+    # ships the text here, and postinst has "hirdir-setup --settings" write
+    # /etc/hirdir/config.toml from it on a first install and, at an upgrade, put the
+    # settings that file lacks into it, commented out, changing nothing the site set.
+    install -Dm644 packaging/config.toml "$STAGE/usr/share/hirdir/config.toml"
+    install -d "$STAGE/etc/hirdir"
     install -Dm644 packaging/nginx/upstream.conf "$STAGE/etc/nginx/conf.d/hirdir.conf"
     # The snippet that holds the URL prefix is not a conffile: hirdir-setup rewrites its
     # prefix, and dpkg would ask about every such file at each upgrade that changes the

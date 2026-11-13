@@ -542,11 +542,26 @@ installed_version() { inside dpkg-query -W -f "\${Version}" hirdir 2>/dev/null |
 
 apt_get() { inside apt-get -o Dpkg::Use-Pty=0 --yes "$@" >"$work/apt.log" 2>&1; }
 
-# What is in the two conffiles of the package, and whether dpkg left a second copy of
-# either beside it, or of the nginx snippet, which was a conffile up to 0.2.1.
+# What is in the one conffile of the package, and whether dpkg left a second copy of it
+# beside it, or of the settings file or the nginx snippet, which were conffiles up to
+# 0.2.1 and are written by the package itself since.
 conffiles() {
-    inside bash -c 'sha256sum /etc/hirdir/config.toml /etc/nginx/conf.d/hirdir.conf;
+    inside bash -c 'sha256sum /etc/nginx/conf.d/hirdir.conf;
         ls /etc/hirdir /etc/nginx/conf.d /etc/nginx/snippets | grep -E "\.dpkg-|\.ucf-" || true' 2>&1
+}
+
+# The settings file of the installation.
+settings_file() { inside cat /etc/hirdir/config.toml 2>&1 || true; }
+
+# settings_kept BEFORE: whether the settings file still holds every line of the text in
+# the file BEFORE, in its place, with only more after it.
+settings_kept() {
+    settings_file >"$work/settings-now.toml"
+    python3 -c '
+import sys
+before, now = (open(path, encoding="utf-8").read() for path in sys.argv[1:3])
+print("kept" if now.startswith(before.rstrip("\n") + "\n") else "changed", "same" if now == before else "more")' \
+        "$1" "$work/settings-now.toml"
 }
 
 # The nginx snippet of the installation, without the three lines that hold the prefix.
@@ -670,6 +685,7 @@ failed_upgrade() {
     tables_before=$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")
     schema_before=$(schema_sum "$database")
     snippet_before=$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)
+    settings_file >"$work/settings-before-failure.toml"
 
     section "the upgrade to $version, whose migration fails"
     if apt_get install /srv/debs/hirdir-new.deb; then
@@ -707,6 +723,8 @@ failed_upgrade() {
         "$(sqlite_value "$database" "SELECT count(*) FROM users WHERE username = 'upgrade-witness'")" 1
     expect "pkg the upgrade that stopped left the nginx snippet as $previous_version had it" \
         "$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)" "$snippet_before"
+    expect "pkg and the settings file as it was" \
+        "$(settings_kept "$work/settings-before-failure.toml")" "kept same"
 
     section "the way back that the message gives"
     if apt_get install --allow-downgrades /srv/debs/hirdir-previous.deb; then
@@ -930,6 +948,7 @@ previous_release() {
             "$status $(header content-type)" "413 text/html"
     fi
     conffiles_before=$(conffiles)
+    settings_file >"$work/settings-before.toml"
 }
 
 upgrade() {
@@ -958,8 +977,29 @@ upgrade() {
         bash -c "! grep -q 'hirdir admin create-user' '$work/install.log'"
     check "pkg the upgrade prints no warning that a unit file changed on disk" \
         bash -c "! grep -q 'daemon-reload' '$work/install.log'"
-    expect "pkg the two conffiles are as the operator left them, and dpkg left no second copy of them or of the nginx snippet" \
+    expect "pkg the conffile of the nginx upstream is as the operator left it, and dpkg left no second copy of it, of the settings file or of the nginx snippet" \
         "$(conffiles | sha256sum)" "$(printf '%s\n' "$conffiles_before" | sha256sum)"
+
+    # The settings file is no conffile either. $version has a setting that
+    # $previous_version had not, and the operator edited the file: dpkg would have
+    # stopped this upgrade to ask. The package puts the new setting into the file,
+    # commented out at its default, and changes nothing that was there.
+    if [ "$(inside cat /usr/share/hirdir/config.toml | sha256sum)" != "$(dpkg-deb --fsys-tarfile "$previous" | tar -xO ./etc/hirdir/config.toml 2>/dev/null | sha256sum)" ]; then
+        expect "pkg the settings file holds every line the operator had, in its place, and more after them" \
+            "$(settings_kept "$work/settings-before.toml")" "kept more"
+        expect "pkg the value the operator set is still set, and the new setting is there, commented out at its default" \
+            "$(inside grep -cx -e 'session_hours = 11' -e '# max_megabytes = 20' -e '\[files\]' /etc/hirdir/config.toml 2>&1)" 3
+        expect "pkg the file as it was is kept beside it" \
+            "$(inside bash -c 'cat /etc/hirdir/config.toml.*.bak | sha256sum' 2>&1)" "$(sha256sum <"$work/settings-before.toml")"
+        check "pkg the upgrade says which settings it put in, and that nothing the operator set was changed" \
+            grep -q '^hirdir: /etc/hirdir/config.toml has the new settings of this version.*files.max_megabytes.*Nothing you set was changed' "$work/install.log"
+    else
+        expect "pkg $version ships the settings $previous_version did, and the file is as the operator left it" \
+            "$(settings_kept "$work/settings-before.toml")" "kept same"
+    fi
+    expect "pkg run again, hirdir-setup --settings finds nothing to change" \
+        "$(inside hirdir-setup --settings --yes 2>&1)" \
+        "Nothing to change: /etc/hirdir/config.toml has every setting of this version of hirdir."
 
     # The nginx snippet is no conffile, because hirdir-setup writes the prefix into it:
     # dpkg would have stopped this upgrade to ask about it. The package writes it again
@@ -1083,6 +1123,10 @@ install_fresh() {
     check "S01 the install says how to add the site" grep -q 'sudo hirdir-setup' "$work/install.log"
     check "pkg a first install takes no backup, because there is nothing to back up" \
         bash -c "! grep -q 'the database as it was' '$work/install.log'"
+    expect "pkg the install wrote the settings file, /etc/hirdir/config.toml, as the package ships it: every setting commented out" \
+        "$(inside bash -c 'cmp /etc/hirdir/config.toml /usr/share/hirdir/config.toml && stat -c "%a %U:%G" /etc/hirdir/config.toml && grep -c "^[^#[]" /etc/hirdir/config.toml' 2>&1)" \
+        "644 root:root
+0"
     expect "pkg the install wrote the nginx snippet, /etc/nginx/snippets/hirdir.conf, as the package ships it" \
         "$(inside bash -c 'cmp /etc/nginx/snippets/hirdir.conf /usr/share/hirdir/nginx/snippet.conf && stat -c "%a %U:%G" /etc/nginx/snippets/hirdir.conf' 2>&1)" \
         "644 root:root"
@@ -1118,9 +1162,9 @@ installed() {
         "$(inside bash -c 'ls /opt/hirdir/venv/lib/python3.*/site-packages | grep -Ei "^(httpx|httpcore)([-.]|$)"' 2>&1)" ""
     # /etc/nginx/snippets/hirdir.conf is not among them: postinst writes it. After an
     # upgrade from a version that had it as a conffile, dpkg lists it as obsolete.
-    expect "pkg dpkg knows two conffiles of hirdir: its configuration and the nginx upstream" \
+    expect "pkg dpkg knows one conffile of hirdir, the nginx upstream: the settings file and the nginx snippet are written by the package" \
         "$(inside dpkg-query -W -f "\${Conffiles}\n" hirdir 2>&1 | grep -v ' obsolete$' | awk 'NF {print $1}' | sort | xargs)" \
-        "/etc/hirdir/config.toml /etc/nginx/conf.d/hirdir.conf"
+        "/etc/nginx/conf.d/hirdir.conf"
 }
 
 # ---- hirdir-setup ---------------------------------------------------------------------
@@ -1642,6 +1686,26 @@ reinstall() {
     api GET /items
     expect "pkg the items are still there" "$status $(json_field total)" "200 $items_total"
     expect "pkg the schema is still at revision $head" "$(revision_now)" "$head"
+
+    # hirdir-setup --upgrade is how an operator installs a newer package: it checks the
+    # file and hands over to apt with no question left to answer. Given the package
+    # that is installed, it installs it again.
+    local code=0
+    inside hirdir-setup --upgrade /srv/debs/hirdir-new.deb --yes >"$work/setup-upgrade.log" 2>&1 </dev/null || code=$?
+    expect "pkg hirdir-setup --upgrade PACKAGE.deb, with nobody to answer, installs the package through apt" \
+        "$code $(grep -c "^hirdir $version -> $version\$" "$work/setup-upgrade.log") $(grep -c '^hirdir: the database as it was before this upgrade is kept at' "$work/setup-upgrade.log")" \
+        "0 1 1"
+    if wait_ready; then
+        pass "pkg and the service came back"
+    else
+        fail "pkg and the service came back (got $status)"
+    fi
+    if inside test -e /srv/debs/hirdir-previous.deb; then
+        code=0
+        inside hirdir-setup --upgrade /srv/debs/hirdir-previous.deb --yes >"$work/setup-upgrade.log" 2>&1 </dev/null || code=$?
+        expect "pkg given an older package it refuses, and installs nothing" \
+            "$code $(grep -c 'older than' "$work/setup-upgrade.log") $(installed_version)" "1 1 $version"
+    fi
 }
 
 # ---- on the host: files, restart, backup ---------------------------------------------

@@ -23,6 +23,9 @@ The database begins with no account and no inventory, and with the lists of choi
 and the lifecycle rules at their defaults. Nothing is reachable from outside the host
 yet.
 
+It also writes `/etc/hirdir/config.toml`, with every setting in it commented out at
+its default.
+
 On a host that already has `hirdir`, the same command upgrades it: see
 [Upgrade](#upgrade).
 
@@ -88,8 +91,6 @@ restarts both:
 [files]
 max_megabytes = 50
 ```
-
-The `[files]` table is not in the file as the package ships it: add it at the end.
 
 ```nginx
 # /etc/nginx/snippets/hirdir.conf
@@ -204,8 +205,8 @@ The answer is the preview: what each row would do, and the HID of the stored job
 ## Configuration
 
 `/etc/hirdir/config.toml`. Every key is optional and is shown there commented out with
-its default, but for `max_megabytes` under `[files]`, which is newer than the file and
-is described under [Uploads](#uploads). Restart the service after a change:
+its default. An upgrade puts the settings of a new version into the file in the same
+way and changes nothing you set. Restart the service after a change:
 
 ```bash
 sudo systemctl restart hirdir
@@ -269,10 +270,21 @@ curl -s http://127.0.0.1:8715/api/v1/health/ready
 ## Upgrade
 
 ```bash
+sudo hirdir-setup --upgrade ./hirdir_<new version>_amd64.deb
+```
+
+`hirdir-setup --upgrade` checks that the file is a package of `hirdir` and not an older
+one than is installed, compares it with the `.sha256` file when that lies beside it,
+says what is about to happen, and hands over to apt. Plain apt does the same upgrade:
+
+```bash
 sudo apt install ./hirdir_<new version>_amd64.deb
 ```
 
-The upgrade does five things, in this order:
+Either way nothing is asked, so an upgrade with nobody at the keyboard goes through:
+an unattended upgrade, or one run by a configuration management tool.
+
+The upgrade does six things, in this order:
 
 1. It stops the service, so that nothing writes to the database while its schema
    changes.
@@ -284,13 +296,19 @@ The upgrade does five things, in this order:
    the prefix the file has. When that changes the file, it reloads nginx and says so:
    `hirdir: /etc/nginx/snippets/hirdir.conf is now as this version of hirdir ships it,
    for /hirdir/. nginx was reloaded.`
-5. It starts the service again.
+5. It puts the settings that are new in this version into `/etc/hirdir/config.toml`,
+   each commented out at its default, and says which: `hirdir: /etc/hirdir/config.toml
+   has the new settings of this version, commented out at their defaults:
+   files.max_megabytes. Nothing you set was changed.` A file you have edited is treated
+   the same: every line of yours stays where it is, a new setting goes to the end of
+   its table, and the file as it was is kept beside it as `config.toml.<when>.bak`.
+6. It starts the service again.
 
 It keeps every account, user group, role grant, service token and audit event, so
 access codes and service tokens go on working. It keeps the key that signs sessions,
-so people who are signed in stay signed in, with the session they have. It leaves
-`/etc/hirdir/config.toml` and `/etc/nginx/conf.d/hirdir.conf` as you have them, and
-the site that includes the snippet. `hirdir` stays under the prefix it had, and
+so people who are signed in stay signed in, with the session they have. It changes no
+value in `/etc/hirdir/config.toml`, and leaves `/etc/nginx/conf.d/hirdir.conf` as you
+have it, and the site that includes the snippet. `hirdir` stays under the prefix it had, and
 `hirdir-setup` is not run again.
 
 Step 4 is checked with `nginx -t` before nginx is reloaded, and the snippet is put back
@@ -304,8 +322,12 @@ hirdir: nginx refuses an import of more than 1 MB until it is as this version
 hirdir: ships it. With the cause put right, run: sudo hirdir-setup --renew
 ```
 
-Installing the version that is already installed does the same five things and changes
-nothing in the database or in the snippet.
+Installing the version that is already installed does the same six things and changes
+nothing in the database, in the snippet or in the settings file.
+
+A settings file that is not well-formed TOML is left alone, and the upgrade says so
+and goes on. With the file put right, `sudo hirdir-setup --settings` brings it up to
+date, and shows what it would put in before it does.
 
 Afterwards, `sudo hirdir admin check` names the schema revision the database is at and
 the one this version expects, and exits with an error when they differ.
@@ -348,6 +370,11 @@ reloaded. Up to 0.2.1 that file was a conffile of the package. It no longer is,
 because `hirdir-setup --prefix` changes it, and apt would have stopped this upgrade to
 ask about every such file. As it is, apt asks nothing. `dpkg --status hirdir` lists the
 file as `obsolete` from now on, and that is as it should be.
+
+`/etc/hirdir/config.toml` gains one setting, `max_megabytes` under `[files]`, commented
+out at its default of 20. Up to 0.2.1 the file was a conffile of the package too. It no
+longer is, for the same reason: a site that had edited it would have been asked at
+this upgrade. `dpkg --status hirdir` lists it as `obsolete` as well.
 
 The package now carries the files of `examples/` in
 `/usr/share/doc/hirdir/examples/`: see

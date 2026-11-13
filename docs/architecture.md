@@ -224,8 +224,9 @@ rendered as text, never as HTML.
 | `/opt/hirdir/python/` | CPython, a standalone build installed with `uv python install` |
 | `/opt/hirdir/venv/` | the locked dependencies and `hirdir` itself, with the web UI inside |
 | `/usr/bin/hirdir` | the command |
-| `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site |
-| `/etc/hirdir/config.toml` | configuration (a conffile) |
+| `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site, brings the snippet and the settings file up to date, and installs a newer package |
+| `/usr/share/hirdir/config.toml` | the settings file as this version ships it: every setting, commented out at its default |
+| `/etc/hirdir/config.toml` | configuration. Written at install, given the new settings of a version at each upgrade, never shipped, and not a conffile |
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
 | `/usr/share/hirdir/nginx/snippet.conf` | the nginx snippet as this version ships it: the `location` block above, under `/hirdir`, with the upload limit |
 | `/etc/nginx/snippets/hirdir.conf` | that snippet under the prefix of this host. Written at install and at each upgrade, never shipped, and not a conffile |
@@ -246,9 +247,22 @@ NAME`), and how to add the site (`sudo hirdir-setup`).
 
 **On upgrade** it stops the service, backs the database up into
 `/var/lib/hirdir/backups/` and says where, runs the migrations, writes the nginx
-snippet again under the prefix it has, and starts the service again. The signing key
-and the two conffiles are left as they are, so sessions and service tokens go on
-working, and `hirdir` stays under its prefix. Installing the same version again takes
+snippet again under the prefix it has, puts the settings that are new in this version
+into `/etc/hirdir/config.toml`, and starts the service again. The signing key and the
+one conffile, the nginx upstream, are left as they are, and no value of the settings
+file is changed, so sessions and service tokens go on working, and `hirdir` stays under
+its prefix.
+
+**The settings file** is not a conffile, for the reason the snippet is not: a release
+that adds a setting ships a different file, and dpkg would ask every site that had
+edited its own, and stop an upgrade with nobody to answer. `hirdir-setup --settings`
+keeps it up to date instead. It reads the file as the site has it and the text this
+version ships, and puts in each setting the file does not have, set or commented out:
+at the end of its table, as the shipped text has it, commented out at its default. A
+table the file lacks goes at the end. No line of the site's is changed or moved, the
+file must set exactly what it set before or it is left alone, and the file as it was
+is kept beside it. `hirdir-setup --upgrade PACKAGE.deb` checks a newer package and
+hands it to apt with nothing left to ask; plain `apt install` gives the same result. Installing the same version again takes
 the same steps and changes nothing in the database.
 
 **The nginx snippet** holds the `location` block shown under "URL prefix" and one line
@@ -310,7 +324,7 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, a vendor with a catalog entry and an item, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there; every account, group, grant, token and audit event is as it was, and so are the vendor, the catalog entry and the item, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the two conffiles are untouched and dpkg asked nothing; the nginx snippet is the new version's under the old prefix, the upgrade said that it reloaded nginx, and a file of more than a megabyte, which nginx refused before the upgrade, is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, a vendor with a catalog entry and an item, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there; every account, group, grant, token and audit event is as it was, and so are the vendor, the catalog entry and the item, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had and the new settings after them; the nginx snippet is the new version's under the old prefix, the upgrade said that it reloaded nginx, and a file of more than a megabyte, which nginx refused before the upgrade, is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The table is the one the migration creates last. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again, and with the table gone the upgrade must go through. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet. When no migration of the new version creates a table, the pass has nothing to put in the way and says so in a `SKIP` line |
 | `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 

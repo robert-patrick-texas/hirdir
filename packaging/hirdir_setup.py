@@ -13,6 +13,13 @@ Running it again with the same options changes nothing.
 
 The snippet itself is written by `--renew`, from the one the package ships and with the
 prefix it already has. The package runs that when it is installed and at each upgrade.
+
+`--settings` brings /etc/hirdir/config.toml up to date with this version: a setting the
+file does not have yet is put in, commented out at its default, and nothing that is in
+the file is changed. The package runs that too, at install and at each upgrade, so the
+file is never one that dpkg asks about.
+
+`--upgrade PACKAGE.deb` installs a newer package with apt, without a question to answer.
 """
 
 import argparse
@@ -24,6 +31,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
+import tomllib
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +49,17 @@ INCLUDE = "snippets/hirdir.conf"
 # The postrm of the package looks for this mark when the package is purged.
 MARK = "# added by hirdir-setup"
 INCLUDE_LINE = f"include {INCLUDE};  {MARK}"
+
+SETTINGS = Path("/etc/hirdir/config.toml")
+# The settings file as this version of the package ships it: every setting, commented
+# out at its default, with what it means.
+SETTINGS_TEMPLATE = Path("/usr/share/hirdir/config.toml")
+SETTING_LINE = re.compile(r"^\s*(?:#\s?)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\S")
+TABLE_LINE = re.compile(r"^\s*\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$")
+APT_GET = "/usr/bin/apt-get"
+DPKG_DEB = "/usr/bin/dpkg-deb"
+DPKG_QUERY = "/usr/bin/dpkg-query"
+DPKG = "/usr/bin/dpkg"
 
 SELF_SIGNED_SITE = NGINX_DIR / "sites-available" / "hirdir-self-signed"
 SELF_SIGNED_LINK = NGINX_DIR / "sites-enabled" / "hirdir-self-signed"
@@ -392,6 +412,118 @@ def renewed(before: str | None, template: str, prefix: str | None = None) -> str
     if prefix is None:
         prefix = snippet_prefix(template if before is None else before)
     return with_prefix(template, normalise_prefix(prefix))
+
+
+# --- the settings file -----------------------------------------------------------------
+
+
+@dataclass
+class Settings:
+    """The settings of one table of a settings file, and where the table ends."""
+
+    names: set[str] = field(default_factory=set)
+    # The line after the last one of the table that is not blank.
+    end: int = 0
+
+
+def _tables(lines: Sequence[str]) -> dict[str, Settings]:
+    """Return the tables of a settings file. "" is what stands before the first table.
+
+    A setting counts as there whether it is set or commented out: either way the one
+    who keeps the file has seen it.
+    """
+    tables = {"": Settings()}
+    current = ""
+    for number, line in enumerate(lines):
+        table = TABLE_LINE.match(line)
+        if table is not None:
+            current = table[1]
+            tables.setdefault(current, Settings())
+            tables[current].end = number + 1
+            continue
+        setting = SETTING_LINE.match(line)
+        if setting is not None:
+            tables[current].names.add(setting[1])
+        if line.strip():
+            tables[current].end = number + 1
+    return tables
+
+
+def _template_blocks(template: str) -> list[tuple[str, str, list[str]]]:
+    """Return each setting of the shipped file: its table, its name, and its lines.
+
+    The lines of a setting are the comment that explains it and the setting itself.
+    """
+    blocks: list[tuple[str, str, list[str]]] = []
+    current, pending = "", []
+    for line in template.splitlines():
+        table = TABLE_LINE.match(line)
+        setting = SETTING_LINE.match(line)
+        if table is not None:
+            current, pending = table[1], []
+        elif setting is not None and current:
+            blocks.append((current, setting[1], [*pending, line]))
+            pending = []
+        elif line.strip():
+            pending.append(line)
+        else:
+            pending = []
+    return blocks
+
+
+def _set(text: str) -> dict[str, dict[str, object]]:
+    """Return what a settings file sets, table by table, leaving out tables that set nothing."""
+    return {name: table for name, table in tomllib.loads(text).items() if table}
+
+
+def with_new_settings(current: str, template: str) -> tuple[str, list[str]]:
+    """Return a settings file with the settings it lacks put in, and their names.
+
+    Nothing that is in the file is changed or moved: not a value, not a comment. A
+    setting of this version that the file does not have, set or commented out, is put
+    at the end of its table as the shipped file has it, commented out at its default.
+    A table the file does not have is put at the end. What the file sets must be the
+    same afterwards, or nothing is returned but an error.
+    """
+    lines = current.splitlines()
+    tables = _tables(lines)
+    added: list[str] = []
+    inserts: dict[int, list[str]] = {}
+    new_tables: dict[str, list[str]] = {}
+    for table, name, block in _template_blocks(template):
+        if table not in tables:
+            # The whole table is new: it goes at the end, under its heading.
+            after = new_tables.setdefault(table, [f"[{table}]"])
+            after.extend(block if len(after) == 1 else ["", *block])
+        elif name not in tables[table].names:
+            inserts.setdefault(tables[table].end, []).extend(["", *block])
+        else:
+            continue
+        added.append(f"{table}.{name}")
+    if not added:
+        return current, []
+    merged: list[str] = []
+    for number, line in enumerate(lines):
+        merged.extend(inserts.get(number, []))
+        merged.append(line)
+    merged.extend(inserts.get(len(lines), []))
+    for block in new_tables.values():
+        while merged and not merged[-1].strip():
+            merged.pop()
+        merged.extend(["", *block])
+    text = "\n".join(merged).rstrip("\n") + "\n"
+    try:
+        same = _set(text) == _set(current)
+    except tomllib.TOMLDecodeError as error:
+        raise SetupError(
+            f"{SETTINGS} is not well-formed TOML ({error}), and was left as it is"
+        ) from None
+    if not same:
+        raise SetupError(
+            f"putting the new settings into {SETTINGS} would have changed what it sets, "
+            "so it was left as it is. Please report this."
+        )
+    return text, added
 
 
 def self_signed_site(ipv6: bool) -> str:
@@ -762,6 +894,103 @@ def _renew(args: argparse.Namespace) -> int:
     return 0
 
 
+def _settings(args: argparse.Namespace) -> int:
+    """Bring the settings file up to date with this version, changing nothing it sets."""
+    if not SETTINGS_TEMPLATE.is_file():
+        raise SetupError(f"{SETTINGS_TEMPLATE} does not exist. Is the hirdir package installed?")
+    template = SETTINGS_TEMPLATE.read_text(encoding="utf-8")
+    if not SETTINGS.is_file():
+        _write(SETTINGS, template)
+        print(f"{SETTINGS} was written: every setting is in it, commented out at its default.")
+        return 0
+    before = SETTINGS.read_text(encoding="utf-8")
+    try:
+        after, added = with_new_settings(before, template)
+    except tomllib.TOMLDecodeError as error:
+        raise SetupError(
+            f"{SETTINGS} is not well-formed TOML ({error}), and was left as it is"
+        ) from None
+    if not added:
+        print(f"Nothing to change: {SETTINGS} has every setting of this version of hirdir.")
+        return 0
+    print(diff(str(SETTINGS), before, after), end="")
+    if not _confirm("Put these settings into the file, commented out?", args.yes):
+        print("Nothing was changed.")
+        return 1
+    kept = SETTINGS.with_name(f"{SETTINGS.name}.{time.strftime('%Y%m%dT%H%M%S')}.bak")
+    _write(kept, before)
+    os.chmod(kept, SETTINGS.stat().st_mode & 0o7777)
+    _write(SETTINGS, after)
+    print(
+        f"{SETTINGS} has the new settings of this version, commented out at their defaults: "
+        f"{', '.join(added)}. Nothing you set was changed. The file as it was is {kept}."
+    )
+    return 0
+
+
+def _field(package: Path, name: str) -> str:
+    return _run([DPKG_DEB, "--field", str(package), name]).stdout.strip()
+
+
+def _upgrade(args: argparse.Namespace) -> int:
+    """Install a newer package of hirdir with apt, with no question left to answer.
+
+    The package does the work of an upgrade itself: it backs the database up, brings the
+    schema, the settings file and the nginx snippet up to date, and starts the service
+    again. This checks that the file is what it should be and hands over to apt.
+    """
+    package = Path(args.upgrade).resolve()
+    if not package.is_file():
+        raise SetupError(f"there is no file {package}")
+    if _field(package, "Package") != "hirdir":
+        raise SetupError(f"{package} is not a package of hirdir")
+    new = _field(package, "Version")
+    installed = _run([DPKG_QUERY, "--show", "--showformat", "${Version}", "hirdir"]).stdout.strip()
+    older = subprocess.run([DPKG, "--compare-versions", new, "lt", installed], check=False)  # noqa: S603
+    if installed and older.returncode == 0:
+        raise SetupError(
+            f"{package.name} is version {new}, older than the {installed} that is installed. "
+            'Going back takes the steps in the documentation, under "Going back to the '
+            'release before".'
+        )
+    checksum = package.with_name(package.name + ".sha256")
+    if checksum.is_file():
+        wanted = checksum.read_text(encoding="utf-8").split()[0]
+        if hashlib.sha256(package.read_bytes()).hexdigest() != wanted:
+            raise SetupError(f"{package.name} does not have the checksum in {checksum.name}")
+        print(f"{package.name} has the checksum in {checksum.name}.")
+    else:
+        print(f"There is no {checksum.name} beside the package, so its checksum was not compared.")
+    print(f"hirdir {installed or 'is not installed'} -> {new}")
+    again = ["--reinstall"] if new == installed else []
+    if again:
+        print("That version is installed already: it is installed again.")
+    print("The package backs the database up, brings the schema up to date, puts the new")
+    print(f"settings of this version into {SETTINGS} without changing yours, writes the")
+    print("nginx snippet under the prefix it has, and starts the service again.")
+    if not _confirm("Go on?", args.yes):
+        print("Nothing was changed.")
+        return 1
+    sys.stdout.flush()
+    # apt takes over from here. This program is part of the package that is about to be
+    # replaced, so it does nothing more once apt has begun.
+    os.execve(  # noqa: S606 - a fixed program with the package's own path
+        APT_GET,
+        [
+            APT_GET,
+            "install",
+            "--yes",
+            *again,
+            "-o",
+            "Dpkg::Options::=--force-confdef",
+            "-o",
+            "Dpkg::Options::=--force-confold",
+            str(package),
+        ],
+        {**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+    )
+
+
 def _add(args: argparse.Namespace) -> int:
     if not SNIPPET.is_file():
         raise SetupError(
@@ -816,6 +1045,17 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "prefix; the package does this itself when it is installed and at each upgrade",
     )
     parser.add_argument(
+        "--settings",
+        action="store_true",
+        help=f"put the settings {SETTINGS} does not have yet into it, commented out at "
+        "their defaults, changing nothing it sets; the package does this itself too",
+    )
+    parser.add_argument(
+        "--upgrade",
+        metavar="PACKAGE.deb",
+        help="install this newer package of hirdir with apt, with no question to answer",
+    )
+    parser.add_argument(
         "--no-reload",
         action="store_true",
         help="with --renew: leave it to the caller to reload nginx, as the package's scripts do",
@@ -823,6 +1063,10 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.remove and (args.site or args.prefix or args.self_signed or args.renew):
         parser.error("--remove is used on its own, or with --yes")
+    alone = [name for name in ("settings", "upgrade") if getattr(args, name)]
+    others = args.site or args.prefix or args.self_signed or args.renew or args.remove
+    if alone and (len(alone) > 1 or others or args.no_reload):
+        parser.error(f"--{alone[0]} is used on its own, or with --yes")
     if args.renew and (args.site or args.self_signed):
         parser.error("--renew is used on its own, or with --prefix, --no-reload and --yes")
     if args.no_reload and not args.renew:
@@ -841,6 +1085,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.remove:
             return _remove(args)
+        if args.settings:
+            return _settings(args)
+        if args.upgrade:
+            return _upgrade(args)
         return _renew(args) if args.renew else _add(args)
     except SetupError as error:
         # What was shown so far comes first, also when the output is not a terminal.

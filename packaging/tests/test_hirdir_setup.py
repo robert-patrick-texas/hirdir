@@ -542,3 +542,167 @@ def test_renew_leaves_a_snippet_edited_by_hand_and_says_where_the_shipped_one_is
 def test_options_that_do_not_go_together_are_refused(options: list[str]) -> None:
     with pytest.raises(SystemExit):
         setup._arguments(options)
+
+
+# --- the settings file ---------------------------------------------------------------
+
+SETTINGS_NOW = (PACKAGING / "config.toml").read_text(encoding="utf-8")
+SETTINGS_OF_0_2_1 = (PACKAGING / "tests" / "settings" / "0.2.1.toml").read_text(encoding="utf-8")
+EDITED = SETTINGS_OF_0_2_1.replace("# session_hours = 12", "session_hours = 11").replace(
+    "[backup]", "# Our own note: the off-site copy is taken at 03:00.\n[backup]"
+)
+
+
+def test_a_settings_file_nobody_edited_becomes_the_one_this_version_ships() -> None:
+    merged, added = setup.with_new_settings(SETTINGS_OF_0_2_1, SETTINGS_NOW)
+    assert added == ["files.max_megabytes"]
+    assert merged == SETTINGS_NOW
+
+
+def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:
+    merged, added = setup.with_new_settings(EDITED, SETTINGS_NOW)
+    assert added == ["files.max_megabytes"]
+    # Every line of the site's file is still there, in its place, and the rest follows.
+    assert merged.startswith(EDITED.rstrip("\n") + "\n")
+    assert "# Our own note: the off-site copy is taken at 03:00." in merged
+    assert setup.tomllib.loads(merged) == {
+        "server": {},
+        "database": {},
+        "access": {"session_hours": 11},
+        "backup": {},
+        "files": {},
+    }
+    assert merged.endswith("# max_megabytes = 20\n")
+    # Brought up to date once, it is up to date.
+    assert setup.with_new_settings(merged, SETTINGS_NOW) == (merged, [])
+
+
+def test_a_setting_missing_from_a_table_goes_to_the_end_of_that_table() -> None:
+    current = '[server]\nlisten = "127.0.0.1:9000"\n\n[access]\nsession_hours = 2\n'
+    merged, added = setup.with_new_settings(current, SETTINGS_NOW)
+    assert "server.trusted_proxies" in added
+    assert "server.listen" not in added
+    assert "access.session_hours" not in added
+    lines = merged.splitlines()
+    assert lines.index('# state_dir = "/var/lib/hirdir"') < lines.index("[access]")
+    assert lines.index("# sign_in_failures_before_delay = 5") > lines.index("[access]")
+    parsed = setup.tomllib.loads(merged)
+    assert (parsed["server"], parsed["access"]) == (
+        {"listen": "127.0.0.1:9000"},
+        {"session_hours": 2},
+    )
+    assert setup.with_new_settings(merged, SETTINGS_NOW) == (merged, [])
+
+
+def test_a_setting_that_is_set_or_commented_out_counts_as_there() -> None:
+    current = SETTINGS_NOW.replace("# max_megabytes = 20", "max_megabytes = 50")
+    assert setup.with_new_settings(current, SETTINGS_NOW) == (current, [])
+    assert setup.with_new_settings(SETTINGS_NOW, SETTINGS_NOW) == (SETTINGS_NOW, [])
+
+
+def test_a_settings_file_that_is_not_toml_is_left_alone() -> None:
+    with pytest.raises((setup.SetupError, setup.tomllib.TOMLDecodeError)):
+        setup.with_new_settings("[server\nlisten = \n", SETTINGS_NOW)
+
+
+@pytest.fixture
+def etc(tmp_path: Path, monkeypatch) -> Path:
+    """A settings file and the shipped text in a directory of the test's own."""
+    shipped = tmp_path / "share" / "config.toml"
+    shipped.parent.mkdir()
+    shipped.write_text(SETTINGS_NOW, encoding="utf-8")
+    monkeypatch.setattr(setup, "SETTINGS_TEMPLATE", shipped)
+    monkeypatch.setattr(setup, "SETTINGS", tmp_path / "etc" / "config.toml")
+    monkeypatch.setattr(setup.os, "geteuid", lambda: 0)
+    return tmp_path / "etc"
+
+
+def test_settings_writes_the_file_on_a_first_install_and_adds_to_it_at_an_upgrade(
+    etc: Path, capsys
+) -> None:
+    file = etc / "config.toml"
+    assert setup.main(["--settings", "--yes"]) == 0
+    assert file.read_text(encoding="utf-8") == SETTINGS_NOW
+    assert setup.main(["--settings", "--yes"]) == 0
+    assert "Nothing to change" in capsys.readouterr().out
+    assert list(etc.iterdir()) == [file]
+
+    file.write_text(EDITED, encoding="utf-8")
+    file.chmod(0o640)
+    assert setup.main(["--settings", "--yes"]) == 0
+    said = capsys.readouterr().out
+    assert "files.max_megabytes" in said
+    assert "Nothing you set was changed" in said
+    assert "session_hours = 11" in file.read_text(encoding="utf-8")
+    assert "# max_megabytes = 20" in file.read_text(encoding="utf-8")
+    assert oct(file.stat().st_mode & 0o777) == "0o640"
+    (kept,) = [path for path in etc.iterdir() if path != file]
+    assert kept.name.startswith("config.toml.")
+    assert kept.name.endswith(".bak")
+    assert kept.read_text(encoding="utf-8") == EDITED
+
+    file.write_text("[server\n", encoding="utf-8")
+    assert setup.main(["--settings", "--yes"]) == 1
+    assert file.read_text(encoding="utf-8") == "[server\n"
+
+
+def test_upgrade_checks_the_package_and_hands_over_to_apt(
+    etc: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    package = tmp_path / "hirdir_9.9.9_amd64.deb"
+    package.write_bytes(b"not really a package")
+    fields = {"Package": "hirdir", "Version": "9.9.9"}
+    monkeypatch.setattr(setup, "_field", lambda _package, name: fields[name])
+    installed = subprocess.CompletedProcess([], 0, stdout="0.3.0", stderr="")
+    monkeypatch.setattr(setup, "_run", lambda _command: installed)
+    ran: list[tuple[str, list[str], dict[str, str]]] = []
+    monkeypatch.setattr(setup.os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
+
+    setup.main(["--upgrade", str(package), "--yes"])
+    ((program, argv, env),) = ran
+    assert program == setup.APT_GET
+    assert argv[1:3] == ["install", "--yes"]
+    assert "Dpkg::Options::=--force-confold" in argv
+    assert argv[-1] == str(package)
+    assert env["DEBIAN_FRONTEND"] == "noninteractive"
+    assert "--reinstall" not in argv
+    assert "0.3.0 -> 9.9.9" in capsys.readouterr().out
+
+    # The version that is installed is installed again, and an older one is refused.
+    ran.clear()
+    fields["Version"] = "0.3.0"
+    setup.main(["--upgrade", str(package), "--yes"])
+    assert "--reinstall" in ran[0][1]
+    fields["Version"] = "0.2.1"
+    monkeypatch.setattr(
+        setup.subprocess, "run", lambda *_, **__: subprocess.CompletedProcess([], 0)
+    )
+    assert setup.main(["--upgrade", str(package), "--yes"]) == 1
+    assert "older than the 0.3.0 that is installed" in capsys.readouterr().err
+    monkeypatch.undo()
+    fields["Version"] = "9.9.9"
+    monkeypatch.setattr(setup, "_field", lambda _package, name: fields[name])
+    monkeypatch.setattr(setup, "_run", lambda _command: installed)
+    monkeypatch.setattr(setup.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(setup.os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
+
+    # A checksum beside the package is compared, and one that differs stops it.
+    ran.clear()
+    (tmp_path / "hirdir_9.9.9_amd64.deb.sha256").write_text("0" * 64 + "  hirdir_9.9.9_amd64.deb\n")
+    assert setup.main(["--upgrade", str(package), "--yes"]) == 1
+    fields["Package"] = "something-else"
+    assert setup.main(["--upgrade", str(package), "--yes"]) == 1
+    assert setup.main(["--upgrade", str(tmp_path / "absent.deb"), "--yes"]) == 1
+    assert ran == []
+    assert "does not have the checksum" in capsys.readouterr().err
+
+
+def test_settings_and_upgrade_are_used_on_their_own() -> None:
+    for wrong in (
+        ["--settings", "--renew"],
+        ["--settings", "--prefix", "/x"],
+        ["--upgrade", "a.deb", "--settings"],
+        ["--upgrade", "a.deb", "--remove"],
+    ):
+        with pytest.raises(SystemExit):
+            setup._arguments(wrong)

@@ -14,7 +14,9 @@
 #
 # Both times, once the migrations are done: writes /etc/nginx/snippets/hirdir.conf as
 # this version ships it, under the URL prefix that file already has, and on an upgrade
-# has nginx reload when the file changed.
+# has nginx reload when the file changed. And brings /etc/hirdir/config.toml up to date:
+# written on a first install, and at an upgrade given the settings it does not have
+# yet, commented out at their defaults, with nothing that a site set changed.
 set -e
 
 STATE=/var/lib/hirdir
@@ -51,6 +53,25 @@ renew_snippet() {
         reloaded=" nginx was reloaded."
     fi
     echo "hirdir: $(printf '%s\n' "$renewed" | tail -n 1)$reloaded"
+}
+
+# The settings file is not a conffile, so that no upgrade stops to ask about it. It is
+# written here by "hirdir-setup --settings": the whole file on a first install, and at
+# an upgrade only the settings it lacks, each commented out at its default. A file that
+# cannot be read as TOML is left alone, and the message says so. hirdir runs with the
+# defaults where the file says nothing, so none of this stops an installation.
+#
+# renew_settings OLD_VERSION: OLD_VERSION is empty on a first install.
+renew_settings() {
+    if ! brought=$(hirdir-setup --settings --yes); then
+        echo "hirdir: /etc/hirdir/config.toml was left as it was, for the reason given above." >&2
+        echo "hirdir: With the cause put right, run: sudo hirdir-setup --settings" >&2
+        return 0
+    fi
+    case "$brought" in
+        *"Nothing to change"*) ;;
+        *) if [ -n "$1" ]; then echo "hirdir: $(printf '%s\n' "$brought" | tail -n 1)"; fi ;;
+    esac
 }
 
 case "$1" in
@@ -118,6 +139,7 @@ tokens.load_or_create_key(config.load().secret_key_path)'
         # After the migration, so that an upgrade that stops there has changed nothing
         # of nginx's, and the version that was installed before is gone back to as it was.
         renew_snippet "$2"
+        renew_settings "$2"
         ;;
     abort-upgrade | abort-remove | abort-deconfigure)
         ;;

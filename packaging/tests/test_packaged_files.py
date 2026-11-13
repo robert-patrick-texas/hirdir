@@ -22,10 +22,6 @@ def shape(directive: setup.Directive) -> tuple:
     return (directive.name, tuple(directive.args), tuple(children))
 
 
-# Tables of the configuration that are newer than the shipped file, which is left as it is.
-NOT_IN_THE_SHIPPED_FILE = ("files",)
-
-
 def test_the_snippet_holds_the_location_block_of_the_architecture_page() -> None:
     """The block under "URL prefix", and the upload limit that "Package" tells of.
 
@@ -92,6 +88,22 @@ def test_the_upstream_is_where_the_server_listens_by_default() -> None:
     assert shape(upstream) == ("upstream", ("hirdir",), (("server", (config.Config.listen,), ()),))
 
 
+def test_the_settings_file_is_shipped_as_a_text_that_postinst_writes_out() -> None:
+    """It is no conffile: dpkg would ask every site that had edited its own."""
+    build = (PACKAGING / "container" / "build.sh").read_text(encoding="utf-8")
+    assert f'packaging/config.toml "$STAGE{setup.SETTINGS_TEMPLATE}"\n' in build
+    assert f"$STAGE{setup.SETTINGS}" not in build
+    assert f'install -d "$STAGE{setup.SETTINGS.parent}"\n' in build
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    assert "$(hirdir-setup --settings --yes)" in postinst
+    # After the migrations, so that an upgrade that stops there has changed no file.
+    assert postinst.index("admin migrate") < postinst.index('renew_settings "$2"')
+    # A purge takes the file and the copies kept beside it with the directory.
+    assert "rm -rf /var/lib/hirdir /etc/hirdir\n" in (PACKAGING / "debian" / "postrm").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path: Path) -> None:
     shipped = (PACKAGING / "config.toml").read_text(encoding="utf-8")
     assert all(not table for table in tomllib.loads(shipped).values())
@@ -103,15 +115,8 @@ def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path
     }
     documented = re.search(r"## Configuration.*?```toml\n(.*?)```", ARCHITECTURE, re.DOTALL)
     assert documented is not None
-    known = tomllib.loads(documented.group(1))
-    # The file is a conffile. dpkg asks about a conffile that was edited on the host
-    # whenever a new version ships a different one, and an upgrade with nobody to answer
-    # stops there. So a key that a later release adds is documented and is not put into
-    # the shipped file: see P-59 in docs/decisions.md.
-    newer = {table: known.pop(table) for table in NOT_IN_THE_SHIPPED_FILE}
-    assert newer == {"files": {"max_megabytes": config.Config.max_file_megabytes}}
-    assert tomllib.loads(uncommented) == known
-    assert len(keys) == 7
+    assert tomllib.loads(uncommented) == tomllib.loads(documented.group(1))
+    assert len(keys) == 8
 
     as_shipped = tmp_path / "shipped.toml"
     as_shipped.write_text(shipped, encoding="utf-8")

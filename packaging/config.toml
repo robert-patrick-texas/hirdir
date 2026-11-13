@@ -34,3 +34,8 @@
 [backup]
 # How many of the newest backups "hirdir admin backup" keeps in /var/lib/hirdir/backups.
 # keep = 14
+
+[files]
+# The largest file an import takes, in megabytes. nginx has to let as much through:
+# client_max_body_size in /etc/nginx/snippets/hirdir.conf, to the same figure.
+# max_megabytes = 20
