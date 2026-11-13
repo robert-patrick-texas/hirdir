@@ -47,6 +47,7 @@ the [build plan](docs/build-plan.md).
 | [Data model](docs/data-model.md) | The records, inheritance, identity, lifecycle, counting and weight |
 | [Architecture](docs/architecture.md) | The software, access, the package and how it is tested |
 | [Interfaces](docs/interfaces.md) | The API, the filter grammar, import and export, the CLI, the web UI |
+| [Examples](examples/README.md) | A small fictional inventory as CSV and JSON, and how to load it |
 | [Build plan](docs/build-plan.md) | Releases, parallel lanes and the acceptance scenarios |
 | [Release process](docs/release-process.md) | Versions, release notes, the dependency rule, publishing these pages |
 | [Decisions](docs/decisions.md) | What is decided, what is proposed, what is open |

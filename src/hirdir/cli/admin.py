@@ -183,7 +183,11 @@ def backup() -> None:
     source = _sqlite_path(config)
     if not source.is_file():
         raise _fail(f"there is no database at {source}")
-    config.backup_dir.mkdir(parents=True, exist_ok=True)
+    if not config.backup_dir.is_dir():
+        # Readable by the service and its group and by nobody else, whatever the umask
+        # of whoever takes the first backup.
+        config.backup_dir.mkdir(parents=True)
+        config.backup_dir.chmod(0o750)
     target = config.backup_dir / f"hirdir-{clock.stamp(clock.now(), _time_zone(config))}.db"
     _copy_database(source, target)
     kept = sorted(config.backup_dir.glob("hirdir-*.db"), key=_made_at)

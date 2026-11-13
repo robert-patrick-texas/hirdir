@@ -43,8 +43,8 @@
 # files. The others, marked pkg, are about the package alone.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
-# command line (hirdir import, hirdir export, hirdir items) have no checks here yet:
-# client_commands() is where they go, and until then it prints a SKIP line.
+# command line (hirdir import, hirdir export, hirdir items) are then run in the
+# container, from the package, by client_commands().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -1378,7 +1378,7 @@ files() {
         "$status $(header content-type) $(json_field title)" "413 application/problem+json Too large"
     check "pkg with the request ID that every answer of hirdir carries" test -n "$(header x-request-id)"
 
-    client_commands
+    client_commands "$filter"
 
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     check "pkg hirdir admin restore of the backup taken before the examples were imported" \
@@ -1398,31 +1398,87 @@ files() {
 
 # ---- the client commands ----------------------------------------------------------------
 
-# THE CHECKS OF THE CLIENT COMMANDS GO HERE.
+# hirdir import, hirdir export and hirdir items, run in the container with the hirdir
+# of the package: its own Python, and the httpx2 the package carries. They are pointed
+# at the service itself, past nginx, because the test site's certificate is a throwaway
+# that no client should be told to trust. The examples are loaded when this runs, and
+# the filtered export of files() is in $work/export.csv.
 #
-# hirdir import, hirdir export and hirdir items were being written when the checks of
-# import and export above were, and were not in the tree. So files() drives the API with
-# curl, and nothing in this script runs a client command of 0.3.0. What belongs here,
-# run in the container with HIRDIR_URL=https://127.0.0.1$prefix and HIRDIR_TOKEN, before
-# files() puts the backup back:
-#
-#   S12, S13   "hirdir import FILE --entity NAME" previews and changes nothing, and with
-#              "--apply" loads: the same counts as POST /imports/preview and apply give
-#   S16        "hirdir export items --filter ... --format csv" and "--format json" hold
-#              the rows and the columns that POST /exports gives for the same filter,
-#              each with hid first
-#   also       "hirdir items list --filter ...", "hirdir items show", "hirdir items set
-#              ... --apply", and the exit codes of docs/interfaces.md: 4 for a rejected
-#              row, 5 for a preview that is out of date
-#
-# Until they are written this prints one SKIP line in each pass that comes here, so that
-# no run reads as if the command line had been tested.
+# What a preview that is out of date exits with, 5, is not shown here: it takes a change
+# made between a preview and its apply, which tests/api/test_cli.py makes.
+cli() { inside env HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN="$token" hirdir "$@"; }
+
+# cli_run OUT ARGUMENT...: run a client command with its output in OUT and what it says in
+# $work/cli.err. Sets $code to what it exited with.
+cli_run() {
+    local out=$1
+    shift
+    code=0
+    cli "$@" >"$out" 2>"$work/cli.err" || code=$?
+}
+
 client_commands() {
-    if inside hirdir import --help >/dev/null 2>&1; then
-        skip "S16 hirdir import, hirdir export and hirdir items, run against the installed package: this package has the commands, and the checks of them are not written yet. Import and export were tested through the API alone. The checks go in client_commands() of $self"
-    else
-        skip "S16 hirdir import, hirdir export and hirdir items, run against the installed package: the hirdir of this package has no import command, so the client commands of $version are not in it. Import and export were tested through the API alone. The checks go in client_commands() of $self"
+    section "the client commands of the package: hirdir import, export and items"
+    local filter=$1 code=0 hid serial
+    if ! inside hirdir import --help >/dev/null 2>&1; then
+        fail "S16 the hirdir of this package has no import command"
+        return
     fi
+
+    cli_run "$work/cli.csv" export items --filter "$filter" --sort hostname --format csv
+    expect "S16 hirdir export items --filter '$filter' --format csv writes the very file that POST /exports gave" \
+        "$code $(sha256sum <"$work/cli.csv")" "0 $(sha256sum <"$work/export.csv")"
+    cli_run "$work/cli-list.csv" items list --filter "$filter" --sort hostname --format csv
+    expect "S16 hirdir items list with the same filter, as csv, is that file too" \
+        "$code $(sha256sum <"$work/cli-list.csv")" "0 $(sha256sum <"$work/export.csv")"
+    api POST /exports "$(export_request json "$filter" hostname serial_number)"
+    cli_run "$work/cli.json" export items --filter "$filter" --sort hostname \
+        --columns hostname,serial_number --format json
+    expect "S16 and as JSON with two columns named, what POST /exports gives for them" \
+        "$code $(sha256sum <"$work/cli.json")" "0 $(sha256sum <"$work/body")"
+    cli_run "$work/cli.table" items list --filter "$filter" --sort hostname --limit 1000
+    expect "S16 a list on a terminal is a table with the HID first and one line for each row" \
+        "$code $(head -n 1 "$work/cli.table" | cut -d' ' -f1) $(($(wc -l <"$work/cli.table") - 1))" \
+        "0 HID $(table 'len(rows)' "$work/export.csv")"
+
+    hid=$(table 'rows[0]["hid"]' "$work/export.csv")
+    serial=$(table 'rows[0]["serial_number"]' "$work/export.csv")
+    cli_run "$work/cli.show" items show "$serial"
+    expect "pkg hirdir items show finds an item by its serial number" \
+        "$code $(sed -n 's/^hid: *//p' "$work/cli.show")" "0 $hid"
+    expect "pkg and shows a time in the application's zone, with the zone named" \
+        "$(grep -c -E '^created_at: +[0-9-]{10} [0-9:]{8} E[SD]T$' "$work/cli.show")" 1
+    cli_run /dev/null items set "$hid" comments='Checked by the package test' --add-tag critical
+    api GET "/items/$hid"
+    expect "pkg hirdir items set changes one item at once: its comments and a tag" \
+        "$code $(json '[d["comments"], "critical" in d["tags"]]')" '0 ["Checked by the package test", true]'
+    api GET "/audit-events?record_hid=$hid&limit=1"
+    expect "pkg and the change is audited as made through the command line" \
+        "$(json 'd["items"][0]["via"]')" cli
+    cli_run /dev/null items set --filter "$filter" comments='Seen in the autumn audit'
+    api GET "/items/$hid"
+    expect "pkg a change to many items is a preview until --apply is given: nothing is changed" \
+        "$code $(grep -c 'Nothing was changed' "$work/cli.err") $(json_field comments)" \
+        "0 1 Checked by the package test"
+    cli_run /dev/null items set --filter "$filter" comments='Seen in the autumn audit' --apply
+    api GET "/items/$hid"
+    expect "pkg and with --apply it is made" "$code $(json_field comments)" "0 Seen in the autumn audit"
+
+    cli_run /dev/null import /usr/share/doc/hirdir/examples/tags.csv --entity tags
+    expect "S13 hirdir import of the packaged examples/tags.csv previews it: every row unchanged, nothing applied" \
+        "$code $(grep -c 'preview: 0 created, 0 updated, 4 unchanged, 0 rejected' "$work/cli.err")" "0 1"
+    inside bash -c 'printf "label,colour\npackage-test-cli,#1f6feb\n" >/tmp/cli-tags.csv'
+    cli_run /dev/null import /tmp/cli-tags.csv --entity tags --apply
+    api GET /tags
+    expect "S12 hirdir import --apply loads a file: the tag it holds is there" \
+        "$code $(grep -c 'applied: 1 created' "$work/cli.err") $(json 'sum(t["label"] == "package-test-cli" for t in d)')" "0 1 1"
+    inside bash -c 'printf "vendor,pid,serial_number,owner\nCisco,C9300-48P,PKG0000X901,Nobody At All\n" >/tmp/cli-bad.csv'
+    cli_run "$work/cli.out" import /tmp/cli-bad.csv --entity items --apply
+    expect "pkg a file with a rejected row exits with 4, says why, and applies nothing" \
+        "$code $(grep -c 'there is no owner Nobody At All' "$work/cli.out") $(grep -c 'nothing was applied' "$work/cli.err")" "4 1 1"
+    code=0
+    inside env HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN=not-a-token hirdir items list >/dev/null 2>&1 || code=$?
+    expect "pkg without a session the commands exit with 3" "$code" 3
 }
 
 # ---- the inventory ------------------------------------------------------------------------

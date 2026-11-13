@@ -195,7 +195,7 @@ are read there too.
 | What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, with the same changes and the same notes, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, the first fifty of them, and the job is `failed` |
 | Whose preview | A preview is applied by the one who made it, once. Anybody who may read the inventory may read it |
 | Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
-| Limits | 20 MB and 100,000 rows per file. A larger file is a `413` |
+| Limits | 20 MB and 100,000 rows per file. A larger file is a `413`. Behind the packaged nginx a body of more than 20 MB is refused by nginx itself, with a `413` that is nginx's own page and not a problem document |
 | Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), addresses, device groups, members, coverage, registrations, capacity lines |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply. The preview and the apply are events on the job |
 

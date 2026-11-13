@@ -68,6 +68,7 @@ imports on one set of rules.
 ```nginx
 location ^~ /hirdir/ {
     proxy_pass http://hirdir/;                      # the trailing slash strips /hirdir
+    client_max_body_size 20m;                       # an import is a file of up to 20 MB
     proxy_set_header X-Forwarded-Prefix /hirdir;
     proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -325,9 +326,13 @@ that follow make records of the same names by hand. So the pass takes a backup b
 the import and restores it afterwards, with `hirdir admin backup` and `hirdir admin
 restore`.
 
-The client commands of the CLI have no checks in these passes yet. Where they belong,
-each pass prints a `SKIP` line that says so, so that no run reads as if the command
-line had been tested.
+The client commands of the CLI are run in the container, from the package, while the
+examples are loaded: `hirdir export` and `hirdir items list` must write the very file
+that `POST /exports` gave for the same filter, and `hirdir items show`, `hirdir items
+set` for one item and for many, and `hirdir import` with and without `--apply` are
+tried, with the exit codes for a rejected row and for no session. They are pointed at
+the service itself, past nginx, because the test site's certificate is a throwaway
+that no client should be told to trust.
 
 **The previous release** is the package named by `PREVIOUS_DEB`. Left unset, it is the
 `hirdir_*_amd64.deb` in `dist/` with the highest version below the one under test, so
