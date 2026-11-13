@@ -14,7 +14,7 @@ behind these steps is in [architecture.md](architecture.md).
 ## Install
 
 ```bash
-sudo apt install ./hirdir_0.2.0_amd64.deb
+sudo apt install ./hirdir_0.2.1_amd64.deb
 ```
 
 This creates the `hirdir` user, the state directory `/var/lib/hirdir`, the database and
@@ -188,6 +188,18 @@ vendors, catalog entries, owners, items, tags, choices, settings and lifecycle r
 The lists of choices and the lifecycle rules are filled with their defaults. Nothing
 that 0.1.0 stored is changed. The Inventory role, which had nothing to act on in
 0.1.0, now lets its holders create and change inventory records.
+
+### From 0.2.0 to 0.2.1
+
+The schema goes from revision `0002` to `0003`. No table changes. Support weight is kept
+to two decimal places from now on, as money is, so a weight that 0.2.0 stored with three
+is rounded to the nearest hundredth: `0.125` becomes `0.13`. Nothing else that was
+stored is changed.
+
+Every time is now shown in one time zone, the same for everybody: the `time_zone`
+setting, which is America/New_York until an Admin changes it under Admin, Settings.
+Backups are named in that zone from now on. Those that 0.2.0 made keep their names and
+their place in the order.
 
 ### If the upgrade stops
 

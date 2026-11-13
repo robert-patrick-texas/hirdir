@@ -5,7 +5,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.2.0, the items: the inventory itself has arrived. There are
+**Status:** release 0.2.1, the items: the inventory itself has arrived. There are
 vendors, a catalog of models, owners and items; an item inherits its end-of-life dates,
 value, support weight and support cost from its model and shows where each value came
 from; lifecycle state, disposition and expected-online are kept to a table of rules

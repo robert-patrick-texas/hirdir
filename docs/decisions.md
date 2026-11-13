@@ -60,7 +60,7 @@ marked as replaced, not removed.
 | D-47 | The backup taken before an upgrade is one of the rotating backups, and is removed on the same schedule as the others. |
 | D-48 | Using `hirdir` should be easy and without waiting. Where a delay can be avoided or hidden, real or perceived, it is: the web UI loads only what a page needs, fetches the rest ahead of need, and a browser keeps what does not change. |
 | D-49 | The owner record is in from 0.2.0, with its label, organization and external flag, so that ownership can be shown and tried early with mock-up examples. Its people, and the exception recorded when an item is given to an owner outside the team, come in 0.5.0. (Was P-25.) |
-| D-50 | Lifecycle state, disposition and expected-online may be blank on an item. A blank does not take an item out of a count: a count is of the items in the view being looked at, whichever of drafts, active and retired records that view holds. (Was P-26, changed.) |
+| D-50 | Lifecycle state, disposition and expected-online may be blank on an item. An item with no state is counted, because it may be in the team's hands and nobody has said otherwise. Once a state is given, the state decides: an item declared to be outside the team's control is not counted within it. A count is of the items in the view being looked at, whichever of drafts, active and retired records that view holds. (Was P-26, changed.) |
 | D-51 | On a move an item keeps its disposition when the new state allows it, and takes the state's "set on entry" value when it does not. The caller may name the disposition and the intent instead. To be looked at again when a move may set several fields at once. (Was P-27.) |
 | D-52 | `session_hours` stays in the configuration file. It moves to the database only if most of the configuration does. (Was P-29.) |
 | D-53 | Every text comparison in a filter ignores case, regular expressions included: text is compared as if it were all in lower case. A regular expression matches anywhere in the value unless it is anchored. `ne` also finds blanks. (Was P-30.) |
@@ -72,13 +72,17 @@ marked as replaced, not removed.
 | D-59 | The migrations of one upgrade run in one transaction. After a failed upgrade the way back is the backup, on the version installed before, and the package prints the commands. (Was P-38.) |
 | D-60 | The Admin area of the web UI is shown to every role. Tags, choices and lifecycle rules are in it for all to read, and for Inventory to edit the first two. Users, groups, roles and settings show to an Admin only. (Was P-39.) |
 | D-61 | Every time is shown in the application's time zone, with the zone named, so that everybody refers to the same time whatever zone they are in. It is the `time_zone` setting, America/New_York by default. This holds for the web UI, the command line and the names of backup files. Storage and the API keep UTC. (Was P-40, changed. Replaces D-46.) |
+| D-62 | A lifecycle move or combination that the rules refuse is a `422` that names the field. `409` stays for a stale version and for uniqueness. (Was P-28.) |
+| D-63 | The server's tests use `httpx2`, the continuation of `httpx` under Pydantic. The command line moves to it in 0.3.0, when the client commands are built. (Was P-32.) |
+| D-64 | A regular expression is refused before it is compiled when the repeat counts written in it, the numbers in `{n}` and `{n,m}`, multiplied together, come to more than 100. This limits what a pattern may say, never how many records it may find. In the short form of a filter, a value that itself looks like `field:word:` is refused as a mistyped operator. (Was P-36.) |
 
 ## Proposed
 
 Each of these is the working answer. P-01 to P-04,
 P-20, P-22, P-23 and P-24 were confirmed and are now D-33 to D-36 and D-40 to D-43. P-25 to P-27,
 P-29 to P-31, P-33 to P-35 and P-37 to P-40 were answered on 2026-11-13 and are now
-D-49 to D-61, three of them changed by the answer.
+D-49 to D-61, three of them changed by the answer. P-28, P-32 and P-36 followed the same
+day as D-62 to D-64.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
@@ -98,9 +102,6 @@ D-49 to D-61, three of them changed by the answer.
 | P-18 | Test equipment has an owner and nothing more: no check-out, no calibration dates. | Stood unanswered at its default. | — |
 | P-21 | A capacity line may be a draft, may carry an annual cost, a vendor, dates and a region or site. The report shows the balance with and without drafts. | Drafts already exist for items and sites and give what-if comparisons for free. | 0.6.0 |
 | P-19 | Regular expressions use a linear-time engine when its binding has a production release for the Python in use, otherwise a time-limited one. | Which one is available changes with the Python version, and the dependency rule decides. | 0.2.0, with the time-limited `regex` package: RE2's own binding, `google-re2`, has no release for Python 3.15 |
-| P-28 | A lifecycle move or combination that the rules refuse is a `422` that names the field. | The API keeps `409` for a stale version and for uniqueness. | 0.2.0. Under discussion, with D-51 |
-| P-32 | The server's tests use `httpx2`, the continuation of `httpx` under Pydantic that the test client now asks for. The CLI stays on `httpx` until the client CLI is built in 0.3.0, and moves then. | `httpx` has had no production release since 0.28.1. Changing what the package ships is a separate step from changing a test dependency. | 0.2.0 for the tests, 0.3.0 for the CLI |
-| P-36 | A regular expression is refused before it is compiled when the repeat counts written in it, the numbers in `{n}` and `{n,m}`, multiplied together, come to more than 100. This limits what a pattern may say, never how many records it may find: a pattern may match every item there is. In the short form of a filter, a value that itself looks like `field:word:` is refused. | A seventeen-character pattern such as `(?:a{3000}){3000}` takes gigabytes to compile, which no time limit on matching catches. A mistyped operator would otherwise become part of a value and quietly find nothing. | 0.2.0. Restated, waiting for an answer |
 
 ## Open
 

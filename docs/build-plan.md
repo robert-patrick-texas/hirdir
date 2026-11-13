@@ -41,6 +41,10 @@ discovery observations and reconciliation; outward change feed and host lists fo
 monitoring tools; planning views for draft sites and items; cell-range selection and
 editing in the grid; PostgreSQL; a container image.
 
+A release between two rows of the table carries corrections to the one before it and
+adds no scenario. 0.2.1 followed 0.2.0 with the answers to its proposals: one time zone
+for everybody, support weight to two places, and a skipped upgrade test that says so.
+
 ## Acceptance scenarios
 
 Each scenario is one automated test in `tests/acceptance/`, named by its number, run by

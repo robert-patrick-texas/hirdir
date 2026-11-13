@@ -698,6 +698,9 @@ engineer_code=""
 robot_hid=""
 service_secret=""
 revision_before=""
+witness_entry=""
+witness_item=""
+witness_weight=""
 users_before=0
 events_before=0
 conffiles_before=""
@@ -756,6 +759,21 @@ previous_release() {
     api POST "/users/$robot_hid/service-tokens" '{"name": "nightly export"}'
     expect "pkg a service token is created for it" "$status" 201
     service_secret=$(json_field secret)
+
+    # A previous release that already keeps the inventory is given some to carry over.
+    # 0.2.0 kept support weight to three places, and every release since keeps two.
+    api GET /vendors
+    if [ "$status" = 200 ]; then
+        witness_weight=1.25
+        if [ "$previous_version" = 0.2.0 ]; then witness_weight=0.125; fi
+        api POST /vendors '{"name": "Upgrade Witness Networks"}'
+        api POST /catalog-entries "{\"vendor_hid\": \"$(json_field hid)\", \"pid\": \"UW-48P\", \"est_value\": \"18000.00\", \"support_weight\": \"$witness_weight\"}"
+        expect "pkg $previous_version holds a catalog entry with a value and a support weight of $witness_weight" "$status" 201
+        witness_entry=$(json_field hid)
+        api POST /items "{\"catalog_entry_hid\": \"$witness_entry\", \"serial_number\": \"UWN0000X001\", \"support_weight\": \"1.5\"}"
+        expect "pkg and an item of it with a support weight of its own" "$status" 201
+        witness_item=$(json_field hid)
+    fi
 
     sign_in upgrade-engineer not-the-access-code
     expect "pkg a wrong access code is refused" "$status" 401
@@ -837,6 +855,24 @@ upgrade() {
     api GET /about
     expect "pkg GET $prefix/api/v1/about says version $version and schema revision $head" \
         "$status $(json_field version) $(json_field schema_revision)" "200 $version $head"
+
+    if [ -n "$witness_entry" ]; then
+        local weight_after=$witness_weight row_version
+        if [ "$previous_version" = 0.2.0 ]; then weight_after=0.13; fi
+        api GET "/catalog-entries/$witness_entry"
+        expect "pkg the catalog entry from before has its value, and its support weight to two places" \
+            "$status $(json_field est_value) $(json_field support_weight)" "200 18000.00 $weight_after"
+        row_version=$(json_field row_version)
+        api POST "/catalog-entries/$witness_entry/retire" "{\"row_version\": $row_version}"
+        api GET "/items/$witness_item"
+        expect "pkg the item from before has its own support weight and inherits the value" \
+            "$status $(json_field support_weight) $(json 'd["effective"]["est_value"]["value"]')" "200 1.5 18000.00"
+        # Retired, so that the rest of this pass starts from lists as empty as a new
+        # installation's. Nothing is ever deleted.
+        row_version=$(json_field row_version)
+        api POST "/items/$witness_item/retire" "{\"row_version\": $row_version}"
+        expect "pkg and both can be retired with $version" "$status" 200
+    fi
 
     api GET '/users?limit=1000'
     expect "pkg every user is as before the upgrade ($users_before)" "$(unchanged users)" same
