@@ -34,14 +34,26 @@ export function Shell() {
               </NavLink>
             </li>
             {allows(user.role, "viewer") && (
-              <li>
-                <NavLink to="/audit">Audit</NavLink>
-              </li>
-            )}
-            {allows(user.role, "admin") && (
-              <li>
-                <NavLink to="/admin">Admin</NavLink>
-              </li>
+              <>
+                <li>
+                  <NavLink to="/items">Items</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/catalog">Catalog</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/vendors">Vendors</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/owners">Owners</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/audit">Audit</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/admin">Admin</NavLink>
+                </li>
+              </>
             )}
             <li>
               <NavLink to="/about">About</NavLink>
@@ -63,19 +75,41 @@ export function Shell() {
   );
 }
 
-/** The second row of navigation, on the Admin pages. */
+/**
+ * The second row of navigation, on the Admin pages. Accounts and settings are for an
+ * Admin. The lists that describe the inventory are there for everyone to read, and for
+ * the roles that may change them to change.
+ */
 export function AdminNav() {
+  const { user } = useAuth();
+  const admin = allows(user.role, "admin");
   return (
     <nav className="sub" aria-label="Admin">
       <ul>
+        {admin && (
+          <>
+            <li>
+              <NavLink to="/admin/users">Users</NavLink>
+            </li>
+            <li>
+              <NavLink to="/admin/groups">Groups</NavLink>
+            </li>
+            <li>
+              <NavLink to="/admin/roles">Roles</NavLink>
+            </li>
+            <li>
+              <NavLink to="/admin/settings">Settings</NavLink>
+            </li>
+          </>
+        )}
         <li>
-          <NavLink to="/admin/users">Users</NavLink>
+          <NavLink to="/admin/choices">Choices</NavLink>
         </li>
         <li>
-          <NavLink to="/admin/groups">Groups</NavLink>
+          <NavLink to="/admin/lifecycle-rules">Lifecycle rules</NavLink>
         </li>
         <li>
-          <NavLink to="/admin/roles">Roles</NavLink>
+          <NavLink to="/admin/tags">Tags</NavLink>
         </li>
       </ul>
     </nav>

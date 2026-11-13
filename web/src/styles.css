@@ -234,7 +234,8 @@ section {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -278,7 +279,9 @@ input[type="password"],
 input[type="email"],
 input[type="search"],
 input[type="datetime-local"],
-select {
+input[type="date"],
+select,
+textarea {
   width: 100%;
   max-width: 26rem;
   padding: 0.3rem 0.5rem;
@@ -287,8 +290,14 @@ select {
   border-radius: 4px;
 }
 
+textarea {
+  max-width: 52rem;
+  resize: vertical;
+}
+
 input[aria-invalid="true"],
-select[aria-invalid="true"] {
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
   border-color: var(--danger);
 }
 
@@ -576,4 +585,284 @@ tr.dim th {
 
 .facts dd {
   margin: 0;
+}
+
+/* --- records ---------------------------------------------------------------------- */
+
+.badge {
+  margin-left: 0.6rem;
+  padding: 0.1rem 0.5rem;
+  background: var(--warn-surface);
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 0.85rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* The inputs of a form, side by side where there is room. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  align-items: start;
+}
+
+.fields > .field:has(textarea),
+.fields > fieldset {
+  grid-column: 1 / -1;
+}
+
+.field-group h3 {
+  margin-top: 0.75rem;
+}
+
+fieldset.check-group {
+  max-width: none;
+}
+
+.check-group .choice {
+  margin-bottom: 0.15rem;
+}
+
+.check-group p {
+  margin: 0;
+}
+
+.panel h3:first-child {
+  margin-top: 0;
+}
+
+section.panel {
+  margin: 1rem 0;
+}
+
+table.narrow {
+  width: auto;
+  min-width: 34rem;
+}
+
+.history {
+  overflow-wrap: anywhere;
+}
+
+/* One event of the history is a group of rows, set off from the next. */
+.history tbody + tbody tr:first-child td {
+  border-top: 2px solid var(--border);
+}
+
+.row-actions {
+  white-space: nowrap;
+}
+
+.row-actions button {
+  margin-right: 0.35rem;
+}
+
+.cell-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.cell-form .field {
+  flex: 1 1 12rem;
+}
+
+/* In a table, the heading of the column is the visible label of the input. */
+td .field label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+td .field-check {
+  display: block;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* --- the grid --------------------------------------------------------------------- */
+
+/* A page with a grid uses the whole width of the window. */
+main:has(.grid-page) {
+  max-width: none;
+}
+
+.grid-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: flex-start;
+  margin: 0 0 0.5rem;
+}
+
+.grid-filter {
+  flex: 1 1 26rem;
+  margin: 0;
+}
+
+.grid-filter .field {
+  flex: 1 1 18rem;
+}
+
+.grid-filter input {
+  max-width: none;
+}
+
+.grid-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  align-items: baseline;
+  padding-top: 1.55rem;
+}
+
+.grid-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding-top: 1.55rem;
+}
+
+.grid-columns {
+  position: relative;
+}
+
+.grid-columns summary {
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.grid-columns-menu {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  width: 17rem;
+  margin-top: 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+}
+
+.grid-columns fieldset {
+  max-width: none;
+  max-height: 22rem;
+  padding: 0.5rem 0.75rem;
+  overflow-y: auto;
+  border: 0;
+}
+
+.grid-columns button {
+  width: 100%;
+  border-width: 1px 0 0;
+  border-radius: 0 0 4px 4px;
+}
+
+.grid-retry {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin: 0 0 0.75rem;
+}
+
+.grid-status {
+  min-height: 1.45em;
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+}
+
+.grid-host {
+  height: calc(100vh - 19rem);
+  min-height: 22rem;
+}
+
+/* AG Grid's Quartz theme, in hirdir's own colours. They follow the colour scheme. The grid
+   puts the theme's class on each popup it opens as well, so the colours are set there too. */
+.grid-host.ag-theme-quartz,
+.grid-host .ag-theme-quartz {
+  --ag-font-family: var(--font);
+  --ag-font-size: 14px;
+  --ag-background-color: var(--bg);
+  --ag-foreground-color: var(--text);
+  --ag-secondary-foreground-color: var(--muted);
+  --ag-header-background-color: var(--surface);
+  --ag-header-foreground-color: var(--text);
+  --ag-border-color: var(--border);
+  --ag-row-border-color: var(--border);
+  --ag-odd-row-background-color: var(--bg);
+  --ag-row-hover-color: var(--surface);
+  --ag-active-color: var(--accent);
+  --ag-selected-row-background-color: var(--info-surface);
+  --ag-range-selection-border-color: var(--focus);
+  --ag-input-focus-border-color: var(--focus);
+  --ag-control-panel-background-color: var(--surface);
+  --ag-menu-background-color: var(--bg);
+  --ag-panel-background-color: var(--bg);
+  --ag-popup-background-color: var(--bg);
+  --ag-tooltip-background-color: var(--surface);
+  --ag-modal-overlay-background-color: rgb(0 0 0 / 0.45);
+  --ag-invalid-color: var(--danger);
+  --ag-disabled-foreground-color: var(--muted);
+  --ag-input-border-color: var(--border);
+  --ag-checkbox-unchecked-color: var(--muted);
+  --ag-wrapper-border-radius: 6px;
+  --ag-row-height: 32px;
+  --ag-header-height: 36px;
+}
+
+.grid-host .ag-cell a {
+  color: var(--accent);
+}
+
+.grid-host .ag-cell-focus:not(.ag-cell-range-selected):focus-within,
+.grid-host .ag-header-cell:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* Drafts, and retired and archived records, when they are asked for. */
+.grid-host .row-dim,
+.grid-host .row-dim a {
+  color: var(--muted);
+}
+
+.grid-host .row-dim {
+  font-style: italic;
+}
+
+/* A value that is inherited, not set on the record itself. */
+.grid-host .cell-inherited,
+.inherited {
+  color: var(--muted);
+}
+
+.choice-filter {
+  max-width: none;
+  max-height: 18rem;
+  padding: 0.5rem 0.75rem;
+  overflow-y: auto;
+  border: 0;
+}
+
+.choice-filter-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  padding: 0.1rem 0;
+  white-space: nowrap;
 }

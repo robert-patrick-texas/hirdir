@@ -1,4 +1,5 @@
 import type { ApiError } from "../api/client";
+import { fieldErrors } from "../lib/problems";
 
 /** A sentence as it is shown: a capital first letter and a full stop. */
 function sentence(text: string): string {
@@ -22,9 +23,8 @@ interface ProblemProps {
  */
 export function Problem({ error, shown = [], onReload }: ProblemProps) {
   const visible = error && !error.aborted ? error : null;
-  const others = visible
-    ? Object.entries(visible.fields).filter(([field]) => !shown.includes(field))
-    : [];
+  // A message about a field the form shows is shown beside its input, not here.
+  const others = fieldErrors(visible, shown).rest;
   const heading =
     visible && visible.detail !== "" && visible.status !== 429 && visible.status !== 0
       ? visible.title

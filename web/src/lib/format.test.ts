@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatChange, formatChanges, formatTime, formatValue, plural } from "./format";
+import {
+  formatChange,
+  formatChanges,
+  formatMac,
+  formatTime,
+  formatValue,
+  itemName,
+  plural,
+} from "./format";
 
 describe("formatChange", () => {
   it("writes field: old → new", () => {
@@ -85,5 +93,28 @@ describe("plural", () => {
     expect(plural(1, "second")).toBe("1 second");
     expect(plural(30, "second")).toBe("30 seconds");
     expect(plural(0, "membership")).toBe("0 memberships");
+  });
+});
+
+describe("formatMac", () => {
+  it("writes the twelve stored digits in pairs", () => {
+    expect(formatMac("00005e005302")).toBe("00:00:5e:00:53:02");
+    expect(formatMac("00005E0053AA")).toBe("00:00:5E:00:53:AA");
+  });
+
+  it("leaves anything else as it is", () => {
+    expect(formatMac("00005e")).toBe("00005e");
+    expect(formatMac(null)).toBe("");
+    expect(formatMac("")).toBe("");
+  });
+});
+
+describe("itemName", () => {
+  it("is the name, with the hostname, serial number or asset tag standing in", () => {
+    expect(itemName({ name: "Core A", hostname: "site2-sw-core-01" })).toBe("Core A");
+    expect(itemName({ name: null, hostname: "site2-sw-core-01" })).toBe("site2-sw-core-01");
+    expect(itemName({ name: "", serial_number: "FCW0000X001" })).toBe("FCW0000X001");
+    expect(itemName({ asset_tag: "AT-000900" })).toBe("AT-000900");
+    expect(itemName({})).toBe("(no name)");
   });
 });

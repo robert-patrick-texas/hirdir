@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 import { useAuth } from "../auth";
 import { useTitle } from "../lib/hooks";
 import { allows, type Role, roleLabel } from "../lib/roles";
@@ -38,4 +38,10 @@ export function NotFound() {
       </p>
     </>
   );
+}
+
+/** Admin, with no page named: the first Admin page the reader's role has. */
+export function AdminStart() {
+  const { user } = useAuth();
+  return <Navigate to={allows(user.role, "admin") ? "/admin/users" : "/admin/choices"} replace />;
 }

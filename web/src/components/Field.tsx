@@ -11,11 +11,13 @@ interface TextFieldProps extends FieldProps {
   name: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "password" | "email" | "search" | "datetime-local";
+  type?: "text" | "password" | "email" | "search" | "datetime-local" | "date";
   required?: boolean;
   disabled?: boolean;
   maxLength?: number;
   autoComplete?: string;
+  inputMode?: "text" | "numeric" | "decimal";
+  placeholder?: string;
   inputRef?: Ref<HTMLInputElement>;
   /** The id of a <datalist> of suggestions. */
   list?: string;
@@ -132,5 +134,104 @@ export function SelectField(props: SelectFieldProps) {
         </p>
       )}
     </div>
+  );
+}
+
+interface TextAreaFieldProps extends FieldProps {
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+  required?: boolean;
+  disabled?: boolean;
+  maxLength?: number;
+}
+
+export function TextAreaField(props: TextAreaFieldProps) {
+  const id = useId();
+  const { label, error, hint, onChange, rows = 3, ...area } = props;
+  return (
+    <div className="field">
+      <label htmlFor={id}>
+        {label}
+        {props.required && <span className="required"> (required)</span>}
+      </label>
+      <textarea
+        {...area}
+        id={id}
+        rows={rows}
+        spellCheck={false}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-error`)}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint && (
+        <p className="hint" id={`${id}-hint`}>
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p className="field-error" id={`${id}-error`}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface CheckGroupFieldProps extends FieldProps {
+  name: string;
+  /** What may be ticked. */
+  options: ReadonlyArray<{ value: string; label: string }>;
+  /** What is ticked. */
+  value: readonly string[];
+  onChange: (value: string[]) => void;
+  disabled?: boolean;
+  /** What to say when there is nothing to tick. */
+  empty?: string;
+}
+
+/** A set of tick boxes under one heading: any number of a list of values. */
+export function CheckGroupField(props: CheckGroupFieldProps) {
+  const id = useId();
+  const { label, error, hint, name, options, value, onChange, disabled, empty } = props;
+  return (
+    <fieldset
+      className="field check-group"
+      aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-error`)}
+    >
+      <legend>{label}</legend>
+      {options.length === 0 && <p className="muted">{empty ?? "There is nothing to choose."}</p>}
+      {options.map((option, place) => (
+        <span className="choice" key={option.value}>
+          <input
+            id={`${id}-${place}`}
+            type="checkbox"
+            name={name}
+            value={option.value}
+            checked={value.includes(option.value)}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange(
+                event.target.checked
+                  ? [...value.filter((entry) => entry !== option.value), option.value]
+                  : value.filter((entry) => entry !== option.value),
+              )
+            }
+          />
+          <label htmlFor={`${id}-${place}`}>{option.label}</label>
+        </span>
+      ))}
+      {hint && (
+        <p className="hint" id={`${id}-hint`}>
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p className="field-error" id={`${id}-error`}>
+          {error}
+        </p>
+      )}
+    </fieldset>
   );
 }

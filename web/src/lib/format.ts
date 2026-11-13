@@ -47,3 +47,19 @@ export function formatTime(iso: string | null | undefined): string {
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
+
+/** A MAC address as people write it: twelve stored hex digits as `00:00:5e:00:53:02`. */
+export function formatMac(digits: string | null | undefined): string {
+  if (!digits) return "";
+  return /^[0-9a-f]{12}$/i.test(digits) ? (digits.match(/../g) ?? []).join(":") : digits;
+}
+
+/** What to call an item: its name, or the hostname, serial number or asset tag standing in. */
+export function itemName(item: {
+  name?: string | null;
+  hostname?: string | null;
+  serial_number?: string | null;
+  asset_tag?: string | null;
+}): string {
+  return item.name || item.hostname || item.serial_number || item.asset_tag || "(no name)";
+}

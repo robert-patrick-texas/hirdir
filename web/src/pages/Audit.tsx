@@ -18,6 +18,7 @@ const ACTIONS = [
   "delete",
   "grant_role",
   "remove_member",
+  "retire",
   "revoke",
   "revoke_role",
   "set_access_code",
@@ -25,9 +26,22 @@ const ACTIONS = [
   "sign_in_delayed",
   "sign_in_failed",
   "sign_out_everywhere",
+  "transition",
   "update",
 ];
-const RECORD_TYPES = ["service_token", "user", "user_group"];
+const RECORD_TYPES = [
+  "catalog_entry",
+  "choice",
+  "item",
+  "lifecycle_rule",
+  "owner",
+  "service_token",
+  "setting",
+  "tag",
+  "user",
+  "user_group",
+  "vendor",
+];
 
 function suggestions(known: readonly string[], seen: ReadonlyArray<string>): string[] {
   return [...new Set([...known, ...seen.filter(Boolean)])].sort();

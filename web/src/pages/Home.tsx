@@ -5,7 +5,7 @@ import { Problem } from "../components/Problem";
 import { useAction, useTitle } from "../lib/hooks";
 import { allows, roleLabel } from "../lib/roles";
 
-/** The first page. The inventory itself arrives in the next release. */
+/** The first page: where everything is, and the reader's own account. */
 export function Home() {
   useTitle("Home");
   const { user, signOut, signOutEverywhere } = useAuth();
@@ -25,25 +25,33 @@ export function Home() {
           <p>Ask an administrator of hirdir to grant you a role, then reload this page.</p>
         </section>
       ) : (
-        <section aria-labelledby="next">
-          <h2 id="next">Inventory arrives in the next release</h2>
-          <p>
-            This release holds the accounts, the roles and the audit trail. The inventory of
-            equipment, with its grid, comes in the next one.
-          </p>
+        <section aria-labelledby="inventory">
+          <h2 id="inventory">Inventory</h2>
           <ul>
-            {allows(user.role, "viewer") && (
-              <li>
-                <Link to="/audit">Read the audit trail</Link>
-              </li>
-            )}
+            <li>
+              <Link to="/items">Items</Link>: everything that is tracked, in one grid
+            </li>
+            <li>
+              <Link to="/catalog">Catalog</Link>: what is true of every item of one model
+            </li>
+            <li>
+              <Link to="/vendors">Vendors</Link> and <Link to="/owners">owners</Link>
+            </li>
+            <li>
+              <Link to="/admin/tags">Tags</Link>, <Link to="/admin/choices">choices</Link> and the{" "}
+              <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
+            </li>
+            <li>
+              <Link to="/audit">The audit trail</Link>
+            </li>
             {allows(user.role, "admin") && (
               <li>
-                <Link to="/admin/users">Manage users, groups and roles</Link>
+                <Link to="/admin/users">Users, groups and roles</Link>, and the{" "}
+                <Link to="/admin/settings">settings</Link>
               </li>
             )}
             <li>
-              <Link to="/about">See what is running</Link>
+              <Link to="/about">What is running</Link>
             </li>
           </ul>
         </section>

@@ -1,69 +1,14 @@
 // The browser scenario of release 0.1.0: sign in, find the session in localStorage and no
 // cookie anywhere, create a user, survive a reload of a deep link, sign out.
 //
-//   E2E_BASE_URL      where the app is served (default http://127.0.0.1:8715/)
-//   E2E_USERNAME      an Admin
-//   E2E_ACCESS_CODE   that Admin's access code
+// The environment that names the server and the Admin is described in support.ts.
 //
 // Every address below is relative to the base URL, so the same test runs at the root
 // and under a prefix.
 
 import { randomBytes } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-
-const username = process.env.E2E_USERNAME ?? "";
-const accessCode = process.env.E2E_ACCESS_CODE ?? "";
-
-interface Watch {
-  cookies: string[];
-  console: string[];
-  violations: string[];
-  failures: string[];
-  pending: Promise<void>[];
-}
-
-/** Record everything the run must be free of. */
-async function watch(page: Page): Promise<Watch> {
-  const seen: Watch = { cookies: [], console: [], violations: [], failures: [], pending: [] };
-  page.context().on("response", (response) => {
-    seen.pending.push(
-      response
-        .headersArray()
-        .then((headers) => {
-          for (const header of headers) {
-            if (header.name.toLowerCase() === "set-cookie") {
-              seen.cookies.push(`${response.url()}: ${header.value}`);
-            }
-          }
-        })
-        .catch(() => {
-          // The page moved on before the headers were read: nothing to record.
-        }),
-    );
-    if (response.status() >= 400) {
-      seen.failures.push(`${response.status()} ${response.request().method()} ${response.url()}`);
-    }
-  });
-  page.on("console", (message) => {
-    if (message.type() === "error" || /content security policy/i.test(message.text())) {
-      seen.console.push(`${message.type()}: ${message.text()}`);
-    }
-  });
-  page.on("pageerror", (error) => {
-    seen.console.push(`uncaught: ${error.message}`);
-  });
-  await page.exposeFunction("__reportViolation", (text: string) => {
-    seen.violations.push(text);
-  });
-  await page.addInitScript(() => {
-    document.addEventListener("securitypolicyviolation", (event) => {
-      const report = (window as unknown as { __reportViolation: (text: string) => void })
-        .__reportViolation;
-      report(`${event.violatedDirective} blocked ${event.blockedURI || "inline"}`);
-    });
-  });
-  return seen;
-}
+import { accessCode, expectClean, username, watch } from "./support";
 
 function sessionOf(page: Page): Promise<{ token?: unknown; expires_at?: unknown } | null> {
   return page.evaluate(() => {
@@ -77,7 +22,7 @@ test("sign in, create a user, reload a deep link, sign out", async ({ page, base
   expect(accessCode, "set E2E_ACCESS_CODE to that Admin's access code").not.toBe("");
   expect(baseURL).toBeTruthy();
   const base = new URL(baseURL ?? "");
-  const seen = await watch(page);
+  const seen = await watch(page.context());
 
   // Nothing but the sign-in page is shown without a session.
   await page.goto("./");
@@ -148,14 +93,7 @@ test("sign in, create a user, reload a deep link, sign out", async ({ page, base
   expect(await sessionOf(page)).toBeNull();
   expect(new URL(page.url()).pathname).toBe(base.pathname);
 
-  // No cookie was set by any response, and none exists.
-  await Promise.all(seen.pending);
-  expect(seen.cookies, "responses that set a cookie").toEqual([]);
-  expect(await page.evaluate(() => document.cookie)).toBe("");
-  expect(await page.context().cookies()).toEqual([]);
-
-  // Nothing was blocked by the content security policy, and nothing went wrong.
-  expect(seen.violations, "content security policy violations").toEqual([]);
-  expect(seen.console, "console errors").toEqual([]);
-  expect(seen.failures, "failed requests").toEqual([]);
+  // No cookie was set by any response and none exists, nothing was blocked by the content
+  // security policy, and nothing went wrong.
+  await expectClean(page, seen);
 });
