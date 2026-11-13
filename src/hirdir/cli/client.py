@@ -3,6 +3,8 @@
 import json
 import os
 import tomllib
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -59,21 +61,17 @@ def fail(message: str, code: int) -> typer.Exit:
     return typer.Exit(code)
 
 
-def call(target: Target, method: str, path: str, body: Any = None) -> Any:
-    """Call the API and return the decoded answer, or exit with the code for the error."""
+def _headers(target: Target, more: dict[str, str] | None = None) -> dict[str, str]:
     if not target.url:
         raise fail("no server is set: use --url, HIRDIR_URL, or `hirdir sign-in`", 2)
-    headers = {"X-Hirdir-Client": "cli"}
+    headers = {"X-Hirdir-Client": "cli", **(more or {})}
     if target.token:
         headers["Authorization"] = f"Bearer {target.token}"
-    try:
-        response = httpx2.request(
-            method, f"{target.url}/api/v1{path}", json=body, headers=headers, timeout=30
-        )
-    except httpx2.HTTPError as error:
-        raise fail(f"cannot reach {target.url}: {error}", EXIT_SERVER) from error
-    if response.is_success:
-        return response.json() if response.content else None
+    return headers
+
+
+def _refusal(response: httpx2.Response) -> typer.Exit:
+    """Print the problem a refused request was answered with, and return the exit for it."""
     try:
         problem = response.json()
         detail = problem.get("detail") or problem.get("title") or response.reason_phrase
@@ -84,4 +82,54 @@ def call(target: Target, method: str, path: str, body: Any = None) -> Any:
     code = {401: EXIT_ACCESS, 403: EXIT_ACCESS, 404: EXIT_INVALID, 409: EXIT_CONFLICT}.get(
         response.status_code, EXIT_INVALID if response.status_code < 500 else EXIT_SERVER
     )
-    raise fail(detail, code)
+    return fail(detail, code)
+
+
+def call(
+    target: Target,
+    method: str,
+    path: str,
+    body: Any = None,
+    *,
+    params: dict[str, Any] | None = None,
+    content: bytes | None = None,
+    content_type: str | None = None,
+    timeout: float = 30,
+) -> Any:
+    """Call the API and return the decoded answer, or exit with the code for the error.
+
+    `body` is sent as JSON. `content` is sent as it is, as a file is, with its type.
+    """
+    headers = _headers(target, {"Content-Type": content_type} if content_type else None)
+    given = {name: value for name, value in (params or {}).items() if value is not None}
+    try:
+        response = httpx2.request(
+            method,
+            f"{target.url}/api/v1{path}",
+            json=body,
+            content=content,
+            params=given,
+            headers=headers,
+            timeout=timeout,
+        )
+    except httpx2.HTTPError as error:
+        raise fail(f"cannot reach {target.url}: {error}", EXIT_SERVER) from error
+    if response.is_success:
+        return response.json() if response.content else None
+    raise _refusal(response)
+
+
+@contextmanager
+def download(target: Target, path: str, body: Any) -> Generator[httpx2.Response]:
+    """Call a route that answers with a file, and yield the answer to be read as it arrives."""
+    headers = _headers(target)
+    try:
+        with httpx2.stream(
+            "POST", f"{target.url}/api/v1{path}", json=body, headers=headers, timeout=None
+        ) as response:
+            if not response.is_success:
+                response.read()
+                raise _refusal(response)
+            yield response
+    except httpx2.HTTPError as error:
+        raise fail(f"cannot reach {target.url}: {error}", EXIT_SERVER) from error

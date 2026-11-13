@@ -188,3 +188,20 @@ def test_all_rows_changes_every_item_and_a_viewer_changes_none(
     assert client.post(path, headers=viewer).status_code == 403
     # An import's apply route does not apply a bulk edit, nor the other way about.
     make.post(f"/imports/{preview['job']['hid']}/apply", {}, expect=404)
+
+
+def test_one_item_named_by_its_hid_may_be_given_what_tells_it_from_another(
+    make: Maker, switches: list[dict]
+) -> None:
+    one, two = switches[0], switches[1]
+    body = {"set": {"hostname": "site2-sw-core-09", "asset_tag": "AT-000901"}}
+    refused = make.post("/items/bulk-update", {**body, "hids": [one["hid"], two["hid"]]}, 422)
+    assert set(errors(refused)) == {"set.hostname", "set.asset_tag"}
+    make.post("/items/bulk-update", {**body, "filter": f"hid:eq:{one['hid']}"}, expect=422)
+    preview = make.post("/items/bulk-update", {**body, "hids": [one["hid"]]})
+    assert changes(preview["rows"][0]) == {
+        "hostname": ("site2-sw-1", "site2-sw-core-09"),
+        "asset_tag": (None, "AT-000901"),
+    }
+    assert apply(make, preview)["status"] == "applied"
+    assert make.get(f"/items/{one['hid']}")["asset_tag"] == "AT-000901"

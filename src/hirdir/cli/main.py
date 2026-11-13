@@ -8,7 +8,7 @@ import typer
 
 import hirdir
 from hirdir import clock
-from hirdir.cli import client
+from hirdir.cli import client, inventory
 from hirdir.cli.admin import admin
 
 app = typer.Typer(
@@ -20,6 +20,10 @@ app = typer.Typer(
 app.add_typer(admin, name="admin")
 users = typer.Typer(no_args_is_help=True, help="Accounts. Needs the Admin role.")
 app.add_typer(users, name="users")
+for name, group in inventory.GROUPS.items():
+    app.add_typer(group, name=name)
+app.command("import")(inventory.import_file)
+app.command("export")(inventory.export)
 
 Url = Annotated[str | None, typer.Option(help="The server, such as https://host/hirdir.")]
 Token = Annotated[str | None, typer.Option(help="A session or service token.")]

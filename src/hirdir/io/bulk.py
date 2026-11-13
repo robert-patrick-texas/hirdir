@@ -27,8 +27,12 @@ PIECE = 500
 ITEM = ENTITIES["items"]
 
 
-def _change(set_: dict[str, Any]) -> dict[str, Any]:
-    """Return the fields a bulk edit sets, as plain values, refusing what it may not set."""
+def _change(set_: dict[str, Any], one_item: bool) -> dict[str, Any]:
+    """Return the fields a bulk edit sets, as plain values, refusing what it may not set.
+
+    The fields that tell one item from another are set on one item at a time: only a
+    change that names a single item by its HID may hold them.
+    """
     values: dict[str, Any] = {}
     wrong: dict[str, str] = {}
     for name, given in set_.items():
@@ -37,8 +41,8 @@ def _change(set_: dict[str, Any]) -> dict[str, Any]:
             wrong[f"set.{name}"] = (
                 "use add_tags and remove_tags" if name == "tags" else "not a field that can be set"
             )
-        elif column.name in ITEM.not_in_bulk:
-            wrong[f"set.{name}"] = "tells one item from another, and is not set in bulk"
+        elif column.name in ITEM.not_in_bulk and not one_item:
+            wrong[f"set.{name}"] = "tells one item from another, and is set on one item at a time"
         else:
             try:
                 value = cells.from_json(column, given)
@@ -78,7 +82,7 @@ def preview(
     remove_tags: Sequence[str] = (),
 ) -> ImportJob:
     """Work out what a bulk edit would do to each item it names, and store that."""
-    change = _change(set_ or {})
+    change = _change(set_ or {}, one_item=hids is not None and len(set(hids)) == 1)
     adding = _labels(db, add_tags, "add_tags")
     removing = _labels(db, remove_tags, "remove_tags")
     if set(adding) & set(removing):

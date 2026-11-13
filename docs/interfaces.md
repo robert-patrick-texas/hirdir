@@ -224,8 +224,9 @@ test fails when they are out of date.
 `POST /items/bulk-update` takes the rows, as a filter or as a list of at most 10,000
 HIDs, and the change: `set`, which names columns of an import and their new values,
 with `null` to clear one, and `add_tags` and `remove_tags`. The fields that tell one
-item from another cannot be set in bulk: `serial_number`, `asset_tag`, `mac_address`,
-`name`, `hostname` and `fqdn`.
+item from another cannot be set on more than one item at once: `serial_number`,
+`asset_tag`, `mac_address`, `name`, `hostname` and `fqdn`. A change that names a single
+item by its HID may set them.
 
 The answer is a preview of the same kind as an import's, with before and after for each
 row, and it is stored in the same way. `POST /items/bulk-update/{hid}/apply` applies
@@ -251,6 +252,7 @@ hirdir groups show site2-sw-stack1
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
 hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
+hirdir import items.csv --entity items --apply --skip-rejected
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
 hirdir report summary --by site --format json
 hirdir report capacity --include-drafts
@@ -260,6 +262,7 @@ hirdir report capacity --include-drafts
 |---|---|
 | Server and token | `--url` and `--token`, or `HIRDIR_URL` and `HIRDIR_TOKEN`, or `~/.config/hirdir/config.toml`, in that order |
 | Output | A table on a terminal. `--format json` or `csv` for scripts. Data on stdout, messages on stderr |
+| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners` and `tags` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |

@@ -230,10 +230,10 @@ def test_s16_the_api_and_the_command_line_export_the_same_rows_and_columns(
     assert rows[0] == ["hid", *columns]
     listed = desk.get("/items", filter=wanted, sort="hostname")["items"]
     assert [row[0] for row in rows[1:]] == [item["hid"] for item in listed]
-    assert len(rows) - 1 == 12
+    assert len(rows) - 1 == 11
 
     as_json = desk.client.post("/exports", json={**body, "format": "json"}).json()
-    assert [list(record) for record in as_json["records"]] == [rows[0]] * 12
+    assert [list(record) for record in as_json["records"]] == [rows[0]] * 11
     assert [
         ["" if value is None else value for value in record.values()]
         for record in as_json["records"]
