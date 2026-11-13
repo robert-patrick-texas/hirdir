@@ -13,5 +13,9 @@ RUN apt-get update \
 # services. A real host has none, and the package obeys one, so it is removed here to
 # test what happens on a real host.
 RUN rm -f /usr/sbin/policy-rc.d
+# It also tells dpkg to leave out everything under /usr/share/doc but the copyright and
+# changelog files. A real host has no such rule, and gets the documentation and the
+# examples that the package puts there.
+RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
