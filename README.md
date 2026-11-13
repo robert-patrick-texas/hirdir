@@ -5,17 +5,19 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.2.1, the items: the inventory itself has arrived. There are
-vendors, a catalog of models, owners and items; an item inherits its end-of-life dates,
-value, support weight and support cost from its model and shows where each value came
-from; lifecycle state, disposition and expected-online are kept to a table of rules
-that an Admin can edit; every change is in the item's history; and the grid is sorted,
-filtered and paged by the server, with globs and bounded regular expressions. This
-stands on the skeleton of 0.1.0: the package installs and runs behind nginx, people
-sign in, and an Admin manages accounts, groups, roles and service tokens. A host with
-0.1.0 is upgraded by installing the new package. Import, export and the command-line
-client for the inventory arrive with 0.3.0. The order of work is in the
-[build plan](docs/build-plan.md).
+**Status:** release 0.3.0, files and the command line. The inventory can be loaded
+from CSV and JSON files and written back to them: an import shows what every row would
+do before anything is changed, and is then applied whole or not at all; an export takes
+the filter, the sort and the columns that are on the screen. Many items can be changed
+at once, after the same kind of preview. The `hirdir` command lists, shows and changes
+items, and imports and exports, from any machine that can reach the server. A set of
+fictional [examples](examples/README.md) loads into an empty installation. This stands
+on 0.2.0, the inventory itself, with vendors, a catalog of models, owners and items
+that inherit from their model and move through the lifecycle, and on the skeleton of
+0.1.0: the package installs and runs behind nginx, people sign in, and an Admin manages
+accounts. A host with an earlier release is upgraded by installing the new package.
+Minor items, stacks, clusters and addresses arrive with 0.4.0. The order of work is in
+the [build plan](docs/build-plan.md).
 
 ![Lifecycle workflow](images/lifecycle-workflow.png)
 
