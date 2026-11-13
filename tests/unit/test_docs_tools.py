@@ -271,6 +271,116 @@ def test_versions_table_names_direct_packages_and_counts_the_rest() -> None:
     assert "<details><summary>Every Python package: 3</summary>" in text
 
 
+def test_only_the_package_of_this_version_is_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The previous release's package lies in dist/ for the upgrade test."""
+    previous = tmp_path / "hirdir_0.1.0_amd64.deb"
+    previous.write_bytes(b"")
+
+    assert facts.find_deb(tmp_path, "0.2.0") is None
+    assert "hirdir_0.1.0_amd64.deb is not read in its place" in capsys.readouterr().err
+
+    built = tmp_path / "hirdir_0.2.0_amd64.deb"
+    built.write_bytes(b"")
+    assert facts.find_deb(tmp_path, "0.2.0") == built
+    assert facts.find_deb(tmp_path, "0.1.0") == previous
+
+
+def web_lock(**versions: str) -> dict[str, object]:
+    """A package-lock.json that installs the named packages, underscores read as hyphens."""
+    installed = {
+        f"node_modules/{name.replace('_', '-')}": {"version": version}
+        for name, version in versions.items()
+    }
+    return {"packages": {"": {"name": "web"}, **installed}}
+
+
+def versions_with(web: list[tuple[str, str]]) -> str:
+    return facts.render_versions(
+        facts.Versions(
+            python="3.15.2",
+            packages={"web-kit": "2.0.0"},
+            direct=["web-kit"],
+            sqlite="3.50.0",
+            web=web,
+            node="24.0.0",
+            tools=[],
+        )
+    )
+
+
+def test_the_web_row_names_the_grid_when_the_lock_installs_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    lock = web_lock(
+        typescript="7.0.2",
+        vite="8.3.8",
+        react="19.3.1",
+        react_dom="19.3.1",
+        ag_grid_community="36.1.0",
+        ag_grid_react="36.1.0",
+    )
+
+    web = facts.web_versions(lock)
+
+    assert web == [
+        ("TypeScript", "7.0.2"),
+        ("Vite", "8.3.8"),
+        ("React", "19.3.1"),
+        ("AG Grid Community", "36.1.0"),
+    ]
+    assert (
+        "| TypeScript, Vite, React, AG Grid Community | 7.0.2, 8.3.8, 19.3.1, 36.1.0 |"
+        in versions_with(web)
+    )
+    assert capsys.readouterr().err == ""
+
+
+def test_the_web_row_leaves_the_grid_out_when_the_lock_does_not_install_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    web = facts.web_versions(web_lock(typescript="7.0.2", vite="8.3.8", react="19.3.1"))
+
+    assert web == [("TypeScript", "7.0.2"), ("Vite", "8.3.8"), ("React", "19.3.1")]
+    text = versions_with(web)
+    assert "| TypeScript, Vite, React | 7.0.2, 8.3.8, 19.3.1 |" in text
+    assert "AG Grid" not in text
+    # Said to the person running it, and never in the table.
+    assert "does not install ag-grid-community" in capsys.readouterr().err
+
+
+def test_the_web_row_shows_a_react_binding_that_is_not_at_the_grids_version(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    lock = web_lock(
+        typescript="7.0.2",
+        vite="8.3.8",
+        react="19.3.1",
+        ag_grid_community="36.1.0",
+        ag_grid_react="36.0.2",
+    )
+
+    assert facts.web_versions(lock)[-1] == ("AG Grid Community", "36.1.0 (ag-grid-react 36.0.2)")
+    assert "ag-grid-react is at 36.0.2" in capsys.readouterr().err
+
+
+def test_the_project_names_regex_and_ships_none_of_its_development_tools() -> None:
+    """Read from this repository's own pyproject.toml and uv.lock."""
+    development = {"httpx2", "httpcore2", "pytest", "ruff", "ty"}
+    direct = facts.direct_python()
+    with (facts.ROOT / "uv.lock").open("rb") as handle:
+        runs_with = facts.lock_packages(facts.tomllib.load(handle))
+
+    assert "regex" in direct
+    assert "regex" in runs_with
+    assert not development & set(direct)
+    assert not development & set(runs_with)
+    # The lock does hold them, for the development group: the walk is what leaves them out.
+    text = (facts.ROOT / "uv.lock").read_text(encoding="utf-8")
+    assert all(f'name = "{name}"' in text for name in development)
+
+
 # --- publish_guard ------------------------------------------------------------------
 
 

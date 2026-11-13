@@ -32,12 +32,17 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECT = "hirdir"
 CONTAINER_BASE = "ubuntu:26.04"
 # The web UI's main packages: the name in package-lock.json and the name in the notes.
+# The grid arrives with 0.2.0. A package the lock does not install is left out of the
+# row, so the same script serves a tree from before the grid.
 WEB_PACKAGES = (
     ("typescript", "TypeScript"),
     ("vite", "Vite"),
     ("react", "React"),
     ("ag-grid-community", "AG Grid Community"),
 )
+# The grid's binding for React is published with the grid, at the same version, and has
+# no name of its own in the row. Only a version that differs is written beside the grid's.
+WEB_COMPANIONS = {"ag-grid-community": "ag-grid-react"}
 
 
 class FactsError(Exception):
@@ -314,13 +319,22 @@ def lock_packages(lock: dict[str, Any], project: str = PROJECT) -> dict[str, str
 def web_versions(lock: dict[str, Any]) -> list[tuple[str, str]]:
     """The label and version of each main web package that package-lock.json installs."""
     packages = lock.get("packages", {})
+
+    def installed(name: str) -> str | None:
+        return packages.get(f"node_modules/{name}", {}).get("version")
+
     found = []
     for name, label in WEB_PACKAGES:
-        version = packages.get(f"node_modules/{name}", {}).get("version")
-        if version:
-            found.append((label, version))
-        else:
+        version = installed(name)
+        if not version:
             note(f"web/package-lock.json does not install {name}; it is left out")
+            continue
+        companion = WEB_COMPANIONS.get(name)
+        beside = installed(companion) if companion else None
+        if companion and beside and beside != version:
+            note(f"{companion} is at {beside} and {name} at {version}; the row names both")
+            version = f"{version} ({companion} {beside})"
+        found.append((label, version))
     return found
 
 
@@ -336,15 +350,19 @@ def tool_version(*cmd: str) -> str | None:
 
 
 def find_deb(dist: Path, version: str) -> Path | None:
-    """The built package for this version, or the newest one, or None."""
+    """The built package of this version, or None.
+
+    A package of another version is never read in its place. The previous release's
+    package is kept in dist/ for the upgrade test, and its versions are not this
+    release's.
+    """
     exact = dist / f"{PROJECT}_{version}_amd64.deb"
     if exact.is_file():
         return exact
-    built = sorted(dist.glob(f"{PROJECT}_*_amd64.deb"), key=lambda p: p.stat().st_mtime)
-    if not built:
-        return None
-    note(f"{exact.name} is missing; reading {built[-1].name} instead")
-    return built[-1]
+    others = sorted(path.name for path in dist.glob(f"{PROJECT}_*_amd64.deb"))
+    if others:
+        note(f"{exact.name} is missing; {', '.join(others)} is not read in its place")
+    return None
 
 
 QUERY = "import sqlite3, sys; print(sys.version.split()[0]); print(sqlite3.sqlite_version)"
@@ -408,7 +426,7 @@ def versions(root: Path = ROOT, dist: Path | None = None) -> Versions:
             )
     else:
         note(
-            f"no dist/{PROJECT}_*_amd64.deb; Python and its packages are read from "
+            "no package of this version in dist/; Python and its packages are read from "
             ".python-version and uv.lock, and SQLite from the development interpreter. "
             "Run make deb first for a release."
         )
