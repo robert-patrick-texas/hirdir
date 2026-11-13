@@ -612,7 +612,8 @@ failed_upgrade() {
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok half-configured"
     expect "pkg the service was not started" "$(inside systemctl is-active hirdir.service 2>&1)" inactive
     expect "pkg the database still says revision $revision_before" "$(revision_now)" "$revision_before"
-    note "the failed migration left $(($(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'") - tables_before)) of its tables behind in the database: this is why the way back is the backup"
+    expect "pkg the failed migration was undone as a whole: none of its tables is left behind" \
+        "$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_before"
 
     section "the way back that the message gives"
     if apt_get install --allow-downgrades /srv/debs/hirdir-previous.deb; then
