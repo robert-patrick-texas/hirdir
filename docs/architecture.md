@@ -255,6 +255,8 @@ more than 1 MB. nginx is given the limit of the application and no more. A body 
 reaches `hirdir`, whose own `413` is a problem document. A higher limit in nginx would
 let the application answer, but it answers as soon as it has read 20 MB and closes the
 connection with the rest unread, which nginx, still sending, can turn into a `502`.
+A site that wants larger files raises both limits to the same figure: `max_megabytes`
+under `[files]` in the configuration file, and this line of the snippet.
 
 The snippet is not a conffile, because `hirdir-setup --prefix` writes the prefix into
 it. dpkg asks about a conffile that was changed on the host whenever a new version
@@ -365,6 +367,9 @@ sign_in_failures_before_delay = 5
 
 [backup]
 keep = 14
+
+[files]
+max_megabytes = 20                   # the largest file an import takes; nginx must allow as much
 ```
 
 Installation-wide values that people change in the course of work, such as the stack

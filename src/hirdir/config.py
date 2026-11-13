@@ -23,6 +23,7 @@ class Config:
     session_hours: int = 12
     sign_in_failures_before_delay: int = 5
     backup_keep: int = 14
+    max_file_megabytes: int = 20
     source: Path | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
@@ -34,6 +35,11 @@ class Config:
     def secret_key_path(self) -> Path:
         """Where the key that signs session tokens is kept."""
         return self.state_dir / "secret.key"
+
+    @property
+    def max_file_bytes(self) -> int:
+        """The largest file an import takes, and so the largest body of a request."""
+        return self.max_file_megabytes * 1024 * 1024
 
     @property
     def backup_dir(self) -> Path:
@@ -84,5 +90,8 @@ def load(path: Path | None = None) -> Config:
             access.get("sign_in_failures_before_delay", Config.sign_in_failures_before_delay)
         ),
         backup_keep=int(data.get("backup", {}).get("keep", Config.backup_keep)),
+        max_file_megabytes=max(
+            1, int(data.get("files", {}).get("max_megabytes", Config.max_file_megabytes))
+        ),
         source=path if path.is_file() else None,
     )

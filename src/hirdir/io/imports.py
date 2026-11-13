@@ -261,9 +261,12 @@ def preview(
     entity_name: str | None = None,
     mode: str | None = None,
     file_name: str | None = None,
+    max_bytes: int = files.MAX_BYTES,
 ) -> ImportJob:
     """Read a file, work out what importing it would do, and store that as a preview."""
-    parsed = files.read(data, format_=format_, entity_name=entity_name, mode=mode)
+    parsed = files.read(
+        data, format_=format_, entity_name=entity_name, mode=mode, max_bytes=max_bytes
+    )
     name = records.clean(file_name)
     if name is not None and len(name) > 255:
         raise Invalid("the file name is too long", {"file_name": "at most 255 characters"})

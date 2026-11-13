@@ -867,3 +867,27 @@ def test_an_apostrophe_of_the_values_own_survives_export_and_import(
     assert make.get(f"/items/{item['hid']}")["comments"] == "'=kept"
     refused = make.post("/vendors", {"name": "Example", "aliases": ["Example; Software"]}, 422)
     assert "aliases" in errors(refused)
+
+
+def test_a_site_may_raise_or_lower_the_largest_file_in_its_configuration(
+    config, inventory: dict[str, str], tmp_path
+) -> None:
+    from dataclasses import replace
+
+    from hirdir import config as config_module
+    from hirdir.app import create_app
+
+    assert config.max_file_megabytes == 20
+    path = tmp_path / "site.toml"
+    path.write_text("[files]\nmax_megabytes = 50\n")
+    assert config_module.load(path).max_file_bytes == 50 * 1024 * 1024
+    with TestClient(create_app(replace(config, max_file_megabytes=1))) as small:
+        headers = {**inventory, "Content-Type": "text/csv"}
+        body = b"label,description\n" + b"x" * (1024 * 1024)
+        refused = small.post(f"{API}/imports/preview?entity=tags", content=body, headers=headers)
+        assert refused.status_code == 413
+        assert "at most 1 MB" in refused.json()["detail"]
+        fits = small.post(
+            f"{API}/imports/preview?entity=tags", content=b"label\nlab\n", headers=headers
+        )
+        assert fits.status_code == 201

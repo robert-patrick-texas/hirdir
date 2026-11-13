@@ -80,6 +80,7 @@ marked as replaced, not removed.
 | D-67 | A preview of more than a hundred rows is worked on a copy of the database. An apply is one transaction and holds the one writer's place while it works; a change that waits more than five seconds behind it is a `503` with `Retry-After`, and was not made. (Was P-51.) |
 | D-68 | The packaged nginx snippet sets `client_max_body_size 20m`, the application's own limit and no more. Through nginx a body over 20 MB is refused by nginx, with a `413` and the page of nginx, not a problem document. The application's own `413` is seen through nginx for a file of more than 100,000 rows. A site that wants to take larger files has to change nginx to allow them. (Was P-53.) |
 | D-69 | A preview of an import or a bulk edit is kept, and is applied once, by anybody who holds the Inventory role, whoever made it. The job says who made it and who applied it. Apply works the file through again and applies only when every row comes out as previewed and every record a row matched is at the version previewed, rows that were `unchanged` included. (Was P-46, changed: only the one who made a preview could apply it.) |
+| D-70 | The largest file `hirdir` takes is `max_megabytes` under `[files]` in the configuration file, 20 unless a site sets another. A site that wants larger files raises it there and raises `client_max_body_size` in nginx to match. The limit of 100,000 rows to a file is not changed by it. |
 
 ## Proposed
 
@@ -88,7 +89,7 @@ P-20, P-22, P-23 and P-24 were confirmed and are now D-33 to D-36 and D-40 to D-
 P-29 to P-31, P-33 to P-35 and P-37 to P-40 were answered on 2026-11-13 and are now
 D-49 to D-61, three of them changed by the answer. P-28, P-32 and P-36 followed the same
 day as D-62 to D-64. P-43, P-45, P-51 and P-53, of release 0.3.0, were confirmed on that
-day too and are D-65 to D-68, and P-46 was answered with a change and is D-69.
+day too and are D-65 to D-68, and P-46 was answered with a change and is D-69. D-70 followed from D-68.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|

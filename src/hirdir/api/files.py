@@ -100,6 +100,7 @@ async def preview_import(
         entity_name=entity,
         mode=mode,
         file_name=file_name,
+        max_bytes=request.app.state.config.max_file_bytes,
     )
     return shapes.preview_out(db, job)
 

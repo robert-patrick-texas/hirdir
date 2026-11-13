@@ -80,6 +80,28 @@ front of nginx, it has to let 20 MB through as well. When an import of a file be
 and 20 MB is answered with that page, the snippet is not the one this version ships:
 `sudo hirdir-setup --renew` says why and puts it right.
 
+A site that wants larger files raises the limit in two places, to the same figure, and
+restarts both:
+
+```toml
+# /etc/hirdir/config.toml
+[files]
+max_megabytes = 50
+```
+
+```nginx
+# /etc/nginx/snippets/hirdir.conf
+client_max_body_size 50m;
+```
+
+```bash
+sudo systemctl restart hirdir && sudo nginx -t && sudo systemctl reload nginx
+```
+
+Raising one alone changes nothing: the lower of the two decides. A snippet changed in
+this line is one that an upgrade leaves alone from then on, and says so. A file still
+holds at most 100,000 rows.
+
 ## Sign in
 
 Open the address in a browser and sign in with the username and access code. The

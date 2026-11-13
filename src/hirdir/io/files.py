@@ -19,6 +19,7 @@ from hirdir.io.entities import Entity, entity
 SCHEMA = "hirdir/1"
 MODES = ("create", "upsert")
 FORMATS = ("csv", "json")
+# The largest file, unless the installation's configuration says otherwise.
 MAX_BYTES = 20 * 1024 * 1024
 MAX_ROWS = 100_000
 
@@ -148,7 +149,12 @@ def _read_json(which: Entity, records: Any) -> list[Row]:
 
 
 def read(
-    data: bytes, *, format_: str, entity_name: str | None = None, mode: str | None = None
+    data: bytes,
+    *,
+    format_: str,
+    entity_name: str | None = None,
+    mode: str | None = None,
+    max_bytes: int = MAX_BYTES,
 ) -> Parsed:
     """Read a file into rows of plain values.
 
@@ -156,8 +162,8 @@ def read(
     envelope, and what is given beside it must not disagree. A file that cannot be read
     at all, or that has a column its entity does not know, is refused whole.
     """
-    if len(data) > MAX_BYTES:
-        raise TooLarge(f"a file is at most {MAX_BYTES // (1024 * 1024)} MB")
+    if len(data) > max_bytes:
+        raise TooLarge(f"a file is at most {max_bytes // (1024 * 1024)} MB")
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError:

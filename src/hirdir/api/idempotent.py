@@ -38,11 +38,13 @@ def refused(request: Request) -> None:
         )
 
 
-async def limited_body(request: Request, limit: int = files.MAX_BYTES) -> bytes:
+async def limited_body(request: Request) -> bytes:
     """Read the body of a request, and stop reading one that is over the limit.
 
-    What was read is kept on the request, so the route reads the same body again.
+    The limit is that of a file, which is the largest thing anybody sends. What was
+    read is kept on the request, so the route reads the same body again.
     """
+    limit = request.app.state.config.max_file_bytes
     if not hasattr(request, "_body"):
         pieces: list[bytes] = []
         size = 0
