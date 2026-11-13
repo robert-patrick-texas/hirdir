@@ -49,7 +49,16 @@ def _text(column: Column, value: str) -> str:
     text = value.strip()
     if len(text) > column.limit:
         raise Unreadable(f"at most {column.limit} characters")
+    try:
+        text.encode("utf-8")
+    except UnicodeError:
+        raise Unreadable("text that can be written as UTF-8") from None
     return text
+
+
+def _guarded(text: str) -> bool:
+    """Say whether text is apostrophes and then a character that starts a formula."""
+    return text.lstrip("'")[:1] in FORMULA_STARTS
 
 
 def _whole(value: Any) -> int:
@@ -103,12 +112,9 @@ def _entries(column: Column, value: Any) -> list[str]:
     parts = value.split(LIST_SEPARATOR) if isinstance(value, str) else value
     if not isinstance(parts, list) or not all(isinstance(part, str) for part in parts):
         raise Unreadable("a list of text")
-    entries = [part.strip() for part in parts if part.strip()]
-    if len(entries) > MAX_LIST:
+    if len(parts) > MAX_LIST:
         raise Unreadable(f"at most {MAX_LIST} entries")
-    if any(len(entry) > column.limit for entry in entries):
-        raise Unreadable(f"entries of at most {column.limit} characters")
-    return entries
+    return [_text(column, part) for part in parts if part.strip()]
 
 
 def decimal_text(column: Column, number: Decimal) -> str:
@@ -143,7 +149,7 @@ def from_cell(column: Column, cell: str) -> Any:
         return BLANK
     if text == CLEAR_MARK:
         return None
-    if text[0] == "'" and text[1:2] in FORMULA_STARTS:
+    if text[0] == "'" and _guarded(text):
         # The apostrophe an export put there, so that a spreadsheet runs no formula.
         text = text[1:]
     return read(column, text)
@@ -168,7 +174,9 @@ def to_cell(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     text = LIST_SEPARATOR.join(value) if isinstance(value, list) else str(value)
-    return "'" + text if text.startswith(FORMULA_STARTS) else text
+    # A value that begins with an apostrophe of its own before such a character gets
+    # one more, so that reading the cell takes off the export's and leaves the value's.
+    return "'" + text if _guarded(text) else text
 
 
 def typed(column: Column, value: Any) -> Any:

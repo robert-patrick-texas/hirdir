@@ -86,8 +86,12 @@ def _differences(
     return changes
 
 
-def _one(run: Run, which: Entity, number: int, values: dict[str, Any]) -> Result:
-    """Work one row: find its record, write it, and say what that changed."""
+def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> None:
+    """Work one row: find its record, write it, and say in result what that changed.
+
+    The result is filled in as the row goes, so that a row which is refused part-way
+    still says which record it was about.
+    """
     db = run.db
     hid = values.get("hid")
     if hid:
@@ -96,9 +100,11 @@ def _one(run: Run, which: Entity, number: int, values: dict[str, Any]) -> Result
             raise Invalid("there is no such record", {"hid": f"there is no record {hid}"})
     else:
         record = which.find(run, values)
-    result = Result(row=number, outcome="create", key=which.key(values, record))
+    result.key = which.key(values, record)
     # A record that an earlier row made for a reference is this row's to describe.
     claimed = record is not None and record.hid in run.stubs
+    if record is not None and not claimed:
+        result.record_hid, result.row_version = record.hid, record.row_version
     if record is not None:
         if record.hid in run.seen:
             raise Invalid(
@@ -115,7 +121,6 @@ def _one(run: Run, which: Entity, number: int, values: dict[str, Any]) -> Result
     new = record is None or claimed
     before = None
     if record is not None and not claimed:
-        result.record_hid, result.row_version = record.hid, record.row_version
         before = which.read(db, [record])[0]
     if claimed:
         run.claim(record.hid)
@@ -128,8 +133,7 @@ def _one(run: Run, which: Entity, number: int, values: dict[str, Any]) -> Result
     else:
         result.record_hid = record.hid
     result.notes = list(run.notes)
-    run.seen[record.hid] = number
-    return result
+    run.seen[record.hid] = result.row
 
 
 def _work(
@@ -162,19 +166,17 @@ def _work(
             )
             continue
         run.start_row()
+        result = Result(row=number, outcome="create", key=which.key(row.values, None))
         savepoint = db.begin_nested()
         try:
-            result = _one(run, which, number, _typed(which, row.values))
+            _one(run, which, _typed(which, row.values), result)
             savepoint.commit()
         except REFUSALS as error:
             savepoint.rollback()
             run.forget_row()
-            result = Result(
-                row=number,
-                outcome="rejected",
-                key=which.key(row.values, None),
-                reasons=_reasons(which, error),
-            )
+            # What the row would have done is undone. Which record it named is kept.
+            result.outcome, result.changes, result.notes = "rejected", [], []
+            result.reasons = _reasons(which, error)
         results.append(result)
         if number % LET_GO_EVERY == 0:
             run.let_go()
@@ -226,6 +228,7 @@ def preview_rows(
                     "job_hid": job.hid,
                     "row": result.row,
                     "outcome": result.outcome,
+                    # A record made while trying is gone again, and so is its HID.
                     "record_hid": result.record_hid if result.row_version is not None else None,
                     "row_version": result.row_version,
                     "key": result.key,
@@ -330,7 +333,7 @@ def _disagreements(stored: Sequence[ImportRow], results: Sequence[Result]) -> li
             now.record_hid != was.record_hid or now.row_version != was.row_version
         ):
             problems.append(reason(f"rows.{was.row}", f"{name}: changed since the preview"))
-        elif now.outcome != was.outcome or now.changes != was.changes:
+        elif (now.outcome, now.changes, now.notes) != (was.outcome, was.changes, was.notes):
             problems.append(
                 reason(f"rows.{was.row}", f"{name}: would no longer do what was previewed")
             )
@@ -365,7 +368,22 @@ def apply(
             f"{job.rejected} of the rows are rejected",
             {"skip_rejected": "correct them and preview again, or apply the rest without them"},
         )
-    which = entity(job.entity)
+    which, mode = entity(job.entity), job.mode
+    # The job is taken before any of its work is done, and only if it is still to be
+    # applied: of two applies at the same moment, the second finds it taken. This write
+    # is also what opens the transaction that the work below belongs to. A savepoint
+    # that is the first statement of a SQLite connection would be a transaction of its
+    # own, and its release would store the work whatever happened afterwards.
+    taken = db.scalar(
+        update(ImportJob)
+        .where(ImportJob.hid == hid, ImportJob.status == "previewed")
+        .values(status="applied", skip_rejected=skip_rejected, applied_at=clock.now())
+        .returning(ImportJob.hid)
+    )
+    if taken is None:
+        raise Conflict(
+            "this preview is being applied already", {"status": "make a new preview to go on"}
+        )
     stored = list(
         db.scalars(select(ImportRow).where(ImportRow.job_hid == hid).order_by(ImportRow.row))
     )
@@ -375,12 +393,13 @@ def apply(
     working = replace(context, via="import") if source == "file" else context
 
     attempt = db.begin_nested()
-    results = _work(db, working, role, which, job.mode, rows, skip)
+    results = _work(db, working, role, which, mode, rows, skip)
     problems = _disagreements(wanted, results)
     if problems:
         attempt.rollback()
         job = get_job(db, hid)
-        job.status = "failed"
+        db.refresh(job)
+        job.status, job.skip_rejected, job.applied_at = "failed", None, None
         job.failure = (
             f"{len(problems)} of the rows changed after the preview was made; preview again"
         )
@@ -403,9 +422,7 @@ def apply(
         # The rows that made a record now say which.
         db.execute(update(ImportRow), made)
     job = get_job(db, hid)
-    job.status = "applied"
-    job.skip_rejected = skip_rejected
-    job.applied_at = clock.now()
+    db.refresh(job)
     counts = _count(results)
     audit.record(
         db,

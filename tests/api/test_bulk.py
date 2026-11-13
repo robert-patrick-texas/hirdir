@@ -143,7 +143,10 @@ def test_rows_the_rules_refuse_are_rejected_and_may_be_skipped(
         {"filter": "hostname:prefix:site2-sw-", "set": {"expected_online": True}},
     )
     assert (preview["job"]["rejected"], preview["job"]["unchanged"]) == (1, 3)
-    assert preview["rows"][0]["reasons"][0]["field"] == "expected_online"
+    refused = preview["rows"][0]
+    assert refused["reasons"][0]["field"] == "expected_online"
+    # A row that is refused still says which item it was about.
+    assert (refused["record_hid"], refused["key"]) == (switches[0]["hid"], "site2-sw-1")
     assert "skip_rejected" in errors(apply(make, preview, expect=422))
     assert apply(make, preview, skip_rejected="true")["status"] == "applied"
 
@@ -163,6 +166,8 @@ def test_rows_the_rules_refuse_are_rejected_and_may_be_skipped(
         ({"all_rows": True, "add_tags": ["no-such-tag"]}, "add_tags"),
         ({"all_rows": True, "add_tags": ["critical"], "remove_tags": ["Critical"]}, "remove_tags"),
         ({"filter": "nonsense:eq:1", "set": {"comments": "x"}}, "filter"),
+        ({"filter": "hostname:regex:(", "set": {"comments": "x"}}, "filter"),
+        ({"hids": [], "set": {"comments": "x"}}, "hids"),
         (
             {"hids": ["01900000-0000-7000-8000-000000000000"], "set": {"comments": "x"}},
             "hids",
@@ -205,3 +210,13 @@ def test_one_item_named_by_its_hid_may_be_given_what_tells_it_from_another(
     }
     assert apply(make, preview)["status"] == "applied"
     assert make.get(f"/items/{one['hid']}")["asset_tag"] == "AT-000901"
+
+
+def test_a_filter_that_runs_out_of_time_is_refused_as_on_a_list(
+    make: Maker, switches: list[dict], monkeypatch
+) -> None:
+    from hirdir.db import dialect
+
+    monkeypatch.setattr(dialect, "REGEX_REQUEST_SECONDS", 0.0)
+    body = {"filter": "hostname:regex:^site2", "set": {"comments": "x"}}
+    assert "filter" in errors(make.post("/items/bulk-update", body, expect=422))

@@ -8,7 +8,6 @@ import, with the same preview, the same rules and the same refusal of a stale co
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
@@ -97,6 +96,8 @@ def preview(
             "the rows are not named",
             {"filter": "give a filter or a list of HIDs, or all_rows to change every item"},
         )
+    if hids is not None and not hids:
+        raise Invalid("the rows are not named", {"hids": "name at least one item"})
     if hids is not None and len(hids) > exports.MAX_HIDS:
         raise Invalid(
             "too many records are named",
@@ -112,9 +113,7 @@ def preview(
         where += default_view(ITEMS, include_archived, include_drafts)
     else:
         where.append(Item.hid.in_(list(hids)))
-    found = list(
-        db.scalars(ITEMS.joined(select(Item.hid)).where(*where).order_by(*order, Item.hid.asc()))
-    )
+    found = exports.chosen(db, ITEMS, where, [*order, Item.hid.asc()])
     if len(found) > files.MAX_ROWS:
         raise files.TooLarge(f"a bulk edit changes at most {files.MAX_ROWS:,} items at a time")
     if hids is not None and len(found) != len(set(hids)):

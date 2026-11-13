@@ -20,7 +20,7 @@ from hirdir.io import columns as cells
 from hirdir.io import files, filters
 from hirdir.io.columns import Column
 from hirdir.io.entities import Entity, entity
-from hirdir.io.fields import default_view
+from hirdir.io.fields import Listing, default_view
 
 MAX_HIDS = 10_000
 PIECE = 500
@@ -120,12 +120,10 @@ def file_name(db: Session, export: Export) -> str:
     return f"hirdir-{export.entity.name}-{clock.stamp(clock.now(), zone)}.{export.format}"
 
 
-def _chosen(db: Session, export: Export) -> list[str]:
-    """Return the HIDs of the rows to write, in order. The whole filter runs here."""
-    listing = export.entity.listing
-    choosing = (
-        listing.joined(select(listing.model.hid)).where(*export.where).order_by(*export.order)
-    )
+def chosen(db: Session, listing: Listing, where: Sequence[Any], order: Sequence[Any]) -> list[str]:
+    """Return the HIDs of the rows a filter keeps, in order. The whole filter runs here,
+    within the time one request may spend on regular expressions."""
+    choosing = listing.joined(select(listing.model.hid)).where(*where).order_by(*order)
     with dialect.regex_budget() as budget:
         try:
             return list(db.scalars(choosing))
@@ -147,7 +145,7 @@ def pieces(db: Session, export: Export) -> Iterator[list[dict[str, Any]]]:
     """
     which = export.entity
     model = which.listing.model
-    hids = _chosen(db, export)
+    hids = chosen(db, which.listing, export.where, export.order)
     yield []
     for start in range(0, len(hids), PIECE):
         wanted = hids[start : start + PIECE]

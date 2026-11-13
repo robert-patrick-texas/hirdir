@@ -5422,27 +5422,6 @@
       "post": {
         "description": "List catalog entries, with the filter and sort in the body.",
         "operationId": "query_entries_api_v1_catalog_entries_query_post",
-        "parameters": [
-          {
-            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 200,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -6755,27 +6734,6 @@
       "post": {
         "description": "List items, with the filter and sort in the body.",
         "operationId": "query_items_api_v1_items_query_post",
-        "parameters": [
-          {
-            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 200,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {

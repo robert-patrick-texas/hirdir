@@ -58,7 +58,7 @@ A manufacturer, a support provider, or both. A name or alias belongs to one vend
 | Field | Type | Notes |
 |---|---|---|
 | `name` | text, unique | "Cisco", "Juniper", "Canonical" |
-| `aliases` | list of text | Other spellings accepted on import: "Cisco Systems" |
+| `aliases` | list of text | Other spellings accepted on import: "Cisco Systems". An alias holds no semicolon, which separates aliases in a file |
 | `notes` | text | |
 | `review_status` | choice | `reviewed`, or `unreviewed` when an import created it |
 
@@ -459,8 +459,9 @@ first rule that applies decides, and no later rule is tried:
 1. `hid` is given: that record, or an error if there is none.
 2. Vendor, PID and serial number are given: the item with that triple.
 3. `asset_tag` is given: the item with that tag.
-4. Neither serial number nor asset tag is given: the one active item with that `name`
-   (or `hostname`, when the item's name is blank) that itself has no serial number.
+4. Neither serial number nor asset tag is given: the one item with that `name` (or
+   `hostname`, when the item's name is blank) that is not retired and itself has no
+   serial number.
 5. Otherwise the row is a new item.
 
 More than one candidate is an error on that row, never a guess. MAC address, hostname

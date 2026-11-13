@@ -173,7 +173,7 @@ def read(
         raise Invalid("the format is not acceptable", {"format": f"one of {', '.join(FORMATS)}"})
     try:
         envelope = json.loads(text)
-    except ValueError:
+    except ValueError, RecursionError:
         raise refuse("the file is not well-formed JSON") from None
     if not isinstance(envelope, dict) or envelope.get("schema") != SCHEMA:
         raise refuse(f'a JSON file is an object with "schema": "{SCHEMA}"')

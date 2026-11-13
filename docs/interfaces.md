@@ -23,7 +23,7 @@ and CLI's types are generated from it.
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored, as it may behind a large import being applied, is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | A `POST` on an inventory record, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
+| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
 ### Routes
 
@@ -171,7 +171,8 @@ far. A column of a later release, such as `location`, is unknown until that rele
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
 `1` and `0` are read as well, and a list is joined with `;`. In JSON a list is a list, a
-truth value is `true` or `false`, and a decimal is text.
+truth value is `true` or `false`, and a decimal is text; the words a CSV file may use
+are read there too.
 
 ### Rules
 
@@ -184,14 +185,14 @@ truth value is `true` or `false`, and a decimal is text.
 | References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, contract number, geographic path, group name |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
-| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting |
+| Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, and for a row that gives an item another model while still holding the values of the old one |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
 | Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, and `outcome=rejected` keeps to one kind |
 | Apply | `POST /imports/{hid}/apply` applies exactly what was previewed, in one transaction. If any record it would touch has changed since, nothing is applied and a new preview is asked for |
-| What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, and the job is `failed` |
+| What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, with the same changes and the same notes, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, the first fifty of them, and the job is `failed` |
 | Whose preview | A preview is applied by the one who made it, once. Anybody who may read the inventory may read it |
 | Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
 | Limits | 20 MB and 100,000 rows per file. A larger file is a `413` |
@@ -213,7 +214,9 @@ is `ldos`. Left out, the sort is the list's own. `include_archived` and
 it can be imported as it is.
 
 A CSV cell that begins with `=`, `+`, `-` or `@` is written with a leading apostrophe so
-a spreadsheet does not run it as a formula. Import removes that apostrophe again.
+a spreadsheet does not run it as a formula. Import removes that apostrophe again. A
+value that itself begins with an apostrophe before such a character is written with one
+more, so that it comes back as it was.
 
 Every template in `examples/` is produced by exporting the seeded example database, so
 the templates can never drift from the importer. `make examples` writes them, and a
@@ -226,7 +229,10 @@ HIDs, and the change: `set`, which names columns of an import and their new valu
 with `null` to clear one, and `add_tags` and `remove_tags`. The fields that tell one
 item from another cannot be set on more than one item at once: `serial_number`,
 `asset_tag`, `mac_address`, `name`, `hostname` and `fqdn`. A change that names a single
-item by its HID may set them.
+item by its HID may set them. A filter leaves out what a list leaves out, unless
+`include_archived` or `include_drafts` says otherwise; items named by their HIDs are
+changed whatever their status. One bulk edit changes at most 100,000 items, and more is
+a `413`.
 
 The answer is a preview of the same kind as an import's, with before and after for each
 row, and it is stored in the same way. `POST /items/bulk-update/{hid}/apply` applies

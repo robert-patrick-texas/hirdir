@@ -319,7 +319,8 @@ def test_items_are_matched_by_hid_then_serial_then_asset_tag_then_name(
     assert changes(rows[2])["name"] == ("tagged", "tagged-again")
     assert "more than one" in rows[3]["reasons"][0]["message"]
     assert rows[5]["reasons"][0]["field"] == "hid"
-    assert by_serial["hid"] not in [row["record_hid"] for row in rows]
+    # The row that was refused still says which item it matched.
+    assert rows[1]["record_hid"] == by_serial["hid"]
 
 
 # --- what a file may and may not do --------------------------------------------------
@@ -360,7 +361,9 @@ def test_a_different_state_is_a_transition_under_the_rules(
         "expected_online": (True, False),
         "state_reason": (None, "maintenance"),
     }
-    assert refused["reasons"][0]["field"] == "to"
+    assert refused["reasons"][0]["field"] == "lifecycle_state"
+    assert refused["key"] == "Cisco C9300-48P S2"
+    assert refused["record_hid"] is not None
     files.apply(preview, skip_rejected=True)
     history = make.get(f"/items/{item['hid']}/history")["items"]
     assert (history[0]["action"], history[0]["via"]) == ("transition", "import")
@@ -718,3 +721,141 @@ def test_a_change_that_waits_too_long_behind_another_is_told_to_try_again(
         assert make.get("/owners")["total"] == 0
         again = impatient.post(f"{API}/owners", json={"label": "Late"}, headers=inventory)
         assert again.status_code == 201
+
+
+# --- found by review -----------------------------------------------------------------
+
+
+def test_an_apply_that_fails_after_its_work_leaves_nothing_behind(
+    files: Files,
+    make: Maker,
+    client: TestClient,
+    inventory: dict[str, str],
+    catalog: dict,
+    monkeypatch,
+) -> None:
+    from hirdir.io import imports
+
+    preview = files.preview("items", "vendor,pid,serial_number\nCisco,C9300-48P,S1\n")
+    record = imports.audit.record
+
+    def fails_at_the_end(db, context, action, *more, **named):
+        if action == "apply":
+            raise RuntimeError("the server stopped here")
+        return record(db, context, action, *more, **named)
+
+    monkeypatch.setattr(imports.audit, "record", fails_at_the_end)
+    with TestClient(client.app, raise_server_exceptions=False) as failing:
+        path = f"{API}/imports/{preview['job']['hid']}/apply"
+        assert failing.post(path, headers=inventory).status_code == 500
+    monkeypatch.setattr(imports.audit, "record", record)
+    assert make.get("/items")["total"] == 0
+    assert make.audit(record_type="item") == []
+    assert make.get(f"/imports/{preview['job']['hid']}")["status"] == "previewed"
+    assert files.apply(preview)["status"] == "applied"
+    assert make.get("/items")["total"] == 1
+
+
+def test_a_catalog_entrys_inherited_discount_is_never_copied_down(
+    files: Files, make: Maker
+) -> None:
+    vendor = make.vendor()
+    inheriting = make.entry(vendor, "C9300-48P")
+    make.entry(vendor, "EX4400-48P", stack_discount_pct="30")
+    exported = files.export("catalog_entries", columns=["vendor", "pid", "stack_discount_pct"])
+    assert [row["stack_discount_pct"] for row in table(exported)] == ["50", "30"]
+    assert counts(files.preview("catalog_entries", exported)["job"]) == (0, 0, 2, 0)
+    as_json = json.loads(files.export("catalog_entries", format="json"))
+    assert counts(files.preview(None, as_json)["job"]) == (0, 0, 2, 0)
+    new = files.preview("catalog_entries", "vendor,pid,stack_discount_pct\nCisco,NEW-1,50\n")
+    assert "stack_discount_pct" not in changes(new["rows"][0])
+    edited = files.preview("catalog_entries", exported.replace("C9300-48P,50", "C9300-48P,40"))
+    assert changes(edited["rows"][0]) == {"stack_discount_pct": (None, "40")}
+    assert make.get(f"/catalog-entries/{inheriting['hid']}")["stack_discount_pct"] is None
+
+
+def test_a_row_that_changes_the_model_does_not_keep_the_old_models_values(
+    files: Files, make: Maker, catalog: dict
+) -> None:
+    vendor = make.get("/vendors")["items"][0]
+    make.entry(vendor, "C9200L-48P-4G", est_value="6500.00", ldos="2031-10-31")
+    item = make.item(catalog_entry_hid=catalog["hid"], serial_number="S1", name="one")
+    exported = files.export("items", columns=["name", "pid", "vendor", "est_value", "ldos"])
+    moved = exported.replace("C9300-48P", "C9200L-48P-4G")
+    preview = files.preview("items", moved)
+    assert changes(preview["rows"][0]) == {"pid": ("C9300-48P", "C9200L-48P-4G")}
+    files.apply(preview)
+    after = make.get(f"/items/{item['hid']}")
+    assert (after["est_value"], after["ldos"]) == (None, None)
+    assert after["effective"]["est_value"]["value"] == "6500.00"
+
+
+def test_a_later_row_may_name_an_earlier_new_row_of_the_same_file(
+    files: Files, make: Maker
+) -> None:
+    make.vendor()
+    text = "vendor,pid,successor_pid\nCisco,NEW-A,\nCisco,NEW-B,NEW-A\nNewco,N-1,\nNewco,N-2,N-1\n"
+    preview = files.preview("catalog_entries", text)
+    assert [row["outcome"] for row in preview["rows"]] == ["create"] * 4
+    assert preview["rows"][3]["notes"] == []
+    files.apply(preview)
+    assert make.get("/catalog-entries", filter="review_status:eq:unreviewed")["total"] == 0
+
+
+def test_an_apply_never_makes_a_record_the_preview_did_not_show(
+    files: Files, make: Maker, catalog: dict
+) -> None:
+    preview = files.preview("items", "vendor,pid,serial_number\nCisco,C9300-48P,S1\n")
+    assert preview["rows"][0]["notes"] == []
+    make.patch(f"/catalog-entries/{catalog['hid']}", {"row_version": 1, "pid": "C9300-48P-A"})
+    refused = files.apply(preview, expect=409)
+    assert list(errors(refused)) == ["rows.1"]
+    assert make.get("/catalog-entries")["total"] == 1
+    assert make.get("/items")["total"] == 0
+
+
+def test_a_draft_known_only_by_its_name_is_not_made_twice(files: Files, make: Maker) -> None:
+    text = "name,record_status\nsite3-planned-sw-01,draft\n"
+    files.load("items", text)
+    assert counts(files.preview("items", text)["job"]) == (0, 0, 1, 0)
+    twice = files.preview("items", "name,record_status\nsite3-sw-02,draft\nSITE3-SW-02,draft\n")
+    assert [row["outcome"] for row in twice["rows"]] == ["create", "rejected"]
+
+
+def test_text_no_database_can_hold_is_a_rejected_row_and_never_a_500(
+    files: Files, client: TestClient, inventory: dict[str, str], make: Maker
+) -> None:
+    envelope = '{"schema": "hirdir/1", "entity": "tags", "records": [{"label": "bad\\ud800"}]}'
+    sent = client.post(
+        f"{API}/imports/preview",
+        content=envelope,
+        headers={**inventory, "Content-Type": "application/json"},
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["rows"][0]["reasons"][0]["field"] == "label"
+    nested = client.post(
+        f"{API}/imports/preview",
+        content="[" * 200_000,
+        headers={**inventory, "Content-Type": "application/json"},
+    )
+    assert nested.status_code == 422
+    make.item(name="one")
+    in_bulk = client.post(
+        f"{API}/items/bulk-update",
+        content='{"all_rows": true, "set": {"comments": "bad\\ud800"}}',
+        headers={**inventory, "Content-Type": "application/json"},
+    )
+    assert in_bulk.status_code == 422
+
+
+def test_an_apostrophe_of_the_values_own_survives_export_and_import(
+    files: Files, make: Maker
+) -> None:
+    item = make.item(name="one", comments="'=kept", description="'-5 below")
+    exported = files.export("items", columns=["name", "comments", "description"])
+    row = table(exported)[0]
+    assert (row["comments"], row["description"]) == ("''=kept", "''-5 below")
+    assert counts(files.preview("items", exported)["job"]) == (0, 0, 1, 0)
+    assert make.get(f"/items/{item['hid']}")["comments"] == "'=kept"
+    refused = make.post("/vendors", {"name": "Example", "aliases": ["Example; Software"]}, 422)
+    assert "aliases" in errors(refused)

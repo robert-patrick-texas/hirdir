@@ -12,6 +12,7 @@ from fastapi.routing import APIRoute
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 
+from hirdir.auth.roles import Role
 from hirdir.domain import accounts, idempotency
 from hirdir.io import files
 
@@ -55,7 +56,12 @@ async def limited_body(request: Request, limit: int = files.MAX_BYTES) -> bytes:
 
 
 def _caller(request: Request) -> str | None:
-    """Return the HID of the signed-in caller, or None for the route to refuse."""
+    """Return the HID of a signed-in caller who may change the inventory, or None.
+
+    Every route that takes a key changes something, and so needs the Inventory role.
+    A caller who does not hold it now is left to the route to refuse: an answer kept
+    for them earlier, when they did hold it, is not given again.
+    """
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         return None
@@ -65,6 +71,8 @@ def _caller(request: Request) -> str | None:
         except accounts.NotSignedIn:
             return None
         db.commit()
+        if principal.role is None or not principal.role.allows(Role.INVENTORY):
+            return None
         return principal.user.hid
 
 
@@ -137,7 +145,8 @@ class IdempotentRoute(APIRoute):
     """A route whose POST requests take `Idempotency-Key`."""
 
     def __init__(self, path: str, endpoint: Callable[..., Any], **options: Any) -> None:
-        if "POST" in (options.get("methods") or []):
+        # A query is a list asked for with a POST. It changes nothing, and takes no key.
+        if "POST" in (options.get("methods") or []) and not path.endswith("/query"):
             options["dependencies"] = [
                 Depends(_keyed, scope="function"),
                 *(options.get("dependencies") or []),

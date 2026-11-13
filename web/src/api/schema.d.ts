@@ -206,10 +206,7 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: {
-          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
-          "Idempotency-Key"?: string | null;
-        };
+        header?: never;
       };
       requestBody: {
         content: {
@@ -853,10 +850,7 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: {
-          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
-          "Idempotency-Key"?: string | null;
-        };
+        header?: never;
       };
       requestBody: {
         content: {

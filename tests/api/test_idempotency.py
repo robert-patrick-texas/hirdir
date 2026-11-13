@@ -148,3 +148,28 @@ def test_a_list_returns_only_the_fields_asked_for(make: Maker) -> None:
     }
     for wrong in ("nonsense", "catalog.nonsense", "name.first", "tags.label"):
         assert "fields" in errors(make.get("/items", expect=422, fields=wrong)), wrong
+
+
+def test_a_kept_answer_is_not_given_to_a_caller_who_may_no_longer_change_anything(
+    client: TestClient, make: Maker, admin: dict[str, str], inventory: dict[str, str]
+) -> None:
+    headers = {**inventory, KEY: "k-1"}
+    assert client.post(f"{API}/items", json={"name": "one"}, headers=headers).status_code == 201
+    me = client.get(f"{API}/auth/me", headers=inventory).json()
+    grants = client.get(f"{API}/role-grants", headers=admin).json()
+    mine = next(grant for grant in grants if grant["user_hid"] == me["hid"])
+    assert client.delete(f"{API}/role-grants/{mine['hid']}", headers=admin).status_code == 204
+    again = client.post(f"{API}/items", json={"name": "one"}, headers=headers)
+    assert again.status_code == 403
+    assert "idempotency-replayed" not in again.headers
+
+
+def test_a_query_takes_no_key_and_keeps_no_answer(
+    client: TestClient, make: Maker, viewer: dict[str, str]
+) -> None:
+    headers = {**viewer, KEY: "q-1"}
+    first = client.post(f"{API}/items/query", json={}, headers=headers)
+    make.item(name="new since")
+    second = client.post(f"{API}/items/query", json={}, headers=headers)
+    assert (first.json()["total"], second.json()["total"]) == (0, 1)
+    assert "idempotency-replayed" not in second.headers

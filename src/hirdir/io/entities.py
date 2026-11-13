@@ -84,8 +84,8 @@ class Run:
         self.stubs: set[str] = set()
         self.notes: list[str] = []
         self._undo: list[Callable[[], None]] = []
-        self._vendors: dict[str, str | None] = {}
-        self._entries: dict[tuple[str, str], str | None] = {}
+        self._vendors: dict[str, str] = {}
+        self._entries: dict[tuple[str, str], str] = {}
         self._owners: dict[str, str] = {}
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
@@ -133,6 +133,12 @@ class Run:
         self.notes.append(note)
         self._undo.append(lambda: self.stubs.discard(hid))
 
+    def renamed(self) -> None:
+        """A row has changed a vendor or a catalog entry itself: what was looked up
+        under their names is looked up afresh."""
+        self._vendors.clear()
+        self._entries.clear()
+
     def claim(self, hid: str) -> None:
         """A row describes a record this run made for a reference: it is that row's own."""
         self.stubs.discard(hid)
@@ -145,11 +151,14 @@ class Run:
             if vendor is not None:
                 return vendor
         key = records.key(text)
-        known = self._vendors.get(key, _MISSING)
-        if known is _MISSING:
+        known = self._vendors.get(key)
+        if known is None:
+            # Only what was found is remembered. That a vendor is not there is looked
+            # up again each time, because a row of the file may have made it since.
             found = catalog.find_vendor(self.db, text)
-            known = found.hid if found is not None else None
-            self._learn(self._vendors, key, known)
+            if found is not None:
+                known = found.hid
+                self._learn(self._vendors, key, known)
         if known is not None:
             return self._get(Vendor, known)
         if not create:
@@ -167,14 +176,15 @@ class Run:
         if vendor is None:
             return None
         key = (vendor.hid, records.key(pid))
-        known = self._entries.get(key, _MISSING)
-        if known is _MISSING:
+        known = self._entries.get(key)
+        if known is None:
             known = self.db.scalar(
                 select(CatalogEntry.hid).where(
                     CatalogEntry.vendor_hid == vendor.hid, CatalogEntry.pid_key == key[1]
                 )
             )
-            self._learn(self._entries, key, known)
+            if known is not None:
+                self._learn(self._entries, key, known)
         if known is not None:
             return self._get(CatalogEntry, known)
         if not create:
@@ -359,6 +369,7 @@ class Vendors(Entity):
         given = _plain_fields(values, ("name", "aliases", "notes", "review_status"))
         if given.get("aliases", _MISSING) is None:
             given["aliases"] = []
+        run.renamed()
         if record is None:
             return catalog.create_vendor(run.db, run.context, _new(given))
         if not values.get("hid") and "name" in given:
@@ -494,7 +505,11 @@ class CatalogEntries(Entity):
     ) -> dict[str, Any]:
         if "successor_pid" not in values and "successor_vendor" not in values:
             return {}
-        current = run.db.get(CatalogEntry, record.successor_hid) if record is not None else None
+        current = (
+            run.db.get(CatalogEntry, record.successor_hid)
+            if record is not None and record.successor_hid
+            else None
+        )
         pid = values.get("successor_pid", current.pid if current is not None else None)
         if pid is None:
             if values.get("successor_vendor"):
@@ -528,6 +543,16 @@ class CatalogEntries(Entity):
         given.update(self._successor(run, record, values, vendor))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
+        discount = given.get("stack_discount_pct")
+        if (
+            discount is not None
+            and (record is None or record.stack_discount_pct is None)
+            and discount == Decimal(str(settings.value(run.db, "stack_discount_pct")))
+        ):
+            # An import does not turn an inherited value into an override: the entry
+            # has no discount of its own, and the row holds the very one it inherits.
+            del given["stack_discount_pct"]
+        run.renamed()
         if record is None:
             return catalog.create_entry(run.db, run.context, _new(given))
         if new and "review_status" not in given:
@@ -612,7 +637,13 @@ class Items(Entity):
         "owner.label": "owner",
         **{f"effective.{name}": name for name in inheritance.ITEM_FIELDS},
     }
-    renamed: ClassVar[Mapping[str, str]] = {"catalog_entry_hid": "pid", "owner_hid": "owner"}
+    renamed: ClassVar[Mapping[str, str]] = {
+        "catalog_entry_hid": "pid",
+        "owner_hid": "owner",
+        # A move names its state and its reason otherwise than a file does.
+        "to": "lifecycle_state",
+        "reason": "state_reason",
+    }
     not_in_bulk = frozenset(
         {"serial_number", "asset_tag", "mac_address", "name", "hostname", "fqdn"}
     )
@@ -623,8 +654,8 @@ class Items(Entity):
 
         The order is on the data model page under "Identity and matching": the vendor,
         PID and serial number; then the asset tag; then, for a row with neither a serial
-        number nor an asset tag, the name. More than one candidate is an error, never
-        a guess.
+        number nor an asset tag, the name, among the items that are not retired. More
+        than one candidate is an error, never a guess.
         """
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
@@ -649,7 +680,7 @@ class Items(Entity):
                 .where(
                     dialect.equals_text(func.coalesce(Item.name, Item.hostname), name.strip()),
                     Item.serial_key.is_(None),
-                    Item.record_status == "active",
+                    Item.record_status != "retired",
                 )
                 .limit(2)
             )
@@ -694,13 +725,19 @@ class Items(Entity):
 
     @staticmethod
     def _overrides(
-        record: Any | None, entry: CatalogEntry | None, values: Mapping[str, Any]
+        record: Any | None,
+        before: CatalogEntry | None,
+        entry: CatalogEntry | None,
+        values: Mapping[str, Any],
     ) -> dict[str, Any]:
         """Return the values of the fields that inherit, as the row sets them.
 
         An import does not turn an inherited value into an override. Where the item has
         no value of its own, a row that holds the very value it inherits says nothing
-        new, and the field is left to inherit.
+        new, and the field is left to inherit. That holds for what it inherits from the
+        model the row gives it, and for what it inherited from the model it had: a row
+        of an export in which only the model was changed still holds the old model's
+        values, and they are not the item's own.
         """
         given: dict[str, Any] = {}
         for name in inheritance.ITEM_FIELDS:
@@ -708,8 +745,8 @@ class Items(Entity):
                 continue
             value = values[name]
             own = getattr(record, name) if record is not None else None
-            inherited = getattr(entry, name) if entry is not None else None
-            if value is not None and own is None and inherited == value:
+            inherited = {getattr(model, name) for model in (before, entry) if model is not None}
+            if value is not None and own is None and value in inherited:
                 continue
             given[name] = value
         return given
@@ -717,13 +754,18 @@ class Items(Entity):
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         db, context = run.db, run.context
         given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        before = (
+            run.db.get(CatalogEntry, record.catalog_entry_hid)
+            if record is not None and record.catalog_entry_hid
+            else None
+        )
         entry = self._entry(run, record, values)
         if "vendor" in values or "pid" in values:
             given["catalog_entry_hid"] = entry.hid if entry is not None else None
         if "owner" in values:
             owner = values["owner"]
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
-        given.update(self._overrides(record, entry, values))
+        given.update(self._overrides(record, before, entry, values))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
         standing = _plain_fields(values, items.STANDING)

@@ -77,6 +77,11 @@ def _checked_vendor(db: Session, fields: dict[str, Any], vendor: Vendor | None) 
         aliases: dict[str, str] = {}
         for alias in given or []:
             alias = records.clean(alias)
+            if alias is not None and ";" in alias:
+                raise Invalid(
+                    "an alias is not acceptable",
+                    {"aliases": "must not hold a semicolon, which separates aliases in a file"},
+                )
             if alias is not None and records.key(alias) != records.key(own):
                 aliases.setdefault(records.key(alias), alias)
         values["aliases"] = list(aliases.values())
