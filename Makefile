@@ -21,11 +21,11 @@ check: guard    ## format check, lint, type check and tests, for the server and 
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run ty check
-	uv run pytest tests/unit tests/api
+	uv run pytest tests/unit tests/api packaging/tests
 	@if [ -d web/node_modules ]; then npm --prefix web run check; else echo "web: skipped, run 'make web' first"; fi
 
 test:           ## the Python tests only
-	uv run pytest tests/unit tests/api
+	uv run pytest tests/unit tests/api packaging/tests
 
 guard:          ## refuse to go on if a tracked file holds a term listed in .publish-guard
 	@uv run python scripts/publish_guard.py
@@ -36,13 +36,13 @@ contract:       ## write the OpenAPI document to contract/openapi.json
 acceptance:     ## the scenarios of docs/build-plan.md against a server started from an empty database
 	uv run pytest tests/acceptance
 
-e2e:            ## the browser scenarios through nginx and a prefix, in the test container
+e2e:            ## package-test, with the browser scenarios run against the fresh install
 	packaging/package-test.sh --e2e
 
 deb: web        ## build dist/hirdir_<version>_amd64.deb in a clean container
 	packaging/build-deb.sh
 
-package-test:   ## install the package in a systemd container and exercise it through nginx
+package-test:   ## install the package in systemd containers and exercise it through nginx: upgraded from the previous release, and fresh
 	packaging/package-test.sh
 
 docs:           ## render every .md file into html/

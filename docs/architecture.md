@@ -207,8 +207,19 @@ the signing key, runs the migrations, enables and starts the service, and prints
 lines: how to create the first Admin (`sudo hirdir admin create-user --role admin
 NAME`), and how to add the site (`sudo hirdir-setup`).
 
-**On upgrade** it backs the database up, runs the migrations, and restarts the service.
-A failed migration stops the upgrade with the backup's path in the message.
+**On upgrade** it stops the service, backs the database up into
+`/var/lib/hirdir/backups/` and says where, runs the migrations, and starts the service
+again. The signing key and the three conffiles are left as they are, so sessions and
+service tokens go on working and `hirdir` stays under its prefix. Installing the same
+version again takes the same steps and changes nothing in the database.
+
+A failed migration stops the upgrade with the backup's path in the message, and leaves
+the service stopped. SQLite does not undo the tables a migration had already created
+when it failed, so the database may be partly changed, and the way back is always the
+backup: the message gives the commands that install the version that was there before
+and restore the backup. An older version stops in the same way at a database that a
+newer one has migrated. The steps for an operator are under "Upgrade" in
+[install.md](install.md#upgrade).
 
 **`hirdir-setup`** reads `nginx -T`, lists the sites that already terminate TLS, and
 adds `include snippets/hirdir.conf;` to the one chosen, after showing the change.
@@ -222,20 +233,38 @@ volume.
 
 | Command | What it does |
 |---|---|
-| `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest`, and the web UI's type check, lint and unit tests |
+| `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest` over `tests/unit`, `tests/api` and `packaging/tests`, and the web UI's type check, lint and unit tests |
 | `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
-| `make e2e` | Playwright through nginx and a prefix |
-| `make deb` | builds the package |
-| `make package-test` | installs the package in a container and exercises it |
+| `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
+| `make deb` | builds the package, and writes its SHA-256 and lintian's report beside it |
+| `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
 
-`make package-test` starts an Ubuntu 26.04 container with systemd as its init under
-rootful Docker, installs nginx and the package with apt, runs
-`hirdir-setup --self-signed --prefix /hirdir`, and then checks through nginx: the
-health probe, creating the first Admin, signing in, importing `examples/`, a filtered
-export, and that no response set a cookie. From the second release on, it also installs
-the previous release first and upgrades it. `systemd-nspawn` is available on the build
-host as an alternative runner for the same script.
+`make package-test` runs `packaging/package-test.sh`, which makes three passes. Each
+pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
+Docker and installs with apt, as an operator does.
+
+| Pass | What it does |
+|---|---|
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`; every account, group, grant, token and audit event is as it was; the session token, the access codes and the service token from before still work; the conffiles are untouched and nginx still serves under the old prefix. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped. The commands of the message are then run, the previous release must serve again, and with the table gone the upgrade must go through. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before) |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+
+Importing `examples/` and a filtered export join the passes with 0.3.0.
+
+**The previous release** is the package named by `PREVIOUS_DEB`. Left unset, it is the
+`hirdir_*_amd64.deb` in `dist/` with the highest version below the one under test, so
+keeping each release's package in `dist/` is all it takes. When none is found and
+`docs/releases/` holds the notes of an earlier release, `make package-test` fails and
+says what is missing: an upgrade that was not tested is never a pass. Only the first
+release, which has nothing before it, skips the upgrade. Run by hand with `--fresh`,
+the script makes the fresh pass alone, needs no previous package, and says that it
+tested no upgrade.
+
+Every check prints a line that starts with `PASS`, `FAIL` or `SKIP`, each pass ends
+with its counts, and the run ends with the counts of all three and every `FAIL` and
+`SKIP` line once more. `systemd-nspawn` is available on the build host as an
+alternative runner for the same script.
 
 ## Configuration
 

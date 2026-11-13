@@ -99,6 +99,17 @@ install_venv() {
         "$OPT"/venv/bin/activate* "$OPT/venv/bin/deactivate.bat" "$OPT/venv/bin/pydoc.bat"
     find "$site" -name uv_cache.json -delete
     find "$site" -name RECORD -exec sed -i '/\/uv_cache\.json,/d' {} +
+    # Nothing but hirdir and what the lock names for running it. A package of the
+    # development or the documentation group here would be shipped to every host.
+    local installed extra
+    installed=$(uv pip freeze --python "$VENV_PY")
+    grep -qx "hirdir==$HIRDIR_VERSION" <<<"$installed" ||
+        die "uv pip freeze does not list hirdir $HIRDIR_VERSION in $OPT/venv"
+    extra=$(comm -23 \
+        <(grep -v '^hirdir==' <<<"$installed" | LC_ALL=C sort) \
+        <(grep -oE '^[A-Za-z0-9][A-Za-z0-9._-]*==[^ ;\\]+' /build/requirements.txt | LC_ALL=C sort))
+    [ -z "$extra" ] ||
+        die "the environment holds what the lock does not name for running hirdir: $extra"
 }
 
 check_web_ui() {
@@ -135,9 +146,26 @@ extensions = sorted(path.name.split(".")[0] for path in dynload.glob("*.so"))
 # Most extensions are built into the interpreter; these cover its static libraries.
 builtin = ["ssl", "sqlite3", "ctypes", "zlib", "bz2", "lzma", "decimal", "zoneinfo", "tomllib"]
 ours = ["hirdir.app", "hirdir.cli.main", "hirdir.db.migrate", "argon2", "uvicorn", "alembic"]
-for name in [*extensions, *builtin, *ours]:
+# Every compiled module a wheel brought, by the name it is imported under. Each one
+# must be the build for this interpreter, or it does not load.
+site = pathlib.Path(sys.prefix, "lib", version, "site-packages")
+compiled = sorted(
+    ".".join([*path.relative_to(site).parts[:-1], path.name.split(".")[0]])
+    for path in site.rglob("*.so")
+)
+for name in [*extensions, *builtin, *ours, *compiled]:
     importlib.import_module(name)
-print(f"imported {len(extensions) + len(builtin) + len(ours)} modules on Python {sys.version}")
+count = len(extensions) + len(builtin) + len(ours)
+print(f"imported {count} modules on Python {sys.version}")
+print(f"imported the {len(compiled)} compiled modules of the wheels: {', '.join(compiled)}")
+
+# The engine behind the regular expressions of the filter grammar, with its time limit.
+import regex
+
+if "regex._regex" not in compiled:
+    sys.exit("the regex package has no compiled module in this environment")
+if not regex.search("^site2-sw-(core|dist)-[0-9]+$", "site2-sw-core-01", timeout=0.05):
+    sys.exit("the regex package does not match as it should")
 PY
     # hirdir-setup is run by this interpreter and uses the standard library alone.
     "$VENV_PY" -I packaging/hirdir_setup.py --help >/dev/null

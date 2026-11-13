@@ -42,16 +42,49 @@ A hold is never left in place silently.
 1. `make upgrade`.
 2. Set the version.
 3. `make check`, `make acceptance`, `make docs`, `make deb`, `make e2e`. The last installs
-   the package in a container and runs every package check and the browser scenarios;
-   `make package-test` is the same without the browser.
+   the package in containers and runs every package check, the upgrade from the
+   previous release among them, and the browser scenarios; `make package-test` is the
+   same without the browser. See "The previous release's package" below.
 4. `make facts > /tmp/facts.md`, and write `docs/releases/v<version>.md` from the
    template below.
 5. `make docs`, and read the built pages once.
 6. Commit, tag `v<version>`, push.
-7. `gh release create v<version> --notes-file docs/releases/v<version>.md` with the
-   `.deb` and its SHA-256 attached.
+7. `gh release create v<version> --notes-file docs/releases/v<version>.md` with
+   `dist/hirdir_<version>_amd64.deb` and `dist/hirdir_<version>_amd64.deb.sha256`
+   attached. `make deb` writes both.
 
 Pushing to `main` publishes the documentation. Nothing else is automatic.
+
+### The previous release's package
+
+A release is not done until `make package-test` has upgraded the previous release to
+it. The test installs the previous release in a container, fills it with accounts, a
+group, a role grant, a service token and audit events, upgrades it with apt, and checks
+that all of it is still there and still works. It also makes the new version's
+migration fail, to see that the upgrade stops, names its backup and can be undone. The
+passes are described under "Testing" in [architecture.md](architecture.md#testing).
+
+The previous package is found in this order:
+
+1. The file that `PREVIOUS_DEB` names, when it is set, as in
+   `PREVIOUS_DEB=dist/hirdir_0.1.0_amd64.deb make package-test`.
+2. Otherwise the `hirdir_*_amd64.deb` in `dist/` with the highest version below the
+   one being built. `make deb` replaces only the package of its own version, so the
+   package of each release stays in `dist/` once it is there.
+3. Otherwise there is nothing to upgrade from. If `docs/releases/` holds the notes of an
+   earlier release, `make package-test` fails and says so. Only the first release skips
+   the upgrade.
+
+`dist/` is not committed. On a checkout that does not have the previous package, fetch
+it from its release, with its checksum, which the test compares when it is there:
+
+```bash
+gh release download v<previous version> --dir dist --pattern 'hirdir_*_amd64.deb*'
+```
+
+`packaging/package-test.sh --fresh` runs the fresh install alone, for work on the
+package between releases. It prints a `SKIP` line for the upgrade and is not the
+release check.
 
 ## Release notes
 
@@ -113,6 +146,20 @@ and the installed packages inside the `.deb`, `sqlite3.sqlite_version` from that
 interpreter, `web/package-lock.json`, and the tools' own `--version`. The direct
 dependencies are named; the rest are counted, with the full list in a collapsed block
 beneath the table.
+
+- The package read is `dist/hirdir_<version>_amd64.deb`, of the version in
+  `src/hirdir/__init__.py`, and no other: the previous release's package also lies in
+  `dist/`, for the upgrade test. Without the package of this version the Python rows
+  come from `.python-version` and `uv.lock`, and a line on standard error says so.
+- The Python packages are the ones the package installs, so a package that only the
+  development or the documentation group asks for, such as pytest, ruff, ty or httpx2,
+  never appears. The direct dependencies are those of `pyproject.toml`; `regex` joins
+  them with 0.2.0.
+- The web UI's row names TypeScript, Vite and React, and AG Grid Community beside them
+  once `web/package-lock.json` installs `ag-grid-community`. Its binding for React,
+  `ag-grid-react`, is published at the grid's version and is not named apart; if the
+  lock ever holds the two at different versions, the row gives both. A package the lock
+  does not install is left out of the row, and a line on standard error says so.
 
 ## Documentation
 

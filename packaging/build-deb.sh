@@ -14,6 +14,10 @@
 # source with the built web UI in src/hirdir/static, the lock, packaging/, and the
 # HTML documentation in html/ when "make docs" has produced it. packaging/container/
 # build.sh does the work there, and writes lintian's full report beside the package.
+# The package's SHA-256 is written beside it as well, as <package>.sha256.
+#
+# Packages of other versions in OUTPUT_DIR are left alone: the package test upgrades
+# from the previous release's package, which it looks for there.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -63,7 +67,7 @@ docker build --quiet --tag "$image" --build-arg "UV_VERSION=$uv_version" - \
 
 cache_mount=()
 if [ -n "$cache" ]; then cache_mount=(--volume "$cache:/root/.cache/uv"); fi
-rm -f "$out_dir/$name.deb" "$out_dir/$name.lintian.txt"
+rm -f "$out_dir/$name.deb" "$out_dir/$name.deb.sha256" "$out_dir/$name.lintian.txt"
 echo "build-deb: building $name.deb $web_ui"
 docker run --rm \
     --volume "$stage:/in:ro" --volume "$out_dir:/out" "${cache_mount[@]}" \
@@ -71,5 +75,11 @@ docker run --rm \
     --env HOST_UID="$(id -u)" --env HOST_GID="$(id -g)" \
     "$image" bash /in/build.sh
 
+# The checksum that is attached to the release with the package, in the form that
+# "sha256sum --check" reads. The package test of the next release, which upgrades from
+# this package, compares the two.
+(cd "$out_dir" && sha256sum "$name.deb" >"$name.deb.sha256")
+
 echo "build-deb: $out_dir/$name.deb ($(du -h "$out_dir/$name.deb" | cut -f1), $web_ui)"
+echo "build-deb: SHA-256 $(cut -d' ' -f1 "$out_dir/$name.deb.sha256"), in $name.deb.sha256"
 echo "build-deb: lintian's full report is in $out_dir/$name.lintian.txt"

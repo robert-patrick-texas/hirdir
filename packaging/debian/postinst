@@ -5,9 +5,12 @@
 # byte-code, creates the signing key, runs the migrations, enables and starts the
 # service and the backup timer, and prints what to do next.
 #
-# On an upgrade: stops the service, backs the database up, runs the migrations and
-# starts the service again. If the migration fails, the upgrade stops and the message
-# says where the backup is.
+# On an upgrade, and when the same version is installed again: stops the service, backs
+# the database up, runs the migrations and starts the service again. If the migration
+# fails, the upgrade stops, the service stays stopped, and the message says where the
+# backup is and how to go back to the version that was installed before. A migration
+# that fails part of the way can leave the database partly changed, so the way back is
+# the backup, never a second try on the same database.
 set -e
 
 STATE=/var/lib/hirdir
@@ -30,8 +33,11 @@ case "$1" in
 
         backup=""
         if [ -n "$2" ]; then
-            # Nothing may write to the database while its schema changes.
+            # Nothing may write to the database while its schema changes. systemd reads
+            # the unit files this version brought first: asked to stop a service whose
+            # unit file changed on disk, it prints a warning into every upgrade.
             if [ -d /run/systemd/system ]; then
+                systemctl --system daemon-reload >/dev/null || true
                 deb-systemd-invoke stop hirdir.service >/dev/null || true
             fi
             # The SQLite file named by the configuration, when there is one already.
@@ -61,8 +67,12 @@ tokens.load_or_create_key(config.load().secret_key_path)'
             echo "hirdir: the migration failed, and the service was not started." >&2
             if [ -n "$backup" ]; then
                 echo "hirdir: the database as it was before the upgrade is at $backup" >&2
-                echo "hirdir: to go back, install the previous package and run:" >&2
+                echo "hirdir: The database in use may be partly changed. To go back, install the" >&2
+                echo "hirdir: package of version $2 again and put that backup in its place:" >&2
+                echo "hirdir:     sudo apt install --allow-downgrades ./hirdir_$2_amd64.deb" >&2
+                echo "hirdir:     sudo systemctl stop hirdir" >&2
                 echo "hirdir:     sudo hirdir admin restore $backup" >&2
+                echo "hirdir:     sudo systemctl start hirdir" >&2
             fi
             exit 1
         fi

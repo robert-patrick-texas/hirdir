@@ -71,3 +71,32 @@ def test_the_units_run_the_commands_the_architecture_page_names() -> None:
     assert "\nExecStart=/opt/hirdir/venv/bin/hirdir admin backup\n" in backup
     timer = (PACKAGING / "systemd" / "hirdir-backup.timer").read_text(encoding="utf-8")
     assert "\nOnCalendar=daily\n" in timer
+
+
+def test_the_install_page_shows_what_postinst_prints_when_a_migration_fails() -> None:
+    """The way back in docs/install.md is the one the package prints, word for word."""
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    failed = postinst[postinst.index('echo "hirdir: the migration failed') :]
+    printed = re.findall(r'^\s*echo "(hirdir: .*)" >&2$', failed[: failed.index("exit 1")], re.M)
+    assert len(printed) == 8
+
+    # As an upgrade from 0.1.0 prints it, with the backup the page uses as its example.
+    backup = "/var/lib/hirdir/backups/hirdir-20261112T020000Z.db"
+    message = "\n".join(printed).replace("$backup", backup).replace("$2", "0.1.0")
+    assert "$" not in message
+    install = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
+    assert f"```text\n{message}\n```" in install
+    assert f"sudo hirdir admin restore {backup}\n" in install
+
+
+def test_an_upgrade_backs_up_before_it_migrates_and_restarts_after() -> None:
+    """The order the architecture and install pages give: stop, back up, migrate, start."""
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    steps = [
+        "deb-systemd-invoke stop hirdir.service",
+        '"$HIRDIR" admin backup',
+        '"$HIRDIR" admin migrate',
+        'deb-systemd-invoke "$action" $UNITS',
+    ]
+    places = [postinst.index(step) for step in steps]
+    assert places == sorted(places)

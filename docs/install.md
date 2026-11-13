@@ -14,12 +14,17 @@ behind these steps is in [architecture.md](architecture.md).
 ## Install
 
 ```bash
-sudo apt install ./hirdir_0.1.0_amd64.deb
+sudo apt install ./hirdir_0.2.0_amd64.deb
 ```
 
 This creates the `hirdir` user, the state directory `/var/lib/hirdir`, the database and
 the key that signs sessions, and starts `hirdir.service` listening on `127.0.0.1:8715`.
-Nothing is reachable from outside the host yet.
+The database begins with no account and no inventory, and with the lists of choices
+and the lifecycle rules at their defaults. Nothing is reachable from outside the host
+yet.
+
+On a host that already has `hirdir`, the same command upgrades it: see
+[Upgrade](#upgrade).
 
 ## Create the first Admin
 
@@ -96,7 +101,16 @@ and create a token for it. The token is shown once.
 curl -H "Authorization: Bearer $HIRDIR_TOKEN" https://inventory.example.net/hirdir/api/v1/auth/me
 ```
 
-The `hirdir` command reads the same token from `HIRDIR_TOKEN`, and the server from
+The token acts with the role of its service account. With View-only it reads the
+inventory, for example every item in production, by host name:
+
+```bash
+curl -H "Authorization: Bearer $HIRDIR_TOKEN" \
+    'https://inventory.example.net/hirdir/api/v1/items?filter=lifecycle_state:eq:Prod&sort=hostname'
+```
+
+The routes and the filter grammar are on the [interfaces](interfaces.md) page. The
+`hirdir` command reads the same token from `HIRDIR_TOKEN`, and the server from
 `HIRDIR_URL`.
 
 ## Configuration
@@ -111,7 +125,8 @@ sudo systemctl restart hirdir
 ## Backup and restore
 
 A timer backs the database up every day into `/var/lib/hirdir/backups/` and keeps the
-newest 14. Copying those files off the host is up to you.
+newest 14. An upgrade puts its own backup in the same directory, and it counts as one
+of the 14. Copying those files off the host is up to you.
 
 ```bash
 sudo hirdir admin backup                   # one more backup, now; prints its path
@@ -138,8 +153,86 @@ curl -s http://127.0.0.1:8715/api/v1/health/ready
 sudo apt install ./hirdir_<new version>_amd64.deb
 ```
 
-The upgrade backs the database up, applies any schema changes and restarts the service.
-If a schema change fails the upgrade stops and names the backup it made.
+The upgrade does four things, in this order:
+
+1. It stops the service, so that nothing writes to the database while its schema
+   changes.
+2. It backs the database up into `/var/lib/hirdir/backups/` and says where:
+   `hirdir: the database as it was before this upgrade is kept at
+   /var/lib/hirdir/backups/hirdir-20261112T020000Z.db`.
+3. It applies the schema changes of the new version.
+4. It starts the service again.
+
+It keeps every account, user group, role grant, service token and audit event, so
+access codes and service tokens go on working. It keeps the key that signs sessions,
+so people who are signed in stay signed in, with the session they have. It leaves
+`/etc/hirdir/config.toml` and the two nginx files as you have them, so `hirdir` stays
+under the prefix it had and `hirdir-setup` is not run again.
+
+Installing the version that is already installed does the same four things and changes
+nothing in the database.
+
+Afterwards, `sudo hirdir admin check` names the schema revision the database is at and
+the one this version expects, and exits with an error when they differ.
+
+The backup of step 2 is one of the 14 that are kept, so the daily timer removes it
+about two weeks later. Copy it off the host if you want it for longer.
+
+### From 0.1.0 to 0.2.0
+
+The schema goes from revision `0001` to `0002`. The tables of the inventory are added:
+vendors, catalog entries, owners, items, tags, choices, settings and lifecycle rules.
+The lists of choices and the lifecycle rules are filled with their defaults. Nothing
+that 0.1.0 stored is changed. The Inventory role, which had nothing to act on in
+0.1.0, now lets its holders create and change inventory records.
+
+### If the upgrade stops
+
+In both cases below the service is left stopped, apt reports an error for `hirdir`,
+and the lines above the message say what went wrong.
+
+**The backup could not be made**, for instance because the disk is full. Nothing was
+changed. Put the cause right, then finish the upgrade:
+
+```bash
+sudo dpkg --configure hirdir
+```
+
+**A schema change failed.** The message names the backup and gives the way back:
+
+```text
+hirdir: the migration failed, and the service was not started.
+hirdir: the database as it was before the upgrade is at /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
+hirdir: The database in use may be partly changed. To go back, install the
+hirdir: package of version 0.1.0 again and put that backup in its place:
+hirdir:     sudo apt install --allow-downgrades ./hirdir_0.1.0_amd64.deb
+hirdir:     sudo systemctl stop hirdir
+hirdir:     sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
+hirdir:     sudo systemctl start hirdir
+```
+
+Run those four commands as they are printed. `hirdir` then runs as it did before the
+upgrade, with everything it held. Do not try the upgrade a second time on the database
+it stopped in: a schema change that fails part of the way leaves some of its tables
+behind, and a second try stops at them. Once the cause is known and put right, install
+the new package again.
+
+### Going back to the release before
+
+An older `hirdir` cannot read a database that a newer one has changed, so going back
+means going back to the backup the upgrade took. Everything entered since the upgrade
+is lost.
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_<old version>_amd64.deb
+sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-<time of the upgrade>.db
+sudo dpkg --configure hirdir
+```
+
+The first command stops with "the migration failed" and leaves the service stopped
+and the database untouched. That is the older version meeting the newer database, and
+it is expected. The second puts the backup in place, and the third finishes the
+installation and starts the service.
 
 ## Remove
 
