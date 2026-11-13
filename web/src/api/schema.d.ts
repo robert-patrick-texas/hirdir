@@ -147,6 +147,8 @@ export interface paths {
           include_archived?: boolean;
           /** Show draft records as well. */
           include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
         };
         path?: never;
         header?: never;
@@ -172,7 +174,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -201,7 +206,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -291,7 +299,10 @@ export interface paths {
         path: {
           hid: string;
         };
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -345,7 +356,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -422,6 +436,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/exports": {
+    /** Export a list as CSV or JSON, with the filter and the sort that the list takes. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ExportRequest"];
+        };
+      };
+      responses: {
+        /** The file, as an attachment. */
+        200: {
+          content: {
+            "application/json": unknown;
+            "text/csv": unknown;
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/health/live": {
     /** Say that the process is running. Needs no sign-in. */
     get: {
@@ -466,6 +510,190 @@ export interface paths {
       };
     };
   };
+  "/api/v1/imports": {
+    /** List the stored previews and what became of them, newest first. */
+    get: {
+      parameters: {
+        query?: {
+          /** Imports of files, or bulk edits. */
+          source?: "file" | "bulk";
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ImportJobOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/imports/preview": {
+    /**
+     * Work out what importing a file would do, and store that as a preview.
+     *
+     * Nothing is changed. Each row comes back as `create`, `update` with the fields it
+     * changes, `unchanged`, or `rejected` with the reasons.
+     */
+    post: {
+      parameters: {
+        query?: {
+          /** The records the file holds. A JSON file may name it instead. */
+          entity?: "tags" | "vendors" | "catalog_entries" | "owners" | "items" | null;
+          /** Left out, `upsert`, or what a JSON file says. */
+          mode?: "create" | "upsert" | null;
+          file_name?: string | null;
+        };
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            entity: "tags" | "vendors" | "catalog_entries" | "owners" | "items";
+            mode?: "create" | "upsert";
+            records: {
+              [key: string]: unknown;
+            }[];
+            schema: "hirdir/1";
+          };
+          "text/csv": string;
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ImportPreview"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/imports/{hid}": {
+    /** Return one stored preview, of an import or of a bulk edit. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ImportJobOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/imports/{hid}/apply": {
+    /**
+     * Apply a preview exactly as it was shown, in one transaction, or not at all.
+     *
+     * Only the one who made the preview may apply it. If a record it would touch has
+     * changed since, nothing is applied and the answer is a `409`.
+     */
+    post: {
+      parameters: {
+        query?: {
+          /** Apply the rows that are not rejected, and leave the rest. */
+          skip_rejected?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ImportJobOut"];
+          };
+        };
+        /** A record changed after the preview was made. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/imports/{hid}/rows": {
+    /** List the rows of a preview in the order of the file. */
+    get: {
+      parameters: {
+        query?: {
+          /** Only rows of this kind. */
+          outcome?: "create" | "update" | "unchanged" | "rejected" | null;
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ImportRowOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items": {
     /**
      * List items, by name unless a sort says otherwise.
@@ -485,6 +713,8 @@ export interface paths {
           include_archived?: boolean;
           /** Show draft records as well. */
           include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
         };
         path?: never;
         header?: never;
@@ -510,7 +740,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -533,13 +766,97 @@ export interface paths {
       };
     };
   };
+  "/api/v1/items/bulk-update": {
+    /**
+     * Work out what one change would do to many items, and store that as a preview.
+     *
+     * Nothing is changed. Each row comes back with what it was and what it would be.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["BulkUpdate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ImportPreview"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/bulk-update/{hid}/apply": {
+    /**
+     * Apply a previewed bulk edit, in one transaction, or not at all.
+     *
+     * Only the one who made the preview may apply it. If an item it would change has
+     * been changed since, by anybody, nothing is applied and the answer is a `409`
+     * that names the rows.
+     */
+    post: {
+      parameters: {
+        query?: {
+          /** Change the rows that are not rejected, and leave the rest. */
+          skip_rejected?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ImportJobOut"];
+          };
+        };
+        /** A record changed after the preview was made. */
+        409: {
+          content: {
+            "application/json": components["schemas"]["Problem"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items/query": {
     /** List items, with the filter and sort in the body. */
     post: {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -656,7 +973,10 @@ export interface paths {
         path: {
           hid: string;
         };
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -687,7 +1007,10 @@ export interface paths {
         path: {
           hid: string;
         };
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -775,6 +1098,8 @@ export interface paths {
           include_archived?: boolean;
           /** Show draft records as well. */
           include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
         };
         path?: never;
         header?: never;
@@ -800,7 +1125,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -887,7 +1215,10 @@ export interface paths {
         path: {
           hid: string;
         };
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -1081,7 +1412,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -1572,6 +1906,8 @@ export interface paths {
           include_archived?: boolean;
           /** Show draft records as well. */
           include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
         };
         path?: never;
         header?: never;
@@ -1597,7 +1933,10 @@ export interface paths {
       parameters: {
         query?: never;
         path?: never;
-        header?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
       };
       requestBody: {
         content: {
@@ -1711,6 +2050,24 @@ export interface components {
       record_type: string;
       request_id: string;
       via: string;
+    };
+    /** One change to many items. The rows are named by a filter, by HIDs, or as all. */
+    BulkUpdate: {
+      add_tags?: string[];
+      /** Every item, when no filter is given. */
+      all_rows?: boolean;
+      /** A filter tree, or the short form. */
+      filter?: {
+        [key: string]: unknown;
+      } | string | null;
+      hids?: string[] | null;
+      include_archived?: boolean;
+      include_drafts?: boolean;
+      remove_tags?: string[];
+      /** Columns of an import and their new values. Null clears a field. */
+      set?: {
+        [key: string]: unknown;
+      };
     };
     /** The values in force of the fields a catalog entry inherits. */
     CatalogEffective: {
@@ -1833,6 +2190,26 @@ export interface components {
       source_hid: string | null;
       value: string | null;
     };
+    /** What to export. The filter and the sort are those of a list. */
+    ExportRequest: {
+      /** Left out, the columns that can be set. `hid` is always first. */
+      columns?: string[] | null;
+      entity: "tags" | "vendors" | "catalog_entries" | "owners" | "items";
+      /** A filter tree, or the short form. */
+      filter?: {
+        [key: string]: unknown;
+      } | string | null;
+      format?: "csv" | "json";
+      /** Only these records, of those the filter keeps. */
+      hids?: string[] | null;
+      include_archived?: boolean;
+      include_drafts?: boolean;
+      /** Add a `_source` column for each field that inherits. */
+      include_sources?: boolean;
+      /** Stored values and not the ones in force: the form to import back. */
+      own_values?: boolean;
+      sort?: string[];
+    };
     /** A role to grant to exactly one user or one group. */
     GrantCreate: {
       group_hid?: string | null;
@@ -1894,6 +2271,53 @@ export interface components {
     Health: {
       detail?: string;
       status: string;
+    };
+    /** A stored preview of an import or a bulk edit, and what became of it. */
+    ImportJobOut: {
+      applied_at: string | null;
+      /** Rows that create a record. */
+      created: number;
+      created_at: string;
+      created_by: string | null;
+      created_by_name: string | null;
+      entity: string;
+      /** Why a failed job was not applied. */
+      failure: string | null;
+      file_name: string | null;
+      file_sha256: string | null;
+      hid: string;
+      mode: "create" | "upsert" | "update";
+      /** Rows that cannot be applied. */
+      rejected: number;
+      row_count: number;
+      /** Whether it was applied without them. */
+      skip_rejected: boolean | null;
+      source: "file" | "bulk";
+      status: "previewed" | "applied" | "failed";
+      /** Rows that find their record as the row has it. */
+      unchanged: number;
+      /** Rows that change a record. */
+      updated: number;
+    };
+    /** A preview: the job with its counts, and the first of its rows. */
+    ImportPreview: {
+      job: components["schemas"]["ImportJobOut"];
+      /** The first hundred rows. `GET /imports/{hid}/rows` pages through all. */
+      rows: components["schemas"]["ImportRowOut"][];
+    };
+    /** One row of a preview: what it would do, or why it is rejected. */
+    ImportRowOut: {
+      changes: components["schemas"]["RowChange"][];
+      /** How the row names its record. */
+      key: string;
+      /** What else the row brings about. */
+      notes: string[];
+      outcome: "create" | "update" | "unchanged" | "rejected";
+      reasons: components["schemas"]["RowReason"][];
+      /** The record the row matched, or the one it created once applied. */
+      record_hid: string | null;
+      /** Its number in the file, from 1. */
+      row: number;
     };
     /**
      * A new item. Only what identifies it is needed: a serial number with a catalog
@@ -2059,6 +2483,8 @@ export interface components {
     };
     /** What a list route takes, as a body, for a filter too large for a URL. */
     ListQuery: {
+      /** Only these fields of each record. `hid` and `row_version` always come. */
+      fields?: string[];
       /** A filter tree. See contract/filter.schema.json. */
       filter?: {
         [key: string]: unknown;
@@ -2116,6 +2542,18 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_ImportJobOut_: {
+      items: components["schemas"]["ImportJobOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ImportRowOut_: {
+      items: components["schemas"]["ImportRowOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_ItemOut_: {
       items: components["schemas"]["ItemOut"][];
       limit: number;
@@ -2150,6 +2588,17 @@ export interface components {
     };
     /** What is wrong with one field of a request. */
     ProblemField: {
+      field: string;
+      message: string;
+    };
+    /** One field a row changes, in the columns of the file. */
+    RowChange: {
+      field: string;
+      new: unknown;
+      old: unknown;
+    };
+    /** Why a row is rejected. */
+    RowReason: {
       field: string;
       message: string;
     };
@@ -2297,6 +2746,7 @@ export interface components {
       aliases?: string[];
       name: string;
       notes?: string | null;
+      review_status?: string;
     };
     /** A manufacturer, a support provider, or both. */
     VendorOut: {
@@ -2305,6 +2755,7 @@ export interface components {
       hid: string;
       name: string;
       notes: string | null;
+      review_status: string;
       row_version: number;
       updated_at: string;
     };
@@ -2313,6 +2764,7 @@ export interface components {
       aliases?: string[] | null;
       name?: string | null;
       notes?: string | null;
+      review_status?: string | null;
       row_version: number;
     };
     /** A vendor, as named on another record. */

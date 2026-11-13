@@ -12,7 +12,7 @@ from hirdir.domain import choices, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
-VENDOR_FIELDS = ("name", "aliases", "notes")
+VENDOR_FIELDS = ("name", "aliases", "notes", "review_status")
 KINDS = settings.CATALOG_KINDS
 REVIEW_STATUSES = ("reviewed", "unreviewed")
 DATES = ("end_of_sale", "end_of_sw_support", "end_of_hw_support", "ldos")
@@ -91,7 +91,19 @@ def _checked_vendor(db: Session, fields: dict[str, Any], vendor: Vendor | None) 
             )
     if "notes" in fields:
         values["notes"] = records.clean(fields["notes"])
+    if "review_status" in fields:
+        values["review_status"] = _review_status(fields["review_status"])
     return values
+
+
+def _review_status(value: Any) -> str:
+    status = records.key(str(value or ""))
+    if status not in REVIEW_STATUSES:
+        raise Invalid(
+            "the review status is not acceptable",
+            {"review_status": f"one of {', '.join(REVIEW_STATUSES)}"},
+        )
+    return status
 
 
 def create_vendor(db: Session, context: AuditContext, fields: dict[str, Any]) -> Vendor:
@@ -209,13 +221,7 @@ def _checked_entry(
                 )
         values["successor_hid"] = successor
     if "review_status" in fields:
-        status = records.key(str(fields["review_status"] or ""))
-        if status not in REVIEW_STATUSES:
-            raise Invalid(
-                "the review status is not acceptable",
-                {"review_status": f"one of {', '.join(REVIEW_STATUSES)}"},
-            )
-        values["review_status"] = status
+        values["review_status"] = _review_status(fields["review_status"])
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
     return values

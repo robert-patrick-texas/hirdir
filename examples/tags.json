@@ -1,0 +1,6 @@
+{"schema": "hirdir/1", "entity": "tags", "mode": "upsert", "records": [
+  {"label": "critical", "colour": "#d1242f", "description": "An outage here is felt at once"},
+  {"label": "lab", "colour": "#8250df", "description": "Not in service: for trying things out"},
+  {"label": "refresh-2028", "colour": "#bf8700", "description": "Planned for replacement in 2028"},
+  {"label": "refresh-2030", "colour": "#1f6feb", "description": "Planned for replacement in 2030"}
+]}

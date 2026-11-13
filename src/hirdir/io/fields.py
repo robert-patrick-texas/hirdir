@@ -142,7 +142,11 @@ CATALOG_ENTRIES = Listing(
 
 VENDORS = Listing(
     model=Vendor,
-    fields={**_bookkeeping(Vendor), **_columns(Vendor, "text", "name", "notes")},
+    fields={
+        **_bookkeeping(Vendor),
+        **_columns(Vendor, "text", "name", "notes"),
+        "review_status": Field("choice", Vendor.review_status),
+    },
     joined=lambda query: query,
     default_sort=("name",),
     has_status=False,
@@ -158,6 +162,14 @@ OWNERS = Listing(
     },
     joined=lambda query: query,
     default_sort=("label",),
+)
+
+TAGS = Listing(
+    model=Tag,
+    fields={**_bookkeeping(Tag), **_columns(Tag, "text", "label", "colour", "description")},
+    joined=lambda query: query,
+    default_sort=("label",),
+    has_status=False,
 )
 
 

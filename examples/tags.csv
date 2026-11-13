@@ -1,0 +1,5 @@
+hid,label,colour,description
+,critical,#d1242f,An outage here is felt at once
+,lab,#8250df,Not in service: for trying things out
+,refresh-2028,#bf8700,Planned for replacement in 2028
+,refresh-2030,#1f6feb,Planned for replacement in 2030

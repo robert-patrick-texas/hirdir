@@ -5,10 +5,11 @@ from fastapi import APIRouter
 from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Admin, Audit, Db, Inventory, Viewer
+from hirdir.api.idempotent import IdempotentRoute
 from hirdir.domain import choices, lifecycle, settings, tags
 
-tag_routes = APIRouter(prefix="/tags", tags=["Labels and lists"])
-choice_routes = APIRouter(prefix="/choices", tags=["Labels and lists"])
+tag_routes = APIRouter(prefix="/tags", tags=["Labels and lists"], route_class=IdempotentRoute)
+choice_routes = APIRouter(prefix="/choices", tags=["Labels and lists"], route_class=IdempotentRoute)
 setting_routes = APIRouter(prefix="/settings", tags=["Labels and lists"])
 rule_routes = APIRouter(prefix="/lifecycle-rules", tags=["Labels and lists"])
 

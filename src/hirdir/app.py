@@ -12,7 +12,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import hirdir
-from hirdir.api import catalog, items, labels, problems, routes
+from hirdir.api import catalog, files, items, labels, problems, routes
 from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
@@ -20,7 +20,13 @@ from hirdir.db.engine import make_engine, make_sessions
 from hirdir.ids import new_hid
 
 API_PREFIX = "/api/v1"
-ROUTERS = (*routes.ROUTERS, *catalog.ROUTERS, *items.ROUTERS, *labels.ROUTERS)
+ROUTERS = (
+    *routes.ROUTERS,
+    *catalog.ROUTERS,
+    *items.ROUTERS,
+    *labels.ROUTERS,
+    *files.ROUTERS,
+)
 STATIC = Path(__file__).parent / "static"
 BASE_TAG = '<base href="/" />'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")

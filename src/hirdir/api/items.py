@@ -1,23 +1,33 @@
 """The routes of items: the grid's list, the record, its history and its lifecycle."""
 
-from fastapi import APIRouter
+from typing import Annotated
 
-from hirdir.api import lists, shapes, views
+from fastapi import APIRouter, Query
+
+from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
 from hirdir.domain import items
 from hirdir.domain.lifecycle import UNSET
-from hirdir.io import fields
+from hirdir.io import bulk, fields, imports
 
-router = APIRouter(prefix="/items", tags=["Items"])
+router = APIRouter(prefix="/items", tags=["Items"], route_class=IdempotentRoute)
 
 
 def _page(db: Db, listed: lists.ListRequest) -> Page[r.ItemOut]:
     page, total = lists.read(db, fields.ITEMS, listed)
-    return Page(
-        items=shapes.items_out(db, page), total=total, limit=listed.limit, offset=listed.offset
+    return lists.narrowed(
+        Page(
+            items=shapes.items_out(db, page),
+            total=total,
+            limit=listed.limit,
+            offset=listed.offset,
+        ),
+        listed,
+        r.ItemOut,
     )
 
 
@@ -40,6 +50,52 @@ def query_items(body: r.ListQuery, _: Viewer, db: Db) -> Page[r.ItemOut]:
 def create_item(body: r.ItemCreate, _: Inventory, context: Audit, db: Db) -> r.ItemOut:
     """Create an item. What is not given stays blank."""
     return shapes.item_out(db, items.create_item(db, context, body.model_dump()))
+
+
+@router.post("/bulk-update", status_code=201, tags=["Bulk"])
+def bulk_update(
+    body: r.BulkUpdate, principal: Inventory, context: Audit, db: Db
+) -> r.ImportPreview:
+    """Work out what one change would do to many items, and store that as a preview.
+
+    Nothing is changed. Each row comes back with what it was and what it would be.
+    """
+    job = bulk.preview(
+        db,
+        context,
+        principal.role,
+        filter_=body.filter,
+        hids=body.hids,
+        all_rows=body.all_rows,
+        include_archived=body.include_archived,
+        include_drafts=body.include_drafts,
+        set_=body.set,
+        add_tags=body.add_tags,
+        remove_tags=body.remove_tags,
+    )
+    return shapes.preview_out(db, job)
+
+
+@router.post("/bulk-update/{hid}/apply", tags=["Bulk"], responses=files.OUT_OF_DATE)
+def apply_bulk_update(
+    hid: str,
+    principal: Inventory,
+    context: Audit,
+    db: Db,
+    skip_rejected: Annotated[
+        bool, Query(description="Change the rows that are not rejected, and leave the rest.")
+    ] = False,
+) -> r.ImportJobOut:
+    """Apply a previewed bulk edit, in one transaction, or not at all.
+
+    Only the one who made the preview may apply it. If an item it would change has
+    been changed since, by anybody, nothing is applied and the answer is a `409`
+    that names the rows.
+    """
+    done = imports.apply(
+        db, context, principal.role, hid, source="bulk", skip_rejected=skip_rejected
+    )
+    return files.applied(db, done)
 
 
 @router.get("/{hid}")

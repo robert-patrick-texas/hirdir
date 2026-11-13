@@ -109,25 +109,28 @@ def set_labels(
 
     A label that is not yet a tag is refused: tags are made before they are used.
     """
-    wanted: dict[str, Tag] = {}
-    unknown = []
-    for label in labels:
-        tag = db.scalar(select(Tag).where(Tag.label_key == records.key(label)))
-        if tag is None:
-            unknown.append(label)
-        else:
-            wanted[tag.hid] = tag
+    keys = {records.key(label): label for label in labels}
+    known = (
+        {tag.label_key: tag for tag in db.scalars(select(Tag).where(Tag.label_key.in_(keys)))}
+        if keys
+        else {}
+    )
+    unknown = [label for key, label in keys.items() if key not in known]
     if unknown:
         raise Invalid("a tag is not known", {"tags": f"there is no tag {', '.join(unknown)}"})
-    old = sorted(labels_of(db, record_type, [record_hid])[record_hid], key=records.key)
-    new = sorted((tag.label for tag in wanted.values()), key=records.key)
+    old = labels_of(db, record_type, [record_hid])[record_hid]
+    new = sorted((tag.label for tag in known.values()), key=records.key)
     if old == new:
         return []
-    db.execute(
-        delete(TagLink).where(TagLink.record_type == record_type, TagLink.record_hid == record_hid)
-    )
+    if old:
+        db.execute(
+            delete(TagLink).where(
+                TagLink.record_type == record_type, TagLink.record_hid == record_hid
+            )
+        )
     db.add_all(
-        TagLink(tag_hid=hid, record_type=record_type, record_hid=record_hid) for hid in wanted
+        TagLink(tag_hid=tag.hid, record_type=record_type, record_hid=record_hid)
+        for tag in known.values()
     )
     db.flush()
     return [change("tags", old, new)]

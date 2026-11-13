@@ -4,13 +4,15 @@ from collections.abc import Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException
 
+from hirdir.api import idempotent
 from hirdir.domain import errors
 from hirdir.domain.accounts import NotSignedIn
+from hirdir.io import files
 
 MEDIA_TYPE = "application/problem+json"
 
@@ -75,6 +77,14 @@ def install(app: FastAPI) -> None:
         return problem(
             409, "Conflict", "the change collides with a record that was saved a moment ago"
         )
+
+    @app.exception_handler(idempotent.Replayed)
+    async def _replayed(_: Request, error: idempotent.Replayed) -> Response:
+        return idempotent.replay(error.kept)
+
+    @app.exception_handler(files.TooLarge)
+    async def _too_large(_: Request, error: files.TooLarge) -> JSONResponse:
+        return problem(413, "Too large", str(error), error.fields)
 
     @app.exception_handler(errors.Invalid)
     async def _invalid(_: Request, error: errors.Invalid) -> JSONResponse:

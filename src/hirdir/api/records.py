@@ -69,6 +69,11 @@ class ListQuery(Model):
     offset: int = Field(default=0, ge=0, le=10_000_000)
     include_archived: bool = False
     include_drafts: bool = False
+    fields: list[ShortText] = Field(
+        default=[],
+        max_length=200,
+        description="Only these fields of each record. `hid` and `row_version` always come.",
+    )
 
 
 class EffectiveValue(Model):
@@ -96,6 +101,7 @@ class VendorOut(Model):
     name: str
     aliases: list[str]
     notes: str | None
+    review_status: str
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -107,6 +113,7 @@ class VendorCreate(Model):
     name: Name = Field(min_length=1)
     aliases: list[Name] = Field(default=[], max_length=50)
     notes: LongText | None = None
+    review_status: str = Field(default="reviewed", max_length=12)
 
 
 class VendorPatch(Model):
@@ -116,6 +123,7 @@ class VendorPatch(Model):
     name: Name | None = None
     aliases: list[Name] | None = Field(default=None, max_length=50)
     notes: LongText | None = None
+    review_status: str | None = Field(default=None, max_length=12)
 
 
 # --- catalog entries -----------------------------------------------------------------
@@ -538,3 +546,127 @@ class LifecycleRulePatch(Model):
     entry_disposition: str | None = Field(default=None, max_length=12)
     entry_online: bool | None = None
     next_states: list[str] | None = Field(default=None, max_length=10)
+
+
+# --- files and bulk edits ------------------------------------------------------------
+
+EntityName = Literal["tags", "vendors", "catalog_entries", "owners", "items"]
+Outcome = Literal["create", "update", "unchanged", "rejected"]
+
+
+class ImportEnvelope(Model):
+    """A JSON file: the records of one entity, as an export writes them."""
+
+    schema_: Literal["hirdir/1"] = Field(alias="schema")
+    entity: EntityName
+    mode: Literal["create", "upsert"] = "upsert"
+    records: list[dict[str, Any]]
+
+
+class ImportJobOut(Model):
+    """A stored preview of an import or a bulk edit, and what became of it."""
+
+    hid: str
+    source: Literal["file", "bulk"]
+    entity: str
+    mode: Literal["create", "upsert", "update"]
+    file_name: str | None
+    file_sha256: str | None
+    status: Literal["previewed", "applied", "failed"]
+    row_count: int
+    created: int = Field(description="Rows that create a record.")
+    updated: int = Field(description="Rows that change a record.")
+    unchanged: int = Field(description="Rows that find their record as the row has it.")
+    rejected: int = Field(description="Rows that cannot be applied.")
+    skip_rejected: bool | None = Field(description="Whether it was applied without them.")
+    failure: str | None = Field(description="Why a failed job was not applied.")
+    applied_at: datetime | None
+    created_at: datetime
+    created_by: str | None
+    created_by_name: str | None
+
+
+class RowChange(Model):
+    """One field a row changes, in the columns of the file."""
+
+    field: str
+    old: Any
+    new: Any
+
+
+class RowReason(Model):
+    """Why a row is rejected."""
+
+    field: str
+    message: str
+
+
+class ImportRowOut(Model):
+    """One row of a preview: what it would do, or why it is rejected."""
+
+    row: int = Field(description="Its number in the file, from 1.")
+    outcome: Outcome
+    record_hid: str | None = Field(
+        description="The record the row matched, or the one it created once applied."
+    )
+    key: str = Field(description="How the row names its record.")
+    changes: list[RowChange]
+    reasons: list[RowReason]
+    notes: list[str] = Field(description="What else the row brings about.")
+
+
+class ImportPreview(Model):
+    """A preview: the job with its counts, and the first of its rows."""
+
+    job: ImportJobOut
+    rows: list[ImportRowOut] = Field(
+        description="The first hundred rows. `GET /imports/{hid}/rows` pages through all."
+    )
+
+
+class ExportRequest(Model):
+    """What to export. The filter and the sort are those of a list."""
+
+    entity: EntityName
+    format: Literal["csv", "json"] = "csv"
+    filter: dict[str, Any] | str | None = Field(
+        default=None, description="A filter tree, or the short form."
+    )
+    sort: list[str] = Field(default=[], max_length=50)
+    columns: list[ShortText] | None = Field(
+        default=None,
+        max_length=200,
+        description="Left out, the columns that can be set. `hid` is always first.",
+    )
+    hids: list[Hid] | None = Field(
+        default=None,
+        max_length=10_000,
+        description="Only these records, of those the filter keeps.",
+    )
+    include_sources: bool = Field(
+        default=False, description="Add a `_source` column for each field that inherits."
+    )
+    own_values: bool = Field(
+        default=False,
+        description="Stored values and not the ones in force: the form to import back.",
+    )
+    include_archived: bool = False
+    include_drafts: bool = False
+
+
+class BulkUpdate(Model):
+    """One change to many items. The rows are named by a filter, by HIDs, or as all."""
+
+    filter: dict[str, Any] | str | None = Field(
+        default=None, description="A filter tree, or the short form."
+    )
+    hids: list[Hid] | None = Field(default=None, max_length=10_000)
+    all_rows: bool = Field(default=False, description="Every item, when no filter is given.")
+    include_archived: bool = False
+    include_drafts: bool = False
+    set: dict[str, Any] = Field(
+        default={},
+        description="Columns of an import and their new values. Null clears a field.",
+    )
+    add_tags: list[ShortText] = Field(default=[], max_length=100)
+    remove_tags: list[ShortText] = Field(default=[], max_length=100)

@@ -15,14 +15,15 @@ and CLI's types are generated from it.
 |---|---|
 | Names | `snake_case` fields, plural kebab-case paths: `/catalog-entries`, `/device-groups` |
 | Record routes | `GET /items`, `POST /items`, `GET /items/{hid}`, `PATCH /items/{hid}`, `POST /items/{hid}/retire` |
-| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000 and `offset` at most 10,000,000. `fields` arrives with export in 0.3.0 |
+| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000 and `offset` at most 10,000,000 |
+| Fewer fields | `fields=hid,name,catalog.pid` returns only the fields named, of each record of a list. A name is a field of the record as the route returns it, or one field of a record within it, written with a dot. `hid` and `row_version` are always returned. A name the record does not have is a `422` |
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | `POST` routes that create accept `Idempotency-Key`, from 0.3.0 |
+| Idempotency | A `POST` on an inventory record, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
 ### Routes
 
@@ -41,8 +42,8 @@ and CLI's types are generated from it.
 | External systems | `/external-systems`, `/registrations` |
 | Capacity | `/capacity-lines`, `GET /reports/capacity` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
-| Bulk | `POST /items/bulk-update` |
-| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `POST /exports` |
+| Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
+| Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
 | Reports | `GET /reports/summary`, `/reports/end-of-life`, `/reports/coverage`, `/reports/duplicates` |
 | Audit | `GET /audit-events` |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
@@ -152,37 +153,85 @@ hid,vendor,pid,serial_number,asset_tag,name,lifecycle_state,disposition,expected
 ,Cisco,C9300-48P,FCW0000X001,AT-000123,site2-sw-access-01,Prod,Production,true,Network Engineering,Americas > Central > Site-2 > Building 1 > Room 102,192.0.2.10,Red,refresh-2030
 ```
 
+### Columns
+
+A file names its columns as the fields are named on the [data model](data-model.md)
+page, with a reference written as people write it: `vendor` and `pid` for a catalog
+entry, `owner` for an owner's label. Release 0.3.0 carries the records that exist so
+far. A column of a later release, such as `location`, is unknown until that release.
+
+| Entity | Columns that can be set | Further columns an export can write |
+|---|---|---|
+| `tags` | `label`, `colour`, `description` | |
+| `vendors` | `name`, `aliases`, `notes`, `review_status` | |
+| `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
+| `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status` | |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `owner`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, and a `_source` for each of the seven fields that inherit |
+
+Every entity has `hid` as its first column, and an export can also write `row_version`,
+`created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
+`1` and `0` are read as well, and a list is joined with `;`. In JSON a list is a list, a
+truth value is `true` or `false`, and a decimal is text.
+
 ### Rules
 
 | Subject | Rule |
 |---|---|
-| Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations |
+| Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files |
+| Sending a file | The file is the body of `POST /imports/preview`, as `text/csv` or `application/json`, with `entity`, `mode` and `file_name` beside it in the URL. A JSON file names its entity and mode in its envelope, and the URL may leave them out; the two must not disagree |
 | Modes | `create` refuses a row that matches an existing record. `upsert` creates or updates. There is no mode that deletes |
-| Matching | By `hid` when given, otherwise by the entity's key. For items, the order on the data model page |
+| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label. For items, the order on the data model page. Two rows of one file that name the same record: the second is rejected |
 | References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, contract number, geographic path, group name |
-| Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row |
-| Blank cells | Leave the stored value alone |
+| Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
+| Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again |
-| Unknown columns | Reject the file, naming the column |
-| Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting |
+| Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only |
+| Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
+| Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
+| Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, and `outcome=rejected` keeps to one kind |
 | Apply | `POST /imports/{hid}/apply` applies exactly what was previewed, in one transaction. If any record it would touch has changed since, nothing is applied and a new preview is asked for |
-| Rejected rows | By default any rejected row blocks the apply. `skip_rejected=true` applies the rest |
-| Limits | 20 MB and 100,000 rows per file |
-| Load order | vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), addresses, device groups, members, coverage, registrations, capacity lines |
+| What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, and the job is `failed` |
+| Whose preview | A preview is applied by the one who made it, once. Anybody who may read the inventory may read it |
+| Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
+| Limits | 20 MB and 100,000 rows per file. A larger file is a `413` |
+| Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), addresses, device groups, members, coverage, registrations, capacity lines |
+| Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply. The preview and the apply are events on the job |
 
 ### Export
 
 `POST /exports` takes an entity, a filter, a sort, a list of columns, a format (`csv` or
-`json`) and optionally a list of HIDs. The response is streamed. `hid` is always the
-first column. Inheritable fields export their effective value; `include_sources=true`
-adds the `_source` columns, and `own_values=true` exports stored values instead, which
-is the form to use for a file that will be imported back.
+`json`) and optionally a list of at most 10,000 HIDs. The response is streamed. `hid`
+is always the first column. Inheritable fields export their effective value;
+`include_sources=true` adds the `_source` columns, and `own_values=true` exports stored
+values instead, which is the form to use for a file that will be imported back.
+
+Left out, the columns are the ones that can be set. A column may also be named as a
+filter names it: `catalog.pid` is `pid`, `owner.label` is `owner` and `effective.ldos`
+is `ldos`. Left out, the sort is the list's own. `include_archived` and
+`include_drafts` mean what they mean on a list. A JSON export is the envelope above, so
+it can be imported as it is.
 
 A CSV cell that begins with `=`, `+`, `-` or `@` is written with a leading apostrophe so
 a spreadsheet does not run it as a formula. Import removes that apostrophe again.
 
 Every template in `examples/` is produced by exporting the seeded example database, so
-the templates can never drift from the importer.
+the templates can never drift from the importer. `make examples` writes them, and a
+test fails when they are out of date.
+
+### Bulk edit
+
+`POST /items/bulk-update` takes the rows, as a filter or as a list of at most 10,000
+HIDs, and the change: `set`, which names columns of an import and their new values,
+with `null` to clear one, and `add_tags` and `remove_tags`. The fields that tell one
+item from another cannot be set in bulk: `serial_number`, `asset_tag`, `mac_address`,
+`name`, `hostname` and `fqdn`.
+
+The answer is a preview of the same kind as an import's, with before and after for each
+row, and it is stored in the same way. `POST /items/bulk-update/{hid}/apply` applies
+it under the same rules: in one transaction, by the one who made it, and not at all
+when any of its records has changed since. A second person who bulk-edits rows that the
+first has just changed is told which, and none of their change is applied.
 
 ## CLI
 
@@ -195,6 +244,8 @@ hirdir sign-in                                   # asks for username and access 
 hirdir items list --filter 'lifecycle_state:eq:Prod location:within:Americas > Central'
 hirdir items show FCW0000X001                    # by HID, serial number, asset tag or name
 hirdir items set <hid> disposition=Spare expected_online=false
+hirdir items set --filter 'tags:has:refresh-2030' owner='Voice Services'          # preview
+hirdir items set --filter 'tags:has:refresh-2030' owner='Voice Services' --apply
 hirdir items transition <hid> Down --reason maintenance
 hirdir groups show site2-sw-stack1
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
@@ -212,6 +263,8 @@ hirdir report capacity --include-drafts
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
+| An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
+| A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the

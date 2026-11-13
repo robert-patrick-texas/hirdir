@@ -164,6 +164,89 @@
         "title": "AuditEventOut",
         "type": "object"
       },
+      "BulkUpdate": {
+        "additionalProperties": false,
+        "description": "One change to many items. The rows are named by a filter, by HIDs, or as all.",
+        "properties": {
+          "add_tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Add Tags",
+            "type": "array"
+          },
+          "all_rows": {
+            "default": false,
+            "description": "Every item, when no filter is given.",
+            "title": "All Rows",
+            "type": "boolean"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A filter tree, or the short form.",
+            "title": "Filter"
+          },
+          "hids": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 36,
+                  "type": "string"
+                },
+                "maxItems": 10000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hids"
+          },
+          "include_archived": {
+            "default": false,
+            "title": "Include Archived",
+            "type": "boolean"
+          },
+          "include_drafts": {
+            "default": false,
+            "title": "Include Drafts",
+            "type": "boolean"
+          },
+          "remove_tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Remove Tags",
+            "type": "array"
+          },
+          "set": {
+            "additionalProperties": true,
+            "default": {},
+            "description": "Columns of an import and their new values. Null clears a field.",
+            "title": "Set",
+            "type": "object"
+          }
+        },
+        "title": "BulkUpdate",
+        "type": "object"
+      },
       "CatalogEffective": {
         "additionalProperties": false,
         "description": "The values in force of the fields a catalog entry inherits.",
@@ -1184,6 +1267,118 @@
         "title": "EffectiveValue",
         "type": "object"
       },
+      "ExportRequest": {
+        "additionalProperties": false,
+        "description": "What to export. The filter and the sort are those of a list.",
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, the columns that can be set. `hid` is always first.",
+            "title": "Columns"
+          },
+          "entity": {
+            "enum": [
+              "tags",
+              "vendors",
+              "catalog_entries",
+              "owners",
+              "items"
+            ],
+            "title": "Entity",
+            "type": "string"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A filter tree, or the short form.",
+            "title": "Filter"
+          },
+          "format": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "hids": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 36,
+                  "type": "string"
+                },
+                "maxItems": 10000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only these records, of those the filter keeps.",
+            "title": "Hids"
+          },
+          "include_archived": {
+            "default": false,
+            "title": "Include Archived",
+            "type": "boolean"
+          },
+          "include_drafts": {
+            "default": false,
+            "title": "Include Drafts",
+            "type": "boolean"
+          },
+          "include_sources": {
+            "default": false,
+            "description": "Add a `_source` column for each field that inherits.",
+            "title": "Include Sources",
+            "type": "boolean"
+          },
+          "own_values": {
+            "default": false,
+            "description": "Stored values and not the ones in force: the form to import back.",
+            "title": "Own Values",
+            "type": "boolean"
+          },
+          "sort": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Sort",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "title": "ExportRequest",
+        "type": "object"
+      },
       "GrantCreate": {
         "additionalProperties": false,
         "description": "A role to grant to exactly one user or one group.",
@@ -1506,6 +1701,271 @@
           "status"
         ],
         "title": "Health",
+        "type": "object"
+      },
+      "ImportJobOut": {
+        "additionalProperties": false,
+        "description": "A stored preview of an import or a bulk edit, and what became of it.",
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "created": {
+            "description": "Rows that create a record.",
+            "title": "Created",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "entity": {
+            "title": "Entity",
+            "type": "string"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a failed job was not applied.",
+            "title": "Failure"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "file_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Sha256"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "create",
+              "upsert",
+              "update"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rejected": {
+            "description": "Rows that cannot be applied.",
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "skip_rejected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether it was applied without them.",
+            "title": "Skip Rejected"
+          },
+          "source": {
+            "enum": [
+              "file",
+              "bulk"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "previewed",
+              "applied",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unchanged": {
+            "description": "Rows that find their record as the row has it.",
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "description": "Rows that change a record.",
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "source",
+          "entity",
+          "mode",
+          "file_name",
+          "file_sha256",
+          "status",
+          "row_count",
+          "created",
+          "updated",
+          "unchanged",
+          "rejected",
+          "skip_rejected",
+          "failure",
+          "applied_at",
+          "created_at",
+          "created_by",
+          "created_by_name"
+        ],
+        "title": "ImportJobOut",
+        "type": "object"
+      },
+      "ImportPreview": {
+        "additionalProperties": false,
+        "description": "A preview: the job with its counts, and the first of its rows.",
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/ImportJobOut"
+          },
+          "rows": {
+            "description": "The first hundred rows. `GET /imports/{hid}/rows` pages through all.",
+            "items": {
+              "$ref": "#/components/schemas/ImportRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job",
+          "rows"
+        ],
+        "title": "ImportPreview",
+        "type": "object"
+      },
+      "ImportRowOut": {
+        "additionalProperties": false,
+        "description": "One row of a preview: what it would do, or why it is rejected.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/RowChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "key": {
+            "description": "How the row names its record.",
+            "title": "Key",
+            "type": "string"
+          },
+          "notes": {
+            "description": "What else the row brings about.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "create",
+              "update",
+              "unchanged",
+              "rejected"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/RowReason"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "record_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record the row matched, or the one it created once applied.",
+            "title": "Record Hid"
+          },
+          "row": {
+            "description": "Its number in the file, from 1.",
+            "title": "Row",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "outcome",
+          "record_hid",
+          "key",
+          "changes",
+          "reasons",
+          "notes"
+        ],
+        "title": "ImportRowOut",
         "type": "object"
       },
       "ItemCreate": {
@@ -2927,6 +3387,17 @@
         "additionalProperties": false,
         "description": "What a list route takes, as a body, for a filter too large for a URL.",
         "properties": {
+          "fields": {
+            "default": [],
+            "description": "Only these fields of each record. `hid` and `row_version` always come.",
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Fields",
+            "type": "array"
+          },
           "filter": {
             "anyOf": [
               {
@@ -3269,6 +3740,70 @@
         "title": "Page[CatalogEntryOut]",
         "type": "object"
       },
+      "Page_ImportJobOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImportJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ImportJobOut]",
+        "type": "object"
+      },
+      "Page_ImportRowOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ImportRowOut]",
+        "type": "object"
+      },
       "Page_ItemOut_": {
         "additionalProperties": false,
         "properties": {
@@ -3453,6 +3988,49 @@
           "message"
         ],
         "title": "ProblemField",
+        "type": "object"
+      },
+      "RowChange": {
+        "additionalProperties": false,
+        "description": "One field a row changes, in the columns of the file.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "new": {
+            "title": "New"
+          },
+          "old": {
+            "title": "Old"
+          }
+        },
+        "required": [
+          "field",
+          "old",
+          "new"
+        ],
+        "title": "RowChange",
+        "type": "object"
+      },
+      "RowReason": {
+        "additionalProperties": false,
+        "description": "Why a row is rejected.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "RowReason",
         "type": "object"
       },
       "RowVersion": {
@@ -4241,6 +4819,12 @@
               }
             ],
             "title": "Notes"
+          },
+          "review_status": {
+            "default": "reviewed",
+            "maxLength": 12,
+            "title": "Review Status",
+            "type": "string"
           }
         },
         "required": [
@@ -4284,6 +4868,10 @@
             ],
             "title": "Notes"
           },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
@@ -4299,6 +4887,7 @@
           "name",
           "aliases",
           "notes",
+          "review_status",
           "row_version",
           "created_at",
           "updated_at"
@@ -4349,6 +4938,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
           },
           "row_version": {
             "title": "Row Version",
@@ -4705,6 +5306,27 @@
               "title": "Include Drafts",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
           }
         ],
         "responses": {
@@ -4737,6 +5359,27 @@
       "post": {
         "description": "Create a catalog entry.",
         "operationId": "create_entry_api_v1_catalog_entries_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4779,6 +5422,27 @@
       "post": {
         "description": "List catalog entries, with the filter and sort in the body.",
         "operationId": "query_entries_api_v1_catalog_entries_query_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4924,6 +5588,25 @@
               "title": "Hid",
               "type": "string"
             }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -5014,6 +5697,27 @@
       "post": {
         "description": "Add a value to a list.",
         "operationId": "create_choice_api_v1_choices_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5139,6 +5843,45 @@
         ]
       }
     },
+    "/api/v1/exports": {
+      "post": {
+        "description": "Export a list as CSV or JSON, with the filter and the sort that the list takes.",
+        "operationId": "export_api_v1_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {},
+              "text/csv": {}
+            },
+            "description": "The file, as an attachment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "description": "Say that the process is running. Needs no sign-in.",
@@ -5190,6 +5933,474 @@
         "summary": "Ready",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/api/v1/imports": {
+      "get": {
+        "description": "List the stored previews and what became of them, newest first.",
+        "operationId": "list_imports_api_v1_imports_get",
+        "parameters": [
+          {
+            "description": "Imports of files, or bulk edits.",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "file",
+              "description": "Imports of files, or bulk edits.",
+              "enum": [
+                "file",
+                "bulk"
+              ],
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ImportJobOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Imports",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/imports/preview": {
+      "post": {
+        "description": "Work out what importing a file would do, and store that as a preview.\n\nNothing is changed. Each row comes back as `create`, `update` with the fields it\nchanges, `unchanged`, or `rejected` with the reasons.",
+        "operationId": "preview_import_api_v1_imports_preview_post",
+        "parameters": [
+          {
+            "description": "The records the file holds. A JSON file may name it instead.",
+            "in": "query",
+            "name": "entity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "tags",
+                    "vendors",
+                    "catalog_entries",
+                    "owners",
+                    "items"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The records the file holds. A JSON file may name it instead.",
+              "title": "Entity"
+            }
+          },
+          {
+            "description": "Left out, `upsert`, or what a JSON file says.",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "create",
+                    "upsert"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Left out, `upsert`, or what a JSON file says.",
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File Name"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "A JSON file: the records of one entity, as an export writes them.",
+                "properties": {
+                  "entity": {
+                    "enum": [
+                      "tags",
+                      "vendors",
+                      "catalog_entries",
+                      "owners",
+                      "items"
+                    ],
+                    "title": "Entity",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "default": "upsert",
+                    "enum": [
+                      "create",
+                      "upsert"
+                    ],
+                    "title": "Mode",
+                    "type": "string"
+                  },
+                  "records": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Records",
+                    "type": "array"
+                  },
+                  "schema": {
+                    "const": "hirdir/1",
+                    "title": "Schema",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schema",
+                  "entity",
+                  "records"
+                ],
+                "title": "ImportEnvelope",
+                "type": "object"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file itself: CSV with a header row, or JSON in its envelope.",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Import",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/imports/{hid}": {
+      "get": {
+        "description": "Return one stored preview, of an import or of a bulk edit.",
+        "operationId": "get_import_api_v1_imports__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Import",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/imports/{hid}/apply": {
+      "post": {
+        "description": "Apply a preview exactly as it was shown, in one transaction, or not at all.\n\nOnly the one who made the preview may apply it. If a record it would touch has\nchanged since, nothing is applied and the answer is a `409`.",
+        "operationId": "apply_import_api_v1_imports__hid__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Apply the rows that are not rejected, and leave the rest.",
+            "in": "query",
+            "name": "skip_rejected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Apply the rows that are not rejected, and leave the rest.",
+              "title": "Skip Rejected",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A record changed after the preview was made."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Import",
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/imports/{hid}/rows": {
+      "get": {
+        "description": "List the rows of a preview in the order of the file.",
+        "operationId": "list_import_rows_api_v1_imports__hid__rows_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows of this kind.",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "create",
+                    "update",
+                    "unchanged",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rows of this kind.",
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ImportRowOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Import Rows",
+        "tags": [
+          "Files"
         ]
       }
     },
@@ -5279,6 +6490,27 @@
               "title": "Include Drafts",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
           }
         ],
         "responses": {
@@ -5311,6 +6543,27 @@
       "post": {
         "description": "Create an item. What is not given stays blank.",
         "operationId": "create_item_api_v1_items_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5349,10 +6602,180 @@
         ]
       }
     },
+    "/api/v1/items/bulk-update": {
+      "post": {
+        "description": "Work out what one change would do to many items, and store that as a preview.\n\nNothing is changed. Each row comes back with what it was and what it would be.",
+        "operationId": "bulk_update_api_v1_items_bulk_update_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Update",
+        "tags": [
+          "Items",
+          "Bulk"
+        ]
+      }
+    },
+    "/api/v1/items/bulk-update/{hid}/apply": {
+      "post": {
+        "description": "Apply a previewed bulk edit, in one transaction, or not at all.\n\nOnly the one who made the preview may apply it. If an item it would change has\nbeen changed since, by anybody, nothing is applied and the answer is a `409`\nthat names the rows.",
+        "operationId": "apply_bulk_update_api_v1_items_bulk_update__hid__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Change the rows that are not rejected, and leave the rest.",
+            "in": "query",
+            "name": "skip_rejected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Change the rows that are not rejected, and leave the rest.",
+              "title": "Skip Rejected",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A record changed after the preview was made."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Bulk Update",
+        "tags": [
+          "Items",
+          "Bulk"
+        ]
+      }
+    },
     "/api/v1/items/query": {
       "post": {
         "description": "List items, with the filter and sort in the body.",
         "operationId": "query_items_api_v1_items_query_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5565,6 +6988,25 @@
               "title": "Hid",
               "type": "string"
             }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -5617,6 +7059,25 @@
             "schema": {
               "title": "Hid",
               "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -5823,6 +7284,27 @@
               "title": "Include Drafts",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
           }
         ],
         "responses": {
@@ -5855,6 +7337,27 @@
       "post": {
         "description": "Create an owner.",
         "operationId": "create_owner_api_v1_owners_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5999,6 +7502,25 @@
             "schema": {
               "title": "Hid",
               "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -6292,6 +7814,27 @@
       "post": {
         "description": "Create a tag.",
         "operationId": "create_tag_api_v1_tags_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -7174,6 +8717,27 @@
               "title": "Include Drafts",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
           }
         ],
         "responses": {
@@ -7206,6 +8770,27 @@
       "post": {
         "description": "Create a vendor.",
         "operationId": "create_vendor_api_v1_vendors_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

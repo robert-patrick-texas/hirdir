@@ -1,0 +1,9 @@
+{"schema": "hirdir/1", "entity": "vendors", "mode": "upsert", "records": [
+  {"name": "Canonical", "aliases": [], "notes": "Ubuntu support", "review_status": "reviewed"},
+  {"name": "Cisco", "aliases": ["Cisco Systems"], "notes": null, "review_status": "reviewed"},
+  {"name": "Example Cloud", "aliases": [], "notes": "A fictional provider of hosted services", "review_status": "reviewed"},
+  {"name": "Example Software", "aliases": [], "notes": "A fictional maker of network management software", "review_status": "reviewed"},
+  {"name": "Fluke Networks", "aliases": [], "notes": null, "review_status": "reviewed"},
+  {"name": "Juniper", "aliases": ["Juniper Networks"], "notes": null, "review_status": "reviewed"},
+  {"name": "Palo Alto Networks", "aliases": ["PAN"], "notes": null, "review_status": "reviewed"}
+]}

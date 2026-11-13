@@ -1,0 +1,8 @@
+hid,name,aliases,notes,review_status
+,Canonical,,Ubuntu support,reviewed
+,Cisco,Cisco Systems,,reviewed
+,Example Cloud,,A fictional provider of hosted services,reviewed
+,Example Software,,A fictional maker of network management software,reviewed
+,Fluke Networks,,,reviewed
+,Juniper,Juniper Networks,,reviewed
+,Palo Alto Networks,PAN,,reviewed

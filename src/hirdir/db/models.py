@@ -217,6 +217,9 @@ class Vendor(Bookkeeping, Base):
     name_key: Mapped[str] = mapped_column(String(200))
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
+    review_status: Mapped[str] = mapped_column(
+        String(12), default="reviewed", server_default="reviewed"
+    )
 
 
 class CatalogEntry(Bookkeeping, Base):
@@ -378,3 +381,62 @@ class LifecycleRule(Bookkeeping, Base):
     entry_disposition: Mapped[str | None] = mapped_column(String(12), default=None)
     entry_online: Mapped[bool | None] = mapped_column(Boolean, default=None)
     next_states: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+# --- changes to many records ---------------------------------------------------------
+
+
+class ImportJob(Base):
+    """A preview of an import or a bulk edit, kept so that what is applied is what was shown."""
+
+    __tablename__ = "import_jobs"
+    __table_args__ = (Index("import_jobs_created_at", "created_at"),)
+
+    hid: Mapped[str] = _hid()
+    source: Mapped[str] = mapped_column(String(10))
+    entity: Mapped[str] = mapped_column(String(40))
+    mode: Mapped[str] = mapped_column(String(10))
+    file_name: Mapped[str | None] = mapped_column(String(255), default=None)
+    file_sha256: Mapped[str | None] = mapped_column(String(64), default=None)
+    status: Mapped[str] = mapped_column(String(10), default="previewed")
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    created: Mapped[int] = mapped_column(Integer, default=0)
+    updated: Mapped[int] = mapped_column(Integer, default=0)
+    unchanged: Mapped[int] = mapped_column(Integer, default=0)
+    rejected: Mapped[int] = mapped_column(Integer, default=0)
+    skip_rejected: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    failure: Mapped[str | None] = mapped_column(Text, default=None)
+    applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
+    created_by: Mapped[str | None] = mapped_column(String(36), default=None)
+
+
+class ImportRow(Base):
+    """One row of a previewed import or bulk edit: what it holds and what it would do."""
+
+    __tablename__ = "import_rows"
+
+    job_hid: Mapped[str] = mapped_column(ForeignKey("import_jobs.hid"), primary_key=True)
+    row: Mapped[int] = mapped_column(Integer, primary_key=True)
+    outcome: Mapped[str] = mapped_column(String(10), index=True)
+    record_hid: Mapped[str | None] = mapped_column(String(36), default=None)
+    row_version: Mapped[int | None] = mapped_column(Integer, default=None)
+    key: Mapped[str] = mapped_column(Text, default="")
+    values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    notes: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class IdempotencyKey(Base):
+    """A key a caller sent with a request, and the answer it was given."""
+
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (Index("idempotency_keys_created_at", "created_at"),)
+
+    user_hid: Mapped[str] = mapped_column(String(36), primary_key=True)
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[int | None] = mapped_column(Integer, default=None)
+    body: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)

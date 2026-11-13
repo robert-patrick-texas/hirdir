@@ -1,4 +1,4 @@
-.PHONY: help version dev web check fmt test acceptance e2e deb package-test docs docs-watch facts upgrade guard contract
+.PHONY: help version dev web check fmt test acceptance e2e deb package-test docs docs-watch facts upgrade guard contract examples
 
 help:           ## list the targets
 	@grep -E '^[a-z-]+: .*##' Makefile | sed -E 's/:.*## /\t/' | expand -t 16
@@ -32,6 +32,9 @@ guard:          ## refuse to go on if a tracked file holds a term listed in .pub
 
 contract:       ## write the OpenAPI document to contract/openapi.json
 	uv run python scripts/write_contract.py
+
+examples:       ## write examples/ by exporting the seeded example database
+	uv run python scripts/seed_examples.py
 
 acceptance:     ## the scenarios of docs/build-plan.md against a server started from an empty database
 	uv run pytest tests/acceptance

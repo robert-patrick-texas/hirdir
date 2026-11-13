@@ -60,6 +60,7 @@ A manufacturer, a support provider, or both. A name or alias belongs to one vend
 | `name` | text, unique | "Cisco", "Juniper", "Canonical" |
 | `aliases` | list of text | Other spellings accepted on import: "Cisco Systems" |
 | `notes` | text | |
+| `review_status` | choice | `reviewed`, or `unreviewed` when an import created it |
 
 ### `catalog_entries`
 
@@ -117,7 +118,7 @@ lifecycle fields included.
 A **major item** is one with `parent_item_hid` blank. `is_major` is derived and is
 available as a filter and a column.
 
-Release 0.2.0 has every field above except `parent_item_hid`, `position` and the
+Release 0.3.0 has every field above except `parent_item_hid`, `position` and the
 derived `is_major`, which arrive with minor items in 0.4.0, `location_hid` in 0.5.0 and
 `purchase_line_hid` in 0.6.0.
 
@@ -345,14 +346,50 @@ user is in. A user with no grant can sign in and see nothing.
 
 Append-only. `at`, `actor_hid`, `via` (`web`, `api`, `cli`, `import`, `system`),
 `request_id`, `action` (`create`, `update`, `retire`, `transition`, `sign_in`,
-`sign_in_failed`, and so on), `record_type`, `record_hid`, and `changes`, a list of
-`{field, old, new}`. One import or bulk edit shares one `request_id`.
+`sign_in_failed`, `preview`, `apply`, and so on), `record_type`, `record_hid`, and
+`changes`, a list of `{field, old, new}`. One import or bulk edit shares one
+`request_id`. A record changed by an import has `via` of `import`; one changed by a
+bulk edit has the door the edit came through.
 
-### `import_jobs`
+### `import_jobs` and `import_rows`
 
-`entity`, `mode`, `file_name`, `file_sha256`, `status` (`previewed`, `applied`,
-`failed`), counts of created, updated, unchanged and rejected rows, and a row-level
-report kept as JSON.
+A preview of a change to many records, kept so that what is applied is what was shown.
+
+| Field | Type | Notes |
+|---|---|---|
+| `source` | choice | `file` for an import, `bulk` for a bulk edit |
+| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `owners`, `items`, and each further record type as its release arrives |
+| `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
+| `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
+| `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |
+| `row_count`, `created`, `updated`, `unchanged`, `rejected` | integer | the counts of rows by what the preview found |
+| `skip_rejected` | boolean | whether it was applied without its rejected rows |
+| `failure` | text | why a `failed` job was not applied |
+| `applied_at` | timestamp | |
+
+The job carries `created_at` and `created_by`: only the one who made a preview may apply
+it. Its rows are kept one to a record in `import_rows`, as a row-level report in JSON:
+
+| Field | Type | Notes |
+|---|---|---|
+| `job_hid`, `row` | reference, integer | rows are numbered from 1, in the order of the file |
+| `outcome` | choice | `create`, `update`, `unchanged` or `rejected` |
+| `record_hid` | reference | the record the row matched, or created once applied |
+| `row_version` | integer | the version that record was previewed at |
+| `key` | text | how the row names its record, for people |
+| `values` | JSON | the row as read: a column that is absent is left alone, `null` clears |
+| `changes` | JSON | a list of `{field, old, new}` in the columns of the file |
+| `reasons` | JSON | for a rejected row, a list of `{field, message}` |
+| `notes` | JSON | what else the row brings about, such as a catalog entry created unreviewed |
+
+Jobs and their rows are kept without expiry, like audit events.
+
+### `idempotency_keys`
+
+One row for each `Idempotency-Key` a caller has sent in the last 24 hours: `user_hid`,
+`key`, a hash of the request it came with, and the status and body of the answer once
+there is one. Unique on the caller and the key. Rows older than a day are removed as new
+ones arrive. See "Idempotency" in [interfaces.md](interfaces.md).
 
 ## Lifecycle, disposition and intent
 

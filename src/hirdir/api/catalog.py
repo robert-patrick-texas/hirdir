@@ -5,14 +5,15 @@ from fastapi import APIRouter
 from hirdir.api import lists, shapes
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
+from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
 from hirdir.domain import catalog, owners
 from hirdir.io import fields
 
-vendors = APIRouter(prefix="/vendors", tags=["Catalog"])
-entries = APIRouter(prefix="/catalog-entries", tags=["Catalog"])
-owner_routes = APIRouter(prefix="/owners", tags=["People"])
+vendors = APIRouter(prefix="/vendors", tags=["Catalog"], route_class=IdempotentRoute)
+entries = APIRouter(prefix="/catalog-entries", tags=["Catalog"], route_class=IdempotentRoute)
+owner_routes = APIRouter(prefix="/owners", tags=["People"], route_class=IdempotentRoute)
 
 
 def _changes(body: r.Model) -> dict:
@@ -26,11 +27,15 @@ def _changes(body: r.Model) -> dict:
 def list_vendors(_: Viewer, db: Db, listed: Listed) -> Page[r.VendorOut]:
     """List vendors, by name unless a sort says otherwise."""
     page, total = lists.read(db, fields.VENDORS, listed)
-    return Page(
-        items=[shapes.vendor_out(vendor) for vendor in page],
-        total=total,
-        limit=listed.limit,
-        offset=listed.offset,
+    return lists.narrowed(
+        Page(
+            items=[shapes.vendor_out(vendor) for vendor in page],
+            total=total,
+            limit=listed.limit,
+            offset=listed.offset,
+        ),
+        listed,
+        r.VendorOut,
     )
 
 
@@ -60,8 +65,15 @@ def update_vendor(
 
 def _entries_page(db: Db, listed: lists.ListRequest) -> Page[r.CatalogEntryOut]:
     page, total = lists.read(db, fields.CATALOG_ENTRIES, listed)
-    return Page(
-        items=shapes.entries_out(db, page), total=total, limit=listed.limit, offset=listed.offset
+    return lists.narrowed(
+        Page(
+            items=shapes.entries_out(db, page),
+            total=total,
+            limit=listed.limit,
+            offset=listed.offset,
+        ),
+        listed,
+        r.CatalogEntryOut,
     )
 
 
@@ -116,11 +128,15 @@ def retire_entry(
 def list_owners(_: Viewer, db: Db, listed: Listed) -> Page[r.OwnerOut]:
     """List owners, by label unless a sort says otherwise."""
     page, total = lists.read(db, fields.OWNERS, listed)
-    return Page(
-        items=[shapes.owner_out(owner) for owner in page],
-        total=total,
-        limit=listed.limit,
-        offset=listed.offset,
+    return lists.narrowed(
+        Page(
+            items=[shapes.owner_out(owner) for owner in page],
+            total=total,
+            limit=listed.limit,
+            offset=listed.offset,
+        ),
+        listed,
+        r.OwnerOut,
     )
 
 

@@ -12,10 +12,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.api import records as shapes
-from hirdir.db.models import CatalogEntry, Choice, Item, LifecycleRule, Owner, Tag, Vendor
+from hirdir.db.models import (
+    CatalogEntry,
+    Choice,
+    ImportJob,
+    ImportRow,
+    Item,
+    LifecycleRule,
+    Owner,
+    Tag,
+    User,
+    Vendor,
+)
 from hirdir.domain import inheritance, records, settings, tags
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
+from hirdir.io import imports
+
+FIRST_ROWS = 100
 
 
 def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
@@ -162,3 +176,27 @@ def setting_out(setting: SettingValue) -> shapes.SettingOut:
 def rule_out(rule: LifecycleRule) -> shapes.LifecycleRuleOut:
     """Return a lifecycle rule."""
     return shapes.LifecycleRuleOut.model_validate(rule)
+
+
+def job_out(db: Session, job: ImportJob) -> shapes.ImportJobOut:
+    """Return a stored preview with the username of whoever made it."""
+    maker = db.get(User, job.created_by) if job.created_by else None
+    return shapes.ImportJobOut(
+        **{
+            name: getattr(job, name)
+            for name in shapes.ImportJobOut.model_fields
+            if name != "created_by_name"
+        },
+        created_by_name=maker.username if maker else None,
+    )
+
+
+def row_out(row: ImportRow) -> shapes.ImportRowOut:
+    """Return one row of a preview."""
+    return shapes.ImportRowOut.model_validate(row)
+
+
+def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
+    """Return a preview: the job, and the first of its rows."""
+    rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
+    return shapes.ImportPreview(job=job_out(db, job), rows=[row_out(row) for row in rows])

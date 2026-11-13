@@ -4,12 +4,13 @@ import platform
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select, text
 
 import hirdir
 from hirdir.api import schemas, views
 from hirdir.api.deps import Admin, Audit, Db, SignedIn, Viewer, request_id, via
+from hirdir.api.idempotent import refused
 from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
@@ -19,10 +20,13 @@ Limit = Annotated[int, Query(ge=1, le=1000)]
 Offset = Annotated[int, Query(ge=0, le=10_000_000)]
 
 health = APIRouter(prefix="/health", tags=["Health"])
-auth = APIRouter(prefix="/auth", tags=["Access"])
-users = APIRouter(tags=["Accounts"])
-groups = APIRouter(prefix="/user-groups", tags=["Accounts"])
-grants = APIRouter(prefix="/role-grants", tags=["Accounts"])
+# The answer of an account route may hold an access code or a token. Neither is kept
+# anywhere, so no answer of these routes can be kept to be given a second time.
+NO_KEY = [Depends(refused)]
+auth = APIRouter(prefix="/auth", tags=["Access"], dependencies=NO_KEY)
+users = APIRouter(tags=["Accounts"], dependencies=NO_KEY)
+groups = APIRouter(prefix="/user-groups", tags=["Accounts"], dependencies=NO_KEY)
+grants = APIRouter(prefix="/role-grants", tags=["Accounts"], dependencies=NO_KEY)
 audit = APIRouter(tags=["Audit"])
 meta = APIRouter(tags=["About"])
 

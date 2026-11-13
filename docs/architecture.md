@@ -25,7 +25,7 @@ of ours. There is no second service, no queue and no cache in the MVP.
 | Server | FastAPI on Uvicorn, Pydantic models | one worker |
 | Database access | SQLAlchemy 2 with Alembic migrations | |
 | Database | SQLite in WAL mode | PostgreSQL as an option LATER |
-| CLI | Typer, with httpx to call the API | same package as the server. The server's tests use httpx2; the CLI follows in 0.3.0 |
+| CLI | Typer, with httpx2 to call the API | same package as the server; httpx2 is the continuation of httpx under Pydantic |
 | Web UI | TypeScript, React, built with Vite | npm; Node is needed to build, never to run |
 | Grid | AG Grid Community | infinite row model: the server sorts, filters and pages |
 | Reverse proxy | nginx from Ubuntu | not shipped by `hirdir` |
@@ -50,7 +50,7 @@ src/hirdir/
 web/                 TypeScript source of the web UI
 tests/               unit/, api/, acceptance/, e2e/
 packaging/           build-deb.sh, control files, systemd units, nginx files, hirdir-setup, container/
-scripts/             build_docs.py, docs.css, release_facts.py, seed_fixture.py
+scripts/             build_docs.py, docs.css, release_facts.py, seed_examples.py, seed_fixture.py
 docs/                these pages, and releases/
 images/              pictures used by README.md and docs/
 examples/            fictional CSV and JSON for every record type
@@ -166,6 +166,11 @@ rendered as text, never as HTML.
   connection and checked by the readiness probe.
 - One writer at a time. Imports and bulk edits validate first, then write in one short
   transaction.
+- **Previews.** A preview of an import or a bulk edit is made by doing the work for
+  real, through the same functions as any other change, inside a transaction that is
+  then undone. What it reports is therefore what an apply will do, and no rule is
+  written twice. Apply does the same work again, compares each row with what was
+  previewed, and keeps the result only when they agree.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, and upsert. The test suite
