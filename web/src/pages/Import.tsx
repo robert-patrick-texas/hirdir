@@ -269,7 +269,7 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
               <>
                 <dt>Applied</dt>
                 <dd>
-                  <Time at={job.applied_at} />
+                  <Time at={job.applied_at} /> by {job.applied_by_name ?? "an account that is gone"}
                 </dd>
               </>
             )}

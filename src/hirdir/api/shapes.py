@@ -181,13 +181,15 @@ def rule_out(rule: LifecycleRule) -> shapes.LifecycleRuleOut:
 def job_out(db: Session, job: ImportJob) -> shapes.ImportJobOut:
     """Return a stored preview with the username of whoever made it."""
     maker = db.get(User, job.created_by) if job.created_by else None
+    applier = db.get(User, job.applied_by) if job.applied_by else None
     return shapes.ImportJobOut(
         **{
             name: getattr(job, name)
             for name in shapes.ImportJobOut.model_fields
-            if name != "created_by_name"
+            if not name.endswith("_by_name")
         },
         created_by_name=maker.username if maker else None,
+        applied_by_name=applier.username if applier else None,
     )
 
 

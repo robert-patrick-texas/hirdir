@@ -581,6 +581,8 @@ class ImportJobOut(Model):
     skip_rejected: bool | None = Field(description="Whether it was applied without them.")
     failure: str | None = Field(description="Why a failed job was not applied.")
     applied_at: datetime | None
+    applied_by: str | None
+    applied_by_name: str | None
     created_at: datetime
     created_by: str | None
     created_by_name: str | None

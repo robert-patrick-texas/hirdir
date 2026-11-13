@@ -252,15 +252,23 @@ def test_a_row_that_was_unchanged_must_still_be_as_it_was_previewed(
     assert list(errors(files.apply(preview, expect=409))) == ["rows.1"]
 
 
-def test_only_the_one_who_previewed_may_apply_and_only_once(
+def test_another_with_the_inventory_role_may_apply_a_preview_and_only_once(
     files: Files, client: TestClient, admin: dict[str, str], viewer: dict[str, str], catalog: dict
 ) -> None:
     text = "vendor,pid,serial_number\nCisco,C9300-48P,S1\n"
     preview = files.preview("items", text)
-    assert Files(client, admin).apply(preview, expect=403)["title"] == "Not allowed"
     Files(client, viewer).preview("items", text, expect=403)
-    assert files.apply(preview)["status"] == "applied"
+    assert Files(client, viewer).apply(preview, expect=403)["title"] == "Not allowed"
+    # One person prepared it. Another looks it over and applies it.
+    applied = Files(client, admin).apply(preview)
+    assert (applied["status"], applied["created_by_name"], applied["applied_by_name"]) == (
+        "applied",
+        "ivy",
+        "ada",
+    )
     assert "applied already" in files.apply(preview, expect=409)["detail"]
+    event = client.get(f"{API}/audit-events?action=apply", headers=admin).json()["items"][0]
+    assert event["actor_name"] == "ada"
     # Anybody who may read the inventory may read a preview and the list of them.
     listed = client.get(f"{API}/imports", headers=viewer).json()
     assert [job["hid"] for job in listed["items"]] == [preview["job"]["hid"]]

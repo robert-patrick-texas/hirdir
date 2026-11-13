@@ -619,7 +619,7 @@ export interface paths {
     /**
      * Apply a preview exactly as it was shown, in one transaction, or not at all.
      *
-     * Only the one who made the preview may apply it. If a record it would touch has
+     * Anybody with the Inventory role may apply it, whoever made it. If a record it would touch has
      * changed since, nothing is applied and the answer is a `409`.
      */
     post: {
@@ -803,7 +803,7 @@ export interface paths {
     /**
      * Apply a previewed bulk edit, in one transaction, or not at all.
      *
-     * Only the one who made the preview may apply it. If an item it would change has
+     * Anybody with the Inventory role may apply it, whoever made it. If an item it would change has
      * been changed since, by anybody, nothing is applied and the answer is a `409`
      * that names the rows.
      */
@@ -2269,6 +2269,8 @@ export interface components {
     /** A stored preview of an import or a bulk edit, and what became of it. */
     ImportJobOut: {
       applied_at: string | null;
+      applied_by: string | null;
+      applied_by_name: string | null;
       /** Rows that create a record. */
       created: number;
       created_at: string;

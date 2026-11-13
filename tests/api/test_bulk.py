@@ -102,11 +102,12 @@ def test_the_second_of_two_overlapping_bulk_edits_is_refused_whole(
     comments = [item["comments"] for item in make.get("/items", sort="hostname")["items"]]
     assert comments == ["mine", "mine", "mine", None]
     assert make.get(f"/imports/{theirs['job']['hid']}")["status"] == "failed"
-    # Nobody applies another's preview.
+    # A preview that is still good may be applied by another than the one who made it.
     again = other.post(
         "/items/bulk-update", {"hids": [switches[3]["hid"]], "set": {"comments": "theirs"}}
     )
-    assert apply(make, again, expect=403)["title"] == "Not allowed"
+    applied = apply(make, again)
+    assert (applied["created_by_name"], applied["applied_by_name"]) == ("ada", "ivy")
 
 
 def test_a_bulk_edit_may_move_items_and_clear_a_field(make: Maker, switches: list[dict]) -> None:

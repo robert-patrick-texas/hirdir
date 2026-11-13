@@ -407,6 +407,7 @@ class ImportJob(Base):
     skip_rejected: Mapped[bool | None] = mapped_column(Boolean, default=None)
     failure: Mapped[str | None] = mapped_column(Text, default=None)
     applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    applied_by: Mapped[str | None] = mapped_column(String(36), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
     created_by: Mapped[str | None] = mapped_column(String(36), default=None)
 

@@ -88,7 +88,7 @@ def apply_bulk_update(
 ) -> r.ImportJobOut:
     """Apply a previewed bulk edit, in one transaction, or not at all.
 
-    Only the one who made the preview may apply it. If an item it would change has
+    Anybody with the Inventory role may apply it, whoever made it. If an item it would change has
     been changed since, by anybody, nothing is applied and the answer is a `409`
     that names the rows.
     """

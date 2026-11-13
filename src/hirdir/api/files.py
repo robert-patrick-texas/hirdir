@@ -114,7 +114,7 @@ def apply_import(
 ) -> r.ImportJobOut:
     """Apply a preview exactly as it was shown, in one transaction, or not at all.
 
-    Only the one who made the preview may apply it. If a record it would touch has
+    Anybody with the Inventory role may apply it, whoever made it. If a record it would touch has
     changed since, nothing is applied and the answer is a `409`.
     """
     done = imports.apply(

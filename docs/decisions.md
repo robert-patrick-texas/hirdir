@@ -79,6 +79,7 @@ marked as replaced, not removed.
 | D-66 | In an import, a different lifecycle state is a move under the rules of moves, with the row's `state_reason` as the why, and is never forced. A row that would retire a record is rejected. (Was P-45.) |
 | D-67 | A preview of more than a hundred rows is worked on a copy of the database. An apply is one transaction and holds the one writer's place while it works; a change that waits more than five seconds behind it is a `503` with `Retry-After`, and was not made. (Was P-51.) |
 | D-68 | The packaged nginx snippet sets `client_max_body_size 20m`, the application's own limit and no more. Through nginx a body over 20 MB is refused by nginx, with a `413` and the page of nginx, not a problem document. The application's own `413` is seen through nginx for a file of more than 100,000 rows. A site that wants to take larger files has to change nginx to allow them. (Was P-53.) |
+| D-69 | A preview of an import or a bulk edit is kept, and is applied once, by anybody who holds the Inventory role, whoever made it. The job says who made it and who applied it. Apply works the file through again and applies only when every row comes out as previewed and every record a row matched is at the version previewed, rows that were `unchanged` included. (Was P-46, changed: only the one who made a preview could apply it.) |
 
 ## Proposed
 
@@ -87,7 +88,7 @@ P-20, P-22, P-23 and P-24 were confirmed and are now D-33 to D-36 and D-40 to D-
 P-29 to P-31, P-33 to P-35 and P-37 to P-40 were answered on 2026-11-13 and are now
 D-49 to D-61, three of them changed by the answer. P-28, P-32 and P-36 followed the same
 day as D-62 to D-64. P-43, P-45, P-51 and P-53, of release 0.3.0, were confirmed on that
-day too and are D-65 to D-68.
+day too and are D-65 to D-68, and P-46 was answered with a change and is D-69.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
@@ -109,7 +110,6 @@ day too and are D-65 to D-68.
 | P-41 | Tags are imported and exported like any other record, and come first in the load order. Choices, settings, lifecycle rules and the access records are not carried by files. | An item names its tags, and a tag is made before it is used, so `examples/` could not otherwise be loaded into an empty database. | 0.3.0 |
 | P-42 | A file is sent as the body of `POST /imports/preview`, with its entity, mode and name beside it in the URL, and not as a form upload. A file over the limit is a `413`. | The package needs nothing more for it, and the command line and a browser send a file the same way. | 0.3.0 |
 | P-44 | A column that an export writes and nobody can set, such as a `_source`, a detail of the catalog entry or `updated_at`, is accepted by an import and passed over. Only a column the entity does not know rejects the file. | Any export can then be edited and imported back. | 0.3.0 |
-| P-46 | A preview is kept, belongs to the one who made it, and is applied by them, once. Apply works the file through again and applies only when every row comes out as previewed and every record a row matched is at the version previewed, rows that were `unchanged` included. | "Applies exactly what was previewed", read strictly. A looser check could apply something nobody was shown. | 0.3.0 |
 | P-47 | A bulk edit is a preview of the same kind as an import's: `POST /items/bulk-update` previews and stores it, `POST /items/bulk-update/{hid}/apply` applies it. It sets what an import may set, except, on more than one item at once, the fields that tell one item from another, and may add and remove tags. | One mechanism and one check for a stale copy, whichever way many records are changed. | 0.3.0 |
 | P-48 | `Idempotency-Key` is kept for 24 hours for each caller. The same request with the same key is answered with the first answer and not carried out again; the same key on another request is a `422`. It is taken by a `POST` on an inventory record, an import or a bulk edit, and refused on the routes of accounts. | A retry after a lost answer must not create a second record. An account route's answer may hold an access code or a token, which is kept nowhere, so it cannot be kept to be replayed. | 0.3.0 |
 | P-49 | `fields` on a list names the fields of the record to return, as the route names them, with a dot for one field of a record within it. `hid` and `row_version` always come. | The command line and scripts ask for little, and a change still needs the version. | 0.3.0 |

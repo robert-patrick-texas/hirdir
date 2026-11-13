@@ -1719,6 +1719,28 @@
             ],
             "title": "Applied At"
           },
+          "applied_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By"
+          },
+          "applied_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By Name"
+          },
           "created": {
             "description": "Rows that create a record.",
             "title": "Created",
@@ -1867,6 +1889,8 @@
           "skip_rejected",
           "failure",
           "applied_at",
+          "applied_by",
+          "applied_by_name",
           "created_at",
           "created_by",
           "created_by_name"
@@ -6210,7 +6234,7 @@
     },
     "/api/v1/imports/{hid}/apply": {
       "post": {
-        "description": "Apply a preview exactly as it was shown, in one transaction, or not at all.\n\nOnly the one who made the preview may apply it. If a record it would touch has\nchanged since, nothing is applied and the answer is a `409`.",
+        "description": "Apply a preview exactly as it was shown, in one transaction, or not at all.\n\nAnybody with the Inventory role may apply it, whoever made it. If a record it would touch has\nchanged since, nothing is applied and the answer is a `409`.",
         "operationId": "apply_import_api_v1_imports__hid__apply_post",
         "parameters": [
           {
@@ -6647,7 +6671,7 @@
     },
     "/api/v1/items/bulk-update/{hid}/apply": {
       "post": {
-        "description": "Apply a previewed bulk edit, in one transaction, or not at all.\n\nOnly the one who made the preview may apply it. If an item it would change has\nbeen changed since, by anybody, nothing is applied and the answer is a `409`\nthat names the rows.",
+        "description": "Apply a previewed bulk edit, in one transaction, or not at all.\n\nAnybody with the Inventory role may apply it, whoever made it. If an item it would change has\nbeen changed since, by anybody, nothing is applied and the answer is a `409`\nthat names the rows.",
         "operationId": "apply_bulk_update_api_v1_items_bulk_update__hid__apply_post",
         "parameters": [
           {

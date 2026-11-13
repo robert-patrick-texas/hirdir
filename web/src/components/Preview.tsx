@@ -237,7 +237,6 @@ export function ApplyPreview(props: ApplyPreviewProps) {
   const [applied, setApplied] = useState(false);
   const stale = staleRows(error);
   const outOfDate = isOutOfDate(error);
-  const mine = job.created_by === user.hid;
   const working = busy || props.busy === true;
   const rest = job.row_count - job.rejected;
 
@@ -294,7 +293,7 @@ export function ApplyPreview(props: ApplyPreviewProps) {
                 ))}
               </ul>
             )}
-            {mine &&
+            {allows(user.role, "inventory") &&
               (again ? (
                 <p>
                   <button type="button" className="primary" onClick={again} disabled={working}>
@@ -319,10 +318,6 @@ export function ApplyPreview(props: ApplyPreviewProps) {
         !applied &&
         (!allows(user.role, "inventory") ? (
           <p className="muted">This preview has not been applied.</p>
-        ) : !mine ? (
-          <p className="muted">
-            A preview is applied by the one who made it: {job.created_by_name ?? "somebody else"}.
-          </p>
         ) : job.rejected > 0 ? (
           <div className="alert alert-info">
             <p>

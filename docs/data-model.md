@@ -365,10 +365,10 @@ A preview of a change to many records, kept so that what is applied is what was 
 | `row_count`, `created`, `updated`, `unchanged`, `rejected` | integer | the counts of rows by what the preview found |
 | `skip_rejected` | boolean | whether it was applied without its rejected rows |
 | `failure` | text | why a `failed` job was not applied |
-| `applied_at` | timestamp | |
+| `applied_at`, `applied_by` | timestamp, user HID | when it was applied, and by whom |
 
-The job carries `created_at` and `created_by`: only the one who made a preview may apply
-it. Its rows are kept one to a record in `import_rows`, as a row-level report in JSON:
+The job carries `created_at` and `created_by`, for who made the preview. Anybody who
+holds the Inventory role may apply it. Its rows are kept one to a record in `import_rows`, as a row-level report in JSON:
 
 | Field | Type | Notes |
 |---|---|---|

@@ -351,14 +351,13 @@ def apply(
 ) -> Applied:
     """Apply a preview exactly as it was shown, or not at all.
 
-    Only the one who made the preview may apply it, and once. Every row is worked
+    Anybody who may change the inventory may apply it, whoever made it, and it is
+    applied once. The job keeps who applied it. Every row is worked
     again. If each comes out as previewed, and each record a row matched is at the
     version it was previewed at, the work is kept. Otherwise it is undone, the job is
     marked failed, and the rows in the way are returned.
     """
     job = get_job(db, hid, source)
-    if job.created_by != context.actor_hid:
-        raise NotAllowed("a preview is applied by the one who made it")
     if job.status != "previewed":
         raise Conflict(
             f"this preview is {job.status} already", {"status": "make a new preview to go on"}
@@ -377,7 +376,12 @@ def apply(
     taken = db.scalar(
         update(ImportJob)
         .where(ImportJob.hid == hid, ImportJob.status == "previewed")
-        .values(status="applied", skip_rejected=skip_rejected, applied_at=clock.now())
+        .values(
+            status="applied",
+            skip_rejected=skip_rejected,
+            applied_at=clock.now(),
+            applied_by=context.actor_hid,
+        )
         .returning(ImportJob.hid)
     )
     if taken is None:
@@ -399,7 +403,7 @@ def apply(
         attempt.rollback()
         job = get_job(db, hid)
         db.refresh(job)
-        job.status, job.skip_rejected, job.applied_at = "failed", None, None
+        job.status, job.skip_rejected, job.applied_at, job.applied_by = "failed", None, None, None
         job.failure = (
             f"{len(problems)} of the rows changed after the preview was made; preview again"
         )

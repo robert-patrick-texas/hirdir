@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column("skip_rejected", sa.Boolean),
         sa.Column("failure", sa.Text),
         sa.Column("applied_at", sa.DateTime),
+        sa.Column("applied_by", sa.String(36)),
         sa.Column("created_at", sa.DateTime, nullable=False),
         sa.Column("created_by", sa.String(36)),
     )

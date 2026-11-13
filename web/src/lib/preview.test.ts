@@ -38,6 +38,8 @@ function job(more: Partial<Job> = {}): Job {
     skip_rejected: null,
     failure: null,
     created_at: "2026-11-13T21:31:18Z",
+    applied_by: null,
+    applied_by_name: null,
     created_by: "u-1",
     created_by_name: "ada",
     applied_at: null,

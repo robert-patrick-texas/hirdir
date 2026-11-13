@@ -193,7 +193,7 @@ are read there too.
 | Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, and `outcome=rejected` keeps to one kind |
 | Apply | `POST /imports/{hid}/apply` applies exactly what was previewed, in one transaction. If any record it would touch has changed since, nothing is applied and a new preview is asked for |
 | What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, with the same changes and the same notes, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, the first fifty of them, and the job is `failed` |
-| Whose preview | A preview is applied by the one who made it, once. Anybody who may read the inventory may read it |
+| Whose preview | A preview is applied once, by anybody who holds the Inventory role, whoever made it: one person may prepare a file and another look it over and apply it. The job says who made it and who applied it. Anybody who may read the inventory may read it |
 | Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
 | Limits | 20 MB and 100,000 rows per file. A larger file is a `413`. Behind the packaged nginx a body of more than 20 MB is refused by nginx itself, with a `413` that is nginx's own page and not a problem document |
 | Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), addresses, device groups, members, coverage, registrations, capacity lines |
@@ -236,8 +236,8 @@ a `413`.
 
 The answer is a preview of the same kind as an import's, with before and after for each
 row, and it is stored in the same way. `POST /items/bulk-update/{hid}/apply` applies
-it under the same rules: in one transaction, by the one who made it, and not at all
-when any of its records has changed since. A second person who bulk-edits rows that the
+it under the same rules: in one transaction, once, by anybody who holds the Inventory
+role, and not at all when any of its records has changed since. A second person who bulk-edits rows that the
 first has just changed is told which, and none of their change is applied.
 
 ## CLI
