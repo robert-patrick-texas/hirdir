@@ -64,6 +64,8 @@ case "$1" in
         # The database, the signing key and the backups; then the configuration with
         # the throwaway certificate of hirdir-setup --self-signed.
         rm -rf /var/lib/hirdir /etc/hirdir
+        # The packages that "hirdir-setup --upgrade" fetched from GitHub.
+        rm -rf /var/cache/hirdir
         # Byte-code that a command run between prerm and here might have written.
         rm -rf /opt/hirdir
         if getent passwd hirdir >/dev/null; then

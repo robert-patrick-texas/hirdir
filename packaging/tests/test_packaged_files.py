@@ -99,9 +99,10 @@ def test_the_settings_file_is_shipped_as_a_text_that_postinst_writes_out() -> No
     # After the migrations, so that an upgrade that stops there has changed no file.
     assert postinst.index("admin migrate") < postinst.index('renew_settings "$2"')
     # A purge takes the file and the copies kept beside it with the directory.
-    assert "rm -rf /var/lib/hirdir /etc/hirdir\n" in (PACKAGING / "debian" / "postrm").read_text(
-        encoding="utf-8"
-    )
+    postrm = (PACKAGING / "debian" / "postrm").read_text(encoding="utf-8")
+    assert "rm -rf /var/lib/hirdir /etc/hirdir\n" in postrm
+    # And the packages the setup tool fetched.
+    assert f"rm -rf {setup.DOWNLOADS}\n" in postrm
 
 
 def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path: Path) -> None:

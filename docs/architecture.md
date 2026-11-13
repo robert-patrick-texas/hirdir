@@ -224,7 +224,8 @@ rendered as text, never as HTML.
 | `/opt/hirdir/python/` | CPython, a standalone build installed with `uv python install` |
 | `/opt/hirdir/venv/` | the locked dependencies and `hirdir` itself, with the web UI inside |
 | `/usr/bin/hirdir` | the command |
-| `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site, brings the snippet and the settings file up to date, and installs a newer package |
+| `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site, brings the snippet and the settings file up to date, and checks GitHub for a newer release, fetches it and installs it |
+| `/var/cache/hirdir/` | the packages `hirdir-setup --upgrade` fetched, the newest two (made when first needed, never shipped) |
 | `/usr/share/hirdir/config.toml` | the settings file as this version ships it: every setting, commented out at its default |
 | `/etc/hirdir/config.toml` | configuration. Written at install, given the new settings of a version at each upgrade, never shipped, and not a conffile |
 | `/etc/nginx/conf.d/hirdir.conf` | the `upstream hirdir` block (a conffile) |
@@ -261,8 +262,26 @@ version ships, and puts in each setting the file does not have, set or commented
 at the end of its table, as the shipped text has it, commented out at its default. A
 table the file lacks goes at the end. No line of the site's is changed or moved, the
 file must set exactly what it set before or it is left alone, and the file as it was
-is kept beside it. `hirdir-setup --upgrade PACKAGE.deb` checks a newer package and
-hands it to apt with nothing left to ask; plain `apt install` gives the same result. Installing the same version again takes
+is kept beside it.
+
+**Upgrades with the setup tool.** `hirdir-setup` is in the package, written with the
+standard library alone and run by the interpreter the package carries, so a host needs
+one file, the `.deb`, for a first install and nothing more afterwards. `--check` asks
+GitHub's API for the latest release that is not a pre-release. `--upgrade` fetches its
+`hirdir_<version>_<architecture>.deb` and the `.sha256` beside it, keeps the package
+only when it has that checksum, refuses one older than is installed, and has apt
+install it with no question left to ask. `--proxy URL` sends the requests through a
+proxy. It fetches over HTTPS from GitHub's own hosts and follows a redirect to no
+other. `--upgrade PACKAGE.deb` installs a package that is already on the host; plain
+`apt install` gives the same result.
+
+An upgrade is begun by the tool that is installed and finished by the one the new
+package brings. apt replaces the tool and its interpreter while the old one waits, so
+the old one does one thing more when apt is done: it runs the new
+`hirdir-setup --after-upgrade <the version that was installed>`. That is where a
+version puts what it wants done once at an upgrade, beyond what every upgrade does in
+the package's own scripts, and it reports how the upgrade went. A tool of an earlier
+version therefore never needs to know what a later one requires. Installing the same version again takes
 the same steps and changes nothing in the database.
 
 **The nginx snippet** holds the `location` block shown under "URL prefix" and one line

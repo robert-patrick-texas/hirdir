@@ -269,20 +269,58 @@ curl -s http://127.0.0.1:8715/api/v1/health/ready
 
 ## Upgrade
 
+`hirdir-setup` is part of the package, so the tool that upgrades `hirdir` is already on
+the host. Nothing but the package is ever downloaded.
+
+```bash
+sudo hirdir-setup --check        # is a newer release published?
+sudo hirdir-setup --upgrade      # fetch it, check it, install it
+```
+
+`--check` asks GitHub for the latest release of `hirdir` and says whether it is newer
+than the one installed. It changes nothing. `--upgrade` fetches the package of that
+release and the checksum published beside it, into `/var/cache/hirdir/`, and installs
+the package only when the two agree. It says what is about to happen and asks before
+it goes on; `--yes` goes on without asking, for a script or a timer. When the release
+installed is the latest, it says so and does nothing.
+
+Where the way out to GitHub is through a proxy, name it:
+
+```bash
+sudo hirdir-setup --check --proxy http://proxy.example.com:2025/
+sudo hirdir-setup --upgrade --proxy http://proxy.example.com:2025/
+```
+
+Both requests then go through that proxy: to `api.github.com` for the release, and to
+`github.com` and the file servers it redirects to for the package. The tool fetches
+from GitHub over HTTPS and from nowhere else. A name and password in the proxy's
+address are used and never shown.
+
+On a host with no way out at all, copy the package to it, with its `.sha256` file
+beside it when you have it, and name the file:
+
 ```bash
 sudo hirdir-setup --upgrade ./hirdir_<new version>_amd64.deb
 ```
 
-`hirdir-setup --upgrade` checks that the file is a package of `hirdir` and not an older
-one than is installed, compares it with the `.sha256` file when that lies beside it,
-says what is about to happen, and hands over to apt. Plain apt does the same upgrade:
+Plain apt does the same upgrade, and is what a package manager or a configuration
+management tool will use:
 
 ```bash
 sudo apt install ./hirdir_<new version>_amd64.deb
 ```
 
-Either way nothing is asked, so an upgrade with nobody at the keyboard goes through:
-an unattended upgrade, or one run by a configuration management tool.
+Every one of these ways asks nothing once it has begun, so an upgrade with nobody at
+the keyboard goes through. `hirdir-setup --upgrade` refuses a package older than the
+one installed, and when apt is done it runs the `hirdir-setup` that the new package
+brought, which finishes whatever that version wants done and reports how the upgrade
+went: the schema revision, whether the service is running, and where the release
+notes are. So a later version can add a step to an upgrade without a new tool having to
+be fetched first.
+
+The checksum shows that the package arrived as it was published. It does not show who
+published it: that rests on GitHub and on HTTPS. A site that needs more verifies the
+package by its own means before `--upgrade PACKAGE.deb`.
 
 The upgrade does six things, in this order:
 

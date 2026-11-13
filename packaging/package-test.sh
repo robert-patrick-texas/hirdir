@@ -1700,6 +1700,16 @@ reinstall() {
     else
         fail "pkg and the service came back (got $status)"
     fi
+    expect "pkg and the hirdir-setup of the package that was installed finishes it: it reports the version and that the service runs" \
+        "$(grep -c "^hirdir $version is installed, and is running\.\$" "$work/setup-upgrade.log") $(grep -c '^hirdir.service: active$' "$work/setup-upgrade.log")" "1 1"
+    # Asking GitHub is not done here: a test must not hang on the network. What is shown
+    # is that a proxy named with --proxy is the way the request goes, and that a proxy
+    # which does not answer is said plainly, with nothing changed.
+    code=0
+    inside hirdir-setup --check --proxy http://127.0.0.1:9/ >"$work/setup-check.log" 2>&1 </dev/null || code=$?
+    expect "pkg hirdir-setup --check --proxy goes through the proxy named, and says so when the proxy does not answer" \
+        "$code $(grep -c 'GitHub could not be reached through the proxy http://127.0.0.1:9' "$work/setup-check.log") $(grep -c Traceback "$work/setup-check.log")" \
+        "1 1 0"
     if inside test -e /srv/debs/hirdir-previous.deb; then
         code=0
         inside hirdir-setup --upgrade /srv/debs/hirdir-previous.deb --yes >"$work/setup-upgrade.log" 2>&1 </dev/null || code=$?
@@ -1939,7 +1949,7 @@ purge() {
         fail "S01 the package purges"
         tail -n 20 "$work/apt.log"
     fi
-    for path in /opt/hirdir /var/lib/hirdir /etc/hirdir /usr/bin/hirdir /etc/nginx/snippets/hirdir.conf \
+    for path in /opt/hirdir /var/lib/hirdir /var/cache/hirdir /etc/hirdir /usr/bin/hirdir /etc/nginx/snippets/hirdir.conf \
         /etc/nginx/conf.d/hirdir.conf /usr/share/hirdir /usr/share/doc/hirdir; do
         check "S01 the purge leaves no $path" inside test ! -e "$path"
     done

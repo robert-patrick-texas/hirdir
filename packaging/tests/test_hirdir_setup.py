@@ -646,55 +646,270 @@ def test_settings_writes_the_file_on_a_first_install_and_adds_to_it_at_an_upgrad
     assert file.read_text(encoding="utf-8") == "[server\n"
 
 
-def test_upgrade_checks_the_package_and_hands_over_to_apt(
-    etc: Path, tmp_path: Path, monkeypatch, capsys
-) -> None:
-    package = tmp_path / "hirdir_9.9.9_amd64.deb"
-    package.write_bytes(b"not really a package")
-    fields = {"Package": "hirdir", "Version": "9.9.9"}
-    monkeypatch.setattr(setup, "_field", lambda _package, name: fields[name])
-    installed = subprocess.CompletedProcess([], 0, stdout="0.3.0", stderr="")
-    monkeypatch.setattr(setup, "_run", lambda _command: installed)
-    ran: list[tuple[str, list[str], dict[str, str]]] = []
-    monkeypatch.setattr(setup.os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
+class Upgrade:
+    """What the setup tool finds on the host and on GitHub, for a test to arrange."""
 
-    setup.main(["--upgrade", str(package), "--yes"])
-    ((program, argv, env),) = ran
-    assert program == setup.APT_GET
-    assert argv[1:3] == ["install", "--yes"]
-    assert "Dpkg::Options::=--force-confold" in argv
-    assert argv[-1] == str(package)
+    def __init__(self, tmp_path: Path, monkeypatch) -> None:
+        self.installed = "0.3.0"
+        self.fields = {"Package": "hirdir", "Version": "0.4.0"}
+        self.github: dict[str, bytes] = {}
+        self.fetched: list[tuple[str, str | None]] = []
+        self.apt: list[tuple[list[str], dict[str, str]]] = []
+        self.apt_exit = 0
+        self.handed_over: list[list[str]] = []
+        self.downloads = tmp_path / "cache"
+        monkeypatch.setattr(setup, "DOWNLOADS", self.downloads)
+        monkeypatch.setattr(setup, "_field", lambda _package, name: self.fields[name])
+        monkeypatch.setattr(setup, "_run", self.run)
+        monkeypatch.setattr(setup, "_fetch", self.fetch)
+        monkeypatch.setattr(setup.subprocess, "run", self.run_apt)
+        monkeypatch.setattr(setup.os, "execv", lambda _path, argv: self.handed_over.append(argv))
+        monkeypatch.setattr(setup.os, "geteuid", lambda: 0)
+
+    def run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+        if command[0] == setup.DPKG_QUERY:
+            return subprocess.CompletedProcess(command, 0, stdout=self.installed, stderr="")
+        if command[:2] == [setup.DPKG, "--print-architecture"]:
+            return subprocess.CompletedProcess(command, 0, stdout="amd64\n", stderr="")
+        if command[:2] == [setup.DPKG, "--compare-versions"]:
+            one, other = (tuple(int(n) for n in v.split(".")) for v in (command[2], command[4]))
+            return subprocess.CompletedProcess(command, 0 if one < other else 1, "", "")
+        raise AssertionError(command)
+
+    def run_apt(self, command: list[str], **more) -> subprocess.CompletedProcess[str]:
+        self.apt.append((command, more["env"]))
+        return subprocess.CompletedProcess(command, self.apt_exit)
+
+    def fetch(self, url: str, proxy: str | None, limit: int) -> bytes:
+        self.fetched.append((url, proxy))
+        return self.github[url]
+
+    def publish(
+        self, version: str, package: bytes = b"a package", checksum: str | None = None
+    ) -> None:
+        name = f"hirdir_{version}_amd64.deb"
+        base = f"https://github.com/robert-patrick-texas/hirdir/releases/download/v{version}"
+        document = {
+            "tag_name": f"v{version}",
+            "assets": [
+                {"name": name, "browser_download_url": f"{base}/{name}"},
+                {"name": f"{name}.sha256", "browser_download_url": f"{base}/{name}.sha256"},
+            ],
+        }
+        digest = checksum or setup.hashlib.sha256(package).hexdigest()
+        self.github = {
+            setup.LATEST_RELEASE: setup.json.dumps(document).encode(),
+            f"{base}/{name}": package,
+            f"{base}/{name}.sha256": f"{digest}  {name}\n".encode(),
+        }
+        self.fields["Version"] = version
+
+
+@pytest.fixture
+def upgrading(tmp_path: Path, monkeypatch) -> Upgrade:
+    return Upgrade(tmp_path, monkeypatch)
+
+
+def test_check_says_whether_a_newer_release_has_been_published(upgrading: Upgrade, capsys) -> None:
+    upgrading.publish("0.4.0")
+    assert setup.main(["--check"]) == 0
+    said = capsys.readouterr().out
+    assert "hirdir 0.3.0 is installed. Release 0.4.0 is newer." in said
+    assert "sudo hirdir-setup --upgrade" in said
+    upgrading.installed = "0.4.0"
+    assert setup.main(["--check", "--proxy", "http://proxy.example.com:2025/"]) == 0
+    assert "no newer release has been published" in capsys.readouterr().out
+    # Only GitHub was asked, the second time through the proxy, and nothing was installed.
+    assert upgrading.fetched == [
+        (setup.LATEST_RELEASE, None),
+        (setup.LATEST_RELEASE, "http://proxy.example.com:2025"),
+    ]
+    assert upgrading.apt == []
+
+
+def test_upgrade_fetches_the_latest_release_checks_it_and_installs_it(
+    upgrading: Upgrade, capsys
+) -> None:
+    upgrading.publish("0.4.0")
+    setup.main(["--upgrade", "--yes", "--proxy", "http://proxy.example.com:2025"])
+    package = upgrading.downloads / "hirdir_0.4.0_amd64.deb"
+    assert package.read_bytes() == b"a package"
+    assert (upgrading.downloads / "hirdir_0.4.0_amd64.deb.sha256").is_file()
+    assert {proxy for _, proxy in upgrading.fetched} == {"http://proxy.example.com:2025"}
+    ((command, env),) = upgrading.apt
+    assert command[:3] == [setup.APT_GET, "install", "--yes"]
+    assert "Dpkg::Options::=--force-confold" in command
+    assert command[-1] == str(package)
     assert env["DEBIAN_FRONTEND"] == "noninteractive"
-    assert "--reinstall" not in argv
-    assert "0.3.0 -> 9.9.9" in capsys.readouterr().out
+    # Once apt is done, the hirdir-setup of the new package finishes the upgrade.
+    assert upgrading.handed_over == [[setup.SELF, "--after-upgrade", "0.3.0"]]
+    assert "0.3.0 -> 0.4.0" in capsys.readouterr().out
+
+
+def test_upgrade_does_nothing_when_the_latest_release_is_installed(
+    upgrading: Upgrade, capsys
+) -> None:
+    upgrading.publish("0.3.0")
+    assert setup.main(["--upgrade", "--yes"]) == 0
+    assert "no newer release has been published" in capsys.readouterr().out
+    assert (upgrading.apt, upgrading.handed_over) == ([], [])
+    assert not upgrading.downloads.exists()
+
+
+def test_a_package_that_arrives_without_its_checksum_is_not_kept_or_installed(
+    upgrading: Upgrade, capsys
+) -> None:
+    upgrading.publish("0.4.0", checksum="0" * 64)
+    assert setup.main(["--upgrade", "--yes"]) == 1
+    assert "does not have the checksum published with it" in capsys.readouterr().err
+    assert upgrading.apt == []
+    assert not upgrading.downloads.exists()
+
+    # A release that publishes no package for this upgrading, or no checksum, is refused.
+    document = setup.json.loads(upgrading.github[setup.LATEST_RELEASE])
+    for assets in (document["assets"][:1], []):
+        with pytest.raises(setup.SetupError, match="nothing for this host"):
+            setup.release_of({**document, "assets": assets}, "amd64")
+    with pytest.raises(setup.SetupError, match="nothing for this host"):
+        setup.release_of(document, "arm64")
+    elsewhere = [
+        {**asset, "browser_download_url": "https://downloads.example.net/" + asset["name"]}
+        for asset in document["assets"]
+    ]
+    with pytest.raises(setup.SetupError):
+        setup.release_of({**document, "assets": elsewhere}, "amd64")
+    with pytest.raises(setup.SetupError, match="names no release"):
+        setup.release_of({"message": "Not Found"}, "amd64")
+
+
+def test_only_the_newest_two_packages_are_kept(upgrading: Upgrade) -> None:
+    for version in ("0.4.0", "0.5.0", "0.6.0"):
+        upgrading.publish(version)
+        setup._download(setup.latest_release(None), None)
+        newest = upgrading.downloads / f"hirdir_{version}_amd64.deb"
+        setup.os.utime(newest, (int(version[2]) * 1000, int(version[2]) * 1000))
+    assert sorted(path.name for path in upgrading.downloads.iterdir()) == [
+        "hirdir_0.5.0_amd64.deb",
+        "hirdir_0.5.0_amd64.deb.sha256",
+        "hirdir_0.6.0_amd64.deb",
+        "hirdir_0.6.0_amd64.deb.sha256",
+    ]
+
+
+def test_upgrade_installs_a_package_that_is_already_on_the_host(
+    upgrading: Upgrade, tmp_path: Path, capsys
+) -> None:
+    package = tmp_path / "hirdir_0.4.0_amd64.deb"
+    package.write_bytes(b"not really a package")
+    setup.main(["--upgrade", str(package), "--yes"])
+    ((command, _),) = upgrading.apt
+    assert command[-1] == str(package)
+    assert "--reinstall" not in command
+    assert upgrading.fetched == []
+    assert upgrading.handed_over == [[setup.SELF, "--after-upgrade", "0.3.0"]]
 
     # The version that is installed is installed again, and an older one is refused.
-    ran.clear()
-    fields["Version"] = "0.3.0"
+    upgrading.fields["Version"] = "0.3.0"
     setup.main(["--upgrade", str(package), "--yes"])
-    assert "--reinstall" in ran[0][1]
-    fields["Version"] = "0.2.1"
-    monkeypatch.setattr(
-        setup.subprocess, "run", lambda *_, **__: subprocess.CompletedProcess([], 0)
-    )
+    assert "--reinstall" in upgrading.apt[1][0]
+    upgrading.fields["Version"] = "0.2.1"
     assert setup.main(["--upgrade", str(package), "--yes"]) == 1
     assert "older than the 0.3.0 that is installed" in capsys.readouterr().err
-    monkeypatch.undo()
-    fields["Version"] = "9.9.9"
-    monkeypatch.setattr(setup, "_field", lambda _package, name: fields[name])
-    monkeypatch.setattr(setup, "_run", lambda _command: installed)
-    monkeypatch.setattr(setup.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(setup.os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
 
     # A checksum beside the package is compared, and one that differs stops it.
-    ran.clear()
-    (tmp_path / "hirdir_9.9.9_amd64.deb.sha256").write_text("0" * 64 + "  hirdir_9.9.9_amd64.deb\n")
+    upgrading.fields["Version"] = "0.4.0"
+    (tmp_path / "hirdir_0.4.0_amd64.deb.sha256").write_text("0" * 64 + "  x\n")
     assert setup.main(["--upgrade", str(package), "--yes"]) == 1
-    fields["Package"] = "something-else"
-    assert setup.main(["--upgrade", str(package), "--yes"]) == 1
+    upgrading.fields["Package"] = "something-else"
     assert setup.main(["--upgrade", str(tmp_path / "absent.deb"), "--yes"]) == 1
-    assert ran == []
-    assert "does not have the checksum" in capsys.readouterr().err
+    assert len(upgrading.apt) == 2
+
+
+def test_when_apt_fails_the_new_tool_is_not_run(upgrading: Upgrade, tmp_path: Path, capsys) -> None:
+    package = tmp_path / "hirdir_0.4.0_amd64.deb"
+    package.write_bytes(b"x")
+    upgrading.apt_exit = 100
+    assert setup.main(["--upgrade", str(package), "--yes"]) == 1
+    assert "apt did not install" in capsys.readouterr().err
+    assert upgrading.handed_over == []
+
+
+@pytest.mark.parametrize(
+    ("given", "taken"),
+    [
+        ("http://proxy.example.com:2025/", "http://proxy.example.com:2025"),
+        ("http://proxy.example.com:2025", "http://proxy.example.com:2025"),
+        ("https://user:secret@proxy.example.com", "https://user:secret@proxy.example.com"),
+        ("http://[2001:db8::10]:3128/", "http://[2001:db8::10]:3128"),
+    ],
+)
+def test_a_proxy_is_an_address_with_a_scheme_and_a_host(given: str, taken: str) -> None:
+    assert setup.checked_proxy(given) == taken
+    assert "secret" not in setup.shown_proxy(taken)
+
+
+@pytest.mark.parametrize(
+    "given", ["proxy.example.com:2025", "socks5://proxy.example.com", "http://", "http://p/x"]
+)
+def test_what_is_not_a_proxy_is_refused(given: str) -> None:
+    with pytest.raises(setup.SetupError, match="--proxy takes the address"):
+        setup.checked_proxy(given)
+
+
+def test_a_release_is_fetched_from_github_over_https_and_from_nowhere_else() -> None:
+    assert setup.from_github(setup.LATEST_RELEASE)
+    assert setup.from_github("https://objects.githubusercontent.com/some/file")
+    for elsewhere in (
+        "http://github.com/robert-patrick-texas/hirdir",
+        "https://github.com.example.net/x",
+        "https://notgithub.com/x",
+        "file:///etc/passwd",
+    ):
+        assert not setup.from_github(elsewhere), elsewhere
+        with pytest.raises(setup.SetupError):
+            setup._fetch(elsewhere, None, 10)
+    with pytest.raises(setup.SetupError, match="was not followed"):
+        setup._WithinGitHub().redirect_request(
+            None, None, 302, "Found", {}, "http://198.51.100.7/x"
+        )
+
+
+def test_github_out_of_reach_is_said_with_the_proxy_and_without_its_password(monkeypatch) -> None:
+    def refused(*_, **__):
+        raise setup.urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(setup.urllib.request.OpenerDirector, "open", refused)
+    with pytest.raises(setup.SetupError) as failure:
+        setup._fetch(setup.LATEST_RELEASE, "http://user:secret@proxy.example.com:2025", 10)
+    said = str(failure.value)
+    assert "through the proxy http://proxy.example.com:2025" in said
+    assert "secret" not in said
+    assert "--proxy" in said
+
+
+def test_after_an_upgrade_the_new_tool_reports_and_brings_the_settings_up_to_date(
+    etc: Path, monkeypatch, capsys
+) -> None:
+    etc.mkdir()
+    (etc / "config.toml").write_text(EDITED, encoding="utf-8")
+    serving = ["active"]
+
+    def run(command: list[str]) -> subprocess.CompletedProcess[str]:
+        if command[0] == setup.DPKG_QUERY:
+            return subprocess.CompletedProcess(command, 0, stdout="0.4.0", stderr="")
+        if command[0] == setup.HIRDIR:
+            return subprocess.CompletedProcess(command, 0, "schema revision: 0004\n", "")
+        return subprocess.CompletedProcess(command, 0, stdout=f"{serving[0]}\n", stderr="")
+
+    monkeypatch.setattr(setup, "_run", run)
+    assert setup.main(["--after-upgrade", "0.3.0"]) == 0
+    said = capsys.readouterr().out
+    assert "files.max_megabytes" in said
+    assert "hirdir 0.4.0 is installed, in place of 0.3.0, and is running." in said
+    assert "# max_megabytes = 20" in (etc / "config.toml").read_text(encoding="utf-8")
+    serving[0] = "failed"
+    assert setup.main(["--after-upgrade", "0.3.0"]) == 1
+    assert "does not check out" in capsys.readouterr().err
 
 
 def test_settings_and_upgrade_are_used_on_their_own() -> None:
@@ -703,6 +918,10 @@ def test_settings_and_upgrade_are_used_on_their_own() -> None:
         ["--settings", "--prefix", "/x"],
         ["--upgrade", "a.deb", "--settings"],
         ["--upgrade", "a.deb", "--remove"],
+        ["--check", "--upgrade"],
+        ["--proxy", "http://proxy.example.com:2025/"],
+        ["--renew", "--proxy", "http://proxy.example.com:2025/"],
+        ["--upgrade", "a.deb", "--proxy", "http://proxy.example.com:2025/"],
     ):
         with pytest.raises(SystemExit):
             setup._arguments(wrong)

@@ -54,7 +54,9 @@ A hold is never left in place silently.
 6. Commit, tag `v<version>`, push.
 7. `gh release create v<version> --notes-file docs/releases/v<version>.md` with
    `dist/hirdir_<version>_amd64.deb` and `dist/hirdir_<version>_amd64.deb.sha256`
-   attached. `make deb` writes both.
+   attached. `make deb` writes both. `hirdir-setup --upgrade` on every installation
+   looks for exactly these two names on the latest release, so a release without them
+   is one that no installation can fetch.
 
 Pushing to `main` publishes the documentation. Nothing else is automatic.
 

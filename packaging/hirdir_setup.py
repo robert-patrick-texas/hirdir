@@ -19,13 +19,22 @@ file does not have yet is put in, commented out at its default, and nothing that
 the file is changed. The package runs that too, at install and at each upgrade, so the
 file is never one that dpkg asks about.
 
-`--upgrade PACKAGE.deb` installs a newer package with apt, without a question to answer.
+`--check` asks GitHub whether a newer release of hirdir has been published. `--upgrade`
+downloads that release, compares it with its checksum and installs it with apt, without
+a question to answer; `--upgrade PACKAGE.deb` installs a package that is already on the
+host. `--proxy URL` sends the two requests to GitHub through a proxy.
+
+An upgrade is started by the hirdir-setup that is installed and finished by the one
+the new package brings: once apt is done, the old one runs the new one with
+`--after-upgrade`. So what a later version needs done at an upgrade is in that
+version, and nothing has to be fetched beside the package.
 """
 
 import argparse
 import contextlib
 import difflib
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -33,6 +42,9 @@ import sys
 import tempfile
 import time
 import tomllib
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +68,19 @@ SETTINGS = Path("/etc/hirdir/config.toml")
 SETTINGS_TEMPLATE = Path("/usr/share/hirdir/config.toml")
 SETTING_LINE = re.compile(r"^\s*(?:#\s?)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\S")
 TABLE_LINE = re.compile(r"^\s*\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$")
+# Where the releases of hirdir are published, and the hosts a release is fetched from:
+# GitHub's API names the files, and GitHub redirects a download to its file servers.
+LATEST_RELEASE = "https://api.github.com/repos/robert-patrick-texas/hirdir/releases/latest"
+RELEASE_HOSTS = ("github.com", "githubusercontent.com")
+DOWNLOADS = Path("/var/cache/hirdir")
+# The package that was installed before stays beside the new one, for the way back.
+PACKAGES_KEPT = 2
+LARGEST_PACKAGE = 500 * 1024 * 1024
+LARGEST_ANSWER = 4 * 1024 * 1024
+FETCH_SECONDS = 60
+LATEST = "latest"
+SELF = "/usr/sbin/hirdir-setup"
+HIRDIR = "/usr/bin/hirdir"
 APT_GET = "/usr/bin/apt-get"
 DPKG_DEB = "/usr/bin/dpkg-deb"
 DPKG_QUERY = "/usr/bin/dpkg-query"
@@ -932,35 +957,216 @@ def _field(package: Path, name: str) -> str:
     return _run([DPKG_DEB, "--field", str(package), name]).stdout.strip()
 
 
+# --- releases --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Release:
+    """A published release of hirdir: its version, and where its package is."""
+
+    version: str
+    package: str
+    package_url: str
+    checksum_url: str
+
+
+def checked_proxy(value: str | None) -> str | None:
+    """Return a proxy as urllib takes it, or refuse what is not the address of one."""
+    if not value:
+        return None
+    parts = urllib.parse.urlsplit(value)
+    try:
+        usable = parts.scheme in ("http", "https") and bool(parts.hostname) and parts.port != 0
+    except ValueError:
+        usable = False
+    if not usable or parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise SetupError(
+            "--proxy takes the address of a proxy, such as http://proxy.example.com:2025/"
+        )
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def shown_proxy(proxy: str) -> str:
+    """Return a proxy for a message: without the name and password it may carry."""
+    parts = urllib.parse.urlsplit(proxy)
+    host = parts.hostname or ""
+    return f"{parts.scheme}://{host}" + (f":{parts.port}" if parts.port else "")
+
+
+def from_github(url: str) -> bool:
+    """Say whether a URL is one a release may be fetched from: GitHub's, over HTTPS."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or ""
+    return parts.scheme == "https" and any(
+        host == known or host.endswith(f".{known}") for known in RELEASE_HOSTS
+    )
+
+
+class _WithinGitHub(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to another address of GitHub's, over HTTPS."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not from_github(newurl):
+            raise SetupError(
+                f"GitHub pointed to {newurl}, which is not GitHub's, so it was not followed"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch(url: str, proxy: str | None, limit: int) -> bytes:
+    """Fetch one file from GitHub, through the proxy when one is given."""
+    if not from_github(url):
+        raise SetupError(f"{url} is not an address of GitHub's, so it was not fetched")
+    handlers: list[urllib.request.BaseHandler] = [_WithinGitHub()]
+    if proxy:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    request = urllib.request.Request(  # noqa: S310 - HTTPS and GitHub only, checked above
+        url, headers={"User-Agent": "hirdir-setup", "Accept": "application/octet-stream"}
+    )
+    if url == LATEST_RELEASE:
+        request.add_header("Accept", "application/vnd.github+json")
+    through = f" through the proxy {shown_proxy(proxy)}" if proxy else ""
+    try:
+        with urllib.request.build_opener(*handlers).open(request, timeout=FETCH_SECONDS) as answer:
+            data = answer.read(limit + 1)
+    except urllib.error.HTTPError as error:
+        raise SetupError(
+            f"GitHub answered {error.code} {error.reason} for {url}{through}"
+        ) from None
+    except (urllib.error.URLError, OSError) as error:
+        reason = getattr(error, "reason", error)
+        raise SetupError(
+            f"GitHub could not be reached{through}: {reason}. Where the way out is through "
+            "a proxy, name it with --proxy, as in --proxy http://proxy.example.com:2025/"
+        ) from None
+    if len(data) > limit:
+        raise SetupError(f"{url} is larger than a release of hirdir can be, so it was not kept")
+    return data
+
+
+def release_of(document: object, architecture: str) -> Release:
+    """Read what GitHub says of a release: its version, its package and its checksum."""
+    if not isinstance(document, dict) or not isinstance(document.get("tag_name"), str):
+        raise SetupError("GitHub's answer names no release of hirdir")
+    version = document["tag_name"].removeprefix("v")
+    package = f"hirdir_{version}_{architecture}.deb"
+    assets = document.get("assets")
+    found = {
+        asset.get("name"): asset.get("browser_download_url")
+        for asset in (assets if isinstance(assets, list) else [])
+        if isinstance(asset, dict)
+    }
+    urls = [found.get(package), found.get(f"{package}.sha256")]
+    if not all(isinstance(url, str) and from_github(url) for url in urls):
+        raise SetupError(
+            f"release {version} of hirdir has no {package} with its .sha256 beside it, "
+            f"so there is nothing for this host ({architecture}) to install"
+        )
+    return Release(version, package, str(urls[0]), str(urls[1]))
+
+
+def latest_release(proxy: str | None) -> Release:
+    """Ask GitHub for the latest release of hirdir that is not a pre-release."""
+    try:
+        document = json.loads(_fetch(LATEST_RELEASE, proxy, LARGEST_ANSWER))
+    except ValueError:
+        raise SetupError("GitHub's answer could not be read") from None
+    architecture = _run([DPKG, "--print-architecture"]).stdout.strip() or "amd64"
+    return release_of(document, architecture)
+
+
+def _installed() -> str:
+    """Return the version of hirdir that dpkg has installed, or nothing."""
+    return _run([DPKG_QUERY, "--show", "--showformat", "${Version}", "hirdir"]).stdout.strip()
+
+
+def _older(one: str, other: str) -> bool:
+    """Say whether version one is older than the other, as dpkg orders versions."""
+    return _run([DPKG, "--compare-versions", one, "lt", other]).returncode == 0
+
+
+def _download(release: Release, proxy: str | None) -> Path:
+    """Fetch the package of a release and keep it only when it has its checksum."""
+    words = _fetch(release.checksum_url, proxy, LARGEST_ANSWER).decode("utf-8", "replace").split()
+    wanted = words[0].lower() if words else ""
+    if not re.fullmatch(r"[0-9a-f]{64}", wanted):
+        raise SetupError(f"the checksum of {release.package} could not be read")
+    data = _fetch(release.package_url, proxy, LARGEST_PACKAGE)
+    if hashlib.sha256(data).hexdigest() != wanted:
+        raise SetupError(
+            f"{release.package} as it arrived does not have the checksum published with it, "
+            "so it was not kept. Try again; if it happens again, do not install it."
+        )
+    DOWNLOADS.mkdir(mode=0o755, parents=True, exist_ok=True)
+    target = DOWNLOADS / release.package
+    arriving = target.with_name(f".{target.name}.part")
+    arriving.write_bytes(data)
+    arriving.chmod(0o644)
+    os.replace(arriving, target)
+    _write(target.with_name(target.name + ".sha256"), f"{wanted}  {release.package}\n")
+    kept = sorted(DOWNLOADS.glob("hirdir_*.deb"), key=lambda path: path.stat().st_mtime)
+    for old in kept[:-PACKAGES_KEPT]:
+        old.unlink()
+        old.with_name(old.name + ".sha256").unlink(missing_ok=True)
+    return target
+
+
+def _check(args: argparse.Namespace) -> int:
+    """Say which version is installed and which is the latest release."""
+    release = latest_release(checked_proxy(args.proxy))
+    installed = _installed()
+    if not installed:
+        print(f"hirdir is not installed. The latest release is {release.version}.")
+    elif _older(installed, release.version):
+        print(f"hirdir {installed} is installed. Release {release.version} is newer.")
+        print("To install it: sudo hirdir-setup --upgrade")
+    else:
+        print(f"hirdir {installed} is installed, and no newer release has been published.")
+    return 0
+
+
 def _upgrade(args: argparse.Namespace) -> int:
     """Install a newer package of hirdir with apt, with no question left to answer.
 
-    The package does the work of an upgrade itself: it backs the database up, brings the
-    schema, the settings file and the nginx snippet up to date, and starts the service
-    again. This checks that the file is what it should be and hands over to apt.
+    With no file named, the latest release is fetched from GitHub first. The package
+    does the work of an upgrade itself: it backs the database up, brings the schema,
+    the settings file and the nginx snippet up to date, and starts the service again.
+    This checks that the file is what it should be, has apt install it, and then runs
+    the hirdir-setup that the new package brought, for whatever that version wants done.
     """
-    package = Path(args.upgrade).resolve()
-    if not package.is_file():
-        raise SetupError(f"there is no file {package}")
+    installed = _installed()
+    if args.upgrade == LATEST:
+        proxy = checked_proxy(args.proxy)
+        release = latest_release(proxy)
+        if installed and not _older(installed, release.version):
+            print(f"hirdir {installed} is installed, and no newer release has been published.")
+            return 0
+        print(f"Release {release.version} of hirdir is being fetched from GitHub.")
+        package = _download(release, proxy)
+        print(f"{package} has the checksum published with it.")
+    else:
+        package = Path(args.upgrade).resolve()
+        if not package.is_file():
+            raise SetupError(f"there is no file {package}")
+        checksum = package.with_name(package.name + ".sha256")
+        if checksum.is_file():
+            wanted = checksum.read_text(encoding="utf-8").split()[0]
+            if hashlib.sha256(package.read_bytes()).hexdigest() != wanted:
+                raise SetupError(f"{package.name} does not have the checksum in {checksum.name}")
+            print(f"{package.name} has the checksum in {checksum.name}.")
+        else:
+            print(
+                f"There is no {checksum.name} beside the package, so its checksum was not compared."
+            )
     if _field(package, "Package") != "hirdir":
         raise SetupError(f"{package} is not a package of hirdir")
     new = _field(package, "Version")
-    installed = _run([DPKG_QUERY, "--show", "--showformat", "${Version}", "hirdir"]).stdout.strip()
-    older = subprocess.run([DPKG, "--compare-versions", new, "lt", installed], check=False)  # noqa: S603
-    if installed and older.returncode == 0:
+    if installed and _older(new, installed):
         raise SetupError(
             f"{package.name} is version {new}, older than the {installed} that is installed. "
             'Going back takes the steps in the documentation, under "Going back to the '
             'release before".'
         )
-    checksum = package.with_name(package.name + ".sha256")
-    if checksum.is_file():
-        wanted = checksum.read_text(encoding="utf-8").split()[0]
-        if hashlib.sha256(package.read_bytes()).hexdigest() != wanted:
-            raise SetupError(f"{package.name} does not have the checksum in {checksum.name}")
-        print(f"{package.name} has the checksum in {checksum.name}.")
-    else:
-        print(f"There is no {checksum.name} beside the package, so its checksum was not compared.")
     print(f"hirdir {installed or 'is not installed'} -> {new}")
     again = ["--reinstall"] if new == installed else []
     if again:
@@ -972,23 +1178,63 @@ def _upgrade(args: argparse.Namespace) -> int:
         print("Nothing was changed.")
         return 1
     sys.stdout.flush()
-    # apt takes over from here. This program is part of the package that is about to be
-    # replaced, so it does nothing more once apt has begun.
-    os.execve(  # noqa: S606 - a fixed program with the package's own path
+    command = [
         APT_GET,
-        [
-            APT_GET,
-            "install",
-            "--yes",
-            *again,
-            "-o",
-            "Dpkg::Options::=--force-confdef",
-            "-o",
-            "Dpkg::Options::=--force-confold",
-            str(package),
-        ],
-        {**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+        "install",
+        "--yes",
+        *again,
+        "-o",
+        "Dpkg::Options::=--force-confdef",
+        "-o",
+        "Dpkg::Options::=--force-confold",
+        str(package),
+    ]
+    done = subprocess.run(  # noqa: S603 - a fixed program and a package checked above
+        command, env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"}, check=False
     )
+    if done.returncode != 0:
+        raise SetupError(
+            f"apt did not install {package.name}: it exited with {done.returncode}, and what "
+            "it said is above. If the upgrade stopped at the database, the message of the "
+            "package says where the backup is and how to go back."
+        )
+    # The package has replaced this program and the interpreter it runs on. What is
+    # left to do is the new version's to know, so the new hirdir-setup is run for it.
+    os.execv(SELF, [SELF, "--after-upgrade", installed or "none"])  # noqa: S606
+
+
+def _after_upgrade(args: argparse.Namespace) -> int:
+    """Finish an upgrade that an earlier hirdir-setup began, as this version wants it.
+
+    The package's own scripts have done the work that every upgrade needs. This is the
+    place for what one version wants done once, and for the report of how it went.
+    """
+    was, now = args.after_upgrade, _installed()
+    try:
+        if SETTINGS_TEMPLATE.is_file() and SETTINGS.is_file():
+            before = SETTINGS.read_text(encoding="utf-8")
+            _, lacking = with_new_settings(before, SETTINGS_TEMPLATE.read_text(encoding="utf-8"))
+            if lacking:
+                _settings(argparse.Namespace(yes=True))
+    except (SetupError, tomllib.TOMLDecodeError) as error:
+        print(f"hirdir-setup: {SETTINGS} was left as it is: {error}", file=sys.stderr)
+    checked = _run([HIRDIR, "admin", "check"])
+    print(checked.stdout, end="")
+    serving = _run([SYSTEMCTL, "is-active", "hirdir.service"]).stdout.strip() or "unknown"
+    print(f"hirdir.service: {serving}")
+    notes = Path(f"/usr/share/doc/hirdir/docs/releases/v{now}.html")
+    if checked.returncode != 0 or serving != "active":
+        print(
+            f"hirdir-setup: hirdir {now} is installed, and it does not check out as it "
+            "should: see above, and `journalctl -u hirdir`.",
+            file=sys.stderr,
+        )
+        return 1
+    came_from = "" if was in ("none", now) else f", in place of {was}"
+    print(f"hirdir {now} is installed{came_from}, and is running.")
+    if notes.is_file():
+        print(f"What is new in it: {notes}")
+    return 0
 
 
 def _add(args: argparse.Namespace) -> int:
@@ -1051,10 +1297,25 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "their defaults, changing nothing it sets; the package does this itself too",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="ask GitHub whether a newer release of hirdir has been published",
+    )
+    parser.add_argument(
         "--upgrade",
         metavar="PACKAGE.deb",
-        help="install this newer package of hirdir with apt, with no question to answer",
+        nargs="?",
+        const=LATEST,
+        help="fetch the latest release from GitHub and install it with apt, with no "
+        "question to answer; or install the package named, which is already on this host",
     )
+    parser.add_argument(
+        "--proxy",
+        metavar="URL",
+        help="with --check and --upgrade: reach GitHub through this proxy, such as "
+        "http://proxy.example.com:2025/",
+    )
+    parser.add_argument("--after-upgrade", metavar="VERSION", help=argparse.SUPPRESS)
     parser.add_argument(
         "--no-reload",
         action="store_true",
@@ -1063,10 +1324,16 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.remove and (args.site or args.prefix or args.self_signed or args.renew):
         parser.error("--remove is used on its own, or with --yes")
-    alone = [name for name in ("settings", "upgrade") if getattr(args, name)]
+    alone = [
+        name for name in ("settings", "check", "upgrade", "after_upgrade") if getattr(args, name)
+    ]
     others = args.site or args.prefix or args.self_signed or args.renew or args.remove
     if alone and (len(alone) > 1 or others or args.no_reload):
-        parser.error(f"--{alone[0]} is used on its own, or with --yes")
+        parser.error(f"--{alone[0].replace('_', '-')} is used on its own, or with --yes")
+    if args.proxy and not (args.check or args.upgrade):
+        parser.error("--proxy goes with --check or --upgrade")
+    if args.proxy and args.upgrade not in (None, LATEST):
+        parser.error("--proxy is for a release fetched from GitHub, not for a package named")
     if args.renew and (args.site or args.self_signed):
         parser.error("--renew is used on its own, or with --prefix, --no-reload and --yes")
     if args.no_reload and not args.renew:
@@ -1087,8 +1354,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _remove(args)
         if args.settings:
             return _settings(args)
+        if args.check:
+            return _check(args)
         if args.upgrade:
             return _upgrade(args)
+        if args.after_upgrade:
+            return _after_upgrade(args)
         return _renew(args) if args.renew else _add(args)
     except SetupError as error:
         # What was shown so far comes first, also when the output is not a terminal.
