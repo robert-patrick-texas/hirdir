@@ -138,6 +138,8 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
       id: "vendor_hid",
       header: "Vendor HID",
       kind: "reference",
+      // A file names a vendor by its name: no export has this column.
+      column: null,
       value: (entry) => entry.vendor_hid,
       mono: true,
       hide: true,
@@ -278,6 +280,7 @@ export function Catalog() {
           key={startFilter ?? ""}
           id="catalog"
           noun={["catalog entry", "catalog entries"]}
+          entity="catalog_entries"
           columns={columns}
           load={(request, signal) =>
             api.request("post", "/api/v1/catalog-entries/query", {

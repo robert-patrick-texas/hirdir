@@ -5,6 +5,11 @@
 // component turns that into the server's filter grammar. The reader's column layout and
 // last filter are remembered in localStorage.
 //
+// Rows are selected whole: one, a range, several, or all that the filter keeps. "All"
+// is never a list of rows: it is shown as a count and sent to the server as the filter.
+// Copy and Export are one export of the rows chosen, with the grid's sort and columns:
+// to the clipboard as tab-separated text, or to a file.
+//
 // Content security policy: the grid is run with `theme: "legacy"`, which makes it use
 // the stylesheets bundled below and inject no <style> element of its own, so the policy
 // needs no style allowance. No string expression is given to the grid anywhere, so it
@@ -39,18 +44,31 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import { api } from "../../api";
 import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
 import { routerBasename } from "../../lib/base";
+import { ClipboardRefused, copyText } from "../../lib/clipboard";
 import { all, parseShort } from "../../lib/filter";
 import { plural } from "../../lib/format";
-import { gridFilter, gridSort, type ListRequest } from "../../lib/gridQuery";
+import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
 import { browserStorage } from "../../lib/session";
+import {
+  type Chosen,
+  csvToClipboard,
+  type Entity,
+  exportColumns,
+  exportName,
+  exportRequest,
+  type FileFormat,
+  type GridView,
+} from "../../lib/transfer";
 import { CheckField, TextField } from "../Field";
-import { Problem } from "../Problem";
+import { Notice, Problem } from "../Problem";
 import { columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import { saveFile } from "./save";
 
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -95,6 +113,10 @@ export interface DataGridProps<T> {
   switches?: { archived?: string; drafts?: string };
   /** Change it to read the list again, as after a record was created. */
   reloadKey?: number;
+  /** The kind of record the rows are, as an export names it. With it, Copy and Export are offered. */
+  entity?: Entity;
+  /** Open the form that changes many rows at once. With it, Bulk edit is offered. */
+  onBulkEdit?: (rows: Chosen, view: GridView) => void;
   /** More to put in the toolbar, such as the button for a new record. */
   children?: ReactNode;
 }
@@ -127,6 +149,7 @@ function layoutOf(
 
 export function DataGrid<T>(props: DataGridProps<T>) {
   const { id, noun, columns, shortFilter, switches, reloadKey = 0, children } = props;
+  const { entity, onBulkEdit } = props;
   const { user } = useAuth();
   const navigate = useNavigate();
   const host = useRef<HTMLDivElement>(null);
@@ -152,8 +175,23 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   );
   const [total, setTotal] = useState<number | null>(null);
   const [selected, setSelected] = useState(0);
+  // Every row the filter keeps is chosen, whether the grid has read it or not.
+  const [allMatching, setAllMatching] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [turn, setTurn] = useState(0);
+  // Copy and Export: which is under way, how it went, and text the clipboard refused.
+  const [working, setWorking] = useState<"" | "copy" | FileFormat>("");
+  const [done, setDone] = useState("");
+  const [failure, setFailure] = useState<ApiError | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
+  const refusedBox = useRef<HTMLTextAreaElement>(null);
+
+  // Text the clipboard refused is shown selected, ready to be copied by hand.
+  useEffect(() => {
+    if (refused === null) return;
+    refusedBox.current?.focus();
+    refusedBox.current?.select();
+  }, [refused]);
 
   /** Remember the layout as the grid has it now, with the filter box and the switches. */
   function saveLayout(api: GridApi<T>, view: View) {
@@ -207,10 +245,17 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       rowClassRules: { "row-dim": (params) => params.data !== undefined && isDimmed(params.data) },
       suppressDragLeaveHidesColumns: true,
       tooltipShowDelay: 300,
-      onSelectionChanged: (event) => setSelected(event.api.getSelectedNodes().length),
+      onSelectionChanged: (event) => {
+        const count = event.api.getSelectedNodes().length;
+        setSelected(count);
+        // Choosing particular rows takes the place of "all that match".
+        if (count > 0) setAllMatching(false);
+      },
       onSortChanged: (event) => remember(event.api),
       onFilterChanged: (event) => {
+        // Another filter keeps other rows: what was chosen under the last one is let go.
         event.api.deselectAll();
+        setAllMatching(false);
         remember(event.api);
       },
       onColumnVisible: (event) => remember(event.api),
@@ -247,6 +292,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     if (!grid) return;
     const controller = new AbortController();
     grid.deselectAll();
+    setAllMatching(false);
     grid.setGridOption("datasource", {
       getRows: (params) => {
         const request: ListRequest = {
@@ -335,8 +381,109 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     saveLayout(grid, { short: "", includeArchived: false, includeDrafts: false });
   }
 
+  /** What the grid shows now, as the server takes it: the filter, the sort, the switches. */
+  function viewOf(api: GridApi<T>): GridView {
+    return {
+      filter: all(shortNode, gridFilter(query, api.getFilterModel())),
+      sort: gridSort(query, sortModelOf(api.getColumnState())),
+      include_archived: includeArchived,
+      include_drafts: includeDrafts,
+    };
+  }
+
+  /** The rows chosen: all that match, as a count, or the ones selected, by HID. */
+  function chosenOf(api: GridApi<T>): Chosen | null {
+    if (allMatching) return total ? { kind: "all", count: total } : null;
+    const hids: string[] = [];
+    for (const node of api.getSelectedNodes()) {
+      if (node.data !== undefined) hids.push(props.rowId(node.data));
+    }
+    return hids.length > 0 ? { kind: "rows", hids } : null;
+  }
+
+  function selectAllMatching() {
+    grid?.deselectAll();
+    setAllMatching(true);
+  }
+
+  function clearSelection() {
+    grid?.deselectAll();
+    setAllMatching(false);
+  }
+
+  function began(what: "copy" | FileFormat) {
+    setWorking(what);
+    setDone("");
+    setFailure(null);
+    setRefused(null);
+  }
+
+  /**
+   * Put the chosen rows on the clipboard, as tab-separated text with a header row. The
+   * text is the CSV export of those rows, so it holds what an exported file holds.
+   */
+  async function copy() {
+    const chosen = grid && entity ? chosenOf(grid) : null;
+    if (!grid || !entity || !chosen) return;
+    const body = exportRequest(
+      entity,
+      "csv",
+      viewOf(grid),
+      exportColumns(columns, grid.getColumnState()),
+      chosen,
+    );
+    began("copy");
+    let count = 0;
+    const text = api
+      .download("/api/v1/exports", { body })
+      .then((file) => file.blob.text())
+      .then((csv) => {
+        const made = csvToClipboard(csv);
+        count = made.count;
+        return made.text;
+      });
+    try {
+      await copyText(text);
+      setDone(`Copied ${plural(count, noun[0], noun[1])} to the clipboard, with a header row.`);
+    } catch (thrown) {
+      if (thrown instanceof ClipboardRefused) {
+        setRefused(thrown.text);
+      } else setFailure(toApiError(thrown));
+    } finally {
+      setWorking("");
+    }
+  }
+
+  /** Save the chosen rows as a file, or every row the filter keeps when none is chosen. */
+  async function exportAs(format: FileFormat) {
+    if (!grid || !entity) return;
+    const chosen = chosenOf(grid) ?? { kind: "all", count: total ?? 0 };
+    const body = exportRequest(
+      entity,
+      format,
+      viewOf(grid),
+      exportColumns(columns, grid.getColumnState()),
+      chosen,
+    );
+    began(format);
+    try {
+      // Fetched like everything else, with the bearer token, and saved from memory:
+      // there is no cookie for a plain link to the file to be allowed by.
+      const file = await api.download("/api/v1/exports", { body });
+      const name = file.fileName ?? exportName(entity, format);
+      saveFile(file.blob, name);
+      setDone(`Exported to ${name}.`);
+    } catch (thrown) {
+      setFailure(toApiError(thrown));
+    } finally {
+      setWorking("");
+    }
+  }
+
   const count =
     total === null ? "" : total === 0 ? `No ${noun[1]}` : plural(total, noun[0], noun[1]);
+  const some = allMatching || selected > 0;
+  const busy = working !== "";
 
   return (
     <div className="grid-page">
@@ -410,16 +557,101 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         </p>
       )}
 
-      <p className="grid-status" role="status">
-        <span data-testid="grid-total">{count}</span>
-        {selected > 0 && <span data-testid="grid-selected"> · {selected} selected</span>}
-      </p>
-      <div ref={host} className="grid-host ag-theme-quartz" data-testid={`grid-${id}`} />
+      <Problem error={failure} />
+      <Notice text={done} />
+      {refused !== null && (
+        <section className="panel" aria-labelledby={`grid-${id}-refused`}>
+          <h2 id={`grid-${id}-refused`}>Copy by hand</h2>
+          <p>
+            The browser did not let this page write to the clipboard. The rows are selected below:
+            copy them with Ctrl+C.
+          </p>
+          <textarea
+            ref={refusedBox}
+            className="mono grid-copy-text"
+            aria-labelledby={`grid-${id}-refused`}
+            readOnly
+            rows={6}
+            value={refused}
+            onFocus={(event) => event.target.select()}
+          />
+          <p className="actions">
+            <button type="button" onClick={() => setRefused(null)}>
+              Done
+            </button>
+          </p>
+        </section>
+      )}
+
+      <div className="grid-selection">
+        <p className="grid-status" role="status">
+          <span data-testid="grid-total">{count}</span>
+          {allMatching && total !== null && (
+            <span data-testid="grid-selected">
+              {" "}
+              · all {plural(total, noun[0], noun[1])} that match the filter selected
+            </span>
+          )}
+          {!allMatching && selected > 0 && (
+            <span data-testid="grid-selected"> · {selected} selected</span>
+          )}
+        </p>
+        <fieldset className="grid-selected-actions" disabled={!grid}>
+          <legend className="visually-hidden">The selected rows</legend>
+          {!allMatching && (
+            <button type="button" onClick={selectAllMatching} disabled={!total}>
+              Select all that match
+            </button>
+          )}
+          {some && (
+            <button type="button" onClick={clearSelection}>
+              Clear selection
+            </button>
+          )}
+          {entity && (
+            <>
+              <button type="button" onClick={copy} disabled={!some || busy}>
+                Copy
+              </button>
+              <button type="button" onClick={() => exportAs("csv")} disabled={!total || busy}>
+                Export CSV
+              </button>
+              <button type="button" onClick={() => exportAs("json")} disabled={!total || busy}>
+                Export JSON
+              </button>
+            </>
+          )}
+          {onBulkEdit && (
+            <button
+              type="button"
+              disabled={!some || busy}
+              onClick={() => {
+                const chosen = grid ? chosenOf(grid) : null;
+                if (grid && chosen) onBulkEdit(chosen, viewOf(grid));
+              }}
+            >
+              Bulk edit
+            </button>
+          )}
+          {busy && (
+            <span role="status" className="muted loading-late">
+              Working…
+            </span>
+          )}
+        </fieldset>
+      </div>
+      <div
+        ref={host}
+        className={`grid-host ag-theme-quartz${allMatching ? " grid-all" : ""}`}
+        data-testid={`grid-${id}`}
+      />
       <p className="hint">
         Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
         it, with Shift for a range and Ctrl for several. A double click opens the row. With the
         keyboard: Enter on a heading sorts, Ctrl+Enter opens its filter, Space selects a row and
         Enter opens it.
+        {entity &&
+          " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
       </p>
     </div>
   );

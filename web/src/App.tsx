@@ -14,6 +14,7 @@ const pages = {
   catalog: () => import("./pages/Catalog"),
   choices: () => import("./pages/Choices"),
   groups: () => import("./pages/Groups"),
+  import: () => import("./pages/Import"),
   itemDetail: () => import("./pages/ItemDetail"),
   items: () => import("./pages/Items"),
   lifecycleRules: () => import("./pages/LifecycleRules"),
@@ -34,6 +35,7 @@ const CatalogEntryDetail = lazy(() =>
 const Choices = lazy(() => pages.choices().then((page) => ({ default: page.Choices })));
 const GroupDetail = lazy(() => pages.groups().then((page) => ({ default: page.GroupDetail })));
 const Groups = lazy(() => pages.groups().then((page) => ({ default: page.Groups })));
+const Import = lazy(() => pages.import().then((page) => ({ default: page.Import })));
 const ItemDetail = lazy(() => pages.itemDetail().then((page) => ({ default: page.ItemDetail })));
 const Items = lazy(() => pages.items().then((page) => ({ default: page.Items })));
 const LifecycleRules = lazy(() =>
@@ -148,6 +150,14 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <OwnerDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="import/:hid?"
+              element={
+                <RequireRole needs="viewer">
+                  <Import />
                 </RequireRole>
               }
             />

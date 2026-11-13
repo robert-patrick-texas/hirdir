@@ -10,6 +10,7 @@ import { Time } from "../components/Time";
 import { formatTime } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad, useTitle } from "../lib/hooks";
+import { optionLabel, REVIEW_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
 
@@ -36,6 +37,15 @@ const COLUMNS: GridColumn<Vendor>[] = [
   },
   { id: "notes", header: "Notes", kind: "text", value: (vendor) => vendor.notes, width: 360 },
   {
+    // An import that had to create a vendor leaves it unreviewed, for somebody to look at.
+    id: "review_status",
+    header: "Review",
+    kind: "choice",
+    value: (vendor) => optionLabel(REVIEW_STATUSES, vendor.review_status),
+    choices: REVIEW_STATUSES,
+    width: 130,
+  },
+  {
     id: "updated_at",
     header: "Changed",
     kind: "timestamp",
@@ -61,6 +71,7 @@ const SPECS: FieldSpec[] = [
     hint: "Other spellings accepted on import, one to a line",
   },
   { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
+  { name: "review_status", label: "Review status", kind: "choice", options: REVIEW_STATUSES },
 ];
 
 /** Vendors: manufacturers and support providers. */
@@ -77,6 +88,7 @@ export function Vendors() {
         <CreateForm<Schemas["VendorCreate"], Vendor>
           title="New vendor"
           specs={SPECS}
+          start={{ review_status: "reviewed" }}
           create={(body) => api.request("post", "/api/v1/vendors", { body })}
           onCreated={(vendor) => navigate(`/vendors/${encodeURIComponent(vendor.hid)}`)}
           onCancel={() => setAdding(false)}
@@ -86,6 +98,7 @@ export function Vendors() {
       <DataGrid<Vendor>
         id="vendors"
         noun={["vendor", "vendors"]}
+        entity="vendors"
         columns={COLUMNS}
         load={(request, signal) =>
           api.request("get", "/api/v1/vendors", { query: queryParams(request), signal })
@@ -119,7 +132,10 @@ export function VendorDetail() {
       <p className="crumbs">
         <Link to="/vendors">Vendors</Link>
       </p>
-      <h1>{record ? record.name : "Vendor"}</h1>
+      <h1>
+        {record ? record.name : "Vendor"}
+        {record?.review_status === "unreviewed" && <span className="badge">Unreviewed</span>}
+      </h1>
       <Problem error={vendor.error} />
       <Notice text={done} />
       {vendor.loading && !record && <p role="status">Loading…</p>}
@@ -137,6 +153,10 @@ export function VendorDetail() {
             <dd>{record.aliases.join(", ") || <span className="muted">—</span>}</dd>
             <dt>Notes</dt>
             <dd>{record.notes || <span className="muted">—</span>}</dd>
+            <dt>Review status</dt>
+            <dd data-testid="review-status">
+              {optionLabel(REVIEW_STATUSES, record.review_status)}
+            </dd>
             <dt>Changed</dt>
             <dd>
               <Time at={record.updated_at} />

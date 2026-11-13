@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { memoryStorage, SESSION_KEY, SessionStore } from "../lib/session";
-import { ApiError, type ClientDeps, createClient } from "./client";
+import { ApiError, type ClientDeps, createClient, fileNameOf, type Schemas } from "./client";
 
 const BASE = "https://inventory.example/hirdir/";
 const LATER = "2999-01-01T00:00:00Z";
@@ -294,5 +294,179 @@ describe("no answer", () => {
       client.request("get", "/api/v1/about", { signal: controller.signal }),
     );
     expect(error.aborted).toBe(true);
+  });
+});
+
+describe("upload", () => {
+  const preview = { job: { hid: "j-1" }, rows: [] };
+
+  it("sends the file itself as the body, under its own type, with the rest in the URL", async () => {
+    const { client, fetch } = setup(() => json(201, preview));
+    const file = new Blob(["hid,label\n,lab\n"], { type: "text/csv" });
+    const answer = await client.upload("/api/v1/imports/preview", {
+      file,
+      type: "text/csv",
+      query: { entity: "tags", mode: "create", file_name: "tags.csv" },
+      idempotencyKey: "key-1",
+    });
+    expect(answer.job.hid).toBe("j-1");
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe(
+      "https://inventory.example/hirdir/api/v1/imports/preview?entity=tags&mode=create&file_name=tags.csv",
+    );
+    expect(init?.method).toBe("POST");
+    // The file, not a form that holds it.
+    expect(init?.body).toBe(file);
+    expect(init?.credentials).toBe("omit");
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer token-1",
+      "Content-Type": "text/csv",
+      "Idempotency-Key": "key-1",
+      "X-Hirdir-Client": "web",
+    });
+  });
+
+  it("sends a JSON file as it is, and no key when none is given", async () => {
+    const { client, fetch } = setup(() => json(201, preview));
+    const file = new Blob(['{"schema": "hirdir/1"}']);
+    await client.upload("/api/v1/imports/preview", { file, type: "application/json" });
+    const init = fetch.mock.calls[0]?.[1];
+    expect(init?.body).toBe(file);
+    expect(init?.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect(init?.headers).not.toHaveProperty("Idempotency-Key");
+  });
+
+  it("throws a file refused whole, and one that is too large, with the server's words", async () => {
+    const refused = setup(() =>
+      problem(422, "Invalid input", "the file is not acceptable", [
+        { field: "column", message: "'rack_colour' is not a column of items" },
+      ]),
+    );
+    const error = await thrownBy(() =>
+      refused.client.upload("/api/v1/imports/preview", { file: new Blob(["x"]), type: "text/csv" }),
+    );
+    expect(error.status).toBe(422);
+    expect(error.fields).toEqual({ column: "'rack_colour' is not a column of items" });
+    const large = setup(() => problem(413, "Too large", "a file is at most 20 MB"));
+    const tooLarge = await thrownBy(() =>
+      large.client.upload("/api/v1/imports/preview", { file: new Blob(["x"]), type: "text/csv" }),
+    );
+    expect(tooLarge.status).toBe(413);
+    expect(tooLarge.message).toBe("a file is at most 20 MB");
+  });
+});
+
+describe("requests with an idempotency key", () => {
+  it("carry it as a header", async () => {
+    const { client, fetch } = setup(() => json(200, { hid: "j-1", status: "applied" }));
+    await client.request("post", "/api/v1/imports/{hid}/apply", {
+      path: { hid: "j-1" },
+      query: { skip_rejected: true },
+      idempotencyKey: "key-2",
+    });
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe(
+      "https://inventory.example/hirdir/api/v1/imports/j-1/apply?skip_rejected=true",
+    );
+    expect(init?.headers).toMatchObject({ "Idempotency-Key": "key-2" });
+  });
+
+  it("throw the refusal of a stale preview with the rows it names", async () => {
+    const { client } = setup(() =>
+      problem(409, "Preview out of date", "1 of the rows changed after the preview was made", [
+        { field: "rows.2", message: "row 2, site2-sw-access-02: changed since the preview" },
+      ]),
+    );
+    const error = await thrownBy(() =>
+      client.request("post", "/api/v1/items/bulk-update/{hid}/apply", { path: { hid: "j-1" } }),
+    );
+    expect(error.status).toBe(409);
+    expect(error.stale).toBe(false);
+    expect(error.fields).toEqual({
+      "rows.2": "row 2, site2-sw-access-02: changed since the preview",
+    });
+  });
+});
+
+describe("download", () => {
+  const body: Schemas["ExportRequest"] = {
+    entity: "items",
+    format: "csv",
+    columns: ["hid", "name"],
+  };
+
+  it("fetches a file with the bearer token and no cookie, and hands over its content and name", async () => {
+    const { client, fetch } = setup(
+      () =>
+        new Response("hid,name\ni-1,site2-sw-access-01\n", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="hirdir-items-20261113T163125-0500.csv"',
+          },
+        }),
+    );
+    const file = await client.download("/api/v1/exports", { body });
+    expect(file.fileName).toBe("hirdir-items-20261113T163125-0500.csv");
+    expect(await file.blob.text()).toBe("hid,name\ni-1,site2-sw-access-01\n");
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe("https://inventory.example/hirdir/api/v1/exports");
+    expect(init?.method).toBe("POST");
+    expect(init?.credentials).toBe("omit");
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer token-1",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(init?.body))).toEqual(body);
+  });
+
+  it("does not read a JSON export as an answer: it is a file like the other", async () => {
+    const text = '{"schema": "hirdir/1", "entity": "items", "mode": "upsert", "records": [\n]}\n';
+    const { client } = setup(
+      () => new Response(text, { status: 200, headers: { "Content-Type": "application/json" } }),
+    );
+    const file = await client.download("/api/v1/exports", { body: { ...body, format: "json" } });
+    expect(await file.blob.text()).toBe(text);
+    expect(file.fileName).toBeNull();
+  });
+
+  it("throws the problem when the export is refused", async () => {
+    const { client } = setup(() =>
+      problem(422, "Invalid input", "a column is not known", [
+        { field: "columns", message: "rack is not a column of items" },
+      ]),
+    );
+    const error = await thrownBy(() => client.download("/api/v1/exports", { body }));
+    expect(error.status).toBe(422);
+    expect(error.fields).toEqual({ columns: "rack is not a column of items" });
+  });
+
+  it("ends the session on a 401, as any request does", async () => {
+    const { client, sessions } = setup(() => problem(401, "Not signed in", "sign in to continue"));
+    await thrownBy(() => client.download("/api/v1/exports", { body }));
+    expect(sessions.get()).toBeNull();
+  });
+});
+
+describe("fileNameOf", () => {
+  it("reads the name from Content-Disposition", () => {
+    expect(fileNameOf('attachment; filename="hirdir-items.csv"')).toBe("hirdir-items.csv");
+    expect(fileNameOf("attachment; filename=hirdir-items.json")).toBe("hirdir-items.json");
+    expect(fileNameOf('attachment; filename="a \\"quoted\\" name.csv"')).toBe(
+      'a "quoted" name.csv',
+    );
+    expect(fileNameOf("attachment; filename*=UTF-8''r%C3%A9seau.csv")).toBe("réseau.csv");
+  });
+
+  it("is null when no name is given", () => {
+    expect(fileNameOf(null)).toBeNull();
+    expect(fileNameOf("attachment")).toBeNull();
+    expect(fileNameOf('attachment; filename=""')).toBeNull();
+  });
+
+  it("is only ever a name, never a path", () => {
+    expect(fileNameOf('attachment; filename="../../etc/items.csv"')).toBe("items.csv");
+    expect(fileNameOf('attachment; filename="C:\\\\exports\\\\items.csv"')).toBe("items.csv");
+    expect(fileNameOf('attachment; filename=".."')).toBeNull();
   });
 });

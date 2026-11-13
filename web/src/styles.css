@@ -782,8 +782,39 @@ main:has(.grid-page) {
 
 .grid-status {
   min-height: 1.45em;
-  margin: 0 0 0.25rem;
+  margin: 0;
   color: var(--muted);
+}
+
+/* The count of rows, and what can be done with the ones selected. */
+.grid-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 0.35rem;
+}
+
+.grid-selected-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.grid-selected-actions button {
+  padding: 0.15rem 0.6rem;
+}
+
+.grid-copy-text {
+  width: 100%;
+  max-width: none;
+  white-space: pre;
 }
 
 .grid-host {
@@ -835,6 +866,11 @@ main:has(.grid-page) {
   outline-offset: -2px;
 }
 
+/* All that match the filter are selected: every row is shown as a selected row is. */
+.grid-host.grid-all .ag-row {
+  background-color: var(--info-surface);
+}
+
 /* Drafts, and retired and archived records, when they are asked for. */
 .grid-host .row-dim,
 .grid-host .row-dim a {
@@ -865,6 +901,82 @@ main:has(.grid-page) {
   align-items: baseline;
   padding: 0.1rem 0;
   white-space: nowrap;
+}
+
+/* --- previews: an import, a bulk edit --------------------------------------------- */
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.counts > div {
+  min-width: 7rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.counts dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.counts dd {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.preview-rows {
+  overflow-wrap: anywhere;
+}
+
+.outcome {
+  font-weight: 600;
+}
+
+.outcome-unchanged {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.outcome-rejected,
+.preview-rows .reason {
+  color: var(--danger);
+}
+
+.preview-rows tr[data-stale] {
+  background: var(--danger-surface);
+}
+
+tr[aria-current="true"] {
+  background: var(--info-surface);
+}
+
+.apply-preview {
+  margin: 0.75rem 0;
+}
+
+fieldset.bulk-line {
+  max-width: none;
+  margin: 0 0 0.75rem;
+}
+
+.bulk-line .actions {
+  align-items: center;
+  margin: 0.5rem 0 0;
+}
+
+.bulk-line .field-check {
+  margin: 0;
+}
+
+input[type="file"] {
+  max-width: 100%;
 }
 
 /* A message that waits before it shows, so that a short wait shows nothing at all. */

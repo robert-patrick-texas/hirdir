@@ -48,6 +48,9 @@ export function Shell() {
                   <NavLink to="/owners">Owners</NavLink>
                 </li>
                 <li>
+                  <NavLink to="/import">Import</NavLink>
+                </li>
+                <li>
                   <NavLink to="/audit">Audit</NavLink>
                 </li>
                 <li>

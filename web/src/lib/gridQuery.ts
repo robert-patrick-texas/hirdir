@@ -192,6 +192,23 @@ export function gridSort(columns: readonly QueryColumn[], model: unknown): strin
   return sort;
 }
 
+/**
+ * The grid's sort as a list of columns, read from the state of its columns: the same
+ * list the grid hands over when it asks for rows.
+ */
+export function sortModelOf(
+  state: ReadonlyArray<{ colId: string; sort?: unknown; sortIndex?: number | null | undefined }>,
+): Array<{ colId: string; sort: "asc" | "desc" }> {
+  return state
+    .filter((column) => column.sort === "asc" || column.sort === "desc")
+    .map((column, place) => ({ column, place }))
+    .sort(
+      (one, other) =>
+        (one.column.sortIndex ?? 0) - (other.column.sortIndex ?? 0) || one.place - other.place,
+    )
+    .map(({ column }) => ({ colId: column.colId, sort: column.sort as "asc" | "desc" }));
+}
+
 /** One page of a list, as every list route takes it. */
 export interface ListRequest {
   filter: FilterNode | null;

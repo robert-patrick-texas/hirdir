@@ -106,10 +106,10 @@ function sameSet(one: readonly string[], other: readonly string[]): boolean {
   return other.every((entry) => have.has(entry));
 }
 
-type Read = { value: unknown } | { error: string };
+export type Read = { value: unknown } | { error: string };
 
-/** What a form field holds, in the form the server takes it. */
-function read(spec: FieldSpec, value: FormValue | undefined): Read {
+/** What a form field holds, in the form the server takes it. A blank is null. */
+export function read(spec: FieldSpec, value: FormValue | undefined): Read {
   switch (spec.kind) {
     case "boolean":
       return { value: value === true };

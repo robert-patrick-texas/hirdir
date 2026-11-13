@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { BulkEdit } from "../components/BulkEdit";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Problem } from "../components/Problem";
@@ -15,6 +16,7 @@ import { useChoices, useEntryOptions, useOwnerOptions, useRules, useTags } from 
 import { CATALOG_KINDS, choiceFilterOptions, choiceLabel, RECORD_STATUSES } from "../lib/options";
 import type { FieldSpec, Option } from "../lib/patch";
 import { allows } from "../lib/roles";
+import type { Chosen, GridView } from "../lib/transfer";
 
 type Item = Schemas["ItemOut"];
 type Choice = Schemas["ChoiceOut"];
@@ -261,6 +263,11 @@ export function Items() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
+  // The rows a bulk edit is for, as they were chosen when its form was opened.
+  const [bulk, setBulk] = useState<{ rows: Chosen; view: GridView; turn: number } | null>(null);
+  const [bulkTurn, setBulkTurn] = useState(0);
+  const [reloads, setReloads] = useState(0);
+  const mayChange = allows(user.role, "inventory");
   const choices = useChoices();
   const rules = useRules();
   const ready = !choices.loading && !rules.loading;
@@ -278,12 +285,34 @@ export function Items() {
           onCreated={(item) => navigate(`/items/${encodeURIComponent(item.hid)}`)}
         />
       )}
+      {bulk && (
+        <BulkEdit
+          key={bulk.turn}
+          rows={bulk.rows}
+          view={bulk.view}
+          states={states}
+          choices={choices.data}
+          onApplied={() => setReloads((count) => count + 1)}
+          onClose={() => setBulk(null)}
+        />
+      )}
       {!ready && <p role="status">Loading…</p>}
       {ready && (
         <DataGrid<Item>
           key={startFilter ?? ""}
           id="items"
           noun={["item", "items"]}
+          entity="items"
+          reloadKey={reloads}
+          {...(mayChange
+            ? {
+                onBulkEdit: (rows: Chosen, view: GridView) => {
+                  setAdding(false);
+                  setBulk({ rows, view, turn: bulkTurn });
+                  setBulkTurn((turn) => turn + 1);
+                },
+              }
+            : {})}
           columns={columns}
           load={(request, signal) =>
             api.request("post", "/api/v1/items/query", { body: queryBody(request), signal })
@@ -295,7 +324,7 @@ export function Items() {
           startFilter={startFilter}
           switches={{ archived: "Include archived", drafts: "Include drafts" }}
         >
-          {allows(user.role, "inventory") && !adding && (
+          {mayChange && !adding && (
             <button type="button" className="primary" onClick={() => setAdding(true)}>
               New item
             </button>

@@ -42,6 +42,9 @@ export function Home() {
               <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
             </li>
             <li>
+              <Link to="/import">Import</Link>: load a CSV or JSON file, with a preview first
+            </li>
+            <li>
               <Link to="/audit">The audit trail</Link>
             </li>
             {allows(user.role, "admin") && (

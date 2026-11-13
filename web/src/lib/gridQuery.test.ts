@@ -7,6 +7,7 @@ import {
   type QueryColumn,
   queryBody,
   queryParams,
+  sortModelOf,
   startOfDay,
 } from "./gridQuery";
 
@@ -329,5 +330,32 @@ describe("the request", () => {
       limit: 100,
       offset: 200,
     });
+  });
+});
+
+describe("sortModelOf", () => {
+  it("reads the sort from the state of the columns, in the order the reader sorted by", () => {
+    const state = [
+      { colId: "name", sort: "desc", sortIndex: 1 },
+      { colId: "hostname", sort: null, sortIndex: null },
+      { colId: "effective.ldos", sort: "asc", sortIndex: 0 },
+      { colId: "tags" },
+    ];
+    expect(sortModelOf(state)).toEqual([
+      { colId: "effective.ldos", sort: "asc" },
+      { colId: "name", sort: "desc" },
+    ]);
+  });
+
+  it("gives the same sort the grid asks for rows with", () => {
+    const state = [
+      { colId: "effective.est_value", sort: "desc", sortIndex: 0 },
+      { colId: "name", sort: "asc", sortIndex: 1 },
+    ];
+    expect(gridSort(COLUMNS, sortModelOf(state))).toEqual(["-effective.est_value", "name"]);
+  });
+
+  it("is empty when nothing is sorted", () => {
+    expect(sortModelOf([{ colId: "name" }, { colId: "tags", sort: null }])).toEqual([]);
   });
 });

@@ -115,6 +115,7 @@ export function Owners() {
       <DataGrid<Owner>
         id="owners"
         noun={["owner", "owners"]}
+        entity="owners"
         columns={COLUMNS}
         load={(request, signal) =>
           api.request("get", "/api/v1/owners", { query: queryParams(request), signal })

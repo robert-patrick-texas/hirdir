@@ -17,6 +17,8 @@ export interface GridColumn<T> {
   field?: string | null;
   /** The field the server sorts by. Left out, the filter's. Null for a column with no sort. */
   sortField?: string | null;
+  /** The column of an export that holds this one. Left out, the ID. Null when none does. */
+  column?: string | null;
   /** The text of a cell. */
   value: (row: T) => string | null | undefined;
   /** For a field that inherits: its value in force, to style it and to name its source. */
