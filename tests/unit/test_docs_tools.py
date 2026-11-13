@@ -367,13 +367,18 @@ def test_the_web_row_shows_a_react_binding_that_is_not_at_the_grids_version(
 
 def test_the_project_names_regex_and_ships_none_of_its_development_tools() -> None:
     """Read from this repository's own pyproject.toml and uv.lock."""
-    development = {"httpx2", "httpcore2", "pytest", "ruff", "ty"}
+    development = {"pytest", "ruff", "ty"}
     direct = facts.direct_python()
     with (facts.ROOT / "uv.lock").open("rb") as handle:
         runs_with = facts.lock_packages(facts.tomllib.load(handle))
 
     assert "regex" in direct
     assert "regex" in runs_with
+    # The command line calls the API with httpx2, so it ships; httpx, which it took the
+    # place of, is in neither list.
+    assert "httpx2" in direct
+    assert "httpx2" in runs_with
+    assert "httpx" not in runs_with
     assert not development & set(direct)
     assert not development & set(runs_with)
     # The lock does hold them, for the development group: the walk is what leaves them out.

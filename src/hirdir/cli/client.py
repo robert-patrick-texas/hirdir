@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import typer
 
 EXIT_ACCESS = 3
@@ -67,10 +67,10 @@ def call(target: Target, method: str, path: str, body: Any = None) -> Any:
     if target.token:
         headers["Authorization"] = f"Bearer {target.token}"
     try:
-        response = httpx.request(
+        response = httpx2.request(
             method, f"{target.url}/api/v1{path}", json=body, headers=headers, timeout=30
         )
-    except httpx.HTTPError as error:
+    except httpx2.HTTPError as error:
         raise fail(f"cannot reach {target.url}: {error}", EXIT_SERVER) from error
     if response.is_success:
         return response.json() if response.content else None

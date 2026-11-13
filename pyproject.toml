@@ -10,7 +10,7 @@ dependencies = [
     "alembic",
     "argon2-cffi",
     "fastapi",
-    "httpx",
+    "httpx2",
     "pyjwt",
     "regex>=2026.11.9",
     "sqlalchemy",
@@ -23,7 +23,6 @@ hirdir = "hirdir.cli.main:app"
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.16.0",
     "pytest",
     "ruff",
     "ty",

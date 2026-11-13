@@ -10,7 +10,7 @@ inside the package and line counts taken with `cloc`.
 `src/hirdir/__init__.py`:
 
 ```python
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 ```
 
 The build reads it from there. `make version` prints it. Releases before 1.0.0 are the
