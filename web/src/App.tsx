@@ -1,24 +1,71 @@
+import { lazy, useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AuthGate } from "./auth";
 import { Shell } from "./components/Shell";
 import { routerBasename } from "./lib/base";
 import { About } from "./pages/About";
-import { Audit } from "./pages/Audit";
-import { Catalog, CatalogEntryDetail } from "./pages/Catalog";
-import { Choices } from "./pages/Choices";
-import { GroupDetail, Groups } from "./pages/Groups";
 import { Home } from "./pages/Home";
-import { ItemDetail } from "./pages/ItemDetail";
-import { Items } from "./pages/Items";
-import { LifecycleRules } from "./pages/LifecycleRules";
 import { AdminStart, NotFound, RequireRole } from "./pages/Misc";
-import { OwnerDetail, Owners } from "./pages/Owners";
-import { Roles } from "./pages/Roles";
-import { Settings } from "./pages/Settings";
-import { Tags } from "./pages/Tags";
-import { UserDetail } from "./pages/UserDetail";
-import { Users } from "./pages/Users";
-import { VendorDetail, Vendors } from "./pages/Vendors";
+
+// The sign-in page and the first page are in the file the browser loads first. Every
+// other page is a file of its own, so that signing in never waits for the grid.
+const pages = {
+  audit: () => import("./pages/Audit"),
+  catalog: () => import("./pages/Catalog"),
+  choices: () => import("./pages/Choices"),
+  groups: () => import("./pages/Groups"),
+  itemDetail: () => import("./pages/ItemDetail"),
+  items: () => import("./pages/Items"),
+  lifecycleRules: () => import("./pages/LifecycleRules"),
+  owners: () => import("./pages/Owners"),
+  roles: () => import("./pages/Roles"),
+  settings: () => import("./pages/Settings"),
+  tags: () => import("./pages/Tags"),
+  userDetail: () => import("./pages/UserDetail"),
+  users: () => import("./pages/Users"),
+  vendors: () => import("./pages/Vendors"),
+};
+
+const Audit = lazy(() => pages.audit().then((page) => ({ default: page.Audit })));
+const Catalog = lazy(() => pages.catalog().then((page) => ({ default: page.Catalog })));
+const CatalogEntryDetail = lazy(() =>
+  pages.catalog().then((page) => ({ default: page.CatalogEntryDetail })),
+);
+const Choices = lazy(() => pages.choices().then((page) => ({ default: page.Choices })));
+const GroupDetail = lazy(() => pages.groups().then((page) => ({ default: page.GroupDetail })));
+const Groups = lazy(() => pages.groups().then((page) => ({ default: page.Groups })));
+const ItemDetail = lazy(() => pages.itemDetail().then((page) => ({ default: page.ItemDetail })));
+const Items = lazy(() => pages.items().then((page) => ({ default: page.Items })));
+const LifecycleRules = lazy(() =>
+  pages.lifecycleRules().then((page) => ({ default: page.LifecycleRules })),
+);
+const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
+const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
+const Roles = lazy(() => pages.roles().then((page) => ({ default: page.Roles })));
+const Settings = lazy(() => pages.settings().then((page) => ({ default: page.Settings })));
+const Tags = lazy(() => pages.tags().then((page) => ({ default: page.Tags })));
+const UserDetail = lazy(() => pages.userDetail().then((page) => ({ default: page.UserDetail })));
+const Users = lazy(() => pages.users().then((page) => ({ default: page.Users })));
+const VendorDetail = lazy(() => pages.vendors().then((page) => ({ default: page.VendorDetail })));
+const Vendors = lazy(() => pages.vendors().then((page) => ({ default: page.Vendors })));
+
+// How long after the first page is shown the other pages are fetched, in milliseconds.
+const WARM_AFTER = 400;
+
+/**
+ * Fetch every other page while the reader looks at the first one, so that opening the
+ * grid, or anything else, does not wait for its code. A page that could not be fetched
+ * ahead is fetched again when it is opened, and says so then if it still cannot be.
+ */
+function Warm() {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      for (const load of Object.values(pages)) load().catch(() => undefined);
+    }, WARM_AFTER);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return null;
+}
 
 /**
  * The whole page. The router's base is the URL prefix the server wrote into the <base>
@@ -28,6 +75,7 @@ export function App() {
   return (
     <BrowserRouter basename={routerBasename(document.baseURI)}>
       <AuthGate>
+        <Warm />
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<Home />} />

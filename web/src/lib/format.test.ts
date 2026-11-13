@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_ZONE,
   formatChange,
   formatChanges,
   formatMac,
   formatTime,
+  formatTimeLong,
   formatValue,
   itemName,
   plural,
+  readerZone,
+  setFallbackZone,
 } from "./format";
 
 describe("formatChange", () => {
@@ -76,15 +80,58 @@ describe("formatValue", () => {
 });
 
 describe("formatTime", () => {
-  it("writes local date and time to the second", () => {
-    const at = new Date(2026, 0, 31, 14, 5, 9);
-    expect(formatTime(at.toISOString())).toBe("2026-01-31 14:05:09");
+  const winter = "2026-01-31T19:05:09Z";
+  const summer = "2026-07-31T18:05:09.250Z";
+
+  it("writes the time of the zone it is given, with the zone's short name", () => {
+    expect(formatTime(winter, "America/New_York")).toBe("2026-01-31 14:05:09 EST");
+    expect(formatTime(summer, "America/New_York")).toBe("2026-07-31 14:05:09 EDT");
+    expect(formatTime(winter, "America/Los_Angeles")).toBe("2026-01-31 11:05:09 PST");
+    expect(formatTime("2026-01-31T04:30:00Z", "America/New_York")).toBe("2026-01-30 23:30:00 EST");
+    expect(formatTime("2026-01-31T05:00:00Z", "America/New_York")).toBe("2026-01-31 00:00:00 EST");
   });
 
   it("is blank when there is no time and passes on what it cannot read", () => {
     expect(formatTime(null)).toBe("");
     expect(formatTime(undefined)).toBe("");
     expect(formatTime("some day")).toBe("some day");
+  });
+
+  it("writes the moment out in full with the name of the zone", () => {
+    expect(formatTimeLong(winter, "America/New_York")).toBe(
+      "Saturday, January 31, 2026 at 2:05:09 PM EST (America/New_York)",
+    );
+    expect(formatTimeLong(null)).toBe("");
+  });
+});
+
+describe("readerZone", () => {
+  it("is the browser's own zone when it names one", () => {
+    expect(readerZone("Europe/Berlin")).toBe("Europe/Berlin");
+    expect(readerZone("America/Chicago")).toBe("America/Chicago");
+  });
+
+  it("is the installation's zone, and never UTC, when the browser does not say", () => {
+    setFallbackZone(undefined);
+    for (const silent of [undefined, "", "UTC", "Etc/UTC", "Mars/Olympus"]) {
+      expect(readerZone(silent)).toBe(DEFAULT_ZONE);
+    }
+    expect(DEFAULT_ZONE).toBe("America/New_York");
+    setFallbackZone("Europe/Berlin");
+    expect(readerZone("UTC")).toBe("Europe/Berlin");
+    setFallbackZone("no such zone");
+    expect(readerZone(undefined)).toBe(DEFAULT_ZONE);
+  });
+});
+
+describe("a moment in an audit change", () => {
+  it("is shown in local time like every other", () => {
+    setFallbackZone(undefined);
+    const shown = formatValue("2026-01-31T19:05:09.123456Z");
+    expect(shown).toBe(formatTime("2026-01-31T19:05:09.123456Z"));
+    expect(shown).not.toContain("T19");
+    expect(formatValue("2026-01-31")).toBe("2026-01-31");
+    expect(formatValue("site2-sw-access-01")).toBe("site2-sw-access-01");
   });
 });
 

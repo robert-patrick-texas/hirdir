@@ -200,3 +200,26 @@ def test_one_match_never_runs_past_what_is_left_of_the_budget() -> None:
         dialect.regex_search("(a|aa)+$", "a" * 5000 + "b")
     assert budget.spent < dialect.REGEX_MATCH_SECONDS
     assert "too long" in budget.failure
+
+
+def test_a_moment_is_shown_in_local_time_and_never_in_utc(monkeypatch) -> None:
+    import time
+    from datetime import UTC, datetime
+
+    from hirdir import clock
+
+    winter = datetime(2026, 1, 31, 19, 5, 9, tzinfo=UTC)
+    summer = datetime(2026, 7, 31, 18, 5, 9, tzinfo=UTC)
+    assert clock.for_reader(winter, "America/New_York") == "2026-01-31 14:05:09 EST"
+    assert clock.for_reader(summer, "America/New_York") == "2026-07-31 14:05:09 EDT"
+    assert clock.for_reader(winter, "Europe/Berlin") == "2026-01-31 20:05:09 CET"
+    for zone, expected in (
+        ("America/Chicago", "2026-01-31 13:05:09 CST"),
+        # A machine on UTC says nothing about its reader: the default zone stands in.
+        ("UTC", "2026-01-31 14:05:09 EST"),
+    ):
+        monkeypatch.setenv("TZ", zone)
+        time.tzset()
+        assert clock.for_reader(winter) == expected
+    monkeypatch.undo()
+    time.tzset()

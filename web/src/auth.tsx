@@ -13,6 +13,7 @@ import {
 import { useNavigate } from "react-router";
 import { type ApiError, api, type Schemas, sessions } from "./api";
 import { Problem } from "./components/Problem";
+import { setFallbackZone } from "./lib/format";
 import { toApiError } from "./lib/hooks";
 import { SignIn } from "./pages/SignIn";
 
@@ -72,6 +73,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
       },
       (thrown: unknown) => {
         if (!controller.signal.aborted) setError(toApiError(thrown));
+      },
+    );
+    // Times are shown in the reader's own zone. The installation's zone is what they
+    // fall back on, and is asked for once, without holding the page up for it.
+    api.request("get", "/api/v1/settings", { signal: controller.signal }).then(
+      (settings) => {
+        setFallbackZone(settings.find((setting) => setting.key === "time_zone")?.value);
+      },
+      () => {
+        // Not allowed to read settings, or not reachable: the default zone stands.
       },
     );
     return () => controller.abort();

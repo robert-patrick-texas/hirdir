@@ -89,6 +89,7 @@ def test_settings_have_defaults_and_only_an_admin_changes_them(
         "Pending-Removal",
     ]
     assert listed["weight_per_resource_unit"]["value"] == 300
+    assert listed["time_zone"]["value"] == "America/New_York"
     assert all(s["is_default"] and s["row_version"] == 0 for s in listed.values())
     assert "session_hours" not in listed
 
@@ -127,6 +128,9 @@ def test_settings_refuse_values_they_cannot_take(client: TestClient, admin: dict
     ):
         assert put(key, value) == 422, (key, value)
     assert put("no_such_setting", 1) == 404
+    for zone in ("Mars/Olympus", "", "../etc/passwd", "/etc/localtime", 5):
+        assert put("time_zone", zone) == 422, zone
+    assert put("time_zone", "Europe/Berlin") == 200
     assert put("currency", "eur") == 200
     assert put("count_states", ["prod", "Test", "Prod"]) == 200
     listed = {s["key"]: s["value"] for s in client.get("/api/v1/settings", headers=admin).json()}

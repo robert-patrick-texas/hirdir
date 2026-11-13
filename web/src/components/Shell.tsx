@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { useAuth } from "../auth";
 import { allows, roleLabel } from "../lib/roles";
@@ -69,7 +69,16 @@ export function Shell() {
         </button>
       </header>
       <main ref={main} tabIndex={-1}>
-        <Outlet />
+        {/* A page whose code is still on its way. It says so only if that takes a while. */}
+        <Suspense
+          fallback={
+            <p role="status" className="muted loading-late">
+              Loading…
+            </p>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
     </>
   );

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -62,6 +63,18 @@ def _currency(value: Any) -> str:
     return code
 
 
+def _time_zone(value: Any) -> str:
+    name = value.strip() if isinstance(value, str) else ""
+    try:
+        if not name or name.startswith(("/", ".")) or "\\" in name:
+            raise ValueError
+        return ZoneInfo(name).key
+    except ValueError, KeyError, OSError:
+        raise _refuse(
+            "time_zone", "the name of a time zone, such as America/New_York or Europe/Berlin"
+        ) from None
+
+
 def _subset(key: str, allowed: tuple[str, ...]) -> Callable:
     expected = f"a list of one or more of {', '.join(allowed)}"
 
@@ -96,6 +109,11 @@ SPECS: dict[str, Spec] = {
         _number("stack_discount_pct", Decimal(0), Decimal(100)),
     ),
     "currency": Spec("USD", "label only", _currency),
+    "time_zone": Spec(
+        "America/New_York",
+        "the zone times are shown in where the reader's own zone is not known",
+        _time_zone,
+    ),
     "fiscal_year_start_month": Spec(1, "for reports grouped by fiscal year", _month),
     "count_states": Spec(
         ["Assigned", "Test", "Prod", "Down", "Pending-Removal"],

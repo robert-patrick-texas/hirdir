@@ -866,3 +866,17 @@ main:has(.grid-page) {
   padding: 0.1rem 0;
   white-space: nowrap;
 }
+
+/* A message that waits before it shows, so that a short wait shows nothing at all. */
+.loading-late {
+  animation: appear 0s linear 0.4s both;
+}
+
+@keyframes appear {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
+}

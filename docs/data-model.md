@@ -13,7 +13,7 @@ to every interface, so it is made here first.
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
 | Removal | Items, sites, locations, contacts, owners, contracts and catalog entries are never deleted while anything refers to them. They carry `record_status`. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
-| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are ISO 8601 in UTC. |
+| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. A person is shown local time with the name of the zone, `2026-01-31 14:05:09 EST`: the reader's own zone, or the `time_zone` setting where the reader's is not known. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
 | Decimals | Money has two places, support weight up to three, a percentage up to two. In JSON a decimal is written as text, `"18000.00"`, so that nothing is lost on the way to a browser. A number is accepted on the way in. |
 | Blank | A blank text field is stored as nothing at all, and is `null` in JSON. |
@@ -317,6 +317,7 @@ and is refused, not rounded, when it has more.
 |---|---|---|
 | `stack_discount_pct` | 50 | applied to stack members whose model sets none |
 | `currency` | USD | label only |
+| `time_zone` | America/New_York | the zone times are shown in where the reader's own is not known |
 | `fiscal_year_start_month` | 1 | for reports grouped by fiscal year |
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |

@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from starlette.datastructures import Headers, MutableHeaders
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -25,6 +26,8 @@ BASE_TAG = '<base href="/" />'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 log = logging.getLogger("hirdir")
+KEEP_FOR_GOOD = "public, max-age=31536000, immutable"
+SMALLEST_COMPRESSED = 1024
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )
@@ -55,7 +58,9 @@ class Gateway:
         given = headers.get("x-request-id", "")
         request_id = given if REQUEST_ID.fullmatch(given) else new_hid()
         scope.setdefault("state", {})["request_id"] = request_id
-        is_api = scope["path"].startswith(scope.get("root_path", "") + "/api/")
+        root = scope.get("root_path", "")
+        is_api = scope["path"].startswith(root + "/api/")
+        is_asset = scope["path"].startswith(root + "/assets/")
 
         started = False
 
@@ -70,6 +75,10 @@ class Gateway:
                 out["Referrer-Policy"] = "no-referrer"
                 if is_api:
                     out["Cache-Control"] = "no-store"
+                elif is_asset and message["status"] == 200:
+                    # The name of a built file changes whenever its content does, so a
+                    # browser may keep it for good and never ask again.
+                    out["Cache-Control"] = KEEP_FOR_GOOD
                 del out["Set-Cookie"]
             await send(message)
 
@@ -142,5 +151,9 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(api)
     problems.install(app)
     _install_web_ui(app)
+    # A page of a list and the web UI's own files are text that shrinks to a tenth.
+    # hirdir sets no cookie, so no other site can make a signed-in request and learn
+    # anything from the size of a compressed answer.
+    app.add_middleware(GZipMiddleware, minimum_size=SMALLEST_COMPRESSED)
     app.add_middleware(Gateway, trusted_proxies=config.trusted_proxies)
     return app

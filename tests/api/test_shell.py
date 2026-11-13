@@ -79,3 +79,34 @@ def test_without_a_built_ui_the_root_says_so(config: Config, tmp_path, monkeypat
     monkeypatch.setattr(app_module, "STATIC", tmp_path / "no-ui-here")
     with TestClient(create_app(config)) as bare:
         assert "web UI has not been built" in bare.get("/").text
+
+
+def test_built_files_are_kept_by_the_browser_and_pages_are_not(
+    config: Config, tmp_path, monkeypatch
+) -> None:
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text('<html><head><base href="/" /></head></html>')
+    (static / "assets" / "app-abc123.js").write_text("console.log(1);" * 500)
+    monkeypatch.setattr(app_module, "STATIC", static)
+    with TestClient(create_app(config)) as ui:
+        for headers in ({}, {"X-Forwarded-Prefix": "/hirdir"}):
+            built = ui.get("/assets/app-abc123.js", headers=headers)
+            assert built.headers["cache-control"] == "public, max-age=31536000, immutable"
+            assert built.headers["content-encoding"] == "gzip"
+            assert built.text.startswith("console.log(1);")
+        assert ui.get("/items", headers={}).headers["cache-control"] == "no-store"
+        missing = ui.get("/assets/no-such-file.js")
+        assert "immutable" not in missing.headers.get("cache-control", "")
+
+
+def test_a_large_answer_is_compressed_and_a_small_one_is_left_alone(
+    client: TestClient, admin: dict
+) -> None:
+    large = client.get(f"{API}/openapi.json", headers=admin)
+    assert large.headers["content-encoding"] == "gzip"
+    assert large.headers["cache-control"] == "no-store"
+    assert "paths" in large.json()
+    assert "content-encoding" not in client.get(f"{API}/health/live").headers
+    plain = client.get(f"{API}/openapi.json", headers={**admin, "Accept-Encoding": "identity"})
+    assert "content-encoding" not in plain.headers

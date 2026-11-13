@@ -142,6 +142,16 @@ local provider implements it for the MVP. RADIUS implements the same interface. 
 adds a redirect flow that ends by issuing the same session token. Nothing outside
 `auth/` knows which provider answered.
 
+### What a browser fetches
+
+The built web UI is a small first file and one file for each page, the grid among them.
+A built file's name changes whenever its content does, so it is served with
+`Cache-Control: public, max-age=31536000, immutable` and a browser asks for it once for
+each release. The page itself and every answer of the API are `no-store`. Any answer
+larger than a kilobyte is compressed with gzip when the browser accepts it, by the
+application itself, so no nginx setting is needed for it. A page of a list shrinks to
+about a tenth.
+
 ### Browser hardening
 
 The token is readable by any script on the page, so no script from anywhere else is

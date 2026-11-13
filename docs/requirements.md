@@ -304,6 +304,8 @@ as AI.
 | Import | 10,000 rows preview in under 30 s and apply in under 60 s. |
 | Availability | One host. A restart loses no committed change. |
 | Recovery | A backup restores to a clean host with one documented command. |
+| Ease | Nothing a person does waits on the application where that can be avoided. The first page is small, and pages open without a visible load. |
+| Times | Shown in the reader's local time with the zone named, never in UTC. America/New_York where the reader's zone is not known. |
 | Audit | Every change is kept. Nothing expires before a retention feature exists. |
 | Browser | Current Firefox, Chrome and Edge. Keyboard reachable, visible focus, labelled inputs. |
 

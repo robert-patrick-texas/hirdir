@@ -1,11 +1,13 @@
 """The hirdir command."""
 
 import json
+from datetime import datetime
 from typing import Annotated
 
 import typer
 
 import hirdir
+from hirdir import clock
 from hirdir.cli import client
 from hirdir.cli.admin import admin
 
@@ -46,7 +48,8 @@ def sign_in(
     target.token = session["token"]
     path = client.save_target(target)
     role = session["user"]["role"] or "no role"
-    typer.echo(f"signed in as {session['user']['username']} ({role}) until {session['expires_at']}")
+    until = clock.for_reader(datetime.fromisoformat(session["expires_at"]))
+    typer.echo(f"signed in as {session['user']['username']} ({role}) until {until}")
     typer.echo(f"session kept in {path}", err=True)
 
 
