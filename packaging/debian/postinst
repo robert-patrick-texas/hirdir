@@ -9,8 +9,8 @@
 # the database up, runs the migrations and starts the service again. If the migration
 # fails, the upgrade stops, the service stays stopped, and the message says where the
 # backup is and how to go back to the version that was installed before. A migration
-# that fails part of the way can leave the database partly changed, so the way back is
-# the backup, never a second try on the same database.
+# that fails is undone as a whole. The way back restores the backup all the same, so
+# that going back never depends on that.
 set -e
 
 STATE=/var/lib/hirdir
@@ -67,7 +67,7 @@ tokens.load_or_create_key(config.load().secret_key_path)'
             echo "hirdir: the migration failed, and the service was not started." >&2
             if [ -n "$backup" ]; then
                 echo "hirdir: the database as it was before the upgrade is at $backup" >&2
-                echo "hirdir: The database in use may be partly changed. To go back, install the" >&2
+                echo "hirdir: A migration that fails is undone as a whole. To go back, install the" >&2
                 echo "hirdir: package of version $2 again and put that backup in its place:" >&2
                 echo "hirdir:     sudo apt install --allow-downgrades ./hirdir_$2_amd64.deb" >&2
                 echo "hirdir:     sudo systemctl stop hirdir" >&2

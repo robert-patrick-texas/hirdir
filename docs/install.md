@@ -203,7 +203,7 @@ sudo dpkg --configure hirdir
 ```text
 hirdir: the migration failed, and the service was not started.
 hirdir: the database as it was before the upgrade is at /var/lib/hirdir/backups/hirdir-20261112T020000Z.db
-hirdir: The database in use may be partly changed. To go back, install the
+hirdir: A migration that fails is undone as a whole. To go back, install the
 hirdir: package of version 0.1.0 again and put that backup in its place:
 hirdir:     sudo apt install --allow-downgrades ./hirdir_0.1.0_amd64.deb
 hirdir:     sudo systemctl stop hirdir
@@ -212,10 +212,10 @@ hirdir:     sudo systemctl start hirdir
 ```
 
 Run those four commands as they are printed. `hirdir` then runs as it did before the
-upgrade, with everything it held. Do not try the upgrade a second time on the database
-it stopped in: a schema change that fails part of the way leaves some of its tables
-behind, and a second try stops at them. Once the cause is known and put right, install
-the new package again.
+upgrade, with everything it held. A schema change that fails is undone as a whole, so
+the database is as it was; the backup is put back all the same, so that going back
+never depends on that. Once the cause is known and put right, install the new package
+again.
 
 ### Going back to the release before
 

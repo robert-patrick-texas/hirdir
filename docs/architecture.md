@@ -214,9 +214,9 @@ service tokens go on working and `hirdir` stays under its prefix. Installing the
 version again takes the same steps and changes nothing in the database.
 
 A failed migration stops the upgrade with the backup's path in the message, and leaves
-the service stopped. SQLite does not undo the tables a migration had already created
-when it failed, so the database may be partly changed, and the way back is always the
-backup: the message gives the commands that install the version that was there before
+the service stopped. The migrations of one upgrade run in one transaction, so a failure
+undoes all of them and the database is as it was. The way back is the backup all the
+same: the message gives the commands that install the version that was there before
 and restore the backup. An older version stops in the same way at a database that a
 newer one has migrated. The steps for an operator are under "Upgrade" in
 [install.md](install.md#upgrade).

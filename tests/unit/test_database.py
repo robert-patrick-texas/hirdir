@@ -2,9 +2,12 @@
 
 from pathlib import Path
 
+import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import text
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
 
 from hirdir import config as config_module
 from hirdir.config import Config
@@ -19,6 +22,43 @@ def test_migrations_build_exactly_the_schema_of_the_models(config: Config) -> No
     with engine.connect() as connection:
         differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
     assert differences == []
+
+
+def test_migration_that_fails_part_way_leaves_the_database_as_it_was(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0001")
+    engine = make_engine(url)
+    before = set(inspect(engine).get_table_names())
+    with engine.begin() as connection:
+        # In the way of the last table that migration 0002 creates.
+        connection.execute(text("CREATE TABLE items (x INTEGER)"))
+        connection.execute(
+            text(
+                "INSERT INTO users (hid, username, username_key, display_name,"
+                " email, is_service_account, tokens_valid_after, disabled,"
+                " created_at, updated_at, row_version) VALUES ('u1', 'ada', 'ada',"
+                " '', '', 0, 0, 0, '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+    engine.dispose()
+
+    with pytest.raises(OperationalError, match="already exists"):
+        migrate.upgrade(url)
+
+    engine = make_engine(url)
+    assert migrate.current(engine) == "0001"
+    assert set(inspect(engine).get_table_names()) == before | {"items"}
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT username FROM users")).scalars().all() == ["ada"]
+        connection.execute(text("DROP TABLE items"))
+    engine.dispose()
+    # With what was in the way gone, the same database migrates, and is loaded once.
+    migrate.upgrade(url)
+    engine = make_engine(url)
+    assert migrate.current(engine) == migrate.head(url)
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM lifecycle_rules")).scalar() == 9
+        assert connection.execute(text("SELECT username FROM users")).scalars().all() == ["ada"]
 
 
 def test_every_connection_gets_the_pragmas(config: Config) -> None:
