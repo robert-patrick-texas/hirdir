@@ -67,7 +67,8 @@ export function exportColumns(
 
 /**
  * The body of `POST /exports` for what a grid shows. Particular rows are named by their
- * HIDs beside the filter; all that match are named by the filter alone.
+ * HIDs alone, so that what was selected is what comes, also when a row has changed
+ * since and the filter would no longer keep it. All that match are named by the filter.
  */
 export function exportRequest(
   entity: Entity,
@@ -80,11 +81,14 @@ export function exportRequest(
     entity,
     format,
     columns: [...columns],
-    ...(view.filter ? { filter: view.filter as unknown as Record<string, unknown> } : {}),
     sort: [...view.sort],
-    include_archived: view.include_archived,
-    include_drafts: view.include_drafts,
-    ...(chosen.kind === "rows" ? { hids: [...chosen.hids] } : {}),
+    ...(chosen.kind === "rows"
+      ? { hids: [...chosen.hids] }
+      : {
+          ...(view.filter ? { filter: view.filter as unknown as Record<string, unknown> } : {}),
+          include_archived: view.include_archived,
+          include_drafts: view.include_drafts,
+        }),
   };
 }
 

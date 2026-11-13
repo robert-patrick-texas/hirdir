@@ -76,11 +76,12 @@ describe("exportRequest", () => {
     expect(request).not.toHaveProperty("hids");
   });
 
-  it("names particular rows by their HIDs, beside the filter", () => {
+  it("names particular rows by their HIDs alone, in the grid's order", () => {
     const chosen: Chosen = { kind: "rows", hids: ["i-2", "i-1"] };
     const request = exportRequest("items", "json", VIEW, ["hid"], chosen);
     expect(request.hids).toEqual(["i-2", "i-1"]);
-    expect(request.filter).toEqual(VIEW.filter);
+    expect(request).not.toHaveProperty("filter");
+    expect(request.sort).toEqual(VIEW.sort);
     expect(request.format).toBe("json");
   });
 

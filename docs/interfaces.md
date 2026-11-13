@@ -210,7 +210,10 @@ values instead, which is the form to use for a file that will be imported back.
 Left out, the columns are the ones that can be set. A column may also be named as a
 filter names it: `catalog.pid` is `pid`, `owner.label` is `owner` and `effective.ldos`
 is `ldos`. Left out, the sort is the list's own. `include_archived` and
-`include_drafts` mean what they mean on a list. A JSON export is the envelope above, so
+`include_drafts` mean what they mean on a list. Records named by their HIDs are
+exported whatever their status, as a bulk edit changes them: what a person selected is
+what the file holds. A filter sent beside the HIDs still narrows them; the grid sends
+the HIDs alone. A JSON export is the envelope above, so
 it can be imported as it is.
 
 A CSV cell that begins with `=`, `+`, `-` or `@` is written with a leading apostrophe so
@@ -335,7 +338,9 @@ One grid component is used on every list page.
   filter", which is shown as a count and sent to the server as the filter, not as a list
   of rows.
 - **Copy** puts the selected rows on the clipboard as tab-separated text with a header
-  row. **Export** sends the current filter, sort and columns to `POST /exports`.
+  row. **Export** sends the current filter, sort and columns to `POST /exports`. With
+  particular rows selected, copy, export and bulk edit all act on exactly those rows,
+  named by their HIDs, also when one of them no longer matches the filter.
 - **Edit** opens the record's form. **Bulk edit** opens a form for the selected rows,
   shows a before-and-after preview, and applies on confirmation.
 - An inherited value is shown in a lighter style with its source on hover. Editing it

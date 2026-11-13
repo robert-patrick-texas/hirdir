@@ -657,6 +657,9 @@ def test_export_leaves_out_what_a_list_leaves_out(files: Files, make: Maker) -> 
     names = lambda **more: [row["name"] for row in table(files.export("items", **more))]  # noqa: E731
     assert names() == ["active"]
     assert names(include_drafts=True, include_archived=True) == ["active", "draft", "gone"]
+    # Named by its HID, a record is exported whatever its status: it was selected.
+    assert names(hids=[gone["hid"]]) == ["gone"]
+    assert names(hids=[gone["hid"]], filter="name:eq:active") == []
 
 
 # --- a large preview holds nobody up -------------------------------------------------

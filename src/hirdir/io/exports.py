@@ -89,11 +89,12 @@ def plan(
         )
     found = entity(which)
     listing = found.listing
-    where = [
-        filters.to_sql(filters.parse(filter_), listing.fields),
-        *default_view(listing, include_archived, include_drafts),
-    ]
-    if hids is not None:
+    where = [filters.to_sql(filters.parse(filter_), listing.fields)]
+    if hids is None:
+        where += default_view(listing, include_archived, include_drafts)
+    else:
+        # Records named one by one are exported whatever their status, as a bulk edit
+        # changes them. A filter leaves out what a list leaves out.
         if len(hids) > MAX_HIDS:
             raise Invalid(
                 "too many records are named",
