@@ -69,10 +69,13 @@ def _checked_vendor(db: Session, fields: dict[str, Any], vendor: Vendor | None) 
         values["name"] = name
         values["name_key"] = records.key(name)
         names.append(name)
-    if "aliases" in fields:
+    if "aliases" in fields or ("name" in values and vendor is not None):
+        # A new name is checked against the aliases too: a vendor renamed to one of its
+        # own aliases no longer lists it as another spelling.
         own = values.get("name", vendor.name if vendor is not None else "")
+        given = fields.get("aliases", vendor.aliases if vendor else [])
         aliases: dict[str, str] = {}
-        for alias in fields["aliases"] or []:
+        for alias in given or []:
             alias = records.clean(alias)
             if alias is not None and records.key(alias) != records.key(own):
                 aliases.setdefault(records.key(alias), alias)
@@ -213,11 +216,16 @@ def _checked_entry(
 
 def create_entry(db: Session, context: AuditContext, fields: dict[str, Any]) -> CatalogEntry:
     """Create a catalog entry."""
-    labels = fields.pop("tags", None)
+    labels = fields.pop("tags", None) or []
     entry = CatalogEntry(**_checked_entry(db, {"vendor_hid": None, "pid": None, **fields}, None))
-    records.created(db, context, RECORD_TYPE, entry, ENTRY_FIELDS)
-    if labels:
-        tags.set_labels(db, RECORD_TYPE, entry.hid, labels)
+    records.created(
+        db,
+        context,
+        RECORD_TYPE,
+        entry,
+        ENTRY_FIELDS,
+        then=lambda: tags.set_labels(db, RECORD_TYPE, entry.hid, labels),
+    )
     return entry
 
 
@@ -230,9 +238,10 @@ def update_entry(
     item is written to, so no item's version changes.
     """
     entry = get_entry(db, hid)
-    labels = fields.pop("tags", None)
+    has_tags = "tags" in fields
+    labels = fields.pop("tags", None) or []
     values = _checked_entry(db, fields, entry)
-    tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if labels is not None else []
+    tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, entry, row_version, values, tag_change)
     return entry
 

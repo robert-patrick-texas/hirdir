@@ -11,7 +11,7 @@ from hirdir.io import listing
 from hirdir.io.fields import Listing
 
 Limit = Annotated[int, Query(ge=1, le=listing.MAX_LIMIT)]
-Offset = Annotated[int, Query(ge=0)]
+Offset = Annotated[int, Query(ge=0, le=listing.MAX_OFFSET)]
 
 
 @dataclass(frozen=True)

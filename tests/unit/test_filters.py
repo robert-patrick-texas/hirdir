@@ -119,6 +119,9 @@ def test_operators(source: str, expected: list[str | None]) -> None:
         "size:in:",
         "made_on:gt:2026-13-01",
         "name:regex:(",
+        "name:regex:(?:a{1000}){1000}",
+        "name:eq:a size:is:3",
+        "size:eq:1.5",
         {"field": "name", "op": "eq"},
         {"field": "name", "op": "eq", "value": ["a"]},
         {"field": "name", "op": "like", "value": "a"},
@@ -140,8 +143,9 @@ def test_depth_and_size_are_bounded() -> None:
     deep = leaf
     for _ in range(filters.MAX_DEPTH):
         deep = {"and": [deep]}
+    assert filters.parse(deep) is not None
     with pytest.raises(Invalid, match="not acceptable") as refused:
-        filters.parse(deep)
+        filters.parse({"or": [deep]})
     assert "nests at most" in refused.value.fields["filter"]
     with pytest.raises(Invalid) as refused:
         filters.parse({"or": [leaf] * (filters.MAX_CONDITIONS + 1)})

@@ -66,7 +66,7 @@ class ListQuery(Model):
     )
     sort: list[str] = Field(default=[], description="Field names, `-` in front for descending.")
     limit: int = Field(default=100, ge=1, le=1000)
-    offset: int = Field(default=0, ge=0)
+    offset: int = Field(default=0, ge=0, le=10_000_000)
     include_archived: bool = False
     include_drafts: bool = False
 

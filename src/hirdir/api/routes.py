@@ -16,7 +16,7 @@ from hirdir.db.models import AuditEvent, ServiceToken
 from hirdir.domain import accounts
 
 Limit = Annotated[int, Query(ge=1, le=1000)]
-Offset = Annotated[int, Query(ge=0)]
+Offset = Annotated[int, Query(ge=0, le=10_000_000)]
 
 health = APIRouter(prefix="/health", tags=["Health"])
 auth = APIRouter(prefix="/auth", tags=["Access"])

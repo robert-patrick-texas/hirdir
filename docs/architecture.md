@@ -168,7 +168,14 @@ rendered as text, never as HTML.
 
   For Python 3.15 it is the `regex` package: `google-re2`, the binding from the RE2
   project, has no release for it yet. One match may take 50 ms, and all the matches of
-  one request together one second.
+  one request together one second. Compiling is bounded too: the counted repeats of a
+  pattern, `{n}` and `{n,m}`, multiplied together, may come to at most 100, because a
+  pattern such as `(?:a{3000}){3000}` costs gigabytes before any match is tried.
+- **Text without regard to case.** SQLite's own `lower()` knows the letters A to Z
+  only, so the application gives SQLite a folding function and every comparison and
+  sort of text goes through it. PostgreSQL uses its `lower()`.
+- **Writes.** A request's changes are committed when its route returns and before any
+  of the answer is sent. Every update of a row names the `row_version` it was read at.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. `hirdir admin restore
   FILE` puts one back. Copying backups off the host is the host's job.

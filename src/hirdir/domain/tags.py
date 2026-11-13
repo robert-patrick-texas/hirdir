@@ -96,7 +96,8 @@ def labels_of(db: Session, record_type: str, hids: list[str]) -> dict[str, list[
     )
     for record_hid, label in rows:
         found[record_hid].append(label)
-    return found
+    # Sorted here as well, so the order does not depend on the database's collation.
+    return {hid: sorted(labels, key=records.key) for hid, labels in found.items()}
 
 
 def set_labels(
@@ -116,7 +117,7 @@ def set_labels(
             wanted[tag.hid] = tag
     if unknown:
         raise Invalid("a tag is not known", {"tags": f"there is no tag {', '.join(unknown)}"})
-    old = labels_of(db, record_type, [record_hid])[record_hid]
+    old = sorted(labels_of(db, record_type, [record_hid])[record_hid], key=records.key)
     new = sorted((tag.label for tag in wanted.values()), key=records.key)
     if old == new:
         return []

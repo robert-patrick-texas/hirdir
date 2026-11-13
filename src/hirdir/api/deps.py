@@ -16,7 +16,11 @@ CLIENTS = {"web", "cli"}
 
 
 def get_db(request: Request) -> Iterator[Session]:
-    """Yield the request's session. It commits if the route succeeds, else rolls back."""
+    """Yield the request's session. It commits if the route succeeds, else rolls back.
+
+    The commit is made when the route function returns, before any of the answer is
+    sent, so a change that could not be stored is never answered as if it had been.
+    """
     with request.app.state.sessions() as db:
         try:
             yield db
@@ -26,7 +30,7 @@ def get_db(request: Request) -> Iterator[Session]:
             raise
 
 
-Db = Annotated[Session, Depends(get_db)]
+Db = Annotated[Session, Depends(get_db, scope="function")]
 
 
 def via(request: Request) -> str:

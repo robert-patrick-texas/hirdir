@@ -5,6 +5,8 @@ from collections.abc import Mapping
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException
 
 from hirdir.domain import errors
@@ -59,6 +61,20 @@ def install(app: FastAPI) -> None:
     async def _conflict(_: Request, error: errors.Conflict) -> JSONResponse:
         title = "Stale version" if isinstance(error, errors.StaleVersion) else "Conflict"
         return problem(409, title, str(error))
+
+    @app.exception_handler(StaleDataError)
+    async def _stale(_: Request, error: StaleDataError) -> JSONResponse:
+        # Two changes were made against one version at the same moment, and the
+        # database let the other one through first.
+        return problem(409, "Stale version", "this record was changed by someone else a moment ago")
+
+    @app.exception_handler(IntegrityError)
+    async def _collision(_: Request, error: IntegrityError) -> JSONResponse:
+        # A uniqueness rule is checked before a write, and by the database as well.
+        # This is the database's refusal, when two requests passed the check together.
+        return problem(
+            409, "Conflict", "the change collides with a record that was saved a moment ago"
+        )
 
     @app.exception_handler(errors.Invalid)
     async def _invalid(_: Request, error: errors.Invalid) -> JSONResponse:

@@ -4,13 +4,15 @@ Comparison without regard to case, wildcard and regular expression matching, and
 blank values fall in a sorted list. The rest of the code builds its SQL from these and
 never asks which database it is talking to.
 
-Regular expressions are bounded. A pattern has a longest length, each match has a time
-limit, and one request has a budget for all its matches together, so a pattern that
-backtracks without end costs a refused request and never a stalled server. The engine
-is the `regex` package, which offers the per-match time limit. See P-19 in
-docs/decisions.md for when RE2 takes its place.
+Regular expressions are bounded. A pattern has a longest length and a limit on how far
+its counted repeats multiply, each match has a time limit, and one request has a budget
+for all its matches together. So a pattern that is costly to compile is refused before
+it is compiled, and one that backtracks without end costs a refused request and never a
+stalled server. The engine is the `regex` package, which offers the per-match time
+limit. See P-19 in docs/decisions.md for when RE2 takes its place.
 """
 
+import re
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -20,11 +22,12 @@ from functools import lru_cache
 from typing import Any
 
 import regex
-from sqlalchemy import Boolean, ColumnElement, func, literal
+from sqlalchemy import Boolean, ColumnElement, String, literal
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
 
 REGEX_MAX_LENGTH = 200
+REGEX_MAX_REPEAT = 100
 REGEX_MATCH_SECONDS = 0.05
 REGEX_REQUEST_SECONDS = 1.0
 LIKE_ESCAPE = "\\"
@@ -57,13 +60,35 @@ def regex_budget(seconds: float | None = None) -> Generator[RegexBudget]:
         _budget.reset(token)
 
 
-@lru_cache(maxsize=256)
+_COUNTED_REPEAT = re.compile(r"\{(\d*)(?:,(\d*))?\}")
+
+
+def _check_repeats(pattern: str) -> None:
+    """Refuse a pattern whose counted repeats multiply past the limit.
+
+    Compiling `a{n}` costs time and memory in proportion to n, and nested repeats
+    multiply: `(?:a{3000}){3000}` is seventeen characters and takes gigabytes. Every
+    count in the pattern is multiplied together, nested or not, which refuses a little
+    more than it must and never less.
+    """
+    product = 1
+    for low, high in _COUNTED_REPEAT.findall(pattern):
+        product *= max(int(low or 0), int(high or 0), 1)
+        if product > REGEX_MAX_REPEAT:
+            raise PatternError(
+                f"the counted repeats of a pattern may multiply to at most {REGEX_MAX_REPEAT}"
+            )
+
+
+@lru_cache(maxsize=16)
 def compile_pattern(pattern: str) -> Any:
     """Compile pattern, to be matched without regard to case, or say why it is refused."""
     if len(pattern) > REGEX_MAX_LENGTH:
         raise PatternError(f"a pattern may be at most {REGEX_MAX_LENGTH} characters long")
+    _check_repeats(pattern)
     try:
-        return regex.compile(pattern, regex.IGNORECASE)
+        # The package keeps a cache of its own, which is not bounded by size in memory.
+        return regex.compile(pattern, regex.IGNORECASE, cache_pattern=False)
     except regex.error as error:
         raise PatternError(f"the pattern cannot be compiled: {error}") from None
 
@@ -99,9 +124,14 @@ def _sqlite_regexp(pattern: str | None, value: Any) -> bool | None:
     return regex_search(pattern, str(value))
 
 
+def _sqlite_fold(value: Any) -> str | None:
+    return None if value is None else str(value).casefold()
+
+
 def prepare_sqlite(dbapi_connection: Any) -> None:
     """Give a new SQLite connection the functions this module's SQL calls."""
     dbapi_connection.create_function("hirdir_regexp", 2, _sqlite_regexp)
+    dbapi_connection.create_function("hirdir_fold", 1, _sqlite_fold, deterministic=True)
 
 
 class regex_match(FunctionElement):
@@ -130,13 +160,32 @@ def matches_regex(column: ColumnElement[Any], pattern: str) -> ColumnElement[boo
     return regex_match(column, literal(pattern))
 
 
+class fold(FunctionElement):
+    """A text value as it is compared when case does not count."""
+
+    type = String()
+    name = "fold"
+    inherit_cache = True
+
+
+@compiles(fold, "sqlite")
+def _fold_sqlite(element: fold, compiler: Any, **kw: Any) -> str:
+    # SQLite's own lower() folds the letters A to Z and nothing else.
+    return f"hirdir_fold({compiler.process(element.clauses, **kw)})"
+
+
+@compiles(fold, "postgresql")
+def _fold_postgresql(element: fold, compiler: Any, **kw: Any) -> str:
+    return f"lower({compiler.process(element.clauses, **kw)})"
+
+
 def folded(expression: Any) -> ColumnElement[str]:
     """Return expression as it is compared when case does not count.
 
-    The database folds both sides, so the two always agree with each other. SQLite
-    folds the letters A to Z only; PostgreSQL folds by its locale.
+    The database folds both sides of a comparison, so the two always agree with each
+    other, in whatever alphabet.
     """
-    return func.lower(expression)
+    return fold(expression)
 
 
 def equals_text(column: ColumnElement[Any], value: str) -> ColumnElement[bool]:

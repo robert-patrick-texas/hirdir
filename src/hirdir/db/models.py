@@ -19,7 +19,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column, relationship
 
 from hirdir import clock
 from hirdir.ids import new_hid
@@ -89,6 +89,13 @@ class Bookkeeping:
     created_by: Mapped[str | None] = mapped_column(String(36), default=None)
     updated_by: Mapped[str | None] = mapped_column(String(36), default=None)
     row_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:
+        # Every UPDATE of a row names the version it was read at, so of two changes
+        # made against one version the database lets only the first through. The new
+        # version is set by `records.touch`, not generated here.
+        return {"version_id_col": cls.row_version, "version_id_generator": False}
 
 
 class User(Bookkeeping, Base):
@@ -203,10 +210,11 @@ class Vendor(Bookkeeping, Base):
     """A manufacturer, a support provider, or both."""
 
     __tablename__ = "vendors"
+    __table_args__ = (UniqueConstraint("name_key", name="vendors_name"),)
 
     hid: Mapped[str] = _hid()
     name: Mapped[str] = mapped_column(String(200))
-    name_key: Mapped[str] = mapped_column(String(200), unique=True)
+    name_key: Mapped[str] = mapped_column(String(200))
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
 
@@ -245,10 +253,11 @@ class Owner(Bookkeeping, Base):
     """Who answers for an item. Its people arrive with contacts, in a later release."""
 
     __tablename__ = "owners"
+    __table_args__ = (UniqueConstraint("label_key", name="owners_label"),)
 
     hid: Mapped[str] = _hid()
     label: Mapped[str] = mapped_column(String(200))
-    label_key: Mapped[str] = mapped_column(String(200), unique=True)
+    label_key: Mapped[str] = mapped_column(String(200))
     organization: Mapped[str | None] = mapped_column(String(200), default=None)
     is_external: Mapped[bool] = mapped_column(Boolean, default=False)
     exception_reason: Mapped[str | None] = mapped_column(Text, default=None)
@@ -260,6 +269,7 @@ class Item(Bookkeeping, Base):
 
     __tablename__ = "items"
     __table_args__ = (
+        UniqueConstraint("asset_tag_key", name="items_asset_tag"),
         UniqueConstraint("catalog_entry_hid", "serial_key", name="items_catalog_serial"),
         Index("items_updated_at", "updated_at"),
     )
@@ -272,7 +282,7 @@ class Item(Bookkeeping, Base):
     serial_key: Mapped[str | None] = mapped_column(String(100), default=None, index=True)
     mac_address: Mapped[str | None] = mapped_column(String(12), default=None, index=True)
     asset_tag: Mapped[str | None] = mapped_column(String(100), default=None)
-    asset_tag_key: Mapped[str | None] = mapped_column(String(100), default=None, unique=True)
+    asset_tag_key: Mapped[str | None] = mapped_column(String(100), default=None)
     name: Mapped[str | None] = mapped_column(String(200), default=None, index=True)
     hostname: Mapped[str | None] = mapped_column(String(255), default=None, index=True)
     fqdn: Mapped[str | None] = mapped_column(String(255), default=None)
@@ -306,10 +316,11 @@ class Tag(Bookkeeping, Base):
     """A label that may be put on most records."""
 
     __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("label_key", name="tags_label"),)
 
     hid: Mapped[str] = _hid()
     label: Mapped[str] = mapped_column(String(100))
-    label_key: Mapped[str] = mapped_column(String(100), unique=True)
+    label_key: Mapped[str] = mapped_column(String(100))
     colour: Mapped[str | None] = mapped_column(String(20), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
 
@@ -344,9 +355,10 @@ class Setting(Bookkeeping, Base):
     """An installation-wide value that differs from its default."""
 
     __tablename__ = "settings"
+    __table_args__ = (UniqueConstraint("key", name="settings_key"),)
 
     hid: Mapped[str] = _hid()
-    key: Mapped[str] = mapped_column(String(60), unique=True)
+    key: Mapped[str] = mapped_column(String(60))
     value: Mapped[Any] = mapped_column(JSON, default=None)
 
 
@@ -354,9 +366,10 @@ class LifecycleRule(Bookkeeping, Base):
     """What one lifecycle state allows, and where an item may move from it."""
 
     __tablename__ = "lifecycle_rules"
+    __table_args__ = (UniqueConstraint("state", name="lifecycle_rules_state"),)
 
     hid: Mapped[str] = _hid()
-    state: Mapped[str] = mapped_column(String(20), unique=True)
+    state: Mapped[str] = mapped_column(String(20))
     sort: Mapped[int] = mapped_column(Integer)
     dispositions: Mapped[list[str]] = mapped_column(JSON, default=list)
     keeps_disposition: Mapped[bool] = mapped_column(Boolean, default=False)

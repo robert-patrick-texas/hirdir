@@ -1,5 +1,6 @@
 """Scenarios S06 to S11 of docs/build-plan.md, against a real server process."""
 
+import threading
 import time
 from typing import Any
 
@@ -39,9 +40,18 @@ class Inventory:
         return [row["hostname"] for row in self.get("/items", **params)["items"]]
 
 
+IVY = ("ivy", "acceptance-inventory")
+
+
 @pytest.fixture
 def inventory(server: Server) -> Inventory:
-    return Inventory(server.sign_in(*ADMIN))
+    """The scenarios are worked by a user with the Inventory role, not by the Admin."""
+    admin = server.sign_in(*ADMIN)
+    made = admin.post(
+        "/users", json={"username": IVY[0], "access_code": IVY[1], "role": "inventory"}
+    )
+    assert made.status_code == 201, made.text
+    return Inventory(server.sign_in(*IVY))
 
 
 def test_s06_one_item_shows_the_catalog_value_and_the_other_its_own(inventory: Inventory) -> None:
@@ -209,7 +219,7 @@ def test_s10_each_move_is_in_the_history_and_excess_online_is_refused(inventory:
         "staged",
         "deployed",
     ]
-    assert all(event["actor_name"] == ADMIN[0] and event["at"] for event in history)
+    assert all(event["actor_name"] == IVY[0] and event["at"] for event in history)
     spare = next(event for event in history if event["action"] == "update")
     assert change(spare, "disposition") == ("Production", "Spare")
     assert change(spare, "expected_online") == (True, False)
@@ -218,7 +228,7 @@ def test_s10_each_move_is_in_the_history_and_excess_online_is_refused(inventory:
 
 
 def test_s11_the_grid_filter_finds_the_right_rows_and_a_bad_pattern_is_refused(
-    inventory: Inventory,
+    inventory: Inventory, server: Server
 ) -> None:
     c9300 = inventory.entry("C9300-48P")
     c9500 = inventory.entry("C9500-24Y4C")
@@ -267,11 +277,44 @@ def test_s11_the_grid_filter_finds_the_right_rows_and_a_bad_pattern_is_refused(
     too_long = inventory.get("/items", expect=422, filter="hostname:regex:" + "(a|aa)+" * 40)
     assert "at most 200 characters" in too_long["errors"][0]["message"]
     assert too_long["errors"][0]["field"] == "filter"
-    # A pattern that is short enough and backtracks without end is stopped as well.
-    inventory.post("/items", {"name": "long-comment", "comments": "a" * 5000 + "b"})
-    slow = inventory.get("/items", expect=422, filter="comments:regex:(a|aa)+$")
+    # So is a short pattern that would take gigabytes to compile.
+    costly = inventory.get("/items", expect=422, filter="hostname:regex:(?:a{2500}){2500}")
+    assert "counted repeats" in costly["errors"][0]["message"]
+    assert time.monotonic() - started < 2
+
+    # A pattern that passes both checks and backtracks without end is stopped while it
+    # runs, and the server goes on answering someone else all the while.
+    for number in range(20):
+        inventory.post("/items", {"name": f"long-{number}", "comments": "a" * 4000 + "b"})
+    waits: list[float] = []
+    done = threading.Event()
+
+    def probe() -> None:
+        while not done.is_set():
+            asked = time.monotonic()
+            assert httpx2.get(f"{server.url}/health/ready").status_code == 200
+            waits.append(time.monotonic() - asked)
+
+    watcher = threading.Thread(target=probe)
+    watcher.start()
+    try:
+        started = time.monotonic()
+        slow = inventory.get("/items", expect=422, filter="comments:regex:(a|aa)+$")
+        took = time.monotonic() - started
+    finally:
+        done.set()
+        watcher.join()
     assert "too long" in slow["errors"][0]["message"]
-    assert time.monotonic() - started < 5
-    # The server still answers, and answers the good filter as before.
-    assert inventory.get("/health/ready") == {"status": "ok", "detail": ""}
+    assert took < 3
+    assert waits, "the probe got no answer while the pattern ran"
+    assert max(waits) < 1, waits
+
+    # A View-only user may read with the same filter and may change nothing.
+    admin = server.sign_in(*ADMIN)
+    admin.post(
+        "/users", json={"username": "vic", "access_code": "acceptance-viewer", "role": "viewer"}
+    )
+    viewer = Inventory(server.sign_in("vic", "acceptance-viewer"))
+    assert viewer.hostnames(filter=short, sort="hostname") == expected
+    viewer.post("/items", {"name": "not-made"}, expect=403)
     assert inventory.hostnames(filter=short, sort="hostname") == expected

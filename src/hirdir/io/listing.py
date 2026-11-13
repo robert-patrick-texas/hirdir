@@ -3,7 +3,7 @@
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError, OperationalError, StatementError
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
@@ -11,6 +11,7 @@ from hirdir.io import filters
 from hirdir.io.fields import Listing, default_view
 
 MAX_LIMIT = 1000
+MAX_OFFSET = 10_000_000
 
 
 def page(
@@ -53,4 +54,10 @@ def page(
             if budget.failure:
                 raise filters.refuse(budget.failure) from None
             raise
+        except StatementError as error:
+            # A value that could not be handed to the database at all. The grammar
+            # refuses the ones it knows of; this is the net under it.
+            if isinstance(error, DBAPIError):
+                raise
+            raise filters.refuse("a value in the filter cannot be compared") from None
     return rows, total

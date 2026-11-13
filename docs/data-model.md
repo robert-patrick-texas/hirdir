@@ -10,12 +10,12 @@ to every interface, so it is made here first.
 |---|---|
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
-| Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. |
+| Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
 | Removal | Items, sites, locations, contacts, owners, contracts and catalog entries are never deleted while anything refers to them. They carry `record_status`. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are ISO 8601 in UTC. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
-| Decimals | Money has two places, support weight three, a percentage two. In JSON a decimal is text, `"18000.00"`, so that nothing is lost on the way to a browser. |
+| Decimals | Money has two places, support weight up to three, a percentage up to two. In JSON a decimal is written as text, `"18000.00"`, so that nothing is lost on the way to a browser. A number is accepted on the way in. |
 | Blank | A blank text field is stored as nothing at all, and is `null` in JSON. |
 | Text keys | Compared without regard to case or surrounding space. The text as entered is what is stored and shown. |
 | History | The past value of any field is answered from `audit_events`. Only group membership and contract coverage keep their own date ranges, because reports ask about them directly. |
@@ -117,9 +117,9 @@ lifecycle fields included.
 A **major item** is one with `parent_item_hid` blank. `is_major` is derived and is
 available as a filter and a column.
 
-Release 0.2.0 has every field above except `parent_item_hid` and `position`, which
-arrive with minor items in 0.4.0, `location_hid` in 0.5.0 and `purchase_line_hid` in
-0.6.0.
+Release 0.2.0 has every field above except `parent_item_hid`, `position` and the
+derived `is_major`, which arrive with minor items in 0.4.0, `location_hid` in 0.5.0 and
+`purchase_line_hid` in 0.6.0.
 
 ### `item_replacements`
 
@@ -308,9 +308,10 @@ letters, digits, hyphens and underscores, and is what is stored on a record; the
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
 
-A setting has a default, written in the code. The database keeps a row only for a
-setting that has been given a value, and setting it to nothing returns it to the
-default.
+A setting has a default, written in the code. The database has no row for a setting
+that has never been changed. Setting it to nothing returns it to the default; the row
+then stays, empty, and keeps its `row_version`. A number has at most two decimal places
+and is refused, not rounded, when it has more.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -384,8 +385,8 @@ are fixed.
 |---|---|---|
 | `state` | text, unique | one of the nine |
 | `dispositions` | list | the dispositions an item in this state may have; empty means it has none |
-| `keeps_disposition` | boolean | an item keeps the disposition it came with, which is then allowed as well: Down and Pending-Removal |
-| `may_be_online` | list | the dispositions that may be expected online in this state |
+| `keeps_disposition` | boolean | an item keeps the disposition it came with, which is then allowed as well: Down and Pending-Removal. An item that came with none may be given any |
+| `may_be_online` | list | the dispositions that may be expected online in this state. Never Excess |
 | `must_be_online` | list | the dispositions that are always expected online: Production in Prod |
 | `entry_disposition`, `entry_online` | choice, boolean | the "set on entry" column above |
 | `next_states` | list | the states an item may move to from this one |

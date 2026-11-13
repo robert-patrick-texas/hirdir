@@ -2959,6 +2959,7 @@
           },
           "offset": {
             "default": 0,
+            "maximum": 10000000.0,
             "minimum": 0.0,
             "title": "Offset",
             "type": "integer"
@@ -4484,6 +4485,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -4674,6 +4676,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -5247,6 +5250,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -5513,6 +5517,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -5789,6 +5794,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -6726,6 +6732,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
@@ -7138,6 +7145,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "maximum": 10000000,
               "minimum": 0,
               "title": "Offset",
               "type": "integer"

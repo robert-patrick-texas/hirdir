@@ -1,5 +1,6 @@
 """The application: the API, the web UI it serves, and what wraps every request."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -23,6 +24,7 @@ STATIC = Path(__file__).parent / "static"
 BASE_TAG = '<base href="/" />'
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
+log = logging.getLogger("hirdir")
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )
@@ -33,7 +35,9 @@ class Gateway:
 
     From a trusted proxy it takes the URL prefix the proxy stripped and the address of
     the real client. On every response it sets the request ID and the security headers,
-    and removes any cookie, because hirdir never sets one.
+    and removes any cookie, because hirdir never sets one. An error that nothing else
+    answered is logged with its request ID and answered here as a problem document, so
+    that it carries the same headers as every other response.
     """
 
     def __init__(self, app: ASGIApp, trusted_proxies: tuple[str, ...]) -> None:
@@ -53,8 +57,12 @@ class Gateway:
         scope.setdefault("state", {})["request_id"] = request_id
         is_api = scope["path"].startswith(scope.get("root_path", "") + "/api/")
 
+        started = False
+
         async def send_with_headers(message: Message) -> None:
+            nonlocal started
             if message["type"] == "http.response.start":
+                started = True
                 out = MutableHeaders(scope=message)
                 out["X-Request-Id"] = request_id
                 out["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
@@ -65,7 +73,16 @@ class Gateway:
                 del out["Set-Cookie"]
             await send(message)
 
-        await self.app(scope, receive, send_with_headers)
+        try:
+            await self.app(scope, receive, send_with_headers)
+        except Exception:
+            log.exception("request %s failed: %s %s", request_id, scope["method"], scope["path"])
+            if started:
+                raise
+            failure = problems.problem(
+                500, "Server error", f"something went wrong; the request ID is {request_id}"
+            )
+            await failure(scope, receive, send_with_headers)
 
     @staticmethod
     def _apply_forwarded(scope: Scope, headers: Headers) -> None:

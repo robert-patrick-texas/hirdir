@@ -15,12 +15,12 @@ and CLI's types are generated from it.
 |---|---|
 | Names | `snake_case` fields, plural kebab-case paths: `/catalog-entries`, `/device-groups` |
 | Record routes | `GET /items`, `POST /items`, `GET /items/{hid}`, `PATCH /items/{hid}`, `POST /items/{hid}/retire` |
-| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000. `fields` arrives with export in 0.3.0 |
+| Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000 and `offset` at most 10,000,000. `fields` arrives with export in 0.3.0 |
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422` |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | `POST` routes that create accept `Idempotency-Key`, from 0.3.0 |
 
@@ -80,7 +80,7 @@ One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
 | Operator | Applies to | Meaning |
 |---|---|---|
 | `eq`, `ne` | any | equal, ignoring case for text. `ne` also finds a blank |
-| `in` | any | one of a list |
+| `in` | any | one of a list of at most 1000 |
 | `contains`, `prefix` | text | |
 | `glob` | text | `*` and `?` |
 | `regex` | text | bounded; see [architecture.md](architecture.md). Matches anywhere in the value unless anchored with `^` and `$` |
@@ -97,8 +97,10 @@ comparison. A field or operator the route does not allow is a `422`. Every compa
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
-A filter nests at most 8 deep and holds at most 100 conditions. Its JSON Schema is
-`contract/filter.schema.json`.
+A filter nests at most 8 deep and holds at most 100 conditions, and a value is at most
+1000 characters. Its JSON Schema is `contract/filter.schema.json`. A value that the
+field could never hold, such as a number with more decimal places than money has, is a
+`422`.
 
 `sort` is a list such as `["site", "-effective.ldos"]`, written `sort=site,-effective.ldos`
 in a URL. Text sorts without regard to case, blank values come last in either
@@ -108,7 +110,9 @@ On the item list, `name` filters and sorts by the hostname when the name is blan
 The short form used by the CLI and by `filter=` in a URL is one condition per
 `field:op:value`, joined by AND: `lifecycle_state:in:Test,Prod hostname:prefix:site2-`.
 A value runs to the start of the next condition, so it may hold spaces, and the values
-of `in` and `between` are separated by commas. `filter=` also takes the JSON form.
+of `in` and `between` are separated by commas. A value that itself looks like the start
+of a condition, `word:word:`, is refused, because it is nearly always a mistyped
+operator; the JSON form takes any value. `filter=` also takes the JSON form.
 
 ## Import and export
 

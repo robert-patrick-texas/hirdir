@@ -108,7 +108,7 @@ def create_choice(
         sort=sort,
         active=active,
     )
-    records.created(db, context, "choice", choice, FIELDS)
+    records.created(db, context, "choice", choice, FIELDS, names={"list_name": "list"})
     return choice
 
 

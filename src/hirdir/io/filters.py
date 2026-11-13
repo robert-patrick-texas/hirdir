@@ -23,6 +23,8 @@ from hirdir.domain.errors import Invalid
 MAX_DEPTH = 8
 MAX_CONDITIONS = 100
 MAX_LIST = 1000
+MAX_TEXT = 1000
+BIGGEST = 2**63 - 1
 
 COMPARING = ("eq", "ne", "in", "empty")
 ORDERING = ("lt", "lte", "gt", "gte", "between")
@@ -39,7 +41,7 @@ KINDS: dict[str, tuple[str, ...]] = {
     "integer": (*COMPARING, *ORDERING),
     "date": (*COMPARING, *ORDERING),
     "timestamp": (*COMPARING, *ORDERING),
-    "boolean": ("eq", "ne", "empty"),
+    "boolean": ("eq", "ne", "in", "empty"),
     "tags": ("has", "empty"),
 }
 
@@ -92,11 +94,11 @@ def refuse(message: str) -> Invalid:
 def _node(source: Any, depth: int, count: list[int]) -> Node:
     if not isinstance(source, dict):
         raise refuse("each part is an object with field, op and value, or with and, or or")
-    if depth > MAX_DEPTH:
-        raise refuse(f"a filter nests at most {MAX_DEPTH} deep")
     keys = set(source)
     for joined_by in ("and", "or"):
         if keys == {joined_by}:
+            if depth >= MAX_DEPTH:
+                raise refuse(f"a filter nests at most {MAX_DEPTH} deep")
             parts = source[joined_by]
             if not isinstance(parts, list) or not parts:
                 raise refuse(f"'{joined_by}' takes a list of one or more parts")
@@ -114,17 +116,21 @@ def _node(source: Any, depth: int, count: list[int]) -> Node:
 
 def from_tree(source: Any) -> Node:
     """Read a filter from its JSON form, already decoded."""
-    return _node(source, 1, [0])
+    return _node(source, 0, [0])
 
 
-_SHORT = re.compile(rf"(?:^|\s+)([A-Za-z_][A-Za-z0-9_.]*):({'|'.join(OPERATORS)}):")
+_SHORT = re.compile(rf"(?:^|\s+)([A-Za-z_][A-Za-z0-9_.]*):({'|'.join(OPERATORS)}):", re.IGNORECASE)
+# What looks like the start of a condition, whatever stands where the operator should.
+_LIKE_A_CONDITION = re.compile(r"(?:^|\s)([A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_]+):")
 
 
 def from_short(text: str) -> Node:
     """Read a filter from its short form: `field:op:value` conditions joined by AND.
 
     A value runs to the start of the next condition, so it may hold spaces. The values
-    of `in` and `between` are separated by commas.
+    of `in` and `between` are separated by commas. A value that itself holds something
+    shaped like a condition is refused, because it is far more likely a mistyped
+    operator than a value: such a value is written in the JSON form.
     """
     text = text.strip()
     starts = list(_SHORT.finditer(text))
@@ -134,7 +140,13 @@ def from_short(text: str) -> Node:
     for place, match in enumerate(starts):
         end = starts[place + 1].start() if place + 1 < len(starts) else len(text)
         value: Any = text[match.end() : end].strip()
-        op = match[2]
+        op = match[2].lower()
+        stray = _LIKE_A_CONDITION.search(value)
+        if stray is not None:
+            raise refuse(
+                f"'{stray[1]}:' is not a condition: the operators are {', '.join(OPERATORS)}. "
+                "A value that holds such text is written in the JSON form"
+            )
         if op in ("in", "between"):
             value = [part.strip() for part in value.split(",")]
         conditions.append(Condition(match[1], op, value))
@@ -174,6 +186,41 @@ def _truth(value: Any, what: str) -> bool:
     raise refuse(f"{what} takes true or false")
 
 
+def _number(field: Field, text: str) -> Decimal:
+    """Read a number that the column can be compared with: finite, and within its reach."""
+    number = Decimal(text)
+    if not number.is_finite():
+        raise ValueError
+    places = getattr(field.expression.type, "places", None)
+    if places is not None:
+        steps = number.scaleb(places)
+        if steps != steps.to_integral_value() or abs(steps) > BIGGEST:
+            raise ValueError
+    return number
+
+
+def _moment(text: str) -> datetime:
+    moment = datetime.fromisoformat(text)
+    moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
+def _text(name: str, value: Any) -> str:
+    """Read a text value: text or a number, of a length and content a database can take."""
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        raise refuse(f"{name} is compared with text")
+    text = str(value).strip()
+    if len(text) > MAX_TEXT:
+        raise refuse(f"a value is at most {MAX_TEXT} characters long")
+    try:
+        text.encode("utf-8")
+    except UnicodeError:
+        raise refuse(f"{name} is compared with text it could hold") from None
+    if "\x00" in text:
+        raise refuse(f"{name} is compared with text it could hold")
+    return text
+
+
 def _converted(field: Field, name: str, value: Any) -> Any:
     """Return one value of a condition in the form its field is compared with."""
     if isinstance(value, list | dict) or value is None:
@@ -181,34 +228,32 @@ def _converted(field: Field, name: str, value: Any) -> Any:
     kind = field.kind
     if kind == "boolean":
         return _truth(value, name)
-    text = str(value).strip() if not isinstance(value, bool) else ""
+    text = _text(name, value)
+    if field.convert is None and kind in ("text", "choice", "reference"):
+        return text
     try:
         if field.convert is not None:
             return field.convert(text)
         if kind == "number":
-            number = Decimal(text)
-            if not number.is_finite():
-                raise ValueError
-            return number
+            return _number(field, text)
         if kind == "integer":
-            return int(text)
+            whole = int(text)
+            if abs(whole) > BIGGEST:
+                raise ValueError
+            return whole
         if kind == "date":
             return date.fromisoformat(text)
-        if kind == "timestamp":
-            moment = datetime.fromisoformat(text)
-            return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+        return _moment(text)
     except ValueError, InvalidOperation, ArithmeticError:
+        places = getattr(field.expression.type, "places", None)
         expected = {
-            "number": "a number",
+            "number": f"a number of at most {places} decimal places" if places else "a number",
             "integer": "a whole number",
             "date": "a date, as YYYY-MM-DD",
             "timestamp": "a date and time in ISO 8601",
             "mac": "a MAC address or part of one",
         }.get(kind, "a value it can hold")
         raise refuse(f"{name} is compared with {expected}") from None
-    if not isinstance(value, str):
-        raise refuse(f"{name} is compared with text")
-    return value.strip()
 
 
 def _is_text(field: Field) -> bool:
@@ -250,7 +295,10 @@ def _condition(condition: Condition, fields: Mapping[str, Field]) -> ColumnEleme
             raise refuse(f"{name} in takes a list of one or more values")
         if len(value) > MAX_LIST:
             raise refuse(f"a list holds at most {MAX_LIST} values")
-        return or_(*(_equal(field, _converted(field, name, entry)) for entry in value))
+        wanted_any = [_converted(field, name, entry) for entry in value]
+        if _is_text(field):
+            return dialect.folded(column).in_([dialect.folded(literal(one)) for one in wanted_any])
+        return column.in_([literal(one, type_=column.type) for one in wanted_any])
     if op == "between":
         if not isinstance(value, list) or len(value) != 2:
             raise refuse(f"{name} between takes two values, the lowest first")

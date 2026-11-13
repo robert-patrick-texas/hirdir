@@ -229,7 +229,7 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column("row_version", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("state"),
+        sa.UniqueConstraint("state", name="lifecycle_rules_state"),
     )
     op.create_table(
         "owners",
@@ -246,7 +246,7 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column("row_version", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("label_key"),
+        sa.UniqueConstraint("label_key", name="owners_label"),
     )
     op.create_table(
         "settings",
@@ -259,7 +259,7 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column("row_version", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("key"),
+        sa.UniqueConstraint("key", name="settings_key"),
     )
     op.create_table(
         "tags",
@@ -274,7 +274,7 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column("row_version", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("label_key"),
+        sa.UniqueConstraint("label_key", name="tags_label"),
     )
     op.create_table(
         "vendors",
@@ -289,7 +289,7 @@ def upgrade() -> None:
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column("row_version", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("name_key"),
+        sa.UniqueConstraint("name_key", name="vendors_name"),
     )
     op.create_table(
         "catalog_entries",
@@ -396,7 +396,7 @@ def upgrade() -> None:
             ["owners.hid"],
         ),
         sa.PrimaryKeyConstraint("hid"),
-        sa.UniqueConstraint("asset_tag_key"),
+        sa.UniqueConstraint("asset_tag_key", name="items_asset_tag"),
         sa.UniqueConstraint("catalog_entry_hid", "serial_key", name="items_catalog_serial"),
     )
     with op.batch_alter_table("items", schema=None) as batch_op:

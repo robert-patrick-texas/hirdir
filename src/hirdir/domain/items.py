@@ -232,7 +232,10 @@ def _standing_on_update(db: Session, fields: dict[str, Any], item: Item) -> dict
         disposition = lifecycle.disposition_name(disposition)
     rule = lifecycle.rule_of(db, item.lifecycle_state)
     if online is None:
-        _, online = lifecycle.entry_standing(rule, item.disposition, disposition)
+        raise Invalid(
+            "an item with a lifecycle state is expected online or it is not",
+            {"expected_online": "true or false"},
+        )
     errors = lifecycle.standing_errors(rule, disposition, online, item.disposition)
     if errors:
         raise Invalid("the lifecycle rules do not allow this", errors)
@@ -241,13 +244,18 @@ def _standing_on_update(db: Session, fields: dict[str, Any], item: Item) -> dict
 
 def create_item(db: Session, context: AuditContext, fields: dict[str, Any]) -> Item:
     """Create an item. Whatever is not given stays blank."""
-    labels = fields.pop("tags", None)
+    labels = fields.pop("tags", None) or []
     standing = _standing_on_create(db, fields)
     plain = {name: value for name, value in fields.items() if name not in STANDING}
     item = Item(**_checked(db, plain, None), **standing)
-    records.created(db, context, RECORD_TYPE, item, FIELDS)
-    if labels:
-        tags.set_labels(db, RECORD_TYPE, item.hid, labels)
+    records.created(
+        db,
+        context,
+        RECORD_TYPE,
+        item,
+        FIELDS,
+        then=lambda: tags.set_labels(db, RECORD_TYPE, item.hid, labels),
+    )
     return item
 
 
@@ -259,7 +267,8 @@ def update_item(
     The lifecycle state is not changed here: see `transition`.
     """
     item = get_item(db, hid)
-    labels = fields.pop("tags", None)
+    has_tags = "tags" in fields
+    labels = fields.pop("tags", None) or []
     for name in ("lifecycle_state", "state_reason"):
         if name in fields:
             raise Invalid(
@@ -268,7 +277,7 @@ def update_item(
             )
     plain = {name: value for name, value in fields.items() if name not in STANDING}
     values = {**_checked(db, plain, item), **_standing_on_update(db, fields, item)}
-    tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if labels is not None else []
+    tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change)
     return item
 

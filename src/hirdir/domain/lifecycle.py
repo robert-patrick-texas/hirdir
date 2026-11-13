@@ -30,6 +30,7 @@ STATES = (
 )
 DISPOSITIONS = ("Staging", "Production", "Spare", "Excess")
 ARCHIVED = "Archived"
+EXCESS = "Excess"
 
 # What a caller passes for a field it says nothing about, where None means "blank".
 UNSET: Final[Any] = object()
@@ -67,8 +68,18 @@ def rule_of(db: Session, state: str) -> LifecycleRule:
 
 
 def _allowed(rule: LifecycleRule, kept: str | None) -> list[str]:
+    """Return the dispositions an item may have in the rule's state.
+
+    A state that keeps the disposition allows the one the item came with. An item that
+    came with none, because it was first entered in that state, may be given any: there
+    is nothing from before to keep, and an item in hand is still for something.
+    """
     allowed = list(rule.dispositions)
-    if rule.keeps_disposition and kept and kept not in allowed:
+    if not rule.keeps_disposition:
+        return allowed
+    if kept is None:
+        return list(DISPOSITIONS)
+    if kept not in allowed:
         allowed.append(kept)
     return allowed
 
@@ -79,7 +90,7 @@ def standing_errors(
     """Say what is wrong with a disposition and an intent for an item in the rule's state.
 
     `kept` is the disposition the item already has. A state that keeps the disposition
-    allows that one as well as its own.
+    allows that one as well as its own, and any at all for an item that has none yet.
     """
     allowed = _allowed(rule, kept)
     state = rule.state
@@ -183,7 +194,9 @@ def update_rule(
                 {"next_states": "a state does not move to itself"},
             )
     if "keeps_disposition" in fields:
-        values["keeps_disposition"] = bool(fields["keeps_disposition"])
+        if not isinstance(fields["keeps_disposition"], bool):
+            raise Invalid("the rule is not acceptable", {"keeps_disposition": "true or false"})
+        values["keeps_disposition"] = fields["keeps_disposition"]
     if "entry_disposition" in fields:
         given = fields["entry_disposition"]
         values["entry_disposition"] = (
@@ -201,6 +214,9 @@ def update_rule(
         errors["entry_disposition"] = "must be one of the dispositions the state allows"
     if not set(final("must_be_online")) <= set(final("may_be_online")):
         errors["must_be_online"] = "must be among those that may be online"
+    if EXCESS in final("may_be_online"):
+        # Decided, and not for a rule to change: see D-26 in docs/decisions.md.
+        errors["may_be_online"] = "Excess is always offline"
     if errors:
         raise Invalid("the rule does not agree with itself", errors)
     records.apply(db, context, "lifecycle_rule", rule, row_version, values)

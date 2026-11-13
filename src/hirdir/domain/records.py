@@ -1,5 +1,6 @@
 """What every editable record shares: clean text, stale-edit refusal and audited changes."""
 
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -20,8 +21,13 @@ def key(text: str) -> str:
 
 
 def clean(value: Any) -> Any:
-    """Return a text value without surrounding space, and a blank one as None."""
+    """Return a text value without surrounding space, and a blank one as None.
+
+    Text with a NUL character in it is refused: no database keeps it faithfully.
+    """
     if isinstance(value, str):
+        if "\x00" in value:
+            raise Invalid("text must not hold a NUL character")
         return value.strip() or None
     return value
 
@@ -47,28 +53,47 @@ def touch(record: Any, context: AuditContext, expected_version: int | None) -> N
     record.updated_by = context.actor_hid
 
 
+def _stored_only(name: str) -> bool:
+    """Say whether a column is bookkeeping for comparing, and not a field of the record."""
+    return name.endswith("_key")
+
+
 def differences(record: Any, values: dict[str, Any]) -> list[dict[str, Any]]:
     """Return a change for each of values that differs from what record holds."""
     return [
         change(name, jsonable(getattr(record, name)), jsonable(new))
         for name, new in values.items()
-        if getattr(record, name) != new
+        if getattr(record, name) != new and not _stored_only(name)
     ]
 
 
 def created(
-    db: Session, context: AuditContext, record_type: str, record: Any, fields: tuple[str, ...]
+    db: Session,
+    context: AuditContext,
+    record_type: str,
+    record: Any,
+    fields: tuple[str, ...],
+    *,
+    names: Mapping[str, str] | None = None,
+    then: Callable[[], list[dict[str, Any]]] | None = None,
 ) -> None:
-    """Add record, and audit its creation with every field that was given a value."""
+    """Add record, and audit its creation with every field that was given a value.
+
+    `names` gives the documented name of a field whose attribute is called something
+    else. `then` runs once the record has its HID, for what is stored beside the record
+    and belongs in the same event, such as its tags; it returns the changes it made.
+    """
     record.created_by = context.actor_hid
     record.updated_by = context.actor_hid
     db.add(record)
     db.flush()
     changes = [
-        change(name, None, jsonable(getattr(record, name)))
+        change((names or {}).get(name, name), None, jsonable(getattr(record, name)))
         for name in fields
         if getattr(record, name) not in (None, [], "")
     ]
+    if then is not None:
+        changes += then()
     audit.record(db, context, "create", record_type, record.hid, changes)
 
 

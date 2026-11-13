@@ -20,6 +20,7 @@ from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
 CATALOG_KINDS = ("hardware", "virtual_machine", "software", "service")
+BIGGEST = Decimal(10) ** 12
 
 
 def _refuse(key: str, expected: str) -> Invalid:
@@ -28,18 +29,21 @@ def _refuse(key: str, expected: str) -> Invalid:
 
 def _number(key: str, low: Decimal, high: Decimal | None, above_low: bool = False) -> Callable:
     expected = f"a number from {low} to {high}" if high is not None else f"a number above {low}"
+    expected += ", with at most two decimal places"
 
     def check(value: Any) -> Any:
         if isinstance(value, bool) or not isinstance(value, int | float | str):
             raise _refuse(key, expected)
         try:
             number = Decimal(str(value).strip())
+            if not number.is_finite() or abs(number) > BIGGEST:
+                raise _refuse(key, expected)
+            exact = number == number.quantize(Decimal("0.01"))
         except InvalidOperation:
             raise _refuse(key, expected) from None
         too_low = number <= low if above_low else number < low
-        if not number.is_finite() or too_low or (high is not None and number > high):
+        if not exact or too_low or (high is not None and number > high):
             raise _refuse(key, expected)
-        number = number.quantize(Decimal("0.01"))
         return int(number) if number == number.to_integral_value() else float(number)
 
     return check
