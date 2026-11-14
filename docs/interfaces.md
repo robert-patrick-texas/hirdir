@@ -45,7 +45,7 @@ and CLI's types are generated from it.
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
-| Reports | `GET /reports/summary`, `/reports/end-of-life`, `/reports/coverage`, `/reports/duplicates` |
+| Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/duplicates` |
 | Audit | `GET /audit-events` |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
 
@@ -263,22 +263,36 @@ first has just changed is told which, and none of their change is applied.
 
 ## Reports
 
-`GET /reports/summary` counts a view of the items. It takes `filter`, `include_drafts`
-and `include_archived` as the item list does, and `by`, one of `vendor`, `kind`,
-`type`, `function`, `owner`, `lifecycle_state`, `disposition` and `tag`. `region`,
-`site` and `contract` join them as those records arrive. The answer holds `totals` and,
-when `by` is given, `rows`, one for each value, the blank among them:
+Two reports count a view of the items. Each takes `filter`, `include_drafts` and
+`include_archived` as the item list does, and `by`. The answer holds `totals` and, when
+`by` is given, `rows`, one for each value, the blank among them.
+
+**The summary**, `GET /reports/summary`, is for the people who run the network. It
+holds no money.
 
 | Measure | |
 |---|---|
 | `items` | every item of the view, major and minor |
-| `component_count`, `managed_node_count` | as defined under "Counting and weight" on the [data model](data-model.md#counting-and-weight) page |
-| `support_weight`, `est_value`, `annual_support_cost` | the same; decimals, as text. A row of `type` or `function` is labelled as its list of choices labels the value |
+| `component_count`, `managed_node_count`, `support_weight` | as defined under "Counting and weight" on the [data model](data-model.md#counting-and-weight) page |
+| `by_health` | the components that are `good`, `degraded`, `failed` and `unknown`; see "Condition, observation and health" |
+| `by_condition` | on `totals` only: the components of each condition, and those with none |
 | `by_kind` | on `totals` only: items and components of each kind, so that software and services stand beside the headline count |
 
-A minor item is in the row of the owner, state and disposition in force for it. An item
-with several tags is in the row of each, and the totals count it once. A stack whose
-members fall in two rows is a managed node in both, and one in the totals.
+`by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `lifecycle_state`,
+`disposition`, `condition`, `health` and `tag`.
+
+**The management report**, `GET /reports/management`, is for the people who pay for
+the network. It holds `items`, `component_count`, `est_value` and
+`annual_support_cost`, and neither condition nor health. `by` is one of `vendor`,
+`kind`, `type`, `function`, `owner` and `tag`. From 0.5.0, which has sites, it is also
+by `site`, and that is what it shows when no `by` is given: the whole inventory, and
+each site beneath it.
+
+In both, `region` and `contract` join `by` as those records arrive. A row of `type` or
+`function` is labelled as its list of choices labels the value. A minor item is in the
+row of the owner, state and disposition in force for it. An item with several tags is
+in the row of each, and the totals count it once. A stack whose members fall in two
+rows is a managed node in both, and one in the totals.
 
 `GET /reports/duplicates` lists each address that is held more than once under one
 network, with the unlabelled address space as one network of its own: the address, the
@@ -327,7 +341,7 @@ hirdir report capacity --include-drafts
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its current members, their roles and, for a stack, the master's serial number |
-| Reports | `hirdir report summary` takes `--filter`, `--by`, `--include-drafts` and `--include-archived`, and prints the totals and one row for each value. `hirdir report duplicates` lists the addresses held more than once |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. `hirdir report duplicates` lists the addresses held more than once |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |
 
@@ -378,7 +392,7 @@ fresh installation has it, with no account and an empty audit trail.
 | Purchases | Requests and lines; receive a line |
 | Import | Upload, preview, apply, past jobs |
 | Capacity | Demand beside supply by category, the balance and coverage, with and without drafts; the lines, editable |
-| Reports | Summary, with the totals of a view and one row for each owner, state, vendor and the rest; duplicates. End of life and coverage from 0.6.0 |
+| Reports | Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site. Duplicates. End of life and coverage from 0.6.0 |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 
