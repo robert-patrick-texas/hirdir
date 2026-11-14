@@ -680,6 +680,7 @@ export function ContractDetail() {
                 key={`${record.hid} ${record.row_version}`}
                 specs={specs}
                 record={record}
+                labels={{ next_ends_on: "The end of the next term" }}
                 save={(body) =>
                   api.request("patch", "/api/v1/contracts/{hid}", {
                     path: { hid: record.hid },

@@ -48,6 +48,8 @@ interface EditFormProps<R, B> {
   /** Read the record again, as when someone else has changed it. */
   onReload: () => void;
   submitLabel?: string;
+  /** What the page calls a field the server may refuse and the form has no input for. */
+  labels?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -58,6 +60,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
   props: EditFormProps<R, B>,
 ) {
   const { specs, record, hints, notes, save, onSaved, onReload, submitLabel = "Save" } = props;
+  const { labels } = props;
   const stored = record as R & Readonly<Record<string, unknown>>;
   const [values, setValues] = useState<FormValues>(() => formOf(specs, stored));
   const [found, setFound] = useState<Record<string, string>>({});
@@ -90,7 +93,12 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
 
   return (
     <form onSubmit={submit} className="stack" noValidate ref={form}>
-      <Problem error={action.error} shown={names} onReload={onReload} />
+      <Problem
+        error={action.error}
+        shown={names}
+        onReload={onReload}
+        {...(labels ? { labels } : {})}
+      />
       <FormFields
         specs={specs}
         values={values}

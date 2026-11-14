@@ -47,6 +47,9 @@ type Item = Schemas["ItemOut"];
 const LEFT_SERVICE_NOTE =
   "Ended on the day the item was retired, released or archived. The vendor still counts it until it has been told: say so here once it has.";
 
+/** The states that end the coverage of an item on the day it is moved to them. */
+const LEAVING_STATES: readonly string[] = ["Released", "Archived"];
+
 /** What is said before a coverage is removed outright. */
 const REMOVE_NOTE =
   "Removing is for a coverage that was a mistake, as an item put under the wrong contract: it is gone, and the audit trail holds what it was. Cover that was true for a time is ended with a date instead, and stays on record.";
@@ -230,6 +233,11 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
   const open = rows.find((row) => row.hid === ending) ?? null;
   const action = useAction();
   const pending = renewalPending(item.coverage);
+  // Brought back after it left: neither retired, nor in a state that ends coverage. Its
+  // coverage does not come back by itself, and is opened again here.
+  const backInService =
+    item.record_status === "active" &&
+    !LEAVING_STATES.includes(String(item.effective.lifecycle_state.value ?? ""));
 
   function changed(text: string) {
     setAdding(false);
@@ -248,6 +256,24 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
     );
     if (result.ok) {
       changed(`${row.contract.vendor} has been told that ${itemName(item)} left service.`);
+    }
+  }
+
+  /**
+   * Open again a coverage that was ended because the item left, for an item that was
+   * brought back: its end and its mark are cleared, and it runs with its contract.
+   */
+  async function openAgain(row: Coverage) {
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", {
+        path: { hid: row.contract_hid, coverage_hid: row.hid },
+        body: { row_version: row.row_version, ends_on: null, left_service: false },
+      }),
+    );
+    if (result.ok) {
+      changed(
+        `The coverage of ${itemName(item)} under ${row.contract.number} is open again, with the period of the contract.`,
+      );
     }
   }
 
@@ -396,6 +422,18 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
                             Vendor told
                           </button>
                         )}
+                        {row.left_service &&
+                          backInService &&
+                          row.contract.record_status !== "retired" && (
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              aria-label={`Open the coverage under ${row.contract.number} again`}
+                              onClick={() => openAgain(row)}
+                            >
+                              Open again
+                            </button>
+                          )}
                         {endable(row, day) && row.contract.record_status !== "retired" && (
                           <button
                             type="button"
@@ -431,7 +469,8 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
         <p className="hint">
           A day shown lighter is the contract&apos;s: the coverage has none of its own, and follows
           the contract when it is renewed. A coverage that was ended because the item left service
-          is marked until the vendor has been told. End is for cover that was true for a time;
+          is marked until the vendor has been told; where the item has been brought back, it is
+          opened again here, or the item is covered anew. End is for cover that was true for a time;
           Remove is for one that was a mistake.
         </p>
       )}

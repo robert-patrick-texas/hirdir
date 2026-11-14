@@ -57,9 +57,13 @@ export function Renew<R extends Renewed>(props: RenewProps<R>) {
   const [found, setFound] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState("");
   const action = useAction();
-  const names = RENEW_SPECS.map((spec) => spec.name);
+  // The server names the end of a term to come `next_ends_on` when it refuses it: a
+  // period that would end before it starts. It is said under the end the form has.
+  const names = [...RENEW_SPECS.map((spec) => spec.name), "next_ends_on"];
   const built = buildPatch<ContractRenew>(RENEW_SPECS, stored, values);
-  const refused = fieldErrors(action.error, names).shown;
+  const said = fieldErrors(action.error, names).shown;
+  const { next_ends_on: nextEnd, ...own } = said;
+  const refused = nextEnd && !own.ends_on ? { ...own, ends_on: nextEnd } : own;
   const next = record.next_term;
   const day = today();
 
