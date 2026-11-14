@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EXTERNAL_GROUP,
-  externalOwners,
+  externalNote,
   mayRemove,
   memberRoleLabel,
   membersInOrder,
@@ -46,31 +46,54 @@ function member(
 }
 
 describe("owners in a form", () => {
+  const reason = "Runs the building systems";
+
   it("offers each by its label, those outside the team under a heading of their own", () => {
-    expect(ownerOptions(OWNERS)).toEqual([
-      { value: ENGINEERING, label: "Network Engineering" },
-      { value: FACILITIES, label: "Campus Facilities", group: EXTERNAL_GROUP },
+    const options = ownerOptions(OWNERS);
+    expect(options.map((option) => [option.value, option.label, option.group])).toEqual([
+      [ENGINEERING, "Network Engineering", undefined],
+      [FACILITIES, "Campus Facilities", EXTERNAL_GROUP],
     ]);
+    // An owner of the team has nothing more to say of itself.
+    expect(options[0]).toEqual({ value: ENGINEERING, label: "Network Engineering" });
   });
 
-  it("knows which of them are outside the team", () => {
-    const outside = externalOwners(ownerOptions(OWNERS));
-    expect(outside.has(FACILITIES)).toBe(true);
-    expect(outside.has(ENGINEERING)).toBe(false);
-    expect(outside.has("")).toBe(false);
+  it("says of an owner outside the team, once it is chosen, that it is one, and its reason", () => {
+    const option = ownerOption({
+      hid: FACILITIES,
+      label: "Campus Facilities",
+      is_external: true,
+      exception_reason: reason,
+    });
+    expect(option.note).toBe(externalNote(reason));
+    expect(option.note).toContain("marked as an exception");
+    expect(option.note).toContain("Its reason: Runs the building systems.");
+    expect(option.note).toContain("changed on the owner's page");
   });
 
-  it("offers an owner as another record names it, which says whether it is outside", () => {
-    // The owner an item has is offered also when the list no longer brings it, as a
-    // retired one: the item names it with `is_external`.
-    const retired = ownerOption({ hid: RETIRED, label: "Old Facilities", is_external: true });
-    expect(retired).toEqual({ value: RETIRED, label: "Old Facilities", group: EXTERNAL_GROUP });
-    const outside = externalOwners([...ownerOptions(OWNERS), retired]);
-    expect([...outside].sort()).toEqual([FACILITIES, RETIRED]);
+  it("says so also where the reason is not known, and ends a reason with one full stop", () => {
+    expect(externalNote(null)).not.toContain("Its reason");
+    expect(externalNote("  ")).not.toContain("Its reason");
+    expect(externalNote("In the plant room.")).toContain("Its reason: In the plant room. The");
+  });
+
+  it("offers an owner as another record names it, also one the list no longer brings", () => {
+    // The owner an item has is offered as the item names it, with the reason the item shows.
+    const retired = ownerOption({
+      hid: RETIRED,
+      label: "Old Facilities",
+      is_external: true,
+      exception_reason: reason,
+    });
+    expect(retired).toEqual({
+      value: RETIRED,
+      label: "Old Facilities",
+      group: EXTERNAL_GROUP,
+      note: externalNote(reason),
+    });
     expect(
       ownerOption({ hid: ENGINEERING, label: "Network Engineering", is_external: false }),
     ).toEqual({ value: ENGINEERING, label: "Network Engineering" });
-    expect(externalOwners(undefined).size).toBe(0);
   });
 });
 

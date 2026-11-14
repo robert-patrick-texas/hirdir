@@ -7,7 +7,6 @@ import {
   bulkRows,
   CATALOG_ENTRY,
   NOT_IN_BULK,
-  OWNER,
 } from "./bulk";
 import type { GridView } from "./transfer";
 
@@ -277,58 +276,14 @@ describe("buildBulk", () => {
     expect(blank.errors.location).toBe("Give a value, or choose to clear the field.");
   });
 
-  it("sends the reason for an exception beside an owner outside the team", () => {
-    const outside = new Set(["o-facilities"]);
+  it("sets an owner outside the team like any other: the reason is the owner's, and none is sent", () => {
     const built = buildBulk(
       FIELDS,
-      draft({
-        lines: [{ name: OWNER, clear: false, value: "o-facilities" }],
-        ownerReason: " In the plant room ",
-      }),
+      draft({ lines: [{ name: "owner", clear: false, value: "o-facilities" }] }),
       ROWS,
-      {},
-      outside,
     );
-    expect(built.body.set).toEqual({
-      owner: "o-facilities",
-      owner_exception_reason: "In the plant room",
-    });
-  });
-
-  it("sends no reason with an owner of the team, with none given, or with the owner cleared", () => {
-    const outside = new Set(["o-facilities"]);
-    const inside = buildBulk(
-      FIELDS,
-      draft({
-        lines: [{ name: OWNER, clear: false, value: "o-engineering" }],
-        ownerReason: "In the plant room",
-      }),
-      ROWS,
-      {},
-      outside,
-    );
-    expect(inside.body.set).toEqual({ owner: "o-engineering" });
-    // Left blank, an item that has a reason keeps it: the server judges the rest.
-    const blank = buildBulk(
-      FIELDS,
-      draft({ lines: [{ name: OWNER, clear: false, value: "o-facilities" }], ownerReason: " " }),
-      ROWS,
-      {},
-      outside,
-    );
-    expect(blank.body.set).toEqual({ owner: "o-facilities" });
-    expect(blank.errors).toEqual({});
-    const cleared = buildBulk(
-      FIELDS,
-      draft({
-        lines: [{ name: OWNER, clear: true, value: "o-facilities" }],
-        ownerReason: "In the plant room",
-      }),
-      ROWS,
-      {},
-      outside,
-    );
-    expect(cleared.body.set).toEqual({ owner: null });
+    expect(built.body.set).toEqual({ owner: "o-facilities" });
+    expect(built.errors).toEqual({});
   });
 
   it("never sets a field that tells one item from another", () => {

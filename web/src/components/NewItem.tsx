@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { api, type Schemas } from "../api";
 import { useEntryOptions, useOwnerOptions, useTags } from "../lib/lists";
-import { EXCEPTION_HINT, externalOwners } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
 import { Problem } from "./Problem";
 import { CreateForm } from "./RecordForm";
@@ -27,7 +26,6 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
   const tags = useTags();
   const minor = within !== undefined;
   const specs = useMemo<FieldSpec[]>(() => {
-    const outside = externalOwners(owners.data);
     return [
       {
         name: "catalog_entry_hid",
@@ -71,16 +69,6 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
         kind: "choice",
         blank: minor ? "The owner of the item it is in" : "No owner",
         options: owners.data ?? [],
-      },
-      {
-        // Asked for only while the owner chosen is outside the team.
-        name: "owner_exception_reason",
-        label: "Reason for the exception",
-        kind: "longtext",
-        maxLength: 10000,
-        required: true,
-        hint: EXCEPTION_HINT,
-        when: (values) => outside.has(String(values.owner_hid ?? "")),
       },
       {
         name: "location_hid",

@@ -32,6 +32,11 @@ export interface Option {
   label: string;
   /** A heading to group the option under. */
   group?: string;
+  /**
+   * What there is to say of the option once it is chosen, shown beneath the field: of an
+   * owner outside the team, that it is one, and its reason.
+   */
+  note?: string;
 }
 
 export interface FieldSpec {
@@ -72,6 +77,23 @@ export interface FieldSpec {
 
 export type FormValue = string | boolean | string[];
 export type FormValues = Record<string, FormValue>;
+
+/**
+ * What is said beneath a field: the hint the record gives it, or else its own, and after
+ * that what the option that is chosen has to say of itself, as an owner outside the team
+ * says that it is one. Nothing at all is undefined.
+ */
+export function hintOf(
+  spec: FieldSpec,
+  value: FormValue | undefined,
+  given?: string,
+): string | undefined {
+  const chosen =
+    spec.kind === "choice" && typeof value === "string" && value !== ""
+      ? spec.options?.find((option) => option.value === value)?.note
+      : undefined;
+  return [given ?? spec.hint, chosen].filter(Boolean).join(" ") || undefined;
+}
 
 /** Whether a form asks for a field, given what the form holds now. */
 export function asked(spec: FieldSpec, values: FormValues): boolean {

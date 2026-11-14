@@ -205,6 +205,17 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 170,
   },
   {
+    // True for a group whose owner is outside the operations team. A file of groups
+    // has no such column.
+    id: "owner_exception",
+    header: "Outside the team",
+    kind: "boolean",
+    column: null,
+    value: (group) => (group.owner_exception ? "Yes" : "No"),
+    hide: true,
+    width: 160,
+  },
+  {
     id: "parent.name",
     header: "In group",
     kind: "text",
@@ -415,7 +426,12 @@ function groupSpecs(
       label: "Owner",
       kind: "choice",
       blank: "No owner",
-      options: withCurrent(lists.owners, owner ? ownerOption(owner) : null),
+      options: withCurrent(
+        lists.owners,
+        owner
+          ? ownerOption({ ...owner, exception_reason: current?.owner_exception_reason ?? null })
+          : null,
+      ),
     },
     {
       name: "location_hid",
@@ -773,8 +789,28 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
           ) : (
             <Dash />
           )}
+          {group.owner_exception && (
+            <span className="badge" data-testid="group-owner-exception">
+              Outside the operations team
+            </span>
+          )}
           {disputed && <span className="badge">Members disagree</span>}
         </dd>
+        {group.owner_exception && owner && (
+          <>
+            <dt>Reason for the exception</dt>
+            <dd>
+              <span data-testid="group-owner-exception-reason">
+                {group.owner_exception_reason || <Dash />}
+              </span>
+              <span className="muted">
+                {" "}
+                · the owner&apos;s own reason, changed on{" "}
+                <Link to={`/owners/${encodeURIComponent(owner.hid)}`}>the page of the owner</Link>
+              </span>
+            </dd>
+          </>
+        )}
         <dt>Location</dt>
         <dd data-testid="group-location">
           {location ? (
