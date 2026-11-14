@@ -123,6 +123,18 @@ const plannedStack = `Stack ${id} annex`;
 const stackPrefix = `stk-${id}-`;
 const stackSwitches = [`${stackPrefix}1`, `${stackPrefix}2`];
 
+// A room that is rebuilt: the room in use, and beside it a draft under the name of the
+// project, which takes the real name at the end.
+const worksSite = path(americas, `Works ${id}`);
+const oldRoomName = `Room 7 ${id}`;
+const oldRoom = path(worksSite, oldRoomName);
+const projectName = `PRJ-0042 ${id}`;
+const projectRoom = path(worksSite, projectName);
+const retiredName = `z-${oldRoomName}`;
+const livePrefix = `live-${id}-`;
+const liveHosts = [`${livePrefix}01`, `${livePrefix}02`];
+const freshHost = `fresh-${id}-01`;
+
 // The places as they are made: the address of the page of each, by its path.
 const pages = new Map<string, string>();
 
@@ -847,6 +859,8 @@ test("S28: an owner outside the team says why, once, and what is given to it is 
   await add.getByLabel("Contact").selectOption({ label: offered(dana, danaMail) });
   await add.getByRole("button", { name: "Add person" }).click();
   await expect(page.getByText(`${dana} is now the primary of ${facilities}.`)).toBeVisible();
+  // The owner is read again, and the form with it: the next person is chosen after that.
+  await expect(page.getByTestId("owner-people").locator("tbody tr")).toHaveCount(1);
   await region(page, "Add a person")
     .getByLabel("Contact")
     .selectOption({ label: offered(priya, priyaMail) });
@@ -1374,11 +1388,11 @@ test("a new site is planned: spares and a stack are given a planned location the
   const here = page.getByTestId("planned-here");
   await expect(here.getByTestId("planned-count")).toHaveText("4 items");
   await expect(here.getByTestId("planned-groups")).toHaveText("1 device group");
-  const listed = here.getByTestId("planned-items").locator("li");
+  const listed = here.getByTestId("planned-items").locator("tbody tr");
   await expect(listed).toHaveCount(4);
-  await expect(listed.filter({ hasText: spare })).toContainText(`now in ${store}`);
+  await expect(listed.filter({ hasText: spare })).toContainText(store);
   await expect(listed.filter({ hasText: other })).toBeVisible();
-  await expect(listed.filter({ hasText: looseSwitch })).toContainText(`now in ${store}`);
+  await expect(listed.filter({ hasText: looseSwitch })).toContainText(store);
   // The groups planned for the place are a filter of the group grid.
   await here.getByTestId("planned-groups").click();
   await expect(page.getByTestId("grid-total")).toHaveText("1 group");
@@ -1449,4 +1463,122 @@ test("a new site is planned: spares and a stack are given a planned location the
   await expect(page.getByTestId("planned-location")).toHaveCount(0);
 
   await expectClean(page, seen);
+});
+
+test("a room is rebuilt under a project name: a draft beside it, the cut-over, the old room renamed out of the way, the real name taken", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const liveFilter = `hostname:prefix:${livePrefix}`;
+  const [live = ""] = liveHosts;
+
+  // The room in use, and beside it the workspace: a draft under the name of the project.
+  await geography(page, americas);
+  await newPlace(page, "New site in it", "site", worksSite);
+  await newPlace(page, "New location in it", "location", oldRoom, { kind: "Room" });
+  await geography(page, worksSite);
+  await newPlace(page, "New location in it", "location", projectRoom, {
+    kind: "Room",
+    status: "Draft",
+  });
+  await importFile(
+    page,
+    "items",
+    `items-${id}-live.csv`,
+    ["hostname", "location"],
+    liveHosts.map((host) => [host, oldRoom]),
+  );
+
+  // New equipment is given the draft room as its location, not only as a plan: the
+  // form of a new item offers a draft place, and marks it.
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = region(page, "New item");
+  await form.getByLabel("Hostname").fill(freshHost);
+  await form.getByLabel("Location", { exact: true }).fill(projectName);
+  const offered = form.getByRole("list", { name: "Locations that match" });
+  await expect(offered.getByRole("listitem")).toContainText("Draft");
+  await offered.getByRole("button", { name: projectRoom, exact: true }).click();
+  await expect(form.getByTestId("chosen-location_hid")).toHaveText(projectRoom);
+  await form.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: freshHost })).toBeVisible();
+  await expect(page.getByTestId("location")).toContainText(projectRoom);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "own");
+
+  // What is live in the old room is planned for the new one, by one bulk edit.
+  await page.goto(`./items?filter=${encodeURIComponent(liveFilter)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  await page.getByRole("button", { name: "Select all that match" }).click();
+  await page.getByRole("button", { name: "Bulk edit" }).click();
+  const bulk = page.getByTestId("bulk-edit");
+  await bulk.getByLabel("Field to change").selectOption({ label: "Planned location" });
+  await bulk.getByRole("button", { name: "Add", exact: true }).click();
+  const line = bulk.getByRole("group", { name: "Planned location" });
+  await chooseLocation(line, projectName, projectRoom, "Set to");
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  await expect(count(page, "updated")).toHaveText("2");
+  await bulk.getByRole("button", { name: "Apply 2 items" }).click();
+  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+
+  // The cut-over is one change: the new room is made active, and what was planned for
+  // it is there.
+  await page.goto(
+    `${pages.get(projectRoom)}?${new URLSearchParams({ filter: liveFilter, drafts: "1" }).toString()}`,
+  );
+  await expect(page.getByTestId("place-path")).toHaveText(projectRoom);
+  await region(page, "Make active").getByRole("button", { name: "Make location active" }).click();
+  await expect(page.getByTestId("activation-text")).toContainText(
+    `Making ${projectName} active moves 2 items that are planned for it into it.`,
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Make location active" }).click();
+  await expect(
+    page.getByText(`${projectName} is active. What was planned for it is there now: 2 items.`),
+  ).toBeVisible();
+  await expectCounts(treeRow(page, projectRoom), 2, 2);
+  await expectCounts(treeRow(page, oldRoom), 0, 0);
+
+  // The old room, now empty, is retired. It keeps its name.
+  await geography(page, oldRoom);
+  await page.getByRole("button", { name: "Retire location" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retire location" }).click();
+  await expect(page.getByText("The location was retired.")).toBeVisible();
+
+  // So the new room is refused the real name for now: the refusal is at the name, in
+  // words.
+  await geography(page, projectRoom);
+  const details = region(page, "Details");
+  await details.getByLabel("Name (required)").fill(oldRoomName);
+  await details.getByRole("button", { name: "Save" }).click();
+  await expect(details.locator('.alert-error[data-status="409"]')).toBeVisible();
+  await expect(details.locator(".field-error")).toContainText("a location there has it");
+  await expect(page.getByTestId("place-path")).toHaveText(projectRoom);
+
+  // The retired room is still opened, and is renamed out of the way: its name is all
+  // that is changed of it, and it stays retired.
+  await geography(page, oldRoom);
+  await expect(region(page, "Details")).toHaveCount(0);
+  const rename = region(page, "Rename");
+  await rename.getByLabel("Name (required)").fill(retiredName);
+  await rename.getByRole("button", { name: "Rename" }).click();
+  await expect(page.getByText("The location was renamed.")).toBeVisible();
+  await expect(page.getByTestId("place-path")).toHaveText(path(worksSite, retiredName));
+  await expect(region(page, "Retired")).toBeVisible();
+
+  // The new room takes the real name, and what is in it is shown under that path:
+  // nothing was written to an item.
+  await geography(page, projectRoom);
+  await region(page, "Details").getByLabel("Name (required)").fill(oldRoomName);
+  await region(page, "Details").getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("The location was saved.")).toBeVisible();
+  await expect(page.getByTestId("place-path")).toHaveText(oldRoom);
+  await openItem(page, live);
+  await expect(page.getByTestId("location")).toContainText(oldRoom);
+  await expect(page.getByTestId("planned-location")).toHaveCount(0);
+  await openItem(page, freshHost);
+  await expect(page.getByTestId("location")).toContainText(oldRoom);
+
+  await expectClean(page, seen, ["409 PATCH"]);
 });

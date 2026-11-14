@@ -6,9 +6,11 @@ import { ConfirmButton } from "../components/ConfirmButton";
 import { SelectField, TextField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { roleLabel } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Group = Schemas["GroupDetail"];
 
@@ -26,6 +28,12 @@ export function Groups() {
   const [done, setDone] = useState("");
   const action = useAction();
   const fields = action.error?.fields ?? {};
+  const sorting = useSorting(groups.data, {
+    name: (group) => group.name,
+    description: (group) => group.description,
+    members: (group) => group.member_count,
+    roles: (group) => group.roles.map((role) => roleLabel(role)).join(", "),
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -54,16 +62,22 @@ export function Groups() {
             <caption className="visually-hidden">User groups</caption>
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Description</th>
-                <th scope="col" className="number">
+                <SortTh sort={sorting} column="name">
+                  Name
+                </SortTh>
+                <SortTh sort={sorting} column="description">
+                  Description
+                </SortTh>
+                <SortTh sort={sorting} column="members" className="number">
                   Members
-                </th>
-                <th scope="col">Roles</th>
+                </SortTh>
+                <SortTh sort={sorting} column="roles">
+                  Roles
+                </SortTh>
               </tr>
             </thead>
             <tbody>
-              {groups.data.map((group) => (
+              {sorting.rows.map((group) => (
                 <tr key={group.hid}>
                   <th scope="row">
                     <Link to={`/admin/groups/${encodeURIComponent(group.hid)}`}>{group.name}</Link>
@@ -223,6 +237,11 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
   const [chosen, setChosen] = useState("");
   const [done, setDone] = useState("");
   const action = useAction();
+  const sorting = useSorting(group.members, {
+    username: (member) => member.username,
+    display_name: (member) => member.display_name,
+    role: (member) => roleLabel(member.role),
+  });
   const inGroup = new Set(group.members.map((member) => member.hid));
   const candidates = (users.data?.items ?? []).filter((user) => !inGroup.has(user.hid));
 
@@ -269,16 +288,22 @@ function Members({ group, reload }: { group: Group; reload: () => void }) {
           <caption className="visually-hidden">Members of {group.name}</caption>
           <thead>
             <tr>
-              <th scope="col">Username</th>
-              <th scope="col">Display name</th>
-              <th scope="col">Role</th>
+              <SortTh sort={sorting} column="username">
+                Username
+              </SortTh>
+              <SortTh sort={sorting} column="display_name">
+                Display name
+              </SortTh>
+              <SortTh sort={sorting} column="role">
+                Role
+              </SortTh>
               <th scope="col">
                 <span className="visually-hidden">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {group.members.map((member) => (
+            {sorting.rows.map((member) => (
               <tr key={member.hid} className={member.disabled ? "dim" : undefined}>
                 <th scope="row">
                   <Link to={`/admin/users/${encodeURIComponent(member.hid)}`}>

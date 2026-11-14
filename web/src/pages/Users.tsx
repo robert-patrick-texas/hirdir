@@ -6,9 +6,12 @@ import { Pager, toOffset } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { ROLES, roleLabel } from "../lib/roles";
+import { dateValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 const PAGE = 50;
 
@@ -25,6 +28,21 @@ export function Users() {
   const [created, setCreated] = useState<Created | null>(null);
   const users = useLoad(`users ${offset} ${q}`, (signal) =>
     api.request("get", "/api/v1/users", { query: { q, limit: PAGE, offset }, signal }),
+  );
+  // The server pages this list and does not sort it by a column: the headers sort only
+  // when the page on show holds every user there is.
+  const sorting = useSorting(
+    users.data?.items,
+    {
+      username: (user) => user.username,
+      display_name: (user) => user.display_name,
+      role: (user) => (user.role ? roleLabel(user.role) : null),
+      groups: (user) => user.groups.map((group) => group.name).join(", "),
+      kind: (user) => (user.is_service_account ? "Service" : "Person"),
+      state: (user) => (user.disabled ? "Disabled" : "Active"),
+      last_sign_in: (user) => dateValue(user.last_sign_in_at),
+    },
+    { enabled: users.data ? users.data.total === users.data.items.length : false },
   );
 
   function show(next: { q: string; offset: number }) {
@@ -99,17 +117,31 @@ export function Users() {
               <caption className="visually-hidden">Users</caption>
               <thead>
                 <tr>
-                  <th scope="col">Username</th>
-                  <th scope="col">Display name</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Groups</th>
-                  <th scope="col">Kind</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Last sign-in</th>
+                  <SortTh sort={sorting} column="username">
+                    Username
+                  </SortTh>
+                  <SortTh sort={sorting} column="display_name">
+                    Display name
+                  </SortTh>
+                  <SortTh sort={sorting} column="role">
+                    Role
+                  </SortTh>
+                  <SortTh sort={sorting} column="groups">
+                    Groups
+                  </SortTh>
+                  <SortTh sort={sorting} column="kind">
+                    Kind
+                  </SortTh>
+                  <SortTh sort={sorting} column="state">
+                    State
+                  </SortTh>
+                  <SortTh sort={sorting} column="last_sign_in">
+                    Last sign-in
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {users.data.items.map((user) => (
+                {sorting.rows.map((user) => (
                   <tr key={user.hid} className={user.disabled ? "dim" : undefined}>
                     <th scope="row">
                       <Link to={`/admin/users/${encodeURIComponent(user.hid)}`}>

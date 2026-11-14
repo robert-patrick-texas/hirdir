@@ -21,10 +21,13 @@ import { useAction, useLoad } from "../lib/hooks";
 import { EVERY, useNetworkOptions } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
+import type { SortColumns } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
 import { Notice, Problem } from "./Problem";
 import { EditForm } from "./RecordForm";
+import { SortTh } from "./SortTh";
 
 /** The item or the device group whose addresses these are. */
 export type AddressHolder = { item_hid: string } | { group_hid: string };
@@ -64,6 +67,15 @@ function holderFilter(holder: AddressHolder): string {
   return JSON.stringify({ field, op: "eq", value });
 }
 
+// What the table of addresses is sorted by. An address under no network, and one that
+// is no primary, has nothing in that column: it comes last.
+const COLUMNS: SortColumns<Address> = {
+  address: (address) => address.address,
+  network: (address) => address.network?.label,
+  role: (address) => addressRoleLabel(address.role),
+  primary: primaryText,
+};
+
 /**
  * The addresses of one item or one device group: each with its network and its role,
  * the primary management addresses first. There may be a primary of each family, IPv4
@@ -86,6 +98,9 @@ export function Addresses({ holder, whose, mayEdit, onChanged }: AddressesProps)
   );
   const networks = useNetworkOptions();
   const rows = addresses.data?.items ?? [];
+  // The primary management addresses first, as the server lists them, until a header is
+  // pressed.
+  const sorting = useSorting(rows, COLUMNS);
   const open = rows.find((address) => address.hid === editing) ?? null;
 
   function changed(text: string) {
@@ -146,10 +161,18 @@ export function Addresses({ holder, whose, mayEdit, onChanged }: AddressesProps)
             </caption>
             <thead>
               <tr>
-                <th scope="col">Address</th>
-                <th scope="col">Network</th>
-                <th scope="col">Role</th>
-                <th scope="col">Primary</th>
+                <SortTh sort={sorting} column="address">
+                  Address
+                </SortTh>
+                <SortTh sort={sorting} column="network">
+                  Network
+                </SortTh>
+                <SortTh sort={sorting} column="role">
+                  Role
+                </SortTh>
+                <SortTh sort={sorting} column="primary">
+                  Primary
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -158,7 +181,7 @@ export function Addresses({ holder, whose, mayEdit, onChanged }: AddressesProps)
               </tr>
             </thead>
             <tbody>
-              {rows.map((address) => {
+              {sorting.rows.map((address) => {
                 const named = addressText({
                   address: address.address,
                   network: address.network?.label ?? null,

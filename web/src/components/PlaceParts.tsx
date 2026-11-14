@@ -40,6 +40,7 @@ import {
   type Location,
   levelLabel,
   locationsToMoveTo,
+  type OwnRole,
   ownRoles,
   type Place,
   placePath,
@@ -50,6 +51,8 @@ import {
   shippingNoteField,
 } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
+import type { SortColumns } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
 import {
@@ -63,6 +66,7 @@ import {
 import { MakeActive, PlannedHere, usePlanned } from "./PlacePlanned";
 import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
+import { SortTh } from "./SortTh";
 import { Time } from "./Time";
 
 type Choice = Schemas["ChoiceOut"];
@@ -514,6 +518,25 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 />
               </section>
             )}
+            {mayEdit && ready && record.record_status === "retired" && (
+              <section aria-labelledby="place-rename">
+                <h3 id="place-rename">Rename</h3>
+                <p className="hint">
+                  A retired {level} keeps its name, and two places in one place may not have one
+                  name. Renamed, it leaves that name to another place. Nothing else of a retired
+                  place is changed here.
+                </p>
+                <EditForm<Place, PlacePatch>
+                  key={`rename ${record.hid} ${record.row_version}`}
+                  specs={specs.filter((spec) => spec.name === "name")}
+                  record={record}
+                  save={(body) => patchPlace(level, record.hid, body)}
+                  onSaved={() => changed(`The ${level} was renamed.`)}
+                  onReload={place.reload}
+                  submitLabel="Rename"
+                />
+              </section>
+            )}
             {editable && (
               <Move
                 key={`move ${record.hid} ${record.row_version}`}
@@ -633,6 +656,32 @@ interface AssignedHereProps {
 }
 
 /**
+ * One row of the table of a place's own contacts: a contact assigned in a role, or the
+ * word of the place that it has nobody in the role and that nothing further up is looked
+ * at. Each row carries its own assignment, so that what its buttons change is that one,
+ * whatever order the table is in.
+ */
+interface OwnRow {
+  role: OwnRole;
+  assignment: Assignment;
+  stop: boolean;
+}
+
+function ownRows(roles: readonly OwnRole[]): OwnRow[] {
+  return roles.flatMap((role) => [
+    ...role.assigned.map((assignment) => ({ role, assignment, stop: false })),
+    ...(role.stop ? [{ role, assignment: role.stop, stop: true }] : []),
+  ]);
+}
+
+// A role with nobody in it has no contact and no priority to sort by: it comes last.
+const OWN_COLUMNS: SortColumns<OwnRow> = {
+  role: (row) => row.role.label,
+  contact: (row) => (row.stop ? null : row.assignment.contact?.name),
+  priority: (row) => (row.stop ? null : row.assignment.priority),
+};
+
+/**
  * The contacts assigned to the place itself, by role: add one, change its priority,
  * remove it, or say that the place has nobody in a role and that nothing further up is
  * to be looked at.
@@ -649,6 +698,8 @@ function AssignedHere({ level, place, choices, mayEdit, turn, onChanged }: Assig
   const removing = useAction();
   const roles = ownRoles(assignments.data?.items ?? [], choices);
   const any = roles.some((role) => role.assigned.length > 0 || role.stop !== null);
+  // By role and priority at first, as they come, until a header is pressed.
+  const sorting = useSorting(ownRows(roles), OWN_COLUMNS);
 
   async function remove(assignment: Assignment, done: string) {
     const result = await removing.run(() =>
@@ -681,93 +732,96 @@ function AssignedHere({ level, place, choices, mayEdit, turn, onChanged }: Assig
             </caption>
             <thead>
               <tr>
-                <th scope="col">Role</th>
-                <th scope="col">Contact</th>
-                <th scope="col">Priority</th>
+                <SortTh sort={sorting} column="role">
+                  Role
+                </SortTh>
+                <SortTh sort={sorting} column="contact">
+                  Contact
+                </SortTh>
+                <SortTh sort={sorting} column="priority">
+                  Priority
+                </SortTh>
                 {mayEdit && <th scope="col">Change</th>}
               </tr>
             </thead>
             <tbody>
-              {roles.flatMap((role) => [
-                ...role.assigned.map((assignment) => {
-                  const name = assignment.contact?.name ?? "the contact";
+              {sorting.rows.map(({ role, assignment, stop }) => {
+                if (stop) {
                   return (
-                    <tr key={assignment.hid} data-role={role.role} data-assignment={assignment.hid}>
+                    <tr key={assignment.hid} data-role={role.role} data-stop="true">
                       <th scope="row">{role.label}</th>
-                      <td>
-                        {assignment.contact ? (
-                          <>
-                            <Link to={`/contacts/${encodeURIComponent(assignment.contact.hid)}`}>
-                              {assignment.contact.name}
-                            </Link>
-                            {assignment.contact.record_status !== "active" && (
-                              <span className="badge">
-                                {optionLabel(RECORD_STATUSES, assignment.contact.record_status)}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <Dash />
-                        )}
-                      </td>
-                      <td data-testid="priority">{assignment.priority}</td>
+                      <td colSpan={2}>None here, and nothing further up is looked at</td>
                       {mayEdit && (
                         <td className="row-actions">
-                          <Priority
-                            key={`${assignment.hid} ${assignment.row_version}`}
-                            assignment={assignment}
-                            what={`${name} as ${role.label}`}
-                            onChanged={onChanged}
-                          />
-                          <ConfirmButton
-                            label="Remove"
-                            title={`Remove ${name} as ${role.label} contact of ${place.name}?`}
-                            confirmLabel="Remove contact"
-                            onConfirm={() =>
+                          <button
+                            type="button"
+                            disabled={removing.busy}
+                            onClick={() =>
                               remove(
                                 assignment,
-                                `${name} is no longer a ${role.label} contact of ${place.name}.`,
+                                `${place.name} takes its ${role.label} contacts from above again.`,
                               )
                             }
-                            disabled={removing.busy}
                           >
-                            <p>
-                              The contact itself stays. What {place.name} then has in this role is
-                              what is left here, or what the nearest level above it has.
-                            </p>
-                          </ConfirmButton>
+                            Look further up again
+                            <span className="visually-hidden"> for {role.label}</span>
+                          </button>
                         </td>
                       )}
                     </tr>
                   );
-                }),
-                ...(role.stop
-                  ? [
-                      <tr key={role.stop.hid} data-role={role.role} data-stop="true">
-                        <th scope="row">{role.label}</th>
-                        <td colSpan={2}>None here, and nothing further up is looked at</td>
-                        {mayEdit && (
-                          <td className="row-actions">
-                            <button
-                              type="button"
-                              disabled={removing.busy}
-                              onClick={() =>
-                                role.stop &&
-                                remove(
-                                  role.stop,
-                                  `${place.name} takes its ${role.label} contacts from above again.`,
-                                )
-                              }
-                            >
-                              Look further up again
-                              <span className="visually-hidden"> for {role.label}</span>
-                            </button>
-                          </td>
-                        )}
-                      </tr>,
-                    ]
-                  : []),
-              ])}
+                }
+                const name = assignment.contact?.name ?? "the contact";
+                return (
+                  <tr key={assignment.hid} data-role={role.role} data-assignment={assignment.hid}>
+                    <th scope="row">{role.label}</th>
+                    <td>
+                      {assignment.contact ? (
+                        <>
+                          <Link to={`/contacts/${encodeURIComponent(assignment.contact.hid)}`}>
+                            {assignment.contact.name}
+                          </Link>
+                          {assignment.contact.record_status !== "active" && (
+                            <span className="badge">
+                              {optionLabel(RECORD_STATUSES, assignment.contact.record_status)}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <Dash />
+                      )}
+                    </td>
+                    <td data-testid="priority">{assignment.priority}</td>
+                    {mayEdit && (
+                      <td className="row-actions">
+                        <Priority
+                          key={`${assignment.hid} ${assignment.row_version}`}
+                          assignment={assignment}
+                          what={`${name} as ${role.label}`}
+                          onChanged={onChanged}
+                        />
+                        <ConfirmButton
+                          label="Remove"
+                          title={`Remove ${name} as ${role.label} contact of ${place.name}?`}
+                          confirmLabel="Remove contact"
+                          onConfirm={() =>
+                            remove(
+                              assignment,
+                              `${name} is no longer a ${role.label} contact of ${place.name}.`,
+                            )
+                          }
+                          disabled={removing.busy}
+                        >
+                          <p>
+                            The contact itself stays. What {place.name} then has in this role is
+                            what is left here, or what the nearest level above it has.
+                          </p>
+                        </ConfirmButton>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

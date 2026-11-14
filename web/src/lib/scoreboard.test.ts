@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  BY_WEIGHT,
+  board,
   byLoad,
   fromHundredths,
   hundredths,
@@ -8,9 +10,10 @@ import {
   operatorOfRow,
   operatorsCsv,
   type RowOperator,
-  ranked,
   rowItemsPath,
+  rowName,
   type ScoreRow,
+  scoreColumns,
   share,
   shareText,
   siteCondition,
@@ -18,6 +21,7 @@ import {
   toCsv,
   underOpenLabels,
 } from "./scoreboard";
+import { sortRows } from "./sort";
 
 const OP1 = "0193a1f4-0000-7000-8000-0000000000f1";
 const OP2 = "0193a1f4-0000-7000-8000-0000000000f2";
@@ -105,12 +109,56 @@ describe("the order of a scoreboard", () => {
     expect(same.sort(byLoad).map((one) => one.label)).toEqual(["NE2", "NE3"]);
   });
 
-  it("sets the blank row apart, however much it holds", () => {
-    const board = ranked([nobody, light, heavy]);
-    expect(board.rows.map((one) => one.label)).toEqual(["NE2", "NE1"]);
-    expect(board.blank).toBe(nobody);
-    expect(ranked([light]).blank).toBeNull();
-    expect(ranked(undefined)).toEqual({ rows: [], blank: null });
+  it("has a row with a name before the blank row where the two are equal", () => {
+    const named = row(OP1, "NE1", 1, "1.50");
+    const blank = row(null, null, 1, "1.50");
+    expect(board([blank, named])).toEqual([named, blank]);
+  });
+
+  it("has the blank row among the others, where its weight puts it", () => {
+    expect(board([light, nobody, heavy])).toEqual([light, nobody, heavy].sort(byLoad));
+    expect(board([light, nobody, heavy])).toContain(nobody);
+    expect(board(undefined)).toEqual([]);
+  });
+});
+
+describe("sorting a scoreboard by its headers", () => {
+  const BLANK = "Nobody is assigned";
+  const columns = scoreColumns(BLANK);
+  const light = row(OP1, "NE1", 9, "2.00");
+  const heavy = row(OP2, "NE2", 3, "10.50");
+  const nobody = row(null, null, 2, "40.00");
+  const rows = board([light, nobody, heavy]);
+  const labels = (sorted: readonly ScoreRow[]) => sorted.map((one) => rowName(one, BLANK));
+
+  it("is by support weight at first, the most first, as the server's decimals read", () => {
+    const sorted = sortRows(rows, columns, BY_WEIGHT);
+    const weights = sorted.map((one) => Number(one.support_weight));
+    expect(weights).toEqual([...weights].sort((one, other) => other - one));
+    expect(sorted).toHaveLength(3);
+  });
+
+  it("sorts what nobody is assigned to with the others, by the name the row shows", () => {
+    const byName = labels(sortRows(rows, columns, { column: "name", descending: false }));
+    expect(byName).toEqual([...byName].sort((one, other) => one.localeCompare(other)));
+    expect(byName).toContain(BLANK);
+    expect(rowName(nobody, BLANK)).toBe(BLANK);
+    expect(rowName(heavy, BLANK)).toBe(heavy.label);
+  });
+
+  it("sorts by a count as a number, and the share as the weight", () => {
+    const byItems = sortRows(rows, columns, { column: "items", descending: true });
+    const items = byItems.map((one) => one.items);
+    expect(items).toEqual([...items].sort((one, other) => other - one));
+    expect(sortRows(rows, columns, { column: "share", descending: true })).toEqual(
+      sortRows(rows, columns, { column: "weight", descending: true }),
+    );
+  });
+
+  it("writes a file in the order the rows are given, whatever that is", () => {
+    const up = sortRows(rows, columns, { column: "weight", descending: false });
+    const lines = operatorsCsv(up, "100.00").trimEnd().split("\r\n").slice(1);
+    expect(lines.map((line) => line.split(",")[7])).toEqual(up.map((one) => one.support_weight));
   });
 });
 
@@ -223,9 +271,12 @@ describe("the tables as files", () => {
     expect(toCsv([[-1, 0]])).toBe("-1,0\r\n");
   });
 
-  it("writes the operators in the order of the table, what nobody is assigned to last", () => {
-    const rows = [row(OP2, "NE2", 3, "10.50", [involved(OP2, "NE2", 3, "10.50", true)])];
-    const text = operatorsCsv(rows, row(null, null, 2, "31.50"), "42.00");
+  it("writes the operators in the order of the table, what nobody is assigned to among them", () => {
+    const rows = [
+      row(OP2, "NE2", 3, "10.50", [involved(OP2, "NE2", 3, "10.50", true)]),
+      row(null, null, 2, "31.50"),
+    ];
+    const text = operatorsCsv(rows, "42.00");
     const lines = text.trimEnd().split("\r\n");
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain("operator_hid,operator,person,open,components");
@@ -237,7 +288,7 @@ describe("the tables as files", () => {
     const here = [involved(OP1, "NE1", 3, "4.50"), involved(null, null, 1, "1.00")];
     expect(involvedText(here)).toBe("NE1 3 (4.50); nobody 1 (1.00)");
     expect(involvedText(null)).toBe("");
-    const text = sitesCsv([row(SITE, "Americas > Central > Site-2", 4, "5.50", here)], null);
+    const text = sitesCsv([row(SITE, "Americas > Central > Site-2", 4, "5.50", here)]);
     expect(text.trimEnd().split("\r\n")[1]).toBe(
       `${SITE},Americas > Central > Site-2,4,4,5,5.50,NE1 3 (4.50); nobody 1 (1.00)`,
     );

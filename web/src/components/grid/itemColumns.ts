@@ -157,9 +157,9 @@ export function itemColumns(
       header: "In item",
       kind: "text",
       // The list is filtered by the HID of the item above, not by its name: see the
-      // link from an item's page to its minor items.
+      // link from an item's page to its minor items. It is sorted by that name.
       field: null,
-      sortField: null,
+      sortField: "parent.name",
       value: (item) => (item.parent ? itemName(item.parent) : ""),
       hide: true,
       width: 200,
@@ -334,14 +334,14 @@ export function itemColumns(
       // Where the item is going: a place that is not in use yet, by its own plan or by
       // that of the item or the group it is in, which shows lighter. The cell shows the
       // name of that location, with its path and where it came from as the hint. The
-      // list finds it with `planned_location:within:<place>` in the filter box, which is
-      // no comparison of text: the column has no filter of its own, and the list is not
-      // sorted by it.
+      // list filters and sorts by that name, `planned_location.name`; what is planned
+      // for a place and all within it is found with `planned_location:within:<place>` in
+      // the filter box.
       id: "planned_location",
       header: "Planned location",
       kind: "text",
-      field: null,
-      sortField: null,
+      field: "planned_location.name",
+      sortField: "planned_location.name",
       value: (item) => nameOf(item.effective.planned_location_hid.label),
       effective: (item) => item.effective.planned_location_hid,
       hint: (item) => locationHint(item.effective.planned_location_hid),

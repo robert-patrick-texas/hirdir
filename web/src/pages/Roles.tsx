@@ -6,9 +6,12 @@ import { ConfirmButton } from "../components/ConfirmButton";
 import { SelectField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { ROLES, roleLabel } from "../lib/roles";
+import { dateValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 type Grant = Schemas["GrantOut"];
 type Target = "user" | "group";
@@ -25,6 +28,12 @@ export function Roles() {
   );
   const [done, setDone] = useState("");
   const revoke = useAction();
+  const sorting = useSorting(grants.data, {
+    role: (grant) => roleLabel(grant.role),
+    granted_to: (grant) => grant.target_name,
+    kind: (grant) => (grant.user_hid ? "User" : "Group"),
+    since: (grant) => dateValue(grant.created_at),
+  });
 
   function changed(text: string) {
     setDone(text);
@@ -61,17 +70,25 @@ export function Roles() {
             <caption className="visually-hidden">Role grants</caption>
             <thead>
               <tr>
-                <th scope="col">Role</th>
-                <th scope="col">Granted to</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Since</th>
+                <SortTh sort={sorting} column="role">
+                  Role
+                </SortTh>
+                <SortTh sort={sorting} column="granted_to">
+                  Granted to
+                </SortTh>
+                <SortTh sort={sorting} column="kind">
+                  Kind
+                </SortTh>
+                <SortTh sort={sorting} column="since">
+                  Since
+                </SortTh>
                 <th scope="col">
                   <span className="visually-hidden">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {grants.data.map((grant) => (
+              {sorting.rows.map((grant) => (
                 <tr key={grant.hid}>
                   <th scope="row">{roleLabel(grant.role)}</th>
                   <td>

@@ -20,11 +20,15 @@ import {
   overriddenLevel,
   type Place,
   type PlaceEffective,
+  type RoleContacts,
   type Standing,
   standingOf,
 } from "../lib/places";
+import type { SortColumns } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 import { OperatorMark } from "./Operator";
 import { Problem } from "./Problem";
+import { SortTh } from "./SortTh";
 
 /** The address of the page of a place, with the view of the tree kept. */
 export type To = (level: string, hid: string) => { pathname: string; search: string };
@@ -90,6 +94,27 @@ export function Stands({ value, sitePath, level, to, children }: StandsProps) {
   );
 }
 
+/** How one thing in force stands, as the words `Stands` shows: nothing when it is not set. */
+function standsText(value: InForceValue): string {
+  const standing = standingOf(value);
+  if (standing === "none") return "";
+  if (standing === "inherited") {
+    return `Inherited from the ${value.source} ${value.source_path ?? value.source_hid ?? ""}`;
+  }
+  if (standing === "override" && value.overrides_hid) {
+    return `Set here Overrides ${value.overrides_path ?? value.overrides_hid}`;
+  }
+  return "Set here";
+}
+
+// What the table of contacts in force is sorted by: the role, the contacts as the cell
+// lists them, and the level they came from. A role with nobody in it comes last.
+const CONTACT_COLUMNS: SortColumns<RoleContacts> = {
+  role: (role) => role.label,
+  contacts: (role) => role.contacts.map(contactLine).join(", "),
+  from: standsText,
+};
+
 /** The class of what is shown lighter: what came from a level above. */
 function lighter(standing: Standing): string | undefined {
   return standing === "inherited" ? "inherited" : undefined;
@@ -121,6 +146,7 @@ export function InForce(props: InForceProps) {
   const stands = { sitePath, level, to };
   // The operator of what is at this place and has none from elsewhere.
   const operator = markOf(data?.operator.value);
+  const sorting = useSorting(data?.contacts, CONTACT_COLUMNS);
   return (
     <section aria-labelledby="in-force">
       <h3 id="in-force">In force</h3>
@@ -146,13 +172,19 @@ export function InForce(props: InForceProps) {
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Role</th>
-                  <th scope="col">Contacts</th>
-                  <th scope="col">From</th>
+                  <SortTh sort={sorting} column="role">
+                    Role
+                  </SortTh>
+                  <SortTh sort={sorting} column="contacts">
+                    Contacts
+                  </SortTh>
+                  <SortTh sort={sorting} column="from">
+                    From
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {data.contacts.map((role) => {
+                {sorting.rows.map((role) => {
                   const standing = standingOf(role);
                   return (
                     <tr

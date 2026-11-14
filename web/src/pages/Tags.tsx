@@ -5,11 +5,13 @@ import { ConfirmButton } from "../components/ConfirmButton";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { plural } from "../lib/format";
 import { useAction, useTitle } from "../lib/hooks";
 import { useTags } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Tag = Schemas["TagOut"];
 
@@ -26,9 +28,15 @@ const SPECS: FieldSpec[] = [
   { name: "description", label: "Description", kind: "longtext", maxLength: 10000 },
 ];
 
+/** The colour of a tag when it is one, as it is shown: nothing for what is no colour. */
+function shownColour(colour: string | null): string | null {
+  return colour && /^#[0-9a-f]{6}$/i.test(colour) ? colour : null;
+}
+
 /** A tag's colour as a small square. The colour is checked before it is used as one. */
-function Swatch({ colour }: { colour: string | null }) {
-  if (!colour || !/^#[0-9a-f]{6}$/i.test(colour)) return <span className="muted">—</span>;
+function Swatch({ colour: given }: { colour: string | null }) {
+  const colour = shownColour(given);
+  if (!colour) return <span className="muted">—</span>;
   return (
     <>
       <span className="swatch" style={{ backgroundColor: colour }} aria-hidden="true" />{" "}
@@ -48,6 +56,12 @@ export function Tags() {
   const [done, setDone] = useState("");
   const action = useAction();
   const rows = tags.data ?? [];
+  const sorting = useSorting(rows, {
+    label: (tag) => tag.label,
+    colour: (tag) => shownColour(tag.colour),
+    description: (tag) => tag.description,
+    on: (tag) => tag.uses,
+  });
   const open = rows.find((tag) => tag.hid === editing) ?? null;
 
   function changed(text: string) {
@@ -108,10 +122,18 @@ export function Tags() {
             <caption className="visually-hidden">Tags, by label</caption>
             <thead>
               <tr>
-                <th scope="col">Label</th>
-                <th scope="col">Colour</th>
-                <th scope="col">Description</th>
-                <th scope="col">On</th>
+                <SortTh sort={sorting} column="label">
+                  Label
+                </SortTh>
+                <SortTh sort={sorting} column="colour">
+                  Colour
+                </SortTh>
+                <SortTh sort={sorting} column="description">
+                  Description
+                </SortTh>
+                <SortTh sort={sorting} column="on">
+                  On
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -120,7 +142,7 @@ export function Tags() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((tag) => (
+              {sorting.rows.map((tag) => (
                 <tr key={tag.hid}>
                   <th scope="row">{tag.label}</th>
                   <td>

@@ -16,12 +16,15 @@ import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } 
 import { pickLabel } from "../lib/pick";
 import { nameOf } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
+import { dateValue, type SortColumns } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 import { SelectField, TextField } from "./Field";
 import { FormFields } from "./FormFields";
 import { ItemPicker } from "./ItemPicker";
 import { NewItem } from "./NewItem";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
+import { SortTh } from "./SortTh";
 
 type Item = Schemas["ItemOut"];
 type ItemRef = Schemas["ItemRef"];
@@ -204,6 +207,19 @@ function InForce({ text, effective }: { text: string; effective: Schemas["Effect
   );
 }
 
+// What the table of minor items is sorted by, each column by what its cell shows. A
+// minor item with none in it shows no count, and comes last.
+const MINOR_COLUMNS: SortColumns<Item> = {
+  position: (child) => child.position,
+  name: itemName,
+  pid: (child) => child.catalog?.pid,
+  serial: (child) => child.serial_number,
+  state: (child) => effectiveText(child.effective.lifecycle_state),
+  owner: (child) => effectiveLabel(child.effective.owner_hid),
+  location: (child) => nameOf(child.effective.location_hid.label),
+  minor: (child) => (child.minor_items > 0 ? child.minor_items : null),
+};
+
 /** The minor items directly in this one, by position, and the form that adds one. */
 export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps) {
   const [offset, setOffset] = useState(0);
@@ -218,6 +234,11 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
     }),
   );
   const rows = children.data?.items ?? [];
+  // The server pages the minor items and does not sort them by a column: they are sorted
+  // here only when the page holds every one of them. A page of more stays by position.
+  const sorting = useSorting(rows, MINOR_COLUMNS, {
+    enabled: children.data !== undefined && rows.length === children.data.total,
+  });
   const name = itemName(item);
   const inGrid = itemsPath(`parent_item_hid:eq:${item.hid}`);
 
@@ -243,18 +264,34 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Position</th>
-                  <th scope="col">Name</th>
-                  <th scope="col">PID</th>
-                  <th scope="col">Serial number</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Owner</th>
-                  <th scope="col">Location</th>
-                  <th scope="col">Minor items</th>
+                  <SortTh sort={sorting} column="position">
+                    Position
+                  </SortTh>
+                  <SortTh sort={sorting} column="name">
+                    Name
+                  </SortTh>
+                  <SortTh sort={sorting} column="pid">
+                    PID
+                  </SortTh>
+                  <SortTh sort={sorting} column="serial">
+                    Serial number
+                  </SortTh>
+                  <SortTh sort={sorting} column="state">
+                    State
+                  </SortTh>
+                  <SortTh sort={sorting} column="owner">
+                    Owner
+                  </SortTh>
+                  <SortTh sort={sorting} column="location">
+                    Location
+                  </SortTh>
+                  <SortTh sort={sorting} column="minor">
+                    Minor items
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((child) => (
+                {sorting.rows.map((child) => (
                   <tr
                     key={child.hid}
                     data-item={child.hid}
@@ -325,12 +362,21 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
   );
 }
 
+// What the table of an item's groups is sorted by, each column by what its cell shows.
+const MEMBERSHIP_COLUMNS: SortColumns<Item["groups"][number]> = {
+  group: (member) => member.name,
+  type: (member) => groupTypeLabel(member.type),
+  as: membershipText,
+  since: (member) => dateValue(member.joined_on),
+};
+
 /**
  * The groups an item is a current member of, and for an endpoint its controllers, each
  * with the cluster it is in: a domain may hold several clusters, and an endpoint that
  * fails over between them is a member of the domain alone.
  */
 export function Memberships({ item }: { item: Item }) {
+  const sorting = useSorting(item.groups, MEMBERSHIP_COLUMNS);
   return (
     <section aria-labelledby="groups">
       <h2 id="groups">Groups</h2>
@@ -344,14 +390,22 @@ export function Memberships({ item }: { item: Item }) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Group</th>
-                <th scope="col">Type</th>
-                <th scope="col">As</th>
-                <th scope="col">Since</th>
+                <SortTh sort={sorting} column="group">
+                  Group
+                </SortTh>
+                <SortTh sort={sorting} column="type">
+                  Type
+                </SortTh>
+                <SortTh sort={sorting} column="as">
+                  As
+                </SortTh>
+                <SortTh sort={sorting} column="since">
+                  Since
+                </SortTh>
               </tr>
             </thead>
             <tbody>
-              {item.groups.map((member) => (
+              {sorting.rows.map((member) => (
                 <tr key={member.hid}>
                   <th scope="row">
                     <Link to={`/groups/${encodeURIComponent(member.group_hid)}`}>

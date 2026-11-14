@@ -8,6 +8,7 @@ import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { itemsPath } from "../lib/filter";
 import { formatTime } from "../lib/format";
@@ -20,6 +21,7 @@ import type { FieldSpec } from "../lib/patch";
 import { contactLine } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Owner = Schemas["OwnerOut"];
 
@@ -360,6 +362,12 @@ interface PeopleProps {
 function People({ owner, mayEdit, onChanged }: PeopleProps) {
   const action = useAction();
   const members = membersInOrder(owner.members);
+  // The people come whole with the owner. At first they are in that order, the primary first.
+  const sorting = useSorting(members, {
+    name: (member) => member.contact.name,
+    as: (member) => memberRoleLabel(member.role),
+    reached: (member) => contactLine({ ...member.contact, name: "" }),
+  });
 
   async function makePrimary(member: OwnerMember) {
     const result = await action.run(() =>
@@ -396,14 +404,20 @@ function People({ owner, mayEdit, onChanged }: PeopleProps) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">As</th>
-                <th scope="col">Reached at</th>
+                <SortTh sort={sorting} column="name">
+                  Name
+                </SortTh>
+                <SortTh sort={sorting} column="as">
+                  As
+                </SortTh>
+                <SortTh sort={sorting} column="reached">
+                  Reached at
+                </SortTh>
                 {mayEdit && <th scope="col">Change</th>}
               </tr>
             </thead>
             <tbody>
-              {members.map((member) => (
+              {sorting.rows.map((member) => (
                 <tr key={member.hid} data-role={member.role} data-member={member.hid}>
                   <th scope="row">
                     <Link to={`/contacts/${encodeURIComponent(member.contact.hid)}`}>

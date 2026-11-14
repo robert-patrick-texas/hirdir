@@ -8,6 +8,7 @@ import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
@@ -19,6 +20,7 @@ import { memberRoleLabel } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
 import { CONTACT_ROLE_LIST, levelLabel, placePath } from "../lib/places";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Contact = Schemas["ContactOut"];
 
@@ -316,6 +318,28 @@ function Assigned({ contact }: { contact: Contact }) {
   const assignments = places.data?.items ?? [];
   const among = owners.data?.items ?? [];
   const loaded = places.data !== undefined && owners.data !== undefined;
+  // Each list is read whole, and is sorted here only when it is.
+  const placeSorting = useSorting(
+    assignments,
+    {
+      place: (assignment) => assignment.place.path,
+      level: (assignment) => levelLabel(assignment.place.level),
+      role: (assignment) => choiceLabel(choices.data, CONTACT_ROLE_LIST, assignment.role),
+      priority: (assignment) => assignment.priority,
+    },
+    { enabled: (places.data?.total ?? 0) <= assignments.length },
+  );
+  const ownerSorting = useSorting(
+    among,
+    {
+      owner: (owner) => owner.label,
+      as: (owner) => {
+        const member = owner.members.find((one) => one.contact_hid === contact.hid);
+        return member ? memberRoleLabel(member.role) : null;
+      },
+    },
+    { enabled: (owners.data?.total ?? 0) <= among.length },
+  );
 
   return (
     <section aria-labelledby="assigned">
@@ -354,16 +378,22 @@ function Assigned({ contact }: { contact: Contact }) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Place</th>
-                <th scope="col">Level</th>
-                <th scope="col">Role</th>
-                <th scope="col" className="number">
+                <SortTh sort={placeSorting} column="place">
+                  Place
+                </SortTh>
+                <SortTh sort={placeSorting} column="level">
+                  Level
+                </SortTh>
+                <SortTh sort={placeSorting} column="role">
+                  Role
+                </SortTh>
+                <SortTh sort={placeSorting} column="priority" className="number">
                   Priority
-                </th>
+                </SortTh>
               </tr>
             </thead>
             <tbody>
-              {assignments.map((assignment) => (
+              {placeSorting.rows.map((assignment) => (
                 <tr key={assignment.hid} data-role={assignment.role}>
                   <th scope="row">
                     <Link to={placePath(assignment.place.level, assignment.place.hid)}>
@@ -388,12 +418,16 @@ function Assigned({ contact }: { contact: Contact }) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Owner</th>
-                <th scope="col">As</th>
+                <SortTh sort={ownerSorting} column="owner">
+                  Owner
+                </SortTh>
+                <SortTh sort={ownerSorting} column="as">
+                  As
+                </SortTh>
               </tr>
             </thead>
             <tbody>
-              {among.map((owner) => {
+              {ownerSorting.rows.map((owner) => {
                 const member = owner.members.find((one) => one.contact_hid === contact.hid);
                 return (
                   <tr key={owner.hid}>

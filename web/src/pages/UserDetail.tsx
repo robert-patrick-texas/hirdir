@@ -7,10 +7,13 @@ import { CheckField, TextField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { roleLabel } from "../lib/roles";
+import { dateValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 type User = Schemas["UserOut"];
 type Token = Schemas["ServiceTokenOut"];
@@ -284,6 +287,13 @@ function Tokens({ user }: { user: User }) {
   const revoke = useAction();
   const fields = create.error?.fields ?? {};
   const now = Date.now();
+  const sorting = useSorting(tokens.data, {
+    name: (token) => token.name,
+    state: (token) => tokenState(token, now),
+    created: (token) => dateValue(token.created_at),
+    expires: (token) => dateValue(token.expires_at),
+    last_used: (token) => dateValue(token.last_used_at),
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -333,18 +343,28 @@ function Tokens({ user }: { user: User }) {
             <caption className="visually-hidden">Service tokens of {user.username}</caption>
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">State</th>
-                <th scope="col">Created</th>
-                <th scope="col">Expires</th>
-                <th scope="col">Last used</th>
+                <SortTh sort={sorting} column="name">
+                  Name
+                </SortTh>
+                <SortTh sort={sorting} column="state">
+                  State
+                </SortTh>
+                <SortTh sort={sorting} column="created">
+                  Created
+                </SortTh>
+                <SortTh sort={sorting} column="expires">
+                  Expires
+                </SortTh>
+                <SortTh sort={sorting} column="last_used">
+                  Last used
+                </SortTh>
                 <th scope="col">
                   <span className="visually-hidden">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {tokens.data.map((token) => (
+              {sorting.rows.map((token) => (
                 <tr
                   key={token.hid}
                   className={tokenState(token, now) === "Active" ? undefined : "dim"}

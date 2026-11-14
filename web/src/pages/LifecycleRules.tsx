@@ -4,11 +4,13 @@ import { useAuth } from "../auth";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { useTitle } from "../lib/hooks";
 import { DISPOSITIONS, type Rule, stateNames } from "../lib/lifecycle";
 import { useRules } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 function listed(values: readonly string[]): string {
   return values.length > 0 ? values.join(", ") : "—";
@@ -22,6 +24,11 @@ function entryText(rule: Rule): string {
   return parts.length > 0 ? parts.join(", ") : "—";
 }
 
+/** What a cell is sorted by: its text, and nothing for the dash of an empty cell. */
+function shown(text: string): string | null {
+  return text === "—" ? null : text;
+}
+
 /** Admin → Lifecycle rules: what each of the nine states allows, and the moves between them. */
 export function LifecycleRules() {
   useTitle("Lifecycle rules");
@@ -31,6 +38,16 @@ export function LifecycleRules() {
   const [editing, setEditing] = useState("");
   const [done, setDone] = useState("");
   const rows = rules.data ?? [];
+  // With no header chosen the rules are in the order of the states, as the server sends them.
+  const sorting = useSorting(rows, {
+    state: (rule) => rule.state,
+    dispositions: (rule) => shown(listed(rule.dispositions)),
+    keeps_disposition: (rule) => rule.keeps_disposition,
+    may_be_online: (rule) => shown(listed(rule.may_be_online)),
+    must_be_online: (rule) => shown(listed(rule.must_be_online)),
+    entry: (rule) => shown(entryText(rule)),
+    next_states: (rule) => shown(listed(rule.next_states)),
+  });
   const open = rows.find((rule) => rule.hid === editing) ?? null;
 
   return (
@@ -53,13 +70,27 @@ export function LifecycleRules() {
             </caption>
             <thead>
               <tr>
-                <th scope="col">State</th>
-                <th scope="col">Dispositions</th>
-                <th scope="col">Keeps disposition</th>
-                <th scope="col">May be online</th>
-                <th scope="col">Must be online</th>
-                <th scope="col">Set on entry</th>
-                <th scope="col">May move to</th>
+                <SortTh sort={sorting} column="state">
+                  State
+                </SortTh>
+                <SortTh sort={sorting} column="dispositions">
+                  Dispositions
+                </SortTh>
+                <SortTh sort={sorting} column="keeps_disposition">
+                  Keeps disposition
+                </SortTh>
+                <SortTh sort={sorting} column="may_be_online">
+                  May be online
+                </SortTh>
+                <SortTh sort={sorting} column="must_be_online">
+                  Must be online
+                </SortTh>
+                <SortTh sort={sorting} column="entry">
+                  Set on entry
+                </SortTh>
+                <SortTh sort={sorting} column="next_states">
+                  May move to
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -68,7 +99,7 @@ export function LifecycleRules() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((rule) => (
+              {sorting.rows.map((rule) => (
                 <tr key={rule.hid} data-state={rule.state}>
                   <th scope="row">{rule.state}</th>
                   <td>{listed(rule.dispositions)}</td>
