@@ -947,7 +947,8 @@ service: its portfolio has the four kinds, each with its items, its cost and its
 weight, the totals and the four models, and its filter exports the five items. A
 purchase request has a line of ten switches, none of which is an item or a component;
 six are received and are six items in Delivered that name the line, still no
-component, with four still to come, and five more are refused. A stack of four is
+component, with four still to come, five more are refused, and the receipt is in the
+audit trail as one request: the receipt of the line, and the creation of each item. A stack of four is
 registered with a monitoring system and an SDN controller, and not a second time with
 the first: both registrations are on the stack, none on its switches, and
 `filter=registration.system:eq:` finds the stack and no item. A site that is a draft,
@@ -956,7 +957,9 @@ management report, no tree and no coverage report until the drafts are asked for
 the capacity report has their support weight with its drafts alone; made active, the
 site, the room and the items are in every count. Of two switches one is moved to
 Archived: it is hidden by default, listed with its state when the archived are asked
-for, reached by its HID, and has its creation and its three moves in its history.
+for, reached by its HID, and has its creation and its three moves in its history. A
+service account that holds View-only reads the lists, the reports and the portfolio of
+0.6.0, and is refused each of its sixteen writes with a `403`.
 Last, every agreement, contract, coverage, purchase request and line, external
 system, registration, capacity line and replacement is exported and imported back
 unchanged, as CSV and as JSON, and an export of the items that arrived names the line

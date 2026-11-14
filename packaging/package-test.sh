@@ -5241,7 +5241,7 @@ cover_and_purchases() {
     local view='serial_number:glob:PKG0000V*'
     local vendor maker switch old made wanted number name hid row_version last_year next_year ldos
     local east="" west="" land="" first second bare ending contract request line stack watch fabric
-    local site suite kept gone before entity rows
+    local site suite kept gone before entity rows received own_token
 
     last_year=$(day_from_today -200)
     next_year=$(day_from_today 400)
@@ -5363,6 +5363,7 @@ cover_and_purchases() {
     api POST "/purchase-lines/$line/receive" "{\"row_version\": $row_version, \"items\": [$(printf '{"serial_number": "PKG0000V02%s"}, ' 1 2 3 4 5 | sed 's/, $//'), {\"serial_number\": \"PKG0000V026\"}]}"
     made="$status $(json '[d["received_quantity"], d["pending_quantity"], len(d["items"])]')"
     row_version=$(json_field row_version)
+    received=$(header x-request-id)
     authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=purchase_line_hid:eq:$line" --data-urlencode 'sort=serial_number'
     made="$made $status $(json '[d["total"], sorted({(i["lifecycle_state"], i["purchase_line"]["name"], i["catalog"]["pid"]) for i in d["items"]}), [i["serial_number"][-3:] for i in d["items"]]]')"
     authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=purchase_line_hid:eq:$line"
@@ -5376,6 +5377,10 @@ cover_and_purchases() {
     authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=purchase_line_hid:eq:$line" --data-urlencode 'limit=1'
     expect "S32 five more, where four are still to come, are refused, and none of them is created" \
         "$made $status $(json_field total)" "422 200 6"
+    api GET '/audit-events?limit=50'
+    expect "pkg the receipt is audited: under its one request the audit trail has the receipt of the line and the creation of each of the six items, and nothing else" \
+        "$status $(json 'sorted([e["record_type"], e["action"]] for e in d["items"] if e["request_id"] == "'"$received"'")')" \
+        '200 [["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["purchase_line", "receive"]]'
 
     # S33: a stack registered with a monitoring system and an SDN controller.
     made=""
@@ -5470,6 +5475,33 @@ cover_and_purchases() {
     expect "S35 the archived item is still reached by its HID, and its history is whole: its creation and each of the three moves, in order, each with who made it" \
         "$made $status $(json '[[e["action"] for e in d["items"]], [[c["old"], c["new"]] for e in d["items"] if e["action"] == "transition" for c in e["changes"] if c["field"] == "lifecycle_state"], sorted({e["actor_name"] for e in d["items"]})]')" \
         "200 [\"Archived\", \"active\"] 200 [[\"create\", \"transition\", \"transition\", \"transition\"], [[\"Prod\", \"Pending-Removal\"], [\"Pending-Removal\", \"Released\"], [\"Released\", \"Archived\"]], [\"$admin\"]]"
+
+    # Every write of 0.6.0 is role-checked on the server: a service account that holds
+    # View-only reads the lists and the reports, and is refused each of the writes. What
+    # it sends with them is no more than a row_version: the role is asked for first.
+    api POST /users '{"username": "pkgtest-reader", "is_service_account": true, "role": "viewer"}'
+    made=$status
+    api POST "/users/$(json 'd["user"]["hid"]')/service-tokens" '{"name": "package test"}'
+    made="$made $status"
+    own_token=$token
+    token=$(json_field secret)
+    wanted=""
+    for name in agreements contracts "contracts/$contract/terms" "contracts/$contract/coverage" contract-coverage purchase-requests purchase-lines external-systems registrations capacity-lines reports/coverage reports/end-of-life reports/replacements reports/capacity "vendors/$vendor/portfolio"; do
+        api GET "/$name"
+        made="$made $status"
+        wanted="$wanted 200"
+    done
+    made="$made |"
+    for name in "POST /agreements" "POST /contracts" "PATCH /contracts/$contract" "POST /contracts/$contract/renew" "POST /contracts/$contract/retire" "POST /contracts/$contract/coverage" "POST /purchase-requests" "PATCH /purchase-requests/$request" "POST /purchase-requests/$request/lines" "PATCH /purchase-lines/$line" "POST /purchase-lines/$line/receive" "POST /external-systems" "PATCH /external-systems/$watch" "POST /external-systems/$watch/retire" "POST /registrations" "POST /capacity-lines"; do
+        api "${name% *}" "${name#* }" '{"row_version": 1}'
+        made="$made $status"
+        wanted="$wanted 403"
+    done
+    token=$own_token
+    api GET "/contracts/$contract"
+    expect "pkg a service account that holds View-only reads the agreements, the contracts, a contract's terms and coverage, the purchase requests and lines, the external systems, the registrations, the capacity lines, the four reports and the portfolio of a vendor, and is refused every write of them, sixteen routes: to make, change, renew, retire, cover, receive and register; the contract it tried is as it was" \
+        "$made $status $(json '[d["number"], d["record_status"], d["row_version"]]')" \
+        "201 201${wanted/ 403/ | 403} 200 [\"PKG-CON-0001\", \"active\", 1]"
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
     for entity in agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines item_replacements; do
