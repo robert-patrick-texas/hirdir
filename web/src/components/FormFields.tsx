@@ -10,6 +10,7 @@ import {
 import { ContactField } from "./ContactField";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
+import { OperatorField } from "./OperatorField";
 
 interface FormFieldsProps {
   specs: readonly FieldSpec[];
@@ -149,6 +150,17 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
       case "contact":
         return (
           <ContactField
+            key={name}
+            {...shared}
+            value={text}
+            onChange={(next) => onChange(name, next)}
+            known={spec.options ?? []}
+            {...(spec.blank === undefined ? {} : { blank: spec.blank })}
+          />
+        );
+      case "operator":
+        return (
+          <OperatorField
             key={name}
             {...shared}
             value={text}

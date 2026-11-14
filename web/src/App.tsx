@@ -22,6 +22,7 @@ const pages = {
   items: () => import("./pages/Items"),
   lifecycleRules: () => import("./pages/LifecycleRules"),
   networks: () => import("./pages/Networks"),
+  operators: () => import("./pages/Operators"),
   owners: () => import("./pages/Owners"),
   reports: () => import("./pages/Reports"),
   roles: () => import("./pages/Roles"),
@@ -63,6 +64,10 @@ const ManagementReport = lazy(() =>
   pages.reports().then((page) => ({ default: page.ManagementReport })),
 );
 const Networks = lazy(() => pages.networks().then((page) => ({ default: page.Networks })));
+const OperatorDetail = lazy(() =>
+  pages.operators().then((page) => ({ default: page.OperatorDetail })),
+);
+const Operators = lazy(() => pages.operators().then((page) => ({ default: page.Operators })));
 const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
 const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
 const Roles = lazy(() => pages.roles().then((page) => ({ default: page.Roles })));
@@ -237,6 +242,22 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <VendorDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="operators"
+              element={
+                <RequireRole needs="viewer">
+                  <Operators />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="operators/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <OperatorDetail />
                 </RequireRole>
               }
             />

@@ -224,6 +224,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     const path = linkOf(row);
     if (path !== null) navigate(path);
   });
+  const go = useEffectEvent((path: string) => navigate(path));
   const remember = useEffectEvent((api: GridApi<T>) => {
     if (api.isDestroyed()) return;
     const state = api.getColumnState();
@@ -249,6 +250,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
           return path === null ? null : base + path.replace(/^\/+/, "");
         },
         open,
+        hrefOf: (path) => base + path.replace(/^\/+/, ""),
+        go,
       }),
       defaultColDef: { resizable: true, sortable: true, minWidth: 60 },
       initialState: { filter: { filterModel: fromLink ? {} : layout.filter } },

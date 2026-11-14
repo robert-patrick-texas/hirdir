@@ -43,7 +43,7 @@ import {
   useTags,
   withCurrent,
 } from "../lib/lists";
-import { contactLabel, itemOperatorSource } from "../lib/operators";
+import { operatorOptionLabel } from "../lib/operators";
 import {
   CATALOG_KINDS,
   choiceLabel,
@@ -284,11 +284,7 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
           </Fact>
         )}
         <Fact label="Operator">
-          <Operator
-            effective={item.effective.operator_hid}
-            from={itemOperatorSource(item.effective.operator_hid, item)}
-            testId="operator"
-          />
+          <Operator effective={item.effective.operator_hid} testId="operator" />
         </Fact>
         <Fact label="Location">
           {typeof location.value === "string" && (
@@ -865,10 +861,10 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       {
         name: "operator_hid",
         label: "Operator",
-        kind: "contact",
+        kind: "operator",
         blank: "None of its own",
         options: item.operator
-          ? [{ value: item.operator.hid, label: contactLabel(item.operator) }]
+          ? [{ value: item.operator.hid, label: operatorOptionLabel(item.operator) }]
           : [],
       },
       {
@@ -944,20 +940,14 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   // shows the one in force from above, read-only, before anybody is chosen.
   if (item.operator_hid) {
     hints.operator_hid =
-      "The person of the team who looks after it. Set here: clear it to have the operator from above again, if there is one.";
+      "The label of who of the team looks after it. Set here: clear it to have the operator from above again, if there is one.";
   } else {
-    hints.operator_hid = "The person of the team who looks after it.";
+    hints.operator_hid = "The label of who of the team looks after it.";
   }
   const notes = item.operator_hid
     ? undefined
     : {
-        operator_hid: (
-          <OperatorNote
-            effective={item.effective.operator_hid}
-            from={itemOperatorSource(item.effective.operator_hid, item)}
-            what="item"
-          />
-        ),
+        operator_hid: <OperatorNote effective={item.effective.operator_hid} what="item" />,
       };
   const ready = !entries.loading && !owners.loading && !tags.loading;
 

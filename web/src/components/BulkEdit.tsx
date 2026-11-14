@@ -86,10 +86,10 @@ function bulkFields(
     {
       name: "operator",
       label: "Operator",
-      kind: "contact",
-      blank: "Nobody chosen",
+      kind: "operator",
+      blank: "None chosen",
       clearable: true,
-      hint: "The person of the team who looks after each item. Cleared, an item has the operator of the item it is in or of its group again, if there is one.",
+      hint: "The label of who of the team looks after each item. Cleared, an item has the operator it has from above again: of the item it is in, of its group or of where it is.",
     },
     {
       name: "location",

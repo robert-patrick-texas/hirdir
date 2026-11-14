@@ -40,6 +40,12 @@ export interface GridColumn<T> {
   /** Show the cell as the link to its record. */
   link?: boolean;
   /**
+   * For a label that has a colour and a page of its own, as an operator has: the colour
+   * of the dot before the text, the page the text leads to, and a word to say after it,
+   * such as "open". The text stays, so the colour is never all there is.
+   */
+  chip?: (row: T) => { colour: string | null; path: string; note?: string } | null | undefined;
+  /**
    * For a choice: the values to offer in the filter. For a boolean: what to call `true`
    * and `false` there, when Yes and No would not say it.
    */
@@ -164,6 +170,10 @@ export interface ColumnContext<T> {
   href: (row: T) => string | null;
   /** Go to a row's own page without loading the app again. */
   open: (row: T) => void;
+  /** A path of the app as a link's `href`. */
+  hrefOf: (path: string) => string;
+  /** Go to a path of the app without loading the app again. */
+  go: (path: string) => void;
 }
 
 function linkRenderer<T>(context: ColumnContext<T>) {
@@ -206,6 +216,48 @@ function markRenderer<T>(mark: (row: T) => string | null | undefined) {
     dot.className = "health-dot";
     dot.setAttribute("aria-hidden", "true");
     cell.append(dot, text);
+    return cell;
+  };
+}
+
+/**
+ * A cell that shows a label with a dot in its colour before it, as a link to the page of
+ * what the label names. The dot is decoration: the label says the same in words.
+ */
+function chipRenderer<T>(chip: NonNullable<GridColumn<T>["chip"]>, context: ColumnContext<T>) {
+  return (params: ICellRendererParams<T, string>): HTMLElement => {
+    const cell = document.createElement("span");
+    const text = params.value ?? "";
+    const about = params.data ? chip(params.data) : null;
+    if (text === "" || !about) {
+      cell.textContent = text;
+      return cell;
+    }
+    cell.className = "operator-mark";
+    const link = document.createElement("a");
+    link.href = context.hrefOf(about.path);
+    // Reached with the arrow keys, as every cell of the row is.
+    link.tabIndex = -1;
+    const dot = document.createElement("span");
+    dot.className = "swatch operator-dot";
+    dot.setAttribute("aria-hidden", "true");
+    if (about.colour) dot.style.backgroundColor = about.colour;
+    // Text from the inventory is put in as text, never as HTML.
+    link.append(dot, text);
+    link.addEventListener("click", (event) => {
+      const plainClick =
+        event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+      if (!plainClick) return;
+      event.preventDefault();
+      context.go(about.path);
+    });
+    cell.append(link);
+    if (about.note) {
+      const note = document.createElement("span");
+      note.className = "badge badge-plain mark";
+      note.textContent = about.note;
+      cell.append(" ", note);
+    }
     return cell;
   };
 }
@@ -269,6 +321,7 @@ export function columnDefs<T>(
         : {}),
       ...(column.link ? { cellRenderer: linkRenderer(context) } : {}),
       ...(column.mark ? { cellRenderer: markRenderer(column.mark) } : {}),
+      ...(column.chip ? { cellRenderer: chipRenderer(column.chip, context) } : {}),
     });
   }
   return defs;

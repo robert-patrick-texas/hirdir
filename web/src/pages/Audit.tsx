@@ -42,6 +42,7 @@ const RECORD_TYPES = [
   "lifecycle_rule",
   "location",
   "network",
+  "operator",
   "owner",
   "owner_member",
   "region",

@@ -7,7 +7,7 @@ import { HeadlineTotals } from "../components/Totals";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useSettings } from "../lib/lists";
-import { unassignedComponents, unassignedPath } from "../lib/operators";
+import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
 import { allows, roleLabel } from "../lib/roles";
 import { settingList } from "../lib/summary";
 
@@ -23,6 +23,11 @@ function Headline() {
     api.request("get", "/api/v1/reports/summary", { query: { by: "operator" }, signal }),
   );
   const unassigned = unassignedComponents(summary.data?.rows);
+  // What is assigned to a label with nobody behind it: the components of that view.
+  const open = useLoad("home-open", (signal) =>
+    api.request("get", "/api/v1/reports/summary", { query: { filter: OPEN }, signal }),
+  );
+  const waiting = open.data?.totals.component_count ?? 0;
   const settings = useSettings();
   return (
     <section aria-labelledby="headline">
@@ -43,7 +48,7 @@ function Headline() {
         <p data-testid="unassigned" data-count={unassigned}>
           {unassigned > 0 ? (
             <>
-              <Link to={unassignedPath()}>
+              <Link to={assignmentPath(UNASSIGNED)}>
                 {plural(unassigned, "component has", "components have")} no operator
               </Link>
               : nobody of the team is assigned to look after {unassigned === 1 ? "it" : "them"}.
@@ -51,8 +56,24 @@ function Headline() {
           ) : (
             <span className="muted">Every component has an operator.</span>
           )}
+          {open.data &&
+            (waiting > 0 ? (
+              <span data-testid="open-assignments" data-count={waiting}>
+                {" "}
+                <Link to={assignmentPath(OPEN)}>
+                  {plural(waiting, "component is", "components are")} under an open label
+                </Link>
+                : an operator that nobody is behind for now.
+              </span>
+            ) : (
+              <span className="muted" data-testid="open-assignments" data-count={0}>
+                {" "}
+                No label is open.
+              </span>
+            ))}
         </p>
       )}
+      <Problem error={open.error} />
       <p>
         <Link to="/reports">The summary</Link>, by vendor, owner, state, health and more, for any
         filter of the items. Drafts, retired records and archived items are left out here. Estimated

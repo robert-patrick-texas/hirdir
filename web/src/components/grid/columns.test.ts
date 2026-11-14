@@ -61,7 +61,12 @@ const COLUMNS: GridColumn<Row>[] = [
   },
 ];
 
-const CONTEXT = { href: () => "/items/x", open: () => {} };
+const CONTEXT = {
+  href: () => "/items/x",
+  open: () => {},
+  hrefOf: (path: string) => path,
+  go: () => {},
+};
 
 function defs(layout = mergeLayout(columnDefaults(COLUMNS), null)) {
   return columnDefs(COLUMNS, layout, CONTEXT);

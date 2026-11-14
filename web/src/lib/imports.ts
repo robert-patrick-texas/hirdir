@@ -13,10 +13,11 @@ export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
   { value: "tags", label: "Tags" },
   { value: "vendors", label: "Vendors" },
   { value: "catalog_entries", label: "Catalog entries" },
+  { value: "contacts", label: "Contacts" },
+  { value: "operators", label: "Operators" },
   { value: "regions", label: "Regions" },
   { value: "sites", label: "Sites" },
   { value: "locations", label: "Locations" },
-  { value: "contacts", label: "Contacts" },
   { value: "contact_assignments", label: "Contacts of places" },
   { value: "owners", label: "Owners" },
   { value: "owner_members", label: "People of owners" },
@@ -63,13 +64,21 @@ export function fileType(file: { name: string; type: string }): FileType | null 
 
 /**
  * The kind of record a file's name suggests, as `catalog-entries.csv` suggests catalog
- * entries, or blank. It only fills in the form: the reader may choose otherwise.
+ * entries, or blank. A name may hold more than one, as `items-operators-team.csv` does:
+ * the one that stands first in the name is meant, and of two that start at the same
+ * place the longer. It only fills in the form: the reader may choose otherwise.
  */
 export function guessEntity(fileName: string): Entity | "" {
   const name = fileName.toLowerCase().replace(/[^a-z]+/g, "_");
-  // The longer names first, so that a name within a name does not win.
-  const known = [...ENTITIES].sort((one, other) => other.value.length - one.value.length);
-  return known.find((entity) => name.includes(entity.value))?.value ?? "";
+  let best: { entity: Entity; at: number } | null = null;
+  for (const { value } of ENTITIES) {
+    const at = name.indexOf(value);
+    if (at < 0) continue;
+    const better =
+      best === null || at < best.at || (at === best.at && value.length > best.entity.length);
+    if (better) best = { entity: value, at };
+  }
+  return best?.entity ?? "";
 }
 
 // The longest file name the server takes.

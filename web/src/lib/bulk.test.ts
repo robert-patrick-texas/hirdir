@@ -251,10 +251,10 @@ describe("buildBulk", () => {
     expect(noReason.body.set).toEqual({ lifecycle_state: "Prod" });
   });
 
-  it("sets an operator by the HID of the contact that was chosen, and clears it with null", () => {
+  it("sets an operator by the HID of the label that was chosen, and clears it with null", () => {
     const fields: BulkField[] = [
       ...FIELDS,
-      { name: "operator", label: "Operator", kind: "contact", clearable: true },
+      { name: "operator", label: "Operator", kind: "operator", clearable: true },
     ];
     const set = buildBulk(
       fields,

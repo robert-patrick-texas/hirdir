@@ -42,7 +42,13 @@ import {
 import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
-import { contactLabel, groupOperatorSource } from "../lib/operators";
+import {
+  markOf,
+  markTitle,
+  operatorOptionLabel,
+  operatorPath,
+  operatorSource,
+} from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import {
@@ -207,17 +213,29 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 170,
   },
   {
-    // The group's own operator, by name: what the list of groups filters and sorts by.
-    // A group with none of its own may have one from a group it is nested in, which its
-    // page shows and the hint of the cell says.
-    id: "operator.name",
+    // The group's own operator, by its label: what the list of groups filters and sorts
+    // by. A group with none of its own may have one from a group it is nested in or from
+    // where it is, which its page shows and the hint of the cell says.
+    id: "operator.label",
     header: "Operator",
     kind: "text",
     column: "operator",
-    value: (group) => group.operator?.name,
+    value: (group) => group.operator?.label,
+    chip: (group) => {
+      const mark = markOf(group.operator);
+      return (
+        mark && {
+          colour: mark.colour,
+          path: operatorPath(mark.hid),
+          ...(mark.open ? { note: "open" } : {}),
+        }
+      );
+    },
     hint: (group) => {
+      const own = markOf(group.operator);
+      if (own) return markTitle(own);
       const inForce = group.effective.operator_hid;
-      const from = groupOperatorSource(inForce, group);
+      const from = operatorSource(inForce);
       return from && inForce.label
         ? `None of its own: ${inForce.label}, inherited from ${from.text}`
         : "";
@@ -457,12 +475,12 @@ function groupSpecs(
     {
       name: "operator_hid",
       label: "Operator",
-      kind: "contact",
+      kind: "operator",
       blank: "None of its own",
       options: current?.operator
-        ? [{ value: current.operator.hid, label: contactLabel(current.operator) }]
+        ? [{ value: current.operator.hid, label: operatorOptionLabel(current.operator) }]
         : [],
-      hint: "The person of the team who looks after it. Its members have this operator unless they have their own.",
+      hint: "The label of who of the team looks after it. Its members have this operator unless they have their own.",
     },
     {
       name: "location_hid",
@@ -844,11 +862,7 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
         )}
         <dt>Operator</dt>
         <dd>
-          <Operator
-            effective={group.effective.operator_hid}
-            from={groupOperatorSource(group.effective.operator_hid, group)}
-            testId="group-operator"
-          />
+          <Operator effective={group.effective.operator_hid} testId="group-operator" />
           {typeof group.effective.operator_hid.value === "string" && (
             <span className="muted" data-testid="group-operator-members">
               {" "}
@@ -1601,11 +1615,7 @@ function GroupDetails({ group, onSaved, onReload }: GroupDetailsProps) {
             : {
                 notes: {
                   operator_hid: (
-                    <OperatorNote
-                      effective={group.effective.operator_hid}
-                      from={groupOperatorSource(group.effective.operator_hid, group)}
-                      what="group"
-                    />
+                    <OperatorNote effective={group.effective.operator_hid} what="group" />
                   ),
                 },
               })}

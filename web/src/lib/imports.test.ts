@@ -16,10 +16,12 @@ describe("entities", () => {
       "tags",
       "vendors",
       "catalog_entries",
+      // A place may name an operator, and an operator a contact: both come before the places.
+      "contacts",
+      "operators",
       "regions",
       "sites",
       "locations",
-      "contacts",
       "contact_assignments",
       "owners",
       "owner_members",
@@ -54,6 +56,8 @@ describe("entities", () => {
     }
     expect(entityLabel("contact_assignments")).toBe("Contacts of places");
     expect(entityLabel("owner_members")).toBe("People of owners");
+    expect(isEntity("operators")).toBe(true);
+    expect(entityLabel("operators")).toBe("Operators");
   });
 });
 
@@ -107,8 +111,17 @@ describe("guessEntity", () => {
     expect(guessEntity("contact-assignments.csv")).toBe("contact_assignments");
     expect(guessEntity("owners.csv")).toBe("owners");
     expect(guessEntity("owner_members.csv")).toBe("owner_members");
+    expect(guessEntity("operators.csv")).toBe("operators");
     // A file of items named after a site is a file of items.
     expect(guessEntity("items-site2.csv")).toBe("items");
+  });
+
+  it("takes the kind that stands first in a name that holds more than one", () => {
+    expect(guessEntity("contacts-operators-team.csv")).toBe("contacts");
+    expect(guessEntity("items-operators-3fa9c1.csv")).toBe("items");
+    expect(guessEntity("operators-items.csv")).toBe("operators");
+    // Of two that start at the same place, the longer is meant.
+    expect(guessEntity("device_group_members-of-device_groups.csv")).toBe("device_group_members");
   });
 
   it("guesses nothing from a name that says nothing", () => {

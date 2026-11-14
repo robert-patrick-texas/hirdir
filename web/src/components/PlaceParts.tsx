@@ -19,6 +19,7 @@ import { api, type Schemas } from "../api";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useReloadOn } from "../lib/hooks";
 import { EVERY, useChoices, useContactOptions, useRegions, useTags } from "../lib/lists";
+import { operatorOptionLabel } from "../lib/operators";
 import {
   choiceLabel,
   choiceOptions,
@@ -50,7 +51,14 @@ import {
 import { fieldErrors } from "../lib/problems";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
-import { InForce, InstructionsNote, readEffective, ShippingNote, type To } from "./PlaceInForce";
+import {
+  InForce,
+  InstructionsNote,
+  PlaceOperatorNote,
+  readEffective,
+  ShippingNote,
+  type To,
+} from "./PlaceInForce";
 import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
 import { Time } from "./Time";
@@ -216,6 +224,16 @@ export function placeSpecs(
       })),
       hint: "A tag is made under Admin, then used here",
     },
+    {
+      name: "operator_hid",
+      label: "Operator",
+      kind: "operator",
+      blank: "None of its own",
+      options: current?.operator
+        ? [{ value: current.operator.hid, label: operatorOptionLabel(current.operator) }]
+        : [],
+      hint: `The label of who of the team looks after what is at this ${level}. An item or a group here has it when it has none of its own, of the item it is in or of its group, so that a new device is never nobody's.`,
+    },
     ...street,
     ...(level === "region"
       ? []
@@ -344,6 +362,14 @@ export function PlaceDetail(props: PlaceDetailProps) {
           <ShippingNote
             address={inForce.ship_address}
             of={level}
+            level={level}
+            sitePath={sitePath}
+            to={to}
+          />
+        ),
+        operator_hid: (
+          <PlaceOperatorNote
+            operator={inForce.operator}
             level={level}
             sitePath={sitePath}
             to={to}
