@@ -28,6 +28,12 @@ export interface GridColumn<T> {
   /** For a field that inherits: its value in force, to style it and to name its source. */
   effective?: (row: T) => Effective | null | undefined;
   /**
+   * For a value that the row has from elsewhere and that comes with no such block, as a
+   * coverage has the dates of its contract: true shows the cell in the lighter style of
+   * an inherited value. Where it came from is then said by `hint`.
+   */
+  inherited?: (row: T) => boolean;
+  /**
    * For a health: the colour of the mark that stands before the text of the cell, by the
    * name of the health. The text stays, so the colour is never all there is.
    */
@@ -39,6 +45,11 @@ export interface GridColumn<T> {
   hint?: (row: T) => string | null | undefined;
   /** Show the cell as the link to its record. */
   link?: boolean;
+  /**
+   * Show the cell as a link to another record than the row's own, by its path in the
+   * app: the item that took the place of the one the row is about.
+   */
+  linkTo?: (row: T) => string | null | undefined;
   /**
    * For a label that has a colour and a page of its own, as an operator has: the colour
    * of the dot before the text, the page the text leads to, and a word to say after it,
@@ -75,6 +86,28 @@ export function columnDefaults<T>(columns: readonly GridColumn<T>[]): ColumnDefa
     hide: column.hide === true,
     ...(column.width === undefined ? {} : { width: column.width }),
   }));
+}
+
+/**
+ * The columns of a list for a grid that is about some of them: those are shown, also
+ * where the list hides them, and stand right after the first column, in the order they
+ * are named, so that they are in view. A name the list does not have is passed over.
+ */
+export function broughtForward<T>(
+  columns: readonly GridColumn<T>[],
+  ids: readonly string[],
+): GridColumn<T>[] {
+  const [first, ...rest] = columns;
+  if (!first) return [];
+  const forward: GridColumn<T>[] = [];
+  const moved = new Set<string>();
+  for (const id of ids) {
+    const found = rest.find((column) => column.id === id);
+    if (!found || moved.has(id)) continue;
+    moved.add(id);
+    forward.push({ ...found, hide: false });
+  }
+  return [first, ...forward, ...rest.filter((column) => !moved.has(column.id))];
 }
 
 // An option the grid does not have of its own. The grid never runs a filter itself, so
@@ -202,6 +235,33 @@ function linkRenderer<T>(context: ColumnContext<T>) {
   };
 }
 
+/** A cell that is a link to the page a row names for it, which is not the row's own. */
+function pathRenderer<T>(path: (row: T) => string | null | undefined, context: ColumnContext<T>) {
+  return (params: ICellRendererParams<T, string>): HTMLElement => {
+    const to = params.data ? path(params.data) : null;
+    const text = params.value ?? "";
+    if (!to || text === "") {
+      const plain = document.createElement("span");
+      plain.textContent = text;
+      return plain;
+    }
+    const link = document.createElement("a");
+    link.href = context.hrefOf(to);
+    // Reached with the arrow keys, as every cell of the row is.
+    link.tabIndex = -1;
+    // Text from the inventory is put in as text, never as HTML.
+    link.textContent = text;
+    link.addEventListener("click", (event) => {
+      const plainClick =
+        event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+      if (!plainClick) return;
+      event.preventDefault();
+      context.go(to);
+    });
+    return link;
+  };
+}
+
 /**
  * A cell with a mark in the colour of its health before its text. The mark is decoration
  * and hidden from a screen reader: the word beside it says the same.
@@ -286,7 +346,7 @@ export function columnDefs<T>(
     const query = sortable.get(column.id);
     const sortPlace = layout.sort.findIndex((sorted) => sorted.id === column.id);
     const sorted = layout.sort[sortPlace];
-    const { effective } = column;
+    const { effective, inherited } = column;
     const classes = [column.numeric ? "ag-right-aligned-cell" : "", column.mono ? "mono" : ""];
     const width = entry.width ?? column.width;
     defs.push({
@@ -304,12 +364,15 @@ export function columnDefs<T>(
         : {}),
       cellClass: classes.filter(Boolean),
       ...(column.numeric ? { headerClass: "ag-right-aligned-header" } : {}),
-      ...(effective
+      ...(effective || inherited
         ? {
             // An inherited value is shown lighter, and says where it came from on hover.
             cellClassRules: {
               "cell-inherited": (params) =>
-                Boolean(params.data) && isInherited(effective(params.data as T)),
+                params.data !== undefined &&
+                (effective
+                  ? isInherited(effective(params.data))
+                  : inherited?.(params.data) === true),
             },
           }
         : {}),
@@ -320,6 +383,7 @@ export function columnDefs<T>(
           }
         : {}),
       ...(column.link ? { cellRenderer: linkRenderer(context) } : {}),
+      ...(column.linkTo ? { cellRenderer: pathRenderer(column.linkTo, context) } : {}),
       ...(column.mark ? { cellRenderer: markRenderer(column.mark) } : {}),
       ...(column.chip ? { cellRenderer: chipRenderer(column.chip, context) } : {}),
     });

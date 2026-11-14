@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { VendorPortfolio } from "../components/Portfolio";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
@@ -79,11 +80,17 @@ export function Vendors() {
   useTitle("Vendors");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
 
   return (
     <>
       <h1>Vendors</h1>
+      <p>
+        Manufacturers and support providers. A vendor has a page of its own, with its portfolio:
+        everything it makes or provides, with the cover of each model.
+      </p>
       {adding && (
         <CreateForm<Schemas["VendorCreate"], Vendor>
           title="New vendor"
@@ -96,6 +103,7 @@ export function Vendors() {
         />
       )}
       <DataGrid<Vendor>
+        key={startFilter ?? ""}
         id="vendors"
         noun={["vendor", "vendors"]}
         entity="vendors"
@@ -105,6 +113,8 @@ export function Vendors() {
         }
         rowId={(vendor) => vendor.hid}
         rowLink={(vendor) => `/vendors/${encodeURIComponent(vendor.hid)}`}
+        shortFilter="name:contains:Networks review_status:eq:unreviewed"
+        startFilter={startFilter}
       >
         {allows(user.role, "inventory") && !adding && (
           <button type="button" className="primary" onClick={() => setAdding(true)}>
@@ -116,7 +126,11 @@ export function Vendors() {
   );
 }
 
-/** Vendors → one vendor: its name, the other names it goes by, and notes. */
+/**
+ * Vendors → one vendor: its name, the other names it goes by and its notes, and its
+ * portfolio: the totals, the four kinds, the models with their dates and their cover,
+ * the agreements, the contracts and the capacity lines of the vendor, and its items.
+ */
 export function VendorDetail() {
   const { hid = "" } = useParams();
   const { user } = useAuth();
@@ -164,6 +178,7 @@ export function VendorDetail() {
             <dt>HID</dt>
             <dd className="mono">{record.hid}</dd>
           </dl>
+          <VendorPortfolio key={record.hid} vendor={record} />
           {allows(user.role, "inventory") && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>

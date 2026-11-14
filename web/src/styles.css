@@ -1399,3 +1399,60 @@ main:has(.geography) {
   margin-left: 0.25em;
   font-size: 0.75em;
 }
+
+/* --- contracts, purchases, capacity and their reports -------------------------------- */
+
+/* Free text of several lines, such as whom to call for support: its lines are kept. */
+.lines {
+  white-space: pre-line;
+}
+
+/* A label and its value that carry a mark of their own: they stay in the two columns. */
+.facts > .fact-row {
+  display: contents;
+}
+
+/* The lists of a report, side by side: each with its count and the ways to its rows. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.section-card[data-shown="true"] {
+  border-color: var(--accent, currentColor);
+  border-width: 2px;
+}
+
+.section-card h3,
+.section-card p {
+  margin: 0 0 0.35rem;
+}
+
+.section-count {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The balance without the drafts beside the balance with them. */
+.two-up {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.two-up > section {
+  margin: 0;
+}
+
+/* The contracts of one agreement, under the name of the agreement. */
+.grouped {
+  margin: 0 0 1.25rem;
+}
+
+.grouped h3 {
+  margin: 0 0 0.35rem;
+}

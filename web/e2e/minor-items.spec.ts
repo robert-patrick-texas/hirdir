@@ -191,6 +191,9 @@ test("S18: minor items have the owner and the standing of the item they are in",
   await details.getByLabel("Owner").selectOption({ label: campus });
   await details.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("The item was saved.")).toBeVisible();
+  // The page has read the item again once it shows the new owner: the form of a move
+  // starts anew with the version it then has, so nothing is chosen in it before that.
+  await expect(page.getByTestId("owner")).toContainText(campus);
   await move(page, "Test", "Staged");
   await move(page, "Prod", "Deployed");
 

@@ -465,6 +465,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Function",
     "Owner",
     "Operator",
+    "Contract",
     "Tag",
   ]);
   await expect(page.getByRole("heading", { level: 2, name: "By site" })).toBeVisible();
@@ -534,8 +535,8 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(region(page, "Retire").locator('.alert-error[data-status="409"]')).toBeVisible();
   await expect(page.getByTestId("place")).toHaveAttribute("data-level", "location");
 
-  // The six kinds of record that 0.5.0 brought are among what a file may hold, in the
-  // order they are loaded.
+  // The six kinds of record that 0.5.0 brought, and the nine that 0.6.0 brought, are
+  // among what a file may hold, in the order they are loaded.
   await page.goto("./import");
   await expect(page.getByLabel("Records").locator("option")).toHaveText([
     "As the file says",
@@ -551,10 +552,19 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Owners",
     "People of owners",
     "Networks",
+    "External systems",
+    "Support agreements",
+    "Contracts",
+    "Purchase requests",
+    "Lines of purchase requests",
     "Items",
     "Device groups",
     "Members of device groups",
+    "Replacements of items",
     "Addresses",
+    "Coverage of items under contracts",
+    "Registrations with external systems",
+    "Capacity lines",
   ]);
 
   await expectClean(page, seen, ["409 POST"]);

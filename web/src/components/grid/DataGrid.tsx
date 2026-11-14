@@ -50,7 +50,7 @@ import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
 import { routerBasename } from "../../lib/base";
 import { ClipboardRefused, copyText } from "../../lib/clipboard";
-import { all, type FilterNode, parseShort } from "../../lib/filter";
+import { all, type FilterNode, parseFilter } from "../../lib/filter";
 import { plural } from "../../lib/format";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
@@ -94,6 +94,32 @@ export interface Page<T> {
   total: number;
 }
 
+/**
+ * What a grid is of, when it is of a part of a list: the items a report counted, the
+ * items of a vendor, the coverage of one contract. The filter is part of every filter
+ * the grid sends, so what is copied, exported or acted on is what the grid shows; the
+ * sort is the order until a header is pressed; and the switches are on whatever the
+ * reader's own are, as for a list of covered items that are archived.
+ */
+export interface GridWithin {
+  filter?: FilterNode | null;
+  sort?: readonly string[];
+  includeArchived?: boolean;
+  includeDrafts?: boolean;
+}
+
+/** Something a page does with the rows chosen in a grid, offered as a button. */
+export interface GridAction<T> {
+  label: string;
+  /**
+   * It takes particular rows, with what the grid read of each, and is not offered for
+   * "all that match", of which the grid has read only a part.
+   */
+  rowsOnly?: boolean;
+  /** `rows` holds what the grid read of the rows chosen: none of them for "all that match". */
+  run: (chosen: Chosen, view: GridView, rows: T[]) => void;
+}
+
 export interface DataGridProps<T> {
   /** The name the reader's layout of this grid is remembered under. */
   id: string;
@@ -128,6 +154,15 @@ export interface DataGridProps<T> {
   entity?: Entity;
   /** Open the form that changes many rows at once. With it, Bulk edit is offered. */
   onBulkEdit?: (rows: Chosen, view: GridView) => void;
+  /** What else the page does with the rows chosen, each as a button beside Bulk edit. */
+  actions?: ReadonlyArray<GridAction<T>>;
+  /** The part of the list the grid is of. It may change while the grid is on show. */
+  within?: GridWithin;
+  /**
+   * The switches as a link asks for them, for this visit, instead of the ones
+   * remembered: a link to archived items turns Include archived on.
+   */
+  startSwitches?: { archived?: boolean; drafts?: boolean } | null;
   /** More to put in the toolbar, such as the button for a new record. */
   children?: ReactNode;
 }
@@ -161,7 +196,10 @@ function layoutOf(
 
 export function DataGrid<T>(props: DataGridProps<T>) {
   const { id, noun, columns, shortFilter, switches, reloadKey = 0, children } = props;
-  const { entity, onBulkEdit, minor } = props;
+  const { entity, onBulkEdit, minor, actions = [] } = props;
+  // The part of the list the grid is of, the same object until what it says changes.
+  const withinText = JSON.stringify(props.within ?? {});
+  const within = useMemo(() => JSON.parse(withinText) as GridWithin, [withinText]);
   const { user } = useAuth();
   const navigate = useNavigate();
   const host = useRef<HTMLDivElement>(null);
@@ -174,7 +212,13 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [fromLink] = useState(() => (props.startFilter ?? null) !== null);
   const [start] = useState(() => {
     const layout = mergeLayout(defaults, store.load(id));
-    return fromLink ? { ...layout, short: props.startFilter ?? "", filter: {} } : layout;
+    const asked = props.startSwitches;
+    const switched = {
+      ...layout,
+      ...(asked?.archived === undefined ? {} : { includeArchived: asked.archived }),
+      ...(asked?.drafts === undefined ? {} : { includeDrafts: asked.drafts }),
+    };
+    return fromLink ? { ...switched, short: props.startFilter ?? "", filter: {} } : switched;
   });
   const [draft, setDraft] = useState(start.short);
   const [short, setShort] = useState(start.short);
@@ -314,14 +358,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
 
   // Give the grid its source of rows, and a new one whenever what is asked for changes.
   // A new source empties the grid's cache, so every row on show is read again.
-  const parsed = useMemo(() => parseShort(short), [short]);
+  const parsed = useMemo(() => parseFilter(short), [short]);
   const shortNode = parsed.ok ? parsed.filter : null;
   // The filter of the switch that is off. Read when the grid is made, as the columns are.
   const [without] = useState(() => minor?.without ?? null);
   const leftOut = includeMinor ? null : without;
   const wanted = useMemo(
-    () => ({ shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn }),
-    [shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn],
+    () => ({ shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within }),
+    [shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within],
   );
   useEffect(() => {
     if (!grid) return;
@@ -330,13 +374,20 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     setAllMatching(false);
     grid.setGridOption("datasource", {
       getRows: (params) => {
+        const sorted = gridSort(query, params.sortModel);
         const request: ListRequest = {
-          filter: all(wanted.shortNode, gridFilter(query, params.filterModel), wanted.leftOut),
-          sort: gridSort(query, params.sortModel),
+          filter: all(
+            wanted.within.filter,
+            wanted.shortNode,
+            gridFilter(query, params.filterModel),
+            wanted.leftOut,
+          ),
+          // Until a header is pressed, the order the page gives the part it shows.
+          sort: sorted.length > 0 ? sorted : [...(wanted.within.sort ?? [])],
           limit: params.endRow - params.startRow,
           offset: params.startRow,
-          include_archived: wanted.includeArchived,
-          include_drafts: wanted.includeDrafts,
+          include_archived: wanted.includeArchived || wanted.within.includeArchived === true,
+          include_drafts: wanted.includeDrafts || wanted.within.includeDrafts === true,
         };
         read(request, controller.signal).then(
           (page) => {
@@ -358,7 +409,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   }, [grid, query, wanted]);
 
   function showShort(text: string) {
-    const result = parseShort(text);
+    const result = parseFilter(text);
     if (!result.ok) {
       setShortError(result.error);
       return;
@@ -444,14 +495,25 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   /** What the grid shows now, as the server takes it: the filter, the sort, the switches. */
   function viewOf(api: GridApi<T>): GridView {
     const own = all(shortNode, gridFilter(query, api.getFilterModel()));
+    const sorted = gridSort(query, sortModelOf(api.getColumnState()));
     return {
-      // The rows a switch leaves out are left out of what is copied, exported and edited too.
-      filter: all(own, leftOut),
-      sort: gridSort(query, sortModelOf(api.getColumnState())),
-      include_archived: includeArchived,
-      include_drafts: includeDrafts,
-      unfiltered: own === null,
+      // The rows a switch leaves out are left out of what is copied, exported and edited
+      // too, and so is everything outside the part of the list the grid is of.
+      filter: all(within.filter, own, leftOut),
+      sort: sorted.length > 0 ? sorted : [...(within.sort ?? [])],
+      include_archived: includeArchived || within.includeArchived === true,
+      include_drafts: includeDrafts || within.includeDrafts === true,
+      unfiltered: own === null && !within.filter,
     };
+  }
+
+  /** What the grid read of the rows that are selected. */
+  function rowsOf(api: GridApi<T>): T[] {
+    const rows: T[] = [];
+    for (const node of api.getSelectedNodes()) {
+      if (node.data !== undefined) rows.push(node.data);
+    }
+    return rows;
   }
 
   /** The rows chosen: all that match, as a count, or the ones selected, by HID. */
@@ -560,7 +622,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               value={draft}
               onChange={setDraft}
               autoComplete="off"
-              hint={`field:op:value, as in ${shortFilter}`}
+              hint={`field:op:value, as in ${shortFilter}. A filter tree as JSON is taken too.`}
               error={shortError || undefined}
             />
             <button type="submit">Apply</button>
@@ -704,6 +766,24 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               Bulk edit
             </button>
           )}
+          {actions.map((action) => (
+            <button
+              type="button"
+              key={action.label}
+              disabled={!some || busy || (action.rowsOnly === true && allMatching)}
+              title={
+                action.rowsOnly && allMatching
+                  ? "Select the rows themselves: this takes particular rows."
+                  : undefined
+              }
+              onClick={() => {
+                const chosen = grid ? chosenOf(grid) : null;
+                if (grid && chosen) action.run(chosen, viewOf(grid), rowsOf(grid));
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
           {busy && (
             <span role="status" className="muted loading-late">
               Working…

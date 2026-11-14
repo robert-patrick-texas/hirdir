@@ -49,7 +49,7 @@ const KINDS = [
 ];
 
 describe("what a summary is by", () => {
-  it("offers the thirteen groupings the server has, the operator, the site and the region among them", () => {
+  it("offers the fourteen groupings the server has, the operator, the places and the contract among them", () => {
     expect(SUMMARY_BY.map((by) => by.value)).toEqual([
       "vendor",
       "kind",
@@ -59,6 +59,7 @@ describe("what a summary is by", () => {
       "operator",
       "site",
       "region",
+      "contract",
       "lifecycle_state",
       "disposition",
       "condition",
@@ -70,14 +71,17 @@ describe("what a summary is by", () => {
     expect(isBy("site")).toBe(true);
     expect(isBy("region")).toBe(true);
     expect(isBy("operator")).toBe(true);
-    expect(isBy("contract")).toBe(false);
+    // An item is in the row of each contract that covers it today.
+    expect(isBy("contract")).toBe(true);
+    expect(byLabel("contract")).toBe("Contract");
+    expect(isBy("agreement")).toBe(false);
     expect(byLabel("site")).toBe("Site");
     expect(byLabel("operator")).toBe("Operator");
     expect(byLabel("lifecycle_state")).toBe("Lifecycle state");
     expect(byLabel(null)).toBe("");
   });
 
-  it("offers the management report its nine, the site first, with neither condition nor health", () => {
+  it("offers the management report its ten, the site first, with neither condition nor health", () => {
     // By site is what the report shows unless asked otherwise, so it is offered first.
     expect(MANAGEMENT_BY.map((by) => by.value)).toEqual([
       "site",
@@ -88,8 +92,10 @@ describe("what a summary is by", () => {
       "function",
       "owner",
       "operator",
+      "contract",
       "tag",
     ]);
+    expect(isManagementBy("contract")).toBe(true);
     expect(isManagementBy("operator")).toBe(true);
     expect(isManagementBy("vendor")).toBe(true);
     expect(isManagementBy("health")).toBe(false);

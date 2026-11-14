@@ -10,31 +10,67 @@ import { AdminStart, NotFound, RequireRole } from "./pages/Misc";
 // The sign-in page and the first page are in the file the browser loads first. Every
 // other page is a file of its own, so that signing in never waits for the grid.
 const pages = {
+  agreements: () => import("./pages/Agreements"),
   audit: () => import("./pages/Audit"),
+  capacity: () => import("./pages/Capacity"),
   catalog: () => import("./pages/Catalog"),
   choices: () => import("./pages/Choices"),
   contacts: () => import("./pages/Contacts"),
+  contracts: () => import("./pages/Contracts"),
   deviceGroups: () => import("./pages/DeviceGroups"),
   geography: () => import("./pages/Geography"),
   groups: () => import("./pages/Groups"),
   import: () => import("./pages/Import"),
   itemDetail: () => import("./pages/ItemDetail"),
   items: () => import("./pages/Items"),
+  lifecycleReports: () => import("./pages/LifecycleReports"),
   lifecycleRules: () => import("./pages/LifecycleRules"),
   networks: () => import("./pages/Networks"),
   operators: () => import("./pages/Operators"),
   owners: () => import("./pages/Owners"),
+  purchases: () => import("./pages/Purchases"),
   reports: () => import("./pages/Reports"),
   roles: () => import("./pages/Roles"),
   scoreboard: () => import("./pages/Scoreboard"),
   settings: () => import("./pages/Settings"),
+  systems: () => import("./pages/Systems"),
   tags: () => import("./pages/Tags"),
   userDetail: () => import("./pages/UserDetail"),
   users: () => import("./pages/Users"),
   vendors: () => import("./pages/Vendors"),
 };
 
+const AgreementDetail = lazy(() =>
+  pages.agreements().then((page) => ({ default: page.AgreementDetail })),
+);
+const Agreements = lazy(() => pages.agreements().then((page) => ({ default: page.Agreements })));
 const AllAddresses = lazy(() => pages.networks().then((page) => ({ default: page.AllAddresses })));
+const Capacity = lazy(() => pages.capacity().then((page) => ({ default: page.Capacity })));
+const CapacityLineDetail = lazy(() =>
+  pages.capacity().then((page) => ({ default: page.CapacityLineDetail })),
+);
+const ContractDetail = lazy(() =>
+  pages.contracts().then((page) => ({ default: page.ContractDetail })),
+);
+const Contracts = lazy(() => pages.contracts().then((page) => ({ default: page.Contracts })));
+const CoverageReport = lazy(() =>
+  pages.lifecycleReports().then((page) => ({ default: page.CoverageReport })),
+);
+const EndOfLifeReport = lazy(() =>
+  pages.lifecycleReports().then((page) => ({ default: page.EndOfLifeReport })),
+);
+const PurchaseDetail = lazy(() =>
+  pages.purchases().then((page) => ({ default: page.PurchaseDetail })),
+);
+const PurchaseLines = lazy(() =>
+  pages.purchases().then((page) => ({ default: page.PurchaseLines })),
+);
+const Purchases = lazy(() => pages.purchases().then((page) => ({ default: page.Purchases })));
+const Replacements = lazy(() =>
+  pages.lifecycleReports().then((page) => ({ default: page.Replacements })),
+);
+const SystemDetail = lazy(() => pages.systems().then((page) => ({ default: page.SystemDetail })));
+const Systems = lazy(() => pages.systems().then((page) => ({ default: page.Systems })));
 const Audit = lazy(() => pages.audit().then((page) => ({ default: page.Audit })));
 const Catalog = lazy(() => pages.catalog().then((page) => ({ default: page.Catalog })));
 const CatalogEntryDetail = lazy(() =>
@@ -220,6 +256,118 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <Duplicates />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/coverage"
+              element={
+                <RequireRole needs="viewer">
+                  <CoverageReport />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/end-of-life"
+              element={
+                <RequireRole needs="viewer">
+                  <EndOfLifeReport />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/replacements"
+              element={
+                <RequireRole needs="viewer">
+                  <Replacements />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="contracts"
+              element={
+                <RequireRole needs="viewer">
+                  <Contracts />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="contracts/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <ContractDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="agreements"
+              element={
+                <RequireRole needs="viewer">
+                  <Agreements />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="agreements/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <AgreementDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="purchases"
+              element={
+                <RequireRole needs="viewer">
+                  <Purchases />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="purchases/lines"
+              element={
+                <RequireRole needs="viewer">
+                  <PurchaseLines />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="purchases/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <PurchaseDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="systems"
+              element={
+                <RequireRole needs="viewer">
+                  <Systems />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="systems/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <SystemDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="capacity"
+              element={
+                <RequireRole needs="viewer">
+                  <Capacity />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="capacity/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <CapacityLineDetail />
                 </RequireRole>
               }
             />

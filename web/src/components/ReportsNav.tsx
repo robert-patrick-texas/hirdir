@@ -17,6 +17,15 @@ export function ReportsNav() {
           <NavLink to="/reports/management">Management</NavLink>
         </li>
         <li>
+          <NavLink to="/reports/coverage">Coverage</NavLink>
+        </li>
+        <li>
+          <NavLink to="/reports/end-of-life">End of life</NavLink>
+        </li>
+        <li>
+          <NavLink to="/reports/replacements">Replacements</NavLink>
+        </li>
+        <li>
           <NavLink to="/reports/duplicates">Addresses held more than once</NavLink>
         </li>
       </ul>

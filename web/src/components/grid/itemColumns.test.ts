@@ -688,6 +688,217 @@ describe("the planned location in the item grid", () => {
   });
 });
 
+describe("coverage, registrations and the purchase line in the item grid", () => {
+  const CONTRACT = "0193a1f4-0000-7000-8000-0000000000c1";
+  const LINE = "0193a1f4-0000-7000-8000-0000000000d1";
+  const ref = (number: string, inForce: boolean) => ({
+    hid: `cov-${number}-${inForce}`,
+    contract_hid: CONTRACT,
+    contract: {
+      hid: CONTRACT,
+      number,
+      vendor: "Cisco",
+      status: "active",
+      record_status: "active",
+    },
+    starts_on: "2026-01-01",
+    ends_on: inForce ? "2027-12-31" : "2026-03-31",
+    in_force: inForce,
+  });
+  const registration = (name: string, status: string) => ({
+    hid: `reg-${name}`,
+    system_hid: `sys-${name}`,
+    system: { hid: `sys-${name}`, name, kind: "monitoring" },
+    external_id: null,
+    status,
+    confirmed_at: null,
+  });
+  /** A switch under two contracts, one of them ended, registered with two systems. */
+  const covered = {
+    ...chassis,
+    covered: true,
+    covered_until: "2027-12-31",
+    coverage: [ref("CON-2026-0001", true), ref("CON-2025-0009", false), ref("CON-2026-0001", true)],
+    registrations: [registration("NetWatch", "registered"), registration("ConfigVault", "removed")],
+    group_registrations: [],
+    contract_count: 1,
+    purchase_line_hid: LINE,
+    purchase_line: {
+      hid: LINE,
+      request_hid: "req-1",
+      reference: "RITM0012345",
+      line: 2,
+      name: "RITM0012345/2",
+    },
+  } as unknown as Item;
+  /** One that nothing covers, that is registered nowhere and arrived on no line. */
+  const bare = {
+    ...chassis,
+    covered: false,
+    covered_until: null,
+    coverage: [],
+    registrations: [],
+    group_registrations: [],
+    contract_count: 0,
+    purchase_line_hid: null,
+    purchase_line: null,
+  } as unknown as Item;
+  /**
+   * A member of a stack: under two contracts at once, one of them with its renewal
+   * pending, with no registration of its own and the stack's two beside it.
+   */
+  const member = {
+    ...covered,
+    covered_until: null,
+    contract_count: 2,
+    coverage: [
+      ref("CON-2026-0001", true),
+      {
+        ...ref("CON-2025-0044", true),
+        contract: { ...ref("CON-2025-0044", true).contract, status: "renewal_pending" },
+      },
+    ],
+    registrations: [],
+    group_registrations: [
+      {
+        ...registration("NetWatch", "registered"),
+        group: { hid: "g-1", name: "site2-sw-stack1", type: "stack" },
+      },
+      {
+        ...registration("Fabric Controller", "removed"),
+        group: { hid: "g-1", name: "site2-sw-stack1", type: "stack" },
+      },
+    ],
+  } as unknown as Item;
+
+  it("says how many contracts cover the item today, and the status of each", () => {
+    expect(column("contract_count").value(covered)).toBe("1");
+    expect(column("contract_count").value(bare)).toBe("0");
+    expect(column("contract_count").value(member)).toBe("2");
+    expect(column("contract.status").value(covered)).toBe("Active");
+    expect(column("contract.status").value(member)).toBe("Active, Renewal pending");
+    expect(column("contract.status").value(bare)).toBe("");
+  });
+
+  it("says of cover under a contract whose renewal is pending whom to go through", () => {
+    expect(column("covered").value(member)).toBe("Yes");
+    expect(cellHint(column("covered"), member)).toBe(
+      "Renewal pending: go through the account manager",
+    );
+    expect(cellHint(column("contract.status"), member)).toContain("account manager");
+    expect(cellHint(column("covered"), covered)).toBe("");
+  });
+
+  it("lists for a member what its stack is registered with, and says through which group", () => {
+    // The filter of the item list finds the member by the stack's system too.
+    expect(column("registration.system").value(member)).toBe("NetWatch");
+    expect(cellHint(column("registration.system"), member)).toBe(
+      "Through site2-sw-stack1, which it is a member of",
+    );
+    expect(cellHint(column("registration.system"), covered)).toBe("");
+  });
+
+  it("filters and sorts the count and the status by the fields the server has, and hides both", () => {
+    expect(asked("contract_count")).toMatchObject({
+      field: "contract_count",
+      sortField: "contract_count",
+      kind: "integer",
+    });
+    expect(asked("contract.status")).toMatchObject({
+      field: "contract.status",
+      sortField: "contract.status",
+      kind: "choice",
+    });
+    expect(column("contract_count").hide).toBe(true);
+    expect(column("contract.status").hide).toBe(true);
+    // An export has the count, and no column for the status.
+    expect(
+      exportColumns(COLUMNS, [{ colId: "contract_count" }, { colId: "contract.status" }]),
+    ).toEqual(["hid", "contract_count"]);
+  });
+
+  it("says whether a contract covers the item today, and the last day its cover runs to", () => {
+    expect(column("covered").value(covered)).toBe("Yes");
+    expect(column("covered").value(bare)).toBe("No");
+    expect(column("covered_until").value(covered)).toBe("2027-12-31");
+    expect(column("covered_until").value(bare)).toBeNull();
+  });
+
+  it("lists the contracts that cover it today by their numbers, each once", () => {
+    // A coverage that has ended is not among them, and two under one contract are one.
+    expect(column("contract.number").value(covered)).toBe("CON-2026-0001");
+    expect(column("contract.number").value(bare)).toBe("");
+  });
+
+  it("lists the systems it is registered with, one that was removed not counting", () => {
+    expect(column("registration.system").value(covered)).toBe("NetWatch");
+    expect(column("registration.system").value(bare)).toBe("");
+  });
+
+  it("shows the purchase line by its name, and says its HID as the hint of the cell", () => {
+    expect(column("purchase_line_hid").value(covered)).toBe("RITM0012345/2");
+    expect(cellHint(column("purchase_line_hid"), covered)).toContain(LINE);
+    expect(column("purchase_line_hid").value(bare)).toBeUndefined();
+    expect(cellHint(column("purchase_line_hid"), bare)).toBe("");
+  });
+
+  it("filters and sorts each by the field the server has for it", () => {
+    expect(asked("covered")).toMatchObject({ field: "covered", sortField: "covered" });
+    expect(asked("covered")).toMatchObject({ kind: "boolean" });
+    expect(asked("covered_until")).toMatchObject({
+      field: "covered_until",
+      sortField: "covered_until",
+      kind: "date",
+    });
+    // Found by any of the contracts, and sorted by the first of them.
+    expect(asked("contract.number")).toMatchObject({
+      field: "contract.number",
+      sortField: "contract.number",
+    });
+    expect(asked("registration.system")).toMatchObject({
+      field: "registration.system",
+      sortField: "registration.system",
+    });
+    // The list knows the line by its HID.
+    expect(asked("purchase_line_hid")).toMatchObject({
+      field: "purchase_line_hid",
+      sortField: "purchase_line_hid",
+      kind: "reference",
+    });
+  });
+
+  it("hides all five until they are asked for", () => {
+    for (const id of [
+      "covered",
+      "covered_until",
+      "contract.number",
+      "registration.system",
+      "purchase_line_hid",
+    ]) {
+      expect(column(id).hide, id).toBe(true);
+    }
+  });
+
+  it("exports the cover and the line under the names a file of items has, and no registration", () => {
+    const exported = exportColumns(COLUMNS, [
+      { colId: "covered" },
+      { colId: "covered_until" },
+      { colId: "contract.number" },
+      { colId: "registration.system" },
+      { colId: "purchase_line_hid" },
+    ]);
+    // `contract.number` and `purchase_line_hid` are names the export reads as its
+    // columns `contracts` and `purchase_line`.
+    expect(exported).toEqual([
+      "hid",
+      "covered",
+      "covered_until",
+      "contract.number",
+      "purchase_line_hid",
+    ]);
+  });
+});
+
 describe("the columns a reader starts with", () => {
   it("are the ones of 0.3.0, the health and the operator, which stands after the owner", () => {
     const shown = columnDefaults(COLUMNS)

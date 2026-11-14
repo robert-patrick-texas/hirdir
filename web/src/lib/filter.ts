@@ -170,3 +170,105 @@ export function formatShort(node: FilterNode | null): string | null {
   }
   return written.join(" ");
 }
+
+function isNode(value: unknown, depth = 0): value is FilterNode {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || depth > 8) {
+    return false;
+  }
+  const node = value as Record<string, unknown>;
+  for (const joined of ["and", "or"] as const) {
+    if (joined in node) {
+      const parts = node[joined];
+      return Array.isArray(parts) && parts.every((part) => isNode(part, depth + 1));
+    }
+  }
+  return (
+    typeof node.field === "string" &&
+    typeof node.op === "string" &&
+    (OPERATORS as readonly string[]).includes(node.op)
+  );
+}
+
+/** The filter a report gives, as a tree: null for none, and for what is no filter. */
+export function viewFilter(filter: unknown): FilterNode | null {
+  return isNode(filter) ? filter : null;
+}
+
+/**
+ * Read a filter as a link or the filter box holds it: the short form, or a filter tree
+ * written as JSON, which is how a report hands on a filter that the short form cannot
+ * say, one with an OR in it. The server remains the judge of the fields and the values.
+ */
+export function parseFilter(text: string): ShortResult {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return parseShort(trimmed);
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, error: "A filter that begins with { is a filter tree, written as JSON." };
+  }
+  if (!isNode(value)) {
+    return {
+      ok: false,
+      error:
+        'A filter tree is a condition, {"field": "…", "op": "…", "value": "…"}, or {"and": […]} or {"or": […]} of them.',
+    };
+  }
+  return { ok: true, filter: value };
+}
+
+/** A tree of ANDs within ANDs as one AND: what the short form can then write. */
+function flat(node: FilterNode): FilterNode {
+  if (!("and" in node)) return node;
+  return all(...node.and.map(flat)) ?? node;
+}
+
+/**
+ * A filter as text for a link or for the filter box: the short form where it can be
+ * written so and reads back as the same conditions, which is easier to read and to
+ * change, and otherwise the tree as JSON.
+ */
+export function filterText(node: FilterNode | null): string {
+  if (node === null) return "";
+  const plain = flat(node);
+  const short = formatShort(plain);
+  if (short !== null) {
+    const back = parseShort(short);
+    if (back.ok && back.filter !== null && asText(back.filter) === asText(plain)) return short;
+  }
+  return JSON.stringify(node);
+}
+
+/** A filter with every value as the short form would hold it, to compare two of them. */
+function asText(node: FilterNode): string {
+  const parts = isCondition(node) ? [node] : "and" in node ? node.and : [];
+  return JSON.stringify(
+    parts
+      .filter(isCondition)
+      .map((part) => [
+        part.field,
+        part.op,
+        Array.isArray(part.value) ? part.value.map(String) : String(part.value ?? ""),
+      ]),
+  );
+}
+
+/** What a report says of a list of items: the filter of the item list, and its switches. */
+export interface ItemsView {
+  filter?: unknown;
+  include_archived?: boolean;
+  include_drafts?: boolean;
+}
+
+/**
+ * The grid of items on the items a report counted, as a path of the app: the filter the
+ * report gives for them, with the switches as it says they must be sent. The minor items
+ * among them are asked for too: the filter says itself where only major items count.
+ */
+export function itemsViewPath(view: ItemsView): string {
+  const query = new URLSearchParams({ filter: filterText(viewFilter(view.filter)), minor: "1" });
+  if (view.include_archived) query.set("archived", "1");
+  if (view.include_drafts) query.set("drafts", "1");
+  return `/items?${query.toString()}`;
+}

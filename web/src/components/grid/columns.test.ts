@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { mergeLayout } from "../../lib/gridStore";
-import { cellHint, columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import {
+  broughtForward,
+  cellHint,
+  columnDefaults,
+  columnDefs,
+  type GridColumn,
+  queryColumns,
+} from "./columns";
 
 interface Row {
   name: string;
@@ -112,6 +119,43 @@ describe("queryColumns", () => {
       field: null,
       sortField: null,
     });
+  });
+});
+
+describe("broughtForward", () => {
+  it("shows the columns a grid is about right after the first, in the order named", () => {
+    const made = broughtForward(COLUMNS, ["kind", "tags"]);
+    expect(made.map((column) => column.id).slice(0, 4)).toEqual([
+      "name",
+      "kind",
+      "tags",
+      "effective.est_value",
+    ]);
+    // A column the list hides is shown here: it is what the grid is about.
+    expect(COLUMNS.find((column) => column.id === "kind")?.hide).toBe(true);
+    expect(made[1]?.hide).toBe(false);
+    // Every column is still there, each once.
+    expect(made.map((column) => column.id).sort()).toEqual(
+      COLUMNS.map((column) => column.id).sort(),
+    );
+  });
+
+  it("passes over a name the list does not have, and one named twice", () => {
+    const made = broughtForward(COLUMNS, ["tags", "no_such_column", "tags", ""]);
+    expect(made.map((column) => column.id).slice(0, 3)).toEqual([
+      "name",
+      "tags",
+      "effective.est_value",
+    ]);
+    expect(made).toHaveLength(COLUMNS.length);
+  });
+
+  it("leaves the list as it is when nothing is named, and never moves the first column", () => {
+    expect(broughtForward(COLUMNS, []).map((column) => column.id)).toEqual(
+      COLUMNS.map((column) => column.id),
+    );
+    expect(broughtForward(COLUMNS, ["name"])[0]?.id).toBe("name");
+    expect(broughtForward([], ["name"])).toEqual([]);
   });
 });
 
@@ -247,6 +291,68 @@ describe("columnDefs", () => {
     // A column with neither a mark nor a link is drawn by the grid itself.
     expect(def("state").cellRenderer).toBeUndefined();
     expect(def("state").tooltipValueGetter).toBeUndefined();
+  });
+
+  it("shows lighter a value the row has from elsewhere with no block of its own, and says where from", () => {
+    // The day a coverage ends: its own, or the contract's where it has none.
+    interface Covered {
+      own: string | null;
+      effective: string | null;
+    }
+    const columns: GridColumn<Covered>[] = [
+      {
+        id: "effective.ends_on",
+        header: "Covered until",
+        kind: "date",
+        value: (row) => row.effective,
+        inherited: (row) => !row.own && Boolean(row.effective),
+        hint: (row) => (!row.own && row.effective ? "The contract's" : ""),
+      },
+    ];
+    const [column] = columnDefs(columns, mergeLayout(columnDefaults(columns), null), {
+      ...CONTEXT,
+      href: () => null,
+    });
+    const rule = column?.cellClassRules?.["cell-inherited"];
+    const tooltip = column?.tooltipValueGetter;
+    if (typeof rule !== "function" || typeof tooltip !== "function") {
+      throw new Error("the column has no rule or no tooltip");
+    }
+    type RuleParams = Parameters<typeof rule>[0];
+    type TipParams = Parameters<typeof tooltip>[0];
+    const fromContract = { data: { own: null, effective: "2027-12-31" } };
+    const ownDay = { data: { own: "2027-06-30", effective: "2027-06-30" } };
+    expect(rule(fromContract as RuleParams)).toBe(true);
+    expect(rule(ownDay as RuleParams)).toBe(false);
+    expect(rule({ data: undefined } as RuleParams)).toBe(false);
+    expect(tooltip(fromContract as TipParams)).toBe("The contract's");
+    expect(tooltip(ownDay as TipParams)).toBeNull();
+  });
+
+  it("draws a cell that leads to another record than the row's own with a renderer of its own", () => {
+    interface Replaced {
+      old: string;
+      next: string;
+    }
+    const columns: GridColumn<Replaced>[] = [
+      { id: "old.name", header: "Item that left", kind: "text", value: (row) => row.old },
+      {
+        id: "new.name",
+        header: "Item that took its place",
+        kind: "text",
+        value: (row) => row.next,
+        linkTo: (row) => `/items/${row.next}`,
+      },
+    ];
+    const made = columnDefs(columns, mergeLayout(columnDefaults(columns), null), {
+      ...CONTEXT,
+      href: () => null,
+    });
+    expect(made[0]?.cellRenderer).toBeUndefined();
+    expect(typeof made[1]?.cellRenderer).toBe("function");
+    // It is filtered and sorted like any other text column.
+    expect(made[1]?.sortable).toBe(true);
+    expect(made[1]?.filter).toBe("agTextColumnFilter");
   });
 
   it("says of a cell what its hint says, or where an inherited value came from", () => {
