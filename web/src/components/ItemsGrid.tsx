@@ -8,6 +8,7 @@ import { api, type Schemas } from "../api";
 import { queryBody } from "../lib/gridQuery";
 import { stateNames } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
+import { broughtForward } from "./grid/columns";
 import { DataGrid, type GridAction, type GridWithin } from "./grid/DataGrid";
 import { itemColumns, itemIsDimmed } from "./grid/itemColumns";
 import { Problem } from "./Problem";
@@ -19,7 +20,10 @@ interface ItemsGridProps {
   id: string;
   /** The part of the item list the grid is of. */
   within: GridWithin;
-  /** Columns of the item grid to show from the start here, though it hides them. */
+  /**
+   * Columns of the item grid that are what this grid is about: they are shown from the
+   * start, though the item grid hides them, and stand right after the name, in this order.
+   */
   shown?: readonly string[];
   /** Change it to read the rows again. */
   reloadKey?: number;
@@ -40,12 +44,10 @@ export function ItemsGrid({
   const rules = useRules();
   const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   const wanted = shown.join(" ");
-  const columns = useMemo(() => {
-    const show = new Set(wanted.split(" "));
-    return itemColumns(choices.data, states).map((column) =>
-      show.has(column.id) ? { ...column, hide: false } : column,
-    );
-  }, [choices.data, states, wanted]);
+  const columns = useMemo(
+    () => broughtForward(itemColumns(choices.data, states), wanted.split(" ")),
+    [choices.data, states, wanted],
+  );
   const ready = !choices.loading && !rules.loading;
 
   return (

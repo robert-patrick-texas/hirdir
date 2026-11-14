@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import type { GridColumn } from "../components/grid/columns";
@@ -80,11 +80,17 @@ export function Vendors() {
   useTitle("Vendors");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
 
   return (
     <>
       <h1>Vendors</h1>
+      <p>
+        Manufacturers and support providers. A vendor has a page of its own, with its portfolio:
+        everything it makes or provides, with the cover of each model.
+      </p>
       {adding && (
         <CreateForm<Schemas["VendorCreate"], Vendor>
           title="New vendor"
@@ -97,6 +103,7 @@ export function Vendors() {
         />
       )}
       <DataGrid<Vendor>
+        key={startFilter ?? ""}
         id="vendors"
         noun={["vendor", "vendors"]}
         entity="vendors"
@@ -106,6 +113,8 @@ export function Vendors() {
         }
         rowId={(vendor) => vendor.hid}
         rowLink={(vendor) => `/vendors/${encodeURIComponent(vendor.hid)}`}
+        shortFilter="name:contains:Networks review_status:eq:unreviewed"
+        startFilter={startFilter}
       >
         {allows(user.role, "inventory") && !adding && (
           <button type="button" className="primary" onClick={() => setAdding(true)}>

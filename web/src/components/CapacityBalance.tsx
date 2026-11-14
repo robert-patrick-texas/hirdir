@@ -40,7 +40,11 @@ export function Balance({ report, money }: BalanceProps) {
     draft_cost: (row) => decimalValue(row.draftCost),
   });
   return (
-    <section aria-labelledby="capacity-balance" data-testid="capacity-report">
+    <section
+      aria-labelledby="capacity-balance"
+      data-testid="capacity-report"
+      data-as-of={report.as_of}
+    >
       <h2 id="capacity-balance">The balance, as of {report.as_of}</h2>
       <p className="hint">
         One resource unit carries a support weight of{" "}

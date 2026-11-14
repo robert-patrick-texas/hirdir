@@ -35,7 +35,11 @@
 //      stack.spec.ts read the stack discount), the lists of choices and the lifecycle
 //      rules (items.spec.ts, minor-items.spec.ts and stack.spec.ts move items, give
 //      reasons and set conditions from them), and any record or account that is not
-//      the file's own. Tests that have to change one of these cannot run beside the
+//      the file's own. The capacity report is of the whole installation: capacity.spec.ts
+//      is the one file that writes capacity lines and reads that report, and it compares
+//      one reading of the report with another, never a reading with a number; a second
+//      file that wrote a capacity line, or changed `weight_per_resource_unit`, could not
+//      run beside it. Tests that have to change one of these cannot run beside the
 //      others: say so here and in docs/architecture.md before writing them, and give
 //      them a project of their own in playwright.config.ts that runs when the others
 //      have ended.

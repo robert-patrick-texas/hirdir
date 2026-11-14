@@ -88,6 +88,28 @@ export function columnDefaults<T>(columns: readonly GridColumn<T>[]): ColumnDefa
   }));
 }
 
+/**
+ * The columns of a list for a grid that is about some of them: those are shown, also
+ * where the list hides them, and stand right after the first column, in the order they
+ * are named, so that they are in view. A name the list does not have is passed over.
+ */
+export function broughtForward<T>(
+  columns: readonly GridColumn<T>[],
+  ids: readonly string[],
+): GridColumn<T>[] {
+  const [first, ...rest] = columns;
+  if (!first) return [];
+  const forward: GridColumn<T>[] = [];
+  const moved = new Set<string>();
+  for (const id of ids) {
+    const found = rest.find((column) => column.id === id);
+    if (!found || moved.has(id)) continue;
+    moved.add(id);
+    forward.push({ ...found, hide: false });
+  }
+  return [first, ...forward, ...rest.filter((column) => !moved.has(column.id))];
+}
+
 // An option the grid does not have of its own. The grid never runs a filter itself, so
 // the option only has to exist, under the name of the server's operator.
 function option(displayKey: string, displayName: string, inputs: 1 | 2 = 1): IFilterOptionDef {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { mergeLayout } from "../../lib/gridStore";
-import { cellHint, columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import {
+  broughtForward,
+  cellHint,
+  columnDefaults,
+  columnDefs,
+  type GridColumn,
+  queryColumns,
+} from "./columns";
 
 interface Row {
   name: string;
@@ -112,6 +119,43 @@ describe("queryColumns", () => {
       field: null,
       sortField: null,
     });
+  });
+});
+
+describe("broughtForward", () => {
+  it("shows the columns a grid is about right after the first, in the order named", () => {
+    const made = broughtForward(COLUMNS, ["kind", "tags"]);
+    expect(made.map((column) => column.id).slice(0, 4)).toEqual([
+      "name",
+      "kind",
+      "tags",
+      "effective.est_value",
+    ]);
+    // A column the list hides is shown here: it is what the grid is about.
+    expect(COLUMNS.find((column) => column.id === "kind")?.hide).toBe(true);
+    expect(made[1]?.hide).toBe(false);
+    // Every column is still there, each once.
+    expect(made.map((column) => column.id).sort()).toEqual(
+      COLUMNS.map((column) => column.id).sort(),
+    );
+  });
+
+  it("passes over a name the list does not have, and one named twice", () => {
+    const made = broughtForward(COLUMNS, ["tags", "no_such_column", "tags", ""]);
+    expect(made.map((column) => column.id).slice(0, 3)).toEqual([
+      "name",
+      "tags",
+      "effective.est_value",
+    ]);
+    expect(made).toHaveLength(COLUMNS.length);
+  });
+
+  it("leaves the list as it is when nothing is named, and never moves the first column", () => {
+    expect(broughtForward(COLUMNS, []).map((column) => column.id)).toEqual(
+      COLUMNS.map((column) => column.id),
+    );
+    expect(broughtForward(COLUMNS, ["name"])[0]?.id).toBe("name");
+    expect(broughtForward([], ["name"])).toEqual([]);
   });
 });
 
