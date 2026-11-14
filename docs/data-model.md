@@ -637,7 +637,10 @@ else: the number, the period, the status and the support level that the item sho
 are the contract's, read as they are asked for. So does a date of a coverage that has
 none of its own, and a date that is given to a coverage and is the contract's own is
 kept as blank, so that the coverage is for the contract's period whatever that
-becomes.
+becomes. That holds for the last day of the contract too: a coverage that is given
+it as its end still follows the contract into a renewal. An item that is to be left
+out of a renewal has its coverage ended on an earlier day, or is taken out of the
+contract once that is renewed.
 
 **Renewing.** A contract that is renewed is usually given a new number and a new
 period of performance. That is one change of the one record, `POST
