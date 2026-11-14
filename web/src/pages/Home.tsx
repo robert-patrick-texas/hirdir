@@ -4,6 +4,7 @@ import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Problem } from "../components/Problem";
 import { HeadlineTotals } from "../components/Totals";
+import { type ItemsView, itemsViewPath } from "../lib/filter";
 import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useSettings } from "../lib/lists";
@@ -90,6 +91,101 @@ function Headline() {
   );
 }
 
+interface AttentionProps {
+  testId: string;
+  /** What the report says of the list: how many, and the filter that lists them. */
+  section: (ItemsView & { count: number }) | undefined;
+  /** The link, for one and for many: "item in service has no cover". */
+  one: string;
+  many: string;
+  /** What follows the link. */
+  after: string;
+  /** What to say when there is none. */
+  none: string;
+}
+
+/** One count that wants attention, as a link to the items it counts. */
+function Attention({ testId, section, one, many, after, none }: AttentionProps) {
+  if (!section) return null;
+  return (
+    <li data-testid={testId} data-count={section.count}>
+      {section.count > 0 ? (
+        <>
+          <Link to={itemsViewPath(section)}>{plural(section.count, one, many)}</Link>
+          {after}
+        </>
+      ) : (
+        <span className="muted">{none}</span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * What wants attention of cover and of the end of support, as the two reports count it
+ * for the inventory as a list shows it: each a link to its list in the grid of items.
+ */
+function Cover() {
+  const coverage = useLoad("home-coverage", (signal) =>
+    api.request("get", "/api/v1/reports/coverage", { query: { within_days: 90 }, signal }),
+  );
+  const endOfLife = useLoad("home-end-of-life", (signal) =>
+    api.request("get", "/api/v1/reports/end-of-life", { query: { date: "ldos" }, signal }),
+  );
+  const days = endOfLife.data?.within_days ?? 730;
+  return (
+    <section aria-labelledby="cover">
+      <h2 id="cover">Cover, and the end of support</h2>
+      <Problem error={coverage.error} />
+      <Problem error={endOfLife.error} />
+      {((coverage.loading && !coverage.data) || (endOfLife.loading && !endOfLife.data)) && (
+        <p role="status" className="muted loading-late">
+          Counting…
+        </p>
+      )}
+      <ul data-testid="home-cover">
+        <Attention
+          testId="home-uncovered"
+          section={coverage.data?.sections.uncovered}
+          one="item in service has no cover"
+          many="items in service have no cover"
+          after=": no contract covers them today."
+          none="Every item in service is under a contract."
+        />
+        <Attention
+          testId="home-expiring"
+          section={coverage.data?.sections.expiring}
+          one="item in service has cover that runs out within 90 days"
+          many="items in service have cover that runs out within 90 days"
+          after="."
+          none="No cover of an item in service runs out within 90 days."
+        />
+        <Attention
+          testId="home-ldos-past"
+          section={endOfLife.data?.sections.past}
+          one="item is past its last day of support"
+          many="items are past their last day of support"
+          after="."
+          none="No item is past its last day of support."
+        />
+        <Attention
+          testId="home-ldos-approaching"
+          section={endOfLife.data?.sections.approaching}
+          one="item approaches its last day of support"
+          many="items approach their last day of support"
+          after={`: it is within ${plural(days, "day")}.`}
+          none={`No item approaches its last day of support within ${plural(days, "day")}.`}
+        />
+      </ul>
+      <p>
+        <Link to="/reports/coverage">The coverage report</Link> and the{" "}
+        <Link to="/reports/end-of-life">end-of-life report</Link> count the same for any filter of
+        the items, and by fiscal year.
+      </p>
+    </section>
+  );
+}
+
 /** The first page: the headline totals, where everything is, and the reader's own account. */
 export function Home() {
   useTitle("Home");
@@ -112,6 +208,7 @@ export function Home() {
       ) : (
         <>
           <Headline />
+          <Cover />
           <section aria-labelledby="inventory">
             <h2 id="inventory">Inventory</h2>
             <ul>
@@ -130,11 +227,30 @@ export function Home() {
                 <Link to="/catalog">Catalog</Link>: what is true of every item of one model
               </li>
               <li>
-                <Link to="/vendors">Vendors</Link> and <Link to="/owners">owners</Link>
+                <Link to="/vendors">Vendors</Link>, each with its portfolio, and{" "}
+                <Link to="/owners">owners</Link>
+              </li>
+              <li>
+                <Link to="/contracts">Contracts</Link> and the{" "}
+                <Link to="/agreements">support agreements</Link> that group them, with the items
+                each covers
+              </li>
+              <li>
+                <Link to="/purchases">Purchases</Link>: requests, their lines, and receiving what
+                arrived
+              </li>
+              <li>
+                <Link to="/systems">External systems</Link>, and what is registered with each
+              </li>
+              <li>
+                <Link to="/capacity">Capacity</Link>: demand beside supply, and the balance
               </li>
               <li>
                 <Link to="/reports">Reports</Link>: the summary, the{" "}
-                <Link to="/reports/management">management report</Link>, and the{" "}
+                <Link to="/reports/management">management report</Link>,{" "}
+                <Link to="/reports/coverage">coverage</Link>,{" "}
+                <Link to="/reports/end-of-life">end of life</Link>,{" "}
+                <Link to="/reports/replacements">replacements</Link>, and the{" "}
                 <Link to="/reports/duplicates">addresses held more than once</Link>
               </li>
               <li>

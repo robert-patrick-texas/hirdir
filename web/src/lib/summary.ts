@@ -32,6 +32,7 @@ export const SUMMARY_BY: ReadonlyArray<Option & { value: By }> = [
   { value: "operator", label: "Operator" },
   { value: "site", label: "Site" },
   { value: "region", label: "Region" },
+  { value: "contract", label: "Contract" },
   { value: "lifecycle_state", label: "Lifecycle state" },
   { value: "disposition", label: "Disposition" },
   { value: "condition", label: "Condition" },
@@ -52,6 +53,7 @@ export const MANAGEMENT_BY: ReadonlyArray<Option & { value: ManagementBy }> = [
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
   { value: "operator", label: "Operator" },
+  { value: "contract", label: "Contract" },
   { value: "tag", label: "Tag" },
 ];
 

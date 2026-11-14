@@ -22,6 +22,7 @@ import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { addressList, managementText, networkLabels } from "../lib/addresses";
@@ -75,6 +76,7 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 
@@ -359,6 +361,17 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     value: (group) => networkLabels(group.addresses).join(", "),
     hide: true,
     width: 140,
+  },
+  {
+    // The external systems the group is registered with, as one device, by their names:
+    // found by any of them, a registration that is removed not counting.
+    id: "registration.system",
+    header: "Registered with",
+    kind: "text",
+    column: null,
+    value: (group) => registeredWith(group.registrations),
+    hide: true,
+    width: 180,
   },
   {
     id: "record_status",
@@ -759,6 +772,18 @@ export function DeviceGroupDetail() {
             whose={record.name}
             mayEdit={open}
             onChanged={group.reload}
+          />
+          <Registrations
+            key={`registrations ${record.hid}`}
+            holder={{ group_hid: record.hid }}
+            whose={record.name}
+            note={
+              record.type === "stack"
+                ? "A stack that a system knows as one device is registered here, as the stack: the registration is on the stack, and is not listed on its members."
+                : "The registrations of the group itself, as one device. Those of its members are on their own pages."
+            }
+            mayEdit={open}
+            onChanged={changed}
           />
           {open && (
             <GroupDetails

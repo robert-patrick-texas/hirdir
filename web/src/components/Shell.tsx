@@ -63,6 +63,25 @@ export function Shell() {
                   <NavLink to="/owners">Owners</NavLink>
                 </li>
                 <li>
+                  <NavLink
+                    to="/contracts"
+                    className={({ isActive }) =>
+                      isActive || pathname.startsWith("/agreements") ? "active" : ""
+                    }
+                  >
+                    Contracts
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink to="/purchases">Purchases</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/systems">External systems</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/capacity">Capacity</NavLink>
+                </li>
+                <li>
                   <NavLink to="/reports">Reports</NavLink>
                 </li>
                 <li>

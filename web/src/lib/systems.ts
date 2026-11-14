@@ -1,0 +1,99 @@
+// External systems and the registrations of items and of device groups with them. A
+// registration is on the record it was made for: that of a stack is on the stack. One
+// that ends is given the status `removed`, and is never deleted.
+
+import type { Schemas } from "../api/client";
+import { filterText } from "./filter";
+import { itemName } from "./format";
+import type { Option } from "./patch";
+
+export type ExternalSystem = Schemas["ExternalSystemOut"];
+export type Registration = Schemas["RegistrationOut"];
+export type RegistrationRef = Schemas["RegistrationRef"];
+
+/** The kinds of external system: a fixed list. */
+export const SYSTEM_KINDS: readonly Option[] = [
+  { value: "monitoring", label: "Monitoring" },
+  { value: "config_backup", label: "Configuration backup" },
+  { value: "access_control", label: "Access control" },
+  { value: "sdn_controller", label: "SDN controller" },
+  { value: "cloud_service", label: "Cloud service" },
+  { value: "dns", label: "DNS" },
+  { value: "discovery", label: "Discovery" },
+  { value: "other", label: "Other" },
+];
+
+export const REGISTRATION_STATUSES: readonly Option[] = [
+  { value: "registered", label: "Registered" },
+  { value: "pending", label: "Pending" },
+  { value: "removed", label: "Removed" },
+];
+
+export const REMOVED = "removed";
+
+export function systemPath(hid: string): string {
+  return `/systems/${encodeURIComponent(hid)}`;
+}
+
+/** The record a registration is of: an item or a device group. */
+export type Holder = { item_hid: string } | { group_hid: string };
+
+/** The filter of the list of registrations for those of one record. */
+export function holderFilter(holder: Holder): string {
+  return "item_hid" in holder
+    ? `item_hid:eq:${holder.item_hid}`
+    : `group_hid:eq:${holder.group_hid}`;
+}
+
+/** What a registration is of, by the name it is shown by, with the page of that record. */
+export function registeredRecord(
+  registration: Pick<Registration, "item" | "item_hid" | "group" | "group_hid">,
+): { name: string; path: string; kind: "Item" | "Device group" } | null {
+  if (registration.group && registration.group_hid) {
+    return {
+      name: registration.group.name,
+      path: `/groups/${encodeURIComponent(registration.group_hid)}`,
+      kind: "Device group",
+    };
+  }
+  if (registration.item && registration.item_hid) {
+    return {
+      name: itemName(registration.item),
+      path: `/items/${encodeURIComponent(registration.item_hid)}`,
+      kind: "Item",
+    };
+  }
+  return null;
+}
+
+/**
+ * The names of the systems a record is registered with, as a cell of a grid shows them.
+ * A registration that is removed does not count, as it does not for the filter.
+ */
+export function registeredWith(registrations: readonly RegistrationRef[]): string {
+  return registrations
+    .filter((one) => one.status !== REMOVED)
+    .map((one) => one.system.name)
+    .join(", ");
+}
+
+/** The items, or the device groups, registered with a system, in their grid. */
+export function registeredPath(list: "items" | "groups", systemName: string): string {
+  const filter = filterText({ field: "registration.system", op: "eq", value: systemName });
+  return `/${list}?filter=${encodeURIComponent(filter)}${list === "items" ? "&minor=1" : ""}`;
+}
+
+/**
+ * The systems a record can still be registered with: those that are active and that it
+ * has no registration with. One that was removed is registered again on its own row,
+ * since it is the same record.
+ */
+export function unregistered(
+  systems: readonly Pick<ExternalSystem, "hid" | "name" | "record_status">[],
+  registrations: readonly { system_hid: string }[],
+): Option[] {
+  const taken = new Set(registrations.map((one) => one.system_hid));
+  return systems
+    .filter((system) => system.record_status !== "retired" && !taken.has(system.hid))
+    .map((system) => ({ value: system.hid, label: system.name }));
+}

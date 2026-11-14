@@ -3,6 +3,7 @@
 
 import type { Schemas } from "../../api/client";
 import { addressList, managementText, networkLabels } from "../../lib/addresses";
+import { coveringNumbers } from "../../lib/contracts";
 import { inheritedHint, knownAbove, locationHint, ownerSource } from "../../lib/descent";
 import { effectiveLabel, effectiveText } from "../../lib/effective";
 import type { FilterNode } from "../../lib/filter";
@@ -26,6 +27,7 @@ import {
 } from "../../lib/options";
 import type { Option } from "../../lib/patch";
 import { nameOf } from "../../lib/places";
+import { registeredWith } from "../../lib/systems";
 import type { GridColumn } from "./columns";
 
 type Item = Schemas["ItemOut"];
@@ -438,6 +440,62 @@ export function itemColumns(
         width: 150,
       }),
     ),
+    {
+      // A contract covers it today. Worked out by the server when the item is read.
+      id: "covered",
+      header: "Covered",
+      kind: "boolean",
+      value: (item) => (item.covered ? "Yes" : "No"),
+      choices: [
+        { value: "true", label: "Covered: a contract covers it today" },
+        { value: "false", label: "Not covered" },
+      ],
+      hide: true,
+      width: 120,
+    },
+    {
+      // The last day its cover runs to. Blank when a coverage names no end, and when
+      // there is none.
+      id: "covered_until",
+      header: "Covered until",
+      kind: "date",
+      value: (item) => item.covered_until,
+      hide: true,
+      width: 150,
+    },
+    {
+      // The contracts that cover it today, by their numbers: found by any of them, and
+      // sorted by the first. An export writes them in the column `contracts`.
+      id: "contract.number",
+      header: "Contracts",
+      kind: "text",
+      value: (item) => coveringNumbers(item.coverage),
+      hide: true,
+      width: 180,
+    },
+    {
+      // The external systems it is registered with, by their names: found by any of
+      // them, a registration that is removed not counting. No export has the column.
+      id: "registration.system",
+      header: "Registered with",
+      kind: "text",
+      column: null,
+      value: (item) => registeredWith(item.registrations),
+      hide: true,
+      width: 180,
+    },
+    {
+      // The line of a purchase request it arrived on, shown by the name of the line,
+      // as an export writes it. The list knows the line by its HID: that is what the
+      // column is filtered and sorted by.
+      id: "purchase_line_hid",
+      header: "Purchase line",
+      kind: "reference",
+      value: (item) => item.purchase_line?.name,
+      hint: (item) => (item.purchase_line ? `The line with the HID ${item.purchase_line.hid}` : ""),
+      hide: true,
+      width: 160,
+    },
     {
       id: "catalog.kind",
       header: "Kind",

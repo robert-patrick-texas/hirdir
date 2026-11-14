@@ -26,18 +26,62 @@ describe("entities", () => {
       "owners",
       "owner_members",
       "networks",
+      // An item may name the purchase line it arrived on, and a contract its agreement.
+      "external_systems",
+      "agreements",
+      "contracts",
+      "purchase_requests",
+      "purchase_lines",
       "items",
       "device_groups",
       "device_group_members",
+      // After the members of groups: what a file of members shows as handed over is not
+      // handed over a second time.
+      "item_replacements",
       "addresses",
+      "contract_coverage",
+      "registrations",
+      "capacity_lines",
     ]);
+  });
+
+  it("know the nine kinds of record that came with contracts, purchases and capacity", () => {
+    const labels: Record<string, string> = {
+      external_systems: "External systems",
+      agreements: "Support agreements",
+      contracts: "Contracts",
+      purchase_requests: "Purchase requests",
+      purchase_lines: "Lines of purchase requests",
+      item_replacements: "Replacements of items",
+      contract_coverage: "Coverage of items under contracts",
+      registrations: "Registrations with external systems",
+      capacity_lines: "Capacity lines",
+    };
+    for (const [entity, label] of Object.entries(labels)) {
+      expect(isEntity(entity), entity).toBe(true);
+      expect(entityLabel(entity)).toBe(label);
+    }
+  });
+
+  it("guesses each of the nine from the name of its example file, and none for another", () => {
+    // A name that holds the name of another kind is still read as its own.
+    expect(guessEntity("contracts.csv")).toBe("contracts");
+    expect(guessEntity("contract-coverage.csv")).toBe("contract_coverage");
+    expect(guessEntity("purchase-requests.json")).toBe("purchase_requests");
+    expect(guessEntity("purchase-lines.csv")).toBe("purchase_lines");
+    expect(guessEntity("item-replacements.csv")).toBe("item_replacements");
+    expect(guessEntity("items.csv")).toBe("items");
+    expect(guessEntity("external-systems.csv")).toBe("external_systems");
+    expect(guessEntity("registrations.csv")).toBe("registrations");
+    expect(guessEntity("capacity-lines.csv")).toBe("capacity_lines");
+    expect(guessEntity("agreements.csv")).toBe("agreements");
   });
 
   it("are known by name, and one this build does not know is shown as sent", () => {
     expect(isEntity("catalog_entries")).toBe(true);
-    expect(isEntity("contracts")).toBe(false);
+    expect(isEntity("discoveries")).toBe(false);
     expect(entityLabel("catalog_entries")).toBe("Catalog entries");
-    expect(entityLabel("contracts")).toBe("contracts");
+    expect(entityLabel("discoveries")).toBe("discoveries");
     expect(isEntity("device_group_members")).toBe(true);
     expect(entityLabel("device_group_members")).toBe("Members of device groups");
     expect(entityLabel("addresses")).toBe("Addresses");

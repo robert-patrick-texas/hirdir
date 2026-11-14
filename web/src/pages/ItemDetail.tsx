@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { ItemCoverage } from "../components/Coverage";
 import { FromAbove, InheritedFrom, OwnerNote, PlaceNote } from "../components/Descent";
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
@@ -12,7 +13,9 @@ import { Memberships, MinorItems, Place, Replacement } from "../components/ItemS
 import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
+import { ItemPurchaseLine } from "../components/PurchaseLine";
 import { EditForm } from "../components/RecordForm";
+import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { aboveItem, descentHint, isFromAbove, knownAbove, ownerSource } from "../lib/descent";
@@ -168,6 +171,27 @@ export function ItemDetail() {
             whose={itemName(record)}
             mayEdit={mayEdit && record.record_status !== "retired"}
             onChanged={item.reload}
+          />
+          <ItemCoverage
+            key={`coverage ${record.hid}`}
+            item={record}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+          />
+          <Registrations
+            key={`registrations ${record.hid}`}
+            holder={{ item_hid: record.hid }}
+            whose={itemName(record)}
+            note="A stack that a system knows as one device is registered as the stack: that registration is on the page of the stack, and not here."
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+          />
+          <ItemPurchaseLine
+            key={`purchase ${record.hid} ${record.row_version}`}
+            item={record}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+            onReload={item.reload}
           />
           <ValuesInForce item={record} />
           <Lifecycle

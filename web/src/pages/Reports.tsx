@@ -10,6 +10,7 @@ import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
+import { contractPath } from "../lib/contracts";
 import { itemsPath, parseShort } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
@@ -50,6 +51,10 @@ const PLACE_ROWS = {
     "A region is named by its path, and its row holds everything at or beneath it: an item is in the row of each region above it, and the totals count it once. The items that are nowhere are in a row of their own.",
 } as const;
 
+// What to say beneath a report whose rows are contracts.
+const CONTRACT_ROWS =
+  "An item is in the row of each contract that covers it today, and the totals count it once. The items that no contract covers are in a row of their own.";
+
 /**
  * What a row of a report is called. A row of an operator is that operator's mark: the
  * label in its colour, as a link to its page, with the person behind it on hover. The
@@ -67,6 +72,10 @@ function RowName(props: {
     const mark = operators?.get(row.key);
     if (mark) return <OperatorMark mark={mark} withPerson />;
     return <Link to={operatorPath(row.key)}>{row.label ?? row.key}</Link>;
+  }
+  // A row of a contract is that contract, by its number and its vendor: a link to it.
+  if (by === "contract" && row.key !== null) {
+    return <Link to={contractPath(row.key)}>{row.label ?? row.key}</Link>;
   }
   return rowLabel(by, row, choices);
 }
@@ -365,9 +374,9 @@ export function Summary() {
                 The four columns of health count the components of the row. A minor item is in the
                 row of the owner, state and disposition in force for it.
                 {by === "tag" &&
-                  " An item with several tags is in the row of each, and the totals count it once."}{" "}
-                A stack whose members fall in two rows is a managed node in both, and one in the
-                totals.
+                  " An item with several tags is in the row of each, and the totals count it once."}
+                {by === "contract" && ` ${CONTRACT_ROWS}`} A stack whose members fall in two rows is
+                a managed node in both, and one in the totals.
                 {isByPlace(by) && ` ${PLACE_ROWS[by]}`}
               </p>
             </section>
@@ -499,6 +508,7 @@ export function ManagementReport() {
                   An item with several tags is in the row of each, and the totals count it once.
                 </p>
               )}
+              {by === "contract" && <p className="hint">{CONTRACT_ROWS}</p>}
               {isByPlace(by) && <p className="hint">{PLACE_ROWS[by]}</p>}
             </section>
           )}

@@ -249,6 +249,68 @@ describe("columnDefs", () => {
     expect(def("state").tooltipValueGetter).toBeUndefined();
   });
 
+  it("shows lighter a value the row has from elsewhere with no block of its own, and says where from", () => {
+    // The day a coverage ends: its own, or the contract's where it has none.
+    interface Covered {
+      own: string | null;
+      effective: string | null;
+    }
+    const columns: GridColumn<Covered>[] = [
+      {
+        id: "effective.ends_on",
+        header: "Covered until",
+        kind: "date",
+        value: (row) => row.effective,
+        inherited: (row) => !row.own && Boolean(row.effective),
+        hint: (row) => (!row.own && row.effective ? "The contract's" : ""),
+      },
+    ];
+    const [column] = columnDefs(columns, mergeLayout(columnDefaults(columns), null), {
+      ...CONTEXT,
+      href: () => null,
+    });
+    const rule = column?.cellClassRules?.["cell-inherited"];
+    const tooltip = column?.tooltipValueGetter;
+    if (typeof rule !== "function" || typeof tooltip !== "function") {
+      throw new Error("the column has no rule or no tooltip");
+    }
+    type RuleParams = Parameters<typeof rule>[0];
+    type TipParams = Parameters<typeof tooltip>[0];
+    const fromContract = { data: { own: null, effective: "2027-12-31" } };
+    const ownDay = { data: { own: "2027-06-30", effective: "2027-06-30" } };
+    expect(rule(fromContract as RuleParams)).toBe(true);
+    expect(rule(ownDay as RuleParams)).toBe(false);
+    expect(rule({ data: undefined } as RuleParams)).toBe(false);
+    expect(tooltip(fromContract as TipParams)).toBe("The contract's");
+    expect(tooltip(ownDay as TipParams)).toBeNull();
+  });
+
+  it("draws a cell that leads to another record than the row's own with a renderer of its own", () => {
+    interface Replaced {
+      old: string;
+      next: string;
+    }
+    const columns: GridColumn<Replaced>[] = [
+      { id: "old.name", header: "Item that left", kind: "text", value: (row) => row.old },
+      {
+        id: "new.name",
+        header: "Item that took its place",
+        kind: "text",
+        value: (row) => row.next,
+        linkTo: (row) => `/items/${row.next}`,
+      },
+    ];
+    const made = columnDefs(columns, mergeLayout(columnDefaults(columns), null), {
+      ...CONTEXT,
+      href: () => null,
+    });
+    expect(made[0]?.cellRenderer).toBeUndefined();
+    expect(typeof made[1]?.cellRenderer).toBe("function");
+    // It is filtered and sorted like any other text column.
+    expect(made[1]?.sortable).toBe(true);
+    expect(made[1]?.filter).toBe("agTextColumnFilter");
+  });
+
   it("says of a cell what its hint says, or where an inherited value came from", () => {
     const health = COLUMNS.find((column) => column.id === "health");
     const value = COLUMNS.find((column) => column.id === "effective.est_value");

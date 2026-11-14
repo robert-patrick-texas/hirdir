@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { all, any, formatShort, itemsPath, KINDS, OPERATORS, parseShort } from "./filter";
+import {
+  all,
+  any,
+  type FilterNode,
+  filterText,
+  formatShort,
+  itemsPath,
+  itemsViewPath,
+  KINDS,
+  OPERATORS,
+  parseFilter,
+  parseShort,
+  viewFilter,
+} from "./filter";
 
 function parsed(text: string) {
   const result = parseShort(text);
@@ -150,6 +163,118 @@ describe("formatShort", () => {
   it("has no way to write OR or nesting", () => {
     expect(formatShort({ or: [{ field: "a", op: "eq", value: "1" }] })).toBeNull();
     expect(formatShort({ and: [{ or: [{ field: "a", op: "eq", value: "1" }] }] })).toBeNull();
+  });
+});
+
+describe("a filter as a link or the filter box holds it", () => {
+  // What the coverage report gives for the cover on items that are out of service.
+  const outOfService: FilterNode = {
+    and: [
+      { field: "covered", op: "eq", value: true },
+      {
+        or: [
+          { field: "record_status", op: "eq", value: "retired" },
+          {
+            field: "effective.lifecycle_state",
+            op: "in",
+            value: ["Pending-Removal", "Released", "Archived"],
+          },
+        ],
+      },
+    ],
+  };
+  // And for the items in service that no contract covers: ANDs within an AND.
+  const uncovered: FilterNode = {
+    and: [
+      {
+        and: [
+          { field: "effective.lifecycle_state", op: "in", value: ["Test", "Prod", "Down"] },
+          { field: "is_major", op: "eq", value: true },
+        ],
+      },
+      { field: "covered", op: "eq", value: false },
+    ],
+  };
+
+  it("reads the short form as before", () => {
+    expect(parseFilter("covered:eq:false is_major:eq:true")).toEqual(
+      parseShort("covered:eq:false is_major:eq:true"),
+    );
+    expect(parseFilter("  ")).toEqual({ ok: true, filter: null });
+    expect(parseFilter("covered").ok).toBe(false);
+  });
+
+  it("reads a filter tree written as JSON, an OR in it and all", () => {
+    expect(parseFilter(JSON.stringify(outOfService))).toEqual({ ok: true, filter: outOfService });
+    expect(parseFilter(` ${JSON.stringify({ field: "covered", op: "eq", value: true })} `)).toEqual(
+      { ok: true, filter: { field: "covered", op: "eq", value: true } },
+    );
+  });
+
+  it("refuses what begins as a tree and is none", () => {
+    expect(parseFilter("{not json").ok).toBe(false);
+    expect(parseFilter('{"field": "covered"}').ok).toBe(false);
+    expect(parseFilter('{"field": "covered", "op": "is", "value": true}').ok).toBe(false);
+    expect(parseFilter('{"and": {"field": "covered", "op": "eq"}}').ok).toBe(false);
+    expect(parseFilter('{"or": [{"and": ["covered"]}]}').ok).toBe(false);
+  });
+
+  it("writes a filter in the short form where it reads back as the same conditions", () => {
+    expect(filterText(null)).toBe("");
+    expect(filterText({ field: "contract.hid", op: "eq", value: "c-1" })).toBe(
+      "contract.hid:eq:c-1",
+    );
+    // ANDs within an AND are one AND, which the short form can write.
+    expect(filterText(uncovered)).toBe(
+      "effective.lifecycle_state:in:Test,Prod,Down is_major:eq:true covered:eq:false",
+    );
+    expect(parsed(filterText(uncovered))).toEqual({
+      and: [
+        { field: "effective.lifecycle_state", op: "in", value: ["Test", "Prod", "Down"] },
+        { field: "is_major", op: "eq", value: "true" },
+        { field: "covered", op: "eq", value: "false" },
+      ],
+    });
+  });
+
+  it("writes the tree as JSON where the short form cannot say it", () => {
+    expect(filterText(outOfService)).toBe(JSON.stringify(outOfService));
+    // A value that would be read as the start of another condition.
+    const awkward: FilterNode = { field: "name", op: "eq", value: "core a:eq:b" };
+    expect(filterText(awkward)).toBe(JSON.stringify(awkward));
+    // One of a list that holds a comma would be read as two.
+    const listed: FilterNode = { field: "name", op: "in", value: ["a,b", "c"] };
+    expect(filterText(listed)).toBe(JSON.stringify(listed));
+  });
+
+  it("takes what a report gives as a filter, and nothing that is none", () => {
+    expect(viewFilter(outOfService)).toBe(outOfService);
+    expect(viewFilter(null)).toBeNull();
+    expect(viewFilter({ count: 3 })).toBeNull();
+    expect(viewFilter("covered:eq:true")).toBeNull();
+  });
+
+  it("links to the items a report counted, with the switches as the report says to send them", () => {
+    const link = new URL(
+      itemsViewPath({ filter: outOfService, include_archived: true, include_drafts: false }),
+      "http://localhost",
+    );
+    expect(link.pathname).toBe("/items");
+    expect(parseFilter(link.searchParams.get("filter") ?? "")).toEqual({
+      ok: true,
+      filter: outOfService,
+    });
+    // Archived items are among them: the grid is asked to include them.
+    expect(link.searchParams.get("archived")).toBe("1");
+    expect(link.searchParams.get("drafts")).toBeNull();
+    // The filter says itself where only major items count.
+    expect(link.searchParams.get("minor")).toBe("1");
+  });
+
+  it("links to the list of a report that has no filter of its own as to every item", () => {
+    const link = new URL(itemsViewPath({ filter: null }), "http://localhost");
+    expect(link.searchParams.get("filter")).toBe("");
+    expect(link.searchParams.get("archived")).toBeNull();
   });
 });
 

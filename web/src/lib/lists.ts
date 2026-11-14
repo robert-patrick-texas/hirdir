@@ -31,6 +31,16 @@ export function useSettings() {
   return useLoad("settings", (signal) => api.request("get", "/api/v1/settings", { signal }));
 }
 
+/**
+ * The installation's currency as a heading names it after an amount: " (USD)", or
+ * nothing until the setting is read. It is a label only: no amount is converted.
+ */
+export function useMoney(): string {
+  const settings = useSettings();
+  const currency = settings.data?.find((setting) => setting.key === "currency")?.value;
+  return typeof currency === "string" && currency !== "" ? ` (${currency})` : "";
+}
+
 /** The vendors a form may choose from, by name. */
 export function useVendorOptions(): Loaded<Option[]> {
   return useLoad("vendor-options", async (signal) => {
@@ -72,6 +82,61 @@ export function useRegions(turn = 0) {
       signal,
     });
     return [...page.items].sort((one, other) => one.path.localeCompare(other.path));
+  });
+}
+
+/** The regions a form may choose from, by path. */
+export function useRegionOptions(): Loaded<Option[]> {
+  return useLoad("region-options", async (signal) => {
+    const page = await api.request("get", "/api/v1/regions", {
+      query: { limit: EVERY, sort: ["name"] },
+      signal,
+    });
+    return page.items
+      .map((region) => ({ value: region.hid, label: region.path }))
+      .sort((one, other) => one.label.localeCompare(other.label));
+  });
+}
+
+/** The sites a form may choose from, by path. */
+export function useSiteOptions(): Loaded<Option[]> {
+  return useLoad("site-options", async (signal) => {
+    const page = await api.request("get", "/api/v1/sites", {
+      query: { limit: EVERY, sort: ["name"] },
+      signal,
+    });
+    return page.items
+      .map((site) => ({ value: site.hid, label: site.path }))
+      .sort((one, other) => one.label.localeCompare(other.label));
+  });
+}
+
+/**
+ * The support agreements a contract may be grouped into, by name, each with its vendor:
+ * a contract is grouped into an agreement with its own vendor.
+ */
+export function useAgreementOptions(turn = 0): Loaded<Array<Option & { vendorHid: string }>> {
+  return useLoad(`agreement-options ${turn}`, async (signal) => {
+    const page = await api.request("get", "/api/v1/agreements", {
+      query: { limit: EVERY, include_drafts: true },
+      signal,
+    });
+    return page.items.map((agreement) => ({
+      value: agreement.hid,
+      label: `${agreement.name} (${agreement.vendor.name})`,
+      vendorHid: agreement.vendor_hid,
+    }));
+  });
+}
+
+/** The external systems, by name, retired ones among them: a registration may name one. */
+export function useSystems(turn = 0) {
+  return useLoad(`systems ${turn}`, async (signal) => {
+    const page = await api.request("get", "/api/v1/external-systems", {
+      query: { limit: EVERY, include_drafts: true, include_archived: true },
+      signal,
+    });
+    return page.items;
   });
 }
 

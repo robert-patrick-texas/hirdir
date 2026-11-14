@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { VendorPortfolio } from "../components/Portfolio";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
@@ -116,7 +117,11 @@ export function Vendors() {
   );
 }
 
-/** Vendors → one vendor: its name, the other names it goes by, and notes. */
+/**
+ * Vendors → one vendor: its name, the other names it goes by and its notes, and its
+ * portfolio: the totals, the four kinds, the models with their dates and their cover,
+ * the agreements, the contracts and the capacity lines of the vendor, and its items.
+ */
 export function VendorDetail() {
   const { hid = "" } = useParams();
   const { user } = useAuth();
@@ -164,6 +169,7 @@ export function VendorDetail() {
             <dt>HID</dt>
             <dd className="mono">{record.hid}</dd>
           </dl>
+          <VendorPortfolio key={record.hid} vendor={record} />
           {allows(user.role, "inventory") && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
