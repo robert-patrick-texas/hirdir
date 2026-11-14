@@ -129,7 +129,8 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     result.changes = [
         change
         for change in _differences(which, before, which.read(db, [record])[0])
-        if change["field"] not in which.only_when_named or change["field"] in values
+        if change["field"] not in which.restated
+        and (change["field"] not in which.by_the_clock or values.get(change["field"]) is not None)
     ]
     if not new:
         changed = result.changes or record.row_version != result.row_version

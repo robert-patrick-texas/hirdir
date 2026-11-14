@@ -11,7 +11,7 @@ for, and stored nowhere, so it is right the moment any of the three changes.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from hirdir import clock
@@ -36,6 +36,10 @@ HEALTHS = (GOOD, DEGRADED, FAILED, UNKNOWN)
 # The states in which a member of a group is not doing its work.
 OUT_OF_SERVICE = ("Down", "Pending-Removal")
 HAS_HEALTH = ("stack", "cluster")
+# The moments an observation may have: none before the inventory could hold it, and
+# none further ahead than clocks and time zones may differ.
+EARLIEST = datetime(2000, 1, 1, tzinfo=UTC)
+AHEAD = timedelta(days=1)
 
 
 @dataclass(frozen=True)
@@ -127,12 +131,37 @@ def of_group(
     return Health(UNKNOWN, ("nothing is observed of it, and not every member is known good",))
 
 
-def observation(fields: dict[str, Any], record: Any | None) -> dict[str, Any]:
+def moment(value: Any, field: str) -> datetime:
+    """Return a moment something was seen at, in UTC, or refuse one that cannot be kept.
+
+    A moment with no zone is taken as UTC, as a file's is. One that the calendar does
+    not reach, or that lies ahead, is refused: nothing is seen in the future.
+    """
+    refusal = Invalid(
+        "the moment is not acceptable",
+        {field: "a date and time in ISO 8601, such as 2026-11-14T15:04:05Z, and not ahead"},
+    )
+    if not isinstance(value, datetime):
+        raise refusal
+    try:
+        at = (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC)
+    except OverflowError, ValueError:
+        raise refusal from None
+    if not EARLIEST <= at <= clock.now() + AHEAD:
+        raise refusal
+    return at
+
+
+def observation(
+    fields: dict[str, Any], record: Any | None, looked_again: bool = True
+) -> dict[str, Any]:
     """Return the observed status and its moment, as a change sets them.
 
-    A status that is set is seen now, unless the change says when. One that is stated
-    again as it is leaves its moment alone, so that the same file loaded twice changes
-    nothing. Clearing the status clears the moment. A moment with no status is nothing.
+    A status that is set is seen now, unless the change says when. A person who states
+    it again as it is has looked again, and the moment is now. A file that states it
+    again, with no moment, has `looked_again` false and changes nothing, so that the
+    same file loaded twice changes nothing. Clearing the status clears the moment. A
+    moment with no status is nothing, and a moment is not cleared by itself.
     """
     if "observed_status" not in fields and "observed_at" not in fields:
         return {}
@@ -149,10 +178,8 @@ def observation(fields: dict[str, Any], record: Any | None) -> dict[str, Any]:
                 )
         status = given
     at = fields.get("observed_at")
-    if at is not None and not isinstance(at, datetime):
-        raise Invalid(
-            "the moment is not acceptable", {"observed_at": "a date and time in ISO 8601"}
-        )
+    if at is not None:
+        at = moment(at, "observed_at")
     if status is None:
         if at is not None:
             raise Invalid(
@@ -160,7 +187,12 @@ def observation(fields: dict[str, Any], record: Any | None) -> dict[str, Any]:
                 {"observed_at": "give observed_status with it"},
             )
         return {"observed_status": None, "observed_at": None}
+    if at is None and "observed_status" not in fields:
+        raise Invalid(
+            "a moment is not cleared by itself",
+            {"observed_at": "clear observed_status, and the moment goes with it"},
+        )
     if at is None:
-        unchanged = status == current and "observed_at" not in fields
-        at = record.observed_at if unchanged and record is not None else clock.now()
+        restated = status == current and record is not None and record.observed_at is not None
+        at = record.observed_at if restated and not looked_again else clock.now()
     return {"observed_status": status, "observed_at": at}

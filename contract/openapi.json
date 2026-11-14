@@ -1709,7 +1709,7 @@
         "description": "The items and the components that share one value: a kind, or a condition.",
         "properties": {
           "component_count": {
-            "description": "The major items among them that are in hand, whatever their kind.",
+            "description": "The components among them. By kind, the major items in hand of that kind, also where the headline count leaves the kind out.",
             "title": "Component Count",
             "type": "integer"
           },
@@ -9303,7 +9303,7 @@
         ]
       },
       "post": {
-        "description": "Create a device group, with its members if they are given.\n\nA stack is checked as a whole: with members, it has exactly one master, unless it\nis a draft.",
+        "description": "Create a device group, with its members if they are given.\n\nA stack needs no master and may be one switch alone. Of the members given, at\nmost one is marked `master`, the master that is intended.",
         "operationId": "create_group_api_v1_device_groups_post",
         "parameters": [
           {
@@ -9579,7 +9579,7 @@
         ]
       },
       "post": {
-        "description": "Make items members of a group, all together.\n\nThe group is checked once they are all in, so a stack is given its master and its\nother members by one request.",
+        "description": "Make items members of a group, all together.\n\nOne that is added to a stack as `master`, the master that is intended, takes the\nmark from the member that had it.",
         "operationId": "add_members_api_v1_device_groups__hid__members_post",
         "parameters": [
           {
@@ -9655,7 +9655,7 @@
     },
     "/api/v1/device-groups/{hid}/members/{member_hid}": {
       "patch": {
-        "description": "Change a membership. `left_on` ends it; it is never removed.\n\nMaking a member the master of a stack makes the former master a member.",
+        "description": "Change a membership. `left_on` ends it; it is never removed.\n\nMarking a member as the intended master of a stack takes the mark from the member\nthat had it. The master that is seen is recorded on the stack itself.",
         "operationId": "update_member_api_v1_device_groups__hid__members__member_hid__patch",
         "parameters": [
           {

@@ -171,8 +171,9 @@ def test_a_file_sets_changes_and_removes_the_management_address(make: Maker, fil
     head = "asset_tag,mgmt_address,mgmt_network\n"
 
     preview = files.preview("items", f"{head}AT-000101,192.0.2.10,Red\n")
+    # What is told is the address of its family: `mgmt_address` only says it again.
     assert changes(preview["rows"][0]) == {
-        "mgmt_address": (None, "192.0.2.10"),
+        "mgmt_ipv4": (None, "192.0.2.10"),
         "mgmt_network": (None, "Red"),
     }
     files.apply(preview)
@@ -385,13 +386,16 @@ def test_a_file_of_members_needs_no_master_and_marks_at_most_one(make: Maker, fi
         "site2-wireless,AT-000105,endpoint,\n"
     )
 
-    # No rule depends on a master, so every row stands by itself. Of two rows that mark
-    # the intended master, the later one has it.
-    assert counts(files.load("device_group_members", text)) == (4, 0, 0, 0)
+    # No rule depends on a master, so a stack may be loaded with none. A file names one
+    # at most: a second row that names one says something else than the first.
+    preview = files.preview("device_group_members", text)
+    assert counts(preview["job"]) == (3, 0, 0, 1)
+    assert "row 2 of the file names the intended master" in reasons(preview["rows"][2])["role"]
+    files.apply(preview, skip_rejected="true")
 
     stack = make.get("/device-groups", filter="name:eq:site2-sw-stack1")["items"][0]
-    assert (stack["member_count"], stack["serial_number"]) == (3, "FCW0000X003")
-    assert [member["role"] for member in make.members(stack)] == ["member", "member", "master"]
+    assert (stack["member_count"], stack["serial_number"]) == (2, "FCW0000X002")
+    assert [member["role"] for member in make.members(stack)] == ["member", "master"]
 
 
 def test_a_file_changes_the_master_and_ends_a_membership(make: Maker, files: Files) -> None:

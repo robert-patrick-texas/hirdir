@@ -391,16 +391,18 @@ def _in_order(rows: list[Any]) -> list[Any]:
     )
 
 
-def _counted(db: Session, terms: _Terms, key: Any, labels: dict[str, str]) -> list[Counted]:
-    """Return the items and the components of each value of a key."""
+def _counted(
+    db: Session, terms: _Terms, key: Any, labels: dict[str, str], component: Any
+) -> list[Counted]:
+    """Return the items and the components of each value of a key.
+
+    `component` says what a component is here: of the kinds the headline counts, or of
+    whatever kind, where the kinds themselves are what is being told apart.
+    """
     found = _run(
         db,
         terms.source(
-            select(
-                key,
-                terms.items,
-                func.count(distinct(case((terms.counted_whatever_kind, Item.hid)))),
-            )
+            select(key, terms.items, func.count(distinct(case((component, Item.hid)))))
         ).group_by(key),
     )
     return [
@@ -432,7 +434,7 @@ def summary(
         **_measures(whole, _sums(db, terms, terms.weight).get(None, [0, 0])),
         by_condition=tuple(
             sorted(
-                _counted(db, terms, Item.condition, _labels(db, "condition")),
+                _counted(db, terms, Item.condition, _labels(db, "condition"), terms.component),
                 key=lambda one: (
                     one.key is None,
                     conditions.index(one.key) if one.key in conditions else len(conditions),
@@ -440,7 +442,10 @@ def summary(
             )
         ),
         by_kind=tuple(
-            sorted(_counted(db, terms, KIND, {}), key=lambda one: order.get(one.key, len(order)))
+            sorted(
+                _counted(db, terms, KIND, {}, terms.counted_whatever_kind),
+                key=lambda one: order.get(one.key, len(order)),
+            )
         ),
     )
     if by is None:

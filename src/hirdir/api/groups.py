@@ -51,8 +51,8 @@ def create_group(
 ) -> r.DeviceGroupOut:
     """Create a device group, with its members if they are given.
 
-    A stack is checked as a whole: with members, it has exactly one master, unless it
-    is a draft.
+    A stack needs no master and may be one switch alone. Of the members given, at
+    most one is marked `master`, the master that is intended.
     """
     return shapes.group_out(db, groups.create_group(db, context, body.model_dump()))
 
@@ -102,8 +102,8 @@ def add_members(
 ) -> list[r.MemberOut]:
     """Make items members of a group, all together.
 
-    The group is checked once they are all in, so a stack is given its master and its
-    other members by one request.
+    One that is added to a stack as `master`, the master that is intended, takes the
+    mark from the member that had it.
     """
     made = groups.add_members(db, context, hid, [member.model_dump() for member in body.members])
     return shapes.members_out(db, made)
@@ -115,7 +115,8 @@ def update_member(
 ) -> r.MemberOut:
     """Change a membership. `left_on` ends it; it is never removed.
 
-    Making a member the master of a stack makes the former master a member.
+    Marking a member as the intended master of a stack takes the mark from the member
+    that had it. The master that is seen is recorded on the stack itself.
     """
     changes = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     member = groups.update_member(db, context, hid, member_hid, body.row_version, changes)

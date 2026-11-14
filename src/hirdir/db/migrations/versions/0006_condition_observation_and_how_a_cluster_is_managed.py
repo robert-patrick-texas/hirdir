@@ -9,6 +9,10 @@ with the moment it was seen. Every cluster there is so far is managed as one nod
 0.4.0 counted it. Loads the `item_condition` list with its defaults, written out here
 so that this migration does the same thing whatever a later release changes. No table
 is created.
+
+An item that had already left the team's hands, to Released or to Archived, and was
+still a member of a group, ceases to be one on the day of the upgrade, with an audit
+event for each membership: from this release such an item is in no group.
 """
 
 import uuid
@@ -98,6 +102,67 @@ def upgrade() -> None:
         groups_table.update().where(groups_table.c.type == "cluster").values(managed_as="one")
     )
     _load_defaults()
+    _end_memberships_out_of_hands()
+
+
+def _end_memberships_out_of_hands() -> None:
+    """End the memberships of the items that left the team's hands before this release."""
+    members = sa.table(
+        "device_group_members",
+        sa.column("hid", sa.String),
+        sa.column("item_hid", sa.String),
+        sa.column("joined_on", sa.Date),
+        sa.column("left_on", sa.Date),
+        sa.column("updated_at", sa.DateTime),
+        sa.column("row_version", sa.Integer),
+    )
+    items = sa.table("items", sa.column("hid", sa.String), sa.column("lifecycle_state", sa.String))
+    events = sa.table(
+        "audit_events",
+        sa.column("hid", sa.String),
+        sa.column("at", sa.DateTime),
+        sa.column("actor_hid", sa.String),
+        sa.column("via", sa.String),
+        sa.column("request_id", sa.String),
+        sa.column("action", sa.String),
+        sa.column("record_type", sa.String),
+        sa.column("record_hid", sa.String),
+        sa.column("changes", sa.JSON),
+    )
+    connection = op.get_bind()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    gone = connection.execute(
+        sa.select(members.c.hid, members.c.joined_on, members.c.row_version)
+        .join(items, items.c.hid == members.c.item_hid)
+        .where(members.c.left_on.is_(None), items.c.lifecycle_state.in_(("Released", "Archived")))
+    ).all()
+    for hid, joined_on, row_version in gone:
+        # A membership that began on a later day than this one ends on the day it began.
+        left = max(now.date(), joined_on)
+        connection.execute(
+            members.update()
+            .where(members.c.hid == hid)
+            .values(left_on=left, updated_at=now, row_version=row_version + 1)
+        )
+    op.bulk_insert(
+        events,
+        [
+            {
+                "hid": str(uuid.uuid7()),
+                "at": now,
+                "actor_hid": None,
+                "via": "system",
+                "request_id": "",
+                "action": "update",
+                "record_type": "device_group_member",
+                "record_hid": hid,
+                "changes": [
+                    {"field": "left_on", "old": None, "new": max(now.date(), joined).isoformat()}
+                ],
+            }
+            for hid, joined, _ in gone
+        ],
+    )
 
 
 def downgrade() -> None:

@@ -109,8 +109,11 @@ class Run:
         self._vendors: dict[str, str] = {}
         self._entries: dict[tuple[str, str], str] = {}
         self._owners: dict[str, str] = {}
-        # The row being worked.
+        # The row being worked, and the rows that named a master of each stack: the
+        # one intended, and the one seen. A stack has one of each at most, so a second
+        # row that names one says something else than the first, and is refused.
         self.row = 0
+        self.masters: dict[tuple[str, str], int] = {}
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
@@ -244,6 +247,16 @@ class Run:
         """Return the one item a row names: by HID, serial number, asset tag or name."""
         return items.the_one(self.db, text, field)
 
+    def names_master(self, group_hid: str, which: str, field: str) -> None:
+        """Note that this row names a master of a stack, refusing a second that does."""
+        before = self.masters.get((group_hid, which))
+        if before is not None and before != self.row:
+            raise Invalid(
+                f"row {before} names the {which} master of this stack",
+                {field: f"row {before} of the file names the {which} master of this stack"},
+            )
+        self._learn(self.masters, (group_hid, which), self.row)
+
     def network(self, text: str, field: str = "network") -> Network:
         """Return the network a row names, by HID or label. A network is never made here."""
         found = addresses.find_network(self.db, text)
@@ -342,13 +355,16 @@ def _primaries(db: Session, field: str, hids: list[str]) -> dict[str, dict[str, 
     for hid, listed in found.items():
         primary = {addresses.family(one.address): one for one in listed if one.is_primary}
         first = primary.get(4) or primary.get(6)
+        # One column names the network of both. Where the two are under different
+        # networks it says nothing, and a file that is loaded back leaves each where
+        # it is: the file of addresses holds every address with its own network.
+        under = {one.network_hid for one in primary.values()}
+        shared = next(iter(under)) if len(under) == 1 else None
         columns[hid] = {
             "mgmt_address": first.address if first else None,
             "mgmt_ipv4": primary[4].address if 4 in primary else None,
             "mgmt_ipv6": primary[6].address if 6 in primary else None,
-            "mgmt_network": networks[first.network_hid].label
-            if first and first.network_hid
-            else None,
+            "mgmt_network": networks[shared].label if shared else None,
         }
     return columns
 
@@ -402,11 +418,14 @@ class Entity:
     renamed: ClassVar[Mapping[str, str]] = {}
     # The columns a bulk edit may not set: they tell one record from another.
     not_in_bulk: ClassVar[frozenset[str]] = frozenset()
-    # The columns that are told as changed only when a row names them. Some are set to
-    # the moment of the change when a row does not give them, and a preview and its
-    # apply are made at different moments. Others say again what another column says:
-    # the management address of one family, and the same address under either.
-    only_when_named: ClassVar[frozenset[str]] = frozenset()
+    # The columns that the clock sets when a row gives them no moment. A preview and
+    # its apply are made at different moments, so what a row is said to do leaves such
+    # a column out unless the row itself says when.
+    by_the_clock: ClassVar[frozenset[str]] = frozenset()
+    # The columns that say again what other columns say, and are never told as
+    # changed: `mgmt_address` is the management address of one family or the other,
+    # and each of those has a column of its own, which is the one that is told.
+    restated: ClassVar[frozenset[str]] = frozenset()
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -824,7 +843,8 @@ class Items(Entity):
         **{f"effective.{name}": name for name in inheritance.STANDING},
         **MGMT_SPELLINGS,
     }
-    only_when_named = frozenset({"observed_at", *MGMT})
+    by_the_clock = frozenset({"observed_at"})
+    restated = frozenset({"mgmt_address"})
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
         "owner_hid": "owner",
@@ -1211,7 +1231,8 @@ class DeviceGroups(Entity):
         Column("health", limit=12, settable=False),
         *BOOKKEEPING,
     )
-    only_when_named = frozenset({"observed_at", *MGMT})
+    by_the_clock = frozenset({"observed_at"})
+    restated = frozenset({"mgmt_address"})
     _direct = (
         "name",
         "type",
@@ -1345,7 +1366,7 @@ class DeviceGroupMembers(Entity):
         Column("master_observed_at", "timestamp"),
         *BOOKKEEPING,
     )
-    only_when_named = frozenset({"master_observed_at"})
+    by_the_clock = frozenset({"master_observed_at"})
     aliases: ClassVar[Mapping[str, str]] = {
         "group.name": "group",
         "group_hid": "group",
@@ -1399,6 +1420,7 @@ class DeviceGroupMembers(Entity):
                     )
             group = run.group(values["group"])
             item = run.item(values["item"], "item")
+            self._marks(run, group, given, values)
             made = groups.add_members(
                 db, context, group.hid, [{"item_hid": item.hid, **_new(given)}]
             )[0]
@@ -1419,11 +1441,23 @@ class DeviceGroupMembers(Entity):
             del given["role"]
         if given.get("joined_on", _MISSING) is None:
             raise Invalid("a membership has a day it began", {"joined_on": "is not cleared"})
+        self._marks(run, groups.get_group(db, record.group_hid), given, values)
         changed = groups.update_member(
             db, context, record.group_hid, record.hid, record.row_version, given
         )
         self._seen_as_master(run, changed, values)
         return changed
+
+    @staticmethod
+    def _marks(run: Run, group: Any, given: Mapping[str, Any], values: Mapping[str, Any]) -> None:
+        """Refuse a second row of the file that names a master of the same stack."""
+        if group.type != "stack" or values.get("left_on") is not None:
+            return
+        role = given.get("role")
+        if isinstance(role, str) and records.key(role) == groups.MASTER:
+            run.names_master(group.hid, "intended", "role")
+        if values.get("observed_master"):
+            run.names_master(group.hid, "observed", "observed_master")
 
     @staticmethod
     def _seen_as_master(run: Run, member: Any, values: Mapping[str, Any]) -> None:
@@ -1432,12 +1466,14 @@ class DeviceGroupMembers(Entity):
             return
         group = groups.get_group(run.db, member.group_hid)
         seen = values.get("observed_master", group.observed_master_hid == member.item_hid)
+        # A member that has left is not seen as master, whatever its row still says.
+        seen = bool(seen) and member.left_on is None
         fields: dict[str, Any]
         if seen:
             fields = {"observed_master_hid": member.item_hid}
             if values.get("master_observed_at") is not None:
                 fields["master_observed_at"] = values["master_observed_at"]
-        elif values.get("master_observed_at") is not None:
+        elif values.get("master_observed_at") is not None and member.left_on is None:
             raise Invalid(
                 "no master is observed at that moment",
                 {"master_observed_at": "give observed_master with it"},

@@ -874,7 +874,10 @@ class Counted(Model):
     label: str | None
     items: int
     component_count: int = Field(
-        description="The major items among them that are in hand, whatever their kind."
+        description=(
+            "The components among them. By kind, the major items in hand of that kind, "
+            "also where the headline count leaves the kind out."
+        )
     )
 
 

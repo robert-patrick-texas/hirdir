@@ -138,6 +138,12 @@ HEALTH: ColumnElement[Any] = case(
     ),
     else_=health.UNKNOWN,
 )
+HEALTH_RANK: ColumnElement[Any] = case(
+    (HEALTH == health.FAILED, 0),
+    (HEALTH == health.DEGRADED, 1),
+    (HEALTH == health.UNKNOWN, 2),
+    else_=3,
+)
 
 
 def _with_items_above(query: Select[Any]) -> Select[Any]:
@@ -217,7 +223,8 @@ ITEMS = Listing(
             "record_status",
         ),
         "observed_at": Field("timestamp", Item.observed_at),
-        "health": Field("choice", HEALTH),
+        # Sorted by how bad it is, the worst first, and what is not known before the good.
+        "health": Field("choice", HEALTH, ordered_by=HEALTH_RANK),
         "expected_online": Field("boolean", Item.expected_online),
         "state_changed_at": Field("timestamp", Item.state_changed_at),
         **_columns(

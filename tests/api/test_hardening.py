@@ -1,7 +1,7 @@
 """What must hold when requests race, when input is hostile, and when something breaks.
 
 Each of these was found wrong by review before release 0.2.0, and is kept right here.
-The last section holds what the review before release 0.4.0 found.
+The last sections hold what the reviews before releases 0.4.0 and 0.4.1 found.
 """
 
 import threading
@@ -760,3 +760,241 @@ def test_a_replacement_never_comes_round_to_where_it_began(make: Maker) -> None:
     replace(second, third)
     problem = replace(third, first, 422)
     assert "took its own" in problem["detail"]
+
+
+# --- found by the review before release 0.4.1 ------------------------------------------
+
+
+def _send(make: Maker, entity: str, text: str) -> dict:
+    """Preview a CSV file as the Inventory user."""
+    response = make.client.post(
+        f"{API}/imports/preview",
+        params={"entity": entity},
+        content=text,
+        headers={**make.headers, "Content-Type": "text/csv"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _told(row: dict) -> dict:
+    return {entry["field"]: (entry["old"], entry["new"]) for entry in row["changes"]}
+
+
+def test_a_preview_tells_every_management_address_that_the_apply_changes(make: Maker) -> None:
+    switch = make.item(hostname="site2-sw-01")
+    make.address(switch, "192.0.2.21", is_primary=True)
+
+    # A file with one address column, holding an address of the other family.
+    preview = _send(make, "items", "hostname,ip\nsite2-sw-01,2001:db8::99\n")
+    row = preview["rows"][0]
+    assert (row["outcome"], _told(row)) == ("update", {"mgmt_ipv6": (None, "2001:db8::99")})
+    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    # Replacing it is told as well, and clearing `mgmt_address` tells of both it removes.
+    row = _send(make, "items", "hostname,ip\nsite2-sw-01,2001:db8::77\n")["rows"][0]
+    assert _told(row) == {"mgmt_ipv6": ("2001:db8::99", "2001:db8::77")}
+    row = _send(make, "items", "hostname,mgmt_address\nsite2-sw-01,!clear\n")["rows"][0]
+    assert _told(row) == {
+        "mgmt_ipv4": ("192.0.2.21", None),
+        "mgmt_ipv6": ("2001:db8::99", None),
+    }
+
+
+def test_an_export_of_two_networks_moves_neither_address_when_loaded_back(make: Maker) -> None:
+    switch = make.item(hostname="site2-sw-01")
+    red, blue = make.network("Red"), make.network("Blue")
+    make.address(switch, "192.0.2.10", red, is_primary=True)
+    six = make.address(switch, "2001:db8::10", blue, is_primary=True)
+
+    columns = ["hostname", "mgmt_address", "mgmt_ipv4", "mgmt_ipv6", "mgmt_network"]
+    exported = make.client.post(
+        f"{API}/exports", json={"entity": "items", "columns": columns}, headers=make.headers
+    ).text
+    # One column cannot name two networks, so it names none.
+    assert exported.splitlines()[1].endswith(",192.0.2.10,192.0.2.10,2001:db8::10,")
+
+    preview = _send(make, "items", exported)
+    assert preview["rows"][0]["outcome"] == "unchanged"
+    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    assert make.get(f"/addresses/{six['hid']}")["network"]["label"] == "Blue"
+    assert make.audit(record_type="address", action="update") == []
+
+
+@pytest.mark.parametrize(
+    "moment",
+    [
+        "0001-01-01T00:00:00+14:00",
+        "9999-12-31T23:59:59-12:00",
+        "1970-01-01T00:00:01Z",
+        "2999-01-01T00:00:00Z",
+    ],
+)
+def test_a_moment_that_cannot_be_kept_is_refused_and_never_a_500(
+    make: Maker, soft: TestClient, moment: str
+) -> None:
+    item = make.item(name="site2-sw-01")
+    stack = make.group("site2-sw-stack1", "stack", [(item, "member")])
+    seen = {"row_version": 1, "observed_master_hid": item["hid"], "master_observed_at": moment}
+    answers = [
+        soft.patch(
+            f"{API}/items/{item['hid']}",
+            json={"row_version": 1, "observed_status": "online", "observed_at": moment},
+            headers=make.headers,
+        ),
+        soft.patch(f"{API}/device-groups/{stack['hid']}", json=seen, headers=make.headers),
+    ]
+    assert [answer.status_code for answer in answers] == [422, 422], [a.text for a in answers]
+    assert "observed_at" in errors(answers[0].json())
+    # In a file it is a rejected row, and the rest of the file is read.
+    preview = _send(
+        make, "items", f"name,observed_status,observed_at\nsite2-sw-01,online,{moment}\n"
+    )
+    assert preview["rows"][0]["outcome"] == "rejected"
+
+
+def test_a_moment_with_no_zone_is_utc_and_one_cleared_by_itself_is_refused(make: Maker) -> None:
+    item = make.item(name="site2-sw-01")
+    path = f"/items/{item['hid']}"
+    seen = make.patch(
+        path, {"row_version": 1, "observed_status": "online", "observed_at": "2026-11-02T15:00:00"}
+    )
+    assert seen["observed_at"] == "2026-11-02T15:00:00Z"
+
+    body = {"row_version": seen["row_version"], "observed_at": None}
+    problem = make.patch(path, body, 422)
+    assert "clear observed_status" in errors(problem)["observed_at"]
+    row = _send(make, "items", "name,observed_at\nsite2-sw-01,!clear\n")["rows"][0]
+    assert row["outcome"] == "rejected"
+    # Stated with the status and no moment, a file leaves the moment alone, and what
+    # the preview tells is what the apply does.
+    preview = _send(make, "items", "name,observed_status,observed_at\nsite2-sw-01,online,!clear\n")
+    assert (preview["rows"][0]["outcome"], preview["rows"][0]["changes"]) == ("unchanged", [])
+    assert make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)["status"] == "applied"
+    assert make.get(path)["observed_at"] == "2026-11-02T15:00:00Z"
+
+
+def test_looking_again_is_on_record_for_a_person_and_not_for_a_file(make: Maker) -> None:
+    make.tag("spares")
+    spare = make.item(name="spare-1", tags=["spares"], observed_status="present")
+    first = make.get(f"/items/{spare['hid']}")["observed_at"]
+
+    # The same file again changes nothing.
+    row = _send(make, "items", "name,observed_status\nspare-1,present\n")["rows"][0]
+    assert row["outcome"] == "unchanged"
+    # A second walk round the store room, as a bulk edit, is a change, though none of
+    # the fields it names has another value: the moment is now.
+    preview = make.post(
+        "/items/bulk-update", {"filter": "tags:has:spares", "set": {"observed_status": "present"}}
+    )
+    assert (preview["rows"][0]["outcome"], preview["rows"][0]["changes"]) == ("update", [])
+    make.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+    assert make.get(f"/items/{spare['hid']}")["observed_at"] > first
+
+
+def test_an_item_that_has_left_the_teams_hands_joins_no_group(make: Maker, admin: dict) -> None:
+    entry = make.entry(make.vendor())
+    gone, staying, other = make.switches(entry, "site2-sw", 3, lifecycle_state="Prod")
+    Maker(make.client, admin).move(gone, "Released", reason="disposed", force=True)
+    stack = make.group("site2-sw-stack1", "stack", [(staying, "member")])
+
+    problem = make.add(stack, [{"item_hid": gone["hid"]}], expect=422)
+    assert "an item in Released is in no group" in errors(problem)["item_hid"]
+    problem = make.group("another", "custom", [(gone, "member")], expect=422)
+    assert "left the team's hands" in problem["detail"]
+    # Nor does it take the place of a member.
+    current = make.get(f"/items/{staying['hid']}")
+    body = {"row_version": current["row_version"], "reason": "rma", "new_item_hid": gone["hid"]}
+    assert make.post(f"/items/{staying['hid']}/replace", body, 422)["status"] == 422
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
+    # A membership that has ended is still entered, for the record, as a file may.
+    past = "group,item,joined_on,left_on\nsite2-sw-stack1,SITE2-SW-001,2024-01-01,2025-01-01\n"
+    preview = _send(make, "device_group_members", past)
+    assert preview["rows"][0]["outcome"] == "create"
+    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    assert len(make.members(stack, include_past="true")) == 2
+    assert other["groups"] == []
+
+
+def test_one_file_names_one_master_of_a_stack_and_loads_twice_the_same(make: Maker) -> None:
+    entry = make.entry(make.vendor())
+    make.switches(entry, "site2-sw", 3)
+    make.group("site2-sw-stack1", "stack")
+    text = (
+        "group,item,role,observed_master\n"
+        "site2-sw-stack1,SITE2-SW-001,master,true\n"
+        "site2-sw-stack1,SITE2-SW-002,master,\n"
+        "site2-sw-stack1,SITE2-SW-003,member,true\n"
+    )
+
+    preview = _send(make, "device_group_members", text)
+
+    outcomes = [row["outcome"] for row in preview["rows"]]
+    assert outcomes == ["create", "rejected", "rejected"]
+    said = preview["rows"][1]["reasons"][0]["message"]
+    assert "row 1 of the file names the intended master" in said
+    assert preview["rows"][2]["reasons"][0]["field"] == "observed_master"
+    good = text.replace("002,master,", "002,member,").replace("003,member,true", "003,member,")
+    first = _send(make, "device_group_members", good)
+    assert [row["outcome"] for row in first["rows"]] == ["create"] * 3
+    make.post(f"/imports/{first['job']['hid']}/apply", {}, 200)
+    again = _send(make, "device_group_members", good)
+    assert [row["outcome"] for row in again["rows"]] == ["unchanged"] * 3
+
+
+def test_the_controllers_of_an_endpoint_do_not_depend_on_what_else_is_listed(
+    make: Maker,
+) -> None:
+    entry = make.entry(make.vendor())
+    controllers = make.switches(entry, "wlc", 2)
+    outer_point, inner_point = make.switches(entry, "ap", 2)
+    outer = make.group("campus", "controller_domain", [(outer_point, "endpoint")])
+    inner = make.group(
+        "building", "controller_domain", [(inner_point, "endpoint")], parent_group_hid=outer["hid"]
+    )
+    make.group(
+        "wlc-ha",
+        "cluster",
+        [(unit, "member") for unit in controllers],
+        parent_group_hid=inner["hid"],
+    )
+
+    alone = make.get(f"/items/{outer_point['hid']}")["controllers"]
+    listed = {
+        row["hostname"]: row["controllers"]
+        for row in make.get("/items", filter="hostname:prefix:ap-")["items"]
+    }
+
+    wanted = ["wlc-01", "wlc-02"]
+    assert [one["name"] for one in alone] == wanted
+    # On a page beside an endpoint of the inner domain, it lists the same.
+    assert [one["name"] for one in listed["ap-01"]] == wanted
+    assert [one["name"] for one in listed["ap-02"]] == wanted
+
+
+def test_the_components_of_each_condition_are_those_the_headline_counts(make: Maker) -> None:
+    vendor = make.vendor()
+    switch = make.entry(vendor)
+    licence = make.entry(vendor, "NETCONFIG-MANAGER", kind="software")
+    make.item(catalog_entry_hid=switch["hid"], serial_number="A1", condition="good")
+    for name in ("one", "two"):
+        make.item(catalog_entry_hid=licence["hid"], name=name, condition="good")
+
+    summary = make.get("/reports/summary", by="condition")
+
+    totals = summary["totals"]
+    assert totals["component_count"] == 1
+    told = [(one["key"], one["items"], one["component_count"]) for one in totals["by_condition"]]
+    assert told == [("good", 3, 1)]
+    assert summary["rows"][0]["component_count"] == 1
+    # By kind, each kind is told as it would count, were it in the headline.
+    assert [(one["key"], one["component_count"]) for one in totals["by_kind"]] == [
+        ("hardware", 1),
+        ("software", 2),
+    ]
+
+
+def test_sorting_by_health_puts_the_worst_first(make: Maker) -> None:
+    for name, condition in (("a", "good"), ("b", None), ("c", "failed"), ("d", "suspect")):
+        make.item(name=name, **({"condition": condition} if condition else {}))
+    assert make.found(sort="health") == ["c", "d", "b", "a"]
+    assert make.found(sort="-health") == ["a", "b", "d", "c"]

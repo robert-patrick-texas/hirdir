@@ -658,8 +658,8 @@ export interface paths {
     /**
      * Create a device group, with its members if they are given.
      *
-     * A stack is checked as a whole: with members, it has exactly one master, unless it
-     * is a draft.
+     * A stack needs no master and may be one switch alone. Of the members given, at
+     * most one is marked `master`, the master that is intended.
      */
     post: {
       parameters: {
@@ -810,8 +810,8 @@ export interface paths {
     /**
      * Make items members of a group, all together.
      *
-     * The group is checked once they are all in, so a stack is given its master and its
-     * other members by one request.
+     * One that is added to a stack as `master`, the master that is intended, takes the
+     * mark from the member that had it.
      */
     post: {
       parameters: {
@@ -849,7 +849,8 @@ export interface paths {
     /**
      * Change a membership. `left_on` ends it; it is never removed.
      *
-     * Making a member the master of a stack makes the former master a member.
+     * Marking a member as the intended master of a stack takes the mark from the member
+     * that had it. The master that is seen is recorded on the stack itself.
      */
     patch: {
       parameters: {
@@ -3067,7 +3068,7 @@ export interface components {
     };
     /** The items and the components that share one value: a kind, or a condition. */
     Counted: {
-      /** The major items among them that are in hand, whatever their kind. */
+      /** The components among them. By kind, the major items in hand of that kind, also where the headline count leaves the kind out. */
       component_count: number;
       items: number;
       key: string | null;

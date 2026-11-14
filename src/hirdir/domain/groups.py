@@ -6,7 +6,7 @@ last year can still be answered: a membership is ended, and never removed.
 """
 
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
@@ -196,42 +196,57 @@ def controllers(
     )
     for domain_hid, item in direct:
         found[domain_hid].append((item, None))
-    # The groups within each domain, a level at a time: which domain each is under.
-    under = {hid: hid for hid in domain_hids}
-    clusters: dict[str, DeviceGroup] = {}
+    # Every group beneath the domains, a level at a time, by the group it is in.
+    inside: dict[str, list[DeviceGroup]] = {}
+    seen: set[str] = set(domain_hids)
     level = list(domain_hids)
     for _ in range(MAX_NESTING):
-        inside = list(
-            db.scalars(
+        below = [
+            group
+            for group in db.scalars(
                 select(DeviceGroup).where(
                     DeviceGroup.parent_group_hid.in_(level),
                     DeviceGroup.record_status != "retired",
                 )
             )
-        )
-        level = []
-        for group in inside:
-            if group.hid in under or group.parent_group_hid is None:
-                continue
-            under[group.hid] = under[group.parent_group_hid]
-            level.append(group.hid)
-            if group.type == "cluster":
-                clusters[group.hid] = group
+            if group.parent_group_hid is not None
+        ]
+        for group in below:
+            inside.setdefault(group.parent_group_hid or "", []).append(group)
+        level = [group.hid for group in below if group.hid not in seen]
+        seen.update(level)
         if not level:
             break
-    if clusters:
+    # The clusters each domain holds, at any depth, a domain within it included: each
+    # domain is walked for itself, so what one holds does not depend on which others
+    # were asked for with it.
+    clusters: dict[str, list[DeviceGroup]] = {}
+    for domain_hid in domain_hids:
+        walked, queue = {domain_hid}, [domain_hid]
+        while queue:
+            for group in inside.get(queue.pop(), []):
+                if group.hid in walked:
+                    continue
+                walked.add(group.hid)
+                queue.append(group.hid)
+                if group.type == "cluster":
+                    clusters.setdefault(domain_hid, []).append(group)
+    wanted = {cluster.hid for held in clusters.values() for cluster in held}
+    members: dict[str, list[Item]] = {}
+    if wanted:
         nested = db.execute(
             select(DeviceGroupMember.group_hid, Item)
             .join(Item, Item.hid == DeviceGroupMember.item_hid)
-            .where(
-                DeviceGroupMember.group_hid.in_(clusters),
-                DeviceGroupMember.left_on.is_(None),
-            )
+            .where(DeviceGroupMember.group_hid.in_(wanted), DeviceGroupMember.left_on.is_(None))
         )
         for cluster_hid, item in nested:
-            listed = found[under[cluster_hid]]
-            if all(item.hid != other.hid for other, _ in listed):
-                listed.append((item, clusters[cluster_hid]))
+            members.setdefault(cluster_hid, []).append(item)
+    for domain_hid, held in clusters.items():
+        listed = found[domain_hid]
+        for cluster in held:
+            for item in members.get(cluster.hid, []):
+                if all(item.hid != other.hid for other, _ in listed):
+                    listed.append((item, cluster))
     for listed in found.values():
         listed.sort(
             key=lambda one: (
@@ -357,7 +372,9 @@ def _checked_parent(db: Session, value: Any, group: DeviceGroup | None) -> str |
     return hid
 
 
-def _checked(db: Session, fields: dict[str, Any], group: DeviceGroup | None) -> dict[str, Any]:
+def _checked(
+    db: Session, fields: dict[str, Any], group: DeviceGroup | None, looked_again: bool = True
+) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if "type" in fields:
         kind = records.key(str(fields["type"] or ""))
@@ -428,13 +445,17 @@ def _checked(db: Session, fields: dict[str, Any], group: DeviceGroup | None) -> 
                 {"expected_members": "a whole number from 1 to 10000, or blank"},
             )
         values["expected_members"] = expected
-    values.update(health.observation(fields, group))
-    values.update(_observed_master(db, fields, group, kind))
+    values.update(health.observation(fields, group, looked_again))
+    values.update(_observed_master(db, fields, group, kind, looked_again))
     return values
 
 
 def _observed_master(
-    db: Session, fields: dict[str, Any], group: DeviceGroup | None, kind: str | None
+    db: Session,
+    fields: dict[str, Any],
+    group: DeviceGroup | None,
+    kind: str | None,
+    looked_again: bool = True,
 ) -> dict[str, Any]:
     """Return the master that is seen and the moment it was seen, as a change sets them.
 
@@ -446,10 +467,8 @@ def _observed_master(
     current = group.observed_master_hid if group is not None else None
     hid = (fields["observed_master_hid"] or None) if "observed_master_hid" in fields else current
     at = fields.get("master_observed_at")
-    if at is not None and not isinstance(at, datetime):
-        raise Invalid(
-            "the moment is not acceptable", {"master_observed_at": "a date and time in ISO 8601"}
-        )
+    if at is not None:
+        at = health.moment(at, "master_observed_at")
     if hid is None:
         if at is not None:
             raise Invalid(
@@ -479,9 +498,14 @@ def _observed_master(
                 "the master that is seen is a member of the stack",
                 {"observed_master_hid": "this item is not a current member of the stack"},
             )
+    if at is None and "observed_master_hid" not in fields:
+        raise Invalid(
+            "a moment is not cleared by itself",
+            {"master_observed_at": "clear observed_master_hid, and the moment goes with it"},
+        )
     if at is None:
-        unchanged = hid == current and "master_observed_at" not in fields
-        at = group.master_observed_at if unchanged and group is not None else clock.now()
+        restated = hid == current and group is not None and group.master_observed_at is not None
+        at = group.master_observed_at if restated and not looked_again else clock.now()
     return {"observed_master_hid": hid, "master_observed_at": at}
 
 
@@ -521,7 +545,7 @@ def update_group(
     group = get_group(db, hid)
     has_tags = "tags" in fields
     labels = fields.pop("tags", None) or []
-    values = _checked(db, fields, group)
+    values = _checked(db, fields, group, context.via != "import")
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, group, row_version, values, tag_change)
     return group
@@ -639,6 +663,14 @@ def add_members(
         if item.record_status == "retired":
             raise Invalid(
                 f"{items.shown_name(item)} is retired", {"item_hid": "this item is retired"}
+            )
+        if item.lifecycle_state in items.OUT_OF_HANDS and given.get("left_on") is None:
+            raise Invalid(
+                f"{items.shown_name(item)} has left the team's hands",
+                {
+                    "item_hid": f"an item in {item.lifecycle_state} is in no group; "
+                    "enter a membership that has ended with its left_on"
+                },
             )
         joined = (
             day if given.get("joined_on") is None else _checked_day(given["joined_on"], "joined_on")

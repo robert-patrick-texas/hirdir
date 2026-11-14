@@ -69,12 +69,10 @@ def test_what_is_observed_is_kept_with_the_moment_it_was_seen(make: Maker) -> No
     seen = _patch(make, f"/items/{item['hid']}", observed_status="online")
     assert seen["observed_status"] == "online"
     assert seen["observed_at"] is not None
-    # Stated again as it is, the moment stays: the same file loaded twice changes nothing.
+    # A person who states it again, as it is, has looked again: the moment is now.
     again = _patch(make, f"/items/{item['hid']}", observed_status="online")
-    assert (again["observed_at"], again["row_version"]) == (
-        seen["observed_at"],
-        seen["row_version"],
-    )
+    assert again["observed_at"] > seen["observed_at"]
+    assert again["row_version"] == seen["row_version"] + 1
     # A moment that is given is the one kept, and may be given with the status as it is.
     dated = _patch(make, f"/items/{item['hid']}", observed_status="online", observed_at=SEEN)
     assert dated["observed_at"] == SEEN
@@ -366,7 +364,7 @@ def test_an_item_that_leaves_the_teams_hands_is_in_no_group_any_more(
     assert make.audit(record_type="device_group_member", action="update")[0]["request_id"]
 
 
-def test_a_replacement_hands_over_both_masters(make: Maker) -> None:
+def test_a_replacement_hands_over_the_role_and_not_what_was_seen(make: Maker) -> None:
     entry = _entry(make)
     switches = make.switches(entry, "site2-sw-stack1", 2)
     stack = make.stack("site2-sw-stack1", switches)
@@ -388,9 +386,12 @@ def test_a_replacement_hands_over_both_masters(make: Maker) -> None:
     )
 
     after = make.get(f"/device-groups/{stack['hid']}")
-    assert (after["serial_number"], after["serial_source"]) == ("FCW0000X999", "observed")
+    # The new switch is the intended master, as the old one was. Nobody has seen it as
+    # master yet, so the stack has no master that is seen.
     assert after["master"]["serial_number"] == "FCW0000X999"
-    assert (after["master_observed_at"], after["member_count"]) == (SEEN, 2)
+    assert (after["serial_number"], after["serial_source"]) == ("FCW0000X999", "intended")
+    assert (after["observed_master"], after["master_observed_at"]) == (None, None)
+    assert after["member_count"] == 2
 
 
 # --- how a cluster is managed, and what a stack saves -----------------------------------

@@ -67,8 +67,9 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
                 },
             )
         role, position = member.role, member.position
-        was_seen = group.observed_master_hid == old.hid
-        seen_at = group.master_observed_at
+        # The role is handed over, the mark of the intended master with it. The master
+        # that was seen is not: nobody has seen the new item as master yet, and the old
+        # one's leaving clears it.
         groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
         groups.add_members(
             db,
@@ -76,10 +77,6 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
             group.hid,
             [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
         )
-        if was_seen:
-            # The item that took the place is the master that is seen, as the old one was.
-            seen = {"observed_master_hid": new.hid, "master_observed_at": seen_at}
-            groups.update_group(db, context, group.hid, group.row_version, seen)
 
 
 def replace(

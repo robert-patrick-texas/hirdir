@@ -67,6 +67,8 @@ class Field:
     expression: Any = None
     test: Callable[[str], ColumnElement[bool]] | None = None
     convert: Callable[[str], Any] | None = None
+    # What the field is sorted by, where that is not the order of its values as text.
+    ordered_by: Any = None
     among: Callable[[ColumnElement[bool]], ColumnElement[bool]] | None = None
 
 
@@ -398,6 +400,11 @@ def order_by(keys: list[SortKey], fields: Mapping[str, Field]) -> list[ColumnEle
     terms: list[ColumnElement[Any]] = []
     for key in keys:
         field = fields[key.field]
-        expression = dialect.folded(field.expression) if _is_text(field) else field.expression
+        if field.ordered_by is not None:
+            expression = field.ordered_by
+        elif _is_text(field):
+            expression = dialect.folded(field.expression)
+        else:
+            expression = field.expression
         terms += dialect.blanks_last(expression, key.descending)
     return terms

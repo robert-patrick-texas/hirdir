@@ -287,7 +287,9 @@ def _reference(
     return hid
 
 
-def _checked(db: Session, fields: dict[str, Any], item: Item | None) -> dict[str, Any]:
+def _checked(
+    db: Session, fields: dict[str, Any], item: Item | None, looked_again: bool = True
+) -> dict[str, Any]:
     """Return the values to store for fields, checked against the item as it will be."""
     values = catalog.checked_inherited(fields)
     for name in TEXTS:
@@ -342,7 +344,7 @@ def _checked(db: Session, fields: dict[str, Any], item: Item | None) -> dict[str
             if condition
             else None
         )
-    values.update(health.observation(fields, item))
+    values.update(health.observation(fields, item, looked_again))
     if "quantity" in fields:
         quantity = 1 if fields["quantity"] is None else fields["quantity"]
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
@@ -520,7 +522,12 @@ def update_item(
                 {name: "use the transition route, which records who, when and why"},
             )
     plain = {name: value for name, value in fields.items() if name not in STANDING}
-    values = {**_checked(db, plain, item), **_standing_on_update(db, fields, item)}
+    # A person who states what is observed again has looked again. A file has not.
+    looked_again = context.via != "import"
+    values = {
+        **_checked(db, plain, item, looked_again),
+        **_standing_on_update(db, fields, item),
+    }
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change)
     return item

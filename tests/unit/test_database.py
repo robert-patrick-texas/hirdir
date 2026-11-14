@@ -87,3 +87,106 @@ def test_config_file_overrides_and_a_relative_state_dir_is_beside_it(tmp_path: P
     assert loaded.session_hours == 2
     assert loaded.state_dir == tmp_path
     assert loaded.database_path == tmp_path / "hirdir.db"
+
+
+def test_the_upgrade_to_0006_keeps_what_is_held_and_ends_what_d103_ends(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0005")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO items (hid, name, quantity, lifecycle_state, record_status,"
+                " created_at, updated_at, row_version)"
+                " VALUES (:hid, :hid, 1, :state, 'active', '2026-01-01', '2026-01-01', 1)"
+            ),
+            [
+                {"hid": "i-prod", "state": "Prod"},
+                {"hid": "i-archived", "state": "Archived"},
+                {"hid": "i-released", "state": "Released"},
+            ],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_groups (hid, type, name, name_key, record_status,"
+                " created_at, updated_at, row_version)"
+                " VALUES (:hid, :kind, :hid, :hid, 'active', '2026-01-01', '2026-01-01', 1)"
+            ),
+            [{"hid": "g-stack", "kind": "stack"}, {"hid": "g-cluster", "kind": "cluster"}],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_group_members (hid, group_hid, item_hid, role, joined_on,"
+                " created_at, updated_at, row_version)"
+                " VALUES (:hid, :group_hid, :item, 'member', '2024-01-01',"
+                " '2026-01-01', '2026-01-01', 1)"
+            ),
+            [
+                {"hid": "m-1", "group_hid": "g-stack", "item": "i-prod"},
+                {"hid": "m-2", "group_hid": "g-stack", "item": "i-archived"},
+                {"hid": "m-3", "group_hid": "g-cluster", "item": "i-released"},
+            ],
+        )
+        # A condition of the site's own, entered before the list had its defaults.
+        connection.execute(
+            text(
+                "INSERT INTO choices (hid, list, value, value_key, label, sort, active,"
+                " created_at, updated_at, row_version) VALUES ('c-1', 'item_condition',"
+                " 'good', 'good', 'Works', 5, 1, '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+    engine.dispose()
+
+    migrate.upgrade(url)
+
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        assert migrate.current(engine) == migrate.head(url)
+        # Every item is as it was, with nothing said yet of how it is doing.
+        items = connection.execute(
+            text("SELECT hid, lifecycle_state, condition, observed_status FROM items ORDER BY hid")
+        ).all()
+        assert [tuple(row) for row in items] == [
+            ("i-archived", "Archived", None, None),
+            ("i-prod", "Prod", None, None),
+            ("i-released", "Released", None, None),
+        ]
+        # A cluster is managed as one node, as it was counted, and a stack says nothing.
+        managed = connection.execute(
+            text("SELECT hid, managed_as FROM device_groups ORDER BY hid")
+        ).all()
+        assert [tuple(row) for row in managed] == [("g-cluster", "one"), ("g-stack", None)]
+        # The memberships of the items that had left the team's hands are ended, each on
+        # record; the one of the item in service stands.
+        left = dict(
+            connection.execute(text("SELECT hid, left_on IS NULL FROM device_group_members")).all()
+        )
+        assert left == {"m-1": 1, "m-2": 0, "m-3": 0}
+        ended = connection.execute(
+            text(
+                "SELECT record_hid, via, action FROM audit_events"
+                " WHERE record_type = 'device_group_member' ORDER BY record_hid"
+            )
+        ).all()
+        assert [tuple(row) for row in ended] == [
+            ("m-2", "system", "update"),
+            ("m-3", "system", "update"),
+        ]
+        # The list of conditions has its defaults, beside the one the site had entered.
+        conditions = dict(
+            connection.execute(
+                text("SELECT value, label FROM choices WHERE list = 'item_condition'")
+            ).all()
+        )
+        assert conditions["good"] == "Works"
+        assert set(conditions) == {"untested", "good", "degraded", "suspect", "failed", "dead"}
+        assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    engine.dispose()
+    # And back: the schema of 0.4.0, with the rows still there.
+    command.downgrade(migrate.alembic_config(url), "0005")
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(items)"))}
+        assert "condition" not in columns
+        assert connection.execute(text("SELECT count(*) FROM items")).scalar() == 3
+    engine.dispose()
