@@ -87,8 +87,8 @@ changed_0008() {
     made=$(json 'sorted({json.dumps(g["registrations"]) for g in d["items"]})')
     api GET "$every_item"
     expect "pkg $when no item is under a contract, arrived on a purchase line or is registered anywhere, and no device group is registered, by what each says of itself" \
-        "$made $(json 'sorted({json.dumps([i[k] for k in ("covered", "covered_until", "coverage", "registrations", "purchase_line_hid", "purchase_line")]) for i in d["items"]})')" \
-        '["[]"] ["[false, null, [], [], null, null]"]'
+        "$made $(json 'sorted({json.dumps([i[k] for k in ("covered", "covered_until", "contract_count", "coverage", "registrations", "group_registrations", "purchase_line_hid", "purchase_line")]) for i in d["items"]})')" \
+        '["[]"] ["[false, null, 0, [], [], [], null, null]"]'
 
     # The coverage report: every major item in service has no cover, which is true
     # until the contracts are entered. Which items are in service is read from what
@@ -97,15 +97,15 @@ changed_0008() {
 import json, sys
 items = json.load(open(sys.argv[1], encoding="utf-8"))["items"]
 print(sum(1 for i in items if i["is_major"] and i["record_status"] == "active"
-          and i["effective"]["lifecycle_state"]["value"] in ("Test", "Prod", "Down")))' "$work/kept-items.json")
+          and i["effective"]["lifecycle_state"]["value"] in ("Assigned", "Test", "Prod", "Down")))' "$work/kept-items.json")
     api GET /reports/coverage
-    expect "pkg $when GET /reports/coverage counts every major item that $previous_version had in Test, Prod or Down, $in_service of them, as in service with no cover, and nothing as covered, as covered though out of service or as running out" \
-        "$status $(json '[d["service_states"], d["totals"]]')" \
-        "200 [[\"Test\", \"Prod\", \"Down\"], {\"covered\": 0, \"expiring\": 0, \"in_service\": $in_service, \"out_of_service\": 0, \"uncovered\": $in_service}]"
+    expect "pkg $when GET /reports/coverage counts every major item that $previous_version had in Assigned, Test, Prod or Down, $in_service of them, as in service with no cover, and nothing as covered, as out of service under a contract, as running out, as under more than one contract or as under a renewal that is pending; and no contract has lapsed" \
+        "$status $(json '[d["service_states"], d["totals"], d["lapsed_contracts"]["count"]]')" \
+        "200 [[\"Assigned\", \"Test\", \"Prod\", \"Down\"], {\"covered\": 0, \"expiring\": 0, \"in_service\": $in_service, \"out_of_service\": 0, \"overlapping\": 0, \"renewal_pending\": 0, \"uncovered\": $in_service}, 0]"
     api GET /settings
-    expect "pkg $when the one setting more, service_states, is at its default: Test, Prod and Down" \
+    expect "pkg $when the one setting more, service_states, is at its default: Assigned, Test, Prod and Down" \
         "$status $(json '[[s["value"], s["is_default"]] for s in d if s["key"] == "service_states"]')" \
-        '200 [[["Test", "Prod", "Down"], true]]'
+        '200 [[["Assigned", "Test", "Prod", "Down"], true]]'
     api GET '/reports/summary?by=contract'
     expect "pkg $when GET /reports/summary?by=contract, which $previous_version refused, has one row, of what no contract covers, which holds the items of the totals" \
         "$status $(json '[d["by"], [[r["key"], r["items"] == d["totals"]["items"]] for r in d["rows"]]]')" \
@@ -186,10 +186,11 @@ after_0008() {
     api GET /reports/coverage
     made="$made $status $(json '[d["totals"]["covered"], d["totals"]["out_of_service"]]')"
     api GET '/reports/coverage?section=out_of_service'
-    expect "pkg the item that was retired before the upgrade is not put under a contract; the item that arrived is retired, and nothing ends its cover: GET /reports/coverage counts the two that are in service as covered, and lists that one as covered though out of service" \
-        "$made $status $(json '[[i["serial_number"], i["record_status"], i["covered"]] for i in d["items"]]')" \
-        '422 ["items.0.item_hid"] 200 200 [2, 1] 200 [["UWN0000R001", "retired", true]]'
-    # The contract is renewed, in one place: the items follow, and none is written to.
+    expect "pkg the item that was retired before the upgrade is not put under a contract; the item that arrived is retired, and its coverage is ended on that day and says that it left service: GET /reports/coverage counts the two that are in service as covered, and lists that one as out of service under a contract that still runs" \
+        "$made $status $(json '[[i["serial_number"], i["record_status"], [[c["ends_on"] == d["as_of"], c["left_service"]] for c in i["coverage"]]] for i in d["items"]]')" \
+        '422 ["items.0.item_hid"] 200 200 [2, 1] 200 [["UWN0000R001", "retired", [[true, true]]]]'
+    # The contract is renewed, in one place, for a period that has begun: the items
+    # follow at once, and none is written to.
     far=$(day_from_today 800)
     api POST "/contracts/$contract/renew" "{\"row_version\": 1, \"number\": \"UW-CON-0002\", \"starts_on\": \"$last_year\", \"ends_on\": \"$far\"}"
     made="$status $(json '[d["number"], d["effective"]["ends_on"]["source"], d["covered_items"]]')"
@@ -198,9 +199,9 @@ after_0008() {
     api GET "/items/$witness_switch"
     made="$made $(json '[c["contract"]["number"] for c in d["coverage"]] + [d["covered_until"]]') $(json_field row_version)"
     api GET '/reports/summary?by=contract'
-    expect "pkg POST /contracts/{hid}/renew gives the contract a new number and a period of its own: the items under it show the new number and the new last day at once, each at the row_version it had ($versions), and the summary by contract has a row for the contract, labelled with its number and its vendor, beside the row of what no contract covers" \
+    expect "pkg POST /contracts/{hid}/renew gives the contract a new number and a period of its own, which covers the two that are not retired: the items under it show the new number and the new last day at once, each at the row_version it had ($versions), and the summary by contract has a row for the contract, labelled with its number and its vendor, beside the row of what no contract covers" \
         "$made $status $(json '[[r["label"], r["items"]] for r in d["rows"] if r["key"]]') $(json 'sum(r["key"] is None for r in d["rows"])')" \
-        "200 [\"UW-CON-0002\", \"own\", 3] [\"UW-CON-0002\", \"$far\"] ${versions% *} [\"UW-CON-0002\", \"$far\"] ${versions#* } 200 [[\"UW-CON-0002 (Upgrade Witness Networks)\", 2]] 1"
+        "200 [\"UW-CON-0002\", \"own\", 2] [\"UW-CON-0002\", \"$far\"] ${versions% *} [\"UW-CON-0002\", \"$far\"] ${versions#* } 200 [[\"UW-CON-0002 (Upgrade Witness Networks)\", 2]] 1"
 
     # The first stack from before is registered with an external system: the
     # registration is on the stack, and on none of its switches.
@@ -228,8 +229,9 @@ after_0008() {
 
     # Taken out again, so that the rest of this pass starts from reports as empty as
     # those of a new installation. Nothing of this is deleted: a line and a system are
-    # retired, a registration is marked as removed, a coverage is ended with a day, a
-    # contract and then its agreement are retired, and a request is cancelled.
+    # retired, a registration is marked as removed, a coverage is ended with a day,
+    # and the one that says its item left service says so no longer, a contract and
+    # then its agreement are retired, and a request is cancelled.
     api POST "/capacity-lines/$capacity/retire" '{"row_version": 1}'
     made=$status
     api PATCH "/registrations/$registration" '{"row_version": 1, "status": "removed"}'
@@ -238,7 +240,7 @@ after_0008() {
     made="$made $status"
     api GET "/contracts/$contract/coverage?limit=1000"
     for hid in $(json '" ".join(c["hid"] + ":" + str(c["row_version"]) for c in d["items"])'); do
-        api PATCH "/contracts/$contract/coverage/${hid%:*}" "{\"row_version\": ${hid#*:}, \"ends_on\": \"$(day_from_today -30)\"}"
+        api PATCH "/contracts/$contract/coverage/${hid%:*}" "{\"row_version\": ${hid#*:}, \"ends_on\": \"$(day_from_today -30)\", \"left_service\": false}"
         made="$made $status"
     done
     api GET "/contracts/$contract"

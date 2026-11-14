@@ -525,13 +525,17 @@ itself does not carry it, and the upgrades after it do:
 
 - a support agreement with two contracts in it, one that says nothing of its own and
   one that overrides the last day and the support level, a contract that stands by
-  itself and was renewed once, so that it has an earlier term, and one that has
-  expired;
-- coverage: items under the first contract, one of which was retired afterwards, one
-  cover that was ended, a second cover of one item under another contract, and one
-  under the contract that has expired;
-- a purchase request with two lines, on one of which two items arrived, a request
-  that is a draft and one that was cancelled;
+  itself and was renewed once, so that it has an earlier term, one that has expired,
+  and one whose term has ended and whose renewal is pending, which covers still;
+- a renewal that was entered early, on a contract and on the agreement, each kept as
+  the next term while the present one runs on;
+- coverage: items under the first contract, one of which was retired afterwards,
+  which ended its cover on that day and marked it as having left service, one cover
+  that a person ended, two items under more than one contract, and one under the
+  contract that has expired;
+- a purchase request with two lines, on one of which three items arrived, two with a
+  serial number and one as a count, named for its line, a request that is a draft and
+  one that was cancelled;
 - external systems, one of them retired, and registrations of the first stack and of
   an item, one pending, one confirmed at a moment written with no zone and one
   removed;
@@ -674,8 +678,9 @@ and says that choices may be added.
 After the upgrade the eight new tables and the eight lists must be empty and the new
 column hold nothing; no item may be covered, registered or have arrived on a line,
 and no group be registered. The coverage report must count every major item that the
-previous release had in Test, Prod or Down as in service with no cover, and nothing
-else; the `service_states` setting must be at its default; the summary by contract
+previous release had in Assigned, Test, Prod or Down as in service with no cover, and
+nothing else, with no contract lapsed; the `service_states` setting must be at its
+default; the summary by contract
 must have one row, of what no contract covers; the capacity report must show the
 support weight that the previous release counted as its only demand, and no supply;
 and the list of capacity categories must hold its six defaults and the site's own,
@@ -685,9 +690,11 @@ Last, what is new is tried on what was carried over. A purchase request is made 
 the model from before, the file that the previous release refused is applied, and
 one more item is received on the line. An agreement is made with the vendor from
 before and a contract in it, which has its period from the agreement; two items from
-before and the one that arrived are put under it, the item that was retired before
-the upgrade is refused, and the one that arrived is retired and is then listed as
-covered though out of service. The contract is renewed, and the items show the new
+before and the one that arrived are put under it, and the item that was retired before
+the upgrade is refused. The one that arrived is retired: its coverage is ended on
+that day and says that it left service, and the report lists it as out of service
+under a contract that still runs. The contract is renewed for a period that has
+begun, and the items show the new
 number at the `row_version` they had. The first stack is registered with an external
 system, and its switches are not. A capacity line is entered in the category that
 the site had put into the list before the upgrade. All of it is then retired, ended,
@@ -767,16 +774,23 @@ beside what an upgraded installation had of them. What the examples show of 0.6.
 looked for: the two contracts in the Cisco agreement have its period, and one of them
 overrides its support level, while the contract for the switches bought lately stands
 by itself; a spare arrived on a purchase line, took the place of a switch and is
-under that contract, and the switch that left is out of cover and its registration
-removed; the first line of that request has two of its four still to come; the core
-stack is registered with two systems and its switches with none; the portfolio of
+under that contract, and the switch that left is out of cover, a person having ended
+it, and its registration removed; the first line of that request has two of its four
+still to come; the core stack is registered with two systems, and its two switches,
+which have no registration of their own, say what their stack is registered with and
+are found by `registration.system`; the portfolio of
 Cisco has all four kinds, its agreement and its three contracts, and its filter lists
-as many items as it counts; and the summary by contract has a row for each contract
+as many items as it counts, and the portfolio of the reseller has the contracts that
+were bought through it, by the reseller in force; and the summary by contract has a
+row for each contract
 that covers something. The dates of the contracts are fixed in the files, so what
 the coverage and the end-of-life reports must count is worked out from the files for
-the day the report says it is of, and never written into the test: the major items
-in Test, Prod or Down, those of them that are covered and that are not, and those
-whose cover runs out within ninety days; and for each of the four dates the items
+the day the report says it is of, by the rules of D-140 to D-142, D-149 and D-150,
+and never written into the test: the major items
+in Assigned, Test, Prod or Down, those of them that are covered and that are not,
+those out of service that a contract still counts, those whose cover runs out within
+ninety days, those under more than one contract and those under a renewal that is
+pending; and for each of the four dates the items
 past it and within two years of it. The capacity lines of the examples are those of
 the worked example, against a support weight of 32 where the worked example has
 2,400: the report must give a demand of 2.11, the supply of 9 by category, a balance
@@ -943,22 +957,36 @@ export of the items placed here writes the location of each as its path.
 **The records of 0.6.0** follow, as scenarios S29 to S35 have them, each in small and
 asked for with a filter that finds these items alone. Two switches in Prod, each in a
 room of a region of its own, are put under one contract by one request, and the
-coverage report counts both as in service and covered; one is moved to Archived, and
-the report lists it as covered though out of service, with its contract, the filter
-of that section lists the same item on the item list, and the contract has both
-items still. A switch under no contract is the one item listed as in service with no
-cover, and a switch of a model whose LDoS is next June is the one that the
-end-of-life report lists as approaching it, in the fiscal year of that date. A second
+coverage report counts both as in service and covered; one is moved to Archived: its
+coverage ends on that day and says that the item left service, the report lists it as
+out of service under a contract that still runs, the filter of that section lists the
+same item on the item list, and the contract has both in scope and counts one as
+covered. A switch under no contract is the one item listed as in service with no
+cover, also once it was put under a contract by mistake and that coverage removed
+outright, with an audit event; and a switch of a model whose LDoS is next June is the
+one that the end-of-life report lists as approaching it, in the fiscal year of that
+date. A renewal with a period that starts after today is kept as the next term: the
+contract keeps its number and its period, its item is covered to the last day of the
+next term with nothing written to it, and the next term is withdrawn again. The
+contract's period is ended a month ago and its status said to be `renewal_pending`:
+it covers still, and the report lists its item under the renewals that are pending
+and not as uncovered; said to be `active` again, it has lapsed, covers nothing, and is
+found by the filter that the report gives for the lapsed contracts. A second
 vendor is given two switches, a virtual machine, a software application and a
 service: its portfolio has the four kinds, each with its items, its cost and its
 weight, the totals and the four models, and its filter exports the five items. A
 purchase request has a line of ten switches, none of which is an item or a component;
 six are received and are six items in Delivered that name the line, still no
 component, with four still to come, five more are refused, and the receipt is in the
-audit trail as one request: the receipt of the line, and the creation of each item. A stack of four is
+audit trail as one request: the receipt of the line, and the creation of each item.
+The other four are received as a count: each is named for its line and its place on
+it, and the request says `received` by itself, by the same request. A stack of four is
 registered with a monitoring system and an SDN controller, and not a second time with
-the first: both registrations are on the stack, none on its switches, and
-`filter=registration.system:eq:` finds the stack and no item. A site that is a draft,
+the first: both registrations are on the stack, none is a registration of its
+switches, and each switch says in `group_registrations` what its stack is registered
+with; `filter=registration.system:eq:` finds the stack, and among the items the four
+switches, while `ne` finds a fifth switch that is in no stack; a registration of that
+one, made by mistake, is removed outright, with an audit event. A site that is a draft,
 with a draft room and three draft switches in Prod, is in no list, no summary, no
 management report, no tree and no coverage report until the drafts are asked for, and
 the capacity report has their support weight with its drafts alone; made active, the
@@ -966,7 +994,8 @@ site, the room and the items are in every count. Of two switches one is moved to
 Archived: it is hidden by default, listed with its state when the archived are asked
 for, reached by its HID, and has its creation and its three moves in its history. A
 service account that holds View-only reads the lists, the reports and the portfolio of
-0.6.0, and is refused each of its sixteen writes with a `403`.
+0.6.0, and is refused each of its twenty-three writes with a `403`, the removal of a
+coverage and of a registration among them.
 Last, every agreement, contract, coverage, purchase request and line, external
 system, registration, capacity line and replacement is exported and imported back
 unchanged, as CSV and as JSON, and an export of the items that arrived names the line
@@ -1029,13 +1058,18 @@ that stands by itself into an agreement, as one change that is audited as made
 through the command line, and take it out again; `hirdir contracts renew` must give
 it a new number, period, purchase reference and cost, say how many items follow,
 leave those items unwritten and keep the earlier term, and exit with 4 when it is
-given neither a number nor a period; `hirdir purchases show` must print a request
+given neither a number nor a period; with a period that begins after today it must
+keep the renewal as the next term, which `hirdir contracts show` prints, and
+`--withdraw` must take it back; `hirdir agreements renew` must do the same for an
+agreement; `hirdir purchases show` must print a request
 with its lines and what is still to come, and `hirdir purchases receive` make the
-items that arrived on a line, where and when it is told, and exit with 4 for more
-than is still to come; `hirdir vendors portfolio` must print what the portfolio
+items that arrived on a line, where and when it is told, exit with 4 for more
+than is still to come, and with `--count` make the rest of a line as items named for
+it; `hirdir vendors portfolio` must print what the portfolio
 answers and, as CSV or JSON, write the items of the vendor with their cover; and
 `hirdir report coverage`, `end-of-life`, `replacements` and `capacity` must give what
-the reports of the API give at that moment, as JSON and as tables. They are pointed at
+the reports of the API give at that moment, as JSON and as tables, the coverage
+report with its seven counts, the lapsed contracts and each of its sections. They are pointed at
 the service itself, past nginx, because the test site's certificate is a throwaway
 that no client should be told to trust.
 

@@ -743,9 +743,9 @@ that a site had entered in the list is left as it is.
 
 Three things answer differently from now on, for a script that reads them:
 
-- The record of an item has `covered`, `covered_until`, `coverage`, `registrations`,
-  `purchase_line_hid` and `purchase_line`, and the record of a device group has
-  `registrations`.
+- The record of an item has `covered`, `covered_until`, `contract_count`, `coverage`,
+  `registrations`, `group_registrations`, `purchase_line_hid` and `purchase_line`, and
+  the record of a device group has `registrations`.
 - `GET /reports/summary` and `GET /reports/management` take `by=contract`, which 0.5.0
   refused.
 - A file of items may have a `purchase_line` column, which 0.5.0 rejected as unknown.

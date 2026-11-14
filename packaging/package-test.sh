@@ -2009,8 +2009,10 @@ witness_places() {
 # release for an upgrade to carry: a support agreement with two contracts in it, one
 # of which says nothing of its own and one of which overrides what it has from the
 # agreement, a contract that stands by itself and was renewed once, so that it has an
-# earlier term, and one that has expired; coverage under them, one ended, one of an
-# item that was retired afterwards and two of one item; purchase requests, one with two lines, on
+# earlier term, one that has expired, and one whose renewal is pending; a next term
+# on a contract and on the agreement; coverage under them, one ended by a person, one
+# of an item that was retired afterwards, which ended it, and two items under more
+# than one contract; purchase requests, one with two lines, on
 # one of which two items arrived, a draft and a cancelled one; external systems, one
 # of them retired, and registrations of an item and of a group, one pending and one
 # removed, one confirmed at a moment written with no zone; capacity lines of both
@@ -2023,7 +2025,7 @@ witness_places() {
 # not, and this is for the upgrades after it. Every name is invented.
 witness_money() {
     local vendor reseller agreement plain overriding alone expired request line system vault old
-    local made wanted hid staff last_year next_year ended entry arrived
+    local made wanted hid staff last_year next_year ended entry arrived pending
 
     last_year=$(day_from_today -200)
     next_year=$(day_from_today 400)
@@ -2068,15 +2070,15 @@ witness_money() {
     made=$status
     request=$(json_field hid)
     line=$(json 'd["lines"][0]["hid"]')
-    api POST "/purchase-lines/$line/receive" "{\"row_version\": 1, \"items\": [{\"serial_number\": \"UWN0000Q001\"}, {\"serial_number\": \"UWN0000Q002\", \"asset_tag\": \"UW-AT-0202\"}], \"delivered_on\": \"$ended\", \"location_hid\": \"$witness_room\"}"
-    made="$made $status $(json '[d["name"], d["received_quantity"], d["pending_quantity"]]')"
+    api POST "/purchase-lines/$line/receive" "{\"row_version\": 1, \"items\": [{\"serial_number\": \"UWN0000Q001\"}, {\"serial_number\": \"UWN0000Q002\", \"asset_tag\": \"UW-AT-0202\"}], \"quantity\": 1, \"delivered_on\": \"$ended\", \"location_hid\": \"$witness_room\"}"
+    made="$made $status $(json '[d["name"], d["received_quantity"], d["pending_quantity"], sorted(i["serial_number"] or i["name"] for i in d["items"])]')"
     for hid in $(json '" ".join(i["hid"] for i in d["items"])'); do witness_items+=("$hid"); done
-    arrived=$(json 'd["items"][1]["hid"]')
+    arrived=$(json '[i["hid"] for i in d["items"] if i["serial_number"] == "UWN0000Q002"][0]')
     api POST /purchase-requests '{"reference": "UW-REQ-1002", "status": "draft"}'
     made="$made $status"
     api POST /purchase-requests "{\"reference\": \"UW-REQ-1003\", \"status\": \"cancelled\", \"lines\": [{\"catalog_entry_hid\": \"$witness_entry\", \"quantity\": 1}]}"
-    expect "pkg purchases: a request with two lines, on the first of which two of four items arrived, in the room from before; a request that is a draft; and one that was cancelled" \
-        "$made $status" '201 201 ["UW-REQ-1001/1", 2, 2] 201 201'
+    expect "pkg purchases: a request with two lines, on the first of which three of four items arrived, in the room from before, two with a serial number and one as a count, which is named for its line; a request that is a draft; and one that was cancelled" \
+        "$made $status" '201 201 ["UW-REQ-1001/1", 3, 1, ["UW-REQ-1001/1-003", "UWN0000Q001", "UWN0000Q002"]] 201 201'
 
     # Coverage: three items under the first contract, one of which, an item that
     # arrived, is then retired, which ends no cover; one that was ended; a second
@@ -2095,9 +2097,30 @@ witness_money() {
     api POST "/contracts/$alone/renew" "{\"row_version\": 1, \"number\": \"UW-CON-2003\", \"ends_on\": \"$next_year\", \"purchase_reference\": \"UW-PO-0004\", \"annual_cost\": \"2600.00\"}"
     made="$made $status $(json '[d["number"], d["covered_items"]]')"
     api GET "/contracts/$alone/terms"
-    expect "pkg coverage: four items under the first contract, one of which is then retired and one whose cover was ended; a second cover of that one under another contract; one under the contract that has expired, which covers nothing; and the contract that stands by itself is renewed, with a new number, a new last day and a new purchase reference, and keeps its earlier term" \
+    expect "pkg coverage: four items under the first contract, one of which is then retired, which ends its cover that day, and one whose cover was ended by a person; a second cover of that one under another contract; one under the contract that has expired, which covers nothing; and the contract that stands by itself is renewed, with a new number, a new last day and a new purchase reference, and keeps its earlier term" \
         "$made $status $(json '[[t["number"], t["purchase_reference"], t["annual_cost"]] for t in d]')" \
         '201 [["UWN0000Q002", true], ["UWN0000S001", true], ["UWN0000S003", false], ["UWN0000X002", true]] 200 201 201 201 [false] 200 ["UW-CON-2003", 1] 200 [["UW-CON-1003", "UW-PO-0003", "2400.00"]]'
+
+    # What D-150 brought: a contract whose term has ended and whose renewal is
+    # pending, which covers still; a renewal that was entered early, on a contract
+    # and on the agreement, each kept as the next term; and so two items that more
+    # than one contract covers. The next term of the agreement begins before the last
+    # day that the second contract has of its own: one that began after it would
+    # leave that contract a period that ends before it starts, which is refused
+    # (D-151).
+    api POST /contracts "{\"number\": \"UW-CON-1005\", \"vendor_hid\": \"$vendor\", \"starts_on\": \"$(day_from_today -400)\", \"ends_on\": \"$(day_from_today -40)\", \"status\": \"renewal_pending\", \"account_manager\": \"Upgrade Jordan, +1 555 0182\"}"
+    made="$status $(json '[d["covers_today"], d["lapsed"]]')"
+    pending=$(json_field hid)
+    api POST "/contracts/$pending/coverage" "{\"items\": [{\"item_hid\": \"$witness_third\"}]}"
+    made="$made $status $(json '[c["in_force"] for c in d]')"
+    api POST "/contracts/$overriding/renew" "{\"row_version\": 1, \"number\": \"UW-CON-3002\", \"starts_on\": \"$(day_from_today 301)\", \"ends_on\": \"$(day_from_today 666)\", \"annual_cost\": \"3100.00\"}"
+    made="$made $status $(json '[d["number"], d["next_term"]["number"]]')"
+    api POST "/agreements/$agreement/renew" "{\"row_version\": 1, \"starts_on\": \"$(day_from_today 200)\", \"ends_on\": \"$(day_from_today 766)\", \"purchase_reference\": \"UW-PO-0005\"}"
+    made="$made $status $(json '[d["ends_on"], d["next_term"]["purchase_reference"]]')"
+    api GET /reports/coverage
+    expect "pkg a contract whose term ended forty days ago and whose renewal is pending, which covers an item still; a renewal entered early on a contract, and one on the agreement, each kept as the next term while the present one runs on; the coverage report counts three items in service as covered, two of them under more than one contract and one under the renewal that is pending, and the retired one as out of service under a contract that still runs" \
+        "$made $status $(json '[d["totals"][k] for k in ("covered", "out_of_service", "overlapping", "renewal_pending")]')" \
+        "201 [true, false] 201 [true] 200 [\"UW-CON-1002\", \"UW-CON-3002\"] 200 [\"$next_year\", \"UW-PO-0005\"] 200 [3, 1, 2, 1]"
 
     # External systems and registrations: of the first stack and of an item, one
     # pending, one confirmed at a moment written with no zone, and one removed.
@@ -2148,8 +2171,8 @@ witness_money() {
         "$made $status $(json '[d["active"]["other_demand"], d["active"]["supply"], d["with_drafts"]["supply"]]')" \
         "${wanted}200 200 [\"1.5\", \"3.5\", \"4.5\"]"
 
-    witness_contracts="$plain $overriding $alone $expired"
-    witness_undo=("contracts/$plain" "contracts/$overriding" "contracts/$alone" "contracts/$expired"
+    witness_contracts="$plain $overriding $alone $expired $pending"
+    witness_undo=("contracts/$plain" "contracts/$overriding" "contracts/$alone" "contracts/$expired" "contracts/$pending"
         "agreements/$agreement" "external-systems/$system" "external-systems/$vault" "${witness_undo[@]}")
     witness_lists+=("agreements /agreements?include_drafts=true&include_archived=true&limit=1000"
         "contracts /contracts?include_drafts=true&include_archived=true&limit=1000"
@@ -2524,8 +2547,8 @@ witness_undone() {
             wanted="${wanted}200 "
         done
         api GET '/contract-coverage?limit=1000'
-        for entry in $(json '" ".join(x["contract_hid"] + "/coverage/" + x["hid"] + ":" + str(x["row_version"]) for x in d["items"] if x["in_force"])'); do
-            api PATCH "/contracts/${entry%:*}" "{\"row_version\": ${entry#*:}, \"ends_on\": \"$day\"}"
+        for entry in $(json '" ".join(x["contract_hid"] + "/coverage/" + x["hid"] + ":" + str(x["row_version"]) for x in d["items"] if x["in_force"] or x["left_service"])'); do
+            api PATCH "/contracts/${entry%:*}" "{\"row_version\": ${entry#*:}, \"ends_on\": \"$day\", \"left_service\": false}"
             made="$made$status "
             wanted="${wanted}200 "
         done
@@ -4582,7 +4605,7 @@ client_places() {
 # the calendar, so each is held against what the API answers at the same moment, and
 # examples_cover() has held that against the files.
 client_cover() {
-    local code=0 wanted made name contract phones received said
+    local code=0 wanted made name contract phones received said early late
 
     made=""
     for name in agreements:agreements contracts:contracts purchases:purchase_requests systems:external_systems registrations:registrations capacity:capacity_lines; do
@@ -4658,6 +4681,35 @@ client_cover() {
         "$made $code" \
         "0 | RITM0019999 | 2600.00 | CON-2026-0107, 2026-09-01 to 2027-08-31, RITM0012345 | 4 4"
 
+    # A renewal that is entered before the term ends is the next term (D-150).
+    early=$(day_from_today 700)
+    late=$(day_from_today 1000)
+    cli_run "$work/cli.out" contracts renew CON-2027-0107 --number CON-2029-0107 --from "$early" --to "$late"
+    made="$code $(matches "^CON-2027-0107 renews as CON-2029-0107 on $early, to $late; until then it runs on as it is" "$work/cli.out")"
+    api GET "/contracts/$contract"
+    made="$made $(json '[d["number"], d["ends_on"], d["next_term"]["number"], d["next_term"]["starts_on"], d["next_term"]["ends_on"]]')"
+    api GET '/items?filter=asset_tag:eq:AT-000107'
+    made="$made $(json '[[[c["contract"]["number"] for c in i["coverage"]], i["covered_until"], i["row_version"]] for i in d["items"]]')"
+    cli_run "$work/cli.contract" contracts show CON-2027-0107
+    made="$made | $code $(sed -n 's/^next term: *//p' "$work/cli.contract")"
+    cli_run "$work/cli.out" contracts renew CON-2027-0107 --withdraw
+    made="$made | $code $(matches '^CON-2027-0107: the term that was to begin is withdrawn$' "$work/cli.out")"
+    api GET "/contracts/$contract"
+    expect "pkg hirdir contracts renew with a period that begins after today keeps the renewal as the next term and says so: the contract has the number and the period it had, the spare under it is covered to the last day of the next term at the row_version it had ($wanted), and hirdir contracts show prints the term to come; --withdraw takes it back" \
+        "$made $(json '[d["number"], d["next_term"]]')" \
+        "0 1 [\"CON-2027-0107\", \"2028-08-31\", \"CON-2029-0107\", \"$early\", \"$late\"] [[[\"CON-2027-0107\"], \"$late\", $wanted]] | 0 CON-2029-0107, $early to $late | 0 1 [\"CON-2027-0107\", null]"
+    cli_run "$work/cli.out" agreements renew 'Juniper Enterprise Agreement' --from "$early" --to "$late"
+    made="$code $(matches "^Juniper Enterprise Agreement renews on $early, to $late; until then it runs on as it is" "$work/cli.out")"
+    api GET '/agreements?filter=name:eq:Juniper%20Enterprise%20Agreement'
+    made="$made $(json '[[a["ends_on"], a["next_term"]["starts_on"], a["next_term"]["ends_on"]] for a in d["items"]]')"
+    cli_run "$work/cli.table" agreements list --sort name
+    made="$made | $code $(head -n 1 "$work/cli.table" | xargs) $(awk '$2 == "Juniper" {print $(NF - 1)}' "$work/cli.table")"
+    cli_run "$work/cli.out" agreements renew 'Juniper Enterprise Agreement' --withdraw
+    api GET '/agreements?filter=name:eq:Juniper%20Enterprise%20Agreement'
+    expect "pkg hirdir agreements renew does the same for an agreement, by its name: the Juniper agreement of the examples keeps its period and has a next term, which hirdir agreements list shows the first day of; --withdraw takes it back" \
+        "$made | $code $(json '[a["next_term"] for a in d["items"]]')" \
+        "0 1 [[\"2026-12-31\", \"$early\", \"$late\"]] | 0 HID NAME NUMBER VENDOR STARTS_ON ENDS_ON STATUS NEXT_STARTS_ON RECORD_STATUS $early | 0 [null]"
+
     # A purchase request, and a delivery on one of its lines.
     received=$(table 'sum(r["purchase_line"].startswith("RITM0012345/") for r in rows)' examples/items.csv)
     cli_run "$work/cli.purchase" purchases show RITM0012345
@@ -4676,6 +4728,14 @@ client_cover() {
     expect "S32 hirdir purchases receive takes a line as REFERENCE/NUMBER and a serial number for each item that arrived, with where and when: two power supplies of the line's model are made, Delivered, in the store room, on that day, each naming the line; three more, where two are still to come, exit with 4 and make nothing, and so does a line that there is not" \
         "$made $(json_field total)" \
         '0 1 [["PKG0000R001", "PWR-C1-715WAC-P", "Delivered", "RITM0012345/2", "Store Room", "2026-11-02"], ["PKG0000R002", "PWR-C1-715WAC-P", "Delivered", "RITM0012345/2", "Store Room", "2026-11-02"]] | 4 4 2'
+    cli_run "$work/cli.out" purchases receive RITM0012345/2 --count 2
+    made="$code $(matches '^2 items received on RITM0012345/2; 0 of 4 are still to come$' "$work/cli.out")"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=name:glob:RITM0012345/2-*' --data-urlencode 'sort=name'
+    made="$made $(json '[[i["name"], i["serial_number"], i["lifecycle_state"], i["purchase_line"]["name"]] for i in d["items"]]')"
+    api GET '/purchase-requests?filter=reference:eq:RITM0012345'
+    expect "S32 hirdir purchases receive --count takes the rest of the line as a count: two items are made that are named for the line and their place on it, with no serial number yet; the request, whose other line has not all arrived, keeps its status" \
+        "$made $(json '[[r["status"], r["pending_quantity"]] for r in d["items"]]')" \
+        "0 1 [[\"RITM0012345/2-003\", null, \"Delivered\", \"RITM0012345/2\"], [\"RITM0012345/2-004\", null, \"Delivered\", \"RITM0012345/2\"]] [[\"ordered\", $((4 - received))]]"
 
     # The portfolio of a vendor.
     api GET "/vendors/$(hid_of vendors 'name:eq:Cisco')/portfolio"
@@ -4695,20 +4755,26 @@ client_cover() {
     # The reports of 0.6.0.
     api GET /reports/coverage
     wanted=$(json 'd["totals"]')
-    said=$(json '" ".join(str(d["totals"][k]) for k in ("in_service", "covered", "uncovered", "out_of_service", "expiring"))')
+    said="$(json '" ".join(str(d["totals"][k]) for k in ("in_service", "covered", "uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending"))') $(json 'd["lapsed_contracts"]["count"]')"
     received=$(json 'd["totals"]["uncovered"]')
     cli_run "$work/cli-coverage.json" report coverage --format json
     cp "$work/cli-coverage.json" "$work/body"
     made="$code $(json 'd["totals"]')"
     cli_run "$work/cli.coverage" report coverage
-    expect "pkg hirdir report coverage, as json, counts what GET /reports/coverage counts, and on a terminal prints the day it is of and the five counts: in service, covered, uncovered, out of service and expiring" \
-        "$made | $code $(grep -c '^as of: *20[0-9-]*$' "$work/cli.coverage") $(for name in in_service covered uncovered out_of_service expiring; do sed -n "s/^$name: *\\([0-9]*\\).*/\\1/p" "$work/cli.coverage"; done | xargs)" \
+    expect "pkg hirdir report coverage, as json, counts what GET /reports/coverage counts, and on a terminal prints the day it is of, the seven counts, in service, covered, uncovered, out of service, expiring, overlapping and renewal pending, and how many contracts have lapsed" \
+        "$made | $code $(grep -c '^as of: *20[0-9-]*$' "$work/cli.coverage") $(for name in in_service covered uncovered out_of_service expiring overlapping renewal_pending 'lapsed contracts'; do sed -n "s/^$name: *\\([0-9]*\\).*/\\1/p" "$work/cli.coverage"; done | xargs)" \
         "0 $wanted | 0 1 $said"
     cli_run "$work/cli.coverage" report coverage --section uncovered
     made="$code $(head -n 1 "$work/cli.coverage" | xargs) $(($(matches . "$work/cli.coverage") - 1))"
+    cli_run "$work/cli.coverage" report coverage --section overlapping
+    made="$made | $code $(($(matches . "$work/cli.coverage") - 1))"
+    cli_run "$work/cli.coverage" report coverage --section renewal_pending
+    made="$made $code $(($(matches . "$work/cli.coverage") - 1))"
+    api GET /reports/coverage
+    wanted=$(json '"{} 0 {}".format(d["totals"]["overlapping"], d["totals"]["renewal_pending"])')
     cli_run /dev/null report coverage --section nothing-of-the-kind
-    expect "pkg hirdir report coverage --section uncovered is a table of the items in service that no contract covers, one line for each of the $received; a section that there is not exits with 4" \
-        "$made $code" "0 NAME PID SERIAL_NUMBER LIFECYCLE_STATE SITE COVERED_UNTIL $received 4"
+    expect "pkg hirdir report coverage --section uncovered is a table of the items in service that no contract covers, one line for each of the $received; --section overlapping and --section renewal_pending are tables of as many items as the report counts under each; a section that there is not exits with 4" \
+        "$made $code" "0 NAME PID SERIAL_NUMBER LIFECYCLE_STATE SITE COVERED_UNTIL $received | 0 $wanted 4"
     api GET '/reports/end-of-life?date=end_of_sale&section=past&limit=1000'
     wanted=$(json 'd["dates"]')
     received=$(json 'd["total"]')
@@ -4722,7 +4788,7 @@ client_cover() {
         "$made | $code $(table '[head, len(rows), all(r["end_of_sale"] for r in rows)]' "$work/cli-eol.csv")" \
         "0 [\"ldos\", $wanted] | 0 DATE PAST PAST_COMPONENTS APPROACHING APPROACHING_COMPONENTS 4 1 | 0 [[\"name\", \"pid\", \"serial_number\", \"lifecycle_state\", \"site\", \"end_of_sale\"], $received, true]"
     cli_run "$work/cli.replacements" report replacements
-    made="$code $(matches '^2026-06-30 +site2-sw-floor-03 +site2-sw-access-07 +Refresh +CHG0031877$' "$work/cli.replacements") $(matches '^[0-9]+ replacements: (.*, )?Refresh 1(,|$)' "$work/cli.replacements")"
+    made="$code $(matches '^2026-06-30 +site2-sw-floor-03 +site2-sw-access-07 +Refresh +CHG0031877$' "$work/cli.replacements") $(matches '^[0-9]+ replacements?: (.*, )?Refresh 1(,|$)' "$work/cli.replacements")"
     cli_run "$work/cli-replacements.csv" report replacements --filter 'reason:eq:refresh' --format csv
     expect "pkg hirdir report replacements lists the one replacement of the examples, the switch that left and the one that took its place, with the count of each reason beneath, one of them a refresh; with --filter, as csv, it is that row" \
         "$made | $code $(table '[head, [r["reference"] for r in rows]]' "$work/cli-replacements.csv")" \
@@ -4999,13 +5065,20 @@ records_of() {
 }
 
 # examples_service DAY WITHIN: what the coverage report must count of the examples on
-# a day, worked out from the files: the major items that are in Test, Prod or Down,
-# how many of them a contract covers on that day and how many none does, the items
-# that are covered though they are out of service, and the items in service whose
-# cover runs out within so many days. A contract covers when its status is active and
-# the day is within its period, which is its agreement's where it has none of its
-# own, and a coverage has the period of its contract where it has none of its own.
-# The dates of the examples are fixed, so the answer moves with the calendar.
+# a day, worked out from the files, by the rules of D-140 to D-142, D-149 and D-150:
+# the major items that are in Assigned, Test, Prod or Down, how many of them a
+# contract covers on that day and how many none does, the items out of service that a
+# contract still counts, the items in service whose cover runs out within so many
+# days, the items that more than one contract covers, and the items under a contract
+# whose renewal is pending.
+#
+# A contract covers on a day within its period when its status is active, and from
+# the first day of its period on when its status is renewal_pending. Its period is
+# its agreement's where it has none of its own, and the next term's from the day that
+# starts. A coverage has the period of its contract where it has none of its own. An
+# item is out of service and still counted when it is covered, or when its coverage
+# was ended because it left service and the term of its contract still runs. The
+# dates of the examples are fixed, so the answer moves with the calendar.
 examples_service() {
     python3 -c '
 import csv, json, sys
@@ -5014,6 +5087,9 @@ from datetime import date, timedelta
 def rows(name):
     with open(f"examples/{name}.csv", encoding="utf-8", newline="") as source:
         return list(csv.DictReader(source))
+
+def day_of(text):
+    return date.fromisoformat(text) if text else None
 
 day, within = date.fromisoformat(sys.argv[1]), timedelta(days=int(sys.argv[2]))
 agreements = {r["name"]: r for r in rows("agreements")}
@@ -5026,33 +5102,57 @@ def state(r):
         r = known[r["parent"]]
     return r["lifecycle_state"]
 
+def term(record):
+    """The first and the last day in force on the day, and the last day that is known."""
+    start, end = day_of(record.get("starts_on", "")), day_of(record.get("ends_on", ""))
+    ahead, last = day_of(record.get("next_starts_on", "")), day_of(record.get("next_ends_on", ""))
+    if ahead and ahead <= day:
+        return ahead, last, last
+    return start, end, last if ahead else end
+
+def period(contract):
+    own, above = term(contract), term(agreements.get(contract["agreement"], {}))
+    return [mine if text else theirs for mine, theirs, text in zip(
+        own, above, (contract["starts_on"], contract["ends_on"], contract["ends_on"]))]
+
 cover = {}
 for r in rows("contract-coverage"):
     contract = contracts[r["vendor"], r["contract"]]
-    if contract["status"] != "active" or contract["record_status"] != "active":
+    if contract["record_status"] != "active" or contract["status"] not in ("active", "renewal_pending"):
         continue
-    agreement = agreements.get(contract["agreement"], {})
-    period = [r[k] or contract[k] or agreement.get(k, "") for k in ("starts_on", "ends_on")]
-    cover.setdefault(id(known[r["item"]]), []).append(period)
+    start, end, last = period(contract)
+    pending = contract["status"] == "renewal_pending"
+    cover.setdefault(id(known[r["item"]]), []).append({
+        "contract": (r["vendor"], r["contract"]),
+        "start": day_of(r["starts_on"]) or start,
+        # A renewal that is pending covers past the last day of the period.
+        "end": day_of(r["ends_on"]) or (None if pending else end),
+        "last": day_of(r["ends_on"]) or last,
+        "runs": (not start or start <= day) and (pending or not end or day <= end),
+        "left": r.get("left_service", "") == "true",
+        "pending": pending,
+        "active": contract["status"] == "active",
+    })
 
-def covered(r):
-    return any(
-        (not start or date.fromisoformat(start) <= day) and (not end or day <= date.fromisoformat(end))
-        for start, end in cover.get(id(r), [])
-    )
+def covering(r):
+    return [c for c in cover.get(id(r), [])
+            if (not c["start"] or c["start"] <= day) and (not c["end"] or day <= c["end"])]
 
 def until(r):
-    ends = [end for _, end in cover.get(id(r), [])]
-    return None if not ends or "" in ends else max(date.fromisoformat(end) for end in ends)
+    ends = [c["last"] for c in cover.get(id(r), []) if c["active"]]
+    return None if not ends or None in ends else max(ends)
 
-service = [r for r in items if not r["parent"] and r["record_status"] == "active" and state(r) in ("Test", "Prod", "Down")]
+view = [r for r in items if r["record_status"] == "active" and state(r) != "Archived"]
+service = [r for r in view if not r["parent"] and state(r) in ("Assigned", "Test", "Prod", "Down")]
 gone = [r for r in items if r["record_status"] == "retired" or state(r) in ("Pending-Removal", "Released", "Archived")]
 print(json.dumps({
-    "covered": sum(covered(r) for r in service),
-    "expiring": sum(1 for r in service if covered(r) and until(r) and until(r) <= day + within),
+    "covered": sum(bool(covering(r)) for r in service),
+    "expiring": sum(1 for r in service if covering(r) and until(r) and until(r) <= day + within),
     "in_service": len(service),
-    "out_of_service": sum(covered(r) for r in gone),
-    "uncovered": sum(not covered(r) for r in service),
+    "out_of_service": sum(1 for r in gone if covering(r) or any(c["left"] and c["runs"] for c in cover.get(id(r), []))),
+    "overlapping": sum(len({c["contract"] for c in covering(r)}) > 1 for r in view),
+    "renewal_pending": sum(any(c["pending"] for c in covering(r)) for r in view),
+    "uncovered": sum(not covering(r) for r in service),
 }, sort_keys=True))' "$1" "$2"
 }
 
@@ -5123,7 +5223,7 @@ examples_cover() {
     # what is looked for is worked out from the files for the day the report is of.
     api GET /reports/coverage
     day=$(json_field as_of)
-    expect "S29 GET $prefix/api/v1/reports/coverage counts of the examples, on $day, what their files give for that day: the major items in Test, Prod or Down, those of them that a contract covers and those that none does, what is covered though out of service, and what runs out within 90 days" \
+    expect "S29 GET $prefix/api/v1/reports/coverage counts of the examples, on $day, what their files give for that day: the major items in Assigned, Test, Prod or Down, those of them that a contract covers and those that none does, what is out of service and still counted by a contract, what runs out within 90 days, what more than one contract covers, and what is under a contract whose renewal is pending" \
         "$status $(json 'd["totals"]')" "200 $(examples_service "$day" 90)"
     api GET '/reports/coverage?section=uncovered&limit=1000'
     made="$status $(json '[d["section"], d["total"] == d["sections"]["uncovered"]["count"] == d["totals"]["uncovered"] == len(d["items"]), sorted({(i["is_major"], i["covered"], i["effective"]["lifecycle_state"]["value"] in d["service_states"]) for i in d["items"]})]')"
@@ -5140,9 +5240,9 @@ examples_cover() {
     # A spare that arrived on a purchase line, was put under the contract that stands
     # by itself, and took the place of a switch.
     api GET '/items?filter=asset_tag:in:AT-000107,AT-000133&sort=asset_tag&include_archived=true'
-    expect "pkg a spare of the examples arrived on a purchase line, took the place of a switch of the floor stack, and is under the contract that stands by itself; the switch that left is not covered, its cover having ended on the day it was replaced, and its registration is marked as removed" \
-        "$status $(json '[[i["asset_tag"], (i["purchase_line"] or {}).get("name"), (i["replaces"] or {}).get("serial_number"), (i["replaced_by"] or {}).get("serial_number"), [[c["contract"]["number"], c["ends_on"]] for c in i["coverage"]], [[x["system"]["name"], x["status"]] for x in i["registrations"]]] for i in d["items"]]') $(json '[i["covered"] for i in d["items"]][1:]')" \
-        '200 [["AT-000107", "RITM0012345/1", "JAE0000X003", null, [["CON-2026-0107", "2027-08-31"]], []], ["AT-000133", null, null, "FCW0000X007", [["CON-2025-0001", "2026-06-30"]], [["NetWatch", "removed"]]]] [false]'
+    expect "pkg a spare of the examples arrived on a purchase line, took the place of a switch of the floor stack, and is under the contract that stands by itself; the switch that left is not covered, its cover having been ended by a person on the day it was replaced, and its registration is marked as removed" \
+        "$status $(json '[[i["asset_tag"], (i["purchase_line"] or {}).get("name"), (i["replaces"] or {}).get("serial_number"), (i["replaced_by"] or {}).get("serial_number"), [[c["contract"]["number"], c["ends_on"], c["left_service"]] for c in i["coverage"]], [[x["system"]["name"], x["status"]] for x in i["registrations"]]] for i in d["items"]]') $(json '[[i["covered"], i["contract_count"]] for i in d["items"]][1:]')" \
+        '200 [["AT-000107", "RITM0012345/1", "JAE0000X003", null, [["CON-2026-0107", "2027-08-31", false]], []], ["AT-000133", null, null, "FCW0000X007", [["CON-2025-0001", "2026-06-30", false]], [["NetWatch", "removed"]]]] [[false, 0]]'
     received=$(table 'sum(r["purchase_line"] == "RITM0012345/1" for r in rows)' examples/items.csv)
     api GET '/purchase-lines?filter=request.reference:eq:RITM0012345&sort=line'
     expect "S32 the first line of a purchase request of the examples is for four switches: the $received that examples/items.csv says arrived on it are received and the rest are still to come, and nothing has arrived on its second line" \
@@ -5156,10 +5256,10 @@ examples_cover() {
     # S33 on the examples: the core stack is registered, and its switches are not.
     authorized GET "$prefix/api/v1/device-groups" --get --data-urlencode 'filter=registration.system:eq:NetWatch'
     made="$status $(json '[[g["name"], sorted([x["system"]["name"], x["external_id"]] for x in g["registrations"])] for g in d["items"]]')"
-    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:eq:NetWatch' --data-urlencode 'include_archived=true'
-    expect "S33 the core stack of the examples is registered with the monitoring system and with the SDN controller, and is the one device group that filter=registration.system:eq:NetWatch finds; among the items the filter finds the router that is registered itself, and neither a switch of the stack nor the switch whose registration was removed" \
-        "$made $status $(json '[i["hostname"] for i in d["items"]]')" \
-        '200 [["site2-sw-core", [["Fabric Director", "site2-sw-core"], ["NetWatch", "node-1001"]]]] 200 ["site2-rtr-wan-01"]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:eq:NetWatch' --data-urlencode 'include_archived=true' --data-urlencode 'sort=hostname'
+    expect "S33 the core stack of the examples is registered with the monitoring system and with the SDN controller, and is the one device group that filter=registration.system:eq:NetWatch finds; among the items the filter finds what that system knows: the router that is registered itself, and the two switches of the stack, which have no registration of their own and say what their stack is registered with, and not the switch whose registration was removed" \
+        "$made $status $(json '[[i["hostname"], len(i["registrations"]), sorted(x["system"]["name"] for x in i["group_registrations"])] for i in d["items"]]')" \
+        '200 [["site2-sw-core", [["Fabric Director", "site2-sw-core"], ["NetWatch", "node-1001"]]]] 200 [["site2-rtr-wan-01", 2, []], ["site2-sw-core-01", 0, ["Fabric Director", "NetWatch"]], ["site2-sw-core-02", 0, ["Fabric Director", "NetWatch"]]]'
 
     # The capacity lines of the examples are those of the worked example, and the
     # examples weigh 32 where the worked example has 2,400: the supply is the same,
@@ -5180,9 +5280,9 @@ examples_cover() {
         "200 [[\"hardware\", true], [\"virtual_machine\", false], [\"software\", false], [\"service\", false]] [\"Cisco Enterprise Agreement\"] [\"CON-2025-0001\", \"CON-2025-0002\", \"CON-2026-0107\"] 200 $wanted"
     made=$(hid_of vendors 'name:eq:Example Reseller')
     api GET "/vendors/$made/portfolio"
-    expect "pkg the portfolio of the reseller of the examples, which makes nothing, lists the contract that was bought through it and the capacity line that names it" \
-        "$status $(json '[d["totals"]["items"], [c["number"] for c in d["contracts"]], [l["name"] for l in d["capacity_lines"]]]')" \
-        '200 [0, ["CON-2026-0107"], ["Escalation partner"]]'
+    expect "pkg the portfolio of the reseller of the examples, which makes nothing, lists the contracts that were bought through it, by the reseller in force: the one that names it, and the two that have it from the Cisco agreement; and the capacity line that names it" \
+        "$status $(json '[d["totals"]["items"], sorted(c["number"] for c in d["contracts"]), [l["name"] for l in d["capacity_lines"]]]')" \
+        '200 [0, ["CON-2025-0001", "CON-2025-0002", "CON-2026-0107"], ["Escalation partner"]]'
 
     # P-104: by contract, an item is in the row of each contract that covers it today.
     api GET '/contracts?limit=1000'
@@ -5242,6 +5342,7 @@ cover_and_purchases() {
     local vendor maker switch old made wanted number name hid row_version last_year next_year ldos
     local east="" west="" land="" first second bare ending contract request line stack watch fabric
     local site suite kept gone before entity rows received own_token
+    local other mistake early late alone registration agreement routes
 
     last_year=$(day_from_today -200)
     next_year=$(day_from_today 400)
@@ -5281,7 +5382,7 @@ cover_and_purchases() {
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
     expect "S29 a vendor, a model and a contract of a period that today is in are made, and two switches in Prod, each in a room of a site in a region of its own, are put under the contract by one request: GET $prefix/api/v1/reports/coverage, asked for these items alone, counts both as in service and covered" \
         "$made $status $(json 'd["totals"]')" \
-        '201 201 201 201 201 201 201 201 201 201 201 201 201 [["PKG0000V001", true], ["PKG0000V002", true]] 200 {"covered": 2, "expiring": 0, "in_service": 2, "out_of_service": 0, "uncovered": 0}'
+        '201 201 201 201 201 201 201 201 201 201 201 201 201 [["PKG0000V001", true], ["PKG0000V002", true]] 200 {"covered": 2, "expiring": 0, "in_service": 2, "out_of_service": 0, "overlapping": 0, "renewal_pending": 0, "uncovered": 0}'
     row_version=1
     made=""
     for number in Pending-Removal Released Archived; do
@@ -5290,19 +5391,21 @@ cover_and_purchases() {
         row_version=$(json_field row_version)
     done
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view" --data-urlencode 'section=out_of_service'
-    made="$made$status $(json '[d["totals"]["in_service"], d["totals"]["out_of_service"], [[i["serial_number"], i["covered"], i["effective"]["lifecycle_state"]["value"], [c["contract"]["number"] for c in i["coverage"]]] for i in d["items"]]]')"
+    made="$made$status $(json '[d["totals"]["in_service"], d["totals"]["out_of_service"], [[i["serial_number"], i["effective"]["lifecycle_state"]["value"], [[c["contract"]["number"], c["ends_on"] == d["as_of"], c["left_service"]] for c in i["coverage"]]] for i in d["items"]]]')"
     api POST /items/query "$(json '{"filter": {"and": [d["sections"]["out_of_service"]["filter"], {"field": "serial_number", "op": "glob", "value": "PKG0000V*"}]}, "include_archived": d["sections"]["out_of_service"]["include_archived"]}')"
-    expect "S29 the second is moved to Archived in three moves: the report lists it as covered though out of service, with its contract, and counts one item in service; the filter of that section lists the same item on the item list" \
+    expect "S29 the second is moved to Archived in three moves: its coverage ended on that day, and says that the item left service; the report counts one item in service and lists the other as out of service under a contract that still runs; the filter of that section lists the same item on the item list" \
         "$made $status $(json '[i["serial_number"] for i in d["items"]]')" \
-        '200 200 200 200 [1, 1, [["PKG0000V002", true, "Archived", ["PKG-CON-0001"]]]] 200 ["PKG0000V002"]'
+        '200 200 200 200 [1, 1, [["PKG0000V002", "Archived", [["PKG-CON-0001", true, true]]]]] 200 ["PKG0000V002"]'
     api GET "/contracts/$contract/coverage"
-    made="$status $(json '[d["total"], sorted(c["item"]["serial_number"] for c in d["items"]), sorted({c["ends_on"] for c in d["items"]}, key=str)]')"
+    made="$status $(json '[d["total"], sorted([c["item"]["serial_number"], c["left_service"], c["ends_on"] is None] for c in d["items"])]')"
+    api GET "/items/$first"
+    made="$made $(json '[d["covered"], d["contract_count"]]')"
     api GET "/contracts/$contract"
-    expect "S29 and nothing ended by itself: GET $prefix/api/v1/contracts/{hid}/coverage has both items still, neither with a last day of its own, and the contract covers two items" \
-        "$made $status $(json_field covered_items)" \
-        '200 [2, ["PKG0000V001", "PKG0000V002"], [null]] 200 2'
+    expect "S29 the contract still runs and still covers the switch that is in service; its coverage of the other is on record, ended: GET $prefix/api/v1/contracts/{hid}/coverage has both, the contract has two items in scope, and counts one as covered, as every count leaves out an archived item" \
+        "$made $status $(json '[d["covers_today"], d["items_in_scope"], d["covered_items"], d["lapsed"]]')" \
+        '200 [2, [["PKG0000V001", false, true], ["PKG0000V002", true, false]]] [true, 1] 200 [true, 2, 1, false]'
 
-    # S30: an item in Prod with no coverage, and one whose model's LDoS is next year.
+    # S30: an item in Prod with no coverage, and one whose model's LDoS is next year.    # S30: an item in Prod with no coverage, and one whose model's LDoS is next year.
     api POST /items "{\"catalog_entry_hid\": \"$switch\", \"serial_number\": \"PKG0000V003\", \"lifecycle_state\": \"Prod\"}"
     made=$status
     bare=$(json_field hid)
@@ -5311,16 +5414,55 @@ cover_and_purchases() {
     ending=$(json_field hid)
     api POST /contracts "{\"number\": \"PKG-CON-0002\", \"vendor_hid\": \"$vendor\", \"starts_on\": \"$last_year\", \"ends_on\": \"$next_year\"}"
     made="$made $status"
-    api POST "/contracts/$(json_field hid)/coverage" "{\"items\": [{\"item_hid\": \"$ending\"}]}"
+    other=$(json_field hid)
+    api POST "/contracts/$other/coverage" "{\"items\": [{\"item_hid\": \"$ending\"}]}"
     made="$made $status"
+    # A coverage that was a mistake is removed outright: the first switch was never
+    # meant to be under the second contract.
+    api POST "/contracts/$other/coverage" "{\"items\": [{\"item_hid\": \"$bare\"}]}"
+    mistake=$(json 'd[0]["hid"]')
+    api DELETE "/contracts/$other/coverage/$mistake"
+    made="$made $status"
+    api GET "/audit-events?record_hid=$mistake&limit=1"
+    made="$made $(json '[[e["record_type"], e["action"]] for e in d["items"]]')"
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view" --data-urlencode 'section=uncovered'
-    expect "S30 a switch in Prod under no contract, and one of a model whose LDoS is on $ldos, under a second contract: the coverage report lists the first, and no other, as in service with no cover" \
-        "$made $status $(json '[d["totals"]["in_service"], d["totals"]["uncovered"], [[i["hid"] == "'"$bare"'", i["serial_number"], i["covered"]] for i in d["items"]]]')" \
-        '201 201 201 201 200 [3, 1, [[true, "PKG0000V003", false]]]'
+    expect "S30 a switch in Prod under no contract, and one of a model whose LDoS is on $ldos, under a second contract; the first is put under that contract by mistake and its coverage is removed outright, with an audit event: the coverage report lists the first, and no other, as in service with no cover" \
+        "$made $status $(json '[d["totals"]["in_service"], d["totals"]["uncovered"], [[i["hid"] == "'"$bare"'", i["serial_number"], i["covered"], i["coverage"]] for i in d["items"]]]')" \
+        '201 201 201 201 204 [["contract_coverage", "delete"]] 200 [3, 1, [[true, "PKG0000V003", false, []]]]'
     authorized GET "$prefix/api/v1/reports/end-of-life" --get --data-urlencode "filter=$view" --data-urlencode 'section=approaching'
     expect "S30 GET $prefix/api/v1/reports/end-of-life, which is of the LDoS date unless asked otherwise, lists the second as approaching it, with nothing past it, in the fiscal year that the date falls in" \
         "$status $(json '[d["date"], d["dates"]["ldos"]["approaching"], d["dates"]["ldos"]["past"], [[i["serial_number"], i["effective"]["ldos"]["value"], i["effective"]["ldos"]["source"]] for i in d["items"]], [[y["fiscal_year"], y["items"]] for y in d["by_fiscal_year"]]]')" \
         "200 [\"ldos\", {\"component_count\": 1, \"items\": 1}, {\"component_count\": 0, \"items\": 0}, [[\"PKG0000V004\", \"$ldos\", \"catalog\"]], [[${ldos%%-*}, 1]]]"
+
+    # D-150: a renewal that is entered early is the next term, and the present one
+    # runs on; a renewal that is late is said to be pending, and the contract covers
+    # past its last day; one that says nothing has lapsed.
+    early=$(day_from_today 500)
+    late=$(day_from_today 800)
+    api POST "/contracts/$other/renew" "{\"row_version\": 1, \"number\": \"PKG-CON-9002\", \"starts_on\": \"$early\", \"ends_on\": \"$late\", \"purchase_reference\": \"PKG-REQ-0009\"}"
+    made="$status $(json '[d["number"], d["ends_on"], d["next_term"]["number"], d["next_term"]["starts_on"], d["next_term"]["purchase_reference"]]')"
+    api GET "/items/$ending"
+    made="$made $(json '[[c["contract"]["number"] for c in d["coverage"]], d["covered"], d["covered_until"], d["row_version"]]')"
+    api POST "/contracts/$other/renew" '{"row_version": 2, "withdraw": true}'
+    made="$made $status $(json '[d["number"], d["next_term"]]')"
+    api GET "/items/$ending"
+    expect "pkg POST $prefix/api/v1/contracts/{hid}/renew with a period that starts after today keeps the renewal as the next term: the contract has the number and the period it had, the item under it is covered to the last day of the next term, and nothing is written to it; withdrawn, the next term is gone and the item is covered to the last day it was" \
+        "$made $(json '[d["covered_until"], d["row_version"]]')" \
+        "200 [\"PKG-CON-0002\", \"$next_year\", \"PKG-CON-9002\", \"$early\", \"PKG-REQ-0009\"] [[\"PKG-CON-0002\"], true, \"$late\", 1] 200 [\"PKG-CON-0002\", null] [\"$next_year\", 1]"
+    api PATCH "/contracts/$other" "{\"row_version\": 3, \"ends_on\": \"$(day_from_today -30)\", \"status\": \"renewal_pending\"}"
+    made="$status $(json '[d["status"], d["covers_today"], d["lapsed"]]')"
+    authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view" --data-urlencode 'section=renewal_pending'
+    made="$made $status $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], [[i["serial_number"], i["covered"], [c["contract"]["status"] for c in i["coverage"]]] for i in d["items"]]]')"
+    api PATCH "/contracts/$other" '{"row_version": 4, "status": "active"}'
+    made="$made | $status $(json '[d["status"], d["covers_today"], d["lapsed"]]')"
+    authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
+    made="$made $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], d["lapsed_contracts"]["count"] >= 1, d["lapsed_contracts"]["filter"]]')"
+    api GET '/contracts?filter=lapsed:eq:true&limit=1000'
+    made="$made $status $(json 'sum(c["number"] == "PKG-CON-0002" for c in d["items"])')"
+    api PATCH "/contracts/$other" "{\"row_version\": 5, \"ends_on\": \"$next_year\"}"
+    expect "pkg the period of the contract is ended a month ago and its status said to be renewal_pending: it covers still, and the coverage report lists its item under the renewals that are pending, and not as uncovered; said to be active again, with its period past, it has lapsed and covers nothing, its item is uncovered, and the report counts the lapsed contracts, among which the list of contracts finds it; given its last day back, it has not lapsed" \
+        "$made | $status $(json '[d["covers_today"], d["lapsed"]]')" \
+        '200 ["renewal_pending", true, false] 200 [1, 1, [["PKG0000V004", true, ["renewal_pending"]]]] | 200 ["active", false, true] [2, 0, true, {"field": "lapsed", "op": "eq", "value": true}] 200 1 | 200 [true, false]'
 
     # S31: a vendor with switches, a virtual machine template, a software application
     # and a service.
@@ -5382,6 +5524,17 @@ cover_and_purchases() {
         "$status $(json 'sorted([e["record_type"], e["action"]] for e in d["items"] if e["request_id"] == "'"$received"'")')" \
         '200 [["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["purchase_line", "receive"]]'
 
+    api GET "/purchase-lines/$line"
+    api POST "/purchase-lines/$line/receive" "{\"row_version\": $(json_field row_version), \"quantity\": 4}"
+    made="$status $(json '[d["received_quantity"], d["pending_quantity"], [i["name"] for i in d["items"]]]')"
+    received=$(header x-request-id)
+    api GET "/purchase-requests/$request"
+    made="$made $(json_field status)"
+    api GET '/audit-events?limit=50'
+    expect "S32 the other four arrive with nothing to know them by yet, and are received as a count: each is an item named for its line and its place on it, and the request, all of it arrived, says received by itself, by the same request, with an audit event of its own" \
+        "$made $(json 'sorted([e["record_type"], e["action"]] for e in d["items"] if e["request_id"] == "'"$received"'")')" \
+        '201 [10, 0, ["PKG-REQ-0001/1-007", "PKG-REQ-0001/1-008", "PKG-REQ-0001/1-009", "PKG-REQ-0001/1-010"]] received [["item", "create"], ["item", "create"], ["item", "create"], ["item", "create"], ["purchase_line", "receive"], ["purchase_request", "update"]]'
+
     # S33: a stack registered with a monitoring system and an SDN controller.
     made=""
     wanted=""
@@ -5408,18 +5561,33 @@ cover_and_purchases() {
     api GET "/device-groups/$stack"
     made="$made | $(json 'sorted([x["system"]["name"], x["external_id"]] for x in d["registrations"])')"
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=serial_number:glob:PKG0000V03*'
-    expect "S33 four switches are made a stack, and the stack is registered with a monitoring system and with an SDN controller, and not a second time with the first: both registrations are on the stack, and none on any of its four switches" \
-        "$made $(json '[d["total"], sorted({json.dumps(i["registrations"]) for i in d["items"]})]')" \
-        '201 201 201 201 201 201 201 201 ["registered", "pkgtest-registered"] 201 409 | [["Package Test Fabric", "pkgtest-registered"], ["Package Test Watch", "node-4411"]] [4, ["[]"]]'
+    expect "S33 four switches are made a stack, and the stack is registered with a monitoring system and with an SDN controller, and not a second time with the first: both registrations are on the stack, and none is among the registrations of any of its four switches, each of which says in group_registrations what its stack is registered with" \
+        "$made $(json '[d["total"], sorted({(len(i["registrations"]), tuple(sorted(x["system"]["name"] + " knows " + x["group"]["name"] for x in i["group_registrations"]))) for i in d["items"]})]')" \
+        '201 201 201 201 201 201 201 201 ["registered", "pkgtest-registered"] 201 409 | [["Package Test Fabric", "pkgtest-registered"], ["Package Test Watch", "node-4411"]] [4, [[0, ["Package Test Fabric knows pkgtest-registered", "Package Test Watch knows pkgtest-registered"]]]]'
+    api POST /items "{\"catalog_entry_hid\": \"$switch\", \"serial_number\": \"PKG0000V039\"}"
+    alone=$(json_field hid)
     authorized GET "$prefix/api/v1/device-groups" --get --data-urlencode 'filter=registration.system:eq:Package Test Watch'
     made="$status $(json '[g["name"] for g in d["items"]]')"
-    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:eq:Package Test Watch'
-    made="$made $status $(json_field total)"
-    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:empty:true serial_number:glob:PKG0000V03*'
-    expect "S33 filter=registration.system:eq: finds the stack among the device groups and no item, and the four switches are among the items that are registered nowhere" \
-        "$made $status $(json_field total)" '200 ["pkgtest-registered"] 200 0 200 4'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:eq:Package Test Watch' --data-urlencode 'sort=serial_number'
+    made="$made $status $(json '[i["serial_number"][-3:] for i in d["items"]]')"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=registration.system:ne:Package Test Watch serial_number:glob:PKG0000V03*'
+    expect "S33 filter=registration.system:eq: finds the stack among the device groups, and among the items what that system knows, which is each of the four switches through their stack; a fifth switch, in no stack, is the one that registration.system:ne: finds, which the system does not know" \
+        "$made $status $(json '[i["serial_number"] for i in d["items"]]')" \
+        '200 ["pkgtest-registered"] 200 ["031", "032", "033", "034"] 200 ["PKG0000V039"]'
+    # A registration that was a mistake is removed outright.
+    api POST /registrations "{\"system_hid\": \"$fabric\", \"item_hid\": \"$alone\"}"
+    made=$status
+    registration=$(json_field hid)
+    api DELETE "/registrations/$registration"
+    made="$made $status"
+    api GET "/audit-events?record_hid=$registration&limit=1"
+    made="$made $(json '[[e["record_type"], e["action"]] for e in d["items"]]')"
+    api GET "/items/$alone"
+    expect "pkg the fifth switch is registered with the SDN controller by mistake, and DELETE $prefix/api/v1/registrations/{hid} removes the registration outright, with an audit event: the switch is registered nowhere" \
+        "$made $status $(json 'd["registrations"]')" \
+        '201 204 [["registration", "delete"]] 200 []'
 
-    # S34: a draft site with draft items is left out of every count until made active.
+    # S34: a draft site with draft items is left out of every count until made active.    # S34: a draft site with draft items is left out of every count until made active.
     view='serial_number:glob:PKG0000V04*'
     before=$(weighed)
     api POST /sites "{\"name\": \"Package Test Draft Site\", \"region_hid\": \"$land\", \"record_status\": \"draft\"}"
@@ -5483,8 +5651,16 @@ cover_and_purchases() {
     made=$status
     api POST "/users/$(json 'd["user"]["hid"]')/service-tokens" '{"name": "package test"}'
     made="$made $status"
+    routes=$(json_field secret)
+    # What the writes are tried on: a coverage and a registration made above, and an
+    # agreement of the examples.
+    api GET "/contracts/$contract/coverage?limit=1"
+    mistake=$(json 'd["items"][0]["hid"]')
+    api GET "/device-groups/$stack"
+    registration=$(json 'd["registrations"][0]["hid"]')
+    agreement=$(hid_of agreements 'name:eq:Cisco Enterprise Agreement')
     own_token=$token
-    token=$(json_field secret)
+    token=$routes
     wanted=""
     for name in agreements contracts "contracts/$contract/terms" "contracts/$contract/coverage" contract-coverage purchase-requests purchase-lines external-systems registrations capacity-lines reports/coverage reports/end-of-life reports/replacements reports/capacity "vendors/$vendor/portfolio"; do
         api GET "/$name"
@@ -5492,18 +5668,45 @@ cover_and_purchases() {
         wanted="$wanted 200"
     done
     made="$made |"
-    for name in "POST /agreements" "POST /contracts" "PATCH /contracts/$contract" "POST /contracts/$contract/renew" "POST /contracts/$contract/retire" "POST /contracts/$contract/coverage" "POST /purchase-requests" "PATCH /purchase-requests/$request" "POST /purchase-requests/$request/lines" "PATCH /purchase-lines/$line" "POST /purchase-lines/$line/receive" "POST /external-systems" "PATCH /external-systems/$watch" "POST /external-systems/$watch/retire" "POST /registrations" "POST /capacity-lines"; do
+    routes=0
+    for name in "POST /agreements" "PATCH /agreements/$agreement" "POST /agreements/$agreement/renew" "POST /agreements/$agreement/retire" \
+        "POST /contracts" "PATCH /contracts/$contract" "POST /contracts/$contract/renew" "POST /contracts/$contract/retire" \
+        "POST /contracts/$contract/coverage" "PATCH /contracts/$contract/coverage/$mistake" "DELETE /contracts/$contract/coverage/$mistake" \
+        "POST /purchase-requests" "PATCH /purchase-requests/$request" "POST /purchase-requests/$request/lines" \
+        "PATCH /purchase-lines/$line" "POST /purchase-lines/$line/receive" \
+        "POST /external-systems" "PATCH /external-systems/$watch" "POST /external-systems/$watch/retire" \
+        "POST /registrations" "PATCH /registrations/$registration" "DELETE /registrations/$registration" \
+        "POST /capacity-lines"; do
         api "${name% *}" "${name#* }" '{"row_version": 1}'
         made="$made $status"
         wanted="$wanted 403"
+        routes=$((routes + 1))
     done
     token=$own_token
+    api GET "/contracts/$contract/coverage?limit=1"
+    made="$made | $(json 'd["items"][0]["hid"] == "'"$mistake"'"')"
+    api GET "/device-groups/$stack"
+    made="$made $(json 'sum(x["hid"] == "'"$registration"'" for x in d["registrations"])')"
     api GET "/contracts/$contract"
-    expect "pkg a service account that holds View-only reads the agreements, the contracts, a contract's terms and coverage, the purchase requests and lines, the external systems, the registrations, the capacity lines, the four reports and the portfolio of a vendor, and is refused every write of them, sixteen routes: to make, change, renew, retire, cover, receive and register; the contract it tried is as it was" \
+    expect "pkg a service account that holds View-only reads the agreements, the contracts, a contract's terms and coverage, the purchase requests and lines, the external systems, the registrations, the capacity lines, the four reports and the portfolio of a vendor, and is refused every write of them, $routes routes: to make, change, renew, retire, cover, end or remove a coverage, receive, register and remove a registration; the coverage and the registration it tried to remove are there, and the contract is as it was" \
         "$made $status $(json '[d["number"], d["record_status"], d["row_version"]]')" \
-        "201 201${wanted/ 403/ | 403} 200 [\"PKG-CON-0001\", \"active\", 1]"
+        "201 201${wanted/ 403/ | 403} | true 1 200 [\"PKG-CON-0001\", \"active\", 1]"
 
-    # Every record of the new kinds, the examples' and these, exported and imported back.
+    # Every record of the new kinds, the examples' and these, exported and imported
+    # back, what is retired with them: so that the coverage of a retired contract is
+    # among it in every pass, a third contract is made, covers the switch that had no
+    # cover, and is retired.
+    api POST /contracts "{\"number\": \"PKG-CON-0003\", \"vendor_hid\": \"$vendor\", \"starts_on\": \"$last_year\", \"ends_on\": \"$next_year\"}"
+    made=$status
+    other=$(json_field hid)
+    api POST "/contracts/$other/coverage" "{\"items\": [{\"item_hid\": \"$bare\"}]}"
+    made="$made $status"
+    api POST "/contracts/$other/retire" '{"row_version": 1}'
+    made="$made $status $(json_field record_status)"
+    api GET "/items/$bare"
+    expect "pkg a third contract is made, covers the switch that had no cover, and is retired: a retired contract covers nothing, and its coverage is on record" \
+        "$made $(json '[d["covered"], [[c["contract"]["number"], c["contract"]["record_status"], c["in_force"]] for c in d["coverage"]]]')" \
+        '201 201 200 retired [false, [["PKG-CON-0003", "retired", false]]]'
     for entity in agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines item_replacements; do
         api POST /exports "{\"entity\": \"$entity\", \"format\": \"csv\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
         cp "$work/body" "$work/back-$entity.csv"
@@ -5513,7 +5716,7 @@ cover_and_purchases() {
         api POST /exports "{\"entity\": \"$entity\", \"format\": \"json\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
         cp "$work/body" "$work/back-$entity.json"
         send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
-        expect "pkg an export of every record of $entity ($rows rows) is imported back as it is, as CSV and as JSON: every row finds its record, unchanged" \
+        expect "pkg an export of every record of $entity ($rows rows), the retired and what is under a retired contract among them, is imported back as it is, as CSV and as JSON: every row finds its record, unchanged" \
             "$made $status $(job_counts)" \
             "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
     done
