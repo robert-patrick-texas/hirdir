@@ -365,6 +365,8 @@ def test_within_finds_what_is_at_or_beneath_a_place_on_every_list(make: Maker) -
     ]
     assert names == ["stack-2"]
     assert make.get("/device-groups", filter="location:empty:true")["total"] == 1
+    by_region = make.get("/device-groups", filter="region:eq:central", sort="site")["items"]
+    assert [group["name"] for group in by_region] == ["stack-1"]
     sites = make.get("/sites", filter="region:within:Americas")["items"]
     assert [site["name"] for site in sites] == ["Site-2", "Site-9"]
     assert make.get("/sites", filter="region:within:Americas > East")["total"] == 1

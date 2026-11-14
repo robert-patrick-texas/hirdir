@@ -329,6 +329,7 @@ ITEMS = Listing(
 _PARENT_GROUP: Any = aliased(DeviceGroup, name="parent_group")
 _GROUP_LOCATION: Any = aliased(Location, name="group_location")
 _GROUP_SITE: Any = aliased(Site, name="group_site")
+_GROUP_REGION: Any = aliased(Region, name="group_region")
 
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
@@ -344,6 +345,7 @@ DEVICE_GROUPS = Listing(
         ),
         "location.name": Field("text", _GROUP_LOCATION.name),
         "site": Field("text", _GROUP_SITE.name),
+        "region": Field("text", _GROUP_REGION.name),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),
@@ -377,6 +379,7 @@ DEVICE_GROUPS = Listing(
         .outerjoin(_PARENT_GROUP, _PARENT_GROUP.hid == DeviceGroup.parent_group_hid)
         .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == DeviceGroup.location_hid)
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
+        .outerjoin(_GROUP_REGION, _GROUP_REGION.hid == _GROUP_SITE.region_hid)
     ),
     default_sort=("name",),
 )

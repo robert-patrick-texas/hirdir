@@ -233,13 +233,10 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 150,
   },
   {
-    // The region the site is in. The list of groups is neither filtered nor sorted by
-    // it, and a file of groups has no such column.
+    // The region the site is in, by its name. A file of groups has no such column.
     id: "region",
     header: "Region",
     kind: "text",
-    field: null,
-    sortField: null,
     column: null,
     value: (group) => group.location?.region,
     hide: true,

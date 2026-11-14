@@ -106,6 +106,7 @@ names of its site and of the region the site is in, `site.code` the site's code,
 `location.name` and `location.kind` those of the location; `owner_exception` is true
 for an item whose owner in force is outside the team. The lists of device groups and
 of locations have `location` with `within` too, and the list of sites has `region`. A
+device group is found and sorted by `site` and `region` as an item is. A
 location is also found by `site.name`, `site.code` and `region.name`, the name of the
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial
 number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
