@@ -401,8 +401,9 @@ keep() { cp "$work/body" "$work/kept-$1.json"; }
 # added. With "more", records may have been added. With "fields", a newer version may
 # have given a record more fields, also inside a record it holds, such as the block of
 # effective values, and inside each record of a list it holds, such as its addresses:
-# every field that was there must still be there as it was. Otherwise print what
-# differs.
+# every field that was there must still be there as it was. A third word names what is
+# meant to have changed and is looked at by itself, each as HID.field, with a space
+# between them: those fields are passed over. Otherwise print what differs.
 unchanged() {
     python3 -c '
 import json, sys
@@ -425,6 +426,7 @@ except Exception as error:
     print(f"<{type(error).__name__}: {error}>")
     sys.exit()
 problems = []
+meant = set(sys.argv[4].split())
 if len(now) != len(before) and sys.argv[3] != "more":
     problems.append(f"{len(now)} records where there were {len(before)}")
 for record in before:
@@ -434,11 +436,13 @@ for record in before:
         problems.append(hid + " is gone")
         continue
     changed = sorted(
-        key for key, value in record.items() if key not in found or not same(value, found[key])
+        key
+        for key, value in record.items()
+        if f"{hid}.{key}" not in meant and (key not in found or not same(value, found[key]))
     )
     if changed:
         problems.append(hid + " changed in " + ", ".join(changed))
-print("; ".join(problems[:3]) if problems else "same")' "$work/kept-$1.json" "$work/body" "${2:-exact}"
+print("; ".join(problems[:3]) if problems else "same")' "$work/kept-$1.json" "$work/body" "${2:-exact}" "${3:-}"
 }
 
 # The value of the header named $1 in the last response.
@@ -619,13 +623,15 @@ print(hashlib.sha256(repr(rows).encode()).hexdigest())' "$1" 2>&1 | tail -n 1
 #                    uniqueness is left out, because it is numbered anew in a rebuild.
 #   rows COLUMN...   how many rows there are, and one checksum of what they hold in the
 #                    columns named, which are those the first answer listed
+#   rows-without HID,HID COLUMN...
+#                    the same, of every row but those with one of these HIDs
 table_read() {
     inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
 import hashlib, sqlite3, sys
 
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
 table, question, names = sys.argv[1], sys.argv[2], sys.argv[3:]
-if not all(name.replace("_", "").isalnum() for name in [table, *names]):
+if not all(name.replace("_", "").replace(",", "").replace("-", "").isalnum() for name in [table, *names]):
     sys.exit("table_read: a table and its columns are named by letters, digits and _")
 if question == "columns":
     for _, name, kind, not_null, _, key in held.execute(f"PRAGMA table_info({table})"):
@@ -640,9 +646,13 @@ elif question == "keys":
         lines.append(f"foreign key {row[3]} to {row[2]}.{row[4]}")
     print("\n".join(sorted(lines)))
 else:
+    without = names.pop(0).split(",") if question == "rows-without" else []
     if not names:
         sys.exit("table_read rows: name the columns")
-    rows = held.execute("SELECT " + ", ".join(names) + f" FROM {table} ORDER BY hid").fetchall()
+    rows = held.execute(
+        "SELECT " + ", ".join(names) + f" FROM {table} WHERE hid NOT IN (" + ", ".join("?" * len(without)) + ") ORDER BY hid",
+        without,
+    ).fetchall()
     print(len(rows), "rows", hashlib.sha256(repr(rows).encode()).hexdigest())' "$@" 2>&1
 }
 
@@ -654,6 +664,13 @@ table_rows() {
     local names
     read -ra names <<<"$2"
     table_read "$1" rows "${names[@]}"
+}
+
+# table_rows_without TABLE HID,HID "COLUMN ...": table_read rows-without, likewise.
+table_rows_without() {
+    local names
+    read -ra names <<<"$3"
+    table_read "$1" rows-without "$2" "${names[@]}"
 }
 
 # sqlite_text SQL: every value of every row of one query on the database of the
@@ -820,7 +837,7 @@ install_previous() {
 failed_upgrade() {
     local witness_code revision_before planted tables_before backup good_backup command body
     local schema_before snippet_before created name database=/var/lib/hirdir/hirdir.db
-    local cause cause_sql said cure cure_sql table
+    local cause cause_sql said cure cure_sql table events_then
 
     section "the previous release, $previous_version, with an account in it"
     previous_package
@@ -880,6 +897,7 @@ failed_upgrade() {
     expect "pkg $previous_version is not disturbed by it: hirdir admin check exits 0, and the service answers" \
         "$(inside hirdir admin check >/dev/null 2>&1 && echo checked) $(local_status GET /api/v1/health/ready)" "checked 200"
     tables_before=$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'")
+    events_then=$(sqlite_value "$database" 'SELECT count(*) FROM audit_events')
     schema_before=$(schema_sum "$database")
     snippet_before=$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)
     settings_file >"$work/settings-before-failure.toml"
@@ -920,6 +938,8 @@ failed_upgrade() {
         "$(schema_sum "$database")" "$schema_before"
     expect "pkg and the account is still in it" \
         "$(sqlite_value "$database" "SELECT count(*) FROM users WHERE username = 'upgrade-witness'")" 1
+    expect "pkg and the audit trail holds the events it held, and none of the memberships that the migration had ended before it failed ($events_then)" \
+        "$(sqlite_value "$database" 'SELECT count(*) FROM audit_events')" "$events_then"
     for table in $witness_tables; do
         expect "pkg the $table table, which the migration had its hands on before it failed, has the columns it had and no other" \
             "$(table_read "$table" columns)" "${columns_before[$table]}"
@@ -959,7 +979,9 @@ failed_upgrade() {
 
     section "the upgrade again, with its cause put right"
     check "pkg $cure" sqlite_run "$cure_sql"
+    upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
+        upgrade_days="$upgrade_days $(date -u +%F)"
         pass "pkg apt upgrades hirdir $previous_version to $version"
     else
         fail "pkg apt upgrades hirdir $previous_version to $version"
@@ -995,6 +1017,9 @@ failed_upgrade() {
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
     witness_carried fields "after the upgrade that went through,"
     for table in $witness_tables; do
+        # Two rows of the memberships are changed by the upgrade: witness_carried has
+        # looked at them, and at the rows beside them.
+        if [ "$table" = device_group_members ] && [ -n "$gone_endpoint" ]; then continue; fi
         expect "pkg and every row of the $table table holds what it held, in the columns it had (${rows_before[$table]})" \
             "$(table_rows "$table" "$(columns_then "$table")")" "${rows_before[$table]}"
     done
@@ -1056,12 +1081,22 @@ witness_items=()
 witness_groups=()
 witness_stack=""
 witness_cluster=""
+witness_domain=""
+witness_pair=""
 witness_released=""
+witness_parted=""
+witness_day=""
 witness_tables=""
 declare -A columns_before=() keys_before=() rows_before=()
+gone_endpoint=""
+gone_switch=""
+members_rest_before=""
+ended_before=0
+upgrade_days=""
 tables_then=0
 counted_before=""
 cluster_before=""
+pair_before=""
 duplicates_before=""
 users_before=0
 events_before=0
@@ -1232,7 +1267,7 @@ held.commit()' "$1" "$2"
 # Every name is invented, and the addresses are from the ranges reserved for
 # documentation.
 witness_structure() {
-    local s1 s2 s3 s4 s9 module f1 f2 w1 w2 w3 a1 a2 domain wlc member mgmt dmz made day row_version
+    local s1 s2 s3 s4 s9 module f1 f2 w1 w2 w3 a1 a2 d1 d2 domain wlc member mgmt dmz made day row_version
     local items_then=${#witness_items[@]}
 
     api GET '/device-groups?limit=1'
@@ -1274,6 +1309,7 @@ witness_structure() {
         "$status $(json '[d["reason"], d["reference"], d["new_item"]["serial_number"]]')" '201 ["rma", "RMA-0000-041", "UWN0000S009"]'
     s9=$(json 'd["new_item"]["hid"]')
     day=$(json_field replaced_on)
+    witness_day=$day
     witness_items+=("$s9")
     api GET "/device-groups/$witness_stack/members?include_past=true"
     expect "pkg the stack has three members now and has had five: two memberships are ended, each with its day" \
@@ -1292,13 +1328,15 @@ witness_structure() {
 
     # A controller domain: a controller by itself, a pair of controllers as a cluster
     # within it, and two endpoints, one of which has left the team's hands. 0.4.0 lets
-    # a Released item stay a member, where 0.4.1 ends the membership at the move. An
+    # a Released item stay a member, where 0.4.1 ends the membership at the move, and
+    # ends those that 0.4.0 let stand when it is upgraded to. An
     # endpoint lists its controllers, by name in 0.4.0 and with the one that is in no
     # cluster first in 0.4.1: the one by itself has the first serial number, so that
     # the list reads the same in both and is compared as it stands.
     api POST /device-groups '{"type": "controller_domain", "name": "upgrade-wireless"}'
     made=$status
     domain=$(json_field hid)
+    witness_domain=$domain
     witness_groups+=("$domain")
     witness_made UWN0000W001 "$witness_second" '"lifecycle_state": "Prod"'
     w1=$made_hid
@@ -1333,6 +1371,31 @@ witness_structure() {
     done
     expect "pkg one endpoint is moved to Released, and with $previous_version it is a member of the domain still" \
         "$status $(json '[d["lifecycle_state"], [g["name"] for g in d["groups"]]]')" '200 ["Released", ["upgrade-wireless"]]'
+
+    # A second stack, of two, whose second switch has left the team's hands as well. With
+    # 0.4.0 it is a stack of two still, and its first switch has the discount of a stack.
+    witness_made UWN0000D001 "$witness_entry" '"lifecycle_state": "Prod"'
+    d1=$made_hid
+    witness_made UWN0000D002 "$witness_entry" '"lifecycle_state": "Prod"'
+    d2=$made_hid
+    witness_parted=$d2
+    api POST /device-groups "{\"type\": \"stack\", \"name\": \"upgrade-pair\", \"members\": [{\"item_hid\": \"$d1\", \"role\": \"master\", \"position\": 1}, {\"item_hid\": \"$d2\", \"role\": \"member\", \"position\": 2}]}"
+    made=$status
+    witness_pair=$(json_field hid)
+    witness_groups+=("$witness_pair")
+    row_version=1
+    for member in Pending-Removal:decommissioned Released:disposed; do
+        api POST "/items/$d2/transition" "{\"to\": \"${member%:*}\", \"reason\": \"${member#*:}\", \"row_version\": $row_version}"
+        row_version=$(json_field row_version)
+    done
+    api GET "/device-groups/$witness_pair"
+    expect "pkg a second stack, of two, whose second switch is moved to Released: with $previous_version it is a stack of two still" \
+        "$made $status $(json '[d["member_count"], d["serial_number"]]')" '201 200 [2, "UWN0000D001"]'
+    # The request that docs/install.md gives for finding such items before an upgrade.
+    api GET '/items?filter=lifecycle_state:in:Released,Archived&include_archived=true'
+    expect "pkg the request of docs/install.md, items in Released or Archived with the groups they are in, lists the two" \
+        "$status $(json 'sorted([i["serial_number"], [g["name"] for g in i["groups"]]] for i in d["items"])')" \
+        '200 [["UWN0000A002", ["upgrade-wireless"]], ["UWN0000D002", ["upgrade-pair"]]]'
 
     # Networks and addresses: of items and of groups, both families, a primary one, one
     # address under two networks, and one twice under the same.
@@ -1375,14 +1438,24 @@ witness_structure() {
         fi
     fi
 
-    # What 0.4.0 counts, to compare with what the new version counts of the same items.
-    api GET /reports/summary
+    # What 0.4.0 counts, to compare with what the new version counts of the same items:
+    # the two switches of the second stack by themselves, and everything else.
+    api GET "/reports/summary$all_but_pair"
     counted_before=$(counted)
     api GET '/reports/summary?filter=group.name:eq:upgrade-cluster'
     cluster_before=$(counted)
     expect "pkg $previous_version counts the cluster as one managed node of two components, with the support weight and the cost of two" \
         "$status $cluster_before" '200 [2, 2, 1, 1.0, "0.00", "1800.00"]'
+    api GET "/reports/summary$the_pair"
+    pair_before=$(counted)
+    expect "pkg and the two switches of the second stack as one component, the one in Prod, with half its support weight of 1.25: the discount of a stack of two" \
+        "$status $pair_before" '200 [2, 1, 1, 0.63, "36000.00", "0.00"]'
 }
+
+# The two views of the items that are counted before and after an upgrade: the two
+# switches of the second stack, and every item but those.
+the_pair='?filter=serial_number:in:UWN0000D001,UWN0000D002'
+all_but_pair='?filter=serial_number:ne:UWN0000D001%20serial_number:ne:UWN0000D002'
 
 # What the totals of the last summary of 0.4.0 say, which held the money too: items,
 # components, managed nodes, the support weight as a number, the estimated value and
@@ -1453,20 +1526,80 @@ witness_kept() {
     if [ "${#witness_groups[@]}" -gt 0 ]; then
         expect "pkg and so are the tables of the replacements, the groups, their members, the networks and the addresses: their rows" \
             "${rows_before[item_replacements]%% *} ${rows_before[device_groups]%% *} ${rows_before[device_group_members]%% *} ${rows_before[networks]%% *} ${rows_before[addresses]%% *}" \
-            "1 ${#witness_groups[@]} 12 2 7"
+            "1 ${#witness_groups[@]} 14 2 7"
+        # The two memberships that 0.4.0 let stand, of the items that are Released: the
+        # upgrade ends them, so each is kept by itself, and the rows of the table are
+        # kept without them as well.
+        gone_endpoint=$(standing_membership "$witness_domain" "$witness_released")
+        gone_switch=$(standing_membership "$witness_pair" "$witness_parted")
+        members_rest_before=$(table_rows_without device_group_members "${gone_endpoint%% *},${gone_switch%% *}" \
+            "$(table_columns device_group_members)")
+        ended_before=$(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM device_group_members WHERE left_on IS NOT NULL')
+        check "pkg and the two memberships that $previous_version let stand though their items are Released: of the endpoint and of the switch (${gone_endpoint:-none}; ${gone_switch:-none})" \
+            test -n "$gone_endpoint" -a -n "$gone_switch"
     fi
+}
+
+# standing_membership GROUP ITEM: the current membership of an item in a group, from
+# what witness_kept kept of the group: its HID, its row_version and the day it began.
+standing_membership() {
+    python3 -c '
+import json, sys
+
+for member in json.load(open(sys.argv[1], encoding="utf-8"))["items"]:
+    if member["item_hid"] == sys.argv[2] and member["left_on"] is None:
+        print(member["hid"], member["row_version"], member["joined_on"])' "$work/kept-members-$1.json" "$2"
+}
+
+# membership_ended WHEN WHAT "HID ROW_VERSION JOINED_ON" GROUP ITEM: a membership that
+# 0.4.0 let stand, of an item that had left the team's hands, was ended by the upgrade:
+# on the day of the upgrade, at the next row_version, with an event in the audit trail
+# that the system made, and the item is in no group. The day is the one the upgrade ran
+# on, by the clock of the host or by the calendar of the application.
+membership_ended() {
+    local when=$1 what=$2 member=${3%% *} group=$4 item=$5 version joined found left
+    version=${3#* }
+    joined=${version#* }
+    version=${version%% *}
+    api GET "/device-groups/$group/members?include_past=true&limit=1000"
+    found=$(json '[[m["left_on"], m["row_version"], m["joined_on"]] for m in d["items"] if m["hid"] == "'"$member"'"]')
+    left=$(json '([m["left_on"] for m in d["items"] if m["hid"] == "'"$member"'"] or [None])[0]')
+    case " $upgrade_days $witness_day " in
+        *" $left "*) ;;
+        *) left="$left, which is not a day the upgrade ran on ($upgrade_days $witness_day)" ;;
+    esac
+    expect "pkg $when the membership of $what, which $previous_version let stand, is ended: on the day of the upgrade, at the next row_version" \
+        "$status $found" "200 [[\"$left\", $((version + 1)), \"$joined\"]]"
+    api GET "/audit-events?record_hid=$member&limit=1"
+    expect "pkg $when and the audit trail holds that: an update of a device_group_member, made by the system, of left_on from nothing to that day" \
+        "$status $(json '[[e["via"], e["action"], e["record_type"], e["actor_hid"], e["changes"]] for e in d["items"]]')" \
+        "200 [[\"system\", \"update\", \"device_group_member\", null, [{\"field\": \"left_on\", \"new\": \"$left\", \"old\": null}]]]"
+    api GET "/items/$item"
+    expect "pkg $when and its item, which is Released, is in no group, and has no controllers of a domain" \
+        "$status $(json '[d["lifecycle_state"], d["groups"], d["controllers"]]')" '200 ["Released", [], []]'
 }
 
 # witness_carried HOW WHEN: the items and the history of each, and the groups, their
 # memberships, the networks and the addresses, are as witness_kept found them. HOW is
 # "fields" on the new version, which may give a record more fields, and "exact" where
-# the previous release serves again. WHEN begins the lines.
+# the previous release serves again. WHEN begins the lines. The new version ends the
+# two memberships that 0.4.0 let stand: those, the groups of their two items, the
+# controllers that the endpoint had through its domain, and the number of members of
+# their two groups are passed over in "fields", and looked at by themselves.
 witness_carried() {
-    local how=$1 when=$2 hid found differing=""
+    local how=$1 when=$2 hid found differing="" but="" meant_items="" meant_groups="" meant_members=""
     [ -n "$witness_entry" ] || return 0
+    if [ "$how" = fields ] && [ -n "$gone_endpoint" ] && [ "$previous_version" = 0.4.0 ]; then
+        but=", but for the two memberships that the upgrade ends"
+        meant_items="$witness_released.groups $witness_released.controllers $witness_parted.groups"
+        meant_groups="$witness_domain.member_count $witness_pair.member_count"
+        for hid in "${gone_endpoint%% *}" "${gone_switch%% *}"; do
+            meant_members="$meant_members $hid.left_on $hid.row_version $hid.updated_at"
+        done
+    fi
     api GET "$every_item"
-    expect "pkg $when every item from before is as it was, field for field and at the row_version it had (${#witness_items[@]} items)" \
-        "$status $(unchanged items "$how")" "200 same"
+    expect "pkg $when every item from before is as it was, field for field and at the row_version it had (${#witness_items[@]} items)$but" \
+        "$status $(unchanged items "$how" "$meant_items")" "200 same"
     for hid in "${witness_items[@]}"; do
         api GET "/items/$hid/history?limit=1000"
         found=$(unchanged "history-$hid" "$how")
@@ -1475,20 +1608,30 @@ witness_carried() {
     expect "pkg $when the history of each is as it was, event for event" "$differing" ""
     [ "${#witness_groups[@]}" -gt 0 ] || return 0
     api GET "$every_group"
-    expect "pkg $when every device group is as it was, field for field and at the row_version it had (${#witness_groups[@]} groups)" \
-        "$status $(unchanged device-groups "$how")" "200 same"
+    expect "pkg $when every device group is as it was, field for field and at the row_version it had (${#witness_groups[@]} groups)$but" \
+        "$status $(unchanged device-groups "$how" "$meant_groups")" "200 same"
     differing=""
     for hid in "${witness_groups[@]}"; do
         api GET "/device-groups/$hid/members?include_past=true&limit=1000"
-        found=$(unchanged "members-$hid" "$how")
+        found=$(unchanged "members-$hid" "$how" "$meant_members")
         [ "$found" = same ] || differing="$differing$hid: $found. "
     done
-    expect "pkg $when every membership of each is as it was, those that were ended too, with the day they ended" "$differing" ""
+    expect "pkg $when every membership of each is as it was, those that were ended before too, with the day they ended$but" "$differing" ""
     api GET '/networks?limit=1000'
     found=$(unchanged networks "$how")
     api GET "$every_address"
     expect "pkg $when the two networks and the seven addresses are as they were" \
         "$found $status $(unchanged addresses "$how")" "same 200 same"
+    [ -n "$but" ] || return 0
+    membership_ended "$when" "the endpoint in its domain" "$gone_endpoint" "$witness_domain" "$witness_released"
+    membership_ended "$when" "the switch in its stack" "$gone_switch" "$witness_pair" "$witness_parted"
+    api GET "$every_group"
+    expect "pkg $when the domain has two current members where it had three, and the second stack one where it had two" \
+        "$(json '[[g["name"], g["member_count"]] for g in d["items"] if g["hid"] in ("'"$witness_domain"'", "'"$witness_pair"'")]')" \
+        '[["upgrade-pair", 1], ["upgrade-wireless", 2]]'
+    expect "pkg $when the device_group_members table holds every other row as it was, and four memberships that are ended where it held two ($members_rest_before)" \
+        "$(table_rows_without device_group_members "${gone_endpoint%% *},${gone_switch%% *}" "$(columns_then device_group_members)") $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM device_group_members WHERE left_on IS NOT NULL')" \
+        "$members_rest_before $((ended_before + 2))"
 }
 
 # columns_then TABLE: the names of the columns that the table had when witness_kept
@@ -1499,7 +1642,8 @@ columns_then() { printf '%s\n' "${columns_before[$1]}" | cut -d' ' -f1 | xargs; 
 # previous release, by the API and by the database file. Migration 0006 adds three
 # columns and two indexes to the items table as it stands, rebuilds device_groups with
 # six columns more and a foreign key, says of every cluster there is that it is managed
-# as one node, and loads the item_condition list.
+# as one node, loads the item_condition list, and ends the memberships of the items
+# that are Released or Archived, which witness_carried looks at.
 carried_inventory() {
     local full made table
     witness_carried fields "after the upgrade,"
@@ -1552,15 +1696,18 @@ master_observed_at DATETIME NULL -"
         "cluster one 2 0
 controller_domain - 1 0
 custom - 1 0
-stack - 1 0"
+stack - 2 0"
     expect "pkg every index, uniqueness and foreign key of the device_groups table is there as before, and with them the foreign key of observed_master_hid" \
         "$(table_read device_groups keys)" \
         "$(printf '%s\n' "${keys_before[device_groups]}" 'foreign key observed_master_hid to items.hid' | LC_ALL=C sort)"
-    for table in item_replacements device_group_members networks addresses; do
+    for table in item_replacements networks addresses; do
         expect "pkg the $table table, which this migration leaves alone, has the columns, the indexes, uniquenesses and foreign keys, and the rows it had (${rows_before[$table]})" \
             "$(table_read "$table" columns | sha256sum) $(table_read "$table" keys | sha256sum) $(table_rows "$table" "$(columns_then "$table")")" \
             "$(printf '%s\n' "${columns_before[$table]}" | sha256sum) $(printf '%s\n' "${keys_before[$table]}" | sha256sum) ${rows_before[$table]}"
     done
+    expect "pkg the device_group_members table, of which this migration changes two rows and nothing else, has the columns and the indexes, uniquenesses and foreign keys it had" \
+        "$(table_read device_group_members columns | sha256sum) $(table_read device_group_members keys | sha256sum)" \
+        "$(printf '%s\n' "${columns_before[device_group_members]}" | sha256sum) $(printf '%s\n' "${keys_before[device_group_members]}" | sha256sum)"
     api POST /device-groups '{"type": "custom", "name": "UPGRADE-STACK"}'
     expect "pkg the name of a group is still unique: a second upgrade-stack, written in capitals, is refused" \
         "$status $(json 'd["errors"][0]["field"]')" "409 name"
@@ -1574,11 +1721,15 @@ stack - 1 0"
         "$status $(json_field managed_as)" "200 one"
     expect "pkg and it is counted as it was: one managed node of two components, with the money now in the management report" \
         "$(counted_now '?filter=group.name:eq:upgrade-cluster')" "$cluster_before"
-    expect "pkg the whole inventory is counted as $previous_version counted it: items, components, managed nodes, support weight, value and cost ($counted_before)" \
-        "$(counted_now)" "$counted_before"
-    api GET "/items/$witness_released"
-    expect "pkg the endpoint that $previous_version left a member of its domain while Released is a member still: the upgrade ends no membership" \
-        "$status $(json '[d["lifecycle_state"], [g["name"] for g in d["groups"]]]')" '200 ["Released", ["upgrade-wireless"]]'
+    expect "pkg the inventory but for the second stack is counted as $previous_version counted it: items, components, managed nodes, support weight, value and cost ($counted_before)" \
+        "$(counted_now "$all_but_pair")" "$counted_before"
+    expect "pkg the second stack is one switch alone now, and its numbers follow: the same component, value and cost, and the whole support weight of 1.25, with no discount" \
+        "$pair_before -> $(counted_now "$the_pair")" \
+        '[2, 1, 1, 0.63, "36000.00", "0.00"] -> [2, 1, 1, 1.25, "36000.00", "0.00"]'
+    api GET "/device-groups/$witness_pair"
+    expect "pkg and it says that it is degraded, because it is one switch alone" \
+        "$status $(json '[d["member_count"], d["serial_number"], d["health"]["value"], d["health"]["reasons"]]')" \
+        '200 [1, "UWN0000D001", "degraded", ["it is one switch alone"]]'
     expect "pkg GET /reports/duplicates lists the address that is twice under one network as it did" \
         "$(duplicates 192.0.2.101)" "$duplicates_before"
 
@@ -1715,7 +1866,9 @@ upgrade() {
     local backup renewed created name
 
     section "apt upgrades $previous_version to $version"
+    upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
+        upgrade_days="$upgrade_days $(date -u +%F)"
         pass "pkg apt upgrades hirdir $previous_version to $version"
     else
         fail "pkg apt upgrades hirdir $previous_version to $version"
@@ -2647,8 +2800,13 @@ structure() {
     management 'group.name:eq:pkgtest-stack'
     expect "S20 and so is the cost" "$status $(money)" '200 [4, 4, "0.00", "5800.00"]'
 
-    # S21: the master is replaced, and the stack is the same record.
+    # S21: the master is replaced, and the stack is the same record. The master that is
+    # replaced is the one intended and, here, the one seen as well.
     old=${switches[2]}
+    api GET "/device-groups/$stack"
+    api PATCH "/device-groups/$stack" "{\"row_version\": $(json_field row_version), \"observed_master_hid\": \"$old\"}"
+    expect "S21 the master that is to be replaced is seen to be master too: the one intended and the one seen are the same switch" \
+        "$status $(json '[d["serial_number"], d["serial_source"], d["master_as_intended"]]')" '200 ["PKG0000S003", "observed", true]'
     api GET "/items/$old"
     api POST "/items/$old/replace" "{\"row_version\": $(json_field row_version), \"reason\": \"rma\", \"reference\": \"RMA-0000-001\", \"new_item\": {\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000S009\"}}"
     expect "S21 POST $prefix/api/v1/items/{hid}/replace replaces the master for an RMA, with a switch that the request creates" \
@@ -2667,6 +2825,16 @@ structure() {
     api GET "/device-groups/$stack"
     expect "S21 the stack is the same record, with four members, and reads its serial number from the new master" \
         "$status $(json '[d["hid"], d["member_count"], d["serial_number"]]')" "200 [\"$stack\", 4, \"PKG0000S009\"]"
+    expect "S21 the new switch has the role of the one that left, the master intended, and not its observation: nobody has seen it as master, so no master is seen and the serial number is the intended one's" \
+        "$(json '[d["master"]["serial_number"], d["observed_master_hid"], d["observed_master"], d["master_observed_at"], d["serial_source"]]')" \
+        '["PKG0000S009", null, null, null, "intended"]'
+    printf '%s\n' 'group,item,role' 'pkgtest-stack,PKG0000S001,master' 'pkgtest-stack,PKG0000S004,master' >"$work/two-masters.csv"
+    send "/imports/preview?entity=device_group_members&file_name=two-masters.csv" "$work/two-masters.csv"
+    made="$status $(job_counts)"
+    printf '%s\n' 'group,item,observed_master' 'pkgtest-stack,PKG0000S001,true' 'pkgtest-stack,PKG0000S004,true' >"$work/two-seen.csv"
+    send "/imports/preview?entity=device_group_members&file_name=two-seen.csv" "$work/two-seen.csv"
+    expect "S19 a file of members that names two intended masters of the stack is previewed with its second row rejected, and so is one that names two observed masters" \
+        "$made $status $(job_counts)" '201 ["previewed", 2, 0, 1, 0, 1] 201 ["previewed", 2, 0, 1, 0, 1]'
 
     # S23: one address under two networks is two addresses; twice under one is reported.
     api POST /networks '{"label": "pkgtest-red", "kind": "vrf"}'
@@ -2688,6 +2856,18 @@ structure() {
     api POST /addresses "{\"group_hid\": \"$stack\", \"address\": \"2001:0DB8:0000:0000:0000:0000:0000:0010\", \"is_primary\": true}"
     expect "pkg an IPv6 address of the stack itself, written out in full, is kept in its short form, as the primary management address" \
         "$status $(json '[d["address"], d["role"], d["is_primary"], d["network_hid"]]')" '201 ["2001:db8::10", "management", true, null]'
+    api GET "$every_address"
+    made=$(json '[sum(1 for a in d["items"] if a["family"] == 6), d["total"] <= 1000]')
+    api GET '/addresses?filter=family:eq:6&limit=1000'
+    made="$made $(json '[d["total"], sorted({a["family"] for a in d["items"]}), sum(1 for a in d["items"] if a["address"] == "2001:db8::10")]')"
+    api GET '/addresses?sort=-family&limit=1000'
+    expect "pkg GET $prefix/api/v1/addresses filters by the family of an address, finding the IPv6 addresses there are and no other, and sorts by it" \
+        "$made $status $(json '[a["family"] for a in d["items"]] == sorted((a["family"] for a in d["items"]), reverse=True)')" \
+        "$(json '[sum(1 for a in d["items"] if a["family"] == 6), True]') $(json '[sum(1 for a in d["items"] if a["family"] == 6), [6], 1]') 200 true"
+    api POST /exports '{"entity": "addresses", "format": "csv", "columns": ["address", "family"], "filter": "family:eq:6"}'
+    expect "pkg and POST $prefix/api/v1/exports writes the family as a column when it is asked for, and filters by it" \
+        "$status $(table '[head, sorted({r["family"] for r in rows}), sum(1 for r in rows if r["address"] == "2001:db8::10")]')" \
+        '200 [["hid", "address", "family"], ["6"], 1]'
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
     for entity in networks device_groups device_group_members addresses; do
@@ -2754,7 +2934,22 @@ health_and_counting() {
     expect "pkg a condition that the item_condition list does not offer is refused, and the answer names those that it offers, the six defaults among them" \
         "$status $(json '[d["errors"][0]["field"], sorted({"untested", "good", "degraded", "suspect", "failed", "dead"} - set(d["errors"][0]["message"].removeprefix("one of ").split(", ")))]')" \
         '422 ["condition", []]'
-    api PATCH "/items/$item" '{"row_version": 4, "observed_status": null}'
+    # The moment of an observation. A person who says again what is observed has looked
+    # again, and the moment is now. It is not cleared by itself, it is not in the
+    # future, and with no zone it is UTC.
+    api PATCH "/items/$item" '{"row_version": 4, "observed_status": "online"}'
+    expect "pkg observed online is stated again, as it is, with no moment: the moment is now and no longer the one given before, at the next row_version" \
+        "$status $(json '[d["observed_status"], d["observed_at"] not in (None, "2026-11-02T15:00:00Z"), d["row_version"]]')" \
+        '200 ["online", true, 5]'
+    api PATCH "/items/$item" '{"row_version": 5, "observed_at": null}'
+    made="$status $(json 'd["errors"][0]["field"]')"
+    api PATCH "/items/$item" "{\"row_version\": 5, \"observed_status\": \"online\", \"observed_at\": \"$(date -u --date='+3 days' +%FT%TZ)\"}"
+    made="$made $status $(json 'd["errors"][0]["field"]')"
+    api PATCH "/items/$item" '{"row_version": 5, "observed_status": "online", "observed_at": "2026-11-03T09:00:00"}'
+    expect "pkg the moment is not cleared by itself, and one that is three days ahead is refused; one written with no zone is taken as UTC" \
+        "$made $status $(json '[d["observed_at"], d["row_version"]]')" \
+        '422 observed_at 422 observed_at 200 ["2026-11-03T09:00:00Z", 6]'
+    api PATCH "/items/$item" '{"row_version": 6, "observed_status": null}'
     expect "pkg the observation is taken back: its moment goes with it, and the condition alone decides the health" \
         "$status $(json '[d["observed_status"], d["observed_at"], d["lifecycle_state"]]') $(health)" \
         '200 [null, null, "Prod"] ["degraded", ["its condition is degraded"]]'
@@ -2762,9 +2957,9 @@ health_and_counting() {
     expect "pkg GET $prefix/api/v1/items finds it by its health, which is stored nowhere" \
         "$status $(json '[i["hostname"] for i in d["items"]]')" '200 ["pkgtest-health-01"]'
     api GET "/items/$item/history"
-    expect "pkg each of those changes is in its history, the condition and the observation as fields like any other" \
-        "$status $(json '[sorted(c["field"] for c in e["changes"]) for e in d["items"][:4]]')" \
-        '200 [["observed_at", "observed_status"], ["condition", "observed_at", "observed_status"], ["observed_at", "observed_status"], ["condition"]]'
+    expect "pkg each of those changes is in its history, the condition and the observation as fields like any other, and a second look as a change of the moment alone" \
+        "$status $(json '[sorted(c["field"] for c in e["changes"]) for e in d["items"][:6]]')" \
+        '200 [["observed_at", "observed_status"], ["observed_at"], ["observed_at"], ["condition", "observed_at", "observed_status"], ["observed_at", "observed_status"], ["condition"]]'
     summary 'hostname:eq:pkgtest-health-01'
     expect "pkg GET $prefix/api/v1/reports/summary counts it as one component that is degraded" \
         "$status $(totals) $(json 'd["totals"]["by_health"]')" \
@@ -2829,6 +3024,16 @@ health_and_counting() {
     summary 'group.name:eq:pkgtest-fw'
     expect "pkg managed by its members and as a cluster too, it is three: one more than its members" \
         "$made $status $(totals)" '200 200 [2, 2, 3, 2.0]'
+
+    # The item list sorted by health: the worst first, and what is not known before the
+    # good. Four of the items made here have the four kinds between them.
+    api PATCH "/items/$first" '{"row_version": 1, "condition": "failed"}'
+    made=$status
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'sort=health' \
+        --data-urlencode 'filter=hostname:in:pkgtest-health-01,pkgtest-lone-01,pkgtest-lone-02,pkgtest-fw-01'
+    expect "pkg GET $prefix/api/v1/items sorted by health puts the worst first: failed, degraded, unknown, good" \
+        "$made $status $(json '[[i["hostname"], i["health"]["value"]] for i in d["items"]]')" \
+        '200 200 [["pkgtest-fw-01", "failed"], ["pkgtest-health-01", "degraded"], ["pkgtest-lone-01", "unknown"], ["pkgtest-lone-02", "good"]]'
     api GET "/device-groups/$stack"
     api PATCH "/device-groups/$stack" "{\"row_version\": $(json_field row_version), \"managed_as\": \"members\"}"
     expect "pkg a stack is always one managed node: managed_as is refused on it" \
@@ -2845,7 +3050,14 @@ health_and_counting() {
     done
     expect "pkg a member of the cluster is moved to Pending-Removal, and is a member still; moved on to Released, it is in no group" \
         "$made" '200 ["pkgtest-fw"] 200 [] '
-    api POST "/items/$first/transition" '{"to": "Archived", "reason": "disposed", "row_version": 1, "force": true}'
+    api POST "/device-groups/$cluster/members" "{\"members\": [{\"item_hid\": \"$other\", \"role\": \"member\"}]}"
+    made="$status $(json 'd["errors"][0]["field"]')"
+    api GET "/items/$first"
+    api POST "/items/$first/replace" "{\"row_version\": $(json_field row_version), \"reason\": \"rma\", \"new_item_hid\": \"$other\"}"
+    check "pkg an item that is Released joins no group: it is refused as a member of the cluster again, and as the item that takes a member's place in a replacement ($made $status)" \
+        bash -c "[ '$made $status' = '422 item_hid 422' ] && grep -q \"has left the team's hands\" '$work/body'"
+    api GET "/items/$first"
+    api POST "/items/$first/transition" "{\"to\": \"Archived\", \"reason\": \"disposed\", \"row_version\": $(json_field row_version), \"force\": true}"
     made="$status $(json '[d["lifecycle_state"], d["groups"]]')"
     api GET "/device-groups/$cluster/members?include_past=true"
     day=$(json 'd["items"][0]["left_on"]')
@@ -2893,9 +3105,31 @@ first_file() {
     expect "pkg a file with ipv4 and ipv6 columns and what was observed of each: both rows update their items" \
         "$status $(job_counts)" '200 ["applied", 2, 0, 2, 0, 0]'
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-first-*' --data-urlencode 'sort=hostname'
+    send "/imports/preview?entity=items&file_name=second.csv" "$work/second.csv"
+    expect "pkg that file a second time, which states again what was observed and gives no moment, changes nothing: both rows are unchanged" \
+        "$status $(job_counts)" '201 ["previewed", 2, 0, 0, 2, 0]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-first-*' --data-urlencode 'sort=hostname'
     expect "pkg an item has a primary management address of each family now, and what was observed of it, with a health of good" \
         "$status $(json '[[i["hostname"], sorted([a["family"], a["address"], a["is_primary"]] for a in i["addresses"]), i["observed_status"], i["health"]["value"]] for i in d["items"][1:]]')" \
         '200 [["pkgtest-first-02", [[4, "198.51.100.102", true], [6, "2001:db8:0:51::102", true]], "online", "good"], ["pkgtest-first-03", [[4, "198.51.100.103", true], [6, "2001:db8:0:51::103", true]], "present", "good"]]'
+
+    # A file that knows its devices by host name alone, with what another tool says of
+    # each, finds the items that have those host names, serial numbers and all.
+    printf '%s\n' 'hostname,observed_status' 'pkgtest-stack-01,online' 'pkgtest-stack-04,unreachable' >"$work/seen.csv"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:in:pkgtest-stack-01,pkgtest-stack-04' --data-urlencode 'sort=hostname'
+    expect "pkg two switches made above have a host name and a serial number each, and nothing is observed of them" \
+        "$status $(json '[[i["hostname"], i["serial_number"], i["observed_status"]] for i in d["items"]]')" \
+        '200 [["pkgtest-stack-01", "PKG0000S001", null], ["pkgtest-stack-04", "PKG0000S004", null]]'
+    send "/imports/preview?entity=items&file_name=seen.csv" "$work/seen.csv"
+    expect "pkg a file of hostname and observed_status finds each by its host name, though it has a serial number that the file does not give: 2 rows to update, none to create" \
+        "$status $(job_counts)" '201 ["previewed", 2, 0, 2, 0, 0]'
+    hid=$(json 'd["job"]["hid"]')
+    api POST "/imports/$hid/apply"
+    expect "pkg applied, it updates the 2" "$status $(job_counts)" '200 ["applied", 2, 0, 2, 0, 0]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:in:pkgtest-stack-01,pkgtest-stack-04' --data-urlencode 'sort=hostname'
+    expect "pkg there is still one item of each host name, the one with the serial number, and it has what was observed and the health that follows: no second item was made" \
+        "$status $(json '[[i["hostname"], i["serial_number"], i["observed_status"], i["health"]["value"]] for i in d["items"]]')" \
+        '200 [["pkgtest-stack-01", "PKG0000S001", "online", "good"], ["pkgtest-stack-04", "PKG0000S004", "unreachable", "failed"]]'
 }
 
 # ---- the inventory ------------------------------------------------------------------------

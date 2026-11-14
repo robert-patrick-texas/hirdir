@@ -511,9 +511,10 @@ The `items` table gains three columns, `condition`, `observed_status` and
 add those six, SQLite makes the table of groups anew and copies every row across,
 inside the one transaction that the whole upgrade runs in. Nothing you have is changed
 by it. Every item, device group, membership, network and address is as it was, field
-for field and at the `row_version` it had, and every item has its history. A serial
-number is still unique within its model, an asset tag among all items, and the name
-of a group among groups.
+for field and at the `row_version` it had, and every item has its history, with one
+exception that is meant: the memberships of items that had left the team's hands,
+below. A serial number is still unique within its model, an asset tag among all
+items, and the name of a group among groups.
 
 What is new is empty until somebody fills it in. No item has a condition and nothing
 is observed of any, so the health of each is `unknown`. A stack or a cluster is
@@ -523,7 +524,8 @@ before: the master you marked is the one intended, and none is recorded as seen.
 
 Every cluster there is counts as before. 0.4.0 counted each cluster as one managed
 node, and the upgrade says so on each: `managed_as` is `one`. The managed-node count,
-the component count and the support weight of a view are what 0.4.0 gave. A cluster
+the component count and the support weight of a view are what 0.4.0 gave, but for a
+stack that loses a member at the upgrade, below. A cluster
 whose members are each managed at an address of their own, as a pair of firewalls is,
 was counted as one node all the same, and still is until you say how it is managed:
 `members`, or `members_and_cluster` where the cluster answers as a node of its own as
@@ -533,10 +535,22 @@ page.
 The list of conditions, `item_condition`, is filled with its defaults: `untested`,
 `good`, `degraded`, `suspect`, `failed` and `dead`.
 
-The upgrade ends no membership. From 0.4.1 an item that is retired, or moved to
-Released or to Archived, leaves its groups on that day. 0.4.0 left such an item in its
-stack, cluster or domain, and one that it left there is a member still after the
-upgrade, until its membership is given an end date.
+The upgrade ends the memberships of items that had left the team's hands. From 0.4.1
+an item that is retired, or moved to Released or to Archived, leaves its groups on
+that day, and joins no group afterwards. 0.4.0 left an item that was moved to Released
+or to Archived in its stack, cluster or domain. Each membership that it left standing
+so is ended by the upgrade, on the day of the upgrade. The membership stays on record
+with that day, at its next `row_version`, and the audit trail holds one event for
+each, made by the system and not by a person. Nothing else of the item or of its group
+is changed.
+
+The numbers of such a group follow. It has one member fewer. A stack that is left
+with one switch earns no stack discount for it any more, so the support weight of that
+switch is whole where it was lowered, and the stack shows as `degraded`, as one switch
+alone, until it is given a second switch or is told to expect one member. Before the
+upgrade, `GET /api/v1/items?filter=lifecycle_state:in:Released,Archived` with
+`include_archived=true` lists the items this may concern, each with the groups it is
+in.
 
 Two things answer differently from now on, for a script that reads them:
 

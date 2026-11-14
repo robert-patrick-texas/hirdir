@@ -74,7 +74,10 @@ with their members, memberships that were ended, a replacement, networks, addres
 and choices of the site's own. After the upgrade each item, group, membership and
 address must be as it was, field for field, at the `row_version` it had, each item
 with its history, and the tables of the inventory are read from the database file as
-well, their columns, rows, indexes and uniquenesses.
+well, their columns, rows, indexes and uniquenesses. What a migration is meant to
+change in what a site has is made as well, left out of that comparison by name, and
+looked at by itself: for 0.4.1 the memberships of items that had left the team's
+hands, which the upgrade ends, each with an event in the audit trail.
 
 The test also makes the new version's migration fail, to see that the upgrade stops,
 names its backup, leaves the inventory as it was and can be undone. It does that in
