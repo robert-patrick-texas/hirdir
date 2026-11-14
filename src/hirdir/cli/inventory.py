@@ -309,6 +309,7 @@ def show(
         ("health", _health(found["health"])),
         ("owner", _in_force(found, "owner_hid")),
         ("owner_exception", found["owner_exception_reason"] or found["owner_exception"] or None),
+        ("operator", _in_force(found, "operator_hid")),
         ("location", _in_force(found, "location_hid")),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
@@ -328,7 +329,7 @@ def show(
             why = " ".join(part for part in (other["reason"], other["reference"]) if part)
             lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
-        shown = ("owner_hid", "location_hid", *FROM_ABOVE)
+        shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
             lines.append((name, f"{effective['value']} ({effective['source']})"))
     for name in ("state_changed_at", "created_at", "updated_at"):
@@ -458,6 +459,7 @@ def show_group(
         ("intended_master", _named(found["master"]) if found["master"] else None),
         ("observed_master", seen),
         ("owner_exception", found["owner_exception_reason"]),
+        ("operator", _in_force(found, "operator_hid")),
         ("location", found["location"]["path"] if found["location"] else None),
         ("managed_as", found["managed_as"]),
         ("expected_members", found["expected_members"]),

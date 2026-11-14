@@ -31,6 +31,7 @@ where it came from.**
 | Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | its catalog entry |
 | Catalog entry: `stack_discount_pct` | the global setting |
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
+| Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of; then the group that group is nested in |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
 | Site: the same three | each region outward |
@@ -46,8 +47,8 @@ The API returns an inheritable field as its own stored value plus an `effective`
 }
 ```
 
-`source` is one of `own`, `catalog`, `parent_item`, `location`, `site`, `region`,
-`setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
+`source` is one of `own`, `catalog`, `parent_item`, `device_group`, `location`, `site`,
+`region`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
 
@@ -117,6 +118,7 @@ lifecycle fields included.
 | `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
+| `operator_hid` | reference | a contact: the person of the team who looks after the item. Blank inherits; see "The operator" |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
 | `warranty_start`, `warranty_end` | date | |
@@ -150,6 +152,31 @@ whatever is its own: what it inherited stays with the parent it left.
 
 Release 0.5.0 has every field above except `purchase_line_hid`, which arrives in 0.6.0.
 
+**The operator.** The owner of an item is the part of the organization that answers
+for it. Its operator is one person: the member of the team who looks after it, and
+who is asked about it. `operator_hid` names a contact, on an item and on a device
+group. For an item it is resolved when it is read, the nearest first:
+
+1. the item's own;
+2. for a minor item, that of the nearest item above it that has one;
+3. that of a group which the item at the top of that line is a current member of: a
+   stack before a cluster, a cluster before a controller domain, a controller domain
+   before any other group, and of two of one type the first by name;
+4. where that group has none, that of the nearest group it is nested in.
+
+So a stack is given an operator once and its four switches have it, with their power
+supplies; forty access points have the operator of their controller domain; and the
+one switch that somebody else looks after is given its own. The answer says where it
+came from: `own`, `parent_item` or `device_group`, with the record that holds it.
+Nothing is copied down: giving the stack another operator changes what its members
+show and writes to none of them. A device group shows its operator in force in the
+same way, its own or that of a group it is nested in.
+
+An item with no operator in force is looked after by nobody in particular. It is
+found with `effective.operator_hid:empty:true`, and counted in the blank row of a
+report by `operator`. A contact that is retired stays the operator of what it had,
+shown as retired, until somebody else is given it.
+
 ### `item_replacements`
 
 | Field | Type | Notes |
@@ -182,6 +209,7 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
+| `operator_hid` | reference | optional. A contact: the person who looks after the group, and after each member that has no operator of its own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |
 | `observed_master_hid` | reference | a stack only: the current member that is seen to be master now. Set with `observed_at` of its own, `master_observed_at` |

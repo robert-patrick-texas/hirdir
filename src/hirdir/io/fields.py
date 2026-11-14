@@ -31,7 +31,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import geography, health, inheritance, lifecycle, records
+from hirdir.domain import geography, health, inheritance, lifecycle, operators, records
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
 from hirdir.io.filters import Field, refuse
@@ -97,6 +97,46 @@ _LINE: tuple[Any, ...] = (Item, *ABOVE)
 OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.owner_hid for one in _LINE))
 # Where an item is: a minor item is where the nearest item above it is that has a location.
 LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.location_hid for one in _LINE))
+
+
+def _operator_in_force() -> ColumnElement[Any]:
+    """Return the operator in force for an item, as `hirdir.domain.operators` works it
+    out: its own, that of the nearest item above it, or that of a group the item at
+    the top of the line is a current member of."""
+    top = case(
+        *((one.parent_item_hid.is_(None), one.hid) for one in _LINE[:-1]),
+        else_=_LINE[-1].hid,
+    )
+    reach = operators.group_reach()
+    member: Any = aliased(DeviceGroupMember, name="operator_member")
+    group: Any = aliased(DeviceGroup, name="operator_group")
+    from_group = (
+        select(reach.c.operator_hid)
+        .select_from(member)
+        .join(group, group.hid == member.group_hid)
+        .join(reach, reach.c.group_hid == group.hid)
+        .where(
+            member.item_hid == top,
+            member.left_on.is_(None),
+            group.record_status != "retired",
+        )
+        .order_by(
+            case(
+                *((group.type == kind, place) for place, kind in enumerate(operators.GROUP_ORDER)),
+                else_=len(operators.GROUP_ORDER),
+            ),
+            group.name_key,
+            group.hid,
+        )
+        .limit(1)
+        .correlate(*_LINE)
+        .scalar_subquery()
+    )
+    return func.coalesce(*(one.operator_hid for one in _LINE), from_group)
+
+
+OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
+ITEM_OPERATOR: Any = aliased(Contact, name="item_operator")
 ITEM_LOCATION: Any = aliased(Location, name="item_location")
 ITEM_SITE: Any = aliased(Site, name="item_site")
 ITEM_REGION: Any = aliased(Region, name="item_region")
@@ -281,6 +321,11 @@ ITEMS = Listing(
         **{f"effective.{name}": _effective(name) for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": Field("reference", OWNER_IN_FORCE),
         "effective.location_hid": Field("reference", LOCATION_IN_FORCE),
+        "operator_hid": Field("reference", Item.operator_hid),
+        # The operator in force: who looks after the item, by its own word or from above.
+        "effective.operator_hid": Field("reference", OPERATOR_IN_FORCE),
+        "operator.name": Field("text", ITEM_OPERATOR.name),
+        "operator.email": Field("text", ITEM_OPERATOR.email),
         # Where the item is, by the location in force.
         "location": Field(
             "place",
@@ -322,6 +367,7 @@ ITEMS = Listing(
         .outerjoin(CatalogEntry, CatalogEntry.hid == Item.catalog_entry_hid)
         .outerjoin(Vendor, Vendor.hid == CatalogEntry.vendor_hid)
         .outerjoin(Owner, Owner.hid == OWNER_IN_FORCE)
+        .outerjoin(ITEM_OPERATOR, ITEM_OPERATOR.hid == OPERATOR_IN_FORCE)
         .outerjoin(ITEM_LOCATION, ITEM_LOCATION.hid == LOCATION_IN_FORCE)
         .outerjoin(ITEM_SITE, ITEM_SITE.hid == ITEM_LOCATION.site_hid)
         .outerjoin(ITEM_REGION, ITEM_REGION.hid == ITEM_SITE.region_hid)
@@ -333,6 +379,7 @@ _PARENT_GROUP: Any = aliased(DeviceGroup, name="parent_group")
 _GROUP_LOCATION: Any = aliased(Location, name="group_location")
 _GROUP_SITE: Any = aliased(Site, name="group_site")
 _GROUP_REGION: Any = aliased(Region, name="group_region")
+_GROUP_OPERATOR: Any = aliased(Contact, name="group_operator")
 
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
@@ -350,6 +397,9 @@ DEVICE_GROUPS = Listing(
         "site": Field("text", _GROUP_SITE.name),
         "region": Field("text", _GROUP_REGION.name),
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
+        "operator_hid": Field("reference", DeviceGroup.operator_hid),
+        "operator.name": Field("text", _GROUP_OPERATOR.name),
+        "operator.email": Field("text", _GROUP_OPERATOR.email),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),
@@ -384,6 +434,7 @@ DEVICE_GROUPS = Listing(
         .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == DeviceGroup.location_hid)
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
         .outerjoin(_GROUP_REGION, _GROUP_REGION.hid == _GROUP_SITE.region_hid)
+        .outerjoin(_GROUP_OPERATOR, _GROUP_OPERATOR.hid == DeviceGroup.operator_hid)
     ),
     default_sort=("name",),
 )

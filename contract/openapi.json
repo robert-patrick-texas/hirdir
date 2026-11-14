@@ -2080,7 +2080,7 @@
             "type": "string"
           },
           "uses": {
-            "description": "How many places and owners it is assigned to.",
+            "description": "How many places and owners it is assigned to, and items and groups it is the operator of.",
             "title": "Uses",
             "type": "integer"
           }
@@ -2547,6 +2547,18 @@
             ],
             "title": "Observed Status"
           },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "owner_hid": {
             "anyOf": [
               {
@@ -2623,6 +2635,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/GroupEffective"
           },
           "expected_members": {
             "anyOf": [
@@ -2821,6 +2836,28 @@
             ],
             "title": "Observed Status"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own operator, who is that of its members that have none."
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "owner": {
             "anyOf": [
               {
@@ -2959,6 +2996,9 @@
           "owner_exception_reason",
           "location_hid",
           "location",
+          "operator_hid",
+          "operator",
+          "effective",
           "members_disagree",
           "managed_as",
           "expected_members",
@@ -3117,6 +3157,18 @@
               }
             ],
             "title": "Observed Status"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
           },
           "owner_hid": {
             "anyOf": [
@@ -3509,6 +3561,7 @@
               "own",
               "catalog",
               "parent_item",
+              "device_group",
               "location",
               "site",
               "region",
@@ -3576,6 +3629,7 @@
               "own",
               "catalog",
               "parent_item",
+              "device_group",
               "location",
               "site",
               "region",
@@ -3715,6 +3769,7 @@
               "own",
               "catalog",
               "parent_item",
+              "device_group",
               "location",
               "site",
               "region",
@@ -4177,6 +4232,20 @@
           "members"
         ],
         "title": "GroupDetail",
+        "type": "object"
+      },
+      "GroupEffective": {
+        "additionalProperties": false,
+        "description": "What a device group has in force of what it may have from the group it is in.",
+        "properties": {
+          "operator_hid": {
+            "$ref": "#/components/schemas/EffectiveReference"
+          }
+        },
+        "required": [
+          "operator_hid"
+        ],
+        "title": "GroupEffective",
         "type": "object"
       },
       "GroupOut": {
@@ -4968,6 +5037,19 @@
             ],
             "title": "Observed Status"
           },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A contact: the person of the team who looks after it.",
+            "title": "Operator Hid"
+          },
           "owner_hid": {
             "anyOf": [
               {
@@ -5145,6 +5227,10 @@
           "location_hid": {
             "$ref": "#/components/schemas/EffectiveLocation"
           },
+          "operator_hid": {
+            "$ref": "#/components/schemas/EffectiveReference",
+            "description": "The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name."
+          },
           "owner_hid": {
             "$ref": "#/components/schemas/EffectiveReference"
           },
@@ -5154,6 +5240,7 @@
         },
         "required": [
           "owner_hid",
+          "operator_hid",
           "location_hid",
           "lifecycle_state",
           "disposition",
@@ -5537,6 +5624,28 @@
             "description": "What is seen of it: on the network, or `present`, by a person.",
             "title": "Observed Status"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own operator: the person of the team who looks after it."
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "owner": {
             "anyOf": [
               {
@@ -5785,6 +5894,8 @@
           "owner_exception_reason",
           "location_hid",
           "location",
+          "operator_hid",
+          "operator",
           "parent_item_hid",
           "parent",
           "position",
@@ -6099,6 +6210,19 @@
             ],
             "description": "Null clears it, and the moment with it.",
             "title": "Observed Status"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: the operator it has from above, if any.",
+            "title": "Operator Hid"
           },
           "owner_hid": {
             "anyOf": [
@@ -7641,6 +7765,7 @@
               "type",
               "function",
               "owner",
+              "operator",
               "site",
               "region",
               "tag"
@@ -11431,6 +11556,7 @@
                   "type",
                   "function",
                   "owner",
+                  "operator",
                   "site",
                   "region",
                   "lifecycle_state",
@@ -18294,6 +18420,7 @@
                     "type",
                     "function",
                     "owner",
+                    "operator",
                     "site",
                     "region",
                     "tag"
@@ -18393,6 +18520,7 @@
                     "type",
                     "function",
                     "owner",
+                    "operator",
                     "site",
                     "region",
                     "lifecycle_state",

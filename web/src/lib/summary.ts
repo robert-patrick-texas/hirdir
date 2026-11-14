@@ -60,6 +60,7 @@ const NONE: Readonly<Record<By, string>> = {
   type: "No type",
   function: "No function",
   owner: "No owner",
+  operator: "Nobody: no operator",
   // The items that are nowhere: no location in force, and so no site and no region.
   site: "Nowhere: no location",
   region: "Nowhere: no location",

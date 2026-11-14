@@ -103,7 +103,9 @@ and `condition`, `observed_status`, `observed_at` and the derived `health` say h
 is doing. `location` is where the item is, by the location in force, and takes
 `within` with a region, a site or a location, and `empty`; `site` and `region` are the
 names of its site and of the region the site is in, `site.code` the site's code, and
-`location.name` and `location.kind` those of the location; `owner_exception` is true
+`location.name` and `location.kind` those of the location; `operator.name` and `operator.email` are those of the operator in force,
+`effective.operator_hid` its contact, blank for an item that nobody is assigned to,
+and `operator_hid` the item's own. `owner_exception` is true
 for an item whose owner in force is outside the team, and `owner_exception_reason` is
 that owner's reason; the list of device groups has `owner_exception` too. The lists of device groups and
 of locations have `location` with `within` too, and the list of sites has `region`. A
@@ -193,9 +195,9 @@ column of a later release, such as `contract`, is unknown until that release.
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
 | `owner_members` | `owner`, `contact`, `role`, `priority` | |
 | `networks` | `label`, `kind` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, and a `_source` for each of the twelve fields that inherit |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, and a `_source` for each of the thirteen fields that inherit |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | `family` |
-| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
+| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `operator`, `location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
 | `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at` | |
 
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
@@ -223,6 +225,7 @@ are read there too.
 | A first file | A file of host names, with or without addresses, loads as it is: `hostname` alone makes an item, and loading it again finds each item by its host name and changes nothing. The spellings such a file is likely to use are read as the columns they mean: `ip_address`, `ip` and `mgmt_ip` as `mgmt_address`, `ipv4_address` and `ipv4` as `mgmt_ipv4`, `ipv6_address` and `ipv6` as `mgmt_ipv6` |
 | Places | `location` on an item and on a device group is the path of a location, or its HID. `parent` of a region is the path of the region it is in, `region` of a site the path of its region, and `site` of a location the path of its site. `parent` of a location is the path of the location it is in, whole or from the site down: `Building 1 > Floor 2`. A row of a location that names its parent whole need not name the site. The regions of one file are worked a region before the regions within it, and the locations likewise, wherever they stand. A row that would move a location to another site is rejected |
 | Contacts of a place | A row of `contact_assignments` names one place, in `region`, `site` or `location`, with a `role` and a `contact`. A row with `stop_inheritance` true and no contact is the one that stops inheritance for that place and role. An import does not remove an assignment. In a file of `owner_members` the rows that name a primary are worked first, wherever they stand, so that the first member of an owner is its primary and a change of primary comes out right |
+| The operator | `operator` on an item and on a device group names a contact, by its email address or by a name that one contact alone has, and `!clear` returns an item to the operator it has from above. A row that names the operator an item has anyway, from the item above it or from its group, leaves it inheriting |
 | An external owner | An item or a group that a row gives to an owner outside the team is marked as an exception by that alone. The reason is the owner's, in `exception_reason` of the file of owners; `owner_exception` and `owner_exception_reason` of an item are written by an export and passed over by an import |
 | Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A row of members with the role `master` marks the master that is intended, and takes the mark from the member that had it. `observed_master`, true on the row of one member, records on the stack that this member is seen to be master, with `master_observed_at` or else the moment of the change. One file names one intended master and one observed master of a stack at most: a second row that names one is rejected |
 | Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change, and with no zone named, in the application's time zone. A row that states a status as it is, with no moment, changes nothing, where a person who does so on a page or by a bulk edit has looked again and sets the moment to now. `!clear` in `observed_status` clears both, and a moment is not cleared by itself. What a preview tells of a row leaves out a moment that the clock will set, since the apply is made later. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
@@ -308,13 +311,15 @@ holds no money.
 | `by_condition` | on `totals` only: the components of each condition, and those with none |
 | `by_kind` | on `totals` only: items and components of each kind, so that software and services stand beside the headline count |
 
-`by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `site`, `region`,
-`lifecycle_state`, `disposition`, `condition`, `health` and `tag`.
+`by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `operator`, `site`,
+`region`, `lifecycle_state`, `disposition`, `condition`, `health` and `tag`. By
+`operator` it is by the operator in force, and the blank row is what nobody is
+assigned to.
 
 **The management report**, `GET /reports/management`, is for the people who pay for
 the network. It holds `items`, `component_count`, `est_value` and
 `annual_support_cost`, and neither condition nor health. `by` is one of `vendor`,
-`kind`, `type`, `function`, `owner`, `site`, `region` and `tag`. With no `by` it is by
+`kind`, `type`, `function`, `owner`, `operator`, `site`, `region` and `tag`. With no `by` it is by
 `site`, and the answer says so: the whole inventory, and each site beneath it.
 
 In both, a row of `site` or `region` has the HID of the place as its key and its path
@@ -439,6 +444,9 @@ hirdir locations show 'Americas > Central > Site-2 > Building 1 > Room 102'
 hirdir sites move 'Americas > Central > Site-2' 'Americas > East'
 hirdir items set <hid> location='Americas > Central > Site-2 > Building 1 > Room 102'
 hirdir contacts list --filter 'organization:contains:Operations'
+hirdir items set --filter 'group.name:eq:site2-sw-core' operator=lee.marchetti@example.net --apply
+hirdir items list --filter 'effective.operator_hid:empty:true'    # what nobody is assigned to
+hirdir report summary --by operator
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
 hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
@@ -503,8 +511,8 @@ fresh installation has it, with no account and an empty audit trail.
 | Page | Content |
 |---|---|
 | Sign in | Username, access code, a Sign in button |
-| Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. End-of-life and coverage warnings from 0.6.0 |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site and Region are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
+| Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, as a link to their list. End-of-life and coverage warnings from 0.6.0 |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
 | Catalog | Entries by vendor; the items of each entry |
 | Vendors | The portfolio: everything from one vendor |
 | Groups | Stacks, clusters and controller domains, with members and roles |

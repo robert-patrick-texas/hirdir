@@ -5,12 +5,12 @@ Revises: 0006
 
 Creates the regions, the sites and the locations within them, the contacts with their
 assignments to those places, and the members of owners. An item and a device group
-gain `location_hid`. Loads the `contact_role` and `location_kind` lists with their
-defaults, written out here so that this migration does the same thing whatever a later
-release changes.
+gain `location_hid` and `operator_hid`. Loads the `contact_role` and `location_kind`
+lists with their defaults, written out here so that this migration does the same thing
+whatever a later release changes.
 
 No record there is so far is changed: every item and every group is nowhere until
-somebody says where it is.
+somebody says where it is, and has no operator until it is given one.
 """
 
 import uuid
@@ -200,14 +200,22 @@ def upgrade() -> None:
         op.create_index(f"ix_contact_assignments_{column}", "contact_assignments", [column])
     with op.batch_alter_table("items") as items:
         items.add_column(sa.Column("location_hid", sa.String(36)))
+        items.add_column(sa.Column("operator_hid", sa.String(36)))
         items.create_foreign_key("fk_items_location_hid", "locations", ["location_hid"], ["hid"])
+        items.create_foreign_key("fk_items_operator_hid", "contacts", ["operator_hid"], ["hid"])
         items.create_index("ix_items_location_hid", ["location_hid"])
+        items.create_index("ix_items_operator_hid", ["operator_hid"])
     with op.batch_alter_table("device_groups") as groups:
         groups.add_column(sa.Column("location_hid", sa.String(36)))
         groups.create_foreign_key(
             "fk_device_groups_location_hid", "locations", ["location_hid"], ["hid"]
         )
+        groups.add_column(sa.Column("operator_hid", sa.String(36)))
+        groups.create_foreign_key(
+            "fk_device_groups_operator_hid", "contacts", ["operator_hid"], ["hid"]
+        )
         groups.create_index("ix_device_groups_location_hid", ["location_hid"])
+        groups.create_index("ix_device_groups_operator_hid", ["operator_hid"])
     _load_defaults("contact_role", CONTACT_ROLES)
     _load_defaults("location_kind", LOCATION_KINDS)
     # The table that is created last: the package test puts one of this name in the way
@@ -229,12 +237,18 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("owner_members")
     with op.batch_alter_table("device_groups") as groups:
+        groups.drop_index("ix_device_groups_operator_hid")
         groups.drop_index("ix_device_groups_location_hid")
+        groups.drop_constraint("fk_device_groups_operator_hid", type_="foreignkey")
         groups.drop_constraint("fk_device_groups_location_hid", type_="foreignkey")
+        groups.drop_column("operator_hid")
         groups.drop_column("location_hid")
     with op.batch_alter_table("items") as items:
+        items.drop_index("ix_items_operator_hid")
         items.drop_index("ix_items_location_hid")
+        items.drop_constraint("fk_items_operator_hid", type_="foreignkey")
         items.drop_constraint("fk_items_location_hid", type_="foreignkey")
+        items.drop_column("operator_hid")
         items.drop_column("location_hid")
     op.drop_table("contact_assignments")
     op.drop_table("contacts")

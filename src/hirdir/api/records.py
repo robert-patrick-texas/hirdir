@@ -603,7 +603,12 @@ class ContactOut(Model):
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
-    uses: int = Field(description="How many places and owners it is assigned to.")
+    uses: int = Field(
+        description=(
+            "How many places and owners it is assigned to, and items and groups it is "
+            "the operator of."
+        )
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -951,6 +956,12 @@ class ItemEffective(Model):
     standing of the item it is in."""
 
     owner_hid: EffectiveReference
+    operator_hid: EffectiveReference = Field(
+        description=(
+            "The operator in force: its own, that of the item above it, or that of a group "
+            "it is a member of. The label is the contact's name."
+        )
+    )
     location_hid: EffectiveLocation
     lifecycle_state: EffectiveValue
     disposition: EffectiveValue
@@ -999,6 +1010,10 @@ class ItemOut(Model):
     )
     location_hid: str | None
     location: LocationRef | None = Field(description="Its own location.")
+    operator_hid: str | None
+    operator: ContactRef | None = Field(
+        description="Its own operator: the person of the team who looks after it."
+    )
     parent_item_hid: str | None
     parent: ItemRef | None = Field(description="The item a minor item is in.")
     position: str | None = Field(description="Where in its parent a minor item is.")
@@ -1065,6 +1080,9 @@ class ItemCreate(Model):
     )
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    operator_hid: Hid | None = Field(
+        default=None, description="A contact: the person of the team who looks after it."
+    )
     parent_item_hid: Hid | None = Field(
         default=None, description="The item this one is in. Given, the item is a minor item."
     )
@@ -1114,6 +1132,9 @@ class ItemPatch(Model):
     owner_hid: Hid | None = None
     location_hid: Hid | None = Field(
         default=None, description="Null: a minor item is where the item above it is."
+    )
+    operator_hid: Hid | None = Field(
+        default=None, description="Null: the operator it has from above, if any."
     )
     parent_item_hid: Hid | None = Field(
         default=None, description="Null takes a minor item out of its parent."
@@ -1249,6 +1270,12 @@ class MemberOut(Model):
 ManagedAs = Literal["one", "members", "members_and_cluster"]
 
 
+class GroupEffective(Model):
+    """What a device group has in force of what it may have from the group it is in."""
+
+    operator_hid: EffectiveReference
+
+
 class DeviceGroupOut(Model):
     """A stack, a cluster, a controller domain or another labelled set of items."""
 
@@ -1266,6 +1293,11 @@ class DeviceGroupOut(Model):
     owner_exception_reason: str | None = Field(description="That owner's reason.")
     location_hid: str | None
     location: LocationRef | None
+    operator_hid: str | None
+    operator: ContactRef | None = Field(
+        description="Its own operator, who is that of its members that have none."
+    )
+    effective: GroupEffective
     members_disagree: list[str] = Field(
         description="The fields of the group that a current member contradicts."
     )
@@ -1311,6 +1343,7 @@ class DeviceGroupCreate(Model):
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    operator_hid: Hid | None = None
     managed_as: ManagedAs | None = Field(default=None, description="A cluster only. Left out, one.")
     expected_members: int | None = Field(default=None, ge=1, le=10_000)
     observed_status: ObservedStatus | None = None
@@ -1335,6 +1368,7 @@ class DeviceGroupPatch(Model):
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    operator_hid: Hid | None = None
     managed_as: ManagedAs | None = None
     expected_members: int | None = Field(default=None, ge=1, le=10_000)
     observed_status: ObservedStatus | None = None
@@ -1432,6 +1466,7 @@ SummaryBy = Literal[
     "type",
     "function",
     "owner",
+    "operator",
     "site",
     "region",
     "lifecycle_state",
@@ -1440,7 +1475,9 @@ SummaryBy = Literal[
     "health",
     "tag",
 ]
-ManagementBy = Literal["vendor", "kind", "type", "function", "owner", "site", "region", "tag"]
+ManagementBy = Literal[
+    "vendor", "kind", "type", "function", "owner", "operator", "site", "region", "tag"
+]
 
 
 class HealthCount(Model):

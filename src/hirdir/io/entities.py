@@ -47,6 +47,7 @@ from hirdir.domain import (
     inheritance,
     items,
     lifecycle,
+    operators,
     owners,
     records,
     settings,
@@ -1391,6 +1392,7 @@ class Items(Entity):
     # What a minor item has from the item it is in, when it has none of its own.
     _OWNER = Column("owner", inherits=True)
     _LOCATION = Column("location", limit=LONG, inherits=True)
+    _OPERATOR = Column("operator", limit=254, inherits=True)
     _STANDING = (
         Column("lifecycle_state", limit=20, inherits=True),
         Column("disposition", limit=12, inherits=True),
@@ -1416,6 +1418,7 @@ class Items(Entity):
         Column("condition", limit=40),
         *OBSERVATION,
         _OWNER,
+        _OPERATOR,
         _LOCATION,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
@@ -1435,7 +1438,7 @@ class Items(Entity):
         Column("region", settable=False),
         Column("owner_exception", "boolean", settable=False),
         Column("owner_exception_reason", limit=LONG, settable=False),
-        *_sources((_OWNER, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
+        *_sources((_OWNER, _OPERATOR, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -1453,6 +1456,10 @@ class Items(Entity):
         "location_hid": "location",
         "effective.location_hid": "location",
         "location.name": "location",
+        "operator_hid": "operator",
+        "effective.operator_hid": "operator",
+        "operator.name": "operator",
+        "operator.email": "operator",
         "site_hid": "site",
         "region_hid": "region",
         **{f"effective.{name}": name for name in inheritance.STANDING},
@@ -1463,6 +1470,7 @@ class Items(Entity):
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
         "owner_hid": "owner",
+        "operator_hid": "operator",
         "location_hid": "location",
         "parent_item_hid": "parent",
         "address": "mgmt_address",
@@ -1652,6 +1660,21 @@ class Items(Entity):
         return [] if parent is None else [parent, *items.ancestors(run.db, parent)]
 
     @staticmethod
+    def _operator_above(
+        run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]
+    ) -> str | None:
+        """Return the operator an item has with none of its own: that of the item above
+        it, or that of a group the item at the top of the line is a member of."""
+        if record is None and not above:
+            return None
+        line = above if record is None else [record, *above]
+        held = next((one.operator_hid for one in above if one.operator_hid), None)
+        if held is not None:
+            return held
+        top = line[-1].hid
+        return operators.from_groups(run.db, [top])[top].value
+
+    @staticmethod
     def _standing(
         record: Any | None, above: list[Item], standing: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1704,6 +1727,17 @@ class Items(Entity):
             if owner_hid is None or own is not None or owner_hid != inherited:
                 # Otherwise the row holds the owner the item has from the item above.
                 given["owner_hid"] = owner_hid
+        if "operator" in values:
+            named = values["operator"]
+            operator_hid = run.contact(named, "operator").hid if named is not None else None
+            own = record.operator_hid if record is not None else None
+            if (
+                operator_hid is None
+                or own is not None
+                or operator_hid != self._operator_above(run, record, given, above)
+            ):
+                # Otherwise the row names the operator the item has anyway, from above.
+                given["operator_hid"] = operator_hid
         if "location" in values:
             named = values["location"]
             location_hid = (
@@ -1782,6 +1816,13 @@ class Items(Entity):
             {item.location_hid for item in found}
             | {one.location_hid for line in lines.values() for one in line}
         )
+        looked_after = operators.of_items(db, found, lines)
+        people = _by_hid(
+            db,
+            Contact,
+            {item.operator_hid for item in found} | {one.value for one in looked_after.values()},
+        )
+        called = contacts.reference_texts(db, list(people.values()))
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -1816,6 +1857,9 @@ class Items(Entity):
                 "owner_exception": outside,
                 "owner_exception_reason": owner_in_force.exception_reason if outside else None,
             }
+            operator = item.operator_hid if own else looked_after[item.hid].value
+            row["operator"] = called[operator] if operator else None
+            row["operator_source"] = looked_after[item.hid].source
             for name, effective in in_force.items():
                 column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
                 value = getattr(item, name) if own else effective.value
@@ -1874,6 +1918,7 @@ class DeviceGroups(Entity):
         Column("fqdn", limit=255),
         Column("parent"),
         Column("owner"),
+        Column("operator", limit=254),
         Column("location", limit=LONG),
         Column("managed_as", limit=20),
         Column("expected_members", "integer"),
@@ -1904,12 +1949,16 @@ class DeviceGroups(Entity):
         "owner_hid": "owner",
         "location_hid": "location",
         "location.name": "location",
+        "operator_hid": "operator",
+        "operator.name": "operator",
+        "operator.email": "operator",
         "parent.name": "parent",
         "parent_group_hid": "parent",
         **MGMT_SPELLINGS,
     }
     renamed: ClassVar[Mapping[str, str]] = {
         "owner_hid": "owner",
+        "operator_hid": "operator",
         "location_hid": "location",
         "parent_group_hid": "parent",
         "address": "mgmt_address",
@@ -1950,6 +1999,11 @@ class DeviceGroups(Entity):
         if "owner" in values:
             owner = values["owner"]
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
+        if "operator" in values:
+            named = values["operator"]
+            given["operator_hid"] = (
+                run.contact(named, "operator").hid if named is not None else None
+            )
         if "location" in values:
             place = values["location"]
             given["location_hid"] = (
@@ -1976,6 +2030,8 @@ class DeviceGroups(Entity):
         healths = groups.health_of(db, found)
         atlas = geography.Atlas(db)
         atlas.read_locations(group.location_hid for group in found)
+        people = _by_hid(db, Contact, {group.operator_hid for group in found})
+        called = contacts.reference_texts(db, list(people.values()))
         rows = []
         for group in found:
             master = seen.get(group.hid) or masters.get(group.hid)
@@ -1995,6 +2051,7 @@ class DeviceGroups(Entity):
                     "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
                     if group.owner_hid
                     else None,
+                    "operator": called[group.operator_hid] if group.operator_hid else None,
                     "location": atlas.location_path(group.location_hid) or None,
                     "managed_as": group.managed_as,
                     "expected_members": group.expected_members,

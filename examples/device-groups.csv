@@ -1,7 +1,7 @@
-hid,name,type,hostname,fqdn,parent,owner,location,managed_as,expected_members,observed_status,observed_at,record_status,tags
-,site2-fw-edge,cluster,,,,,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,members,,,,active,critical
-,site2-rtr-wan,cluster,,,,,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,members,,,,active,
-,site2-sw-core,stack,site2-sw-core,site2-sw-core.example.net,,,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102 > Rack A1,,,online,2026-11-02T15:00:00+00:00,active,critical
-,site2-sw-floor,stack,site2-sw-floor,site2-sw-floor.example.net,,,Americas > Central > Site-2 > Building 1 > Floor 2 > Room 201,,3,,,active,
-,site2-wireless,controller_domain,,,,,,,,,,active,
-,site2-wlc-ha,cluster,site2-wlc,site2-wlc.example.net,site2-wireless,,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,one,,,,active,
+hid,name,type,hostname,fqdn,parent,owner,operator,location,managed_as,expected_members,observed_status,observed_at,record_status,tags
+,site2-fw-edge,cluster,,,,,priya.raman@example.net,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,members,,,,active,critical
+,site2-rtr-wan,cluster,,,,,dana.whitfield@example.net,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,members,,,,active,
+,site2-sw-core,stack,site2-sw-core,site2-sw-core.example.net,,,lee.marchetti@example.net,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102 > Rack A1,,,online,2026-11-02T15:00:00+00:00,active,critical
+,site2-sw-floor,stack,site2-sw-floor,site2-sw-floor.example.net,,,robin.achterberg@example.net,Americas > Central > Site-2 > Building 1 > Floor 2 > Room 201,,3,,,active,
+,site2-wireless,controller_domain,,,,,tomas.lindqvist@example.net,,,,,,active,
+,site2-wlc-ha,cluster,site2-wlc,site2-wlc.example.net,site2-wireless,,,Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102,one,,,,active,

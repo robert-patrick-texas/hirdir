@@ -600,6 +600,21 @@ OWNER_MEMBERS = (
 )
 
 
+# Who of the team looks after what. A group is given its operator once, and its members
+# have it: the switches of a stack, the access points of the controller domain, and the
+# pair of controllers in it, through the domain their cluster is nested in. One switch
+# has an operator of its own. What is named nowhere here is looked after by nobody in
+# particular, and a report by operator says how much that is.
+GROUP_OPERATORS = {
+    "site2-sw-core": "Lee Marchetti",
+    "site2-sw-floor": "Robin Achterberg",
+    "site2-wireless": "Tomas Lindqvist",
+    "site2-rtr-wan": "Dana Whitfield",
+    "site2-fw-edge": "Priya Raman",
+}
+ITEM_OPERATORS = {"site2-sw-access-01": "Robin Achterberg", "site2-fw-oob-01": "Priya Raman"}
+
+
 def _placed(item: dict[str, Any]) -> str | None:
     """Return the path of the location an example item is at, or None for nowhere."""
     host = item.get("hostname") or ""
@@ -967,6 +982,8 @@ def build(db: Session) -> None:
         where = _placed(item)
         if where is not None:
             fields["location_hid"] = places[where].hid
+        if item.get("hostname") in ITEM_OPERATORS:
+            fields["operator_hid"] = people[ITEM_OPERATORS[item["hostname"]]].hid
         items.create_item(db, SEED, fields)
     db.flush()
 
@@ -996,6 +1013,8 @@ def build(db: Session) -> None:
         where = _placed({"hostname": name}) if type_ != "controller_domain" else None
         if where is not None:
             fields["location_hid"] = places[where].hid
+        if name in GROUP_OPERATORS:
+            fields["operator_hid"] = people[GROUP_OPERATORS[name]].hid
         fields["members"] = [
             {
                 "item_hid": item(hostname).hid,

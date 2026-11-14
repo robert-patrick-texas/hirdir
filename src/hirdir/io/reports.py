@@ -52,7 +52,7 @@ HUNDREDTH = Decimal("0.01")
 # weight x quantity x (100% - discount) is exact in units of this size.
 WEIGHT_STEPS = Decimal(100 * 100 * 100)
 MONEY_STEPS = Decimal(100)
-SHARED = ("vendor", "kind", "type", "function", "owner", "site", "region")
+SHARED = ("vendor", "kind", "type", "function", "owner", "operator", "site", "region")
 SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
 MANAGEMENT_BY = (*SHARED, "tag")
 ONE_NODE = groups.MANAGED_AS[0]
@@ -284,6 +284,9 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     if by == "owner":
         # The owner in force: a minor item is under the owner of the item it is in.
         return Owner.hid, Owner.label, None
+    if by == "operator":
+        # The operator in force: the blank row is what nobody is assigned to.
+        return fields.ITEM_OPERATOR.hid, fields.ITEM_OPERATOR.name, None
     if by == "site":
         return fields.ITEM_SITE.hid, fields.ITEM_SITE.hid, None
     if by == "region":

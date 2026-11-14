@@ -2877,7 +2877,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -2916,7 +2916,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -4200,7 +4200,7 @@ export interface components {
       row_version: number;
       tags: string[];
       updated_at: string;
-      /** How many places and owners it is assigned to. */
+      /** How many places and owners it is assigned to, and items and groups it is the operator of. */
       uses: number;
     };
     /** Fields of a contact to change, and the version they were read at. */
@@ -4258,6 +4258,7 @@ export interface components {
       /** A stack only: one of the members given here. */
       observed_master_hid?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      operator_hid?: string | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
       record_status?: "draft" | "active";
@@ -4268,6 +4269,7 @@ export interface components {
     DeviceGroupOut: {
       addresses: components["schemas"]["AddressRef"][];
       created_at: string;
+      effective: components["schemas"]["GroupEffective"];
       expected_members: number | null;
       fqdn: string | null;
       /** The groups nested directly in this one. */
@@ -4295,6 +4297,9 @@ export interface components {
       observed_master: components["schemas"]["ItemRef"] | null;
       observed_master_hid: string | null;
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
+      /** Its own operator, who is that of its members that have none. */
+      operator: components["schemas"]["ContactRef"] | null;
+      operator_hid: string | null;
       owner: components["schemas"]["OwnerRef"] | null;
       /** Its owner is outside the operations team. */
       owner_exception: boolean;
@@ -4326,6 +4331,7 @@ export interface components {
       /** A current member of the stack. Null clears it. */
       observed_master_hid?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      operator_hid?: string | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
       record_status?: "draft" | "active" | null;
@@ -4379,7 +4385,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -4388,7 +4394,7 @@ export interface components {
     EffectiveReference: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -4411,7 +4417,7 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -4491,6 +4497,10 @@ export interface components {
       roles: string[];
       row_version: number;
       updated_at: string;
+    };
+    /** What a device group has in force of what it may have from the group it is in. */
+    GroupEffective: {
+      operator_hid: components["schemas"]["EffectiveReference"];
     };
     /** A user group. */
     GroupOut: {
@@ -4615,6 +4625,8 @@ export interface components {
       /** Left out, now. Given with observed_status only. */
       observed_at?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      /** A contact: the person of the team who looks after it. */
+      operator_hid?: string | null;
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
       parent_item_hid?: string | null;
@@ -4646,6 +4658,8 @@ export interface components {
       ldos: components["schemas"]["EffectiveValue"];
       lifecycle_state: components["schemas"]["EffectiveValue"];
       location_hid: components["schemas"]["EffectiveLocation"];
+      /** The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name. */
+      operator_hid: components["schemas"]["EffectiveReference"];
       owner_hid: components["schemas"]["EffectiveReference"];
       support_weight: components["schemas"]["EffectiveValue"];
     };
@@ -4701,6 +4715,9 @@ export interface components {
       observed_at: string | null;
       /** What is seen of it: on the network, or `present`, by a person. */
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
+      /** Its own operator: the person of the team who looks after it. */
+      operator: components["schemas"]["ContactRef"] | null;
+      operator_hid: string | null;
       owner: components["schemas"]["OwnerRef"] | null;
       /** The owner in force is outside the operations team. */
       owner_exception: boolean;
@@ -4760,6 +4777,8 @@ export interface components {
       observed_at?: string | null;
       /** Null clears it, and the moment with it. */
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      /** Null: the operator it has from above, if any. */
+      operator_hid?: string | null;
       owner_hid?: string | null;
       /** Null takes a minor item out of its parent. */
       parent_item_hid?: string | null;
@@ -4954,7 +4973,7 @@ export interface components {
     /** The value and the cost of a view of the items, for the people who pay for it. */
     ManagementOut: {
       /** What the rows are by: the site, unless asked. */
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "tag";
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "tag";
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -5532,7 +5551,7 @@ export interface components {
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };

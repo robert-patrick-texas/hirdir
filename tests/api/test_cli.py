@@ -549,3 +549,19 @@ def test_a_site_is_moved_and_an_item_is_put_somewhere_from_the_command_line(
     assert (
         f"{'owner_exception:':<21}Runs the plant rooms" in run("items", "show", "site2-sw-1").stdout
     )
+
+
+def test_who_looks_after_an_item_is_shown_and_counted(run, make: Maker, switches: list) -> None:
+    lee = make.contact("Lee Marchetti")
+    make.stack("site2-sw-stack1", switches[:2], operator_hid=lee["hid"])
+
+    shown = run("items", "show", "site2-sw-1").stdout
+    assert f"{'operator:':<21}Lee Marchetti (device_group)" in shown
+    run("items", "set", "site2-sw-3", "operator=lee.marchetti@example.net")
+    assert f"{'operator:':<21}Lee Marchetti\n" in run("items", "show", "site2-sw-3").stdout
+    assert f"{'operator:':<21}Lee Marchetti\n" in run("groups", "show", "site2-sw-stack1").stdout
+    run("items", "set", "site2-sw-3", "operator=")
+    table = run("report", "summary", "--by", "operator").stdout.splitlines()
+    assert [line.split("  ")[0] for line in table[1:]] == ["Lee Marchetti", "(none)", "(all)"]
+    nobody = run("items", "list", "--filter", "effective.operator_hid:empty:true").stdout
+    assert [line.split()[1] for line in nobody.splitlines()[1:]] == ["site2-sw-3"]

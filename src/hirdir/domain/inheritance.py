@@ -22,7 +22,17 @@ ITEM_FIELDS = (
 )
 
 
-Source = Literal["own", "catalog", "parent_item", "location", "site", "region", "setting", "none"]
+Source = Literal[
+    "own",
+    "catalog",
+    "parent_item",
+    "device_group",
+    "location",
+    "site",
+    "region",
+    "setting",
+    "none",
+]
 
 
 @dataclass(frozen=True)

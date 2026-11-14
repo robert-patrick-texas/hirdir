@@ -639,15 +639,16 @@ The schema goes from revision `0006` to `0007`. Six tables are added: `regions`,
 `sites`, `locations`, `contacts`, `contact_assignments` and `owner_members`. All of
 them are empty after the upgrade.
 
-The `items` table gains one column, `location_hid`, and the `device_groups` table the
-same. To add a column that refers to another
+The `items` table gains two columns, `location_hid` and `operator_hid`, and the
+`device_groups` table the same two. To add a column that refers to another
 table, SQLite makes each of the two tables anew and copies every row across, inside
 the one transaction that the whole upgrade runs in. Nothing you have is changed by it.
 Every item, device group, membership, network, address, owner and choice is as it was,
 field for field and at the `row_version` it had, and every item has its history. The
 audit trail holds no event of the upgrade.
 
-What is new is empty until somebody fills it in. No item and no group is anywhere:
+What is new is empty until somebody fills it in. No item and no group has an operator:
+a report by operator has one row, of what nobody is assigned to. No item and no group is anywhere:
 each has no location, the tree of places is empty, and every item is counted under
 "nowhere". An item or a device group that is already with an owner outside the team is
 marked as an exception from now on, with the reason that owner has always had to have.
@@ -665,7 +666,7 @@ Three things answer differently from now on, for a script that reads them:
   Until items are given locations there is one row, of the items that are nowhere,
   beside the totals, which are as they were.
 - The record of an owner lists its `tags` and its `members`, and the record of an item
-  and of a device group the `location` it is at.
+  and of a device group the `location` it is at and its `operator`.
 - A file of items or of device groups may have a `location` column, which 0.4.2
   rejected as unknown. An export of the columns that can be set writes it.
 

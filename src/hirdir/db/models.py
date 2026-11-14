@@ -460,6 +460,10 @@ class Item(Bookkeeping, Base):
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )
+    # The person of the team who looks after it: a contact.
+    operator_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("contacts.hid"), default=None, index=True
+    )
     parent_item_hid: Mapped[str | None] = mapped_column(
         ForeignKey("items.hid"), default=None, index=True
     )
@@ -516,6 +520,10 @@ class DeviceGroup(Bookkeeping, Base):
     )
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
+    )
+    # The person who looks after the group, and after its members that have none.
+    operator_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("contacts.hid"), default=None, index=True
     )
     # How a cluster is managed: as one node, as its members, or as both.
     managed_as: Mapped[str | None] = mapped_column(String(20), default=None)

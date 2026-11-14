@@ -42,6 +42,7 @@ from hirdir.domain import (
     groups,
     health,
     inheritance,
+    operators,
     records,
     replacements,
     settings,
@@ -152,6 +153,17 @@ def _exception(owner: Owner | None) -> dict[str, Any]:
         "owner_exception": outside,
         "owner_exception_reason": owner.exception_reason if owner is not None and outside else None,
     }
+
+
+def _operator(found: Effective, people: dict[str, Any]) -> shapes.EffectiveReference:
+    """Return an operator in force, by the name of the contact, and where it came from."""
+    contact = people.get(found.value) if found.value else None
+    return shapes.EffectiveReference(
+        value=found.value,
+        label=contact.name if contact is not None else None,
+        source=found.source,
+        source_hid=found.source_hid,
+    )
 
 
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
@@ -506,6 +518,12 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         {item.owner_hid for item in items} | {item.owner_hid for item in above.values()},
     )
     labels = tags.labels_of(db, "item", hids)
+    looked_after = operators.of_items(db, items, lines)
+    people = _by_hid(
+        db,
+        Contact,
+        {item.operator_hid for item in items} | {one.value for one in looked_after.values()},
+    )
     places = location_refs(
         db, {item.location_hid for item in items} | {one.location_hid for one in above.values()}
     )
@@ -567,6 +585,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner_in_force),
                 location=places.get(item.location_hid) if item.location_hid else None,
+                operator=_contact_ref(people[item.operator_hid]) if item.operator_hid else None,
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
                 health=_health(
@@ -594,6 +613,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 replaced_by=replaced_by.get(item.hid),
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
+                    operator_hid=_operator(looked_after[item.hid], people),
                     owner_hid=shapes.EffectiveReference(
                         value=effective["owner_hid"].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
@@ -628,6 +648,7 @@ _ITEM_SHAPED = (
     "owner_exception",
     "owner_exception_reason",
     "location",
+    "operator",
     "parent",
     "is_major",
     "depth",
@@ -689,6 +710,12 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     its_addresses = _address_refs(db, "group_hid", hids)
     disagree = groups.members_disagree(db, found)
     places = location_refs(db, {group.location_hid for group in found})
+    looked_after = operators.of_groups(db, found)
+    people = _by_hid(
+        db,
+        Contact,
+        {group.operator_hid for group in found} | {one.value for one in looked_after.values()},
+    )
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
@@ -710,6 +737,10 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner),
                 location=places.get(group.location_hid) if group.location_hid else None,
+                operator=_contact_ref(people[group.operator_hid]) if group.operator_hid else None,
+                effective=shapes.GroupEffective(
+                    operator_hid=_operator(looked_after[group.hid], people)
+                ),
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,
                 serial_number=reported.serial_number if reported is not None else None,
@@ -734,6 +765,8 @@ _GROUP_SHAPED = (
     "owner_exception",
     "owner_exception_reason",
     "location",
+    "operator",
+    "effective",
     "serial_source",
     "observed_master",
     "master_as_intended",

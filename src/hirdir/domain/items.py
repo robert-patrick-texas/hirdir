@@ -14,6 +14,7 @@ from hirdir.db import dialect
 from hirdir.db.models import (
     AuditEvent,
     CatalogEntry,
+    Contact,
     DeviceGroup,
     DeviceGroupMember,
     Item,
@@ -41,6 +42,7 @@ FIELDS = (
     "observed_at",
     "owner_hid",
     "location_hid",
+    "operator_hid",
     "parent_item_hid",
     "position",
     *DAYS,
@@ -332,6 +334,10 @@ def _checked(
         )
     if "owner_hid" in fields:
         values["owner_hid"] = _reference(db, Owner, "owner_hid", fields["owner_hid"], item, "owner")
+    if "operator_hid" in fields:
+        values["operator_hid"] = _reference(
+            db, Contact, "operator_hid", fields["operator_hid"], item, "contact"
+        )
     if "location_hid" in fields:
         if fields["location_hid"] and (item is None or item.location_hid != fields["location_hid"]):
             # Checked against the location, which may be retired only while nothing is

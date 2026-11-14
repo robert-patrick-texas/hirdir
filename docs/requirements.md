@@ -51,6 +51,8 @@ later, for example a Last Day of Support date on its model.
 | **Condition** | The state of an item's hardware as a person knows it: untested, good, degraded, suspect, failed or dead. It holds while the item is on a shelf. |
 | **Observed status** | What is seen of an item or a group: online, degraded or unreachable on the network, or present, seen by a person where it should be. Set by hand or by an import until a monitoring tool writes it. |
 | **Health** | What the condition, the observed status and the intent say together, as good, degraded, failed or unknown. For a stack or a cluster it follows from its members, and is worked out when read. |
+| **Owner** | The part of the organization that answers for an item: a team, a service, an outside party. It has its people, a primary and alternates. |
+| **Operator** | The one person of the operations team who looks after an item or a device group: its steward. Assigned on the item, or on a group for all its members. |
 | **Network** | A label for an address space: a VRF, a tenant, a coloured network. |
 | **Registration** | A link from an item or group to an external system that knows it: a monitoring tool, an SDN controller, a cloud service. |
 | **Purchase request** | An internal request number (RITM) with lines of model and quantity, before serial numbers exist. |
@@ -194,6 +196,10 @@ later, for example a Last Day of Support date on its model.
 - **R7.5** Owner is a reference to a managed owner record with a primary and alternate
   people. An owner outside the operations team is allowed as a marked exception with a
   reason.
+- **R7.5a** An item or a device group MAY be assigned an operator: a named member of
+  the team who looks after it. The members of a group have the operator of the group
+  unless they are given their own. What nobody is assigned to MUST be easy to list,
+  because a device with no named steward is one that nobody feels responsible for.
 - **R7.6** Moving a site or a region subtree changes derived paths and inherited values
   and is audited. It does not change any item's identity.
 

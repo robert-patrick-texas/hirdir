@@ -13,6 +13,7 @@ const FROM: Readonly<Record<Source, string>> = {
   own: "",
   catalog: "the catalog entry",
   parent_item: "the item it is in",
+  device_group: "the group it is in",
   location: "the location",
   site: "the site",
   region: "the region",
