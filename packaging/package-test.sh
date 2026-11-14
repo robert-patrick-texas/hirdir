@@ -3677,7 +3677,7 @@ geography() {
     section "regions, sites, locations, contacts and the people of an owner through nginx under $prefix/"
     local land central east site building room other elsewhere staging made number
     local switch_model supply_model switches=() supply nowhere staged placed=""
-    local pat sam lee robin desk assigned events team outside member second
+    local pat sam lee robin desk assigned events team outside member second annex annex_room
     local view='serial_number:glob:PKG0000G*'
     local here='Package Test Land > Central > Package Test Site'
 
@@ -3897,6 +3897,25 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
     expect "pkg a room with an item in it is not retired, and the answer says what it still holds; nor is the site with its locations, nor the region with the site; the region that holds nothing now is" \
         "$made $status $(json_field record_status)" "409 1 409 409 200 retired"
 
+    # A place is not brought back while what it is in is retired.
+    api POST /locations "{\"name\": \"Annex\", \"site_hid\": \"$site\", \"kind\": \"building\"}"
+    made=$status
+    annex=$(json_field hid)
+    api POST /locations "{\"name\": \"Annex Room\", \"site_hid\": \"$site\", \"parent_location_hid\": \"$annex\", \"kind\": \"room\"}"
+    made="$made $status"
+    annex_room=$(json_field hid)
+    api POST "/locations/$annex_room/retire" '{"row_version": 1}'
+    made="$made $status"
+    api POST "/locations/$annex/retire" '{"row_version": 1}'
+    made="$made $status"
+    api PATCH "/locations/$annex_room" '{"row_version": 2, "record_status": "active"}'
+    made="$made $status $(json 'd["errors"][0]["field"]')"
+    api PATCH "/locations/$annex" '{"row_version": 2, "record_status": "active"}'
+    made="$made $status"
+    api PATCH "/locations/$annex_room" '{"row_version": 2, "record_status": "active"}'
+    expect "pkg a building and the room in it are retired, the room first: the room is not brought back while its building is retired, and is once the building is" \
+        "$made $status $(json_field record_status)" "201 201 200 200 422 record_status 200 200 active"
+
     # S28: an item is given to an owner outside the team.
     authorized GET "$prefix/api/v1/owners" --get --data-urlencode 'filter=label:eq:Package Test Team'
     team=$(json 'd["items"][0]["hid"]')
@@ -3954,6 +3973,18 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
         '200 [["Lee Raman", "primary"], ["Pat Whitfield", "alternate"]] 409 204 204 []'
     api POST "/owners/$team/members" "{\"contact_hid\": \"$sam\"}"
     expect "pkg and it is given a person again, who is its primary" "$status $(json_field role)" "201 primary"
+
+    # In a file of the people of an owner, the row of the primary is worked first,
+    # wherever it stands.
+    printf '%s\n' 'owner,contact,role' 'Package Test Facilities,robin.okafor@example.net,alternate' 'Package Test Facilities,pkgtest.desk@example.net,primary' >"$work/people.csv"
+    send "/imports/preview?entity=owner_members&file_name=people.csv" "$work/people.csv"
+    made="$status $(job_counts)"
+    api POST "/imports/$(json 'd["job"]["hid"]')/apply"
+    made="$made $status $(job_counts)"
+    api GET "/owners/$outside/members"
+    expect "pkg a file of the people of an owner that has none, with the row of the alternate before that of the primary, is previewed and applied whole, and GET $prefix/api/v1/owners/{hid}/members lists the two as a page" \
+        "$made $status $(json '[d["total"], sorted([m["contact"]["name"], m["role"]] for m in d["items"])]')" \
+        '201 ["previewed", 2, 2, 0, 0, 0] 200 ["applied", 2, 2, 0, 0, 0] 200 [2, [["Package Test Desk", "primary"], ["Robin Okafor", "alternate"]]]'
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
     for number in regions sites locations contacts contact_assignments owners owner_members; do

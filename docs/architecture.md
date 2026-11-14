@@ -585,8 +585,8 @@ holds what the totals hold, and totals that are as the previous release gave the
 Last, what is new is tried on what was carried over. An export of the item with the
 owner outside the team is imported back as it is, and must find its record unchanged,
 with no reason asked for, because no item is given an owner. That item is changed in
-another field, and no reason is asked for, while an item that is given that owner is
-refused without a reason and marked with one. A region, a site and
+another field, with its owner said again as it is, and no reason is asked for, while
+an item that is given that owner is refused without a reason and marked with one. A region, a site and
 a location of the kind that the site had entered are made, and a contact is given the
 role of the site's own there. The two files that the previous release refused are
 applied and put an item and the first stack from before at that location; the tree
@@ -792,13 +792,16 @@ site. The summary by site and the management report by region label a row with t
 path of its place, have the item that is nowhere in a row of its own, and count an item
 once in the totals though it is in the row of each region above it. A room with an item
 in it is not retired, nor the site, nor the region above; the region that holds
-nothing now is. An item is given an owner outside the team: refused with no reason,
+nothing now is. A building and the room in it are retired, and the room is not brought
+back while its building is retired. An item is given an owner outside the team: refused with no reason,
 accepted and marked as an exception with one, and found by
 `filter=owner_exception:eq:true`; a minor item of such an item is marked too, and an
 item given back to an owner of the team is no exception and has no reason. The first
 person of an owner is its primary and is refused as an alternate; another made primary
 makes the first an alternate in the same change; the primary is not removed while
-another remains. Last, every region, site, location, contact, assignment, owner and
+another remains. A file of the people of an owner that has none, with the row of the
+alternate before that of the primary, is applied whole, and
+`GET /owners/{hid}/members` lists the two as a page. Last, every region, site, location, contact, assignment, owner and
 member of an owner is exported and imported back unchanged, as CSV and as JSON, and an
 export of the items placed here writes the location of each as its path.
 

@@ -148,11 +148,12 @@ after_0007() {
         "$status $(job_counts) $(json '[[r["outcome"], [x["field"] for x in r["reasons"]]] for r in d["rows"] if r["outcome"] != "unchanged"]')" \
         '201 ["previewed", 2, 0, 0, 2, 0] []'
 
-    # The item that is with an owner outside the team is changed in another field, and
-    # no reason is asked for. The reason is asked for when an item is given such an owner.
+    # The item that is with an owner outside the team is changed in another field, with
+    # its owner said again as it is, and no reason is asked for. The reason is asked for
+    # when an item is given such an owner.
     api GET "/items/$outside_item"
-    api PATCH "/items/$outside_item" "{\"row_version\": $(json_field row_version), \"comments\": \"Seen after the upgrade\"}"
-    expect "pkg the item that was with an owner outside the team is changed in another field, and no reason is asked for: it stays marked, with none" \
+    api PATCH "/items/$outside_item" "{\"row_version\": $(json_field row_version), \"comments\": \"Seen after the upgrade\", \"owner_hid\": \"$outside_owner\"}"
+    expect "pkg the item that was with an owner outside the team is changed in another field, with its owner said again as it is, and no reason is asked for: it stays marked, with none" \
         "$status $(json '[d["comments"], d["owner_exception"], d["owner_exception_reason"]]')" \
         '200 ["Seen after the upgrade", true, null]'
     api GET "/items/$witness_item"
