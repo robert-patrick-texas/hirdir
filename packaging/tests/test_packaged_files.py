@@ -119,6 +119,38 @@ def test_the_package_test_names_the_tables_that_a_reset_clears() -> None:
     assert sorted(named.split()) == sorted(model.__tablename__ for model in reset.CLEARED)
 
 
+def test_what_one_upgrade_alone_has_is_in_a_file_the_package_test_will_find() -> None:
+    """A file of package-test.d is read by its name, and its functions are called by theirs.
+
+    One that is named otherwise would be passed over without a word, and so would a
+    function of it whose name does not end in the revision or the version of its file.
+    """
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    called = {
+        what
+        for line in script.splitlines()
+        if not line.lstrip().startswith("#")
+        for what in re.findall(r"(?:^|[;\s])particular ([a-z]+)\b", line)
+    }
+    assert called == {"before", "changed", "after"}
+    revisions = {
+        path.name[:4] for path in (ROOT / "src/hirdir/db/migrations/versions").glob("[0-9]*.py")
+    }
+    files_read = sorted((PACKAGING / "package-test.d").iterdir())
+    assert files_read
+    for path in files_read:
+        name = re.fullmatch(r"(?:migration-(\d{4})|release-(\d+\.\d+\.\d+))\.sh", path.name)
+        assert name, f"{path.name} is neither migration-<revision>.sh nor release-<version>.sh"
+        revision, version = name.groups()
+        assert revision is None or revision in revisions, f"{path.name}: no such migration"
+        key = revision or version.replace(".", "_")
+        text = path.read_text(encoding="utf-8")
+        for function in re.findall(r"^(\w+)\(\) \{$", text, re.M):
+            what, _, rest = function.partition("_")
+            if what in called:
+                assert rest == key, f"{path.name}: {function} is not called; it is for {rest}"
+
+
 def test_the_snippet_redirects_the_prefix_without_its_slash() -> None:
     packaged = setup.parse((PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8"))
     redirect = next(d for d in packaged if d.args == ["=", "/hirdir"])

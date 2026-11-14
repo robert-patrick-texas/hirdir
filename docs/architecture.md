@@ -49,7 +49,8 @@ src/hirdir/
   static/            the built web UI (generated, not committed)
 web/                 TypeScript source of the web UI
 tests/               unit/, api/, acceptance/, e2e/
-packaging/           build-deb.sh, control files, systemd units, nginx files, hirdir-setup, container/
+packaging/           build-deb.sh, control files, systemd units, nginx files, hirdir-setup, container/,
+                     package-test.sh and package-test.d/, what one migration or release alone has in it
 scripts/             build_docs.py, docs.css, release_facts.py, release_body.py, seed_examples.py, seed_fixture.py
 docs/                these pages, and releases/
 images/              pictures used by README.md and docs/
@@ -399,11 +400,22 @@ Docker and installs with apt, as an operator does.
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
 | `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0 and of 0.4.1; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
+**The pair of releases** is worked out by the script, and is written nowhere in it.
+The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
+names, and the previous one is found as
+[release-process.md](release-process.md#the-previous-releases-package) has it. From each
+package the script reads its version and the revision that its migrations end at.
+Where the two revisions are the same, the upgrade has no migration. Where they differ,
+the migrations after the first revision are those the upgrade runs, and the tables
+they create are read from the package too. Each upgrade pass says what it found in its
+first lines. What every upgrade must show is in `packaging/package-test.sh` and holds
+for any pair, so a release with no migration changes nothing in the test.
+
 **The inventory that is upgraded** is made for what an upgrade could harm, through
-the API of the previous release, so that it holds what that release could store. The
-previous release is 0.4.1, and 0.4.2 has no migration: the schema stays at revision
-`0006`, and the upgrade is to change nothing that is held. So the two upgrade passes
-make, with 0.4.1, a record of every kind it can hold:
+the API of the previous release, so that it holds what that release could store and
+nothing else. Each kind of record is made where the schema of the previous release is
+at the revision that brought it, or at a later one. With a previous release at
+revision `0006` the two upgrade passes make:
 
 - items with every kind of value between them: one with a value in every field a
   caller may set, serial number, asset tag, MAC address, dates, quantity, owner, two
@@ -429,29 +441,97 @@ make, with 0.4.1, a record of every kind it can hold:
 - choices of the site's own: a reason for a move, a reason for a replacement, a
   condition, and a label of the site's for a default reason and a default condition.
 
+A previous release at revision `0005` is given the same without what `0006` brought.
+Its stack and its clusters say nothing of the members they are to have, of what is
+observed, or of how they are managed; there is no stack of one switch, no condition
+and no observation; and a record has one primary address, so there are seven
+addresses. A release from before there were groups is given the items alone, and one
+from before there was an inventory is given none.
+
 Afterwards every item, group, membership, network, address and choice must be as it
 was, field for field and at the `row_version` it had, every item with its history
-event for event, and no choice may be added. The tables are read from the database
-file too: the eleven of the inventory must each have the columns, the indexes,
-uniquenesses and foreign keys, and the rows they had, the schema must be the same
-statement for statement at revision `0006`, and the audit trail, read before anything
-is asked of the new version, must hold the events it held and no other. A second item
-with a serial number of the same model, one with an asset tag that is taken, and a
-second group of a name that is taken must still be refused. The stack must say of
-itself what it said, the master that is seen and when among it, and the whole
-inventory, the cluster as two managed nodes and the stack of one switch with its whole
-support weight must be counted as 0.4.1 counted them.
+event for event, and no choice may be added. The first stack must say of itself all
+that it said, the master that is seen and when among it. A second item with a serial
+number of the same model, one with an asset tag that is taken, and a second group of a
+name that is taken must still be refused. The whole inventory, the cluster by how it
+is managed, and the stack of one switch with its whole support weight must be counted
+as the previous release counted them.
 
-One thing that 0.4.2 says differently of what it holds is left out of that comparison
-by name and looked at by itself: the health of the two items whose condition is the
-site's own, or untested, is not known, as before, and its reason must now name the
-condition. And one thing that 0.4.2 reads differently is tried on what was carried
-over. 0.4.1 read a moment with no zone as UTC and stored that moment: the moment it
-stored for 09:00 must still be 09:00 in UTC after the upgrade, while the same words
-given to 0.4.2 must be 09:00 in the application's zone, 14:00 in UTC, for an item and
-for the moment a master was seen at. A filter for 09:00 with no zone must find the
-item that was told so after the upgrade, and one for 09:00 with `Z` the item from
-before.
+The tables are read from the database file too, the eleven of the inventory where
+there are groups. Where there is no migration, each must have the columns, the
+indexes, uniquenesses and foreign keys, and the rows it had, the schema must be the
+same statement for statement, and the audit trail, read before anything is asked of
+the new version, must hold the events it held and no other. Where there is a
+migration, each must have every column it had, as it was, and after them the columns
+that the migration is said to add and no other; the indexes, uniquenesses and foreign
+keys likewise; and every row must hold what it held in the columns it had.
+
+**What one upgrade alone has** is kept apart from all of that, in
+`packaging/package-test.d/`:
+
+- `migration-<revision>.sh` is read when the upgrade runs that migration.
+- `release-<version>.sh` is read when the upgrade crosses that release: the previous
+  release is older than it, and the version under test is not. It is for a release
+  that says or reads differently, with no migration, something that it holds as
+  before. Most releases have none.
+
+Such a file has up to three functions. The first runs while the previous release
+serves: it makes, through that release's API, what the migration could harm or is
+meant to change, and names what is meant to change. The second runs each time the
+inventory has been compared on the new version, in both upgrade passes: it looks, by
+itself, at what was left out of the comparison, and at what the migration put into
+what it made. The third runs in the upgrade pass alone, last: it tries what is new on
+what was carried over. What is meant to change is named, never implied: the fields of
+records, each by HID and field, which the comparison passes over; the rows of a table,
+by HID, which the comparison of its rows leaves out; the columns, indexes and foreign
+keys that the migration adds to a table, which must be there and no other; a list or a
+table that may have more records than before; and the view of the items that must be
+counted as before, where some are meant to be counted otherwise. Everything that is
+not named is compared as in any upgrade.
+
+A migration that has no file is given what every upgrade is given, and both upgrade
+passes print a `SKIP` line that says its own checks are not written. Nobody has then
+said what it adds: every record, column and row that was there must be as it was, and
+what is there beside them is let be until the file names it. So a release with a
+migration adds one file, and nothing else in the test changes on its account.
+
+`migration-0006.sh` is the example of the first kind, for the migration that 0.4.1
+brought. The releases before it let an item that had left the team's hands stay a
+member of its groups, and the migration ends such memberships. With the previous
+release the file moves an endpoint of the controller domain to Released, makes a second
+stack of two whose second switch is Released as well, and sees that both are members
+still. That release has no list of conditions and refuses a choice in it, which the
+file shows; the migration is written to leave alone what it finds in that list, so two
+conditions are written into the database as a site's own. The file names the two
+memberships, the groups and controllers of their items and the member counts of their
+groups as meant to change, the three columns and two indexes that `items` gains, and
+the six columns and one foreign key of `device_groups`, which is made anew. After the
+upgrade it looks at each membership by itself: ended on the day of the upgrade, at the
+next `row_version`, with an event in the audit trail that the system made, and its
+item in no group. The new columns must hold nothing, but for `managed_as`, which says
+`one` for each cluster; the list of conditions must hold its six defaults and the
+site's two, with `good` there once under the site's label; and the second stack, now
+one switch alone, must be counted with its whole support weight. Last, an item from
+before takes a condition and an observation, and the cluster is said to be managed by
+its members and counts as two managed nodes.
+
+`release-0.4.2.sh` is the example of the second kind. 0.4.2 has no migration. One
+thing that it says differently of what it holds is left out of the comparison by name
+and looked at by itself: the health of the two items whose condition is the site's
+own, or untested, is not known, as before, and its reason must now name the condition.
+And one thing that it reads differently is tried on what was carried over. The
+releases before it read a moment with no zone as UTC and stored that moment, which
+the file tells the inventory to expect of them: the moment stored for 09:00 must still
+be 09:00 in UTC after the upgrade, while the same words given to the new version must
+be 09:00 in the application's zone, 14:00 in UTC, for an item and for the moment a
+master was seen at. A filter for 09:00 with no zone must find the item that was told
+so after the upgrade, and one for 09:00 with `Z` the item from before.
+
+`migration-0003.sh` is the smallest. The release before that migration kept a support
+weight to three places, so the file has the inventory give its first model one of
+three, and says what the migration is to make of it. It does not name the rows that
+the migration writes anew, and says so in a `SKIP` line of its own. The migrations
+`0004` and `0005` have no file.
 
 **Where there is no migration**, the failed-upgrade pass has nothing to make fail:
 nothing writes a revision into `alembic_version`, so neither a table in the way nor the
@@ -466,21 +546,32 @@ group still there. That is the way back that
 [install.md](install.md#going-back-to-the-release-before) gives for such a release.
 
 **A migration that fails**, in a release that has one, is made to fail in the database,
-never by changing the package. Where the new version creates a table, the table it
-creates last is put there beforehand, as `addresses` was for 0.4.0, so that everything
-else the migration does is done before it fails. 0.4.1 creates no table. For such a
-release a trigger is put on `alembic_version` that refuses any change to it. Writing the
-new revision into that table is the last thing a migration does, so the failure comes
+never by changing the package, and how is read from the package as well. Where the new
+version creates a table, the table it creates last is put there beforehand, as
+`addresses` was for 0.4.0, so that everything else the migration does is done before it
+fails. Where it creates none, as 0.4.1 creates none, a trigger is put on
+`alembic_version` that refuses any change to it. Writing the new revision into that
+table is the last thing a migration does, so for migration `0006` the failure comes
 when the columns are added, the `device_groups` table is made anew, the clusters are
 marked, the conditions are loaded and the memberships of the items that are Released are
 ended, each with its audit event, and all of that has to be undone: the pass looks for
 the rows of the members as they were, and for an audit trail with no event more. The
 trigger disturbs nothing else: the previous release serves with it in place, and the
-backup that the upgrade takes holds it. A column of a name the migration adds, put there
+backup that the upgrade takes holds it. The file of a migration may ask for the trigger
+though the migration creates a table, for one that creates its tables before it changes
+those that hold a site's records. A column of a name the migration adds, put there
 beforehand, was tried and does not serve. Where the column is added to the table as it
 stands, as on `items`, SQLite refuses it, but at the migration's first statement, with
 nothing yet to undo. Where the table is made anew, as `device_groups` is, the column
 that is already there is taken over without a word and the migration goes through.
+
+`packaging/package-test.sh --upgrade-alone` runs the upgrade pass up to where it goes
+on to what the fresh pass does, and stops there with a `SKIP` line. It is for work on
+the upgrade passes, and for trying a pair of older releases, as in
+`PREVIOUS_DEB=dist/hirdir_0.4.0_amd64.deb DEB=dist/hirdir_0.4.1_amd64.deb
+packaging/package-test.sh --upgrade-alone`: the package of an older release cannot do
+what the fresh pass asks of this tree's. The failed-upgrade pass does nothing of the
+fresh pass and runs whole for such a pair. Neither is the release check.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
 prefix. The nine files of `examples/` are sent in load order to `POST /imports/preview`
