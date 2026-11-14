@@ -370,7 +370,6 @@ describe("the columns a reader starts with", () => {
       "health",
       "owner.label",
       "tags",
-      "effective.est_value",
       "effective.ldos",
     ]);
   });

@@ -38,7 +38,8 @@ type FromCatalog =
   | "ldos";
 
 const INHERITED: ReadonlyArray<[field: FromCatalog, header: string, shown: boolean]> = [
-  ["est_value", "Estimated value", true],
+  // The money is in the management report. In the grid it is there for the asking.
+  ["est_value", "Estimated value", false],
   ["support_weight", "Support weight", false],
   ["annual_support_cost", "Annual support cost", false],
   ["end_of_sale", "End of sale", false],

@@ -387,7 +387,7 @@ fresh installation has it, with no account and an empty audit trail.
 |---|---|
 | Sign in | Username, access code, a Sign in button |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. End-of-life and coverage warnings from 0.6.0 |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
 | Catalog | Entries by vendor; the items of each entry |
 | Vendors | The portfolio: everything from one vendor |
 | Groups | Stacks, clusters and controller domains, with members and roles |

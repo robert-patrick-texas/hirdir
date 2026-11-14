@@ -57,7 +57,6 @@ const SHOWN = [
   "health",
   "owner",
   "tags",
-  "est_value",
   "ldos",
 ];
 
