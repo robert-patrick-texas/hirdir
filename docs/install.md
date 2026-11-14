@@ -227,7 +227,11 @@ what each contract covers; two purchase requests with their lines, on one of whi
 switches have arrived; the capacity lines of the worked example on the
 [data model](data-model.md#capacity-balance) page, one of them a draft; and one
 replacement. The dates of the contracts are fixed in the files, so what the coverage
-report says of them changes as the calendar moves on.
+report says of them changes as the calendar moves on. The capacity report of the
+examples is not the one of that page: the lines are the same, a supply of 9.0, but
+the examples have a support weight of 32 where the worked example has 2,400, so the
+demand is 2.11 and the balance 6.89, where the page has a demand of 10.0 and a
+balance of −1.0.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -286,7 +290,9 @@ sudo systemctl start hirdir
 `reset` refuses while the service is running. It removes every item with its
 replacements, addresses and memberships, every device group, network, catalog entry,
 vendor, owner with its people, region, site, location, operator and contact with its
-assignments, and tag, the stored imports, and the history of those records. It keeps
+assignments, every support agreement and contract with what it covers, every purchase
+request with its lines, every external system with its registrations, every capacity
+line, and every tag, the stored imports, and the history of those records. It keeps
 the accounts, groups, roles and service tokens, so people sign in as before, and the
 settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it
 takes first is one of the 14 that are kept, and its path is printed: `hirdir admin
@@ -745,10 +751,12 @@ Three things answer differently from now on, for a script that reads them:
 - A file of items may have a `purchase_line` column, which 0.5.0 rejected as unknown.
   An export of the columns that can be set writes it.
 
-There is one setting more, `service_states`, the lifecycle states in which an item is
-in service for the coverage report: Test, Prod and Down until it is changed.
-`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is
-the one 0.5.0 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+Among the settings that an Admin changes in the application, which `GET
+/api/v1/settings` lists, there is one more, `service_states`, the lifecycle states in
+which an item is in service for the coverage report: Test, Prod and Down until it is
+changed. It is no setting of the configuration file: `/etc/hirdir/config.toml` gains
+none, and `/etc/nginx/snippets/hirdir.conf` is the one 0.5.0 wrote, so the upgrade
+says nothing of either and nginx is not reloaded.
 
 The package now carries twenty-five example files, where it carried sixteen: see
 [Try it with the examples](#try-it-with-the-examples).
