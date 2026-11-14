@@ -110,15 +110,22 @@ def update_line(
 @lines.post("/{hid}/receive", status_code=201)
 def receive_line(hid: str, body: r.Receive, _: Inventory, context: Audit, db: Db) -> r.ReceivedOut:
     """Receive items on a line: each is created in Delivered, of the line's model, and
-    names the line. Either all of them are created or none is."""
+    names the line. Either all of them are created or none is.
+
+    `items` is what arrived that is known by a serial number, an asset tag or a name,
+    and `quantity` how many more arrived that nothing is known of yet: each of those is
+    named for its line, `RITM0012345/2-003`. A request that is pending or ordered
+    becomes received by the same change, once every line of it has arrived in full.
+    """
     line, made = purchases.receive(
         db,
         context,
         hid,
         body.row_version,
         [one.model_dump(exclude_unset=True) for one in body.items],
-        body.delivered_on,
-        body.location_hid,
+        quantity=body.quantity,
+        delivered_on=body.delivered_on,
+        location_hid=body.location_hid,
     )
     return shapes.received_out(db, line, made)
 

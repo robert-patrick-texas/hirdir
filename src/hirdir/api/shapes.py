@@ -67,7 +67,7 @@ from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-from hirdir.io import balance, imports, planning
+from hirdir.io import balance, fields, imports, planning
 
 FIRST_ROWS = 100
 
@@ -681,16 +681,18 @@ def _replacement_refs(
     )
 
 
-def _contract_refs(db: Session, found: list[Contract]) -> dict[str, shapes.ContractRef]:
+def _contract_refs(
+    db: Session, found: list[Contract], today: date
+) -> dict[str, shapes.ContractRef]:
     vendors = _by_hid(db, Vendor, {contract.vendor_hid for contract in found})
     return {
         # The statuses are read as the record has them, and checked against the shape's.
         contract.hid: shapes.ContractRef.model_validate(
             {
                 "hid": contract.hid,
-                "number": contract.number,
+                "number": contracts.term(contract, today)["number"],
                 "vendor": vendors[contract.vendor_hid].name,
-                "status": contract.status,
+                "status": contracts.status_of(contract, today),
                 "record_status": contract.record_status,
             }
         )
@@ -700,17 +702,20 @@ def _contract_refs(db: Session, found: list[Contract]) -> dict[str, shapes.Contr
 
 def _cover(
     db: Session, item_hids: list[str], today: date
-) -> dict[str, tuple[list[shapes.CoverageRef], date | None]]:
-    """Return the coverages of each item, and the last day its cover runs to."""
+) -> dict[str, tuple[list[shapes.CoverageRef], date | None, int]]:
+    """Return the coverages of each item, the last day its cover runs to, and how many
+    contracts cover it today."""
     found = contracts.of_items(db, item_hids)
     refs = _contract_refs(
-        db, list({contract.hid: contract for its in found.values() for _, contract in its}.values())
+        db,
+        list({contract.hid: contract for its in found.values() for _, contract in its}.values()),
+        today,
     )
-    out: dict[str, tuple[list[shapes.CoverageRef], date | None]] = {}
+    out: dict[str, tuple[list[shapes.CoverageRef], date | None, int]] = {}
     for hid, its in found.items():
         listed = []
         for coverage, contract in its:
-            span = contracts.span(coverage, contract)
+            span = contracts.span(coverage, contract, today)
             listed.append(
                 shapes.CoverageRef(
                     hid=coverage.hid,
@@ -719,9 +724,11 @@ def _cover(
                     starts_on=span.starts_on,
                     ends_on=span.ends_on,
                     in_force=contracts.in_force(coverage, contract, today),
+                    left_service=coverage.left_service,
                 )
             )
-        out[hid] = (listed, contracts.covered_until(its, today))
+        covering = {one.contract_hid for one in listed if one.in_force}
+        out[hid] = (listed, contracts.covered_until(its, today), len(covering))
     return out
 
 
@@ -748,6 +755,29 @@ def _registration_refs(
             for registration, system in found
         ]
         for hid, found in systems.of_holders(db, field, hids).items()
+    }
+
+
+def _group_registration_refs(
+    db: Session, item_hids: list[str]
+) -> dict[str, list[shapes.GroupRegistrationRef]]:
+    """Return what the stacks and the clusters of each item are registered with."""
+    return {
+        hid: [
+            shapes.GroupRegistrationRef.model_validate(
+                {
+                    "hid": registration.hid,
+                    "system_hid": system.hid,
+                    "system": _system_ref(system),
+                    "external_id": registration.external_id,
+                    "status": registration.status,
+                    "confirmed_at": registration.confirmed_at,
+                    "group": _group_ref(group),
+                }
+            )
+            for registration, system, group in found
+        ]
+        for hid, found in systems.of_groups_of_items(db, item_hids).items()
     }
 
 
@@ -816,6 +846,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     today = contracts.today(db)
     cover = _cover(db, hids, today)
     registered = _registration_refs(db, "item_hid", hids)
+    through_groups = _group_registration_refs(db, hids)
     arrived_on = _line_refs(db, {item.purchase_line_hid for item in items})
     out = []
     for item in items:
@@ -887,10 +918,12 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 replaces=replaces.get(item.hid),
                 replaced_by=replaced_by.get(item.hid),
                 purchase_line=arrived_on.get(item.purchase_line_hid or ""),
-                covered=any(one.in_force for one in cover[item.hid][0]),
+                covered=cover[item.hid][2] > 0,
                 covered_until=cover[item.hid][1],
+                contract_count=cover[item.hid][2],
                 coverage=cover[item.hid][0],
                 registrations=registered[item.hid],
+                group_registrations=through_groups[item.hid],
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
                     operator_hid=marks.in_force(looked_after[item.hid], holders),
@@ -934,8 +967,10 @@ _ITEM_SHAPED = (
     "purchase_line",
     "covered",
     "covered_until",
+    "contract_count",
     "coverage",
     "registrations",
+    "group_registrations",
     "tags",
     "effective",
 )
@@ -1220,33 +1255,61 @@ def _vendor_ref(vendor: Vendor) -> shapes.VendorRef:
     return shapes.VendorRef(hid=vendor.hid, name=vendor.name)
 
 
+def _next_term(record: Any, today: date) -> shapes.NextTerm | None:
+    waiting = contracts.pending_term(record, today)
+    return None if waiting is None else shapes.NextTerm.model_validate(waiting)
+
+
 def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.AgreementOut]:
-    """Return agreements, each with its vendor, its tags and how many contracts it groups."""
+    """Return agreements, each with its term in force, its vendor, its tags and how
+    many contracts it groups."""
     hids = [agreement.hid for agreement in found]
     vendors = _by_hid(
         db, Vendor, {one.vendor_hid for one in found} | {one.reseller_hid for one in found}
     )
     labels = tags.labels_of(db, contracts.AGREEMENT_TYPE, hids)
     grouped = contracts.contracts_in(db, hids)
-    return [
-        shapes.AgreementOut(
-            **_own(agreement, shapes.AgreementOut, ("vendor", "reseller", "tags", "contracts")),
-            vendor=_vendor_ref(vendors[agreement.vendor_hid]),
-            reseller=_vendor_ref(vendors[agreement.reseller_hid])
-            if agreement.reseller_hid
-            else None,
-            tags=labels[agreement.hid],
-            contracts=grouped[agreement.hid],
+    today = contracts.today(db)
+    shaped = (
+        *contracts.TERM,
+        "status",
+        "vendor",
+        "reseller",
+        "tags",
+        "lapsed",
+        "next_term",
+        "contracts",
+    )
+    out = []
+    for agreement in found:
+        its = contracts.term(agreement, today)
+        out.append(
+            # The status is read as the record has it, and checked against the shape's.
+            shapes.AgreementOut.model_validate(
+                {
+                    **_own(agreement, shapes.AgreementOut, shaped),
+                    **its,
+                    "status": contracts.status_of(agreement, today),
+                    "vendor": _vendor_ref(vendors[agreement.vendor_hid]),
+                    "reseller": _vendor_ref(vendors[agreement.reseller_hid])
+                    if agreement.reseller_hid
+                    else None,
+                    "tags": labels[agreement.hid],
+                    "lapsed": contracts.lapsed(agreement, its["ends_on"], today),
+                    "next_term": _next_term(agreement, today),
+                    "contracts": grouped[agreement.hid],
+                }
+            )
         )
-        for agreement in found
-    ]
+    return out
 
 
 def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut]:
-    """Return contracts, each with its vendor, its agreement, what it has in force, its
-    tags and how many items it covers."""
+    """Return contracts, each with its term in force, its vendor, its agreement, what
+    it has in force from there, its tags and how many items it covers."""
     hids = [contract.hid for contract in found]
-    in_force = {contract.hid: contracts.effective(contract) for contract in found}
+    today = contracts.today(db)
+    in_force = {contract.hid: contracts.effective(contract, today) for contract in found}
     vendors = _by_hid(
         db,
         Vendor,
@@ -1255,16 +1318,19 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
         | {its["reseller_hid"].value for its in in_force.values()},
     )
     labels = tags.labels_of(db, contracts.RECORD_TYPE, hids)
-    covered = contracts.covered_items(db, hids)
+    covered = fields.covered_items(db, hids)
     scope = contracts.in_scope(db, hids)
-    today = contracts.today(db)
     shaped = (
+        *contracts.TERM,
+        "status",
         "vendor",
         "agreement",
         "effective",
         "reseller",
         "tags",
         "covers_today",
+        "lapsed",
+        "next_term",
         "covered_items",
         "items_in_scope",
     )
@@ -1274,32 +1340,44 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
         within = contracts.agreement_of(contract)
         through = vendors.get(its["reseller_hid"].value or "")
         out.append(
-            shapes.ContractOut(
-                **_own(contract, shapes.ContractOut, shaped),
-                vendor=_vendor_ref(vendors[contract.vendor_hid]),
-                agreement=None
-                if within is None
-                else shapes.AgreementRef(hid=within.hid, name=within.name, number=within.number),
-                effective=shapes.ContractEffective(
-                    reseller_hid=shapes.EffectiveReference(
-                        value=its["reseller_hid"].value,
-                        label=through.name if through is not None else None,
-                        source=its["reseller_hid"].source,
-                        source_hid=its["reseller_hid"].source_hid,
+            shapes.ContractOut.model_validate(
+                {
+                    **_own(contract, shapes.ContractOut, shaped),
+                    **contracts.term(contract, today),
+                    "status": contracts.status_of(contract, today),
+                    "vendor": _vendor_ref(vendors[contract.vendor_hid]),
+                    "agreement": None
+                    if within is None
+                    else shapes.AgreementRef(
+                        hid=within.hid,
+                        name=within.name,
+                        number=contracts.term(within, today)["number"],
                     ),
-                    **{
-                        name: _effective(name, value)
-                        for name, value in its.items()
-                        if name != "reseller_hid"
-                    },
-                ),
-                reseller=_vendor_ref(vendors[contract.reseller_hid])
-                if contract.reseller_hid
-                else None,
-                tags=labels[contract.hid],
-                covers_today=contracts.covers(contract, today),
-                covered_items=covered[contract.hid],
-                items_in_scope=scope[contract.hid],
+                    "effective": shapes.ContractEffective(
+                        reseller_hid=shapes.EffectiveReference(
+                            value=its["reseller_hid"].value,
+                            label=through.name if through is not None else None,
+                            source=its["reseller_hid"].source,
+                            source_hid=its["reseller_hid"].source_hid,
+                        ),
+                        **{
+                            name: _effective(name, value)
+                            for name, value in its.items()
+                            if name != "reseller_hid"
+                        },
+                    ),
+                    "reseller": _vendor_ref(vendors[contract.reseller_hid])
+                    if contract.reseller_hid
+                    else None,
+                    "tags": labels[contract.hid],
+                    "covers_today": contracts.covers(contract, today),
+                    "lapsed": contracts.lapsed(
+                        contract, contracts.period(contract, today).ends_on, today
+                    ),
+                    "next_term": _next_term(contract, today),
+                    "covered_items": covered[contract.hid],
+                    "items_in_scope": scope[contract.hid],
+                }
             )
         )
     return out
@@ -1332,14 +1410,14 @@ def terms_out(db: Session, contract: Contract) -> list[shapes.ContractTerm]:
 def coverage_out(db: Session, found: list[ContractCoverage]) -> list[shapes.CoverageOut]:
     """Return coverages, each with its contract, its item and the days in force."""
     held = _by_hid(db, Contract, {coverage.contract_hid for coverage in found})
-    refs = _contract_refs(db, list(held.values()))
+    today = contracts.today(db)
+    refs = _contract_refs(db, list(held.values()), today)
     items = _by_hid(db, Item, {coverage.item_hid for coverage in found})
     named = item_refs(db, list(items.values()))
-    today = contracts.today(db)
     out = []
     for coverage in found:
         contract, item = held[coverage.contract_hid], items[coverage.item_hid]
-        span = contracts.span(coverage, contract)
+        span = contracts.span(coverage, contract, today)
         out.append(
             shapes.CoverageOut(
                 **_own(
@@ -1481,7 +1559,7 @@ def requests_out(db: Session, found: list[PurchaseRequest]) -> list[shapes.Purch
 
 def systems_out(db: Session, found: list[ExternalSystem]) -> list[shapes.ExternalSystemOut]:
     """Return external systems, each with how many records are registered with it."""
-    counts = systems.registered(db, [system.hid for system in found])
+    counts = fields.registered(db, [system.hid for system in found])
     return [
         shapes.ExternalSystemOut(
             **_own(system, shapes.ExternalSystemOut, ("registrations",)),
@@ -1567,6 +1645,7 @@ def coverage_report_out(db: Session, found: planning.Coverage) -> shapes.Coverag
             "service_states": found.service_states,
             "totals": shapes.CoverageTotals.model_validate(found.totals),
             "sections": _sections(found.sections),
+            "lapsed_contracts": shapes.LapsedContracts.model_validate(found.lapsed_contracts),
             **_page_of(db, found.page),
         }
     )

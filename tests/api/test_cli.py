@@ -689,18 +689,36 @@ def test_contracts_are_shown_covered_rolled_in_and_renewed(
     out = run("contracts", "set", "CON-2", "agreement=").stdout
     assert out.startswith("CON-2: ")
 
+    # A renewal whose period has begun is in force at once.
     renewed = run(
-        "contracts", "renew", "CON-2", "--number", "CON-2-R1", "--from", "2027-01-01",
+        "contracts", "renew", "CON-2", "--number", "CON-2-R1", "--from", "2026-06-01",
         "--to", "2097-12-31", "--purchase-reference", "RITM0002",
     )  # fmt: skip
-    assert "CON-2 is now CON-2-R1, 2027-01-01 to 2097-12-31; 2 items follow" in renewed.stdout
+    assert "CON-2 is now CON-2-R1, 2026-06-01 to 2097-12-31; 2 items follow" in renewed.stdout
     shown = run("contracts", "show", "CON-2-R1").stdout
     assert "earlier term:        CON-2, 2026-01-01 to further notice, RITM0001" in shown
     run("contracts", "renew", "CON-2-R1", expect=4)
+    # One that is still to begin is kept as the next term, and may be withdrawn.
+    ahead = run(
+        "contracts", "renew", "CON-2-R1", "--number", "CON-2-R2", "--from", "2098-01-01",
+        "--to", "2098-12-31",
+    )  # fmt: skip
+    assert "CON-2-R1 renews as CON-2-R2 on 2098-01-01, to 2098-12-31; until then" in ahead.stdout
+    shown = run("contracts", "show", "CON-2-R2").stdout
+    assert "number:              CON-2-R1" in shown
+    assert "next term:           CON-2-R2, 2098-01-01 to 2098-12-31" in shown
+    withdrawn = run("contracts", "renew", "CON-2-R1", "--withdraw").stdout
+    assert "the term that was to begin is withdrawn" in withdrawn
+    run("contracts", "renew", "CON-2-R1", "--withdraw", expect=4)
+    of_agreement = run(
+        "agreements", "renew", "Cisco Enterprise Agreement", "--from", "2100-01-01",
+        "--to", "2100-12-31",
+    )  # fmt: skip
+    assert "Cisco Enterprise Agreement renews on 2100-01-01, to 2100-12-31" in of_agreement.stdout
 
     by_contract = run("report", "summary", "--by", "contract", "--format", "csv").stdout
     rows = list(csv.reader(io.StringIO(by_contract)))
-    assert [row[0] for row in rows] == ["contract", "CON-1 (Cisco)", "(none)", "(all)"]
+    assert [row[0] for row in rows] == ["contract", "CON-1 (Cisco)", "CON-2-R1 (Cisco)", "(all)"]
 
 
 def test_purchases_are_shown_and_received_from_the_command_line(
@@ -739,6 +757,10 @@ def test_purchases_are_shown_and_received_from_the_command_line(
     assert arrived["items"][0]["location"]["path"] == room["path"]
     run("purchases", "receive", "RITM0012345/1", "--name", "a", "--asset-tag", "b", expect=4)
     run("purchases", "receive", "RITM0012345/1", expect=2)
+    counted = run("purchases", "receive", "RITM0012345/1", "--count", "1")
+    assert "1 items received on RITM0012345/1; 0 of 3 are still to come" in counted.stdout
+    assert make.get("/items", filter="name:eq:RITM0012345/1-003")["total"] == 1
+    assert "received" in run("purchases", "show", "RITM0012345").stdout
     run("purchases", "receive", "RITM0012345", "--serial", "x", expect=2)
     run("purchases", "receive", "RITM0099999/1", "--serial", "x", expect=4)
     run("purchases", "show", "RITM0099999", expect=4)
@@ -750,6 +772,8 @@ def test_the_reports_that_look_ahead_are_printed(
     coverage = run("report", "coverage").stdout
     assert "in_service:          3" in coverage
     assert "uncovered:           2" in coverage
+    assert "overlapping:         0" in coverage
+    assert "lapsed contracts:    0" in coverage
     uncovered = run("report", "coverage", "--section", "uncovered", "--format", "csv").stdout
     rows = list(csv.reader(io.StringIO(uncovered)))
     assert rows[0] == ["name", "pid", "serial_number", "lifecycle_state", "site", "covered_until"]
@@ -782,7 +806,7 @@ def test_the_reports_that_look_ahead_are_printed(
     )
     replaced = run("report", "replacements").stdout
     assert replaced.splitlines()[1].split()[1:] == ["site2-sw-1", "site2-sw-2", "RMA", "RMA-1"]
-    assert "1 replacements: RMA 1" in replaced
+    assert "1 replacement: RMA 1" in replaced
 
     make.post(
         "/capacity-lines",

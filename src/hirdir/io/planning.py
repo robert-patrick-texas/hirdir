@@ -30,7 +30,7 @@ from hirdir.io.fields import ITEMS, REPLACEMENTS
 
 # The states in which an item has been in service and no longer is.
 OUT_OF_SERVICE = ("Pending-Removal", "Released", "Archived")
-COVERAGE_SECTIONS = ("uncovered", "out_of_service", "expiring")
+COVERAGE_SECTIONS = ("uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending")
 END_OF_LIFE_SECTIONS = ("past", "approaching")
 EXPIRING_WITHIN = 90
 APPROACHING_WITHIN = 730
@@ -72,21 +72,50 @@ def _checked_section(section: str | None, allowed: tuple[str, ...]) -> None:
         raise Invalid("the section is not acceptable", {"section": f"one of {', '.join(allowed)}"})
 
 
-def _count(db: Session, tree: Any, include_archived: bool, include_drafts: bool) -> int:
-    """Return how many items a filter lists, as the item list would count them."""
-    return listing.page(
+def _section(
+    db: Session,
+    asked: Any,
+    conditions: dict[str, Any] | None,
+    include_archived: bool,
+    include_drafts: bool,
+) -> tuple[int, Section]:
+    """Count the items of a view that meet the conditions of a section, and return the
+    count with the section: the filter that lists the same items on the item list.
+
+    The count is made of the filter that was asked with and of the conditions, each
+    read by itself, so a filter at the very limits of the grammar is counted like any
+    other. The filter of the section joins the two. Where the join would be more than
+    the grammar takes, the section has no filter, and is read with `section`.
+    """
+    also = (
+        []
+        if conditions is None
+        else [
+            filters.to_sql(filters.from_tree(conditions), ITEMS.fields, settings.time_zone(db), db)
+        ]
+    )
+    count = listing.page(
         db,
         ITEMS,
-        filter_=tree,
+        filter_=asked,
         limit=1,
         include_archived=include_archived,
         include_drafts=include_drafts,
+        also=also,
     )[1]
+    joined = filters.both(filters.to_tree(filters.parse(asked)), conditions)
+    try:
+        filters.parse(joined)
+    except Invalid:
+        joined = None
+    return count, Section(count, joined, include_archived, include_drafts)
 
 
 def _page(
     db: Session,
+    asked: Any,
     name: str | None,
+    conditions: dict[str, dict[str, Any] | None],
     sections: dict[str, Section],
     sort: list[str] | None,
     default_sort: list[str],
@@ -96,15 +125,22 @@ def _page(
     if name is None:
         return Page(limit=limit, offset=offset)
     section = sections[name]
+    its = conditions[name]
+    also = (
+        []
+        if its is None
+        else [filters.to_sql(filters.from_tree(its), ITEMS.fields, settings.time_zone(db), db)]
+    )
     items, total = listing.page(
         db,
         ITEMS,
-        filter_=section.filter,
+        filter_=asked,
         sort=sort or default_sort,
         limit=limit,
         offset=offset,
         include_archived=section.include_archived,
         include_drafts=section.include_drafts,
+        also=also,
     )
     return Page(name, items, total, limit, offset)
 
@@ -121,6 +157,16 @@ class CoverageTotals:
     uncovered: int
     out_of_service: int
     expiring: int
+    overlapping: int
+    renewal_pending: int
+
+
+@dataclass(frozen=True)
+class Lapsed:
+    """The contracts whose period has ended while they still say they are active."""
+
+    count: int
+    filter: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -132,6 +178,7 @@ class Coverage:
     service_states: list[str]
     totals: CoverageTotals
     sections: dict[str, Section]
+    lapsed_contracts: Lapsed
     page: Page
 
 
@@ -146,54 +193,43 @@ def coverage(
     limit: int = 100,
     offset: int = 0,
 ) -> Coverage:
-    """Return what is in service with no cover, what is covered though out of service,
-    and what runs out of cover within some days."""
+    """Return what is in service with no cover, what is out of service and still
+    counted by a contract, what runs out of cover within some days, what more than one
+    contract covers, and what is covered while a renewal is pending."""
     _checked_section(section, COVERAGE_SECTIONS)
     within_days = _checked_days(within_days)
     today = contracts.today(db)
     states = list(settings.value(db, "service_states"))
-    asked = filters.to_tree(filters.parse(filter_))
     where = filters.where
-    in_service = filters.both(asked, where(STATE, "in", states), where("is_major", "eq", True))
+    in_service = filters.both(where(STATE, "in", states), where("is_major", "eq", True))
     covered = filters.both(in_service, where("covered", "eq", True))
-    trees = {
+    conditions: dict[str, dict[str, Any] | None] = {
         "uncovered": filters.both(in_service, where("covered", "eq", False)),
-        "out_of_service": filters.both(
-            asked,
-            where("covered", "eq", True),
-            {
-                "or": [
-                    where("record_status", "eq", "retired"),
-                    where(STATE, "in", list(OUT_OF_SERVICE)),
-                ]
-            },
-        ),
+        "out_of_service": where("out_of_service_cover", "eq", True),
         "expiring": filters.both(
             covered,
             where("covered_until", "lte", (today + timedelta(days=within_days)).isoformat()),
         ),
+        "overlapping": where("contract_count", "gt", 1),
+        "renewal_pending": where("contract.status", "eq", contracts.RENEWAL_PENDING),
     }
     sections = {
-        name: Section(
-            count=_count(db, tree, name == "out_of_service", include_drafts),
-            filter=tree,
-            # What is out of service is listed whatever its status: that is the point.
-            include_archived=name == "out_of_service",
-            include_drafts=include_drafts,
-        )
-        for name, tree in trees.items()
+        # What is out of service is listed whatever its status: that is the point.
+        name: _section(db, filter_, its, name == "out_of_service", include_drafts)[1]
+        for name, its in conditions.items()
     }
-    counted = _count(db, in_service, False, include_drafts)
     totals = CoverageTotals(
-        in_service=counted,
-        covered=_count(db, covered, False, include_drafts),
-        uncovered=sections["uncovered"].count,
-        out_of_service=sections["out_of_service"].count,
-        expiring=sections["expiring"].count,
+        in_service=_section(db, filter_, in_service, False, include_drafts)[0],
+        covered=_section(db, filter_, covered, False, include_drafts)[0],
+        **{name: one.count for name, one in sections.items()},
+    )
+    lapsed = where("lapsed", "eq", True)
+    lapsed_contracts = Lapsed(
+        listing.page(db, fields.CONTRACTS, filter_=lapsed, limit=1)[1], lapsed
     )
     default = ["covered_until", "name"] if section == "expiring" else ["name"]
-    page = _page(db, section, sections, sort, default, limit, offset)
-    return Coverage(today, within_days, states, totals, sections, page)
+    page = _page(db, filter_, section, conditions, sections, sort, default, limit, offset)
+    return Coverage(today, within_days, states, totals, sections, lapsed_contracts, page)
 
 
 # --- end of life ---------------------------------------------------------------------
@@ -233,7 +269,11 @@ def fiscal_year(day: date, start_month: int) -> tuple[int, date, date]:
     """Return the fiscal year a day falls in, with its first and its last day. A fiscal
     year is named for the calendar year it ends in."""
     first_year = day.year if day.month >= start_month else day.year - 1
-    first = date(first_year, start_month, 1)
+    # A date at either end of the calendar, a "never" of 9999-12-31, is in a fiscal
+    # year that the calendar cuts short.
+    first = date(first_year, start_month, 1) if first_year >= date.min.year else date.min
+    if first_year + 1 > date.max.year:
+        return first_year + (0 if start_month == 1 else 1), first, date.max
     last = date(first_year + 1, start_month, 1) - timedelta(days=1)
     return last.year, first, last
 
@@ -293,19 +333,16 @@ def end_of_life(
         for year, (items, components, first, last) in sorted(years.items())
     ]
 
-    asked = filters.to_tree(filters.parse(filter_))
     its = f"effective.{date_}"
-    trees = {
-        "past": filters.both(asked, filters.where(its, "lt", today.isoformat())),
-        "approaching": filters.both(
-            asked, filters.where(its, "between", [today.isoformat(), horizon.isoformat()])
-        ),
+    conditions: dict[str, dict[str, Any] | None] = {
+        "past": filters.where(its, "lt", today.isoformat()),
+        "approaching": filters.where(its, "between", [today.isoformat(), horizon.isoformat()]),
     }
     sections = {
-        name: Section(dates[date_][name].items, tree, include_archived, include_drafts)
-        for name, tree in trees.items()
+        name: _section(db, filter_, one, include_archived, include_drafts)[1]
+        for name, one in conditions.items()
     }
-    page = _page(db, section, sections, sort, [its, "name"], limit, offset)
+    page = _page(db, filter_, section, conditions, sections, sort, [its, "name"], limit, offset)
     return EndOfLife(today, within_days, date_, dates, by_fiscal_year, sections, page)
 
 
@@ -491,7 +528,10 @@ def portfolio(
     its_contracts = list(
         db.scalars(
             select(Contract)
-            .where(or_(provided, Contract.reseller_hid == vendor.hid), *status)
+            .where(
+                or_(provided, contracts.in_force_of(Contract, "reseller_hid") == vendor.hid),
+                *status,
+            )
             .order_by(Contract.number_key, Contract.hid)
         )
     )

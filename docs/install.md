@@ -725,7 +725,7 @@ Every record is as it was, field for field and at the `row_version` it had, and 
 item has its history. The audit trail holds no event of the upgrade.
 
 What is new is empty until somebody fills it in. No item is under a contract: on the
-coverage report every major item in Test, Prod or Down is in service with no cover,
+coverage report every major item in Assigned, Test, Prod or Down is in service with no cover,
 which is true until the contracts are entered, and the first page says how many. No
 item arrived on a purchase line, nothing is registered with an external system, and
 there is no capacity line: the capacity report shows the support weight of the
@@ -746,7 +746,7 @@ Three things answer differently from now on, for a script that reads them:
   An export of the columns that can be set writes it.
 
 There is one setting more, `service_states`, the lifecycle states in which an item is
-in service for the coverage report: Test, Prod and Down until it is changed.
+in service for the coverage report: Assigned, Test, Prod and Down until it is changed.
 `/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is
 the one 0.5.0 wrote, so the upgrade says nothing of either and nginx is not reloaded.
 

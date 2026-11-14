@@ -336,6 +336,46 @@ export interface paths {
       };
     };
   };
+  "/api/v1/agreements/{hid}/renew": {
+    /**
+     * Renew an agreement: its new period, and its new number where it has one.
+     *
+     * The contracts that are co-termed with it follow, and the items under them. A
+     * period that begins after today is kept as the next term, and the present one runs
+     * on until then. `withdraw` withdraws a term that is still to begin.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractRenew"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AgreementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/agreements/{hid}/retire": {
     /** Retire an agreement, once no contract that is not retired is in it. */
     post: {
@@ -1513,8 +1553,36 @@ export interface paths {
   };
   "/api/v1/contracts/{hid}/coverage/{coverage_hid}": {
     /**
-     * Change the days of a coverage. It is ended by giving it `ends_on`, and is never
-     * removed.
+     * Remove a coverage that was a mistake: an item put under the wrong contract. The
+     * audit event of the removal holds what it was. A coverage that was true for a time
+     * is ended with a date instead.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          coverage_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change the days of a coverage. It is ended by giving it `ends_on`. Clearing
+     * `left_service` says that the vendor has been told the item has left.
      */
     patch: {
       parameters: {
@@ -1550,9 +1618,12 @@ export interface paths {
     /**
      * Renew a contract: give it its new number, its new period, or both.
      *
-     * It is one change of the one record. Every item in scope has the new number and the
-     * new period at once. The term it had is kept in the audit trail, and is listed by
-     * `GET /contracts/{hid}/terms`.
+     * It is one change of the one record, and nothing is written to any item. A period
+     * that begins today or earlier is in force at once. One that begins after today is
+     * kept as the next term: the present number and period stay in force until that
+     * day, so the items are covered throughout, and from that day the contract has the
+     * new ones. `withdraw` withdraws a term that is still to begin. The terms it had
+     * are kept in the audit trail, and are listed by `GET /contracts/{hid}/terms`.
      */
     post: {
       parameters: {
@@ -3835,6 +3906,11 @@ export interface paths {
     /**
      * Receive items on a line: each is created in Delivered, of the line's model, and
      * names the line. Either all of them are created or none is.
+     *
+     * `items` is what arrived that is known by a serial number, an asset tag or a name,
+     * and `quantity` how many more arrived that nothing is known of yet: each of those is
+     * named for its line, `RITM0012345/2-003`. A request that is pending or ordered
+     * becomes received by the same change, once every line of it has arrived in full.
      */
     post: {
       parameters: {
@@ -4394,9 +4470,32 @@ export interface paths {
       };
     };
     /**
-     * Change a registration. One that ends is given the status `removed`, and is
-     * never deleted.
+     * Remove a registration that was a mistake. The audit event of the removal holds
+     * what it was. One that was true for a time is given the status `removed` instead.
      */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a registration. One that ends is given the status `removed`. */
     patch: {
       parameters: {
         query?: never;
@@ -4464,7 +4563,7 @@ export interface paths {
           /** How far ahead cover that runs out is looked for. */
           within_days?: number;
           /** The list to return a page of. */
-          section?: "uncovered" | "out_of_service" | "expiring" | null;
+          section?: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | null;
           /** As the item list is sorted. For a section. */
           sort?: string[] | null;
           limit?: number;
@@ -5814,7 +5913,7 @@ export interface components {
       record_status?: "draft" | "active";
       reseller_hid?: string | null;
       starts_on?: string | null;
-      status?: "active" | "expired" | "pending" | "cancelled";
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       support_contact?: string | null;
       support_level?: string | null;
       support_url?: string | null;
@@ -5835,7 +5934,11 @@ export interface components {
       created_at: string;
       ends_on: string | null;
       hid: string;
+      /** Its period has ended, and it still says it is active. */
+      lapsed: boolean;
       name: string;
+      /** The term that begins on a day to come. Until then the present one runs on. */
+      next_term: components["schemas"]["NextTerm"] | null;
       notes: string | null;
       /** The agreement's own number, if it has one. */
       number: string | null;
@@ -5845,7 +5948,7 @@ export interface components {
       reseller_hid: string | null;
       row_version: number;
       starts_on: string | null;
-      status: "active" | "expired" | "pending" | "cancelled";
+      status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       /** Whom to call for support: free text. */
       support_contact: string | null;
       support_level: string | null;
@@ -5871,7 +5974,7 @@ export interface components {
       reseller_hid?: string | null;
       row_version: number;
       starts_on?: string | null;
-      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled" | null;
       support_contact?: string | null;
       support_level?: string | null;
       support_url?: string | null;
@@ -6239,7 +6342,7 @@ export interface components {
       record_status?: "draft" | "active";
       reseller_hid?: string | null;
       starts_on?: string | null;
-      status?: "active" | "expired" | "pending" | "cancelled";
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       support_contact?: string | null;
       support_level?: string | null;
       support_url?: string | null;
@@ -6272,7 +6375,7 @@ export interface components {
       annual_cost: string | null;
       /** How many items it covers today. */
       covered_items: number;
-      /** Active in both senses, and today is within its dates. */
+      /** Active and today is within its period, or past it with its renewal pending. */
       covers_today: boolean;
       created_at: string;
       effective: components["schemas"]["ContractEffective"];
@@ -6280,6 +6383,10 @@ export interface components {
       hid: string;
       /** How many items have a coverage under it that has not been ended. */
       items_in_scope: number;
+      /** Its period has ended, and it still says it is active. */
+      lapsed: boolean;
+      /** The term that begins on a day to come. Until then the present one runs on. */
+      next_term: components["schemas"]["NextTerm"] | null;
       notes: string | null;
       number: string;
       /** The request or tracking number the present term was bought under. */
@@ -6291,7 +6398,7 @@ export interface components {
       row_version: number;
       starts_on: string | null;
       /** What a person says of it. Never set by the clock. */
-      status: "active" | "expired" | "pending" | "cancelled";
+      status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       /** Whom to call for support: free text. */
       support_contact: string | null;
       support_level: string | null;
@@ -6320,7 +6427,7 @@ export interface components {
       reseller_hid?: string | null;
       row_version: number;
       starts_on?: string | null;
-      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled" | null;
       support_contact?: string | null;
       support_level?: string | null;
       support_url?: string | null;
@@ -6332,7 +6439,7 @@ export interface components {
       hid: string;
       number: string;
       record_status: "draft" | "active" | "retired";
-      status: "active" | "expired" | "pending" | "cancelled";
+      status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
       /** The name of its vendor. */
       vendor: string;
     };
@@ -6349,9 +6456,11 @@ export interface components {
       reseller_hid?: string | null;
       row_version: number;
       starts_on?: string | null;
-      /** Left out, `active`. */
-      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      /** Left out, `active` for a renewal in force at once, and as it is otherwise. */
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled" | null;
       support_level?: string | null;
+      /** Withdraw the term that is still to begin. Nothing else is sent with it. */
+      withdraw?: boolean;
     };
     /** A term a contract had before it was renewed. */
     ContractTerm: {
@@ -6416,6 +6525,8 @@ export interface components {
       /** The item's own lifecycle state. */
       item_lifecycle_state: string | null;
       item_record_status: "draft" | "active" | "retired";
+      /** Ended because the item left service; cleared once the vendor is told. */
+      left_service: boolean;
       row_version: number;
       /** Its own. Blank takes the contract's. */
       starts_on: string | null;
@@ -6427,6 +6538,8 @@ export interface components {
      */
     CoveragePatch: {
       ends_on?: string | null;
+      /** False says that the vendor has been told the item left. */
+      left_service?: boolean | null;
       row_version: number;
       starts_on?: string | null;
     };
@@ -6440,6 +6553,8 @@ export interface components {
       hid: string;
       /** It covers the item today. */
       in_force: boolean;
+      /** Ended because the item left service; the vendor may still count it. */
+      left_service: boolean;
       /** The day it starts in force. Blank is open. */
       starts_on: string | null;
     };
@@ -6447,9 +6562,10 @@ export interface components {
     CoverageReport: {
       as_of: string;
       items: components["schemas"]["ItemOut"][];
+      lapsed_contracts: components["schemas"]["LapsedContracts"];
       limit: number;
       offset: number;
-      section: "uncovered" | "out_of_service" | "expiring" | null;
+      section: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | null;
       sections: {
         [key: string]: components["schemas"]["ReportSection"];
       };
@@ -6465,8 +6581,12 @@ export interface components {
       expiring: number;
       /** Major items whose state in force is a service state. */
       in_service: number;
-      /** Items covered today though out of service. */
+      /** Out of service, and a contract still counts it: the list for the vendor. */
       out_of_service: number;
+      /** Items that more than one contract covers today. */
+      overlapping: number;
+      /** Items covered by a contract whose renewal is pending. */
+      renewal_pending: number;
       uncovered: number;
     };
     /** A new device group, with its first members if they are known. */
@@ -6850,6 +6970,17 @@ export interface components {
       hid: string;
       name: string;
     };
+    /** What a stack or a cluster an item is a member of is registered with. */
+    GroupRegistrationRef: {
+      confirmed_at: string | null;
+      external_id: string | null;
+      group: components["schemas"]["DeviceGroupRef"];
+      /** The registration. */
+      hid: string;
+      status: "registered" | "pending" | "removed";
+      system: components["schemas"]["SystemRef"];
+      system_hid: string;
+    };
     HTTPValidationError: {
       detail?: components["schemas"]["ValidationError"][];
     };
@@ -7009,6 +7140,8 @@ export interface components {
       comments: string | null;
       /** The state of the hardware, as a person knows it. */
       condition: string | null;
+      /** How many contracts cover it today. More than one is worth a look. */
+      contract_count: number;
       /** For an endpoint of a controller domain: the controllers of that domain. */
       controllers: components["schemas"]["ControllerRef"][];
       /** Its coverages under contracts. */
@@ -7031,6 +7164,8 @@ export interface components {
       est_value: string | null;
       expected_online: boolean | null;
       fqdn: string | null;
+      /** What a stack or a cluster it is a current member of is registered with: to be read, and changed on the group. */
+      group_registrations: components["schemas"]["GroupRegistrationRef"][];
       /** Its current memberships of groups. */
       groups: components["schemas"]["MembershipRef"][];
       health: components["schemas"]["HealthOut"];
@@ -7155,6 +7290,14 @@ export interface components {
     ItemsCounted: {
       component_count: number;
       items: number;
+    };
+    /** The contracts whose period has ended while they still say they are active. */
+    LapsedContracts: {
+      count: number;
+      /** The filter of `GET /contracts` for them. */
+      filter: {
+        [key: string]: unknown;
+      };
     };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
@@ -7423,6 +7566,15 @@ export interface components {
     NetworkRef: {
       hid: string;
       label: string;
+    };
+    /** A term that is still to begin: a renewal that was entered ahead of its period. */
+    NextTerm: {
+      annual_cost: string | null;
+      ends_on: string | null;
+      /** Its number, where the renewal gives another. */
+      number: string | null;
+      purchase_reference: string | null;
+      starts_on: string;
     };
     /**
      * What making a place active would bring about: what is planned for it, or for a
@@ -7930,9 +8082,11 @@ export interface components {
     Receive: {
       /** Left out, today. */
       delivered_on?: string | null;
-      items: components["schemas"]["Arrived"][];
+      items?: components["schemas"]["Arrived"][];
       /** Where they were put. */
       location_hid?: string | null;
+      /** How many more arrived that nothing is known of yet, each named for its line. */
+      quantity?: number;
       row_version: number;
     };
     /** A line after a receipt, with the items the receipt created. */

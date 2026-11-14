@@ -1585,6 +1585,7 @@ class Items(Entity):
         Column("covered", "boolean", settable=False),
         Column("covered_until", "date", settable=False),
         Column("contracts", "list", settable=False),
+        Column("contract_count", "integer", settable=False),
         *_sources((_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
@@ -2032,7 +2033,7 @@ class Items(Entity):
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
             covering = [
-                contract.number
+                contracts.term(contract, today)["number"]
                 for coverage, contract in cover[item.hid]
                 if contracts.in_force(coverage, contract, today)
             ]
@@ -2071,6 +2072,7 @@ class Items(Entity):
                 "covered": bool(covering),
                 "covered_until": contracts.covered_until(cover[item.hid], today),
                 "contracts": sorted(set(covering), key=records.key),
+                "contract_count": len(set(covering)),
             }
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
@@ -2338,6 +2340,12 @@ _TERMS = (
     Column("support_url", limit=2000, inherits=True),
     Column("annual_cost", "money"),
     NOTES,
+    # The term that is still to begin, where a renewal was entered ahead of its period.
+    Column("next_number", limit=100),
+    Column("next_starts_on", "date"),
+    Column("next_ends_on", "date"),
+    Column("next_annual_cost", "money"),
+    Column("next_purchase_reference"),
     STATUS,
     TAGS,
 )
@@ -2348,6 +2356,7 @@ _TERMS_DIRECT = (
     *contracts.TEXTS,
     "support_url",
     "annual_cost",
+    *contracts.NEXT,
     "tags",
 )
 
@@ -2405,7 +2414,7 @@ class Agreements(Entity):
         if record is None:
             return contracts.create_agreement(run.db, run.context, _new(given))
         return contracts.update_agreement(
-            run.db, run.context, record.hid, record.row_version, given
+            run.db, run.context, record.hid, record.row_version, given, as_stored=True
         )
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
@@ -2491,19 +2500,26 @@ class Contracts(Entity):
         if within is not None:
             # A row that holds the very value the contract has from its agreement
             # leaves it inheriting, as an export of the values in force would hold it.
+            above = {
+                **{name: getattr(within, name) for name in contracts.INHERITED},
+                **contracts.term(within, contracts.today(db)),
+            }
             for name in contracts.INHERITED:
                 if given.get(name) is None:
                     continue
                 own = getattr(record, name) if record is not None else None
-                if own is None and given[name] == getattr(within, name):
+                if own is None and given[name] == above[name]:
                     del given[name]
         if record is None:
             return contracts.create_contract(db, run.context, _new(given))
-        return contracts.update_contract(db, run.context, record.hid, record.row_version, given)
+        return contracts.update_contract(
+            db, run.context, record.hid, record.row_version, given, as_stored=True
+        )
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         hids = [contract.hid for contract in found]
-        in_force = {contract.hid: contracts.effective(contract) for contract in found}
+        today = contracts.today(db)
+        in_force = {contract.hid: contracts.effective(contract, today) for contract in found}
         vendors = _by_hid(
             db,
             Vendor,
@@ -2512,7 +2528,7 @@ class Contracts(Entity):
             | {its["reseller_hid"].value for its in in_force.values()},
         )
         labels = tags.labels_of(db, self.record_type, hids)
-        covered = contracts.covered_items(db, hids)
+        covered = fields.covered_items(db, hids)
         rows = []
         for contract in found:
             within = contracts.agreement_of(contract)
@@ -2553,6 +2569,7 @@ class Coverage(Entity):
         Column("item"),
         Column("starts_on", "date"),
         Column("ends_on", "date"),
+        Column("left_service", "boolean"),
         Column("in_force", "boolean", settable=False),
         Column("effective_starts_on", "date", settable=False),
         Column("effective_ends_on", "date", settable=False),
@@ -2588,14 +2605,26 @@ class Coverage(Entity):
             )
         )
         starts_on = values.get("starts_on")
+        today = contracts.today(run.db)
         if starts_on is not None:
             matching = [
                 one
                 for one in its
-                if starts_on in (one.starts_on, contracts.span(one, contract).starts_on)
+                if starts_on in (one.starts_on, contracts.span(one, contract, today).starts_on)
             ]
         else:
-            matching = [one for one in its if one.ends_on is None] or (its if len(its) == 1 else [])
+            # Under one contract an item has one coverage at most with no start of its
+            # own, ended or not: a row with none is that one. Where there is none such,
+            # it is the one that has not been ended.
+            matching = [one for one in its if one.starts_on is None] or [
+                one for one in its if one.ends_on is None
+            ]
+            ended = matching[0].ends_on if len(matching) == 1 else None
+            if ended is not None and ended < today and not values.get("ends_on"):
+                run.notes.append(
+                    f"this coverage ended on {ended}: to cover the item again, give the row "
+                    "the day the new coverage starts"
+                )
         if len(matching) > 1:
             raise Invalid(
                 "more than one coverage of this item under this contract answers",
@@ -2608,7 +2637,9 @@ class Coverage(Entity):
         return " ".join(str(part) for part in named if part)
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
-        given = _plain_fields(values, ("starts_on", "ends_on"))
+        given = _plain_fields(values, ("starts_on", "ends_on", "left_service"))
+        if given.get("left_service", _MISSING) is None:
+            given["left_service"] = False
         if record is None:
             for name in ("contract", "item"):
                 if not values.get(name):
@@ -2651,7 +2682,7 @@ class Coverage(Entity):
         rows = []
         for one in found:
             contract = held[one.contract_hid]
-            span = contracts.span(one, contract)
+            span = contracts.span(one, contract, today)
             rows.append(
                 {
                     **_kept(one),
@@ -2660,6 +2691,7 @@ class Coverage(Entity):
                     "item": named[one.item_hid],
                     "starts_on": one.starts_on,
                     "ends_on": one.ends_on,
+                    "left_service": one.left_service,
                     "in_force": contracts.in_force(one, contract, today),
                     "effective_starts_on": span.starts_on,
                     "effective_ends_on": span.ends_on,

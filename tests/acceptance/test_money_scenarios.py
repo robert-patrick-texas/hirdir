@@ -96,7 +96,9 @@ def money(server: Server) -> Money:
     return Money(server.sign_in(*IVY))
 
 
-def test_s29_an_archived_item_under_a_contract_is_covered_but_out_of_service(money: Money) -> None:
+def test_s29_an_archived_item_under_a_contract_is_out_of_service_while_the_term_runs(
+    money: Money,
+) -> None:
     entry = money.entry()
     east = money.item(
         entry, "FCW0000X001", lifecycle_state="Prod", location_hid=money.room("East")["hid"]
@@ -110,24 +112,25 @@ def test_s29_an_archived_item_under_a_contract_is_covered_but_out_of_service(mon
     assert {one["item"]["hid"] for one in covered} == {east["hid"], west["hid"]}
 
     before = money.get("/reports/coverage")
-    assert before["totals"] == {
-        "in_service": 2,
-        "covered": 2,
-        "uncovered": 0,
-        "out_of_service": 0,
-        "expiring": 0,
-    }
+    assert (before["totals"]["in_service"], before["totals"]["covered"]) == (2, 2)
+    assert (before["totals"]["uncovered"], before["totals"]["out_of_service"]) == (0, 0)
 
     money.move(west, "Pending-Removal", "Released", "Archived")
 
+    # Its coverage ended on the day it left the team's hands, and says why.
     report = money.section("coverage", "out_of_service")
+    today = report["as_of"]
     assert report["totals"]["out_of_service"] == 1
     assert report["totals"]["in_service"] == 1
     assert [item["hid"] for item in report["items"]] == [west["hid"]]
     listed = report["items"][0]
-    assert listed["covered"] is True
     assert listed["effective"]["lifecycle_state"]["value"] == "Archived"
-    assert [one["contract"]["number"] for one in listed["coverage"]] == ["CON-2026-0001"]
+    (its,) = listed["coverage"]
+    assert (its["contract"]["number"], its["ends_on"], its["left_service"]) == (
+        "CON-2026-0001",
+        today,
+        True,
+    )
     # The filter the section gives lists the same item on the item list.
     section = report["sections"]["out_of_service"]
     same = money.post(
@@ -136,11 +139,13 @@ def test_s29_an_archived_item_under_a_contract_is_covered_but_out_of_service(mon
         expect=200,
     )
     assert [item["hid"] for item in same["items"]] == [west["hid"]]
-    # The contract still covers both, one in each region, and nothing ended by itself.
+    # The contract still runs, and still covers the switch that is in service: its
+    # coverage of the other is on record, ended.
     of_contract = money.get(f"/contracts/{contract['hid']}/coverage")
     assert of_contract["total"] == 2
     assert {one["item"]["hid"] for one in of_contract["items"]} == {east["hid"], west["hid"]}
-    assert money.get(f"/contracts/{contract['hid']}")["covered_items"] == 2
+    assert money.get(f"/contracts/{contract['hid']}")["items_in_scope"] == 2
+    assert money.get(f"/items/{east['hid']}")["covered"] is True
 
 
 def test_s30_an_item_with_no_coverage_and_one_near_its_ldos_are_each_on_their_report(
@@ -259,6 +264,16 @@ def test_s32_receiving_six_of_ten_creates_six_delivered_items(money: Money) -> N
         expect=422,
     )
     assert money.get("/items")["total"] == 6
+    # The other four arrive with nothing to know them by yet: each is named for its
+    # line, and the request, all of it arrived, says so by itself.
+    counted = money.post(
+        f"/purchase-lines/{line['hid']}/receive",
+        {"row_version": received["row_version"], "quantity": 4},
+    )
+    assert [item["name"] for item in counted["items"]] == [
+        f"RITM0012345/1-{number:03d}" for number in range(7, 11)
+    ]
+    assert money.get(f"/purchase-requests/{request['hid']}")["status"] == "received"
 
 
 def test_s33_a_stack_is_registered_and_its_members_are_not(money: Money) -> None:
@@ -291,11 +306,22 @@ def test_s33_a_stack_is_registered_and_its_members_are_not(money: Money) -> None
         ("NetWatch", "node-4411"),
     ]
     for member in members:
-        assert money.get(f"/items/{member['hid']}")["registrations"] == []
+        its = money.get(f"/items/{member['hid']}")
+        # Not on the member: but the member says what its stack is registered with.
+        assert its["registrations"] == []
+        assert [
+            (one["system"]["name"], one["group"]["name"]) for one in its["group_registrations"]
+        ] == [
+            ("Fabric Director", "site2-sw-stack1"),
+            ("NetWatch", "site2-sw-stack1"),
+        ]
     found = money.get("/device-groups", filter="registration.system:eq:NetWatch")
     assert [group["hid"] for group in found["items"]] == [stack["hid"]]
-    assert money.get("/items", filter="registration.system:eq:NetWatch")["total"] == 0
-    assert money.get("/items", filter="registration.system:empty:true")["total"] == 4
+    # What NetWatch knows: the stack, and so each of its four members.
+    assert money.get("/items", filter="registration.system:eq:NetWatch")["total"] == 4
+    alone = money.item(entry, "FCW0000X009")
+    unknown = money.get("/items", filter="registration.system:ne:NetWatch")["items"]
+    assert [item["hid"] for item in unknown] == [alone["hid"]]
 
 
 def test_s34_a_draft_site_with_draft_items_is_left_out_of_every_count(money: Money) -> None:

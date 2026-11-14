@@ -126,7 +126,7 @@ SPECS: dict[str, Spec] = {
         _subset("weight_states", lifecycle.STATES),
     ),
     "service_states": Spec(
-        ["Test", "Prod", "Down"],
+        ["Assigned", "Test", "Prod", "Down"],
         "states in which an item is in service, for the coverage report",
         _subset("service_states", lifecycle.STATES),
     ),

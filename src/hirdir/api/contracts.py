@@ -63,6 +63,20 @@ def update_agreement(
     return shapes.agreements_out(db, [changed])[0]
 
 
+@agreements.post("/{hid}/renew")
+def renew_agreement(
+    hid: str, body: r.ContractRenew, _: Inventory, context: Audit, db: Db
+) -> r.AgreementOut:
+    """Renew an agreement: its new period, and its new number where it has one.
+
+    The contracts that are co-termed with it follow, and the items under them. A
+    period that begins after today is kept as the next term, and the present one runs
+    on until then. `withdraw` withdraws a term that is still to begin.
+    """
+    renewed = contracts.renew_agreement(db, context, hid, body.row_version, _changes(body))
+    return shapes.agreements_out(db, [renewed])[0]
+
+
 @agreements.post("/{hid}/retire")
 def retire_agreement(
     hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
@@ -111,9 +125,12 @@ def renew_contract(
 ) -> r.ContractOut:
     """Renew a contract: give it its new number, its new period, or both.
 
-    It is one change of the one record. Every item in scope has the new number and the
-    new period at once. The term it had is kept in the audit trail, and is listed by
-    `GET /contracts/{hid}/terms`.
+    It is one change of the one record, and nothing is written to any item. A period
+    that begins today or earlier is in force at once. One that begins after today is
+    kept as the next term: the present number and period stay in force until that
+    day, so the items are covered throughout, and from that day the contract has the
+    new ones. `withdraw` withdraws a term that is still to begin. The terms it had
+    are kept in the audit trail, and are listed by `GET /contracts/{hid}/terms`.
     """
     renewed = contracts.renew_contract(db, context, hid, body.row_version, _changes(body))
     return shapes.contract_out(db, renewed)
@@ -164,12 +181,20 @@ def add_coverage(
 def update_coverage(
     hid: str, coverage_hid: str, body: r.CoveragePatch, _: Inventory, context: Audit, db: Db
 ) -> r.CoverageOut:
-    """Change the days of a coverage. It is ended by giving it `ends_on`, and is never
-    removed."""
+    """Change the days of a coverage. It is ended by giving it `ends_on`. Clearing
+    `left_service` says that the vendor has been told the item has left."""
     changed = contracts.update_coverage(
         db, context, hid, coverage_hid, body.row_version, _changes(body)
     )
     return shapes.coverage_out(db, [changed])[0]
+
+
+@router.delete("/{hid}/coverage/{coverage_hid}", status_code=204)
+def remove_coverage(hid: str, coverage_hid: str, _: Inventory, context: Audit, db: Db) -> None:
+    """Remove a coverage that was a mistake: an item put under the wrong contract. The
+    audit event of the removal holds what it was. A coverage that was true for a time
+    is ended with a date instead."""
+    contracts.remove_coverage(db, context, hid, coverage_hid)
 
 
 @coverage.get("")

@@ -24,8 +24,10 @@ RECORD_TYPE = "purchase_request"
 LINE_TYPE = "purchase_line"
 STATUSES = ("draft", "pending", "ordered", "received", "cancelled")
 PENDING = STATUSES[1]
-# A request in one of these receives nothing: it is not one yet, or no longer.
-NOT_RECEIVING = ("draft", "cancelled")
+NOT_RECEIVING = items.NOT_RECEIVING
+MAX_LINES = 1000
+# The longest number of a line that is looked for: no request has a line beyond it.
+MAX_LINE_DIGITS = 6
 FIELDS = ("reference", "requested_on", "status", "notes")
 LINE_FIELDS = (
     "request_hid",
@@ -148,7 +150,10 @@ def find_line(db: Session, text: str) -> PurchaseLine | None:
         if found is not None:
             return found
     reference, separator, number = text.rpartition(SEPARATOR)
-    if not separator or not number.strip().isascii() or not number.strip().isdigit():
+    number = number.strip()
+    if not separator or not number.isascii() or not number.isdigit():
+        return None
+    if len(number) > MAX_LINE_DIGITS:
         return None
     request = find_request(db, reference)
     if request is None:
@@ -270,6 +275,15 @@ def add_line(
     values = _checked_line(
         db, {"catalog_entry_hid": None, "quantity": None, **fields}, None, request.hid
     )
+    held = db.scalar(
+        select(func.count())
+        .select_from(PurchaseLine)
+        .where(PurchaseLine.request_hid == request.hid)
+    )
+    if (held or 0) >= MAX_LINES:
+        raise Invalid(
+            "the request has too many lines", {"line": f"at most {MAX_LINES} lines to a request"}
+        )
     if "line" not in values:
         highest = db.scalar(
             select(func.max(PurchaseLine.line)).where(PurchaseLine.request_hid == request.hid)
@@ -295,6 +309,9 @@ def update_line(
     records.apply(
         db, context, LINE_TYPE, line, row_version, _checked_line(db, plain, line, line.request_hid)
     )
+    # Lowered to what has arrived, the line has arrived in full.
+    db.flush()
+    items.settle_request(db, context, line.request_hid)
     return line
 
 
@@ -304,11 +321,18 @@ def receive(
     line_hid: str,
     row_version: int,
     arrived: Sequence[dict[str, Any]],
+    quantity: int = 0,
     delivered_on: date | None = None,
     location_hid: str | None = None,
 ) -> tuple[PurchaseLine, list[Item]]:
     """Receive items on a line: create each in Delivered, of the line's model, naming
-    the line. Either all of them are created or none is."""
+    the line. Either all of them are created or none is.
+
+    `arrived` is the items that are known by something, a serial number, an asset tag
+    or a name. `quantity` is how many more arrived that nothing is known of yet: each
+    is given a name made from its line and its place on it, to be known by until it
+    has a serial number.
+    """
     dialect.hold_other_writers(db)
     line = get_line(db, line_hid)
     request = get_request(db, line.request_hid)
@@ -317,15 +341,20 @@ def receive(
             f"the request is {request.status}",
             {"status": f"a request that is {request.status} receives nothing"},
         )
-    if not arrived:
-        raise Invalid("nothing to receive", {"items": "say which items arrived"})
-    if len(arrived) > MAX_AT_ONCE:
+    if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 0:
+        raise Invalid("the quantity is not acceptable", {"quantity": "a whole number, 0 or more"})
+    count = len(arrived) + quantity
+    if not count:
+        raise Invalid(
+            "nothing to receive", {"items": "say which items arrived, or how many, as quantity"}
+        )
+    if count > MAX_AT_ONCE:
         raise Invalid("too many at once", {"items": f"at most {MAX_AT_ONCE} items to a request"})
     records.checked_day("delivered_on", delivered_on)
     if location_hid is not None:
         records.linked(db, Location, "location_hid", location_hid, None, "location")
     before = received(db, [line.hid])[line.hid]
-    if before + len(arrived) > line.quantity:
+    if before + count > line.quantity:
         left = line.quantity - before
         raise Invalid(
             "more than the line has still to come",
@@ -334,7 +363,7 @@ def receive(
     if line.row_version != row_version:
         records.touch(line, context, row_version)
     day = delivered_on or clock.today(settings.time_zone(db))
-    made: list[Item] = []
+    known: list[dict[str, Any]] = []
     for place, one in enumerate(arrived):
         given = {name: one[name] for name in RECEIVABLE if one.get(name) not in (None, "")}
         if not any(name in given for name in IDENTITY):
@@ -342,6 +371,14 @@ def receive(
                 "an item needs something to know it by",
                 {f"items.{place}.serial_number": "a serial number, an asset tag or a name"},
             )
+        known.append(given)
+    # What nothing is known of yet is named for its line and its place on it.
+    named = line_name(request, line)
+    known += [
+        {"name": f"{named}-{before + len(arrived) + place:03d}"} for place in range(1, quantity + 1)
+    ]
+    made: list[Item] = []
+    for place, given in enumerate(known):
         try:
             made.append(
                 items.create_item(
