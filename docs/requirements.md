@@ -49,7 +49,7 @@ later, for example a Last Day of Support date on its model.
 | **Disposition** | What an item in hand is for: Staging, Production, Spare or Excess. |
 | **Expected online** | The intent that the item is powered and reachable. What monitoring observes is a separate fact. |
 | **Condition** | The state of an item's hardware as a person knows it: untested, good, degraded, suspect, failed or dead. It holds while the item is on a shelf. |
-| **Observed status** | What is seen of an item or a group right now: online, degraded or unreachable. Set by hand or by an import until a monitoring tool writes it. |
+| **Observed status** | What is seen of an item or a group: online, degraded or unreachable on the network, or present, seen by a person where it should be. Set by hand or by an import until a monitoring tool writes it. |
 | **Health** | What the condition, the observed status and the intent say together, as good, degraded, failed or unknown. For a stack or a cluster it follows from its members, and is worked out when read. |
 | **Network** | A label for an address space: a VRF, a tenant, a coloured network. |
 | **Registration** | A link from an item or group to an external system that knows it: a monitoring tool, an SDN controller, a cloud service. |

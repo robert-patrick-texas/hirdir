@@ -113,7 +113,7 @@ lifecycle fields included.
 | `state_reason` | choice | "RMA", "maintenance", "lost", and so on |
 | `state_changed_at` | timestamp | |
 | `condition` | choice | the state of the hardware as a person knows it; see "Condition, observation and health" |
-| `observed_status` | choice | `online`, `degraded` or `unreachable`: what is seen of it now. Blank until somebody says |
+| `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
 | `purchase_line_hid` | reference | the request line it arrived on |
@@ -556,7 +556,7 @@ by different people and change at different speeds.
 | Fact | Field | Who says | Values |
 |---|---|---|---|
 | The state of the hardware | `condition` | a person; it holds while the item is on a shelf | the `item_condition` list: `untested`, `good`, `degraded`, `suspect`, `failed`, `dead` |
-| What is seen now | `observed_status`, `observed_at` | by hand or by an import; LATER a monitoring tool | `online`, `degraded`, `unreachable` |
+| What is seen | `observed_status`, `observed_at` | by hand or by an import; LATER a monitoring tool | `online`, `degraded`, `unreachable`, `present` |
 | What is meant | `expected_online` | the lifecycle; see above | true or false |
 
 `untested` is new and not yet tried, `good` is the last known good, `degraded` runs
@@ -565,6 +565,13 @@ hardware fault, and `dead` will not come back. The list can be edited. A conditi
 an ordinary field, audited like any other, and moves the item nowhere in the
 lifecycle: an item whose hardware failed is moved to Down or to Pending-Removal by a
 transition, with its own reason.
+
+`online`, `degraded` and `unreachable` are what is seen of an item on the network.
+`present` is what a person saw: the item is where it should be and in order. For a
+fibre tester, a laptop that runs a wireless analyser, or a power unit with no
+management connection, that is the only observation there will ever be, and
+`observed_at` then says when it was last checked. It serves a spare on a shelf as well.
+A blank says that nobody has looked.
 
 `observed_status` is an observation and not a wish. Clearing it clears `observed_at`.
 An import may give `observed_at` with it, for a status that was read from another tool
@@ -579,7 +586,7 @@ reasons. For an item it is the worst of:
 |---|---|
 | `failed` | the condition is `failed` or `dead`; or the item is expected online and is observed `unreachable` |
 | `degraded` | the condition is `degraded` or `suspect`; or it is observed `degraded`; or it is observed `unreachable` and is not expected online |
-| `good` | the condition is `good` and nothing observed says otherwise; or it is observed `online` and no condition says otherwise |
+| `good` | the condition is `good` and nothing observed says otherwise; or it is observed `online` or `present` and no condition says otherwise |
 | `unknown` | nothing is said: the condition is blank or `untested`, and nothing is observed |
 
 A **stack** and a **cluster** have a health too, from their current members and from
@@ -591,8 +598,8 @@ what is observed of the group itself:
   when a member is in Down or Pending-Removal; when it has fewer current members than
   `expected_members`; or, for a stack that names no number, when it is its master
   alone;
-- `good` when it is observed `online` or every member is `good`, and nothing above
-  holds;
+- `good` when it is observed `online` or `present`, or every member is `good`, and
+  nothing above holds;
 - `unknown` otherwise, and for a group with no members.
 
 A controller domain and a custom group have none. `expected_members` is how a stack
