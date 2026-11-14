@@ -27,6 +27,7 @@ def load(name: str) -> ModuleType:
 
 facts = load("release_facts")
 guard = load("publish_guard")
+release_body = load("release_body")
 
 
 # --- build_docs ---------------------------------------------------------------------
@@ -440,3 +441,87 @@ def test_guard_checks_the_files_git_tracks(
     (tmp_path / "tracked.md").write_text("Nothing to see.\nMoved to EXAMPLE-CORE-1.\n", "utf-8")
     assert guard.main(["--root", str(tmp_path)]) == 1
     assert capsys.readouterr().out == "tracked.md:2: example-core-1\n"
+
+
+# --- release_body -------------------------------------------------------------------
+
+NOTES = """# hirdir 9.9.9
+
+A summary that is wrapped
+over two lines, with `code`.
+
+## New
+
+- **One.** An entry that runs
+  on to a second line and
+  a third.
+- **Two.** Short. See [Install](../install.md#upgrade)
+  and [the examples](../../examples/README.md).
+1. A numbered one,
+   wrapped.
+
+```bash
+make deb   # not
+joined
+```
+
+| Part | Version |
+|---|---|
+| uv | 1.0 |
+
+Counted by cloc.
+
+<details><summary>Every package: 1</summary>
+
+| Package | Version |
+|---|---|
+| core | 1.0 |
+
+</details>
+"""
+
+
+def test_the_text_of_a_release_has_each_paragraph_and_item_on_one_line() -> None:
+    lines = release_body.unwrapped(NOTES).splitlines()
+    assert "A summary that is wrapped over two lines, with `code`." in lines
+    assert "- **One.** An entry that runs on to a second line and a third." in lines
+    assert "1. A numbered one, wrapped." in lines
+    # Code, tables, headings and the collapsed block are as they were.
+    for kept in ("make deb   # not", "joined", "| uv | 1.0 |", "## New", "</details>"):
+        assert kept in lines
+    assert lines[lines.index("```bash") + 3] == "```"
+    assert "| Part | Version |" in lines
+    assert lines[lines.index("| Part | Version |") + 1] == "|---|---|"
+    # Nothing but the line breaks is changed.
+    assert release_body.unwrapped(NOTES).split() == NOTES.split()
+    assert release_body.unwrapped(release_body.unwrapped(NOTES)) == release_body.unwrapped(NOTES)
+
+
+def test_the_links_of_a_release_lead_to_the_files_at_its_tag() -> None:
+    text = release_body.with_whole_links(release_body.unwrapped(NOTES), "9.9.9")
+    blob = f"{release_body.REPO}/blob/v9.9.9"
+    assert f"[Install]({blob}/docs/install.md#upgrade)" in text
+    assert f"[the examples]({blob}/examples/README.md)" in text
+    kept = "[a](https://example.net/x) [b](#new) [c](../../../outside.md)"
+    assert release_body.with_whole_links(kept, "9.9.9") == kept
+
+
+def test_every_release_so_far_can_be_given_to_github(docs: ModuleType) -> None:
+    assert release_body.REPO == docs.REPO
+    notes = sorted((SCRIPTS.parent / "docs" / "releases").glob("v*.md"))
+    assert notes
+    for path in notes:
+        version = path.stem.removeprefix("v")
+        source = path.read_text(encoding="utf-8")
+        body = release_body.body(version)
+        assert release_body.unwrapped(source).split() == source.split(), path.name
+        # No paragraph is left wrapped: a line that is prose is followed by a blank
+        # line, a list item or the end.
+        lines = body.splitlines()
+        for number, line in enumerate(lines[:-1]):
+            following = lines[number + 1]
+            prose = line and not line.lstrip().startswith(("#", "|", "<", "`"))
+            if prose and not line.startswith("  "):
+                starts_item = following.lstrip().startswith(("- ", "#", "|", "<", "`"))
+                assert not following or starts_item, f"{path.name}:{number + 1}"
+        assert "](../" not in body, path.name

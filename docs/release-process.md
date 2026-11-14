@@ -52,9 +52,11 @@ A hold is never left in place silently.
    once more: the package carries the notes of its own release, so the one that is
    published is built after they are written, and it is the one that was tested.
 6. Commit, tag `v<version>`, push.
-7. `gh release create v<version> --notes-file docs/releases/v<version>.md` with
+7. `make -s release-body > /tmp/body.md`, then
+   `gh release create v<version> --notes-file /tmp/body.md` with
    `dist/hirdir_<version>_amd64.deb` and `dist/hirdir_<version>_amd64.deb.sha256`
-   attached. `make deb` writes both. `hirdir-setup --upgrade` on every installation
+   attached. The text of the release is the notes with each paragraph on one line;
+   see "The text of the GitHub release" below. `make deb` writes both. `hirdir-setup --upgrade` on every installation
    looks for exactly these two names on the latest release, so a release without them
    is one that no installation can fetch.
 
@@ -109,7 +111,7 @@ release check.
 ## Release notes
 
 One file per release, `docs/releases/v<version>.md`, which is also the text of the
-GitHub release. The form:
+GitHub release, given to GitHub by `make release-body`. The form:
 
 ```markdown
 # hirdir 0.4.0
@@ -150,6 +152,27 @@ Rules for the notes:
   typed.
 - Entries say what a person using `hirdir` will notice, in plain words.
 - A waiver from the dependency rule goes under Additional Notes.
+
+### The text of the GitHub release
+
+The file of the notes is wrapped like every other page. GitHub shows a file of the
+repository with a line break inside a paragraph as a space, and shows the text of a
+release as it shows a comment, where the same line break ends the line. Given the file
+as it is, a release shows its paragraphs at half the width of the page, each line
+ending where the file wrapped it, beside the few lines that were never wrapped, such
+as the sentence under the lines-of-code table.
+
+`make release-body` prints the notes as GitHub takes them: every paragraph and every
+list item on one line, with headings, tables, code and the collapsed block as they
+are. A link to another page, such as `../install.md#upgrade`, would lead nowhere from
+a release, and becomes a link to that file at the release's tag. Nothing else is
+changed, and the file in `docs/releases/` stays as it is.
+
+```bash
+make -s release-body > /tmp/body.md                 # the version of the tree
+make -s release-body VERSION=0.3.0 > /tmp/body.md   # an earlier one
+gh release edit v0.3.0 --notes-file /tmp/body.md    # to correct a release that is out
+```
 
 ## `make facts`
 

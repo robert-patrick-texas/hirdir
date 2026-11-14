@@ -50,7 +50,7 @@ src/hirdir/
 web/                 TypeScript source of the web UI
 tests/               unit/, api/, acceptance/, e2e/
 packaging/           build-deb.sh, control files, systemd units, nginx files, hirdir-setup, container/
-scripts/             build_docs.py, docs.css, release_facts.py, seed_examples.py, seed_fixture.py
+scripts/             build_docs.py, docs.css, release_facts.py, release_body.py, seed_examples.py, seed_fixture.py
 docs/                these pages, and releases/
 images/              pictures used by README.md and docs/
 examples/            fictional CSV and JSON for every record type

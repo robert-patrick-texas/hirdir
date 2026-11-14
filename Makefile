@@ -1,4 +1,4 @@
-.PHONY: help version dev web check fmt test acceptance e2e deb package-test docs docs-watch facts upgrade guard contract examples
+.PHONY: help version dev web check fmt test acceptance e2e deb package-test docs docs-watch facts release-body upgrade guard contract examples
 
 help:           ## list the targets
 	@grep -E '^[a-z-]+: .*##' Makefile | sed -E 's/:.*## /\t/' | expand -t 16
@@ -56,6 +56,9 @@ docs-watch:     ## and rebuild whenever a source changes
 
 facts:          ## print the release notes' Lines of code and Versions, after make deb
 	@uv run python scripts/release_facts.py
+
+release-body:   ## print the release notes as the GitHub release takes them: each paragraph on one line
+	@uv run python scripts/release_body.py $(VERSION)
 
 upgrade:        ## move every dependency to its latest production release, then check
 	-uv self update
