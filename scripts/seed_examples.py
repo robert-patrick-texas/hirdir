@@ -627,6 +627,9 @@ GROUP_OPERATORS = {
     "site2-fw-edge": "PR",
 }
 ITEM_OPERATORS = {"site2-sw-access-01": "RA", "site2-fw-oob-01": "PR"}
+# What is meant for a place that is not in use yet. The parked switch is in the store
+# room and is counted there; when Site-3 is made active it is moved in by that change.
+PLANNED = {"site2-sw-access-08": "Americas > Central > Site-3 > Suite 300"}
 PLACE_OPERATORS = {
     "Americas > Central > Site-2 > Building 1 > Lab": "RA",
     "Americas > East > Site-1": "OP6",
@@ -1022,6 +1025,8 @@ def build(db: Session) -> None:
         where = _placed(item)
         if where is not None:
             fields["location_hid"] = places[where].hid
+        if item.get("hostname") in PLANNED:
+            fields["planned_location_hid"] = places[PLANNED[item["hostname"]]].hid
         if item.get("hostname") in ITEM_OPERATORS:
             fields["operator_hid"] = marks[ITEM_OPERATORS[item["hostname"]]].hid
         items.create_item(db, SEED, fields)

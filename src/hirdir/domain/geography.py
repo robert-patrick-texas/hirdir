@@ -806,8 +806,62 @@ def update_place(
     check, _ = CHECKS[level]
     values = check(db, fields, record)
     tag_change = tags.set_labels(db, level, hid, labels) if has_tags else []
+    opened = values.get("record_status") == "active" and record.record_status != "active"
     records.apply(db, context, level, record, row_version, values, tag_change)
+    if opened:
+        move_in(db, context)
     return record
+
+
+def in_use(atlas: Atlas, location: Location) -> bool:
+    """Say whether a location is in use: it is active, and so is everything it is in,
+    the locations above it, its site and the regions above that."""
+    chain = atlas.chain(Place("location", location))
+    return all(one.record.record_status == "active" for one in chain)
+
+
+def move_in(db: Session, context: AuditContext) -> int:
+    """Move every item that is planned for a location now in use into it.
+
+    A place that was a draft has been made active. What was meant for it is there from
+    now on: the location of each such item becomes the planned one, and the plan is
+    cleared. It is a change of each item, with an entry of its own in its history and
+    the request of the change that opened the place, in the same transaction. A
+    retired item is left where it is. Return how many were moved.
+    """
+    planned = set(
+        db.scalars(
+            select(Item.planned_location_hid)
+            .where(Item.planned_location_hid.is_not(None), _live(Item))
+            .distinct()
+        )
+    )
+    if not planned:
+        return 0
+    atlas = Atlas(db)
+    atlas.read_locations(planned)
+    ready = [
+        hid
+        for hid in sorted(hid for hid in planned if hid)
+        if (location := atlas.location(hid)) is not None and in_use(atlas, location)
+    ]
+    moved = 0
+    for start in range(0, len(ready), 500):
+        piece = ready[start : start + 500]
+        arriving = db.scalars(
+            select(Item).where(Item.planned_location_hid.in_(piece), _live(Item)).order_by(Item.hid)
+        )
+        for item in list(arriving):
+            records.apply(
+                db,
+                context,
+                "item",
+                item,
+                None,
+                {"location_hid": item.planned_location_hid, "planned_location_hid": None},
+            )
+            moved += 1
+    return moved
 
 
 def _count(db: Session, model: Any, *where: Any) -> int:
@@ -839,13 +893,24 @@ def _within_it(db: Session, place: Place) -> list[str]:
         found.append((_count(db, Item, Item.location_hid == hid, _live(Item), in_hand), "items"))
         found.append(
             (
+                _count(db, Item, Item.planned_location_hid == hid, _live(Item)),
+                "planned items",
+            )
+        )
+        found.append(
+            (
                 _count(db, DeviceGroup, DeviceGroup.location_hid == hid, _live(DeviceGroup)),
                 "device groups",
             )
         )
     one = {"regions": "region", "sites": "site", "locations": "location", "items": "item"}
-    one["device groups"] = "device group"
-    return [f"{count} {one[what] if count == 1 else what}" for count, what in found if count]
+    one.update({"device groups": "device group", "planned items": "item planned for it"})
+    many = {"planned items": "items planned for it"}
+    return [
+        f"{count} {one[what] if count == 1 else many.get(what, what)}"
+        for count, what in found
+        if count
+    ]
 
 
 def _live(model: Any) -> Any:

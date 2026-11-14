@@ -502,6 +502,7 @@ class LocationOut(Model):
     tags: list[str]
     locations: int = Field(description="How many locations are directly in it, retired aside.")
     items: int = Field(description="How many items have it as their own location.")
+    planned_items: int = Field(description="How many items are planned for it, and not there yet.")
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -590,6 +591,7 @@ class GeographyNode(PlaceCount):
     kind: str | None = Field(description="Of a location.")
     path: str
     record_status: RecordStatus
+    planned: int = Field(description="The items planned for it or for a place beneath it.")
     children: list[GeographyNode]
 
 
@@ -1098,6 +1100,10 @@ class ItemOut(Model):
     )
     location_hid: str | None
     location: LocationRef | None = Field(description="Its own location.")
+    planned_location_hid: str | None
+    planned_location: LocationRef | None = Field(
+        description="Where it is going: a location that is not in use yet."
+    )
     operator_hid: str | None
     operator: OperatorRef | None = Field(
         description="Its own operator: the label of who of the team looks after it."
@@ -1168,6 +1174,10 @@ class ItemCreate(Model):
     )
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    planned_location_hid: Hid | None = Field(
+        default=None,
+        description="Where it is going: a location not in use yet. It moves in when that opens.",
+    )
     operator_hid: Hid | None = Field(
         default=None, description="An operator: the label of who of the team looks after it."
     )
@@ -1221,6 +1231,7 @@ class ItemPatch(Model):
     location_hid: Hid | None = Field(
         default=None, description="Null: a minor item is where the item above it is."
     )
+    planned_location_hid: Hid | None = Field(default=None, description="Null gives the plan up.")
     operator_hid: Hid | None = Field(
         default=None, description="Null: the operator it has from above, if any."
     )

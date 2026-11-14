@@ -48,6 +48,7 @@ function node(
     kind: null,
     path,
     record_status: "active",
+    planned: 0,
     items,
     component_count: items,
     children,

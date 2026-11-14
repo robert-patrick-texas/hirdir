@@ -4201,6 +4201,11 @@
             "title": "Path",
             "type": "string"
           },
+          "planned": {
+            "description": "The items planned for it or for a place beneath it.",
+            "title": "Planned",
+            "type": "integer"
+          },
           "record_status": {
             "enum": [
               "draft",
@@ -4221,6 +4226,7 @@
           "kind",
           "path",
           "record_status",
+          "planned",
           "children"
         ],
         "title": "GeographyNode",
@@ -5277,6 +5283,19 @@
             "description": "The item this one is in. Given, the item is a minor item.",
             "title": "Parent Item Hid"
           },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it is going: a location not in use yet. It moves in when that opens.",
+            "title": "Planned Location Hid"
+          },
           "position": {
             "anyOf": [
               {
@@ -5908,6 +5927,28 @@
             ],
             "title": "Parent Item Hid"
           },
+          "planned_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it is going: a location that is not in use yet."
+          },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Location Hid"
+          },
           "position": {
             "anyOf": [
               {
@@ -6096,6 +6137,8 @@
           "owner_exception_reason",
           "location_hid",
           "location",
+          "planned_location_hid",
+          "planned_location",
           "operator_hid",
           "operator",
           "parent_item_hid",
@@ -6450,6 +6493,19 @@
             ],
             "description": "Null takes a minor item out of its parent.",
             "title": "Parent Item Hid"
+          },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null gives the plan up.",
+            "title": "Planned Location Hid"
           },
           "position": {
             "anyOf": [
@@ -7410,6 +7466,11 @@
             "title": "Path",
             "type": "string"
           },
+          "planned_items": {
+            "description": "How many items are planned for it, and not there yet.",
+            "title": "Planned Items",
+            "type": "integer"
+          },
           "postal_code": {
             "anyOf": [
               {
@@ -7581,6 +7642,7 @@
           "tags",
           "locations",
           "items",
+          "planned_items",
           "row_version",
           "created_at",
           "updated_at"

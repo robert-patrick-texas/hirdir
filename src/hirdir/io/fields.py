@@ -149,6 +149,8 @@ def _operator_in_force() -> ColumnElement[Any]:
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
 ITEM_OPERATOR: Any = aliased(Operator, name="item_operator")
 ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
+PLANNED_LOCATION: Any = aliased(Location, name="planned_location")
+PLANNED_SITE: Any = aliased(Site, name="planned_site")
 ITEM_LOCATION: Any = aliased(Location, name="item_location")
 ITEM_SITE: Any = aliased(Site, name="item_site")
 ITEM_REGION: Any = aliased(Region, name="item_region")
@@ -357,6 +359,15 @@ ITEMS = Listing(
         ),
         "location.name": Field("text", ITEM_LOCATION.name),
         "location.kind": Field("choice", ITEM_LOCATION.kind),
+        # Where the item is going, when that place is not in use yet.
+        "planned_location_hid": Field("reference", Item.planned_location_hid),
+        "planned_location": Field(
+            "place",
+            Item.planned_location_hid,
+            within=_within(
+                Item.planned_location_hid, PLANNED_LOCATION.site_hid, PLANNED_SITE.region_hid
+            ),
+        ),
         "site": Field("text", ITEM_SITE.name),
         "site.code": Field("text", ITEM_SITE.code),
         "site_hid": Field("reference", ITEM_SITE.hid),
@@ -392,6 +403,8 @@ ITEMS = Listing(
         .outerjoin(Owner, Owner.hid == OWNER_IN_FORCE)
         .outerjoin(ITEM_OPERATOR, ITEM_OPERATOR.hid == OPERATOR_IN_FORCE)
         .outerjoin(ITEM_OPERATOR_CONTACT, ITEM_OPERATOR_CONTACT.hid == ITEM_OPERATOR.contact_hid)
+        .outerjoin(PLANNED_LOCATION, PLANNED_LOCATION.hid == Item.planned_location_hid)
+        .outerjoin(PLANNED_SITE, PLANNED_SITE.hid == PLANNED_LOCATION.site_hid)
         .outerjoin(ITEM_LOCATION, ITEM_LOCATION.hid == LOCATION_IN_FORCE)
         .outerjoin(ITEM_SITE, ITEM_SITE.hid == ITEM_LOCATION.site_hid)
         .outerjoin(ITEM_REGION, ITEM_REGION.hid == ITEM_SITE.region_hid)

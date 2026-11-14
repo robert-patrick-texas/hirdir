@@ -41,6 +41,8 @@ class Node(Count):
     kind: str | None = None
     path: str = ""
     record_status: str = "active"
+    # The items planned for it or for a place beneath it, which are not there yet.
+    planned: int = 0
     children: list[Node] = field(default_factory=list)
 
 
@@ -167,6 +169,17 @@ def tree(
                 seen.add(at)
                 nodes[at].add(items, components)
                 at = above.get(at)
+
+    going = reports.by_planned_location(
+        db, filter_=filter_, include_archived=include_archived, include_drafts=include_drafts
+    )
+    for hid, count in going.items():
+        at = hid
+        seen = set()
+        while at is not None and at in nodes and at not in seen:
+            seen.add(at)
+            nodes[at].planned += count
+            at = above.get(at)
 
     order = {geography.REGION: 0, geography.SITE: 1, geography.LOCATION: 2}
     tops: list[Node] = []
