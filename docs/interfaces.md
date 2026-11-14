@@ -199,7 +199,8 @@ column of a later release, such as `contract`, is unknown until that release.
 
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
 `country`, and the shipping set is the same six with `ship_` before them, and
-`ship_instructions`.
+`ship_instructions`. For a site and a location the shipping set has
+`ship_same_as_address` as well, true or false.
 
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
@@ -383,7 +384,7 @@ a region:
   "level": "location", "hid": "0193a1f4-...", "path": "Americas > Central > Site-2 > Building 1 > Room 102",
   "contacts": [
     { "role": "technical", "label": "Technical", "source": "region", "source_hid": "0193a1f4-...",
-      "source_path": "Americas", "stopped": false,
+      "source_path": "Americas", "stopped": false, "overrides_hid": null, "overrides_path": null,
       "contacts": [ { "assignment_hid": "...", "contact_hid": "...", "name": "Dana Whitfield",
                       "organization": null, "email": "dana.whitfield@example.net",
                       "phone": "+1 555 0100", "priority": 1, "record_status": "active" } ] },
@@ -394,16 +395,24 @@ a region:
   ],
   "ship_address": { "value": { "address1": "100 Example Way", "address2": null, "city": "Springfield",
                                "state": "IL", "postal_code": "00000", "country": "US" },
-                    "source": "site", "source_hid": "...", "source_path": "Americas > Central > Site-2" },
+                    "same_as_address": true,
+                    "source": "site", "source_hid": "...", "source_path": "Americas > Central > Site-2",
+                    "overrides_hid": "...", "overrides_path": "Americas > Central" },
   "ship_instructions": { "value": "Dock B, weekdays 08:00 to 15:00", "source": "region",
-                         "source_hid": "...", "source_path": "Americas" }
+                         "source_hid": "...", "source_path": "Americas",
+                         "overrides_hid": null, "overrides_path": null }
 }
 ```
 
 There is one entry for each role of the `contact_role` list. `source` is `own` for
 what the place itself has, `location` for a location above it, `site`, `region`, or
 `none`. `stopped` is true where a level said "none here, and do not look further up",
-and `source` then names that level.
+and `source` then names that level. `same_as_address` says that the shipping address
+is the street address of the level it came from. `overrides_hid` and
+`overrides_path`, on the shipping address, the instructions and each role, name the
+nearest level above the source that has one too: what the value in force overrides,
+and what would be in force without it. A page shows what is inherited in a lighter
+style with the level it came from, and marks a value that overrides one from above.
 
 ## CLI
 

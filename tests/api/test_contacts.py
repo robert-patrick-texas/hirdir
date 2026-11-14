@@ -201,15 +201,20 @@ def test_a_shipping_address_is_taken_whole_and_instructions_by_themselves(make: 
             "postal_code": None,
             "country": None,
         },
+        "same_as_address": False,
         "source": "region",
         "source_hid": central["hid"],
         "source_path": "Americas > Central",
+        "overrides_hid": None,
+        "overrides_path": None,
     }
     assert found["ship_instructions"] == {
         "value": "Call the desk a day ahead",
         "source": "region",
         "source_hid": americas["hid"],
         "source_path": "Americas",
+        "overrides_hid": None,
+        "overrides_path": None,
     }
     # One line of an address on the building makes the building's address the whole of it.
     make.patch(
@@ -235,10 +240,111 @@ def test_a_shipping_address_is_taken_whole_and_instructions_by_themselves(make: 
     nothing = make.in_force(make.region("EMEA"), "regions")
     assert nothing["ship_address"] == {
         "value": None,
+        "same_as_address": False,
         "source": "none",
         "source_hid": None,
         "source_path": None,
+        "overrides_hid": None,
+        "overrides_path": None,
     }
+
+
+def test_a_shipping_address_is_set_once_and_nothing_is_typed_twice(
+    make: Maker, files: Files
+) -> None:
+    """A region has the shipping address of the sites that share it; one site ticks a
+    box because its deliveries go to its own door; one has another destination typed
+    in, and is seen to override the region's."""
+    metro = make.region(
+        "Metro Area", ship_address1="1 Depot Road", ship_city="Riverton", ship_instructions="Call"
+    )
+    shared = [
+        make.site(name, metro, address1=f"{number} Example Way")
+        for number, name in (
+            (10, "Data Hall"),
+            (20, "Research Park"),
+        )
+    ]
+    door = make.site(
+        "Operations North", metro, address1="30 Sample Street", city="Northfield",
+        ship_same_as_address=True,
+    )  # fmt: skip
+    other = make.site(
+        "Annex",
+        metro,
+        address1="40 Example Way",
+        ship_address1="99 Other Road",
+        ship_city="Elsewhere",
+    )
+    room = make.location("Room 1", door)
+
+    for site in shared:
+        found = make.in_force(site, "sites")["ship_address"]
+        assert (found["value"]["address1"], found["source"], found["source_path"]) == (
+            "1 Depot Road",
+            "region",
+            "Metro Area",
+        )
+        assert (found["same_as_address"], found["overrides_path"]) == (False, None)
+    # The site that ticked the box: its street address, whole, and the region's overridden.
+    found = make.in_force(door, "sites")["ship_address"]
+    assert found["value"] == {
+        "address1": "30 Sample Street",
+        "address2": None,
+        "city": "Northfield",
+        "state": None,
+        "postal_code": None,
+        "country": None,
+    }
+    assert (found["same_as_address"], found["source"]) == (True, "own")
+    assert (found["overrides_hid"], found["overrides_path"]) == (metro["hid"], "Metro Area")
+    # A room of it has it from the site, and the instructions still from the region.
+    inside = make.in_force(room)
+    assert (inside["ship_address"]["value"]["city"], inside["ship_address"]["source"]) == (
+        "Northfield",
+        "site",
+    )
+    assert inside["ship_address"]["same_as_address"] is True
+    assert (inside["ship_instructions"]["value"], inside["ship_instructions"]["source"]) == (
+        "Call",
+        "region",
+    )
+    # The one with another destination overrides the region's, and says so.
+    found = make.in_force(other, "sites")["ship_address"]
+    assert (found["value"]["address1"], found["source"], found["overrides_path"]) == (
+        "99 Other Road",
+        "own",
+        "Metro Area",
+    )
+    # Nothing is copied: the street address is changed, and deliveries go to the new one.
+    make.patch(f"/sites/{door['hid']}", {"row_version": door["row_version"], "city": "Southfield"})
+    assert make.in_force(room)["ship_address"]["value"]["city"] == "Southfield"
+
+    # The box and a shipping address of its own say two things, and the box needs an
+    # address for deliveries to go to.
+    both = {"row_version": other["row_version"], "ship_same_as_address": True}
+    refused = make.patch(f"/sites/{other['hid']}", both, 422)
+    assert set(errors(refused)) == {"ship_address1", "ship_city"}
+    bare = {"name": "Kiosk", "region_hid": metro["hid"], "ship_same_as_address": True}
+    assert "ship_same_as_address" in errors(make.post("/sites", bare, 422))
+    emptied = {"row_version": door["row_version"] + 1, "address1": None, "city": None}
+    assert "ship_same_as_address" in errors(make.patch(f"/sites/{door['hid']}", emptied, 422))
+    # A role is marked in the same way where a level overrides the one above it.
+    dana, lee = make.contact("Dana Whitfield"), make.contact("Lee Marchetti")
+    make.assign(dana, "shipping", region_hid=metro["hid"])
+    make.assign(lee, "shipping", site_hid=door["hid"])
+    role = make.in_force(room)["by_role"]["shipping"]
+    assert (role["source"], role["overrides_path"]) == ("site", "Metro Area")
+    assert make.in_force(shared[0], "sites")["by_role"]["shipping"]["overrides_path"] is None
+    # The box travels in a file, and is found by a filter.
+    again = files.preview("sites", files.export("sites", own_values=True))
+    assert again["job"]["unchanged"] == again["job"]["row_count"] == 4
+    assert make.get("/sites", filter="ship_same_as_address:eq:true")["total"] == 1
+    cleared = files.load(
+        "sites", "name,region,ship_same_as_address\nOperations North,Metro Area,false\n"
+    )
+    assert cleared["updated"] == 1
+    assert make.in_force(door, "sites")["ship_address"]["source"] == "region"
 
 
 def test_an_owner_has_one_primary_among_its_people(make: Maker) -> None:

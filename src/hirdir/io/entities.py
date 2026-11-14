@@ -81,6 +81,7 @@ AMOUNTS = (
 STREET = tuple(Column(name) for name in ADDRESS_FIELDS)
 SHIPPING = (*(Column(name) for name in SHIP_FIELDS), Column("ship_instructions", limit=LONG))
 COORDINATES = (Column("latitude", "degrees"), Column("longitude", "degrees"))
+SAME_AS_ADDRESS = Column(geography.SAME, "boolean")
 CODE = Column("code", limit=40)
 NOTES = Column("notes", limit=LONG)
 PATH = Column("path", limit=LONG, settable=False)
@@ -688,6 +689,8 @@ class _Places(Entity):
         given = {**_plain_fields(values, (*self._fields, "tags")), **_status(values, record)}
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
+        if given.get(geography.SAME, _MISSING) is None:
+            given[geography.SAME] = False
         return given
 
     def _store(self, run: Run, record: Any | None, given: dict[str, Any]) -> Any:
@@ -787,6 +790,7 @@ class Sites(_Places):
         CODE,
         *STREET,
         *SHIPPING,
+        SAME_AS_ADDRESS,
         *COORDINATES,
         NOTES,
         STATUS,
@@ -801,6 +805,7 @@ class Sites(_Places):
         "code",
         *ADDRESS_FIELDS,
         *geography.SHIPPING,
+        geography.SAME,
         "latitude",
         "longitude",
         "notes",
@@ -853,6 +858,7 @@ class Locations(_Places):
         Column("kind", limit=40),
         *STREET,
         *SHIPPING,
+        SAME_AS_ADDRESS,
         *COORDINATES,
         NOTES,
         STATUS,
@@ -876,6 +882,7 @@ class Locations(_Places):
         "kind",
         *ADDRESS_FIELDS,
         *geography.SHIPPING,
+        geography.SAME,
         "latitude",
         "longitude",
         "notes",

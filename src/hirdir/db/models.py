@@ -312,6 +312,8 @@ class Site(Bookkeeping, StreetAddress, ShippingAddress, Base):
     name: Mapped[str] = mapped_column(String(200))
     name_key: Mapped[str] = mapped_column(String(200))
     region_hid: Mapped[str] = mapped_column(ForeignKey("regions.hid"), index=True)
+    # Deliveries go to the street address: the shipping address is read from it.
+    ship_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
@@ -334,6 +336,7 @@ class Location(Bookkeeping, StreetAddress, ShippingAddress, Base):
         ForeignKey("locations.hid"), default=None, index=True
     )
     kind: Mapped[str | None] = mapped_column(String(40), default=None)
+    ship_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)

@@ -1,4 +1,4 @@
 hid,name,parent,code,ship_address1,ship_address2,ship_city,ship_state,ship_postal_code,ship_country,ship_instructions,notes,record_status,tags
 ,Americas,,AMER,,,,,,,Call the Network Operations Desk a day ahead of any delivery,,active,
-,Central,Americas,CEN,,,,,,,,,active,
+,Central,Americas,CEN,500 Depot Road,,Springfield,IL,00000,US,,,active,
 ,East,Americas,EAST,,,,,,,,,active,

@@ -399,6 +399,8 @@ def effective_out(found: geography.InForce) -> shapes.PlaceEffective:
                     "source_hid": one.source_hid,
                     "source_path": one.source_path,
                     "stopped": one.stopped,
+                    "overrides_hid": one.overrides_hid,
+                    "overrides_path": one.overrides_path,
                     "contacts": [
                         {
                             **_contact_ref(contact).model_dump(),

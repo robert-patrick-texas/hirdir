@@ -455,7 +455,20 @@ REGIONS: tuple[tuple[str, str, str | None, dict[str, Any]], ...] = (
         None,
         {"ship_instructions": "Call the Network Operations Desk a day ahead of any delivery"},
     ),
-    ("Central", "CEN", "Americas", {}),
+    (
+        # The sites of the region take their deliveries at one depot, unless a site
+        # says otherwise.
+        "Central",
+        "CEN",
+        "Americas",
+        {
+            "ship_address1": "500 Depot Road",
+            "ship_city": "Springfield",
+            "ship_state": "IL",
+            "ship_postal_code": "00000",
+            "ship_country": "US",
+        },
+    ),
     ("East", "EAST", "Americas", {}),
 )
 # The sites: name, code, the path of its region, and what else it has.
@@ -465,6 +478,13 @@ SITES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
         "S1",
         "Americas > East",
         {
+            # What does arrive for the small office is sent on from another address.
+            "ship_address1": "210 Sample Street",
+            "ship_address2": "Mail room",
+            "ship_city": "Riverton",
+            "ship_state": "NY",
+            "ship_postal_code": "00000",
+            "ship_country": "US",
             "address1": "200 Sample Street",
             "city": "Riverton",
             "state": "NY",
@@ -483,12 +503,10 @@ SITES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
             "state": "IL",
             "postal_code": "00000",
             "country": "US",
-            "ship_address1": "100 Example Way",
-            "ship_address2": "Dock B",
-            "ship_city": "Springfield",
-            "ship_state": "IL",
-            "ship_postal_code": "00000",
-            "ship_country": "US",
+            # Deliveries go to its own door: the street address is not typed again,
+            # and it stands in place of the depot of the region.
+            "ship_same_as_address": True,
+            "ship_instructions": "Dock B, weekdays 08:00 to 15:00",
             "latitude": Decimal("40.000000"),
             "longitude": Decimal("-89.000000"),
             "tags": ["critical"],

@@ -4358,6 +4358,8 @@ export interface components {
     };
     /** The shipping instructions in force, and the level they came from. */
     EffectiveInstructions: {
+      overrides_hid: string | null;
+      overrides_path: string | null;
       source: "own" | "location" | "site" | "region" | "none";
       source_hid: string | null;
       source_path: string | null;
@@ -4389,6 +4391,11 @@ export interface components {
     };
     /** The shipping address in force, and the level it came from. */
     EffectiveShipAddress: {
+      /** The nearest level above the source that has one too: what it overrides. */
+      overrides_hid: string | null;
+      overrides_path: string | null;
+      /** It is the street address of the level it came from. */
+      same_as_address: boolean;
       source: "own" | "location" | "site" | "region" | "none";
       source_hid: string | null;
       source_path: string | null;
@@ -4845,6 +4852,7 @@ export interface components {
       ship_country?: string | null;
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
+      ship_same_as_address?: boolean;
       ship_state?: string | null;
       /** Its site. May be left out when the parent is named. */
       site_hid?: string | null;
@@ -4883,6 +4891,8 @@ export interface components {
       ship_country: string | null;
       ship_instructions: string | null;
       ship_postal_code: string | null;
+      /** Deliveries go to the street address: the shipping address is read from it. */
+      ship_same_as_address: boolean;
       ship_state: string | null;
       site: components["schemas"]["PlaceRef"];
       site_hid: string;
@@ -4913,6 +4923,7 @@ export interface components {
       ship_country?: string | null;
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
+      ship_same_as_address?: boolean | null;
       ship_state?: string | null;
       state?: string | null;
       tags?: string[] | null;
@@ -5350,6 +5361,9 @@ export interface components {
     RoleContacts: {
       contacts: components["schemas"]["EffectiveContact"][];
       label: string;
+      /** The nearest level above the source that has contacts for the role too. */
+      overrides_hid: string | null;
+      overrides_path: string | null;
       role: string;
       source: "own" | "location" | "site" | "region" | "none";
       source_hid: string | null;
@@ -5449,6 +5463,7 @@ export interface components {
       ship_country?: string | null;
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
+      ship_same_as_address?: boolean;
       ship_state?: string | null;
       state?: string | null;
       tags?: string[];
@@ -5480,6 +5495,8 @@ export interface components {
       ship_country: string | null;
       ship_instructions: string | null;
       ship_postal_code: string | null;
+      /** Deliveries go to the street address: the shipping address is read from it. */
+      ship_same_as_address: boolean;
       ship_state: string | null;
       state: string | null;
       tags: string[];
@@ -5507,6 +5524,7 @@ export interface components {
       ship_country?: string | null;
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
+      ship_same_as_address?: boolean | null;
       ship_state?: string | null;
       state?: string | null;
       tags?: string[] | null;

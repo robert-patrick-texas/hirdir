@@ -279,7 +279,9 @@ that holds what was removed.
 
 Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`.
 The shipping set is the same six with the prefix `ship_`, plus `ship_instructions`. A
-region has the shipping set and no street address.
+region has the shipping set and no street address. A site and a location have one
+field more, `ship_same_as_address`: deliveries go to the street address, and nobody
+types it a second time.
 
 `name` is required and holds no `>`. Within one region, a site and a region directly
 beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
@@ -316,12 +318,20 @@ draft place may hold records that are not drafts: the tree of places leaves it o
 and counts them as hidden, and a report, which is of items, gives the place its row.
 
 **The shipping address** of a place is taken whole, all six fields together, from the
-nearest record that has any of them: the location itself, the locations above it, its
-site, then each region outward. `ship_instructions` is inherited by itself in the same
+nearest record that has one: the location itself, the locations above it, its
+site, then each region outward. A record has one when any of its six `ship_` fields
+is filled in, or when it says `ship_same_as_address`: its shipping address is then
+its street address, read as it is asked for and stored nowhere else, and it is so for
+every place beneath it too. The flag and `ship_` fields of the record's own are not
+both given, and the flag needs a street address. So a shipping address is set once
+on a region for the sites that share it, a site whose deliveries go to its own door
+ticks one box, and the one site with another destination has it typed in, as an
+override that is seen to be one. `ship_instructions` is inherited by itself in the same
 way, so instructions written once on a region reach every dock beneath it. A street
 address is never taken for a shipping address, and coordinates do not inherit.
-`GET /locations/{hid}/effective` answers both with where they came from, and the same
-route of a site and of a region answers for those.
+`GET /locations/{hid}/effective` answers both with where they came from, and with
+the level above that a value of the place's own overrides, and the same route of a
+site and of a region answers for those.
 
 ### `contacts` and `contact_assignments`
 

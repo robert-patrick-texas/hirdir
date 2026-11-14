@@ -51,12 +51,14 @@ KIND_LIST = "location_kind"
 ROLE_LIST = "contact_role"
 SHIPPING = (*SHIP_FIELDS, "ship_instructions")
 REGION_FIELDS = ("code", "name", "parent_region_hid", *SHIPPING, "notes", "record_status")
+SAME = "ship_same_as_address"
 SITE_FIELDS = (
     "code",
     "name",
     "region_hid",
     *ADDRESS_FIELDS,
     *SHIPPING,
+    SAME,
     "latitude",
     "longitude",
     "notes",
@@ -70,6 +72,7 @@ LOCATION_FIELDS = (
     "kind",
     *ADDRESS_FIELDS,
     *SHIPPING,
+    SAME,
     "latitude",
     "longitude",
     "notes",
@@ -456,6 +459,33 @@ def _coordinates(fields: dict[str, Any], values: dict[str, Any], record: Any | N
         )
 
 
+def _same_as_address(fields: dict[str, Any], values: dict[str, Any], record: Any | None) -> None:
+    """Take the word that deliveries go to the street address, and hold it to its sense.
+
+    The shipping address is then read from the street address, so there has to be one,
+    and a shipping address of the record's own beside it would say two things.
+    """
+    if SAME in fields:
+        values[SAME] = bool(fields[SAME])
+
+    def final(name: str) -> Any:
+        return values.get(name, getattr(record, name) if record is not None else None)
+
+    if not final(SAME):
+        return
+    if not any(final(name) for name in ADDRESS_FIELDS):
+        raise Invalid(
+            "there is no street address for deliveries to go to",
+            {SAME: "give the street address first, or a shipping address of its own"},
+        )
+    typed = [name for name in SHIP_FIELDS if final(name)]
+    if typed:
+        raise Invalid(
+            "a shipping address is the street address, or one of its own",
+            dict.fromkeys(typed, f"clear this, or {SAME}: the two say different things"),
+        )
+
+
 def _taken(what: str, name: str) -> Conflict:
     return Conflict(f"there is already a {what} {name} there", {"name": f"a {what} there has it"})
 
@@ -582,6 +612,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
+    _same_as_address(fields, values, site)
     _coordinates(fields, values, site)
     _status(fields, values)
     if "region_hid" in fields:
@@ -628,6 +659,7 @@ def _checked_location(
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
+    _same_as_address(fields, values, location)
     _coordinates(fields, values, location)
     _status(fields, values)
     if "kind" in fields:
@@ -823,6 +855,9 @@ class RoleContacts:
     source_path: str | None
     stopped: bool
     contacts: list[tuple[ContactAssignment, Contact]] = field(default_factory=list)
+    # The nearest level above the source that has contacts for the role too.
+    overrides_hid: str | None = None
+    overrides_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -833,6 +868,11 @@ class Inherited:
     source: str
     source_hid: str | None
     source_path: str | None
+    # The nearest level above the source that has one too: what this one overrides.
+    overrides_hid: str | None = None
+    overrides_path: str | None = None
+    # A shipping address that is the street address of the level it came from.
+    same_as_address: bool = False
 
 
 @dataclass(frozen=True)
@@ -860,7 +900,8 @@ def effective(db: Session, place: Place) -> InForce:
     For a role, the first level that has any assignment supplies all of its contacts,
     and a level whose assignment says "none here, and do not look further up" supplies
     none and ends the search. The shipping address is taken whole from the nearest
-    record that has any of it, and the shipping instructions likewise by themselves.
+    record that has one, of its own or as its street address, and the shipping
+    instructions likewise by themselves. Each says which level above it overrides.
     """
     atlas = Atlas(db)
     chain = atlas.chain(place)
@@ -890,41 +931,61 @@ def effective(db: Session, place: Place) -> InForce:
     roles += sorted({(role, role) for _, role in assigned if role not in known})
     by_role: list[RoleContacts] = []
     for role, label in roles:
-        found = RoleContacts(role, label, "none", None, None, False)
-        for one in chain:
-            here = assigned.get((one.hid, role))
-            if here:
-                found = RoleContacts(
-                    role,
-                    label,
-                    _source(one, place),
-                    one.hid,
-                    paths[one.hid],
-                    stopped=any(assignment.stop_inheritance for assignment, _ in here),
-                    contacts=[
-                        (assignment, contact) for assignment, contact in here if contact is not None
-                    ],
-                )
-                break
-        by_role.append(found)
+        having = [one for one in chain if assigned.get((one.hid, role))]
+        if not having:
+            by_role.append(RoleContacts(role, label, "none", None, None, False))
+            continue
+        one, here = having[0], assigned[having[0].hid, role]
+        above = having[1] if len(having) > 1 else None
+        by_role.append(
+            RoleContacts(
+                role,
+                label,
+                _source(one, place),
+                one.hid,
+                paths[one.hid],
+                stopped=any(assignment.stop_inheritance for assignment, _ in here),
+                contacts=[
+                    (assignment, contact) for assignment, contact in here if contact is not None
+                ],
+                overrides_hid=above.hid if above is not None else None,
+                overrides_path=paths[above.hid] if above is not None else None,
+            )
+        )
 
-    def nearest(names: Sequence[str], whole: bool) -> Inherited:
-        for one in chain:
-            held = {name: getattr(one.record, name, None) for name in names}
-            if any(value is not None for value in held.values()):
-                value: Any = (
-                    {name.removeprefix("ship_"): text for name, text in held.items()}
-                    if whole
-                    else held[names[0]]
-                )
-                return Inherited(value, _source(one, place), one.hid, paths[one.hid])
-        return NOWHERE
+    def address(one: Place) -> tuple[dict[str, Any], bool] | None:
+        """Return the shipping address a level has, and whether it is its street address."""
+        if getattr(one.record, SAME, False):
+            return {name: getattr(one.record, name) for name in ADDRESS_FIELDS}, True
+        held: dict[str, Any] = {
+            name.removeprefix("ship_"): getattr(one.record, name) for name in SHIP_FIELDS
+        }
+        return (held, False) if any(value is not None for value in held.values()) else None
+
+    def instructions(one: Place) -> tuple[str, bool] | None:
+        said = one.record.ship_instructions
+        return (said, False) if said is not None else None
+
+    def nearest(has: Any) -> Inherited:
+        having = [(one, found) for one in chain if (found := has(one)) is not None]
+        if not having:
+            return NOWHERE
+        (one, (value, same)), above = having[0], having[1][0] if len(having) > 1 else None
+        return Inherited(
+            value,
+            _source(one, place),
+            one.hid,
+            paths[one.hid],
+            overrides_hid=above.hid if above is not None else None,
+            overrides_path=paths[above.hid] if above is not None else None,
+            same_as_address=same,
+        )
 
     return InForce(
         level=place.level,
         hid=place.hid,
         path=paths[place.hid],
         contacts=by_role,
-        ship_address=nearest(SHIP_FIELDS, whole=True),
-        ship_instructions=nearest(("ship_instructions",), whole=False),
+        ship_address=nearest(address),
+        ship_instructions=nearest(instructions),
     )

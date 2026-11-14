@@ -1,4 +1,4 @@
-hid,name,region,code,address1,address2,city,state,postal_code,country,ship_address1,ship_address2,ship_city,ship_state,ship_postal_code,ship_country,ship_instructions,latitude,longitude,notes,record_status,tags
-,Site-1,Americas > East,S1,200 Sample Street,,Riverton,NY,00000,US,,,,,,,,,,A small office: one equipment room,active,
-,Site-2,Americas > Central,S2,100 Example Way,,Springfield,IL,00000,US,100 Example Way,Dock B,Springfield,IL,00000,US,,40,'-89,,active,critical
-,Site-3,Americas > Central,S3,,,,,,,,,,,,,,,,Entered ahead of the build; opens next year,draft,
+hid,name,region,code,address1,address2,city,state,postal_code,country,ship_address1,ship_address2,ship_city,ship_state,ship_postal_code,ship_country,ship_instructions,ship_same_as_address,latitude,longitude,notes,record_status,tags
+,Site-1,Americas > East,S1,200 Sample Street,,Riverton,NY,00000,US,210 Sample Street,Mail room,Riverton,NY,00000,US,,false,,,A small office: one equipment room,active,
+,Site-2,Americas > Central,S2,100 Example Way,,Springfield,IL,00000,US,,,,,,,"Dock B, weekdays 08:00 to 15:00",true,40,'-89,,active,critical
+,Site-3,Americas > Central,S3,,,,,,,,,,,,,,false,,,Entered ahead of the build; opens next year,draft,

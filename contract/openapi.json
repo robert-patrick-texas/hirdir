@@ -3345,6 +3345,28 @@
         "additionalProperties": false,
         "description": "The shipping instructions in force, and the level they came from.",
         "properties": {
+          "overrides_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Hid"
+          },
+          "overrides_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Path"
+          },
           "source": {
             "enum": [
               "own",
@@ -3394,7 +3416,9 @@
           "value",
           "source",
           "source_hid",
-          "source_path"
+          "source_path",
+          "overrides_hid",
+          "overrides_path"
         ],
         "title": "EffectiveInstructions",
         "type": "object"
@@ -3579,6 +3603,34 @@
         "additionalProperties": false,
         "description": "The shipping address in force, and the level it came from.",
         "properties": {
+          "overrides_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The nearest level above the source that has one too: what it overrides.",
+            "title": "Overrides Hid"
+          },
+          "overrides_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Path"
+          },
+          "same_as_address": {
+            "description": "It is the street address of the level it came from.",
+            "title": "Same As Address",
+            "type": "boolean"
+          },
           "source": {
             "enum": [
               "own",
@@ -3625,9 +3677,12 @@
         },
         "required": [
           "value",
+          "same_as_address",
           "source",
           "source_hid",
-          "source_path"
+          "source_path",
+          "overrides_hid",
+          "overrides_path"
         ],
         "title": "EffectiveShipAddress",
         "type": "object"
@@ -6778,6 +6833,11 @@
             ],
             "title": "Ship Postal Code"
           },
+          "ship_same_as_address": {
+            "default": false,
+            "title": "Ship Same As Address",
+            "type": "boolean"
+          },
           "ship_state": {
             "anyOf": [
               {
@@ -7086,6 +7146,11 @@
             ],
             "title": "Ship Postal Code"
           },
+          "ship_same_as_address": {
+            "description": "Deliveries go to the street address: the shipping address is read from it.",
+            "title": "Ship Same As Address",
+            "type": "boolean"
+          },
           "ship_state": {
             "anyOf": [
               {
@@ -7152,6 +7217,7 @@
           "ship_postal_code",
           "ship_country",
           "ship_instructions",
+          "ship_same_as_address",
           "latitude",
           "longitude",
           "notes",
@@ -7411,6 +7477,17 @@
               }
             ],
             "title": "Ship Postal Code"
+          },
+          "ship_same_as_address": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Same As Address"
           },
           "ship_state": {
             "anyOf": [
@@ -10036,6 +10113,29 @@
             "title": "Label",
             "type": "string"
           },
+          "overrides_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The nearest level above the source that has contacts for the role too.",
+            "title": "Overrides Hid"
+          },
+          "overrides_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Path"
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -10086,6 +10186,8 @@
           "source_hid",
           "source_path",
           "stopped",
+          "overrides_hid",
+          "overrides_path",
           "contacts"
         ],
         "title": "RoleContacts",
@@ -10690,6 +10792,11 @@
             ],
             "title": "Ship Postal Code"
           },
+          "ship_same_as_address": {
+            "default": false,
+            "title": "Ship Same As Address",
+            "type": "boolean"
+          },
           "ship_state": {
             "anyOf": [
               {
@@ -10951,6 +11058,11 @@
             ],
             "title": "Ship Postal Code"
           },
+          "ship_same_as_address": {
+            "description": "Deliveries go to the street address: the shipping address is read from it.",
+            "title": "Ship Same As Address",
+            "type": "boolean"
+          },
           "ship_state": {
             "anyOf": [
               {
@@ -11006,6 +11118,7 @@
           "ship_postal_code",
           "ship_country",
           "ship_instructions",
+          "ship_same_as_address",
           "latitude",
           "longitude",
           "notes",
@@ -11252,6 +11365,17 @@
               }
             ],
             "title": "Ship Postal Code"
+          },
+          "ship_same_as_address": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Same As Address"
           },
           "ship_state": {
             "anyOf": [

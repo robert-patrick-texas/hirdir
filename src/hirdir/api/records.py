@@ -375,6 +375,9 @@ class SiteOut(Model):
     ship_postal_code: str | None
     ship_country: str | None
     ship_instructions: str | None
+    ship_same_as_address: bool = Field(
+        description="Deliveries go to the street address: the shipping address is read from it."
+    )
     latitude: Latitude | None
     longitude: Longitude | None
     notes: str | None
@@ -405,6 +408,7 @@ class SiteCreate(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    ship_same_as_address: bool = False
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -432,6 +436,7 @@ class SitePatch(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    ship_same_as_address: bool | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -465,6 +470,9 @@ class LocationOut(Model):
     ship_postal_code: str | None
     ship_country: str | None
     ship_instructions: str | None
+    ship_same_as_address: bool = Field(
+        description="Deliveries go to the street address: the shipping address is read from it."
+    )
     latitude: Latitude | None
     longitude: Longitude | None
     notes: str | None
@@ -502,6 +510,7 @@ class LocationCreate(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    ship_same_as_address: bool = False
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -532,6 +541,7 @@ class LocationPatch(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    ship_same_as_address: bool | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -695,6 +705,10 @@ class RoleContacts(Model):
     source_hid: str | None
     source_path: str | None
     stopped: bool = Field(description="A level said: none here, and do not look further up.")
+    overrides_hid: str | None = Field(
+        description="The nearest level above the source that has contacts for the role too."
+    )
+    overrides_path: str | None
     contacts: list[EffectiveContact]
 
 
@@ -713,9 +727,14 @@ class EffectiveShipAddress(Model):
     """The shipping address in force, and the level it came from."""
 
     value: ShipAddress | None
+    same_as_address: bool = Field(description="It is the street address of the level it came from.")
     source: PlaceSource
     source_hid: str | None
     source_path: str | None
+    overrides_hid: str | None = Field(
+        description="The nearest level above the source that has one too: what it overrides."
+    )
+    overrides_path: str | None
 
 
 class EffectiveInstructions(Model):
@@ -725,6 +744,8 @@ class EffectiveInstructions(Model):
     source: PlaceSource
     source_hid: str | None
     source_path: str | None
+    overrides_hid: str | None
+    overrides_path: str | None
 
 
 class PlaceEffective(Model):

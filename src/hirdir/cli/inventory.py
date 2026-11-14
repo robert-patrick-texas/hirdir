@@ -966,6 +966,8 @@ def _show_place(level: str) -> Any:
         shipping = in_force["ship_address"]
         if shipping["value"] is not None:
             parts = ", ".join(part for part in shipping["value"].values() if part)
+            if shipping["same_as_address"]:
+                parts += ", its street address"
             lines.append(("ship_address", parts + _from(shipping)))
         said = in_force["ship_instructions"]
         if said["value"] is not None:
@@ -984,8 +986,12 @@ def _show_place(level: str) -> Any:
 
 def _from(found: dict[str, Any]) -> str:
     """Return where a value in force came from, for the end of its line."""
-    if found["source"] in ("own", "none"):
+    if found["source"] == "none":
         return ""
+    if found["source"] == "own":
+        # Its own, where a level above has one too: an override, and of what.
+        over = found["overrides_path"]
+        return f" (set here, in place of the one from {over})" if over else ""
     return f" (from {found['source_path']})"
 
 
