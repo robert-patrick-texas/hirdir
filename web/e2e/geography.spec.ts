@@ -19,39 +19,51 @@
 // form of an item, of a device group and of a bulk edit; the reports by site and by
 // region; the people of an owner; the six new kinds of record on the Import page.
 //
-// The environment that names the server and the Admin is described in support.ts. Every
-// name below is made up, with a random part so that the scenarios can be run again on
-// the same server and beside the other files: the region at the top, the code of the
-// site, the hostnames, the contacts and the owner are this file's own. Every count is
-// read through a filter that keeps this file's items only, never off the whole
-// inventory. The addresses are of example.net and the numbers of the range kept for
-// fiction. The scenarios run in order: the later ones use what the earlier ones made.
+// The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
+// mark is in every name it gives a record: the regions, the site and its code, the
+// locations, the hostnames, the contacts, the owner, the group and the files it loads.
+// Every count is read through a filter that keeps this file's items and no others, the
+// tree's among them: the tree's totals and the items that are nowhere are then of those
+// items, never of the whole inventory. Nothing is changed that another file reads: no
+// setting, no list of choices, no account. The addresses are of example.net and the
+// numbers of the range kept for fiction. The scenarios build on one another and run in
+// order: the later ones use the places and the people the earlier ones made.
 
-import { randomBytes } from "node:crypto";
-import { expect, type Locator, type Page, test } from "@playwright/test";
-import { expectClean, signIn, watch } from "./support";
+import type { Locator, Page } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { count, importFile, main, openItem, region } from "./structure";
+import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
-const suffix = randomBytes(3).toString("hex");
-const upper = suffix.toUpperCase();
+const id = mark("geography");
 
-// The places. Only the region at the top needs a name of its own: a name is unique
-// among what stands beside it, and everything else is within that region.
-const americas = `Americas ${suffix}`;
-const central = `${americas} > Central`;
-const east = `${americas} > East`;
-const siteCode = `S2-${upper}`;
-const site = `${central} > Site-2`;
-const building = `${site} > Building 1`;
-const room = `${building} > Room 102`;
-const otherBuilding = `${site} > Building 2`;
-const otherRoom = `${otherBuilding} > Room 201`;
-const movedSite = `${east} > Site-2`;
-const movedRoom = `${movedSite} > Building 1 > Room 102`;
+// The places, each named with the mark, and the paths the server works out for them.
+const americasName = `Americas ${id}`;
+const centralName = `Central ${id}`;
+const eastName = `East ${id}`;
+const siteName = `Site-2 ${id}`;
+const buildingName = `Building 1 ${id}`;
+const roomName = `Room 102 ${id}`;
+const otherBuildingName = `Building 2 ${id}`;
+const otherRoomName = `Room 201 ${id}`;
+const path = (...names: string[]) => names.join(" > ");
+const americas = americasName;
+const central = path(americas, centralName);
+const east = path(americas, eastName);
+// The code of a site is unique among all sites, and is what a location is searched by.
+const siteCode = `S2-${id}`;
+const site = path(central, siteName);
+const building = path(site, buildingName);
+const room = path(building, roomName);
+const otherBuilding = path(site, otherBuildingName);
+const otherRoom = path(otherBuilding, otherRoomName);
+const movedSite = path(east, siteName);
+const movedRoom = path(movedSite, buildingName, roomName);
+const movedOtherRoom = path(movedSite, otherBuildingName, otherRoomName);
 
 // The items, and the filter that keeps them and no others.
-const prefix = `geo-${suffix}-`;
+const prefix = `${id}-`;
 const filter = `hostname:prefix:${prefix}`;
 const first = `${prefix}sw-01`;
 const second = `${prefix}sw-02`;
@@ -61,80 +73,37 @@ const supply = `${prefix}sw-01-ps-a`;
 const group = `${prefix}closet`;
 
 // The people.
-const dana = `Dana Whitfield ${suffix}`;
-const danaMail = `dana.whitfield.${suffix}@example.net`;
-const receiving = `Site-2 Receiving ${suffix}`;
-const receivingMail = `receiving.${suffix}@example.net`;
-const lee = `Lee Okafor ${suffix}`;
-const leeMail = `lee.okafor.${suffix}@example.net`;
-const priya = `Priya Raman ${suffix}`;
-const priyaMail = `priya.raman.${suffix}@example.net`;
-const facilities = `Campus Facilities ${suffix}`;
+const dana = `Dana Whitfield ${id}`;
+const danaMail = `dana.whitfield.${id}@example.net`;
+const receiving = `Receiving ${id}`;
+const receivingMail = `receiving.${id}@example.net`;
+const lee = `Lee Okafor ${id}`;
+const leeMail = `lee.okafor.${id}@example.net`;
+const priya = `Priya Raman ${id}`;
+const priyaMail = `priya.raman.${id}@example.net`;
+const facilities = `Campus Facilities ${id}`;
 
 // The places as they are made: the address of the page of each, by its path.
 const pages = new Map<string, string>();
-
-function main(page: Page): Locator {
-  return page.getByRole("navigation", { name: "Main" });
-}
-
-function region(page: Page, name: string): Locator {
-  return page.getByRole("region", { name, exact: true });
-}
 
 /** A contact as a form offers it: its name, and its address beside it. */
 function offered(name: string, mail: string): string {
   return `${name} (${mail})`;
 }
 
-function csv(header: string[], rows: string[][]): Buffer {
-  return Buffer.from([header, ...rows].map((row) => `${row.join(",")}\n`).join(""), "utf8");
-}
-
-function count(page: Page, which: string): Locator {
-  return page.getByTestId("preview-counts").locator(`[data-count="${which}"] dd`);
-}
-
-/** Load a CSV file on the Import page: preview it, see that every row is new, apply it. */
-async function importFile(
-  page: Page,
-  entity: string,
-  name: string,
-  header: string[],
-  rows: string[][],
-) {
-  await page.goto("./import");
-  await expect(page.getByRole("heading", { level: 1, name: "Import" })).toBeVisible();
-  await page.getByLabel("File", { exact: true }).setInputFiles({
-    name,
-    mimeType: "text/csv",
-    buffer: csv(header, rows),
-  });
-  // The name of the file suggested what it holds.
-  await expect(page.getByLabel("Records")).toHaveValue(entity);
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
-  await expect(page.getByTestId("import-job")).toHaveAttribute("data-status", "previewed");
-  await expect(count(page, "created")).toHaveText(String(rows.length));
-  await expect(count(page, "rejected")).toHaveText("0");
-  await page
-    .getByRole("button", { name: `Apply ${rows.length} ${rows.length === 1 ? "row" : "rows"}` })
-    .click();
-  await expect(page.getByTestId("preview-applied")).toContainText(`${rows.length} created`);
-}
-
 /** The Geography page, counting this file's items only, with one place chosen or none. */
-async function geography(page: Page, path = "") {
-  const place = path === "" ? "./geography" : pages.get(path);
-  expect(place, `the page of ${path}`).toBeDefined();
-  await page.goto(`${place}?${new URLSearchParams({ filter }).toString()}`);
+async function geography(page: Page, place = "") {
+  const address = place === "" ? "./geography" : pages.get(place);
+  expect(address, `the page of ${place}`).toBeDefined();
+  await page.goto(`${address}?${new URLSearchParams({ filter }).toString()}`);
   await expect(page.getByRole("heading", { level: 1, name: "Geography" })).toBeVisible();
   await expect(page.getByTestId("geography-tree")).toBeVisible();
-  if (path !== "") await expect(page.getByTestId("place-path")).toHaveText(path);
+  if (place !== "") await expect(page.getByTestId("place-path")).toHaveText(place);
 }
 
 /** The row of one place in the tree, by its path. */
-function treeRow(page: Page, path: string): Locator {
-  return page.getByTestId("geography-tree").locator(`tr[data-path="${path}"]`);
+function treeRow(page: Page, place: string): Locator {
+  return page.getByTestId("geography-tree").locator(`tr[data-path="${place}"]`);
 }
 
 /** See what the tree counts at or beneath a place: its items, and the components among them. */
@@ -144,10 +113,12 @@ async function expectCounts(row: Locator, items: number, components: number) {
 }
 
 /** Show the inside of the site in the tree, if it is not on show yet. */
-async function openSite(page: Page, path: string) {
-  const open = treeRow(page, path).getByRole("button", { name: "Open Site-2" });
+async function openSite(page: Page, place: string) {
+  const open = treeRow(page, place).getByRole("button", { name: `Open ${siteName}` });
   if ((await open.count()) > 0) await open.click();
-  await expect(treeRow(page, path).getByRole("button", { name: "Close Site-2" })).toBeVisible();
+  await expect(
+    treeRow(page, place).getByRole("button", { name: `Close ${siteName}` }),
+  ).toBeVisible();
 }
 
 /**
@@ -158,19 +129,19 @@ async function newPlace(
   page: Page,
   button: string,
   what: "region" | "site" | "location",
-  path: string,
+  place: string,
   more: { code?: string; kind?: string } = {},
 ) {
   await page.getByRole("button", { name: button, exact: true }).click();
   const form = region(page, `New ${what}`);
-  await form.getByLabel("Name (required)").fill(path.split(" > ").at(-1) ?? "");
+  await form.getByLabel("Name (required)").fill(place.split(" > ").at(-1) ?? "");
   if (more.code) await form.getByLabel("Code", { exact: true }).fill(more.code);
   if (more.kind) await form.getByLabel("Kind").selectOption({ label: more.kind });
   await form.getByRole("button", { name: `Create ${what}` }).click();
   // The page goes to the new place, which shows the path the server worked out.
-  await expect(page.getByTestId("place-path")).toHaveText(path);
+  await expect(page.getByTestId("place-path")).toHaveText(place);
   await expect(page.getByTestId("place")).toHaveAttribute("data-level", what);
-  pages.set(path, `.${new URL(page.url()).pathname.replace(/^.*(?=\/geography\/)/, "")}`);
+  pages.set(place, `.${new URL(page.url()).pathname.replace(/^.*(?=\/geography\/)/, "")}`);
 }
 
 /** Assign a contact to the place on show, in a role. */
@@ -188,27 +159,21 @@ function inForce(page: Page, role: string): Locator {
 }
 
 /** Search for a location in a form's Location field, and choose it by its path. */
-async function chooseLocation(form: Locator, typed: string, path: string, label = "Location") {
+async function chooseLocation(form: Locator, typed: string, place: string, label = "Location") {
   await form.getByLabel(label, { exact: true }).fill(typed);
   await form
     .getByRole("list", { name: "Locations that match" })
-    .getByRole("button", { name: path, exact: true })
+    .getByRole("button", { name: place, exact: true })
     .click();
-}
-
-/** Open an item from the grid, by its hostname, minor items among them. */
-async function openItem(page: Page, hostname: string) {
-  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${hostname}`)}&minor=1`);
-  await page.getByTestId("grid-items").getByRole("link", { name: hostname, exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: hostname })).toBeVisible();
 }
 
 test("S24: the places are laid out, and the tree counts what is at or beneath each", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // Geography has an entry of its own in the navigation.
   await main(page).getByRole("link", { name: "Geography" }).click();
@@ -236,7 +201,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await geography(page, central);
   await page.getByRole("button", { name: "New site in it", exact: true }).click();
   const twin = region(page, "New site");
-  await twin.getByLabel("Name (required)").fill("Site-2");
+  await twin.getByLabel("Name (required)").fill(siteName);
   await twin.getByRole("button", { name: "Create site" }).click();
   await expect(twin.locator('.alert-error[data-status="409"]')).toBeVisible();
   await expect(twin.getByLabel("Name (required)")).toHaveAttribute("aria-invalid", "true");
@@ -247,7 +212,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await importFile(
     page,
     "items",
-    `items-${suffix}-geography.csv`,
+    `items-${id}.csv`,
     ["hostname", "location"],
     [
       [first, room],
@@ -260,7 +225,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await openItem(page, first);
   await expect(page.getByTestId("location")).toContainText(room);
   await expect(page.getByTestId("location")).toHaveAttribute("data-source", "own");
-  await expect(page.getByTestId("site")).toHaveText("Site-2");
+  await expect(page.getByTestId("site")).toHaveText(siteName);
   await region(page, "Minor items").getByRole("button", { name: "Add a minor item" }).click();
   const minor = region(page, "New minor item");
   await minor.getByLabel("Hostname").fill(supply);
@@ -273,7 +238,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
     .locator("tbody tr", { hasText: supply })
     .locator("td[data-source]")
     .nth(2);
-  await expect(where).toHaveText("Room 102");
+  await expect(where).toHaveText(roomName);
   await expect(where).toHaveAttribute("data-source", "parent_item");
   await expect(where).toHaveClass(/inherited/);
 
@@ -299,11 +264,17 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await expectCounts(tree.locator('tr[data-row="totals"]'), 4, 3);
   await expect(tree.locator('tr[data-row="hidden"]')).toHaveCount(0);
   // A site is closed again, and a region too: what is in it leaves the tree.
-  await treeRow(page, site).getByRole("button", { name: "Close Site-2" }).click();
+  await treeRow(page, site)
+    .getByRole("button", { name: `Close ${siteName}` })
+    .click();
   await expect(treeRow(page, building)).toHaveCount(0);
-  await treeRow(page, central).getByRole("button", { name: "Close Central" }).click();
+  await treeRow(page, central)
+    .getByRole("button", { name: `Close ${centralName}` })
+    .click();
   await expect(treeRow(page, site)).toHaveCount(0);
-  await treeRow(page, central).getByRole("button", { name: "Open Central" }).click();
+  await treeRow(page, central)
+    .getByRole("button", { name: `Open ${centralName}` })
+    .click();
   await expect(treeRow(page, site)).toBeVisible();
 
   // From a place, the way to the items within it: the item grid, filtered by the server.
@@ -331,12 +302,12 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   }
   await page.getByText("Columns", { exact: true }).click();
   const gridRow = (host: string) => grid.locator("[row-id]", { hasText: host });
-  await expect(gridRow(second).locator('[col-id="location.name"]')).toHaveText("Room 102");
+  await expect(gridRow(second).locator('[col-id="location.name"]')).toHaveText(roomName);
   await expect(gridRow(second).locator('[col-id="location.name"]')).not.toHaveClass(
     /cell-inherited/,
   );
-  await expect(gridRow(second).locator('[col-id="site"]')).toHaveText("Site-2");
-  await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveText("Room 102");
+  await expect(gridRow(second).locator('[col-id="site"]')).toHaveText(siteName);
+  await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveText(roomName);
   await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveClass(/cell-inherited/);
   // The whole path, and where it came from, is what the cell says when it has the focus.
   await gridRow(supply).locator('[col-id="location.name"]').click();
@@ -349,10 +320,11 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
 
 test("a location is chosen by searching, in a form and in bulk; the reports are by site and by region", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // A new item is given a location by searching for it: by the code of its site and a
   // part of its name, and chosen by its path.
@@ -367,7 +339,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(page.getByRole("heading", { level: 1, name: fourth })).toBeVisible();
   await expect(page.getByTestId("location")).toContainText(building);
   await expect(page.getByTestId("location")).toContainText("Set here");
-  await expect(page.getByTestId("site")).toHaveText("Site-2");
+  await expect(page.getByTestId("site")).toHaveText(siteName);
 
   // The location half of S18: the switch is moved to another location, and the power
   // supply in it shows the new one, as inherited. Nothing was written to it.
@@ -383,7 +355,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     .locator("tbody tr", { hasText: supply })
     .locator("td[data-source]")
     .nth(2);
-  await expect(where).toHaveText("Building 1");
+  await expect(where).toHaveText(buildingName);
   await expect(where).toHaveAttribute("data-source", "parent_item");
   await page.getByTestId("minor-items").getByRole("link", { name: supply }).click();
   await expect(page.getByRole("heading", { level: 1, name: supply })).toBeVisible();
@@ -513,10 +485,11 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
 
 test("S25: a contact on the region and one on the site are both shown on the room, each with its level", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // Contacts have a list of their own. Two are made by hand, and two more by a file.
   await main(page).getByRole("link", { name: "Contacts" }).click();
@@ -540,7 +513,7 @@ test("S25: a contact on the region and one on the site are both shown on the roo
   await importFile(
     page,
     "contacts",
-    `contacts-${suffix}.csv`,
+    `contacts-${id}.csv`,
     ["name", "email", "phone"],
     [
       [lee, leeMail, "+1 555 0102"],
@@ -548,7 +521,7 @@ test("S25: a contact on the region and one on the site are both shown on the roo
     ],
   );
   // The list is the shared grid: filtered by the server, with a link to each contact.
-  await page.goto(`./contacts?filter=${encodeURIComponent(`email:contains:${suffix}@`)}`);
+  await page.goto(`./contacts?filter=${encodeURIComponent(`email:contains:${id}@`)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("4 contacts");
   await expect(
     page.getByTestId("grid-contacts").getByRole("link", { name: lee, exact: true }),
@@ -619,10 +592,11 @@ test("S25: a contact on the region and one on the site are both shown on the roo
 
 test("S26: an override on the building holds when the contact on the region is changed", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // A room in another building of the same site, with nothing of its own.
   await geography(page, site);
@@ -680,7 +654,7 @@ test("S26: an override on the building holds when the contact on the region is c
   await form.getByLabel("None here, and do not look further up").check();
   await expect(form.getByLabel("Contact", { exact: true })).toBeDisabled();
   await form.getByRole("button", { name: "Say there is none" }).click();
-  await expect(page.getByText("Building 2 now has no Shipping contact")).toBeVisible();
+  await expect(page.getByText(`${otherBuildingName} now has no Shipping contact`)).toBeVisible();
   await expect(inForce(page, "shipping")).toHaveAttribute("data-stopped", "true");
   await expect(inForce(page, "shipping")).toContainText(
     "None here, and nothing further up is looked at",
@@ -697,7 +671,7 @@ test("S26: an override on the building holds when the contact on the region is c
     .getByRole("button", { name: "Look further up again for Shipping" })
     .click();
   await expect(
-    page.getByText("Building 2 takes its Shipping contacts from above again."),
+    page.getByText(`${otherBuildingName} takes its Shipping contacts from above again.`),
   ).toBeVisible();
   await expect(inForce(page, "shipping")).toContainText(receiving);
 
@@ -706,10 +680,11 @@ test("S26: an override on the building holds when the contact on the region is c
 
 test("S27: the site is moved to another region, and the paths and the counts follow", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // The item in the room, as it is before the move.
   await openItem(page, second);
@@ -732,7 +707,7 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   const move = region(page, "Move");
   await move.getByLabel("Region").selectOption({ label: east });
   await move.getByRole("button", { name: "Move site" }).click();
-  await expect(page.getByText(`Site-2 was moved: it is now ${movedSite}.`)).toBeVisible();
+  await expect(page.getByText(`${siteName} was moved: it is now ${movedSite}.`)).toBeVisible();
   expect(Object.keys((await moved).postDataJSON()).sort()).toEqual(["region_hid", "row_version"]);
   await expect(page.getByTestId("place-path")).toHaveText(movedSite);
 
@@ -752,7 +727,7 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   await geography(page, movedRoom);
   await expect(inForce(page, "technical")).toContainText(lee);
   await page.goto(`${pages.get(otherRoom)}?${new URLSearchParams({ filter }).toString()}`);
-  await expect(page.getByTestId("place-path")).toHaveText(`${movedSite} > Building 2 > Room 201`);
+  await expect(page.getByTestId("place-path")).toHaveText(movedOtherRoom);
   await expect(inForce(page, "technical")).toContainText(dana);
   await expect(inForce(page, "technical").locator("td").nth(1)).toHaveText(
     `From the region ${east}`,
@@ -769,10 +744,11 @@ test("S27: the site is moved to another region, and the paths and the counts fol
 
 test("S28: an item is given to an owner outside the team only with a reason, and is marked", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // An owner outside the operations team, with its people.
   await main(page).getByRole("link", { name: "Owners" }).click();

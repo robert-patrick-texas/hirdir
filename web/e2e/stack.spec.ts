@@ -381,8 +381,11 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   await expect(page.getByTestId("total-components")).toHaveText("4");
   await expect(page.getByTestId("total-items")).toHaveText("4");
   await expect(page.getByTestId("totals-by-health")).toHaveCount(0);
+  // It is by site unless asked otherwise, and has no view of the totals alone.
+  await expect(page.getByLabel("By", { exact: true })).toHaveValue("site");
   await expect(page.getByLabel("By", { exact: true }).locator("option")).toHaveText([
-    "The totals only",
+    "Site",
+    "Region",
     "Vendor",
     "Kind",
     "Type",
