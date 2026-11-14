@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../api/client";
 import {
-  above,
   addressLines,
   addressOf,
   contactLine,
   countRows,
   DEEPEST_DRAWN,
   drawnDepth,
-  findNode,
   fromAbove,
   isLevel,
   itemsWithin,
@@ -18,10 +16,8 @@ import {
   nameOf,
   noContactText,
   ownRoles,
-  pathAbove,
   placePath,
   regionsToMoveTo,
-  sourceText,
   type TreeNode,
   treeQuery,
   treeRows,
@@ -86,12 +82,10 @@ describe("levels and paths", () => {
     );
   });
 
-  it("reads the name of a place off its path, and the path of what it is in", () => {
+  it("reads the name of a place off its path", () => {
     expect(nameOf("Americas > Central > Site-2 > Building 1 > Room 102")).toBe("Room 102");
     expect(nameOf("Americas")).toBe("Americas");
     expect(nameOf(null)).toBe("");
-    expect(pathAbove("Americas > Central > Site-2")).toBe("Americas > Central");
-    expect(pathAbove("Americas")).toBe("");
   });
 });
 
@@ -170,7 +164,8 @@ describe("treeRows", () => {
   });
 
   it("starts deeper for the inside of a site", () => {
-    const site = findNode(TREE, SITE);
+    const site = TREE[0]?.children[0]?.children[0];
+    expect(site?.hid).toBe(SITE);
     expect(treeRows(site?.children ?? [], new Set(), 3).map((row) => row.depth)).toEqual([3, 4]);
   });
 
@@ -178,19 +173,6 @@ describe("treeRows", () => {
     expect(drawnDepth(3)).toBe(3);
     expect(drawnDepth(40)).toBe(DEEPEST_DRAWN);
     expect(drawnDepth(-1)).toBe(0);
-  });
-});
-
-describe("finding a place in a tree", () => {
-  it("finds a node by its HID, at any depth", () => {
-    expect(findNode(TREE, ROOM)?.name).toBe("Room 102");
-    expect(findNode(TREE, "no-such")).toBeNull();
-  });
-
-  it("names the places a place is in, outermost first", () => {
-    expect(above(TREE, ROOM)).toEqual([AMERICAS, CENTRAL, SITE, BUILDING]);
-    expect(above(TREE, AMERICAS)).toEqual([]);
-    expect(above(TREE, "no-such")).toBeNull();
   });
 });
 
@@ -220,16 +202,6 @@ describe("where what is in force came from", () => {
     expect(fromAbove("location")).toBe(true);
     expect(fromAbove("site")).toBe(true);
     expect(fromAbove("region")).toBe(true);
-  });
-
-  it("names the level and the path of the place it came from", () => {
-    expect(sourceText("own", "Americas")).toBe("Set here");
-    expect(sourceText("none", null)).toBe("Not set");
-    expect(sourceText("region", "Americas")).toBe("From the region Americas");
-    expect(sourceText("site", "Americas > Central > Site-2")).toBe(
-      "From the site Americas > Central > Site-2",
-    );
-    expect(sourceText("location", null)).toBe("From the location");
   });
 
   it("says of a role nobody is in whether a level stopped the looking further up", () => {

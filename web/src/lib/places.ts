@@ -43,28 +43,6 @@ export function levelLabel(level: string): string {
   return isLevel(level) ? LABELS[level] : level;
 }
 
-/** The routes of one level of place, as the contract names them. */
-export const PLACE_ROUTES = {
-  region: {
-    list: "/api/v1/regions",
-    one: "/api/v1/regions/{hid}",
-    retire: "/api/v1/regions/{hid}/retire",
-    effective: "/api/v1/regions/{hid}/effective",
-  },
-  site: {
-    list: "/api/v1/sites",
-    one: "/api/v1/sites/{hid}",
-    retire: "/api/v1/sites/{hid}/retire",
-    effective: "/api/v1/sites/{hid}/effective",
-  },
-  location: {
-    list: "/api/v1/locations",
-    one: "/api/v1/locations/{hid}",
-    retire: "/api/v1/locations/{hid}/retire",
-    effective: "/api/v1/locations/{hid}/effective",
-  },
-} as const;
-
 /** The field of an assignment that names its place, by the level of the place. */
 export const ASSIGNED_TO: Readonly<Record<Level, "region_hid" | "site_hid" | "location_hid">> = {
   region: "region_hid",
@@ -86,12 +64,6 @@ export function itemsWithin(hid: string): string {
 export function nameOf(path: string | null | undefined): string {
   if (!path) return "";
   return path.split(PATH_SEPARATOR).at(-1) ?? "";
-}
-
-/** The path of what a place is in, or blank for a region at the top. */
-export function pathAbove(path: string | null | undefined): string {
-  if (!path) return "";
-  return path.split(PATH_SEPARATOR).slice(0, -1).join(PATH_SEPARATOR);
 }
 
 // The longest word of a search that is sent, and how many words are.
@@ -194,26 +166,6 @@ export function drawnDepth(depth: number): number {
   return Math.max(0, Math.min(depth, DEEPEST_DRAWN));
 }
 
-/** The node of a tree with a given HID, or null. */
-export function findNode(nodes: readonly TreeNode[], hid: string): TreeNode | null {
-  for (const node of nodes) {
-    if (node.hid === hid) return node;
-    const within = findNode(node.children, hid);
-    if (within) return within;
-  }
-  return null;
-}
-
-/** The HIDs of the places a place is in, outermost first, as far as a tree holds them. */
-export function above(nodes: readonly TreeNode[], hid: string): string[] | null {
-  for (const node of nodes) {
-    if (node.hid === hid) return [];
-    const within = above(node.children, hid);
-    if (within) return [node.hid, ...within];
-  }
-  return null;
-}
-
 /** A row beneath the tree: items that are in none of its places, and the whole view. */
 export interface CountRow {
   key: "unplaced" | "hidden" | "totals";
@@ -246,17 +198,6 @@ type PlaceSource = RoleContacts["source"];
 /** True for what a place has from a level above it, and not of its own. */
 export function fromAbove(source: PlaceSource): boolean {
   return source !== "own" && source !== "none";
-}
-
-/**
- * Where something a place has in force came from, as a short label: the level, and the
- * path of the place at that level.
- */
-export function sourceText(source: PlaceSource, sourcePath: string | null | undefined): string {
-  if (source === "none") return "Not set";
-  if (source === "own") return "Set here";
-  const where = sourcePath ? ` ${sourcePath}` : "";
-  return `From the ${source}${where}`;
 }
 
 /**
