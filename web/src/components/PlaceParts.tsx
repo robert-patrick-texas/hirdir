@@ -43,6 +43,7 @@ import {
   ownRoles,
   type Place,
   placePath,
+  plannedText,
   type Region,
   regionsToMoveTo,
   type Site,
@@ -59,6 +60,7 @@ import {
   ShippingNote,
   type To,
 } from "./PlaceInForce";
+import { MakeActive, PlannedHere, usePlanned } from "./PlacePlanned";
 import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
 import { Time } from "./Time";
@@ -315,7 +317,15 @@ export function PlaceDetail(props: PlaceDetailProps) {
   // Counts the changes made here, so that what is in force is read again after each.
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState<Level | null>(null);
-  const specs = useMemo(() => placeSpecs(level, lists, record ?? null), [level, lists, record]);
+  // A draft place is made active by the action of its own, which asks first: its form
+  // does not offer the status.
+  const specs = useMemo(
+    () =>
+      placeSpecs(level, lists, record ?? null).filter(
+        (spec) => !(record?.record_status === "draft" && spec.name === "record_status"),
+      ),
+    [level, lists, record],
+  );
   const to: To = (toLevel, toHid) => ({ pathname: placePath(toLevel, toHid), search });
   // What the place has in force: shown on the page, and said in the form above the
   // inputs it bears on. Read again after every change made here.
@@ -324,6 +334,9 @@ export function PlaceDetail(props: PlaceDetailProps) {
   );
   useReloadOn(turn, effective.reload);
   const again = useAction();
+  // What is planned for the place, and the change that puts a draft place in use.
+  const planned = usePlanned(record);
+  const activating = useAction();
 
   const showSite = useEffectEvent(props.onSite);
   const siteHid = record
@@ -351,6 +364,24 @@ export function PlaceDetail(props: PlaceDetailProps) {
       patchPlace(level, record.hid, { row_version: record.row_version, ...body }),
     );
     if (result.ok) changed(text);
+  }
+
+  /** Make a draft place active: the items planned for it are moved in by that same change. */
+  async function makeActive() {
+    if (!record) return;
+    const moving =
+      planned.data && !planned.data.draftAbove
+        ? plannedText({ items: planned.data.count, groups: planned.data.groups })
+        : "";
+    const result = await activating.run(() =>
+      patchPlace(level, record.hid, { row_version: record.row_version, record_status: "active" }),
+    );
+    if (!result.ok) return;
+    changed(
+      moving !== ""
+        ? `${record.name} is active. What was planned for it was moved in: ${moving}, each with an entry in its history.`
+        : `${record.name} is active.`,
+    );
   }
 
   const editable = mayEdit && record !== undefined && record.record_status !== "retired";
@@ -458,6 +489,17 @@ export function PlaceDetail(props: PlaceDetailProps) {
               turn={turn}
               onChanged={(text) => changed(text, false)}
             />
+            <PlannedHere level={level} place={record} planned={planned} />
+            {editable && record.record_status === "draft" && (
+              <MakeActive
+                level={level}
+                place={record}
+                planned={planned}
+                activate={makeActive}
+                action={activating}
+                onReload={place.reload}
+              />
+            )}
             {editable && ready && (
               <section aria-labelledby="place-details">
                 <h3 id="place-details">Details</h3>

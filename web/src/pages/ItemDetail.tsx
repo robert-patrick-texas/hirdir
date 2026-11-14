@@ -319,6 +319,17 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </Link>
           )}
         </Fact>
+        {item.planned_location && (
+          <Fact label="Planned location">
+            <span data-testid="planned-location">
+              Planned for{" "}
+              <Link to={placePath("location", item.planned_location.hid)}>
+                {item.planned_location.path}
+              </Link>
+              , when that place is made active
+            </span>
+          </Fact>
+        )}
         <Fact label="Management address">
           <ManagementAddresses addresses={item.addresses} />
         </Fact>
@@ -873,6 +884,16 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         kind: "location",
         blank: minor ? "Where the item it is in is" : "No location",
         options: item.location ? [{ value: item.location.hid, label: item.location.path }] : [],
+      },
+      {
+        name: "planned_location_hid",
+        label: "Planned location",
+        kind: "planned_location",
+        blank: "No plan",
+        options: item.planned_location
+          ? [{ value: item.planned_location.hid, label: item.planned_location.path }]
+          : [],
+        hint: "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Clear it to give the plan up.",
       },
       {
         name: "record_status",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../api/client";
 import {
+  activationText,
   addressLines,
   addressOf,
   clearedShipAddress,
@@ -18,6 +19,12 @@ import {
   overriddenLevel,
   ownRoles,
   placePath,
+  planMembersPath,
+  plannedGroupsWithin,
+  plannedText,
+  plannedWithin,
+  planScope,
+  planSearch,
   regionsToMoveTo,
   shippingNoteField,
   standingOf,
@@ -441,5 +448,125 @@ describe("contactLine", () => {
       }),
     ).toBe("Dana Whitfield · dana.whitfield@example.net · +1 555 0100");
     expect(contactLine({ name: "", organization: null, email: null, phone: null })).toBe("");
+  });
+});
+
+describe("a planned location", () => {
+  const draft = (level: "region" | "site" | "location", hid: string, path: string) => ({
+    level,
+    hid,
+    path,
+  });
+  const within = (hid: string) => ({ field: "location", op: "within", value: hid });
+
+  it("is looked for among the locations at or beneath a place that is a draft", () => {
+    expect(planScope([draft("site", SITE, "Americas > Central > Site-2")])).toEqual(within(SITE));
+    expect(
+      planScope([
+        draft("site", SITE, "Americas > Central > Site-2"),
+        draft("region", EAST, "Americas > East"),
+      ]),
+    ).toEqual({ or: [within(EAST), within(SITE)] });
+  });
+
+  it("leaves out a draft place that is within another: the outer one says it all", () => {
+    expect(
+      planScope([
+        draft("location", ROOM, "Americas > Central > Site-2 > Building 1 > Room 102"),
+        draft("site", SITE, "Americas > Central > Site-2"),
+        draft("location", BUILDING, "Americas > Central > Site-2 > Building 1"),
+      ]),
+    ).toEqual(within(SITE));
+    // A place whose name only begins the same is not within it.
+    expect(
+      planScope([
+        draft("site", SITE, "Americas > Central > Site-2"),
+        draft("site", "s-20", "Americas > Central > Site-20"),
+      ]),
+    ).toEqual({ or: [within(SITE), within("s-20")] });
+  });
+
+  it("has nothing to offer where no place is a draft, and names no more places than a filter holds", () => {
+    expect(planScope([])).toBeNull();
+    const many = Array.from({ length: 200 }, (_, place) =>
+      draft("site", `s-${place}`, `Americas > Site ${String(place).padStart(3, "0")}`),
+    );
+    const scope = planScope(many);
+    expect(scope && "or" in scope ? scope.or : []).toHaveLength(60);
+  });
+
+  it("is searched for by what is typed, within that scope only", () => {
+    const scope = planScope([draft("site", SITE, "Americas > Central > Site-2")]);
+    expect(planSearch("", scope)).toBeNull();
+    expect(planSearch("102", null)).toBeNull();
+    const found = planSearch("102", scope);
+    expect(found && "and" in found ? found.and.at(-1) : null).toEqual(within(SITE));
+  });
+
+  it("is the way to the items planned for a place or beneath it", () => {
+    expect(plannedWithin(SITE)).toBe(
+      `/items?filter=${encodeURIComponent(`planned_location:within:${SITE}`)}&minor=1`,
+    );
+  });
+
+  it("is the way to the device groups planned for a place or beneath it", () => {
+    expect(plannedGroupsWithin(SITE)).toBe(
+      `/groups?filter=${encodeURIComponent(`planned_location:within:${SITE}`)}`,
+    );
+  });
+
+  it("is given to the current members of a group by one bulk edit, which a link opens", () => {
+    expect(planMembersPath("g-1", ROOM)).toBe(
+      `/items?filter=${encodeURIComponent("group.hid:eq:g-1")}&minor=1&plan=${ROOM}`,
+    );
+  });
+
+  it("counts what is planned in words: items, device groups, or both", () => {
+    expect(plannedText({ items: 2, groups: 0 })).toBe("2 items");
+    expect(plannedText({ items: 1, groups: 0 })).toBe("1 item");
+    expect(plannedText({ items: 0, groups: 1 })).toBe("1 device group");
+    expect(plannedText({ items: 2, groups: 3 })).toBe("2 items and 3 device groups");
+    expect(plannedText({ items: 0, groups: 0 })).toBe("");
+  });
+
+  it("says what making a draft place active does, before it is done", () => {
+    expect(activationText("Site-9", { items: 2, groups: 0 }, null)).toBe(
+      "Making Site-9 active moves 2 items that are planned for it into it. Each is recorded in its history.",
+    );
+    expect(activationText("Site-9", { items: 1, groups: 0 }, null)).toBe(
+      "Making Site-9 active moves 1 item that is planned for it into it. Each is recorded in its history.",
+    );
+    expect(activationText("Site-9", { items: 2, groups: 1 }, null)).toBe(
+      "Making Site-9 active moves 2 items and 1 device group that are planned for it into it. Each is recorded in its history.",
+    );
+    expect(activationText("Site-9", { items: 0, groups: 1 }, null)).toBe(
+      "Making Site-9 active moves 1 device group that is planned for it into it. Each is recorded in its history.",
+    );
+    expect(activationText("Site-9", { items: 0, groups: 0 }, null)).toBe(
+      "Nothing is planned for Site-9, so nothing is moved.",
+    );
+  });
+
+  it("says that what is planned waits while a level above is still a draft", () => {
+    expect(
+      activationText("Room 1", { items: 2, groups: 0 }, { level: "site", name: "Site-9" }),
+    ).toBe(
+      "2 items are planned for Room 1. They move in once the site Site-9, which it is in, is active too.",
+    );
+    expect(
+      activationText("Site-9", { items: 1, groups: 0 }, { level: "region", name: "North" }),
+    ).toBe(
+      "1 item is planned for Site-9. It moves in once the region North, which it is in, is active too.",
+    );
+    expect(
+      activationText("Site-9", { items: 1, groups: 2 }, { level: "region", name: "North" }),
+    ).toBe(
+      "1 item and 2 device groups are planned for Site-9. They move in once the region North, which it is in, is active too.",
+    );
+    expect(
+      activationText("Site-9", { items: 0, groups: 0 }, { level: "region", name: "North" }),
+    ).toBe(
+      "Nothing is planned for Site-9. It is in use once the region North, which it is in, is active too.",
+    );
   });
 });

@@ -16,6 +16,7 @@ import {
   LOCATION_KIND_LIST,
   levelLabel,
   placePath,
+  plannedText,
   type TreeNode,
   type TreeView,
   treeQuery,
@@ -317,6 +318,15 @@ function PlaceRow({ node, depth, search, chosen, choices, toggle }: PlaceRowProp
         {node.code && <span className="muted"> {node.code}</span>}
         {node.record_status !== "active" && (
           <span className="badge">{optionLabel(RECORD_STATUSES, node.record_status)}</span>
+        )}
+        {node.planned + node.planned_groups > 0 && (
+          <span
+            className="muted tree-planned"
+            data-testid="planned"
+            title={`${plannedText({ items: node.planned, groups: node.planned_groups })} planned for this place or for a place within it: moved in when it is in use`}
+          >
+            {node.planned + node.planned_groups} planned
+          </span>
         )}
       </th>
       <td>{kind}</td>
