@@ -817,7 +817,13 @@ ADDRESSES = Listing(
     fields={
         **_bookkeeping(Address),
         **_columns(Address, "reference", "item_hid", "group_hid", "network_hid"),
-        "address": Field("address", Address.address, convert=comparable),
+        # Sorted as an address and not as text: 192.0.2.9 before 192.0.2.10.
+        "address": Field(
+            "address",
+            Address.address,
+            convert=comparable,
+            ordered_by=dialect.as_address(Address.address),
+        ),
         # 4 or 6: an address with a colon in it is IPv6.
         "family": Field("integer", case((Address.address.contains(":"), 6), else_=4)),
         "role": Field("choice", Address.role),

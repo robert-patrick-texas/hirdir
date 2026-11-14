@@ -210,6 +210,21 @@ def test_the_address_list_filters_and_sorts(make: Maker) -> None:
         "/addresses/query", {"filter": {"field": "address", "op": "contains", "value": ".1"}}, 200
     )
     assert page["total"] == 3
+    # The list is in the order of addresses and not of their text, IPv4 before IPv6.
+    make.address(stack, "192.0.2.9")
+    make.address(stack, "2001:db8::1")
+    assert (
+        listed()
+        == listed(sort="address")
+        == [
+            "192.0.2.9",
+            "192.0.2.10",
+            "192.0.2.11",
+            "192.0.2.12",
+            "2001:db8::1",
+        ]
+    )
+    assert listed(sort="-address")[:2] == ["2001:db8::1", "192.0.2.12"]
 
 
 def test_the_same_address_twice_under_one_network_is_reported_not_refused(make: Maker) -> None:
