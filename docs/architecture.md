@@ -398,7 +398,7 @@ Docker and installs with apt, as an operator does.
 |---|---|
 | `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement and the audit trail holds no event of the upgrade; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0 and of 0.4.1; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1 and of 0.5.0; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
@@ -448,8 +448,8 @@ and no observation; and a record has one primary address, so there are seven
 addresses. A release from before there were groups is given the items alone, and one
 from before there was an inventory is given none.
 
-Afterwards every item, group, membership, network, address and choice must be as it
-was, field for field and at the `row_version` it had, every item with its history
+Afterwards every item, group, membership, network, address, owner and choice must be
+as it was, field for field and at the `row_version` it had, every item with its history
 event for event, and no choice may be added. The first stack must say of itself all
 that it said, the master that is seen and when among it. A second item with a serial
 number of the same model, one with an asset tag that is taken, and a second group of a
@@ -486,7 +486,9 @@ records, each by HID and field, which the comparison passes over; the rows of a 
 by HID, which the comparison of its rows leaves out; the columns, indexes and foreign
 keys that the migration adds to a table, which must be there and no other; a list or a
 table that may have more records than before; and the view of the items that must be
-counted as before, where some are meant to be counted otherwise. Everything that is
+counted as before, where some are meant to be counted otherwise. A migration that
+writes no audit event says that too, and the audit trail is then read before anything
+is asked of the new version, as after an upgrade with no migration. Everything that is
 not named is compared as in any upgrade.
 
 A migration that has no file is given what every upgrade is given, and both upgrade
@@ -514,6 +516,43 @@ site's two, with `good` there once under the site's label; and the second stack,
 one switch alone, must be counted with its whole support weight. Last, an item from
 before takes a condition and an observation, and the cluster is said to be managed by
 its members and counts as two managed nodes.
+
+`migration-0007.sh` is the one that 0.5.0 brought, and what it looks for is what
+[install.md](install.md#from-042-to-050) tells an operator of that upgrade. The
+migration creates the tables of regions, sites, locations, contacts and their
+assignments, makes `items` and `device_groups` anew, each with a column that refers to
+a location, loads the lists of contact roles and of location kinds, and creates the
+table of the members of owners last. It is to change no record there is, and to write
+no audit event, which the file says. With the previous release the file makes an owner
+outside the team, an item that is with it and a minor item in that item, for which
+that release asks no reason and has nowhere to keep one; and four choices of a site's
+own in the two lists, which that release takes although it uses neither: in each list
+one that is the site's alone, and one with the value of a default under a label of the
+site's. It sees that a file of items with a `location` column is refused, and one of
+device groups, and that the management report with no `by` is by nothing. The file names the two columns, the
+index and the foreign key that `items` gains, and the column, the index and the foreign
+key of `device_groups`, and says that choices may be added. After the upgrade the six
+new tables must be empty and the new columns hold nothing; no item and no group may be
+anywhere, the tree of places must be empty, and every item counted as nowhere; the item
+with the owner outside the team, and the minor item in it, must be marked as
+exceptions, with no reason, and be the only ones that `filter=owner_exception:eq:true`
+finds; the record of an owner must list its tags and its members, of which there are
+none; each of the two lists must hold its defaults and the site's own, with the default
+that the site had relabelled there once, under the site's label; and the management
+report with no `by` must be by site, with one row, of the items that are nowhere, which
+holds what the totals hold, and totals that are as the previous release gave them.
+Last, what is new is tried on what was carried over. An export of the item with the
+owner outside the team is imported back as it is, and must find its record unchanged,
+with no reason asked for, because no item is given an owner. That item is changed in
+another field, and no reason is asked for, while an item that is given that owner is
+refused without a reason and marked with one. A region, a site and
+a location of the kind that the site had entered are made, and a contact is given the
+role of the site's own there. The two files that the previous release refused are
+applied and put an item and the first stack from before at that location; the tree
+counts the item at each level, the item list finds it within
+the region, and an export of the columns that can be set writes its location. All of it
+is then taken out again, and the places are retired, so that the rest of the pass
+starts from an empty tree.
 
 `release-0.4.2.sh` is the example of the second kind. 0.4.2 has no migration. One
 thing that it says differently of what it holds is left out of the comparison by name
@@ -548,8 +587,10 @@ group still there. That is the way back that
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
-`addresses` was for 0.4.0, so that everything else the migration does is done before it
-fails. Where it creates none, as 0.4.1 creates none, a trigger is put on
+`addresses` was for 0.4.0 and `owner_members` is for 0.5.0, so that everything else the
+migration does is done before it fails: migration `0007` has by then created five
+tables, made `items` and `device_groups` anew and loaded two lists, and all of that has
+to be undone. Where it creates none, as 0.4.1 creates none, a trigger is put on
 `alembic_version` that refuses any change to it. Writing the new revision into that
 table is the last thing a migration does, so for migration `0006` the failure comes
 when the columns are added, the `device_groups` table is made anew, the clusters are
@@ -574,9 +615,23 @@ what the fresh pass asks of this tree's. The failed-upgrade pass does nothing of
 fresh pass and runs whole for such a pair. Neither is the release check.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
-prefix. The nine files of `examples/` are sent in load order to `POST /imports/preview`
+prefix. The fifteen files of `examples/` are sent in load order to `POST /imports/preview`
 and applied: every row is created, and the lists of minor items, networks, device
-groups with their members, and addresses hold what the files hold. What the examples
+groups with their members, and addresses hold what the files hold, and so do those of
+regions, sites, locations, contacts, their assignments and the members of owners,
+beside what an upgraded installation had of them. What the examples show of 0.5.0 is
+looked for: the tree has Americas with its two regions and their sites, and not the
+site that is a draft until the drafts are asked for; it counts at Americas, at Site-2,
+in Room 102 and in the rack within it the items that `examples/items.csv` puts at or
+beneath each, a minor item where the item it is in is, and what is in the tree, what
+is nowhere and what is hidden add up to the totals; Room 102 has the shipping contact
+of its site, the technical contact of its building and not the two of the region, the
+shipping address of its site whole and the instructions of the region; the store room,
+which is in no building, has the two technical contacts of the region and instructions
+of its own; the room of the small office has no shipping contact, because its site
+says that nobody takes shipments there; the one item with an owner outside the team is
+marked as an exception, with its reason; and the management report with no `by` is by
+site, and by region has the items in the row of each region above them. What the examples
 show of 0.4.1 is looked for: the core stack is found by the serial number of the master
 that is intended and shows that of the master that is seen; the address that two
 routers share is held once, by their cluster; `GET /reports/duplicates` lists the one
@@ -661,13 +716,59 @@ what was observed with no moment, it changes nothing. A third file, of `hostname
 `observed_status` alone, names two switches that have serial numbers: each row finds its
 switch by the host name and updates it, and no second item is made.
 
+**The records of 0.5.0** follow, as scenarios S24 to S28 have them, each in small, with
+the half of S18 that came with this release. A region is made with two regions beneath
+it, a site in one of them, two buildings with a room in each, and a location that is a
+draft: each has its path, a second room of the same name in one building is refused,
+and so is a name that holds the mark between the names of a path. Five switches are
+put in the room, the building, the draft location and nowhere, and a power supply in
+one of them, which is where its switch is, with the source `parent_item`.
+`GET /geography/tree`, asked for these items alone, has three items and two components
+in the room and four and three at every level above it; beside the tree stand one item
+that is nowhere and one that is hidden, in the draft location, and the three add up to
+the totals, as they do over everything there is. Asked for with the drafts and from the
+site alone, the tree is the site with the draft location in it and nothing hidden. The
+item list finds the same items by `location:within:` with a path and with an HID, by
+`location:empty:true`, and by the names of the site and of a region. A switch is moved
+to the other building: its power supply is there too, nothing was written to it, and
+the tree follows. A technical contact is put on the region and a shipping contact on
+the site: `GET /locations/{hid}/effective` shows the room both, each with the level it
+came from, and nobody for a role that no level has, and `GET /sites/{hid}/effective`
+and `GET /regions/{hid}/effective` answer the same for a site and a region. A contact
+with the email address of another, written in capitals, is refused. The building is
+given a technical contact of its own and the one of the region is changed: the room
+keeps the building's, and the room of the other building shows the new one. The other
+building says that nobody takes shipments there, with an assignment that has no
+contact and stops the search, and takes no shipping contact beside it. The room has
+the shipping address of its site and the instructions of the region; given two lines
+of an address on the building and instructions on the room, it has the building's
+address whole, with nothing of the site's in the lines the building left out, and its
+own instructions. Each of the two regions beneath is given an operational contact, and
+the site is moved to the other region: its path and the paths beneath it follow, the
+room shows the contact of the region it is in now, the tree and the item list have the
+items there, no item was written to, and the move is one audit event, an update of the
+site. The summary by site and the management report by region label a row with the
+path of its place, have the item that is nowhere in a row of its own, and count an item
+once in the totals though it is in the row of each region above it. A room with an item
+in it is not retired, nor the site, nor the region above; the region that holds
+nothing now is. An item is given an owner outside the team: refused with no reason,
+accepted and marked as an exception with one, and found by
+`filter=owner_exception:eq:true`; a minor item of such an item is marked too, and an
+item given back to an owner of the team is no exception and has no reason. The first
+person of an owner is its primary and is refused as an alternate; another made primary
+makes the first an alternate in the same change; the primary is not removed while
+another remains. Last, every region, site, location, contact, assignment, owner and
+member of an owner is exported and imported back unchanged, as CSV and as JSON, and an
+export of the items placed here writes the location of each as its path.
+
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before
 the import and restores it afterwards, with `hirdir admin backup` and `hirdir admin
 restore`. In between, with the examples and the records above still loaded, `hirdir
 admin reset` is tried as an operator would use it: it must refuse while the service
 runs, change nothing without the word `reset`, and then clear every table of the
-inventory, those of the replacements, groups, members, networks and addresses among
+inventory, those of the replacements, groups, members, networks and addresses, and
+of the regions, sites, locations, contacts, assignments and members of owners among
 them, and keep the accounts.
 
 The client commands of the CLI are run in the container, from the package, while the
@@ -682,7 +783,16 @@ it is in, `hirdir report summary` must count what `GET /reports/summary` counts,
 owner and by health, and print the health and no money, `hirdir report management`
 must give what `GET /reports/management` gives and print the money and no health, and
 `hirdir report duplicates` must list the address that two virtual machines of the
-examples hold by mistake, and not the one that two routers share. They are pointed at
+examples hold by mistake, and not the one that two routers share. `hirdir geography
+tree` must print the places of the examples, each beneath what it is in, with the
+items and components that `GET /geography/tree` counts, and with `--root`,
+`--no-locations` and `--include-drafts` one region with its sites, the draft among
+them; `hirdir locations show` must take a room by its path and print each contact, the
+shipping address and the instructions with the level they came from; `hirdir regions
+list` must write the file that `POST /exports` gives; `hirdir sites move` must give a
+site another region and say its new path, as one change that is audited as made
+through the command line, and exit with 4 for a site that there is not; and `hirdir
+report management` with no `--by` must be by site. They are pointed at
 the service itself, past nginx, because the test site's certificate is a throwaway
 that no client should be told to trust.
 
