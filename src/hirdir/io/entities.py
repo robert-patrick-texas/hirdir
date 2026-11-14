@@ -2037,6 +2037,7 @@ class DeviceGroups(Entity):
         Column("owner"),
         OPERATOR,
         Column("location", limit=LONG),
+        Column("planned_location", limit=LONG),
         Column("managed_as", limit=20),
         Column("expected_members", "integer"),
         *OBSERVATION,
@@ -2066,6 +2067,7 @@ class DeviceGroups(Entity):
         "owner_hid": "owner",
         "location_hid": "location",
         "location.name": "location",
+        "planned_location_hid": "planned_location",
         "operator_hid": "operator",
         "operator.label": "operator",
         "parent.name": "parent",
@@ -2076,6 +2078,7 @@ class DeviceGroups(Entity):
         "owner_hid": "owner",
         "operator_hid": "operator",
         "location_hid": "location",
+        "planned_location_hid": "planned_location",
         "parent_group_hid": "parent",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
@@ -2123,6 +2126,13 @@ class DeviceGroups(Entity):
             given["location_hid"] = (
                 run.place(place, "location", geography.LOCATION).hid if place is not None else None
             )
+        if "planned_location" in values:
+            place = values["planned_location"]
+            given["planned_location_hid"] = (
+                run.place(place, "planned_location", geography.LOCATION).hid
+                if place is not None
+                else None
+            )
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
         if record is None:
@@ -2143,7 +2153,10 @@ class DeviceGroups(Entity):
         seen = groups.observed_masters(db, found)
         healths = groups.health_of(db, found)
         atlas = geography.Atlas(db)
-        atlas.read_locations(group.location_hid for group in found)
+        atlas.read_locations(
+            {group.location_hid for group in found}
+            | {group.planned_location_hid for group in found}
+        )
         marks = _by_hid(db, Operator, {group.operator_hid for group in found})
         called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
         rows = []
@@ -2167,6 +2180,7 @@ class DeviceGroups(Entity):
                     else None,
                     "operator": called[group.operator_hid] if group.operator_hid else None,
                     "location": atlas.location_path(group.location_hid) or None,
+                    "planned_location": atlas.location_path(group.planned_location_hid) or None,
                     "managed_as": group.managed_as,
                     "expected_members": group.expected_members,
                     "observed_status": group.observed_status,

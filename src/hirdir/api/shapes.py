@@ -432,6 +432,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     within = _live_counts(db, Location, Location.parent_location_hid, hids)
     placed = _live_counts(db, Item, Item.location_hid, hids)
     planned = _live_counts(db, Item, Item.planned_location_hid, hids)
+    planned_groups = _live_counts(db, DeviceGroup, DeviceGroup.planned_location_hid, hids)
     marks = _Labels(db, {location.operator_hid for location in found})
     out = []
     for location in found:
@@ -453,10 +454,12 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                         "locations",
                         "items",
                         "planned_items",
+                        "planned_groups",
                         "operator",
                     ),
                 ),
                 planned_items=planned[location.hid],
+                planned_groups=planned_groups[location.hid],
                 operator=marks.ref(location.operator_hid),
                 site=shapes.PlaceRef(
                     hid=location.site_hid,
@@ -849,7 +852,10 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
     disagree = groups.members_disagree(db, found)
-    places = location_refs(db, {group.location_hid for group in found})
+    places = location_refs(
+        db,
+        {group.location_hid for group in found} | {group.planned_location_hid for group in found},
+    )
     looked_after = operators.of_groups(db, found)
     marks = _Labels(
         db, {group.operator_hid for group in found} | {one.value for one in looked_after.values()}
@@ -876,6 +882,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner),
                 location=places.get(group.location_hid) if group.location_hid else None,
+                planned_location=places.get(group.planned_location_hid or ""),
                 operator=marks.ref(group.operator_hid),
                 effective=shapes.GroupEffective(
                     operator_hid=marks.in_force(looked_after[group.hid], holders)
@@ -904,6 +911,7 @@ _GROUP_SHAPED = (
     "owner_exception",
     "owner_exception_reason",
     "location",
+    "planned_location",
     "operator",
     "effective",
     "serial_source",

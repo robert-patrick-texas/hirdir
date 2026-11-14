@@ -820,22 +820,44 @@ def in_use(atlas: Atlas, location: Location) -> bool:
     return all(one.record.record_status == "active" for one in chain)
 
 
+def checked_plan(db: Session, hid: str, field_: str = "planned_location_hid") -> str:
+    """Return a location that an item or a group is planned to go to, refusing one that
+    there is not, one that is retired, and one that is in use already."""
+    # Checked against the place, which nobody may be opening or retiring meanwhile.
+    dialect.hold_other_writers(db)
+    atlas = Atlas(db)
+    location = atlas.location(hid)
+    if location is None:
+        raise Invalid("there is no such location", {field_: f"there is no location {hid}"})
+    if location.record_status == "retired":
+        raise Invalid("the location is retired", {field_: "this location is retired"})
+    if in_use(atlas, location):
+        raise Invalid(
+            "the location is in use already",
+            {field_: "this place is active: give it as the location, and it is there"},
+        )
+    return hid
+
+
 def move_in(db: Session, context: AuditContext) -> int:
-    """Move every item that is planned for a location now in use into it.
+    """Move every item and device group that is planned for a location now in use
+    into it.
 
     A place that was a draft has been made active. What was meant for it is there from
-    now on: the location of each such item becomes the planned one, and the plan is
-    cleared. It is a change of each item, with an entry of its own in its history and
-    the request of the change that opened the place, in the same transaction. A
-    retired item is left where it is. Return how many were moved.
+    now on: the location of each such record becomes the planned one, and the plan is
+    cleared. It is a change of each record, with an entry of its own in the audit
+    trail and the request of the change that opened the place, in the same
+    transaction. A retired record is left where it is. Return how many were moved.
     """
-    planned = set(
-        db.scalars(
-            select(Item.planned_location_hid)
-            .where(Item.planned_location_hid.is_not(None), _live(Item))
-            .distinct()
+    planned: set[str | None] = set()
+    for model in (Item, DeviceGroup):
+        planned.update(
+            db.scalars(
+                select(model.planned_location_hid)
+                .where(model.planned_location_hid.is_not(None), _live(model))
+                .distinct()
+            )
         )
-    )
     if not planned:
         return 0
     atlas = Atlas(db)
@@ -848,19 +870,22 @@ def move_in(db: Session, context: AuditContext) -> int:
     moved = 0
     for start in range(0, len(ready), 500):
         piece = ready[start : start + 500]
-        arriving = db.scalars(
-            select(Item).where(Item.planned_location_hid.in_(piece), _live(Item)).order_by(Item.hid)
-        )
-        for item in list(arriving):
-            records.apply(
-                db,
-                context,
-                "item",
-                item,
-                None,
-                {"location_hid": item.planned_location_hid, "planned_location_hid": None},
+        for model, record_type in ((Item, "item"), (DeviceGroup, "device_group")):
+            arriving = db.scalars(
+                select(model)
+                .where(model.planned_location_hid.in_(piece), _live(model))
+                .order_by(model.hid)
             )
-            moved += 1
+            for record in list(arriving):
+                records.apply(
+                    db,
+                    context,
+                    record_type,
+                    record,
+                    None,
+                    {"location_hid": record.planned_location_hid, "planned_location_hid": None},
+                )
+                moved += 1
     return moved
 
 
@@ -899,13 +924,28 @@ def _within_it(db: Session, place: Place) -> list[str]:
         )
         found.append(
             (
+                _count(
+                    db,
+                    DeviceGroup,
+                    DeviceGroup.planned_location_hid == hid,
+                    _live(DeviceGroup),
+                ),
+                "planned groups",
+            )
+        )
+        found.append(
+            (
                 _count(db, DeviceGroup, DeviceGroup.location_hid == hid, _live(DeviceGroup)),
                 "device groups",
             )
         )
     one = {"regions": "region", "sites": "site", "locations": "location", "items": "item"}
     one.update({"device groups": "device group", "planned items": "item planned for it"})
-    many = {"planned items": "items planned for it"}
+    one["planned groups"] = "device group planned for it"
+    many = {
+        "planned items": "items planned for it",
+        "planned groups": "device groups planned for it",
+    }
     return [
         f"{count} {one[what] if count == 1 else many.get(what, what)}"
         for count, what in found

@@ -482,6 +482,10 @@ def show_group(
         ("owner_exception", found["owner_exception_reason"]),
         ("operator", _operator(found["effective"]["operator_hid"])),
         ("location", found["location"]["path"] if found["location"] else None),
+        (
+            "planned_location",
+            found["planned_location"]["path"] if found["planned_location"] else None,
+        ),
         ("managed_as", found["managed_as"]),
         ("expected_members", found["expected_members"]),
         ("observed_status", _observed(target, found, zone)),

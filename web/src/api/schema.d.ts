@@ -4427,6 +4427,7 @@ export interface components {
       operator_hid?: string | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
+      planned_location_hid?: string | null;
       record_status?: "draft" | "active";
       tags?: string[];
       type: "stack" | "cluster" | "controller_domain" | "custom";
@@ -4474,6 +4475,9 @@ export interface components {
       owner_hid: string | null;
       parent: components["schemas"]["DeviceGroupRef"] | null;
       parent_group_hid: string | null;
+      /** Where the group is going: a location that is not in use yet. */
+      planned_location: components["schemas"]["LocationRef"] | null;
+      planned_location_hid: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
       /** For a stack: the serial number of the master that is seen, or else of the one intended, read as it is asked for. */
@@ -4500,6 +4504,7 @@ export interface components {
       operator_hid?: string | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
+      planned_location_hid?: string | null;
       record_status?: "draft" | "active" | null;
       row_version: number;
       tags?: string[] | null;
@@ -4648,6 +4653,8 @@ export interface components {
       path: string;
       /** The items planned for it or for a place beneath it. */
       planned: number;
+      /** The device groups planned for it or beneath it. */
+      planned_groups: number;
       record_status: "draft" | "active" | "retired";
     };
     /** The regions, their sites and the locations within them, with the counts of a view. */
@@ -5107,6 +5114,8 @@ export interface components {
       parent: components["schemas"]["PlaceRef"] | null;
       parent_location_hid: string | null;
       path: string;
+      /** How many device groups are planned for it. */
+      planned_groups: number;
       /** How many items are planned for it, and not there yet. */
       planned_items: number;
       postal_code: string | null;
