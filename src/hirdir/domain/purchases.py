@@ -372,11 +372,19 @@ def receive(
                 {f"items.{place}.serial_number": "a serial number, an asset tag or a name"},
             )
         known.append(given)
-    # What nothing is known of yet is named for its line and its place on it.
+    # What nothing is known of yet is named for its line and its place on it: the
+    # places go on from the highest that was ever given, so that an item which was
+    # taken off the line, and still has its name, is not named a second time.
     named = line_name(request, line)
-    known += [
-        {"name": f"{named}-{before + len(arrived) + place:03d}"} for place in range(1, quantity + 1)
-    ]
+    last = before + len(arrived)
+    if quantity:
+        for name in db.scalars(
+            select(Item.name).where(Item.name.startswith(f"{named}-", autoescape=True))
+        ):
+            place_ = (name or "").removeprefix(f"{named}-")
+            if place_.isdecimal() and len(place_) <= MAX_LINE_DIGITS + 3:
+                last = max(last, int(place_))
+    known += [{"name": f"{named}-{last + place:03d}"} for place in range(1, quantity + 1)]
     made: list[Item] = []
     for place, given in enumerate(known):
         try:

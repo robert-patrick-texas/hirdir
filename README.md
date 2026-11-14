@@ -9,9 +9,12 @@ it must be replaced.
 vendor groups contracts, and a contract covers one item or many: what an agreement or
 a contract says is said once, and everything beneath has it or overrides it. A
 contract is renewed in one place, with its new number and its new period, and every
-item under it follows with nothing written to any of them. The coverage report lists
-what is in service under no contract, what is covered though out of service and what
-runs out soon; the end-of-life report what is past and near each date, by fiscal year;
+item under it follows with nothing written to any of them: a renewal entered early
+waits as the next term, and one that is late is marked as pending while the vendor
+still gives support. The coverage report lists what is in service under no contract,
+what is out of service and still counted by one, what runs out soon and what more
+than one contract covers; the end-of-life report what is past and near each date, by
+fiscal year;
 and a vendor has its portfolio. A purchase request has lines that are received into
 items. Items and device groups are registered with external systems. Capacity lines
 are balanced against the support weight of the inventory, with and without the

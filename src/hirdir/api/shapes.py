@@ -1273,6 +1273,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
     shaped = (
         *contracts.TERM,
         "status",
+        "row_version",
         "vendor",
         "reseller",
         "tags",
@@ -1290,6 +1291,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
                     **_own(agreement, shapes.AgreementOut, shaped),
                     **its,
                     "status": contracts.status_of(agreement, today),
+                    "row_version": contracts.version(agreement, today),
                     "vendor": _vendor_ref(vendors[agreement.vendor_hid]),
                     "reseller": _vendor_ref(vendors[agreement.reseller_hid])
                     if agreement.reseller_hid
@@ -1323,6 +1325,7 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
     shaped = (
         *contracts.TERM,
         "status",
+        "row_version",
         "vendor",
         "agreement",
         "effective",
@@ -1345,6 +1348,7 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
                     **_own(contract, shapes.ContractOut, shaped),
                     **contracts.term(contract, today),
                     "status": contracts.status_of(contract, today),
+                    "row_version": contracts.version(contract, today),
                     "vendor": _vendor_ref(vendors[contract.vendor_hid]),
                     "agreement": None
                     if within is None

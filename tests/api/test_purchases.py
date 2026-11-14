@@ -187,6 +187,22 @@ def test_a_delivery_is_received_as_a_count_and_named_for_its_line(make: Maker, e
     assert second["status"] == "received"
 
 
+def test_a_place_on_a_line_is_given_once(make: Maker, entry: dict) -> None:
+    (line,) = _request(make, entry, quantity=5)["lines"]
+    now = make.get(f"/purchase-lines/{line['hid']}")
+    path = f"/purchase-lines/{line['hid']}/receive"
+    first = make.post(path, {"row_version": now["row_version"], "quantity": 3})
+    # One is taken off the line by hand, and keeps the name it was given.
+    second = make.get(f"/items/{first['items'][1]['hid']}")
+    make.patch(
+        f"/items/{second['hid']}",
+        {"row_version": second["row_version"], "purchase_line_hid": None},
+    )
+    more = make.post(path, {"row_version": first["row_version"], "quantity": 2})
+    assert [item["name"] for item in more["items"]] == ["RITM0012345/1-004", "RITM0012345/1-005"]
+    assert make.get("/items", filter="name:prefix:RITM0012345/1-")["total"] == 5
+
+
 def _request_two(make: Maker, entry: dict[str, Any]) -> dict[str, Any]:
     request = make.post(
         "/purchase-requests",

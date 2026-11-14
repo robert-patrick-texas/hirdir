@@ -1,11 +1,15 @@
 """The records of 0.6.0 in files: each is exported, loaded into an empty inventory and
 loaded again without a change."""
 
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from hirdir.db.models import Contract
 from tests.api.inventory import Maker
 from tests.api.test_files import Files, changes, counts, table
 
@@ -247,3 +251,100 @@ def test_systems_registrations_capacity_and_replacements_load_from_files(
     other = files.preview("item_replacements", "old_item,new_item,reason\nSW-001,SW-003,rma\n")
     assert counts(other["job"]) == (0, 0, 0, 1)
     assert "new_item" in errors_of(other)
+
+
+def test_what_a_file_holds_of_a_term_goes_back_as_it_came(
+    files: Files, make: Maker, base: dict, db: Session
+) -> None:
+    # The status of a renewal that is late, on a contract and on an agreement.
+    agreements = "name,vendor,status\nCisco Enterprise Agreement,Cisco,renewal_pending\n"
+    assert counts(files.load("agreements", agreements)) == (1, 0, 0, 0)
+    assert counts(files.load("agreements", files.export("agreements"))) == (0, 0, 1, 0)
+    held = (
+        "number,vendor,status,starts_on,ends_on,next_number,next_starts_on,next_ends_on\n"
+        "CON-1,Cisco,renewal_pending,2025-01-01,2026-01-31,,,\n"
+        "CON-2,Cisco,,2025-01-01,2098-12-31,CON-2-R,2099-01-01,2099-12-31\n"
+    )
+    assert counts(files.load("contracts", held)) == (2, 0, 0, 0)
+    assert counts(files.load("contracts", files.export("contracts"))) == (0, 0, 2, 0)
+    # A term that has begun and is not written down yet: the file holds the record as
+    # it is stored, the old term in its own columns, and loading it back changes nothing.
+    today = date.fromisoformat(make.get("/reports/coverage")["as_of"])
+    stored = db.scalars(select(Contract).where(Contract.number == "CON-2")).one()
+    stored.starts_on, stored.ends_on = today - timedelta(days=400), today - timedelta(days=3)
+    stored.next_starts_on = today - timedelta(days=2)
+    stored.next_ends_on = today + timedelta(days=362)
+    db.commit()
+    assert make.get("/contracts", filter="number:eq:CON-2-R")["total"] == 1
+    for options in ({}, {"own_values": True}, {"include_sources": True}):
+        exported = files.export("contracts", **options)
+        row = {one["number"]: one for one in table(exported)}["CON-2"]
+        assert (row["starts_on"], row["ends_on"], row["next_number"], row["next_starts_on"]) == (
+            (today - timedelta(days=400)).isoformat(),
+            (today - timedelta(days=3)).isoformat(),
+            "CON-2-R",
+            (today - timedelta(days=2)).isoformat(),
+        )
+        assert counts(files.load("contracts", exported)) == (0, 0, 2, 0)
+    (term,) = make.get(f"/contracts/{stored.hid}/terms")
+    assert (term["number"], term["ends_on"]) == ("CON-2", (today - timedelta(days=3)).isoformat())
+    # A next number is held to what a number is.
+    bad = "number,vendor,next_number,next_starts_on\nCON-3,Cisco,a;b,2099-01-01\n"
+    assert "next_number" in errors_of(files.preview("contracts", bad))
+    # A coverage under a retired contract goes back as it came, and is not changed.
+    assert counts(files.load("contract_coverage", "contract,item\nCON-1,SW-001\n")) == (1, 0, 0, 0)
+    first = make.get("/contracts", filter="number:eq:CON-1")["items"][0]
+    make.post(f"/contracts/{first['hid']}/retire", {"row_version": first["row_version"]}, 200)
+    exported = files.export("contract_coverage")
+    assert [row["contract"] for row in table(exported)] == ["CON-1"]
+    assert counts(files.load("contract_coverage", exported)) == (0, 0, 1, 0)
+    ended = files.preview("contract_coverage", "contract,item,ends_on\nCON-1,SW-001,2026-01-01\n")
+    assert "contract" in errors_of(ended)
+
+
+def test_a_file_gives_what_arrived_as_a_count_its_serial_number(
+    files: Files, make: Maker, base: dict
+) -> None:
+    request = make.post(
+        "/purchase-requests",
+        {
+            "reference": "RITM0012345",
+            "lines": [{"catalog_entry_hid": base["entry"]["hid"], "quantity": 4}],
+        },
+    )
+    (line,) = request["lines"]
+    now = make.get(f"/purchase-lines/{line['hid']}")
+    make.post(
+        f"/purchase-lines/{line['hid']}/receive", {"row_version": now["row_version"], "quantity": 4}
+    )
+    before = make.get("/items")["total"]
+    # Each names the item as its line named it, and gives it what it is known by.
+    for rows in (
+        "name,serial_number\nRITM0012345/1-001,FCW-1\n",
+        "vendor,pid,name,serial_number\nCisco,C9300-48P,RITM0012345/1-002,FCW-2\n",
+        "name,asset_tag\nRITM0012345/1-003,TAG-3\n",
+        "name,serial_number,purchase_line\nRITM0012345/1-004,FCW-4,RITM0012345/1\n",
+    ):
+        assert counts(files.load("items", rows)) == (0, 1, 0, 0), rows
+        # And the same file, loaded again, finds the same item.
+        assert counts(files.load("items", rows)) == (0, 0, 1, 0), rows
+    assert make.get("/items")["total"] == before
+    arrived = make.get("/items", filter="purchase_line_hid:empty:false", sort="name")["items"]
+    assert [(item["serial_number"], item["asset_tag"]) for item in arrived] == [
+        ("FCW-1", None),
+        ("FCW-2", None),
+        (None, "TAG-3"),
+        ("FCW-4", None),
+    ]
+    assert make.get(f"/purchase-lines/{line['hid']}")["received_quantity"] == 4
+    # A name that no waiting item has is a new item, as it always was.
+    other = files.preview("items", "name,asset_tag\nNot on a line,TAG-9\n")
+    assert counts(other["job"]) == (1, 0, 0, 0)
+    # Two contracts of two vendors with one number are two contracts in a file too.
+    make.vendor("Juniper")
+    for vendor in ("Cisco", "Juniper"):
+        files.load("contracts", f"number,vendor\nSAME-1,{vendor}\n")
+        files.load("contract_coverage", f"contract,vendor,item\nSAME-1,{vendor},SW-001\n")
+    counted = table(files.export("items", columns=["serial_number", "contracts", "contract_count"]))
+    row = {one["serial_number"]: one for one in counted}["SW-001"]
+    assert (row["contracts"], row["contract_count"]) == ("SAME-1", "2")

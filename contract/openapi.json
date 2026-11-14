@@ -28641,7 +28641,7 @@
         ]
       },
       "post": {
-        "description": "Register one item or one device group with an external system.\n\nA stack that the system knows as one device is registered as the stack: the\nregistration is then on the stack, and not on its members.",
+        "description": "Register one item or one device group with an external system.\n\nA stack that the system knows as one device is registered as the stack: the\nregistration is then on the stack, and each of its members says what its stack is\nregistered with.",
         "operationId": "create_registration_api_v1_registrations_post",
         "parameters": [
           {
@@ -28854,7 +28854,7 @@
     },
     "/api/v1/reports/coverage": {
       "get": {
-        "description": "Say what contracts cover today: the items in service that none covers, the items\ncovered though out of service, and those whose cover runs out soon.\n\nEach of the three is a list of items. `section` asks for a page of one, and each\nsays the filter that lists the same items on `GET /items`.",
+        "description": "Say what contracts cover today: the items in service that none covers, the items\nout of service that a contract still counts, those whose cover runs out soon, those\nthat more than one contract covers, and those covered while a renewal is pending.\n\nEach of the five is a list of items. `section` asks for a page of one, and each\nsays the filter that lists the same items on `GET /items`. The contracts that\nhave lapsed are counted beside them.",
         "operationId": "coverage_api_v1_reports_coverage_get",
         "parameters": [
           {

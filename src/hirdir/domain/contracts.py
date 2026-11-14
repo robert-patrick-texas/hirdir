@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select
@@ -46,7 +47,12 @@ ACTIVE = STATUSES[0]
 # The term has ended and the renewal is in procurement: the vendor still gives support,
 # by escalation, and the contract covers past the end of its period.
 RENEWAL_PENDING = STATUSES[1]
+EXPIRED = STATUSES[2]
 COVERING = (ACTIVE, RENEWAL_PENDING)
+# What a person said of a term that has ended, and a term that begins puts an end to:
+# the contract is active from that day, as it is after a renewal that is in force at
+# once. `pending` and `cancelled` are of the contract and not of a term, and stay.
+ENDED_BY_A_TERM = (RENEWAL_PENDING, EXPIRED)
 TEXTS = ("support_level", "purchase_reference", "account_manager", "support_contact", "notes")
 # What a contract in an agreement has from it, where the contract's own is blank.
 INHERITED = (
@@ -73,6 +79,7 @@ _SHARED = (
     *NEXT,
     "record_status",
 )
+_DATES = ("starts_on", "ends_on", "next_starts_on", "next_ends_on")
 AGREEMENT_FIELDS = ("name", "number", "vendor_hid", *_SHARED)
 FIELDS = ("number", "vendor_hid", "agreement_hid", *_SHARED)
 COVERAGE_FIELDS = ("contract_hid", "item_hid", "starts_on", "ends_on", "left_service")
@@ -128,11 +135,55 @@ def pending_term(record: Any, day: date) -> dict[str, Any] | None:
 
 
 def status_of(record: Any, day: date) -> str:
-    """Return the status in force: a renewal that was pending is no longer, once the
-    term it was waiting for has begun."""
-    if record.status == RENEWAL_PENDING and next_started(record, day):
+    """Return the status in force: a renewal that was pending is no longer, and a
+    contract that had expired is active again, once the term to come has begun."""
+    if record.status in ENDED_BY_A_TERM and next_started(record, day):
         return ACTIVE
     return record.status
+
+
+def last_status(record: Any) -> str:
+    """Return the status in the last term that is known: that of the next one, where
+    there is one."""
+    if record.status in ENDED_BY_A_TERM and record.next_starts_on is not None:
+        return ACTIVE
+    return record.status
+
+
+def version(record: Any, day: date) -> int:
+    """Return the version of an agreement or a contract as it is read on a day.
+
+    A next term that has begun and is not written down yet counts as the change it
+    will be: so what was read before that day is stale after it, and an edit that was
+    meant for the old term is refused and not made to the new one.
+    """
+    return record.row_version + (1 if next_started(record, day) else 0)
+
+
+def _as_would_be(record: Any | None, values: dict[str, Any]) -> Any:
+    """Return the terms of a record as a change would leave them."""
+    return SimpleNamespace(
+        **{
+            name: values.get(name, getattr(record, name) if record is not None else None)
+            for name in (*TERM, *NEXT)
+        }
+    )
+
+
+def _inverted(contract: Any, agreement: Any | None, day: date) -> bool:
+    """Say whether a contract has, today or on a day to come, a period in force that
+    ends before it starts: its own dates, or its agreement's where its own are blank,
+    by the terms of the two that are in force together on that day."""
+    turns = {
+        one.next_starts_on
+        for one in (contract, agreement)
+        if one is not None and one.next_starts_on is not None and one.next_starts_on > day
+    }
+    for on in sorted({day, *turns}):
+        its = _period(term(contract, on), term(agreement, on) if agreement is not None else None)
+        if its.starts_on is not None and its.ends_on is not None and its.ends_on < its.starts_on:
+            return True
+    return False
 
 
 def _fold(db: Session, context: AuditContext, record: Any, record_type: str) -> bool:
@@ -283,11 +334,11 @@ def contracts_in(db: Session, agreement_hids: Sequence[str]) -> dict[str, int]:
     return counts
 
 
-def _check_contracts_fit(
-    db: Session, agreement: Agreement, starts_on: date | None, ends_on: date | None
-) -> None:
-    """Refuse a period of an agreement that would leave a contract in it with a period
-    that ends before it starts, and name those contracts."""
+def _check_contracts_fit(db: Session, agreement: Agreement, as_changed: Any) -> None:
+    """Refuse a change of the periods of an agreement that would leave a contract in it
+    with a period that ends before it starts, today or once a term to come has begun,
+    and name those contracts. One that is so already is not held against the change."""
+    day = today(db)
     wrong = []
     grouped = db.scalars(
         select(Contract)
@@ -295,12 +346,8 @@ def _check_contracts_fit(
         .order_by(Contract.number_key)
     )
     for contract in grouped:
-        for its in ({name: getattr(contract, name) for name in TERM}, last_term(contract)):
-            first = starts_on if its["starts_on"] is None else its["starts_on"]
-            last = ends_on if its["ends_on"] is None else its["ends_on"]
-            if first is not None and last is not None and last < first:
-                wrong.append(contract.number)
-                break
+        if _inverted(contract, as_changed, day) and not _inverted(contract, agreement, day):
+            wrong.append(term(contract, day)["number"])
     if wrong:
         named_ = ", ".join(wrong[:MAX_NAMED]) + (" and more" if len(wrong) > MAX_NAMED else "")
         raise Invalid(
@@ -354,14 +401,10 @@ def _checked_agreement(
 
     records.checked_span(final("starts_on"), final("ends_on"))
     records.checked_span(final("next_starts_on"), final("next_ends_on"), "next_ends_on")
-    if agreement is not None:
-        for first, last in (("starts_on", "ends_on"), ("next_starts_on", "next_ends_on")):
-            moved = any(
-                name in values and values[name] != getattr(agreement, name)
-                for name in (first, last)
-            )
-            if moved and (first == "starts_on" or final(first) is not None):
-                _check_contracts_fit(db, agreement, final(first), final(last))
+    if agreement is not None and any(
+        name in values and values[name] != getattr(agreement, name) for name in _DATES
+    ):
+        _check_contracts_fit(db, agreement, _as_would_be(agreement, values))
     return values
 
 
@@ -379,17 +422,6 @@ def create_agreement(db: Session, context: AuditContext, fields: dict[str, Any])
         then=lambda: tags.set_labels(db, AGREEMENT_TYPE, agreement.hid, labels),
     )
     return agreement
-
-
-def _version_after_fold(
-    db: Session, context: AuditContext, record: Any, record_type: str, row_version: int
-) -> int:
-    """Write down a next term that has begun, and return the version the caller's
-    change is then made against: the new one, where the caller had read the old."""
-    before = record.row_version
-    if _fold(db, context, record, record_type) and row_version == before:
-        return record.row_version
-    return row_version
 
 
 def update_agreement(
@@ -410,7 +442,8 @@ def update_agreement(
     dialect.hold_other_writers(db)
     agreement = get_agreement(db, hid)
     if not as_stored:
-        row_version = _version_after_fold(db, context, agreement, AGREEMENT_TYPE, row_version)
+        # The version the caller read counted it already: see `version`.
+        _fold(db, context, agreement, AGREEMENT_TYPE)
     has_tags = "tags" in fields
     labels = fields.pop("tags", None) or []
     values = _checked_agreement(db, fields, agreement)
@@ -444,24 +477,15 @@ def renew_agreement(
     if agreement.record_status == "retired":
         raise Invalid("the agreement is retired", {"record_status": "bring it back first"})
     _checked_renewal(fields, AGREEMENT_RENEWED)
-    row_version = _version_after_fold(db, context, agreement, AGREEMENT_TYPE, row_version)
+    _fold(db, context, agreement, AGREEMENT_TYPE)
     given = {name: value for name, value in fields.items() if name != "withdraw"}
     checked = _shared(db, {"status": ACTIVE, **given}, agreement)
     if "number" in given:
         checked["number"] = records.clean(given["number"])
     values = _renewal(db, agreement, fields, checked)
-    if values.get("next_starts_on") is not None:
-        _check_contracts_fit(db, agreement, values["next_starts_on"], values["next_ends_on"])
-    elif not fields.get("withdraw"):
-        records.checked_span(
-            values.get("starts_on", agreement.starts_on), values.get("ends_on", agreement.ends_on)
-        )
-        _check_contracts_fit(
-            db,
-            agreement,
-            values.get("starts_on", agreement.starts_on),
-            values.get("ends_on", agreement.ends_on),
-        )
+    after = _as_would_be(agreement, values)
+    records.checked_span(after.starts_on, after.ends_on)
+    _check_contracts_fit(db, agreement, after)
     records.apply(db, context, AGREEMENT_TYPE, agreement, row_version, values, action="renew")
     return agreement
 
@@ -496,11 +520,14 @@ def agreement_of(contract: Contract) -> Agreement | None:
     return db.get(Agreement, contract.agreement_hid)
 
 
-def effective(contract: Contract, day: date) -> dict[str, Effective]:
+def effective(contract: Contract, day: date, as_stored: bool = False) -> dict[str, Effective]:
     """Return what a contract has in force for each field it may have from its
-    agreement: its own, or the agreement's where its own is blank."""
+    agreement: its own, or the agreement's where its own is blank. `as_stored` is for a
+    file: its own are then those of the term the record holds, whichever is in force."""
     agreement = agreement_of(contract)
-    own = {**{name: getattr(contract, name) for name in INHERITED}, **term(contract, day)}
+    own = {name: getattr(contract, name) for name in INHERITED}
+    if not as_stored:
+        own.update(term(contract, day))
     above: dict[str, Any] = {}
     if agreement is not None:
         above = {
@@ -574,8 +601,20 @@ def _check_number(
     """Refuse a number that another contract of the vendor has, now or as its next."""
     if number is None:
         return
-    for taken in named(db, number, vendor_hid):
-        if contract is None or taken.hid != contract.hid:
+    # Compared as a number is everywhere, by its key, and not as the database folds
+    # text: the two differ for some letters, and one rule must hold for both numbers.
+    key = records.key(number)
+    others = db.scalars(
+        select(Contract).where(
+            Contract.vendor_hid == vendor_hid,
+            or_(Contract.number_key == key, Contract.next_number.is_not(None)),
+        )
+    )
+    for taken in others:
+        same = taken.number_key == key or (
+            taken.next_number is not None and records.key(taken.next_number) == key
+        )
+        if same and (contract is None or taken.hid != contract.hid):
             raise Conflict(
                 f"this vendor already has a contract {number}",
                 {field: "another contract of this vendor has this number"},
@@ -625,16 +664,29 @@ def _checked(db: Session, fields: dict[str, Any], contract: Contract | None) -> 
             f"{within.name}, the agreement it is in, is retired",
             {"record_status": "bring the agreement back first, or take the contract out of it"},
         )
-    # The period in force: the contract's own, or the agreement's where that is blank.
-    day = today(db)
-    above = term(within, day) if within is not None else dict.fromkeys(TERM)
-    records.checked_span(
-        final("starts_on") or above["starts_on"], final("ends_on") or above["ends_on"]
+    next_number = values.get("next_number")
+    if next_number is not None and ";" in next_number:
+        raise Invalid("the number is not acceptable", {"next_number": "with no semicolon"})
+    # Its own dates, and then the period in force, which is the agreement's where its
+    # own is blank: today, and on each day a term of either is still to begin. Only a
+    # change of its dates or of its agreement is held to it, so that a contract which
+    # is wrong already can still be given a note, and be put right.
+    records.checked_span(final("starts_on"), final("ends_on"))
+    records.checked_span(final("next_starts_on"), final("next_ends_on"), "next_ends_on")
+    moved = contract is None or any(
+        name in values and values[name] != getattr(contract, name)
+        for name in (*_DATES, "agreement_hid")
     )
-    last = last_term(within) if within is not None else dict.fromkeys(TERM)
-    if final("next_starts_on") is not None:
-        records.checked_span(
-            final("next_starts_on"), final("next_ends_on") or last["ends_on"], "next_ends_on"
+    if moved and _inverted(_as_would_be(contract, values), within, today(db)):
+        which = (
+            "next_ends_on" if "next_ends_on" in values or "next_starts_on" in values else "ends_on"
+        )
+        raise Invalid(
+            "the contract would end before it starts",
+            {
+                which: "with the dates it has from its agreement, now or once a term that "
+                "is still to begin has begun, the period would end before it starts"
+            },
         )
     if "number_key" in values or "vendor_hid" in values:
         _check_number(db, final("vendor_hid"), final("number"), contract, "number")
@@ -676,7 +728,7 @@ def update_contract(
     dialect.hold_other_writers(db)
     contract = get_contract(db, hid)
     if not as_stored:
-        row_version = _version_after_fold(db, context, contract, RECORD_TYPE, row_version)
+        _fold(db, context, contract, RECORD_TYPE)
     has_tags = "tags" in fields
     labels = fields.pop("tags", None) or []
     values = _checked(db, fields, contract)
@@ -701,7 +753,7 @@ def renew_contract(
     if contract.record_status == "retired":
         raise Invalid("the contract is retired", {"record_status": "bring it back first"})
     _checked_renewal(fields, RENEWED)
-    row_version = _version_after_fold(db, context, contract, RECORD_TYPE, row_version)
+    _fold(db, context, contract, RECORD_TYPE)
     given = {name: value for name, value in fields.items() if name != "withdraw"}
     starts_on = given.get("starts_on")
     ahead = isinstance(starts_on, date) and starts_on > today(db)
@@ -722,13 +774,22 @@ def renew_contract(
             _check_number(db, contract.vendor_hid, number, contract, "number")
             later["number"] = number
         checked = {**checked, **later}
+    elif fields.get("withdraw"):
+        checked = {}
     else:
-        checked = _checked(db, {"status": ACTIVE, **given}, contract)
+        # In force at once: whatever was waiting to begin is superseded by it.
+        checked = _checked(db, {"status": ACTIVE, **given, **dict.fromkeys(NEXT)}, contract)
     values = _renewal(db, contract, fields, checked)
-    if values.get("next_starts_on") is not None:
-        within = agreement_of(contract)
-        last = last_term(within) if within is not None else dict.fromkeys(TERM)
-        records.checked_span(values["next_starts_on"], values["next_ends_on"] or last["ends_on"])
+    if values.get("next_starts_on") is not None and _inverted(
+        _as_would_be(contract, values), agreement_of(contract), today(db)
+    ):
+        raise Invalid(
+            "the term to come would end before it starts",
+            {
+                "ends_on": "with the dates the contract has from its agreement, the new "
+                "period would end before it starts"
+            },
+        )
     records.apply(db, context, RECORD_TYPE, contract, row_version, values, action="renew")
     return contract
 
@@ -765,28 +826,52 @@ def terms(db: Session, contract: Contract) -> list[Term]:
 
     They are read from the audit trail and stored nowhere else: every change of the
     contract is undone in turn, from what it is now, and what it was just before each
-    renewal that gave it another number or period is a term.
+    renewal that gave it another number or period is a term. `renewed_at` and
+    `renewed_by` are when the renewal that ended the term was entered, and by whom:
+    for one that was entered early, that is not the day its term began, nor the change
+    that happened to write it down.
     """
     state = {name: getattr(contract, name) for name in TERM}
+    events = list(
+        db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.record_type == RECORD_TYPE, AuditEvent.record_hid == contract.hid)
+            .order_by(AuditEvent.at.desc(), AuditEvent.hid.desc())
+        )
+    )
+
+    def of(event: AuditEvent, field: str) -> dict[str, Any]:
+        return next((one for one in event.changes if one.get("field") == field), {})
+
+    def entered(began: date, before: int) -> tuple[datetime, str | None]:
+        """Return when the term that began on a day was entered, and by whom."""
+        for event in events[before:]:
+            # The last change that said when a term was to begin is the one that
+            # entered the term which then did.
+            if of(event, "next_starts_on").get("new") is not None:
+                return event.at, event.actor_hid
+        return datetime.combine(began, time.min, tzinfo=UTC), None
+
     found: list[Term] = []
     if next_started(contract, today(db)) and contract.next_starts_on is not None:
         # The next term has begun and is not written down yet: the one before it is
         # the one the record still holds.
-        began = datetime.combine(contract.next_starts_on, time.min, tzinfo=UTC)
-        found.append(Term(**state, renewed_at=began, renewed_by=None))
-    events = db.scalars(
-        select(AuditEvent)
-        .where(AuditEvent.record_type == RECORD_TYPE, AuditEvent.record_hid == contract.hid)
-        .order_by(AuditEvent.at.desc(), AuditEvent.hid.desc())
-    )
-    for event in events:
+        at, by = entered(contract.next_starts_on, 0)
+        found.append(Term(**state, renewed_at=at, renewed_by=by))
+    for place, event in enumerate(events):
         after = dict(state)
         for one in event.changes:
             if one.get("field") in state:
                 state[one["field"]] = _as_kept(one["field"], one.get("old"))
         another = any(state[name] != after[name] for name in TERM[:3])
         if event.action == "renew" and another and state["number"]:
-            found.append(Term(**state, renewed_at=event.at, renewed_by=event.actor_hid))
+            at, by = event.at, event.actor_hid
+            waited = _as_kept("starts_on", of(event, "next_starts_on").get("old"))
+            if waited is not None and waited == after["starts_on"]:
+                # A term that had waited was written down by this change, whatever
+                # else the change was for.
+                at, by = entered(waited, place + 1)
+            found.append(Term(**state, renewed_at=at, renewed_by=by))
     return found
 
 
@@ -927,10 +1012,11 @@ def covered_until(found: Sequence[tuple[ContractCoverage, Contract]], day: date)
     that is known. None when one of them names no end, and when there is none."""
     ends_: list[date] = []
     for coverage, contract in found:
-        if contract.record_status != "active" or contract.status not in COVERING:
+        status = last_status(contract)
+        if contract.record_status != "active" or status not in COVERING:
             continue
-        if contract.status == RENEWAL_PENDING:
-            # Past its period, with no day that is known to end it.
+        if status == RENEWAL_PENDING:
+            # Past its period, with no term to come: no day is known to end it.
             end = coverage.ends_on
         else:
             end = _sooner(coverage.ends_on, last_period(contract).ends_on)
@@ -995,8 +1081,19 @@ def term_value(model: Any, name: str) -> ColumnElement[Any]:
 
 def status_value(model: Any) -> ColumnElement[Any]:
     """Return the status in force of an agreement or a contract."""
-    waiting = and_(model.status == RENEWAL_PENDING, _started(model))
-    return case((waiting, ACTIVE), else_=model.status)
+    begun = and_(model.status.in_(ENDED_BY_A_TERM), _started(model))
+    return case((begun, ACTIVE), else_=model.status)
+
+
+def last_status_value(model: Any) -> ColumnElement[Any]:
+    """Return the status of an agreement or a contract in the last term that is known."""
+    renewed = and_(model.status.in_(ENDED_BY_A_TERM), model.next_starts_on.is_not(None))
+    return case((renewed, ACTIVE), else_=model.status)
+
+
+def version_value(model: Any) -> ColumnElement[Any]:
+    """Return the version of an agreement or a contract as it is read today."""
+    return model.row_version + case((_started(model), 1), else_=0)
 
 
 def _last_end(model: Any) -> ColumnElement[Any]:
@@ -1210,8 +1307,6 @@ def update_coverage(
     dialect.hold_other_writers(db)
     coverage = get_coverage(db, contract_hid, coverage_hid)
     contract = get_contract(db, contract_hid)
-    if contract.record_status == "retired":
-        raise Invalid("the contract is retired", {"contract_hid": "bring the contract back first"})
     for name in ("contract_hid", "item_hid"):
         if name in fields and fields[name] != getattr(coverage, name):
             raise Invalid(
@@ -1224,7 +1319,15 @@ def update_coverage(
         for name in ("starts_on", "ends_on")
         if name in fields
     }
-    if any(values[name] != getattr(coverage, name) for name in values):
+    moved = any(values[name] != getattr(coverage, name) for name in values)
+    if "left_service" in fields:
+        values["left_service"] = bool(fields["left_service"])
+    # What says nothing new is not a change, and is not refused: a file of coverage
+    # that is loaded back as it was exported holds those of retired contracts too.
+    changes = any(values[name] != getattr(coverage, name) for name in values)
+    if changes and contract.record_status == "retired":
+        raise Invalid("the contract is retired", {"contract_hid": "bring the contract back first"})
+    if moved:
         _check_span(
             db,
             contract,
@@ -1234,8 +1337,6 @@ def update_coverage(
             coverage.hid,
             "ends_on",
         )
-    if "left_service" in fields:
-        values["left_service"] = bool(fields["left_service"])
     records.apply(db, context, COVERAGE_TYPE, coverage, row_version, values)
     return coverage
 
@@ -1246,7 +1347,10 @@ def remove_coverage(
     """Remove a coverage that was a mistake. The audit event of the removal holds what
     it was. A coverage that was true for a time is ended with a date instead."""
     dialect.hold_other_writers(db)
-    coverage = get_coverage(db, contract_hid, coverage_hid)
+    _removed(db, context, get_coverage(db, contract_hid, coverage_hid))
+
+
+def _removed(db: Session, context: AuditContext, coverage: ContractCoverage) -> None:
     audit.record(
         db,
         context,
@@ -1266,17 +1370,23 @@ def remove_coverage(
 def end_for_item(db: Session, context: AuditContext, item_hid: str) -> None:
     """End today every coverage of an item that has not ended, because the item has
     left service: it was retired, released or archived. Each is marked as ended so,
-    since the vendor still counts the item until somebody says otherwise."""
+    since the vendor still counts the item until somebody says otherwise. A coverage
+    that had not begun never was in force: it is removed, as one made by mistake is,
+    and the audit event of the removal holds what it was."""
     day = today(db)
-    standing = db.scalars(
-        select(ContractCoverage).where(
+    standing = db.execute(
+        select(ContractCoverage, Contract)
+        .join(Contract, Contract.hid == ContractCoverage.contract_hid)
+        .where(
             ContractCoverage.item_hid == item_hid,
             or_(ContractCoverage.ends_on.is_(None), ContractCoverage.ends_on > day),
         )
-    )
-    for coverage in standing:
-        # One that was still to begin never did: it ends on the day it would have begun.
-        last = day if coverage.starts_on is None else max(day, coverage.starts_on)
-        records.apply(
-            db, context, COVERAGE_TYPE, coverage, None, {"ends_on": last, "left_service": True}
-        )
+    ).all()
+    for coverage, contract in standing:
+        begins = span(coverage, contract, day).starts_on
+        if begins is not None and begins > day:
+            _removed(db, context, coverage)
+        else:
+            records.apply(
+                db, context, COVERAGE_TYPE, coverage, None, {"ends_on": day, "left_service": True}
+            )

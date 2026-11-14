@@ -422,21 +422,35 @@ def test_a_renewal_entered_early_leaves_the_old_term_running(desk: Desk, db: Ses
         "RITM0002",
     )
     assert (now["next_term"], now["covers_today"], now["lapsed"]) == (None, True, False)
-    assert now["row_version"] == again["row_version"]
+    # The version moved with the term: what was read before that day is stale, and an
+    # edit that was meant for the old term is refused and not made to the new one.
+    assert now["row_version"] == again["row_version"] + 1
+    assert desk.get("/contracts", filter=f"row_version:eq:{now['row_version']}")["total"] == 1
+    stale = {"row_version": again["row_version"], "annual_cost": "150.00"}
+    assert desk.patch(path, stale, 409)["status"] == 409
+    db.expire_all()
+    assert db.get_one(Contract, contract["hid"]).next_starts_on is not None
     item = desk.get(f"/items/{switch['hid']}")
     assert (item["covered"], item["covered_until"]) == (True, day(362))
     assert [one["contract"]["number"] for one in item["coverage"]] == ["CON-2027-0001"]
     assert desk.get("/contracts", filter="number:eq:CON-2027-0001")["total"] == 1
     assert desk.get("/items", filter="contract.number:eq:con-2027-0001")["total"] == 1
-    assert [term["number"] for term in desk.get(f"{path}/terms")] == ["CON-2026-0001"]
+    (before_it_was_written,) = desk.get(f"{path}/terms")
     # The first change after that day writes the term down, and is then made.
     changed = desk.patch(path, {"row_version": now["row_version"], "notes": "Renewed on time"})
     assert (changed["number"], changed["notes"]) == ("CON-2027-0001", "Renewed on time")
+    assert changed["row_version"] == now["row_version"] + 1
     actions = [
         event["action"] for event in desk.audit(record_type="contract", record_hid=contract["hid"])
     ]
     assert actions[:2] == ["update", "renew"]
-    assert [term["number"] for term in desk.get(f"{path}/terms")] == ["CON-2026-0001"]
+    # The term it had says when its renewal was entered and by whom, the same before
+    # and after it was written down, whatever change did the writing.
+    (earlier,) = desk.get(f"{path}/terms")
+    assert earlier == before_it_was_written
+    assert (earlier["number"], earlier["renewed_by_name"]) == ("CON-2026-0001", "ivy")
+    entered = desk.audit(record_type="contract", record_hid=contract["hid"])[2]
+    assert (entered["action"], earlier["renewed_at"]) == ("renew", entered["at"])
 
 
 def test_a_late_renewal_is_pending_and_a_silent_one_has_lapsed(desk: Desk) -> None:
@@ -922,3 +936,148 @@ def test_a_viewer_reads_contracts_and_every_change_is_audited(
     # A stale edit is refused.
     stale = {"row_version": contract["row_version"] + 5, "notes": "x"}
     assert desk.patch(f"/contracts/{contract['hid']}", stale, 409)["status"] == 409
+
+
+def test_a_term_that_begins_ends_what_was_said_of_the_one_before(desk: Desk, db: Session) -> None:
+    entry = desk.catalog()
+    switches = [desk.switch(entry, f"FCW-{number}") for number in range(3)]
+    said = ("renewal_pending", "expired", "cancelled")
+    held = [
+        desk.contract(f"CON-{number}", starts_on=LAST_YEAR, ends_on=day(-10), status=status)
+        for number, status in enumerate(said)
+    ]
+    for contract, switch in zip(held, switches, strict=True):
+        desk.cover(contract, switch)
+        ahead = {"row_version": contract["row_version"], "starts_on": day(10), "ends_on": day(374)}
+        renewed = desk.post(f"/contracts/{contract['hid']}/renew", ahead, 200)
+        # The status is of the present term, and is left as it is.
+        assert renewed["status"] == contract["status"]
+    # While the term waits: what a pending renewal covers is covered to the end of the
+    # term to come, what has expired is to be covered again, and what was cancelled
+    # is not.
+    assert desk.covered(switches[0]) == (True, day(374), ["CON-0"])
+    assert desk.covered(switches[1]) == (False, day(374), [])
+    assert desk.covered(switches[2]) == (False, None, [])
+
+    for contract in held:
+        stored = db.get_one(Contract, contract["hid"])
+        stored.next_starts_on = TODAY - timedelta(days=1)
+        stored.next_ends_on = TODAY + timedelta(days=363)
+    db.commit()
+
+    def read() -> list[tuple[Any, ...]]:
+        found = []
+        for contract, switch in zip(held, switches, strict=True):
+            now = desk.get(f"/contracts/{contract['hid']}")
+            found.append((now["status"], now["covers_today"], now["lapsed"], desk.covered(switch)))
+        found.append(desk.get("/reports/coverage", within_days=400)["totals"]["expiring"])
+        found.append(desk.get("/items", filter="covered_until:empty:true")["total"])
+        return found
+
+    # The day comes: active again, as after a renewal that is in force at once. What
+    # was cancelled stays so: that was said of the contract, and not of a term.
+    begun = read()
+    assert begun == [
+        ("active", True, False, (True, day(363), ["CON-0"])),
+        ("active", True, False, (True, day(363), ["CON-1"])),
+        ("cancelled", False, False, (False, None, [])),
+        2,
+        1,
+    ]
+    # And nothing reads differently once the term is written down.
+    for contract in held:
+        now = desk.get(f"/contracts/{contract['hid']}")
+        desk.patch(
+            f"/contracts/{contract['hid']}", {"row_version": now["row_version"], "notes": "x"}
+        )
+    assert read() == begun
+
+
+def test_a_contract_and_its_agreement_fit_in_every_term_to_come(desk: Desk, db: Session) -> None:
+    desk.catalog()
+    agreement = desk.agreement(starts_on=LAST_YEAR, ends_on=day(100))
+    path = f"/agreements/{agreement['hid']}"
+    ahead = {"row_version": agreement["row_version"], "starts_on": day(101), "ends_on": day(465)}
+    desk.post(f"{path}/renew", ahead, 200)
+    # It fits today, and would not once the agreement's next term has begun: from that
+    # day it would start, with the agreement, after its own end.
+    short: dict[str, Any] = {"agreement_hid": agreement["hid"], "ends_on": day(50)}
+    assert "ends_on" in errors(desk.contract("CON-1", expect=422, **short))
+    desk.contract("CON-1", starts_on=day(-5), **short)
+    # Two terms that are never in force together are not held against one another: a
+    # co-termed contract whose own next term has no end, and the agreement's present end.
+    together = desk.contract("CON-2", agreement_hid=agreement["hid"])
+    desk.post(
+        f"/contracts/{together['hid']}/renew",
+        {"row_version": together["row_version"], "starts_on": day(120), "ends_on": None},
+        200,
+    )
+    now = desk.get(path)
+    earlier = desk.patch(path, {"row_version": now["row_version"], "ends_on": day(99)})
+    # What would leave a contract the wrong way round is refused, and names it.
+    late = desk.contract("CON-3", agreement_hid=agreement["hid"], starts_on=day(90))
+    refused = desk.patch(path, {"row_version": earlier["row_version"], "ends_on": day(80)}, 422)
+    assert "CON-3" in errors(refused)["ends_on"]
+    assert "CON-2" not in errors(refused)["ends_on"]
+    # A contract that is wrong already is not held against a change, and can itself
+    # still be given a note, and be put right.
+    stored = db.get_one(Contract, late["hid"])
+    stored.starts_on = TODAY + timedelta(days=200)
+    db.commit()
+    noted = desk.patch(
+        f"/contracts/{late['hid']}", {"row_version": late["row_version"], "notes": "x"}
+    )
+    desk.patch(path, {"row_version": earlier["row_version"], "ends_on": day(98)})
+    wrong = {"row_version": noted["row_version"], "starts_on": day(210)}
+    assert "ends_on" in errors(desk.patch(f"/contracts/{late['hid']}", wrong, 422))
+    desk.patch(
+        f"/contracts/{late['hid']}", {"row_version": noted["row_version"], "starts_on": day(1)}
+    )
+    # A next number is held to what a number is held to, and compared as one.
+    sharp = desk.contract("CON-4", vendor_hid=agreement["vendor"]["hid"], ends_on=day(30))
+    desk.post(
+        f"/contracts/{sharp['hid']}/renew",
+        {
+            "row_version": sharp["row_version"],
+            "number": "Stra\u00dfe-7",
+            "starts_on": day(31),
+            "ends_on": day(395),
+        },
+        200,
+    )
+    taken = desk.contract("STRASSE-7", expect=409, vendor_hid=agreement["vendor"]["hid"])
+    assert "number" in errors(taken)
+
+
+def test_an_item_that_comes_back_is_in_service_again(desk: Desk) -> None:
+    entry = desk.catalog()
+    switch = desk.switch(entry, "FCW-1")
+    running = desk.contract("CON-1", starts_on=LAST_YEAR, ends_on=NEXT_YEAR)
+    to_come = desk.contract("CON-2", starts_on=day(20), ends_on=day(400), status="pending")
+    (present,) = desk.cover(running, switch)
+    (future,) = desk.cover(to_come, switch)
+    retired = desk.post(
+        f"/items/{switch['hid']}/retire", {"row_version": switch["row_version"]}, 200
+    )
+    # The coverage that was in force ended today. The one that had not begun never
+    # was in force: it is removed, and the audit trail holds what it was.
+    (its,) = desk.get(f"/items/{switch['hid']}")["coverage"]
+    assert (its["hid"], its["left_service"]) == (present["hid"], True)
+    gone = desk.audit(record_type="contract_coverage", record_hid=future["hid"])[0]
+    assert gone["action"] == "delete"
+    assert desk.get("/reports/coverage")["totals"]["out_of_service"] == 1
+    # Brought back, it is in service, and on no list of what has left.
+    desk.patch(
+        f"/items/{switch['hid']}",
+        {"row_version": retired["row_version"], "record_status": "active"},
+    )
+    totals = desk.get("/reports/coverage")["totals"]
+    assert (totals["in_service"], totals["out_of_service"]) == (1, 0)
+    # Its coverage does not come back by itself: a person opens it again.
+    (ended,) = desk.get(f"/contracts/{running['hid']}/coverage")["items"]
+    reopened = desk.patch(
+        f"/contracts/{running['hid']}/coverage/{present['hid']}",
+        {"row_version": ended["row_version"], "ends_on": None, "left_service": False},
+    )
+    assert (reopened["in_force"], reopened["left_service"]) == (True, False)
+    assert desk.covered(switch) == (True, NEXT_YEAR, ["CON-1"])
