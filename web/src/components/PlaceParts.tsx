@@ -40,11 +40,12 @@ import {
   type Location,
   levelLabel,
   locationsToMoveTo,
+  type Opening,
   type OwnRole,
+  openedText,
   ownRoles,
   type Place,
   placePath,
-  plannedText,
   type Region,
   regionsToMoveTo,
   type Site,
@@ -370,22 +371,16 @@ export function PlaceDetail(props: PlaceDetailProps) {
     if (result.ok) changed(text);
   }
 
-  /** Make a draft place active: the items planned for it are moved in by that same change. */
-  async function makeActive() {
+  /**
+   * Make a draft place active, after the question that showed what it brings about:
+   * what is planned for it is moved in by that same change, by the server.
+   */
+  async function makeActive(opening: Opening) {
     if (!record) return;
-    const moving =
-      planned.data && !planned.data.draftAbove
-        ? plannedText({ items: planned.data.count, groups: planned.data.groups })
-        : "";
     const result = await activating.run(() =>
       patchPlace(level, record.hid, { row_version: record.row_version, record_status: "active" }),
     );
-    if (!result.ok) return;
-    changed(
-      moving !== ""
-        ? `${record.name} is active. What was planned for it is there now: ${moving}.`
-        : `${record.name} is active.`,
-    );
+    if (result.ok) changed(openedText(record.name, opening));
   }
 
   const editable = mayEdit && record !== undefined && record.record_status !== "retired";
@@ -498,7 +493,6 @@ export function PlaceDetail(props: PlaceDetailProps) {
               <MakeActive
                 level={level}
                 place={record}
-                planned={planned}
                 activate={makeActive}
                 action={activating}
                 onReload={place.reload}

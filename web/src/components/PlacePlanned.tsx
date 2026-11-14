@@ -10,10 +10,11 @@ import { itemName, plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { type Loaded, type useAction, useLoad } from "../lib/hooks";
 import {
-  activationText,
   type Level,
   levelLabel,
   nameOf,
+  type Opening,
+  openingText,
   type Place,
   plannedGroupsWithin,
   plannedWithin,
@@ -33,57 +34,16 @@ export interface Planned {
   count: number;
   /** The device groups planned for it or beneath it. */
   groups: number;
-  /** The nearest level above the place that is still a draft, if there is one. */
-  draftAbove: { level: Level; name: string } | null;
-}
-
-/** The nearest place above a place that is a draft: while there is one, the place is not in use. */
-async function readDraftAbove(
-  place: Place,
-  signal: AbortSignal,
-): Promise<{ level: Level; name: string } | null> {
-  let regionHid: string | null = null;
-  if ("site_hid" in place) {
-    let above = place.parent_location_hid;
-    while (above) {
-      const location = await api.request("get", "/api/v1/locations/{hid}", {
-        path: { hid: above },
-        signal,
-      });
-      if (location.record_status === "draft") return { level: "location", name: location.name };
-      above = location.parent_location_hid;
-    }
-    const site = await api.request("get", "/api/v1/sites/{hid}", {
-      path: { hid: place.site_hid },
-      signal,
-    });
-    if (site.record_status === "draft") return { level: "site", name: site.name };
-    regionHid = site.region_hid;
-  } else if ("region_hid" in place) {
-    regionHid = place.region_hid;
-  } else {
-    regionHid = place.parent_region_hid;
-  }
-  while (regionHid) {
-    const region = await api.request("get", "/api/v1/regions/{hid}", {
-      path: { hid: regionHid },
-      signal,
-    });
-    if (region.record_status === "draft") return { level: "region", name: region.name };
-    regionHid = region.parent_region_hid;
-  }
-  return null;
 }
 
 /**
- * Read what is planned for a place: the counts from the tree of places, and for a draft
- * place whether a level above it is a draft too.
+ * Read what is planned for a place: the counts from the tree of places.
  */
 export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
   return useLoad(`planned ${place?.hid ?? ""} ${place?.row_version ?? ""}`, async (signal) => {
     if (!place || place.record_status === "retired") return null;
     const draft = place.record_status === "draft";
-    const [tree, items, groups, draftAbove] = await Promise.all([
+    const [tree, items, groups] = await Promise.all([
       // The count that the question of a draft place gives is the tree's. For a place in
       // use, the number of the list below says the same, and the tree is not asked.
       draft
@@ -107,12 +67,10 @@ export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
         query: { filter: `planned_location:within:${place.hid}`, limit: 1, include_drafts: true },
         signal,
       }),
-      draft ? readDraftAbove(place, signal) : Promise.resolve(null),
     ]);
     return {
       count: tree?.roots[0]?.planned ?? items.total,
       groups: tree?.roots[0]?.planned_groups ?? groups.total,
-      draftAbove,
     };
   });
 }
@@ -258,21 +216,35 @@ export function PlannedHere({ level, place, planned }: PlannedHereProps) {
 interface MakeActiveProps {
   level: Level;
   place: Place;
-  planned: Loaded<Planned | null>;
-  /** Make the place active: the change that moves what is planned for it. */
-  activate: () => Promise<unknown>;
+  /** Make the place active: the change that the answer shown was about. */
+  activate: (opening: Opening) => Promise<unknown>;
   action: ReturnType<typeof useAction>;
   onReload: () => void;
 }
 
+/** The route that says what making a place of a level active would bring about. */
+function readOpening(level: Level, hid: string, signal: AbortSignal): Promise<Opening> {
+  const options = { path: { hid }, signal };
+  if (level === "region") return api.request("get", "/api/v1/regions/{hid}/opening", options);
+  if (level === "site") return api.request("get", "/api/v1/sites/{hid}/opening", options);
+  return api.request("get", "/api/v1/locations/{hid}/opening", options);
+}
+
 /**
- * Make a draft place active. It asks first, saying what the change does to the items
- * and the device groups that are planned for the place: they are moved in, each with an
- * entry in its history, or they wait while a level above is still a draft.
+ * Make a draft place active. Making a place active is an intent: it asks first, and
+ * shows what the server says it brings about, read when the question opens: how many
+ * items and device groups move in and how many records are written to, or which place
+ * above must be active first. Nothing is offered while that answer is not there: not
+ * while it is read, and not when it could not be read.
  */
-export function MakeActive({ level, place, planned, activate, action, onReload }: MakeActiveProps) {
+export function MakeActive({ level, place, activate, action, onReload }: MakeActiveProps) {
   const what = levelLabel(level).toLowerCase();
-  const data = planned.data;
+  // Each time the question opens the answer is read again: the inventory may have changed.
+  const [asked, setAsked] = useState(0);
+  const opening = useLoad(`opening ${place.hid} ${place.row_version} ${asked}`, (signal) =>
+    asked === 0 ? Promise.resolve(null) : readOpening(level, place.hid, signal),
+  );
+  const answer = opening.loading ? null : (opening.data ?? null);
   return (
     <section aria-labelledby="make-active">
       <h3 id="make-active">Make active</h3>
@@ -280,29 +252,49 @@ export function MakeActive({ level, place, planned, activate, action, onReload }
       <p>
         This {what} is a draft: it is left out of default views. Made active, it is in use once
         everything it is in is active too, and the items and the device groups that are planned for
-        it are moved in by that same change.
+        it are moved in by that same change. The action asks first, and shows what it brings about.
       </p>
       <p className="actions">
         <ConfirmButton
           label={`Make ${what} active`}
           title={`Make ${place.name} active?`}
           confirmLabel={`Make ${what} active`}
-          onConfirm={activate}
-          disabled={action.busy || !data}
+          onOpen={() => setAsked((count) => count + 1)}
+          onConfirm={() => (answer ? activate(answer) : undefined)}
+          confirmDisabled={answer === null}
+          disabled={action.busy}
         >
-          <p data-testid="activation-text">
-            {data
-              ? activationText(
-                  place.name,
-                  { items: data.count, groups: data.groups },
-                  data.draftAbove,
-                )
-              : ""}
-          </p>
-          <p className="hint">
-            What is planned for a place within it that is itself still a draft moves when that place
-            is made active. Nobody moves anything one by one.
-          </p>
+          {opening.loading && (
+            <p role="status" className="muted" data-testid="activation-loading">
+              Reading what this brings about…
+            </p>
+          )}
+          {!opening.loading && opening.error && (
+            <div data-testid="activation-failed">
+              <Problem error={opening.error} />
+              <p>
+                What making {place.name} active brings about could not be read, so it is not made
+                active from here. Close this, and try again.
+              </p>
+            </div>
+          )}
+          {answer && (
+            <>
+              <p
+                data-testid="activation-text"
+                data-items={answer.items}
+                data-groups={answer.device_groups}
+                data-changed={answer.records_changed}
+                data-moves={answer.moves_now ? "true" : "false"}
+              >
+                {openingText(place.name, answer)}
+              </p>
+              <p className="hint">
+                What is planned for a place within it that is itself still a draft moves when that
+                place is made active. Nobody moves anything one by one.
+              </p>
+            </>
+          )}
         </ConfirmButton>
       </p>
     </section>
