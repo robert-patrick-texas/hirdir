@@ -1380,6 +1380,7 @@ ManagedAs = Literal["one", "members", "members_and_cluster"]
 class GroupEffective(Model):
     """What a device group has in force of what it may have from the group it is in."""
 
+    owner_hid: EffectiveReference
     operator_hid: EffectiveOperator
     location_hid: EffectiveLocation
     planned_location_hid: EffectiveLocation

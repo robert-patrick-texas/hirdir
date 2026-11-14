@@ -163,7 +163,10 @@ and then by name. A group that has none has that of the nearest group it is nest
 in. A member with a location of its own keeps it, as an override: the access points
 of a controller domain are each where they hang. Every answer says where the value
 came from, `own`, `parent_item` or `device_group`, and from which record. The owner
-is not had from a group in this release: see P-93 in [Decisions](decisions.md).
+is had in the same way: an item with no owner of its own, and none from an item above
+it, has the owner of its group, and is an exception when that owner is outside the
+team. A group still lists in `members_disagree` a member that has another owner, its
+own or from the item it is in.
 
 Taking a minor item out of its parent, by clearing `parent_item_hid` or naming another
 parent, keeps its record and its history. With no parent it is a major item, with

@@ -655,6 +655,16 @@ each has no location, the tree of places is empty, and every item is counted und
 marked as an exception from now on, with the reason that owner has always had to have.
 `GET /api/v1/items?filter=owner_exception:eq:true` lists the items.
 
+**The counts by owner may change.** From 0.5.0 an item with no owner of its own, and
+none from an item above it, has the owner of the device group it is a member of.
+Nothing that is held changes, and no item is written to, but such an item is no longer
+counted as nobody's: in a report by owner it moves from the blank row to its group's
+row, and where that owner is outside the team it is marked as an exception. To see
+before the upgrade what will move, list the members of groups that have an owner and
+have none themselves; after it,
+`GET /api/v1/items?filter=owner_hid:empty:true effective.owner_hid:empty:false` lists
+every item that has its owner from above.
+
 The lists of contact roles and of location kinds are filled with their defaults:
 `shipping`, `technical`, `federal`, `operational` and `escalation`, and `building`,
 `floor`, `room`, `rack`, `warehouse` and `other`. A value that a site had entered in

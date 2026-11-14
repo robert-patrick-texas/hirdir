@@ -105,7 +105,8 @@ the item above it or that of its group, and takes
 `within` with a region, a site or a location, and `empty`; `planned_location` is
 where it is planned to go, in force in the same way, and takes the same two;
 `effective.location_hid` and `effective.planned_location_hid` are those two as
-references, and `location_hid` and `planned_location_hid` the item's own; `site` and `region` are the
+references, `effective.owner_hid` is the owner in force, the item's own, that of the
+item above it or that of its group, and `location_hid` and `planned_location_hid` the item's own; `site` and `region` are the
 names of its site and of the region the site is in, `site.code` the site's code, and
 `location.name` and `location.kind` those of the location; `operator.label` is the label of the operator in force and `operator.contact` the
 name of the person behind it, `operator.is_open` is true where nobody is,
@@ -116,8 +117,9 @@ that owner's reason; the list of device groups has `owner_exception` too. The li
 of locations have `location` with `within` too, and the list of sites has `region`. A
 device group is found and sorted by `site` and `region` as an item is, and by
 `planned_location` with `within`, each by what the group has in force, its own or
-that of the group it is nested in; `effective.operator_hid` is the operator a group
-has in force. The list of locations has `in_use`, true for a location that is active
+that of the group it is nested in; `effective.operator_hid` and `effective.owner_hid`
+are the operator and the owner a group has in force, and `owner.label` and
+`owner_exception` go by that owner. The list of locations has `in_use`, true for a location that is active
 with everything it is in, and false for one that can be planned for. A
 location is also found by `site.name`, `site.code` and `region.name`, the name of the
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial

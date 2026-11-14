@@ -4519,11 +4519,15 @@
           "operator_hid": {
             "$ref": "#/components/schemas/EffectiveOperator"
           },
+          "owner_hid": {
+            "$ref": "#/components/schemas/EffectiveReference"
+          },
           "planned_location_hid": {
             "$ref": "#/components/schemas/EffectiveLocation"
           }
         },
         "required": [
+          "owner_hid",
           "operator_hid",
           "location_hid",
           "planned_location_hid"

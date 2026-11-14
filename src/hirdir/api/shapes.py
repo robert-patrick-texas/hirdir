@@ -675,10 +675,11 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     above = {one.hid: one for line in lines.values() for one in line}
     entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in items})
     vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
+    owned = descent.of_items(db, items, lines, "owner_hid")
     owners = _by_hid(
         db,
         Owner,
-        {item.owner_hid for item in items} | {item.owner_hid for item in above.values()},
+        {item.owner_hid for item in items} | {one.value for one in owned.values()},
     )
     labels = tags.labels_of(db, "item", hids)
     looked_after = operators.of_items(db, items, lines)
@@ -721,6 +722,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         effective = inheritance.of_item(item, entry, line)
         # Where it is, and where it is going: its own, or from the item or group above.
         effective["location_hid"] = where[item.hid]
+        effective["owner_hid"] = owned[item.hid]
         owner_in_force = owners.get(effective["owner_hid"].value)
         its_groups = memberships[item.hid]
         its_controllers: dict[str, shapes.ControllerRef] = {}
@@ -850,7 +852,10 @@ def replacement_out(db: Session, replacement: ItemReplacement) -> shapes.Replace
 def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroupOut]:
     """Return device groups with their masters, their numbers of members and what they refer to."""
     hids = [group.hid for group in found]
-    owners = _by_hid(db, Owner, {group.owner_hid for group in found})
+    owned = descent.of_groups(db, found, "owner_hid")
+    owners = _by_hid(
+        db, Owner, {group.owner_hid for group in found} | {one.value for one in owned.values()}
+    )
     parents = _by_hid(db, DeviceGroup, {group.parent_group_hid for group in found})
     nested: dict[str, list[shapes.DeviceGroupRef]] = {hid: [] for hid in hids}
     if hids:
@@ -889,6 +894,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
+        owner_in_force = owners.get(owned[group.hid].value or "")
         parent = parents.get(group.parent_group_hid) if group.parent_group_hid else None
         master, observed = masters.get(group.hid), seen.get(group.hid)
         # Read from the master that is seen, and else from the one intended, each time
@@ -905,11 +911,17 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 parent=None if parent is None else _group_ref(parent),
                 groups=nested[group.hid],
                 owner=None if owner is None else _owner_ref(owner),
-                **_exception(owner),
+                **_exception(owner_in_force),
                 location=places.get(group.location_hid) if group.location_hid else None,
                 planned_location=places.get(group.planned_location_hid or ""),
                 operator=marks.ref(group.operator_hid),
                 effective=shapes.GroupEffective(
+                    owner_hid=shapes.EffectiveReference(
+                        value=owned[group.hid].value,
+                        label=owner_in_force.label if owner_in_force is not None else None,
+                        source=owned[group.hid].source,
+                        source_hid=owned[group.hid].source_hid,
+                    ),
                     operator_hid=marks.in_force(looked_after[group.hid], holders),
                     location_hid=_place_in_force(where[group.hid], places, holders),
                     planned_location_hid=_place_in_force(going[group.hid], places, holders),

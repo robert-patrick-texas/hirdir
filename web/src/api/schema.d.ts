@@ -4705,6 +4705,7 @@ export interface components {
     GroupEffective: {
       location_hid: components["schemas"]["EffectiveLocation"];
       operator_hid: components["schemas"]["EffectiveOperator"];
+      owner_hid: components["schemas"]["EffectiveReference"];
       planned_location_hid: components["schemas"]["EffectiveLocation"];
     };
     /** A user group. */

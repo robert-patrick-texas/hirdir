@@ -103,8 +103,6 @@ _INHERITED_AMOUNTS = ("est_value", "support_weight", "annual_support_cost")
 ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in range(MAX_DEPTH))
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
-OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.owner_hid for one in _LINE))
-
 
 def _from_groups(field: str, live: Any = None) -> ColumnElement[Any]:
     """Return what an item has in a field from the groups that the item at the top of
@@ -143,8 +141,12 @@ def _from_groups(field: str, live: Any = None) -> ColumnElement[Any]:
     )
 
 
-# Where an item is: its own location, that of the nearest item above it that has one,
-# or that of a group the item at the top of the line is a member of.
+# Whose an item is: its own owner, that of the nearest item above it that has one, or
+# that of a group the item at the top of the line is a member of.
+OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    *(one.owner_hid for one in _LINE), _from_groups("owner_hid")
+)
+# Where an item is, by the same descent.
 LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
     *(one.location_hid for one in _LINE), _from_groups("location_hid")
 )
@@ -459,6 +461,9 @@ def _group_in_force(field: str, live: Any = None) -> ColumnElement[Any]:
     )
 
 
+GROUP_OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    DeviceGroup.owner_hid, _group_in_force("owner_hid")
+)
 GROUP_LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
     DeviceGroup.location_hid, _group_in_force("location_hid")
 )
@@ -471,6 +476,7 @@ DEVICE_GROUPS = Listing(
     fields={
         **_bookkeeping(DeviceGroup),
         **_columns(DeviceGroup, "reference", "parent_group_hid", "owner_hid", "location_hid"),
+        "effective.owner_hid": Field("reference", GROUP_OWNER_IN_FORCE),
         "effective.location_hid": Field("reference", GROUP_LOCATION_IN_FORCE),
         "effective.planned_location_hid": Field("reference", GROUP_PLANNED_IN_FORCE),
         "location": Field(
@@ -528,7 +534,7 @@ DEVICE_GROUPS = Listing(
         **_address_fields(_GROUP_ADDRESSES),
     },
     joined=lambda query: (
-        query.outerjoin(Owner, Owner.hid == DeviceGroup.owner_hid)
+        query.outerjoin(Owner, Owner.hid == GROUP_OWNER_IN_FORCE)
         .outerjoin(_PARENT_GROUP, _PARENT_GROUP.hid == DeviceGroup.parent_group_hid)
         .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == GROUP_LOCATION_IN_FORCE)
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
@@ -852,6 +858,8 @@ def warm() -> int:
     built = 0
     for listing in LISTINGS:
         columns = [one.expression for one in listing.fields.values() if one.expression is not None]
-        str(listing.joined(select(listing.model.hid, *columns)).compile())
+        # Joined from the record alone, as a list is, and the fields added after.
+        base = select(listing.model).select_from(listing.model)
+        str(listing.joined(base).add_columns(*columns).compile())
         built += 1
     return built

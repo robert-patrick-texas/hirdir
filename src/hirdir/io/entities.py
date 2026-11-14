@@ -1845,10 +1845,11 @@ class Items(Entity):
         if "owner" in values:
             named = values["owner"]
             owner_hid = run.owner(named).hid if named is not None else None
-            inherited = next((one.owner_hid for one in above if one.owner_hid), None)
+            inherited = self._from_above(run, record, above, "owner_hid")
             own = record.owner_hid if record is not None else None
             if owner_hid is None or own is not None or owner_hid != inherited:
-                # Otherwise the row holds the owner the item has from the item above.
+                # Otherwise the row holds the owner the item has from the item above
+                # it or from its group.
                 given["owner_hid"] = owner_hid
         if "operator" in values:
             named = values["operator"]
@@ -1937,11 +1938,11 @@ class Items(Entity):
         lines = items.lines_above(db, found)
         entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in found})
         vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
+        owned = descent.of_items(db, found, lines, "owner_hid")
         its_owners = _by_hid(
             db,
             Owner,
-            {item.owner_hid for item in found}
-            | {one.owner_hid for line in lines.values() for one in line},
+            {item.owner_hid for item in found} | {one.value for one in owned.values()},
         )
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
@@ -1970,6 +1971,7 @@ class Items(Entity):
             line = lines[item.hid]
             in_force = inheritance.of_item(item, entry, line)
             in_force["location_hid"] = placed[item.hid]
+            in_force["owner_hid"] = owned[item.hid]
             where = atlas.location(in_force["location_hid"].value or "")
             site = atlas.site(where.site_hid) if where is not None else None
             owner_in_force = its_owners.get(in_force["owner_hid"].value or "")

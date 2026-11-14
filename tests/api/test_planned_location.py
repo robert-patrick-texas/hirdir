@@ -406,12 +406,20 @@ def test_the_list_and_the_record_agree_on_where_every_item_is_and_is_going(make:
     make.item(name="PS-A", parent_item_hid=switches[0]["hid"], location_hid=building["hid"])
     module = make.item(name="MOD-1", parent_item_hid=switches[1]["hid"])
     make.item(name="SFP-1", parent_item_hid=module["hid"], planned_location_hid=closet["hid"])
-    make.stack("stack-b", switches[:2], location_hid=room["hid"], planned_location_hid=suite["hid"])
+    ours, theirs = make.owner(), make.owner("Voice Services")
+    make.stack(
+        "stack-b",
+        switches[:2],
+        location_hid=room["hid"],
+        planned_location_hid=suite["hid"],
+        owner_hid=ours["hid"],
+    )
     outer = make.group(
         "domain",
         "controller_domain",
         location_hid=building["hid"],
         planned_location_hid=closet["hid"],
+        owner_hid=theirs["hid"],
     )
     make.group(
         "cluster-a",
@@ -429,7 +437,7 @@ def test_the_list_and_the_record_agree_on_where_every_item_is_and_is_going(make:
     make.post(f"/device-groups/{retired['hid']}/retire", {"row_version": 1}, 200)
 
     everything = make.get("/items", limit=1000)["items"]
-    for name in ("location_hid", "planned_location_hid"):
+    for name in ("location_hid", "planned_location_hid", "owner_hid"):
         by_record: dict[str | None, set[str]] = {}
         for item in everything:
             by_record.setdefault(item["effective"][name]["value"], set()).add(item["hid"])
@@ -449,6 +457,58 @@ def test_the_list_and_the_record_agree_on_where_every_item_is_and_is_going(make:
     assert by_name["sw-08"]["location_hid"]["value"] is None
     assert by_name["MOD-1"]["planned_location_hid"]["source"] == "device_group"
     assert by_name["SFP-1"]["planned_location_hid"]["source"] == "own"
+    assert (by_name["sw-03"]["owner_hid"]["label"], by_name["sw-03"]["owner_hid"]["source"]) == (
+        "Voice Services",
+        "device_group",
+    )
+    assert by_name["sw-06"]["owner_hid"]["value"] is None
+
+
+def test_an_item_with_no_owner_of_its_own_has_the_owner_of_its_group(
+    make: Maker, files: Files
+) -> None:
+    ours = make.owner()
+    outside = make.owner("Voice Services", is_external=True, exception_reason="Run by the vendor")
+    switches = make.switches(make.entry(make.vendor()), "sw", 3)
+    supply = make.item(name="PS-A", parent_item_hid=switches[0]["hid"])
+    stack = make.stack("site2-sw-stack1", switches, owner_hid=ours["hid"])
+    inner = make.group("inner", "custom", parent_group_hid=stack["hid"])
+
+    # One change of the group, and its members are that owner's; none is written to.
+    for hid in (switches[0]["hid"], supply["hid"]):
+        owner = make.get(f"/items/{hid}")["effective"]["owner_hid"]
+        assert (owner["label"], owner["source"], owner["source_hid"]) == (
+            "Network Engineering",
+            "device_group",
+            stack["hid"],
+        )
+    assert make.get(f"/items/{switches[0]['hid']}")["owner_hid"] is None
+    assert make.get("/items", filter=f"effective.owner_hid:eq:{ours['hid']}")["total"] == 4
+    rows = {row["label"]: row["items"] for row in make.get("/reports/summary", by="owner")["rows"]}
+    assert rows == {"Network Engineering": 4}
+    nested = make.get(f"/device-groups/{inner['hid']}")["effective"]["owner_hid"]
+    assert (nested["label"], nested["source"]) == ("Network Engineering", "device_group")
+    found = make.get("/device-groups", filter=f"effective.owner_hid:eq:{ours['hid']}")
+    assert found["total"] == 2
+    # A member with an owner of its own keeps it, and the group says that it differs.
+    _patch(make, f"/items/{switches[2]['hid']}", owner_hid=outside["hid"])
+    third = make.get(f"/items/{switches[2]['hid']}")
+    assert (third["effective"]["owner_hid"]["source"], third["owner_exception"]) == ("own", True)
+    assert make.get(f"/device-groups/{stack['hid']}")["members_disagree"] == ["owner_hid"]
+    # A file says the owner in force, and loaded back gives the members none of their own.
+    exported = files.export("items", columns=["hid", "owner"])
+    assert exported.count("Network Engineering") == 3
+    back = files.preview("items", exported)
+    assert back["job"]["unchanged"] == back["job"]["row_count"] == 4
+    # Given to an owner outside the team, the group and its members are an exception.
+    _patch(make, f"/device-groups/{stack['hid']}", owner_hid=outside["hid"])
+    first = make.get(f"/items/{switches[0]['hid']}")
+    assert (first["owner_exception"], first["owner_exception_reason"]) == (
+        True,
+        "Run by the vendor",
+    )
+    assert make.get(f"/device-groups/{inner['hid']}")["owner_exception"] is True
+    assert make.get("/items", filter="owner_exception:eq:true")["total"] == 4
 
 
 def test_a_group_list_finds_groups_by_the_operator_in_force(make: Maker) -> None:
