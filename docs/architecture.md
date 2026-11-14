@@ -393,6 +393,43 @@ Python tests of `make check` take 33 seconds, and the 22 scenarios of `make acce
 all of its time is the server and `hirdir admin` starting as real processes, which is
 what it is there to show.
 
+**The browser scenarios** of `make e2e` are the spec files in `web/e2e/`, which
+Playwright runs against the fresh install. The files run side by side, each in a worker
+of its own, and the tests of one file run in order, because the later ones use what the
+earlier ones made. `scripts/test_load.py` says how many files run at once, for the host
+as it is when they start, so beside the two upgrade passes fewer are started;
+`E2E_WORKERS` sets the number outright. All the files use one server and one inventory,
+so each has of its own what another could disturb:
+
+- **An account.** The Admin the run is given, in `E2E_USERNAME` and `E2E_ACCESS_CODE`,
+  signs in through the API and never in a browser. It makes one Admin for each file
+  when the file's first test starts, and the file signs in as that one. Whatever a file
+  does to an account, it does to its own or to one it made. When the worker has run the
+  file, the account is disabled.
+- **Names.** Every record a file makes carries the name of the file and a random part,
+  as in `site2-sw-access-items-3fa9c1-01`. No two files make the same name, and a file
+  can be run again on the same server.
+- **What it counts.** A summary, a report or a grid is filtered down to the file's own
+  records before anything in it is counted. In a list that every file adds to, a file
+  looks at its own rows: the past imports that its account made, the user it searched
+  for.
+
+No file changes what the others read: a setting, a list of choices or a lifecycle rule.
+So no test is kept from running beside those of another file. The rules a new spec file
+keeps to are at the top of `web/e2e/support.ts`.
+
+A run is as long as its longest file, so a file holds only scenarios that build on one
+another. The scenarios of 0.4.0 were one file and are three for that reason,
+`minor-items.spec.ts`, `stack.spec.ts` and `wireless.spec.ts`: each loads the catalog,
+the owners and the items it needs, and what they do alike is in `web/e2e/structure.ts`.
+
+Measured against a development server on the four-core build host, the browser in
+Playwright's container: one file after another, which is how they ran before 0.5.0, the
+scenarios took 125 seconds with nothing else running. In six files and four at once
+they took 85 seconds while other work held one of the four cores. One file at a time
+they now take somewhat longer than before, because each of the three files loads for
+itself what one file loaded once.
+
 `make package-test` runs `packaging/package-test.sh`, which makes three passes, side by
 side when the host has cores and memory free for it and one after another when it has
 not. Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
