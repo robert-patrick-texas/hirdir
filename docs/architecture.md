@@ -413,10 +413,17 @@ No file changes what the others read: a setting, a list of choices or a lifecycl
 So no test is kept from running beside those of another file. The rules a new spec file
 keeps to are at the top of `web/e2e/support.ts`.
 
-Measured against a development server on the four-core build host with nothing else
-running, the browser in Playwright's container: the fourteen scenarios take 125 seconds
-one file at a time and 104 seconds with the four files side by side. That is the time of
-the longest file, `structure.spec.ts`, whose scenarios build on one another.
+A run is as long as its longest file, so a file holds only scenarios that build on one
+another. The scenarios of 0.4.0 were one file and are three for that reason,
+`minor-items.spec.ts`, `stack.spec.ts` and `wireless.spec.ts`: each loads the catalog,
+the owners and the items it needs, and what they do alike is in `web/e2e/structure.ts`.
+
+Measured against a development server on the four-core build host, the browser in
+Playwright's container: one file after another, which is how they ran before 0.5.0, the
+scenarios took 125 seconds with nothing else running. In six files and four at once
+they took 85 seconds while other work held one of the four cores. One file at a time
+they now take somewhat longer than before, because each of the three files loads for
+itself what one file loaded once.
 
 `make package-test` runs `packaging/package-test.sh`, which makes three passes, side by
 side when the host has cores and memory free for it and one after another when it has

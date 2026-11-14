@@ -32,15 +32,21 @@
 //      row". A paged list is searched or filtered for the row before the row is
 //      expected on the page.
 //   5. Change nothing that another file reads: the settings (items.spec.ts and
-//      structure.spec.ts read the stack discount), the lists of choices and the
-//      lifecycle rules (both read the reasons for a move, structure.spec.ts the
-//      conditions), and any record or account that is not the file's own. Tests that
-//      have to change one of these cannot run beside the others: say so here and in
-//      docs/architecture.md before writing them, and give them a project of their own
-//      in playwright.config.ts that runs when the others have ended.
+//      stack.spec.ts read the stack discount), the lists of choices and the lifecycle
+//      rules (items.spec.ts, minor-items.spec.ts and stack.spec.ts move items, give
+//      reasons and set conditions from them), and any record or account that is not
+//      the file's own. Tests that have to change one of these cannot run beside the
+//      others: say so here and in docs/architecture.md before writing them, and give
+//      them a project of their own in playwright.config.ts that runs when the others
+//      have ended.
 //   6. Keep failed sign-ins few. They are counted for each address, and every worker
 //      comes from the same one: after five in a row from all files together, every
 //      sign-in is delayed (docs/architecture.md, "Throttling").
+//   7. Hold only scenarios that build on one another. The files are what runs side by
+//      side, and the run is as long as its longest file: scenarios that need nothing of
+//      each other go in files of their own, each loading what it needs, as
+//      minor-items.spec.ts, stack.spec.ts and wireless.spec.ts do with what they share
+//      in structure.ts.
 
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
