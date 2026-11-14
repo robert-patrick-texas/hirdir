@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { api } from "../api";
+import { api, type Schemas } from "../api";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
@@ -37,6 +37,8 @@ import {
   settingList,
   summaryQuery,
 } from "../lib/summary";
+import { DUPLICATES_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
 
 const DUPLICATES_PAGE = 50;
@@ -517,29 +519,32 @@ export function Duplicates() {
   const offset = toOffset(params.get("offset"));
   const includeArchived = params.get("archived") === "1";
   const includeDrafts = params.get("drafts") === "1";
-  const found = useLoad(`duplicates ${offset} ${includeArchived} ${includeDrafts}`, (signal) =>
-    api.request("get", "/api/v1/reports/duplicates", {
-      query: {
-        limit: DUPLICATES_PAGE,
-        offset,
-        ...(includeArchived ? { include_archived: true } : {}),
-        ...(includeDrafts ? { include_drafts: true } : {}),
-      },
-      signal,
-    }),
+  // The server sorts the list, over all of it: another order starts at its first page.
+  const sort = useServerSort<Schemas["DuplicateOut"]>({
+    fields: DUPLICATES_SORT,
+    onChange: () => {
+      if (offset > 0) show({});
+    },
+  });
+  const found = sort.held(
+    useLoad(
+      `duplicates ${offset} ${includeArchived} ${includeDrafts} ${sort.param ?? ""}`,
+      (signal) =>
+        api.request("get", "/api/v1/reports/duplicates", {
+          query: {
+            limit: DUPLICATES_PAGE,
+            offset,
+            ...(includeArchived ? { include_archived: true } : {}),
+            ...(includeDrafts ? { include_drafts: true } : {}),
+            // The contract has the sort as a list: this is a list of the one.
+            ...sort.query,
+          },
+          signal,
+        }),
+    ),
   );
   const rows = found.data?.items ?? [];
-  // One page of a longer list is not sorted here: only a page that holds every address.
-  const sorting = useSorting(
-    rows,
-    {
-      address: (row) => row.address,
-      network: (row) => networkText(row.network),
-      count: (row) => row.count,
-      holders: (row) => row.holders.map((holder) => holder.name || "(no name)").join(", "),
-    },
-    { enabled: (found.data?.total ?? 0) <= rows.length },
-  );
+  const holdsAll = found.data !== undefined && found.data.total <= rows.length;
 
   function show(next: { offset?: number; archived?: boolean; drafts?: boolean }) {
     const archived = next.archived ?? includeArchived;
@@ -590,22 +595,22 @@ export function Duplicates() {
               </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="address">
+                  <SortTh sort={sort.header("address", holdsAll)} column="address">
                     Address
                   </SortTh>
-                  <SortTh sort={sorting} column="network">
+                  <SortTh sort={sort.header("network", holdsAll)} column="network">
                     Network
                   </SortTh>
-                  <SortTh sort={sorting} column="count">
+                  <SortTh sort={sort.header("count", holdsAll)} column="count">
                     Held
                   </SortTh>
-                  <SortTh sort={sorting} column="holders">
+                  <SortTh sort={sort.header("holders", holdsAll)} column="holders">
                     By
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((row) => (
+                {sort.arrange(rows, holdsAll).map((row) => (
                   <tr
                     key={`${row.network_hid ?? ""} ${row.address}`}
                     data-address={row.address}

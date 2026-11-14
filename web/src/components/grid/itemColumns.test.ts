@@ -337,15 +337,24 @@ describe("groups and addresses in the item grid", () => {
     expect(column("mgmt_address").value(both)).toBe("192.0.2.10, 2001:db8::10");
   });
 
-  it("filters by any of them, and never sorts by what an item may have several of", () => {
+  it("filters by any of them, and sorts by the first of what an item may have several of", () => {
     for (const id of ["group.name", "group.type", "address", "network.label"]) {
-      expect(asked(id), id).toMatchObject({ field: id, sortField: null });
+      expect(asked(id), id).toMatchObject({ field: id, sortField: id });
     }
     expect(asked("address").kind).toBe("address");
   });
 
-  it("does not filter the primary address by a field that finds any address", () => {
-    expect(asked("mgmt_address")).toMatchObject({ field: null, sortField: null });
+  it("does not filter the primary address by a field that finds any address, and sorts by it", () => {
+    // `mgmt_address` is sorted by and not filtered by.
+    expect(asked("mgmt_address")).toMatchObject({ field: null, sortField: "mgmt_address" });
+  });
+
+  it("sorts every column of the grid on the server: none is left without a field", () => {
+    const unsorted = COLUMNS.map((one) => asked(one.id))
+      .filter((one) => one.sortField === null)
+      .map((one) => one.id);
+    expect(unsorted).toEqual([]);
+    expect(asked("tags")).toMatchObject({ field: "tags", sortField: "tags" });
   });
 
   it("exports only the columns a file of items has", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ariaSort,
+  columnSorts,
   compareValues,
   dateValue,
   decimalValue,
@@ -8,6 +9,7 @@ import {
   nextSort,
   type SortColumns,
   sortMark,
+  sortParam,
   sortRows,
 } from "./sort";
 
@@ -206,5 +208,42 @@ describe("a click on a header", () => {
     expect(sortMark(state, "name")).toBe("▼");
     expect(sortMark({ column: "name", descending: false }, "name")).toBe("▲");
     expect(sortMark(state, "count")).toBe("");
+  });
+});
+
+describe("a table that the server sorts", () => {
+  const FIELDS = { time: "at", who: "actor_name", record: "record_type,record_hid" };
+
+  it("asks for the field of the column, and turns the order round with a minus", () => {
+    expect(sortParam({ column: "time", descending: false }, FIELDS)).toBe("at");
+    expect(sortParam({ column: "time", descending: true }, FIELDS)).toBe("-at");
+    expect(sortParam({ column: "who", descending: false }, FIELDS)).toBe("actor_name");
+  });
+
+  it("turns every field of a column round where it is sorted by several", () => {
+    expect(sortParam({ column: "record", descending: false }, FIELDS)).toBe(
+      "record_type,record_hid",
+    );
+    expect(sortParam({ column: "record", descending: true }, FIELDS)).toBe(
+      "-record_type,-record_hid",
+    );
+  });
+
+  it("asks for nothing while no header was clicked, or for a column the server does not sort by", () => {
+    expect(sortParam(null, FIELDS)).toBeUndefined();
+    expect(sortParam({ column: "changes", descending: false }, FIELDS)).toBeUndefined();
+  });
+
+  it("sorts by a column the server has a field for whether or not the table holds every row", () => {
+    const local = { changes: () => "" };
+    expect(columnSorts("time", FIELDS, local, false)).toBe(true);
+    expect(columnSorts("time", FIELDS, local, true)).toBe(true);
+  });
+
+  it("sorts by a column the page composes only while the table holds every row", () => {
+    const local = { changes: () => "" };
+    expect(columnSorts("changes", FIELDS, local, true)).toBe(true);
+    expect(columnSorts("changes", FIELDS, local, false)).toBe(false);
+    expect(columnSorts("nothing", FIELDS, local, true)).toBe(false);
   });
 });

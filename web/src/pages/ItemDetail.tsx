@@ -61,6 +61,8 @@ import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
+import { HISTORY_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
 
 type Item = Schemas["ItemOut"];
@@ -1142,29 +1144,35 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
   );
 }
 
-/** Every change made to the item, newest first: who, when, what was and what is. */
+/**
+ * Every change made to the item, newest first until a header is clicked: who, when, what
+ * was and what is.
+ */
 function History({ item }: { item: Item }) {
   const [offset, setOffset] = useState(0);
+  // The server sorts the events, over the whole history, each with its rows kept
+  // together: another order starts at its first page.
+  const sort = useServerSort<Schemas["AuditEventOut"]>({
+    fields: HISTORY_SORT,
+    onChange: () => setOffset(0),
+  });
   // The version is part of the key, so the history is read again after every change.
-  const history = useLoad(`history ${item.hid} ${item.row_version} ${offset}`, (signal) =>
-    api.request("get", "/api/v1/items/{hid}/history", {
-      path: { hid: item.hid },
-      query: { limit: HISTORY_PAGE, offset },
-      signal,
-    }),
+  const history = sort.held(
+    useLoad(`history ${item.hid} ${item.row_version} ${offset} ${sort.param ?? ""}`, (signal) =>
+      api.request("get", "/api/v1/items/{hid}/history", {
+        path: { hid: item.hid },
+        query: {
+          limit: HISTORY_PAGE,
+          offset,
+          // The contract has the sort as a list: this is a list of the one.
+          ...sort.query,
+        },
+        signal,
+      }),
+    ),
   );
   const events = history.data?.items ?? [];
-  // The events are sorted, each with its rows kept together, and only when the page holds
-  // every one: one page of a longer history is not sorted here.
-  const sorting = useSorting(
-    events,
-    {
-      at: (event) => dateValue(event.at),
-      actor_name: (event) => event.actor_name,
-      action: (event) => event.action,
-    },
-    { enabled: (history.data?.total ?? 0) <= events.length },
-  );
+  const holdsAll = history.data !== undefined && history.data.total <= events.length;
 
   return (
     <section aria-labelledby="history">
@@ -1175,16 +1183,18 @@ function History({ item }: { item: Item }) {
         <>
           <div className="scroll">
             <table className="history">
-              <caption className="visually-hidden">Changes to this item, newest first</caption>
+              <caption className="visually-hidden">
+                Changes to this item, newest first until a header is clicked
+              </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="at">
+                  <SortTh sort={sort.header("at", holdsAll)} column="at">
                     When
                   </SortTh>
-                  <SortTh sort={sorting} column="actor_name">
+                  <SortTh sort={sort.header("actor_name", holdsAll)} column="actor_name">
                     Who
                   </SortTh>
-                  <SortTh sort={sorting} column="action">
+                  <SortTh sort={sort.header("action", holdsAll)} column="action">
                     Action
                   </SortTh>
                   <th scope="col">Field</th>
@@ -1192,7 +1202,7 @@ function History({ item }: { item: Item }) {
                   <th scope="col">Is</th>
                 </tr>
               </thead>
-              {sorting.rows.map((event) => {
+              {sort.arrange(events, holdsAll).map((event) => {
                 const changes = event.changes.length > 0 ? event.changes : [{}];
                 return (
                   <tbody key={event.hid} data-action={event.action}>

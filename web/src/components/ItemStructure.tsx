@@ -17,6 +17,8 @@ import { pickLabel } from "../lib/pick";
 import { nameOf } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { dateValue, type SortColumns } from "../lib/sort";
+import { CHILDREN_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
 import { SelectField, TextField } from "./Field";
 import { FormFields } from "./FormFields";
@@ -207,38 +209,33 @@ function InForce({ text, effective }: { text: string; effective: Schemas["Effect
   );
 }
 
-// What the table of minor items is sorted by, each column by what its cell shows. A
-// minor item with none in it shows no count, and comes last.
-const MINOR_COLUMNS: SortColumns<Item> = {
-  position: (child) => child.position,
-  name: itemName,
-  pid: (child) => child.catalog?.pid,
-  serial: (child) => child.serial_number,
-  state: (child) => effectiveText(child.effective.lifecycle_state),
-  owner: (child) => effectiveLabel(child.effective.owner_hid),
-  location: (child) => nameOf(child.effective.location_hid.label),
-  minor: (child) => (child.minor_items > 0 ? child.minor_items : null),
-};
-
 /** The minor items directly in this one, by position, and the form that adds one. */
 export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps) {
   const [offset, setOffset] = useState(0);
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState(false);
+  // The server pages the minor items and sorts them, over all of them: another order
+  // starts at its first page.
+  const sort = useServerSort<Item>({ fields: CHILDREN_SORT, onChange: () => setOffset(0) });
   // The version is in the key: moving this item changes what its minor items show.
-  const children = useLoad(`children ${item.hid} ${item.row_version} ${offset} ${turn}`, (signal) =>
-    api.request("get", "/api/v1/items/{hid}/children", {
-      path: { hid: item.hid },
-      query: { limit: CHILDREN_PAGE, offset },
-      signal,
-    }),
+  const children = sort.held(
+    useLoad(
+      `children ${item.hid} ${item.row_version} ${offset} ${turn} ${sort.param ?? ""}`,
+      (signal) =>
+        api.request("get", "/api/v1/items/{hid}/children", {
+          path: { hid: item.hid },
+          query: {
+            limit: CHILDREN_PAGE,
+            offset,
+            // The contract has the sort as a list: this is a list of the one.
+            ...sort.query,
+          },
+          signal,
+        }),
+    ),
   );
   const rows = children.data?.items ?? [];
-  // The server pages the minor items and does not sort them by a column: they are sorted
-  // here only when the page holds every one of them. A page of more stays by position.
-  const sorting = useSorting(rows, MINOR_COLUMNS, {
-    enabled: children.data !== undefined && rows.length === children.data.total,
-  });
+  const holdsAll = children.data !== undefined && children.data.total <= rows.length;
   const name = itemName(item);
   const inGrid = itemsPath(`parent_item_hid:eq:${item.hid}`);
 
@@ -259,39 +256,39 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
           <div className="scroll">
             <table data-testid="minor-items">
               <caption className="visually-hidden">
-                The minor items in {name}, by position, with the standing, the owner and the
-                location in force
+                The minor items in {name}, by position until a header is clicked, with the standing,
+                the owner and the location in force
               </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="position">
+                  <SortTh sort={sort.header("position", holdsAll)} column="position">
                     Position
                   </SortTh>
-                  <SortTh sort={sorting} column="name">
+                  <SortTh sort={sort.header("name", holdsAll)} column="name">
                     Name
                   </SortTh>
-                  <SortTh sort={sorting} column="pid">
+                  <SortTh sort={sort.header("pid", holdsAll)} column="pid">
                     PID
                   </SortTh>
-                  <SortTh sort={sorting} column="serial">
+                  <SortTh sort={sort.header("serial", holdsAll)} column="serial">
                     Serial number
                   </SortTh>
-                  <SortTh sort={sorting} column="state">
+                  <SortTh sort={sort.header("state", holdsAll)} column="state">
                     State
                   </SortTh>
-                  <SortTh sort={sorting} column="owner">
+                  <SortTh sort={sort.header("owner", holdsAll)} column="owner">
                     Owner
                   </SortTh>
-                  <SortTh sort={sorting} column="location">
+                  <SortTh sort={sort.header("location", holdsAll)} column="location">
                     Location
                   </SortTh>
-                  <SortTh sort={sorting} column="minor">
+                  <SortTh sort={sort.header("minor", holdsAll)} column="minor">
                     Minor items
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((child) => (
+                {sort.arrange(rows, holdsAll).map((child) => (
                   <tr
                     key={child.hid}
                     data-item={child.hid}

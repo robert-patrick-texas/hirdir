@@ -61,7 +61,7 @@ const COLUMNS: GridColumn<Owner>[] = [
     header: "Primary contact",
     kind: "text",
     field: null,
-    sortField: null,
+    sortField: "primary.name",
     column: null,
     value: (owner) => owner.members.find((member) => member.role === "primary")?.contact.name,
     width: 200,

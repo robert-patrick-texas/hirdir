@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router";
-import { api } from "../api";
+import { api, type Schemas } from "../api";
 import { TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
@@ -8,10 +8,12 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { formatChanges } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
-import { dateValue } from "../lib/sort";
-import { useSorting } from "../lib/useSorting";
+import { AUDIT_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 
 const PAGE = 50;
+
+type AuditEvent = Schemas["AuditEventOut"];
 
 // Suggestions for the filters: what this release writes to the trail. The server matches
 // whatever is typed, so a value not listed here can still be asked for.
@@ -72,7 +74,7 @@ function keyed(lines: readonly string[]): Array<{ key: string; line: string }> {
   });
 }
 
-/** The audit trail, newest first. */
+/** The audit trail, newest first until a header is clicked. */
 export function Audit() {
   useTitle("Audit");
   const [params, setParams] = useSearchParams();
@@ -81,27 +83,33 @@ export function Audit() {
   const offset = toOffset(params.get("offset"));
   const [wantedAction, setWantedAction] = useState(action);
   const [wantedType, setWantedType] = useState(recordType);
-  const events = useLoad(`audit ${offset} ${action} ${recordType}`, (signal) =>
-    api.request("get", "/api/v1/audit-events", {
-      query: { action, record_type: recordType, limit: PAGE, offset },
-      signal,
-    }),
+  // The server pages the trail and sorts it, over every event and not the page on show:
+  // a header asks for the trail in its order, from the first page. What changed is
+  // composed here and is no field of the server's sort: its header sorts in the browser,
+  // and only while the page holds every event there is.
+  const sort = useServerSort<AuditEvent>({
+    fields: AUDIT_SORT,
+    local: { changes: (event) => formatChanges(event.changes).join("\n") },
+    onChange: () => {
+      if (offset > 0) show({ action, recordType, offset: 0 });
+    },
+  });
+  const events = sort.held(
+    useLoad(`audit ${offset} ${action} ${recordType} ${sort.param ?? ""}`, (signal) =>
+      api.request("get", "/api/v1/audit-events", {
+        query: {
+          action,
+          record_type: recordType,
+          ...sort.query,
+          limit: PAGE,
+          offset,
+        },
+        signal,
+      }),
+    ),
   );
   const items = events.data?.items ?? [];
-  // The server pages the trail, newest first, and does not sort it by a column: the
-  // headers sort only when the page on show holds every event there is.
-  const sorting = useSorting(
-    items,
-    {
-      time: (event) => dateValue(event.at),
-      who: (event) => event.actor_name,
-      via: (event) => event.via,
-      action: (event) => event.action,
-      record_type: (event) => `${event.record_type} ${event.record_hid ?? ""}`,
-      changes: (event) => formatChanges(event.changes).join("\n"),
-    },
-    { enabled: events.data ? events.data.total === items.length : false },
-  );
+  const holdsAll = events.data ? events.data.total === items.length : false;
 
   function show(next: { action: string; recordType: string; offset: number }) {
     const wanted = new URLSearchParams();
@@ -174,31 +182,33 @@ export function Audit() {
         <>
           <div className="scroll">
             <table className="audit">
-              <caption className="visually-hidden">Audit events, newest first</caption>
+              <caption className="visually-hidden">
+                Audit events, newest first until a header is clicked
+              </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="time">
+                  <SortTh sort={sort.header("time", holdsAll)} column="time">
                     Time
                   </SortTh>
-                  <SortTh sort={sorting} column="who">
+                  <SortTh sort={sort.header("who", holdsAll)} column="who">
                     Who
                   </SortTh>
-                  <SortTh sort={sorting} column="via">
+                  <SortTh sort={sort.header("via", holdsAll)} column="via">
                     Via
                   </SortTh>
-                  <SortTh sort={sorting} column="action">
+                  <SortTh sort={sort.header("action", holdsAll)} column="action">
                     Action
                   </SortTh>
-                  <SortTh sort={sorting} column="record_type">
+                  <SortTh sort={sort.header("record_type", holdsAll)} column="record_type">
                     Record type
                   </SortTh>
-                  <SortTh sort={sorting} column="changes">
+                  <SortTh sort={sort.header("changes", holdsAll)} column="changes">
                     What changed
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((event) => {
+                {sort.arrange(items, holdsAll).map((event) => {
                   const changes = formatChanges(event.changes);
                   return (
                     <tr key={event.hid}>

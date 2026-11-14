@@ -75,8 +75,8 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
-import { dateValue } from "../lib/sort";
-import { useSorting } from "../lib/useSorting";
+import { MEMBERS_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 
 const MEMBERS_PAGE = 100;
 
@@ -131,7 +131,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Serial number",
     kind: "text",
     field: "member.serial_number",
-    sortField: null,
+    sortField: "serial_number",
     value: (group) => group.serial_number,
     hint: (group) =>
       group.serial_source ? `The serial number is ${serialSourceText(group.serial_source)}` : "",
@@ -143,7 +143,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Health",
     kind: "choice",
     field: null,
-    sortField: null,
+    sortField: "health",
     value: (group) => healthLabel(group.health?.value),
     mark: (group) => group.health?.value,
     hint: (group) => reasonsText(group.health),
@@ -154,7 +154,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Intended master",
     kind: "text",
     field: null,
-    sortField: null,
+    sortField: "master.name",
     column: null,
     value: (group) => (group.master ? itemName(group.master) : ""),
     hide: true,
@@ -165,7 +165,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Master seen",
     kind: "text",
     field: null,
-    sortField: null,
+    sortField: "observed_master.name",
     column: null,
     value: (group) => (group.observed_master ? itemName(group.observed_master) : ""),
     hint: (group) =>
@@ -178,7 +178,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Members",
     kind: "integer",
     field: null,
-    sortField: null,
+    sortField: "member_count",
     column: "members",
     value: (group) => String(group.member_count),
     numeric: true,
@@ -332,7 +332,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Management address",
     kind: "address",
     field: null,
-    sortField: null,
+    sortField: "mgmt_address",
     column: ["mgmt_ipv4", "mgmt_ipv6"],
     value: (group) => managementText(group.addresses),
     mono: true,
@@ -343,7 +343,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     id: "address",
     header: "Addresses",
     kind: "address",
-    sortField: null,
+    sortField: "address",
     column: null,
     value: (group) => addressList(group.addresses),
     mono: true,
@@ -354,7 +354,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     id: "network.label",
     header: "Networks",
     kind: "text",
-    sortField: null,
+    sortField: "network.label",
     column: null,
     value: (group) => networkLabels(group.addresses).join(", "),
     hide: true,
@@ -1120,36 +1120,29 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   const [editing, setEditing] = useState<{ hid: string; what: "change" | "end" } | null>(null);
   const [adding, setAdding] = useState(false);
   const action = useAction();
-  const members = useLoad(`members ${group.hid} ${past} ${offset} ${turn}`, (signal) =>
-    api.request("get", "/api/v1/device-groups/{hid}/members", {
-      path: { hid: group.hid },
-      query: { include_past: past, limit: MEMBERS_PAGE, offset },
-      signal,
-    }),
+  // The server sorts the members, over all of them: another order starts at its first page.
+  const sort = useServerSort<Member>({ fields: MEMBERS_SORT, onChange: () => setOffset(0) });
+  const members = sort.held(
+    useLoad(`members ${group.hid} ${past} ${offset} ${turn} ${sort.param ?? ""}`, (signal) =>
+      api.request("get", "/api/v1/device-groups/{hid}/members", {
+        path: { hid: group.hid },
+        query: {
+          include_past: past,
+          limit: MEMBERS_PAGE,
+          offset,
+          // The contract has the sort as a list: this is a list of the one.
+          ...sort.query,
+        },
+        signal,
+      }),
+    ),
   );
   const rows = members.data?.items ?? [];
   const current = rows.filter((member) => member.left_on === null);
   // Every current member is on show: what a stack would be with more can be said early.
   const whole = offset === 0 && current.length === group.member_count;
   const open = rows.find((member) => member.hid === editing?.hid) ?? null;
-  // One page of a longer list is not sorted here: only a page that holds every membership.
-  const sorting = useSorting(
-    rows,
-    {
-      position: (member) => member.position,
-      item: (member) => itemName(member.item),
-      pid: (member) => member.item.pid,
-      serial_number: (member) => member.item.serial_number,
-      role: (member) => roleLabel(member.role),
-      seen: (member) =>
-        member.left_on === null && group.observed_master_hid === member.item_hid
-          ? "Seen as master"
-          : "",
-      joined_on: (member) => dateValue(member.joined_on),
-      left_on: (member) => dateValue(member.left_on),
-    },
-    { enabled: (members.data?.total ?? 0) <= rows.length },
-  );
+  const holdsAll = members.data !== undefined && members.data.total <= rows.length;
 
   function changed(text: string) {
     setEditing(null);
@@ -1200,34 +1193,35 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
         <div className="scroll">
           <table data-testid="members">
             <caption className="visually-hidden">
-              The members of {group.name}, by position, the current ones first
+              The members of {group.name}, by position, the current ones first, until a header is
+              clicked
             </caption>
             <thead>
               <tr>
-                <SortTh sort={sorting} column="position">
+                <SortTh sort={sort.header("position", holdsAll)} column="position">
                   Position
                 </SortTh>
-                <SortTh sort={sorting} column="item">
+                <SortTh sort={sort.header("item", holdsAll)} column="item">
                   Item
                 </SortTh>
-                <SortTh sort={sorting} column="pid">
+                <SortTh sort={sort.header("pid", holdsAll)} column="pid">
                   PID
                 </SortTh>
-                <SortTh sort={sorting} column="serial_number">
+                <SortTh sort={sort.header("serial_number", holdsAll)} column="serial_number">
                   Serial number
                 </SortTh>
-                <SortTh sort={sorting} column="role">
+                <SortTh sort={sort.header("role", holdsAll)} column="role">
                   Role
                 </SortTh>
                 {group.type === "stack" && (
-                  <SortTh sort={sorting} column="seen">
+                  <SortTh sort={sort.header("seen", holdsAll)} column="seen">
                     Seen as master
                   </SortTh>
                 )}
-                <SortTh sort={sorting} column="joined_on">
+                <SortTh sort={sort.header("joined_on", holdsAll)} column="joined_on">
                   Joined
                 </SortTh>
-                <SortTh sort={sorting} column="left_on">
+                <SortTh sort={sort.header("left_on", holdsAll)} column="left_on">
                   Left
                 </SortTh>
                 {mayEdit && (
@@ -1238,7 +1232,7 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
               </tr>
             </thead>
             <tbody>
-              {sorting.rows.map((member) => {
+              {sort.arrange(rows, holdsAll).map((member) => {
                 const name = itemName(member.item);
                 const ended = member.left_on !== null;
                 const seen = !ended && group.observed_master_hid === member.item_hid;

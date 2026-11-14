@@ -10,12 +10,13 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { ROLES, roleLabel } from "../lib/roles";
-import { dateValue } from "../lib/sort";
-import { useSorting } from "../lib/useSorting";
+import { USERS_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 
 const PAGE = 50;
 
 type Created = Schemas["UserCreated"];
+type User = Schemas["UserOut"];
 
 /** Admin → Users: the list, the search box, and the form for a new user. */
 export function Users() {
@@ -26,24 +27,28 @@ export function Users() {
   const [search, setSearch] = useState(q);
   const [adding, setAdding] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
-  const users = useLoad(`users ${offset} ${q}`, (signal) =>
-    api.request("get", "/api/v1/users", { query: { q, limit: PAGE, offset }, signal }),
-  );
-  // The server pages this list and does not sort it by a column: the headers sort only
-  // when the page on show holds every user there is.
-  const sorting = useSorting(
-    users.data?.items,
-    {
-      username: (user) => user.username,
-      display_name: (user) => user.display_name,
-      role: (user) => (user.role ? roleLabel(user.role) : null),
-      groups: (user) => user.groups.map((group) => group.name).join(", "),
-      kind: (user) => (user.is_service_account ? "Service" : "Person"),
-      state: (user) => (user.disabled ? "Disabled" : "Active"),
-      last_sign_in: (user) => dateValue(user.last_sign_in_at),
+  // The server pages this list and sorts it, over every user and not the page on show:
+  // a header asks for the list in its order, from the first page.
+  const sort = useServerSort<User>({
+    fields: USERS_SORT,
+    onChange: () => {
+      if (offset > 0) show({ q, offset: 0 });
     },
-    { enabled: users.data ? users.data.total === users.data.items.length : false },
+  });
+  const users = sort.held(
+    useLoad(`users ${offset} ${q} ${sort.param ?? ""}`, (signal) =>
+      api.request("get", "/api/v1/users", {
+        query: {
+          q,
+          ...sort.query,
+          limit: PAGE,
+          offset,
+        },
+        signal,
+      }),
+    ),
   );
+  const holdsAll = users.data ? users.data.total === users.data.items.length : false;
 
   function show(next: { q: string; offset: number }) {
     const wanted = new URLSearchParams();
@@ -117,31 +122,31 @@ export function Users() {
               <caption className="visually-hidden">Users</caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="username">
+                  <SortTh sort={sort.header("username", holdsAll)} column="username">
                     Username
                   </SortTh>
-                  <SortTh sort={sorting} column="display_name">
+                  <SortTh sort={sort.header("display_name", holdsAll)} column="display_name">
                     Display name
                   </SortTh>
-                  <SortTh sort={sorting} column="role">
+                  <SortTh sort={sort.header("role", holdsAll)} column="role">
                     Role
                   </SortTh>
-                  <SortTh sort={sorting} column="groups">
+                  <SortTh sort={sort.header("groups", holdsAll)} column="groups">
                     Groups
                   </SortTh>
-                  <SortTh sort={sorting} column="kind">
+                  <SortTh sort={sort.header("kind", holdsAll)} column="kind">
                     Kind
                   </SortTh>
-                  <SortTh sort={sorting} column="state">
+                  <SortTh sort={sort.header("state", holdsAll)} column="state">
                     State
                   </SortTh>
-                  <SortTh sort={sorting} column="last_sign_in">
+                  <SortTh sort={sort.header("last_sign_in", holdsAll)} column="last_sign_in">
                     Last sign-in
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((user) => (
+                {sort.arrange(users.data.items, holdsAll).map((user) => (
                   <tr key={user.hid} className={user.disabled ? "dim" : undefined}>
                     <th scope="row">
                       <Link to={`/admin/users/${encodeURIComponent(user.hid)}`}>

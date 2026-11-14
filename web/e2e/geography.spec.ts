@@ -1596,3 +1596,82 @@ test("a room is rebuilt under a project name: a draft beside it, the cut-over, t
 
   await expectClean(page, seen, ["409 PATCH"]);
 });
+
+test("the audit list is sorted by the server over all of it, and paging keeps the order", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./audit");
+  await expect(page.getByRole("heading", { level: 1, name: "Audit" })).toBeVisible();
+  const table = page.locator("table.audit");
+  await expect(table.locator("tbody tr").first()).toBeVisible();
+  // The scenarios above wrote more events than one page holds.
+  const pager = page.getByRole("navigation", { name: /^Pages of/ });
+  const next = pager.getByRole("button", { name: "Next" });
+  await expect(next).toBeEnabled();
+
+  /** The request for the events in an order: `sort` as the address carries it. */
+  const asked = (sort: string, more = "") =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname.endsWith("/api/v1/audit-events") &&
+        url.searchParams.get("sort") === sort &&
+        url.search.includes(more)
+      );
+    });
+  /** What the cells of one column say, down the page on show. */
+  const cells = async (header: string) => {
+    const headers = await table.locator("thead th").allTextContents();
+    const at = headers.findIndex((text) => text.trim().startsWith(header));
+    expect(at, `the column ${header}`).toBeGreaterThanOrEqual(0);
+    const texts = await table.locator(`tbody tr > *:nth-child(${at + 1})`).allTextContents();
+    return texts.map((text) => text.trim().toLowerCase());
+  };
+
+  // A click on a header asks the server for the whole list in that order: the page on
+  // show is not sorted by itself. The header says which column and which way.
+  let answer = asked("action");
+  await table.getByRole("button", { name: "Action", exact: true }).click();
+  expect((await answer).status()).toBe(200);
+  const actionHeader = table.getByRole("columnheader", { name: "Action" });
+  await expect(actionHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(async () => {
+    const actions = await cells("Action");
+    expect(actions.length).toBeGreaterThan(1);
+    expect(actions).toEqual([...actions].sort());
+  }).toPass();
+  const firstAscending = (await cells("Action"))[0];
+
+  // The next page is asked for in the same order, and the header still says so.
+  answer = asked("action", "offset=");
+  await next.click();
+  expect((await answer).status()).toBe(200);
+  await expect(actionHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(async () => {
+    const actions = await cells("Action");
+    expect(actions).toEqual([...actions].sort());
+    // What the second page begins with does not come before what the first began with.
+    expect((actions[0] ?? "") >= (firstAscending ?? "")).toBe(true);
+  }).toPass();
+
+  // Another click turns the order round, over the whole list, from the first page.
+  answer = asked("-action");
+  await table.getByRole("button", { name: "Action", exact: true }).click();
+  const turned = await answer;
+  expect(turned.status()).toBe(200);
+  expect(new URL(turned.url()).searchParams.get("offset") ?? "0").toBe("0");
+  await expect(actionHeader).toHaveAttribute("aria-sort", "descending");
+  await expect(async () => {
+    const actions = await cells("Action");
+    expect(actions).toEqual([...actions].sort().reverse());
+  }).toPass();
+
+  // What the page composes from a list of changes is not sorted by the server: with
+  // more events than a page holds, its header is plain.
+  await expect(table.getByRole("button", { name: "What changed", exact: true })).toHaveCount(0);
+
+  await expectClean(page, seen);
+});

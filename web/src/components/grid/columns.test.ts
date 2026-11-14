@@ -100,11 +100,13 @@ describe("queryColumns", () => {
     });
   });
 
-  it("never sorts by tags, and neither filters nor sorts where the page says the server cannot", () => {
+  it("sorts by tags as by any field, and neither filters nor sorts where the page says the server cannot", () => {
     const columns = queryColumns(COLUMNS);
+    // The server sorts a list by its tags, by the first label: no kind of column is
+    // left without a sort for what it is.
     expect(columns.find((column) => column.id === "tags")).toMatchObject({
       field: "tags",
-      sortField: null,
+      sortField: "tags",
     });
     expect(columns.find((column) => column.id === "aliases")).toMatchObject({
       field: null,
@@ -196,7 +198,7 @@ describe("columnDefs", () => {
   it("offers no filter and no sort where the server has none", () => {
     expect(def("aliases").filter).toBe(false);
     expect(def("aliases").sortable).toBe(false);
-    expect(def("tags").sortable).toBe(false);
+    expect(def("tags").sortable).toBe(true);
     expect(def("name").sortable).toBe(true);
   });
 
