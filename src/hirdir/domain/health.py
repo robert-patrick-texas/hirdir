@@ -131,11 +131,12 @@ def of_group(
     return Health(UNKNOWN, ("nothing is observed of it, and not every member is known good",))
 
 
-def moment(value: Any, field: str) -> datetime:
+def moment(value: Any, field: str, zone: str) -> datetime:
     """Return a moment something was seen at, in UTC, or refuse one that cannot be kept.
 
-    A moment with no zone is taken as UTC, as a file's is. One that the calendar does
-    not reach, or that lies ahead, is refused: nothing is seen in the future.
+    A moment that names no zone is in `zone`, the application's time zone: it is typed
+    as it is read. One that the calendar does not reach, or that lies ahead, is refused:
+    nothing is seen in the future.
     """
     refusal = Invalid(
         "the moment is not acceptable",
@@ -144,7 +145,7 @@ def moment(value: Any, field: str) -> datetime:
     if not isinstance(value, datetime):
         raise refusal
     try:
-        at = (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC)
+        at = clock.in_zone(value, zone).astimezone(UTC)
     except OverflowError, ValueError:
         raise refusal from None
     if not EARLIEST <= at <= clock.now() + AHEAD:
@@ -153,7 +154,7 @@ def moment(value: Any, field: str) -> datetime:
 
 
 def observation(
-    fields: dict[str, Any], record: Any | None, looked_again: bool = True
+    fields: dict[str, Any], record: Any | None, zone: str, looked_again: bool = True
 ) -> dict[str, Any]:
     """Return the observed status and its moment, as a change sets them.
 
@@ -179,7 +180,7 @@ def observation(
         status = given
     at = fields.get("observed_at")
     if at is not None:
-        at = moment(at, "observed_at")
+        at = moment(at, "observed_at", zone)
     if status is None:
         if at is not None:
             raise Invalid(

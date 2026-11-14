@@ -540,7 +540,7 @@ condition that the list does not offer is refused; the item is found by its heal
 and each change is in its history. An observation that is stated again as it is, with
 no moment, has its moment set to now, at the next `row_version`; the moment is not
 cleared by itself, one that is three days ahead is refused, and one with no zone is
-taken as UTC. A stack of one switch with no master is `degraded`
+in the application's time zone. A stack of one switch with no master is `degraded`
 for being alone, has no serial number until its switch is seen to be master, and has
 the whole support weight of its switch; told to expect one member it is no longer
 degraded; with a second switch it earns the discount, and its value and cost in the

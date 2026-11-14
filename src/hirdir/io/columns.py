@@ -97,13 +97,18 @@ def _day(value: Any) -> str:
 
 
 def _moment(value: Any) -> str:
-    """Read a date and time in ISO 8601, and write it in UTC. With no zone, it is UTC."""
+    """Read a date and time in ISO 8601, and write it in UTC when it names its zone.
+
+    One that names no zone is left as it is: the rules read it in the application's
+    time zone, which only they know.
+    """
     unreadable = Unreadable("a date and time in ISO 8601, such as 2026-11-14T15:04:05Z")
     try:
         if not isinstance(value, str):
             raise unreadable
         moment = datetime.fromisoformat(value.strip())
-        moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+        if moment.tzinfo is None:
+            return moment.isoformat()
         # A moment at the very edge of the calendar cannot be told in another zone.
         return moment.astimezone(UTC).isoformat()
     except ValueError, OverflowError:

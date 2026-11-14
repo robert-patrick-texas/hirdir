@@ -176,6 +176,7 @@ def list_import_rows(
 def export(body: r.ExportRequest, _: Viewer, request: Request, db: Db) -> StreamingResponse:
     """Export a list as CSV or JSON, with the filter and the sort that the list takes."""
     wanted = exports.plan(
+        db,
         body.entity,
         format_=body.format,
         filter_=body.filter,

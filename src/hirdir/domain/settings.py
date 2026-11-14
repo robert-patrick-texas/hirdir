@@ -191,6 +191,11 @@ def value(db: Session, key: str) -> Any:
     return get_setting(db, key).value
 
 
+def time_zone(db: Session) -> str:
+    """Return the application's time zone, in which a time that names no zone is read."""
+    return str(value(db, "time_zone"))
+
+
 def set_setting(
     db: Session, context: AuditContext, key: str, row_version: int, new: Any
 ) -> SettingValue:

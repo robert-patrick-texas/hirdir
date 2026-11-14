@@ -445,7 +445,7 @@ def _checked(
                 {"expected_members": "a whole number from 1 to 10000, or blank"},
             )
         values["expected_members"] = expected
-    values.update(health.observation(fields, group, looked_again))
+    values.update(health.observation(fields, group, settings.time_zone(db), looked_again))
     values.update(_observed_master(db, fields, group, kind, looked_again))
     return values
 
@@ -468,7 +468,7 @@ def _observed_master(
     hid = (fields["observed_master_hid"] or None) if "observed_master_hid" in fields else current
     at = fields.get("master_observed_at")
     if at is not None:
-        at = health.moment(at, "master_observed_at")
+        at = health.moment(at, "master_observed_at", settings.time_zone(db))
     if hid is None:
         if at is not None:
             raise Invalid(

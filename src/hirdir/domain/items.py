@@ -12,7 +12,7 @@ from hirdir import clock, ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect
 from hirdir.db.models import AuditEvent, CatalogEntry, DeviceGroup, DeviceGroupMember, Item, Owner
-from hirdir.domain import catalog, choices, health, lifecycle, records, tags
+from hirdir.domain import catalog, choices, health, lifecycle, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.lifecycle import UNSET
@@ -344,7 +344,7 @@ def _checked(
             if condition
             else None
         )
-    values.update(health.observation(fields, item, looked_again))
+    values.update(health.observation(fields, item, settings.time_zone(db), looked_again))
     if "quantity" in fields:
         quantity = 1 if fields["quantity"] is None else fields["quantity"]
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:

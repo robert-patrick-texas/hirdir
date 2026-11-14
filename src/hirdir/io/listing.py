@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError, StatementError
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
+from hirdir.domain import settings
 from hirdir.io import filters
 from hirdir.io.fields import Listing, default_view
 
@@ -33,7 +34,7 @@ def page(
     """
     model = listing.model
     where = [
-        filters.to_sql(filters.parse(filter_), listing.fields),
+        filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db)),
         *default_view(listing, include_archived, include_drafts),
     ]
     keys = filters.parse_sort(sort, listing.fields) or filters.parse_sort(

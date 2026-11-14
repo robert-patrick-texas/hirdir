@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.auth.roles import Role
 from hirdir.db.models import ImportJob, Item
-from hirdir.domain import records, tags
+from hirdir.domain import records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid
 from hirdir.io import columns as cells
@@ -106,7 +106,7 @@ def preview(
     order = filters.order_by(
         filters.parse_sort(list(ITEMS.default_sort), ITEMS.fields), ITEMS.fields
     )
-    where = [filters.to_sql(condition, ITEMS.fields)]
+    where = [filters.to_sql(condition, ITEMS.fields, settings.time_zone(db))]
     if hids is None:
         # Rows named one by one are changed whatever their status. A filter leaves out
         # what a list leaves out.

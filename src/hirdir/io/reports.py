@@ -203,7 +203,7 @@ class _Terms:
 
 def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bool) -> _Terms:
     where = (
-        filters.to_sql(filters.parse(filter_), ITEMS.fields),
+        filters.to_sql(filters.parse(filter_), ITEMS.fields, settings.time_zone(db)),
         *default_view(ITEMS, include_archived, include_drafts),
     )
     count_states = list(settings.value(db, "count_states"))

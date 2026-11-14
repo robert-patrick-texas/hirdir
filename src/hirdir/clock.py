@@ -25,6 +25,11 @@ def today(zone: str = DEFAULT_ZONE) -> date:
     return now().astimezone(ZoneInfo(zone)).date()
 
 
+def in_zone(moment: datetime, zone: str = DEFAULT_ZONE) -> datetime:
+    """Return a moment with a zone: its own, or the application's when it names none."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=ZoneInfo(zone))
+
+
 def shown(moment: datetime, zone: str = DEFAULT_ZONE) -> str:
     """Return a moment as a person reads it: the application's time, with the zone's name."""
     return moment.astimezone(ZoneInfo(zone)).strftime("%Y-%m-%d %H:%M:%S %Z")

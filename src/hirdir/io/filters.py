@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, and_, false, literal, or_, true
 
+from hirdir import clock
 from hirdir.db import dialect
 from hirdir.domain.errors import Invalid
 
@@ -208,10 +209,9 @@ def _number(field: Field, text: str) -> Decimal:
     return number
 
 
-def _moment(text: str) -> datetime:
-    moment = datetime.fromisoformat(text)
-    moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
-    return moment.astimezone(UTC)
+def _moment(text: str, zone: str) -> datetime:
+    """Read a moment. One that names no zone is in the application's time zone."""
+    return clock.in_zone(datetime.fromisoformat(text), zone).astimezone(UTC)
 
 
 def _text(name: str, value: Any) -> str:
@@ -230,7 +230,7 @@ def _text(name: str, value: Any) -> str:
     return text
 
 
-def _converted(field: Field, name: str, value: Any) -> Any:
+def _converted(field: Field, name: str, value: Any, zone: str) -> Any:
     """Return one value of a condition in the form its field is compared with."""
     if isinstance(value, list | dict) or value is None:
         raise refuse(f"{name} is compared with a single value")
@@ -252,7 +252,7 @@ def _converted(field: Field, name: str, value: Any) -> Any:
             return whole
         if kind == "date":
             return date.fromisoformat(text)
-        return _moment(text)
+        return _moment(text, zone)
     except ValueError, InvalidOperation, ArithmeticError:
         places = getattr(field.expression.type, "places", None)
         expected = {
@@ -276,7 +276,7 @@ def _equal(field: Field, value: Any) -> ColumnElement[bool]:
     return field.expression == literal(value, type_=field.expression.type)
 
 
-def _condition(condition: Condition, fields: Mapping[str, Field]) -> ColumnElement[bool]:
+def _condition(condition: Condition, fields: Mapping[str, Field], zone: str) -> ColumnElement[bool]:
     name, op, value = condition.field, condition.op, condition.value
     field = fields.get(name)
     if field is None:
@@ -297,18 +297,18 @@ def _condition(condition: Condition, fields: Mapping[str, Field]) -> ColumnEleme
         return ~tagged if _truth(value, f"{name} empty") else tagged
 
     if field.among is None:
-        return _test(field, name, op, value)
+        return _test(field, name, op, value, zone)
     # A field the record may have several of: one of them meets the condition. The two
     # that ask for none are turned round, so that `ne` also finds a record with none.
     if op == "empty":
         some = field.among(field.expression.is_not(None))
         return ~some if _truth(value, f"{name} empty") else some
     if op == "ne":
-        return ~field.among(_test(field, name, "eq", value))
-    return field.among(_test(field, name, op, value))
+        return ~field.among(_test(field, name, "eq", value, zone))
+    return field.among(_test(field, name, op, value, zone))
 
 
-def _test(field: Field, name: str, op: str, value: Any) -> ColumnElement[bool]:
+def _test(field: Field, name: str, op: str, value: Any, zone: str) -> ColumnElement[bool]:
     """Return the condition that one value of a field meets an operator."""
     column = field.expression
     if op == "empty":
@@ -319,17 +319,19 @@ def _test(field: Field, name: str, op: str, value: Any) -> ColumnElement[bool]:
             raise refuse(f"{name} in takes a list of one or more values")
         if len(value) > MAX_LIST:
             raise refuse(f"a list holds at most {MAX_LIST} values")
-        wanted_any = [_converted(field, name, entry) for entry in value]
+        wanted_any = [_converted(field, name, entry, zone) for entry in value]
         if _is_text(field):
             return dialect.folded(column).in_([dialect.folded(literal(one)) for one in wanted_any])
         return column.in_([literal(one, type_=column.type) for one in wanted_any])
     if op == "between":
         if not isinstance(value, list) or len(value) != 2:
             raise refuse(f"{name} between takes two values, the lowest first")
-        low, high = (literal(_converted(field, name, entry), type_=column.type) for entry in value)
+        low, high = (
+            literal(_converted(field, name, entry, zone), type_=column.type) for entry in value
+        )
         return and_(column >= low, column <= high)
 
-    wanted = _converted(field, name, value)
+    wanted = _converted(field, name, value, zone)
     if op == "eq":
         return _equal(field, wanted)
     if op == "ne":
@@ -351,13 +353,15 @@ def _test(field: Field, name: str, op: str, value: Any) -> ColumnElement[bool]:
         raise refuse(str(error)) from None
 
 
-def to_sql(node: Node | None, fields: Mapping[str, Field]) -> ColumnElement[bool]:
+def to_sql(
+    node: Node | None, fields: Mapping[str, Field], zone: str = clock.DEFAULT_ZONE
+) -> ColumnElement[bool]:
     """Return the SQL condition of a filter, checked against the fields a list allows."""
     if node is None:
         return true()
     if isinstance(node, Condition):
-        return _condition(node, fields)
-    parts = [to_sql(part, fields) for part in node.parts]
+        return _condition(node, fields, zone)
+    parts = [to_sql(part, fields, zone) for part in node.parts]
     if node.joined_by == "and":
         return and_(true(), *parts)
     return or_(false(), *parts)

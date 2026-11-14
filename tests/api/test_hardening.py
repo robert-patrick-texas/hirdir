@@ -852,11 +852,14 @@ def test_a_moment_that_cannot_be_kept_is_refused_and_never_a_500(
     assert preview["rows"][0]["outcome"] == "rejected"
 
 
-def test_a_moment_with_no_zone_is_utc_and_one_cleared_by_itself_is_refused(make: Maker) -> None:
+def test_a_moment_with_no_zone_is_in_the_applications_zone_and_is_not_cleared_alone(
+    make: Maker,
+) -> None:
     item = make.item(name="site2-sw-01")
     path = f"/items/{item['hid']}"
+    # Ten in the morning in New York, in November, is three in the afternoon in UTC.
     seen = make.patch(
-        path, {"row_version": 1, "observed_status": "online", "observed_at": "2026-11-02T15:00:00"}
+        path, {"row_version": 1, "observed_status": "online", "observed_at": "2026-11-02T10:00:00"}
     )
     assert seen["observed_at"] == "2026-11-02T15:00:00Z"
 
@@ -999,3 +1002,86 @@ def test_sorting_by_health_puts_the_worst_first(make: Maker) -> None:
         make.item(name=name, **({"condition": condition} if condition else {}))
     assert make.found(sort="health") == ["c", "d", "b", "a"]
     assert make.found(sort="-health") == ["a", "b", "d", "c"]
+
+
+# --- D-109 and P-80: a moment that names no zone is in the application's time zone ------
+
+
+def test_a_moment_with_no_zone_follows_the_time_zone_setting_wherever_it_comes_in(
+    make: Maker, admin: dict
+) -> None:
+    entry = make.entry(make.vendor())
+    first, second = make.switches(entry, "site2-sw", 2)
+    stack = make.group("site2-sw-stack1", "stack", [(first, "member"), (second, "member")])
+
+    # In a file, and for the master that is seen of a stack: New York, until it is changed.
+    text = "hostname,observed_status,observed_at\nsite2-sw-01,online,2026-11-02T10:00:00\n"
+    preview = _send(make, "items", text)
+    assert _told(preview["rows"][0])["observed_at"] == (None, "2026-11-02T15:00:00+00:00")
+    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    assert make.get(f"/items/{first['hid']}")["observed_at"] == "2026-11-02T15:00:00Z"
+    # The same file again changes nothing, and neither does the moment with its zone.
+    assert _send(make, "items", text)["rows"][0]["outcome"] == "unchanged"
+    zoned = text.replace("10:00:00", "10:00:00-05:00")
+    assert _send(make, "items", zoned)["rows"][0]["outcome"] == "unchanged"
+    seen = make.patch(
+        f"/device-groups/{stack['hid']}",
+        {
+            "row_version": stack["row_version"],
+            "observed_master_hid": first["hid"],
+            "master_observed_at": "2026-07-01T10:00:00",
+        },
+    )
+    # In July, New York is four hours behind UTC.
+    assert seen["master_observed_at"] == "2026-07-01T14:00:00Z"
+
+    # A filter reads a time the same way, so what was entered is found as it was entered.
+    def found(value: str) -> list[str]:
+        rows = make.get("/items", filter=f"observed_at:gte:{value}")["items"]
+        return [row["hostname"] for row in rows]
+
+    assert found("2026-11-02T10:00:00") == ["site2-sw-01"]
+    assert found("2026-11-02T10:00:01") == []
+    assert found("2026-11-02T15:00:00Z") == ["site2-sw-01"]
+    assert found("2026-11-02T15:00:01Z") == []
+
+    # The setting is changed: a moment with no zone is in the new one, and one that
+    # names its zone is the moment it was.
+    body = {"row_version": 0, "value": "Europe/Berlin"}
+    assert make.client.put(f"{API}/settings/time_zone", json=body, headers=admin).status_code == 200
+    current = make.get(f"/items/{second['hid']}")
+    berlin = make.patch(
+        f"/items/{second['hid']}",
+        {
+            "row_version": current["row_version"],
+            "observed_status": "online",
+            "observed_at": "2026-11-02T10:00:00",
+        },
+    )
+    assert berlin["observed_at"] == "2026-11-02T09:00:00Z"
+    assert found("2026-11-02T10:00:00") == ["site2-sw-01", "site2-sw-02"]
+    assert found("2026-11-02T10:00:01") == ["site2-sw-01"]
+    assert make.get(f"/items/{first['hid']}")["observed_at"] == "2026-11-02T15:00:00Z"
+
+
+def test_a_moment_with_no_zone_that_is_ahead_in_the_applications_zone_is_refused(
+    make: Maker, soft: TestClient
+) -> None:
+    item = make.item(name="site2-sw-01")
+    answer = soft.patch(
+        f"{API}/items/{item['hid']}",
+        json={"row_version": 1, "observed_status": "online", "observed_at": "2999-01-01T00:00:00"},
+        headers=make.headers,
+    )
+    assert answer.status_code == 422
+    assert "observed_at" in errors(answer.json())
+    edge = soft.patch(
+        f"{API}/items/{item['hid']}",
+        json={"row_version": 1, "observed_status": "online", "observed_at": "0001-01-01T00:00:00"},
+        headers=make.headers,
+    )
+    assert edge.status_code == 422
+    preview = _send(
+        make, "items", "name,observed_status,observed_at\nsite2-sw-01,online,9999-12-31T23:59:59\n"
+    )
+    assert preview["rows"][0]["outcome"] == "rejected"

@@ -874,6 +874,7 @@ def render() -> dict[str, str]:
         for entity in LOAD_ORDER:
             for format_ in ("csv", "json"):
                 export = exports.plan(
+                    db,
                     entity,
                     format_=format_,
                     # By depth, an item stands before the minor items that are in it.

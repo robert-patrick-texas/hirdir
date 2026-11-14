@@ -2936,7 +2936,8 @@ health_and_counting() {
         '422 ["condition", []]'
     # The moment of an observation. A person who says again what is observed has looked
     # again, and the moment is now. It is not cleared by itself, it is not in the
-    # future, and with no zone it is UTC.
+    # future, and with no zone it is in the application's time zone, which is
+    # America/New_York on an installation that has not changed it.
     api PATCH "/items/$item" '{"row_version": 4, "observed_status": "online"}'
     expect "pkg observed online is stated again, as it is, with no moment: the moment is now and no longer the one given before, at the next row_version" \
         "$status $(json '[d["observed_status"], d["observed_at"] not in (None, "2026-11-02T15:00:00Z"), d["row_version"]]')" \
@@ -2946,9 +2947,9 @@ health_and_counting() {
     api PATCH "/items/$item" "{\"row_version\": 5, \"observed_status\": \"online\", \"observed_at\": \"$(date -u --date='+3 days' +%FT%TZ)\"}"
     made="$made $status $(json 'd["errors"][0]["field"]')"
     api PATCH "/items/$item" '{"row_version": 5, "observed_status": "online", "observed_at": "2026-11-03T09:00:00"}'
-    expect "pkg the moment is not cleared by itself, and one that is three days ahead is refused; one written with no zone is taken as UTC" \
+    expect "pkg the moment is not cleared by itself, and one that is three days ahead is refused; one written with no zone is in the application's time zone, so nine in the morning in New York is two in the afternoon in UTC" \
         "$made $status $(json '[d["observed_at"], d["row_version"]]')" \
-        '422 observed_at 422 observed_at 200 ["2026-11-03T09:00:00Z", 6]'
+        '422 observed_at 422 observed_at 200 ["2026-11-03T14:00:00Z", 6]'
     api PATCH "/items/$item" '{"row_version": 6, "observed_status": null}'
     expect "pkg the observation is taken back: its moment goes with it, and the condition alone decides the health" \
         "$status $(json '[d["observed_status"], d["observed_at"], d["lifecycle_state"]]') $(health)" \

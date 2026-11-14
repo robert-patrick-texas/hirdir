@@ -13,7 +13,7 @@ to every interface, so it is made here first.
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
 | Removal | Items, device groups, sites, locations, contacts, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
-| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
+| Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
 | Decimals | Two places: money, support weight and percentages alike. In JSON a decimal is written as text, `"18000.00"`, so that nothing is lost on the way to a browser. A number is accepted on the way in. |
 | Blank | A blank text field is stored as nothing at all, and is `null` in JSON. |
@@ -579,8 +579,10 @@ A blank says that nobody has looked.
 `observed_status` is an observation and not a wish. Clearing it clears `observed_at`,
 which is not cleared by itself. A change may give `observed_at` with the status, for
 one that was read from another tool earlier; left out, it is the moment of the change.
-A moment with no zone is UTC, and one more than a day ahead is refused: nothing is seen
-in the future. A person who states again what is observed, as it is, has looked again,
+A moment that names no zone is in the application's time zone, the `time_zone` setting,
+which is America/New_York until it is changed: it is typed as it is read on a page. A
+moment that names its zone, or ends in `Z`, is that moment. One more than a day ahead is
+refused: nothing is seen in the future. A person who states again what is observed, as it is, has looked again,
 and the moment is now: a second walk round the store room is on record. A file that
 states it again, with no moment, changes nothing, so that the same file loaded twice
 changes nothing. Minor items inherit neither the
