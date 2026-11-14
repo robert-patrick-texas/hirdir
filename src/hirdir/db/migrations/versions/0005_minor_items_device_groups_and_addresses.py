@@ -153,7 +153,7 @@ def upgrade() -> None:
         sa.Column("is_primary", sa.Boolean, nullable=False),
         *_bookkeeping(),
         sa.CheckConstraint(
-            "(item_hid IS NOT NULL) + (group_hid IS NOT NULL) = 1", name="addresses_one_holder"
+            "(item_hid IS NULL) <> (group_hid IS NULL)", name="addresses_one_holder"
         ),
     )
     op.create_index("ix_addresses_item_hid", "addresses", ["item_hid"])

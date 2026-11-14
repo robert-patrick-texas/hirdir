@@ -6336,9 +6336,9 @@
         "properties": {
           "annual_support_cost": {
             "examples": [
-              "18000.00"
+              "54000.00"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+\\.\\d{2}$",
             "title": "Annual Support Cost",
             "type": "string"
           },
@@ -6348,9 +6348,9 @@
           },
           "est_value": {
             "examples": [
-              "18000.00"
+              "54000.00"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+\\.\\d{2}$",
             "title": "Est Value",
             "type": "string"
           },
@@ -6389,9 +6389,9 @@
           },
           "support_weight": {
             "examples": [
-              "1.5"
+              "2.8"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
             "title": "Support Weight",
             "type": "string"
           }
@@ -6415,9 +6415,9 @@
         "properties": {
           "annual_support_cost": {
             "examples": [
-              "18000.00"
+              "54000.00"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+\\.\\d{2}$",
             "title": "Annual Support Cost",
             "type": "string"
           },
@@ -6434,9 +6434,9 @@
           },
           "est_value": {
             "examples": [
-              "18000.00"
+              "54000.00"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+\\.\\d{2}$",
             "title": "Est Value",
             "type": "string"
           },
@@ -6451,9 +6451,9 @@
           },
           "support_weight": {
             "examples": [
-              "1.5"
+              "2.8"
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
             "title": "Support Weight",
             "type": "string"
           }

@@ -157,7 +157,8 @@ Release 0.4.0 has every field above except `location_hid`, which arrives in 0.5.
 
 A replacement is made by `POST /items/{hid}/replace` on the item that leaves. The item
 that takes its place is one that exists, or is created by the same request. An item is
-replaced once, and takes the place of one item. The new item takes over the old one's
+replaced once, and takes the place of one item, never of one that in the end took its
+own. The new item takes over the old one's
 current memberships of groups, with the same role and position: each of the old ones
 ends on `replaced_on` and each of the new ones begins then, so a stack keeps its HID
 and its master through an RMA. The replacement moves neither item in the lifecycle;
@@ -205,7 +206,12 @@ Rules, checked on every write:
   members with the role `controller` and the current members of every such cluster.
 - A membership is ended by giving it `left_on`, and is never removed. An item that
   comes back joins again, with a new membership. Retiring a group ends its current
-  memberships on that day.
+  memberships on that day. Retiring an item ends its memberships too, under the rules
+  of leaving: the master of a stack with other members is not retired until another is
+  made master. A move in the lifecycle leaves memberships as they are.
+- A change to these records is checked with no other change under way: of two requests
+  that would put one item into two stacks at the same moment, the second waits, sees
+  the first, and is refused.
 - The group's record lists in `members_disagree` each field of its own that a current
   member contradicts: `owner_hid`, when a member has another owner in force.
 
@@ -550,7 +556,11 @@ For a set of items chosen by any filter:
 
 A stack or a cluster is **current** for these measures when the group is `active` and
 the membership has no `left_on`. A draft stack is not yet one device on the network:
-its members count as the items they are, and earn no discount.
+its members count as the items they are, and earn no discount. In a view that includes
+drafts it is counted as if active, as a draft item is.
+
+The sums are exact however large they grow: a licence of a thousand million seats does
+not round the total.
 
 Worked example, with a global stack discount of 50 and a per-model discount of 30 on the
 second model:

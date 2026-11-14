@@ -8,7 +8,7 @@ of the columns, the keys a row is matched by, and references written as people w
 them, such as a vendor's name for a vendor.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, ClassVar, Final
 
@@ -111,6 +111,7 @@ class Run:
         # The row being worked, and the rows that changed the members of each group.
         self.row = 0
         self.touched: dict[str, list[int]] = {}
+        self.placed: dict[int, tuple[str, str]] = {}
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
@@ -259,11 +260,17 @@ class Run:
             raise Invalid("there is no such group", {field: f"there is no device group {text}"})
         return found
 
-    def members_changed(self, group_hid: str) -> None:
-        """Note that this row changed the members of a group, to be checked at the end."""
+    def members_changed(self, group_hid: str, item_hid: str) -> None:
+        """Note that this row changed an item's place in a group, to be checked at the end."""
         rows, number = self.touched.setdefault(group_hid, []), self.row
         rows.append(number)
-        self._undo.append(lambda: rows.remove(number))
+        self.placed[number] = (group_hid, item_hid)
+
+        def forget() -> None:
+            rows.remove(number)
+            self.placed.pop(number, None)
+
+        self._undo.append(forget)
 
 
 def _management(run: Run, field: str, hid: str, values: Mapping[str, Any]) -> None:
@@ -379,6 +386,14 @@ class Entity:
         """Return the columns of each record, typed. With own, stored values and not
         the ones in force."""
         raise NotImplementedError
+
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Return the numbers of the rows, from 1, in the order they are to be worked.
+
+        That is the order of the file, unless a row leans on what another row of the
+        same file does to a record above it.
+        """
+        return list(range(1, len(rows) + 1))
 
     def finish(self, run: Run) -> dict[int, list[dict[str, str]]]:
         """Return the rows that cannot stand once the whole file is worked, with why.
@@ -865,6 +880,49 @@ class Items(Entity):
             given[name] = value
         return given
 
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work an item before the minor items that are in it, wherever its row stands.
+
+        What a row means for a minor item depends on what the item above it holds: a
+        row with the very owner or state it would inherit leaves it inheriting. So when
+        one file, or one bulk edit, changes an item and its minor items, the item is
+        changed first, and what its minor items are compared with is what it will hold.
+        A row that makes a new item keeps its place among the rows of its depth.
+        """
+        db = run.db
+        plain = list(range(1, len(rows) + 1))
+        uses_parents = any("parent" in row for row in rows)
+        if (
+            not uses_parents
+            and db.scalar(select(Item.hid).where(Item.parent_item_hid.is_not(None)).limit(1))
+            is None
+        ):
+            return plain
+        named: dict[int, Item | None] = {}
+        for number, row in zip(plain, rows, strict=True):
+            try:
+                named[number] = db.get(Item, row["hid"]) if row.get("hid") else self.find(run, row)
+            except DomainError:
+                named[number] = None
+        lines = items.lines_above(db, [item for item in named.values() if item is not None])
+        depths: dict[int, int] = {}
+        for number, row in zip(plain, rows, strict=True):
+            item = named[number]
+            parent = row.get("parent", _MISSING)
+            if parent is None:
+                depths[number] = 0
+            elif parent is not _MISSING:
+                # In the item the row names: one deeper than it, or last if it is one
+                # that an earlier row of this file is still to make.
+                above = items.known_as(db, str(parent), limit=1)
+                depths[number] = (
+                    len(items.ancestors(db, above[0])) + 1 if above else items.MAX_DEPTH + 1
+                )
+            else:
+                depths[number] = len(lines[item.hid]) if item is not None else 0
+        run.let_go()
+        return sorted(plain, key=lambda number: (depths[number], number))
+
     @staticmethod
     def _above(run: Run, record: Any | None, given: Mapping[str, Any]) -> list[Item]:
         """Return the items the item will be in, the nearest first."""
@@ -987,6 +1045,7 @@ class Items(Entity):
         )
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
+        parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -998,7 +1057,7 @@ class Items(Entity):
                 "vendor": vendors[entry.vendor_hid].name if entry else None,
                 "pid": entry.pid if entry else None,
                 **{name: getattr(item, name) for name in self._direct if name != "tags"},
-                "parent": items.reference_text(line[0]) if line else None,
+                "parent": parents[line[0].hid] if line else None,
                 "state_reason": item.state_reason,
                 "mgmt_address": address,
                 "mgmt_network": network,
@@ -1016,7 +1075,7 @@ class Items(Entity):
                 column = "owner" if name == "owner_hid" else name
                 value = getattr(item, name) if own else effective.value
                 if name == "owner_hid":
-                    value = its_owners[value].label if value else None
+                    value = items.name_or_hid(its_owners[value].label, value) if value else None
                 row[column] = value
                 row[f"{column}_source"] = effective.source
             rows.append(row)
@@ -1092,6 +1151,23 @@ class DeviceGroups(Entity):
         name = values.get("name")
         return groups.find_group(run.db, name) if name else None
 
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work a group before the groups of the same file that are within it."""
+        named = {
+            records.key(row["name"]): number
+            for number, row in enumerate(rows, start=1)
+            if isinstance(row.get("name"), str)
+        }
+
+        def level(number: int, seen: frozenset[int] = frozenset()) -> int:
+            parent = rows[number - 1].get("parent")
+            above = named.get(records.key(parent)) if isinstance(parent, str) else None
+            if above is None or above in seen or above == number:
+                return 0
+            return level(above, seen | {number}) + 1
+
+        return sorted(range(1, len(rows) + 1), key=lambda number: (level(number), number))
+
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return values.get("name") or (record.name if record is not None else "")
 
@@ -1136,10 +1212,14 @@ class DeviceGroups(Entity):
                     "type": group.type,
                     "hostname": group.hostname,
                     "fqdn": group.fqdn,
-                    "parent": parents[group.parent_group_hid].name
+                    "parent": items.name_or_hid(
+                        parents[group.parent_group_hid].name, group.parent_group_hid
+                    )
                     if group.parent_group_hid
                     else None,
-                    "owner": its_owners[group.owner_hid].label if group.owner_hid else None,
+                    "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
+                    if group.owner_hid
+                    else None,
                     "mgmt_address": address,
                     "mgmt_network": network,
                     "record_status": group.record_status,
@@ -1220,7 +1300,7 @@ class DeviceGroupMembers(Entity):
                     )
             group = run.group(values["group"])
             item = run.item(values["item"], "item")
-            run.members_changed(group.hid)
+            run.members_changed(group.hid, item.hid)
             return groups.add_members(
                 db, context, group.hid, [{"item_hid": item.hid, **_new(given)}], check=False
             )[0]
@@ -1239,7 +1319,7 @@ class DeviceGroupMembers(Entity):
             del given["role"]
         if given.get("joined_on", _MISSING) is None:
             raise Invalid("a membership has a day it began", {"joined_on": "is not cleared"})
-        run.members_changed(record.group_hid)
+        run.members_changed(record.group_hid, record.item_hid)
         return groups.update_member(
             db, context, record.group_hid, record.hid, record.row_version, given, check=False
         )
@@ -1247,19 +1327,27 @@ class DeviceGroupMembers(Entity):
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         its_groups = _by_hid(db, DeviceGroup, {member.group_hid for member in found})
         its_items = _by_hid(db, Item, {member.item_hid for member in found})
+        named = items.reference_texts(db, list(its_items.values()))
         return [
             {
                 **_kept(member),
-                "group": its_groups[member.group_hid].name,
-                "item": items.reference_text(its_items[member.item_hid]),
+                "group": items.name_or_hid(its_groups[member.group_hid].name, member.group_hid),
+                "item": named[member.item_hid],
                 **{name: getattr(member, name) for name in self._direct},
             }
             for member in found
         ]
 
     def finish(self, run: Run) -> dict[int, list[dict[str, str]]]:
-        """Check each group whose members the file changed, now that all of them are in."""
-        wrong: dict[int, list[dict[str, str]]] = {}
+        """Check each group whose members the file changed, now that all of them are in.
+
+        The rows of a group that is left wrong are rejected together. So are the rows
+        that lean on them: a later row was judged with those rows in place, as when one
+        row takes an item out of a stack and the next puts it into another. Whatever
+        shares an item with a rejected row, and whatever shares a group with that, goes
+        with it, so that what is left is what an apply will do.
+        """
+        wrong: dict[str, str] = {}
         for group_hid, rows in run.touched.items():
             group = run.db.get(DeviceGroup, group_hid)
             if group is None or not rows:
@@ -1268,10 +1356,27 @@ class DeviceGroupMembers(Entity):
                 groups.check_group(run.db, group)
             except DomainError as error:
                 said = " ".join(getattr(error, "fields", {}).values())
-                message = f"{error}: {said}. The rows of this group are rejected together"
-                why = [{"field": "", "message": message}]
-                wrong.update(dict.fromkeys(rows, why))
-        return wrong
+                wrong[group_hid] = f"{error}: {said}. The rows of this group are rejected together"
+        if not wrong:
+            return {}
+        first = next(iter(wrong))
+        first_name = run.db.get_one(DeviceGroup, first).name
+        with_them = set(wrong)
+        while True:
+            their_items = {item for group, item in run.placed.values() if group in with_them}
+            more = {group for group, item in run.placed.values() if item in their_items}
+            if more <= with_them:
+                break
+            with_them |= more
+        leaning = (
+            f"this row was worked with rows of {first_name} in place, and they are "
+            "rejected: preview the file again without them"
+        )
+        return {
+            number: [{"field": "", "message": wrong.get(group, leaning)}]
+            for number, (group, _) in run.placed.items()
+            if group in with_them
+        }
 
 
 class Addresses(Entity):
@@ -1369,15 +1474,20 @@ class Addresses(Entity):
         its_items = _by_hid(db, Item, {address.item_hid for address in found})
         its_groups = _by_hid(db, DeviceGroup, {address.group_hid for address in found})
         networks = _by_hid(db, Network, {address.network_hid for address in found})
+        named = items.reference_texts(db, list(its_items.values()))
         return [
             {
                 **_kept(address),
-                "item": items.reference_text(its_items[address.item_hid])
-                if address.item_hid
+                "item": named[address.item_hid] if address.item_hid else None,
+                "group": items.name_or_hid(its_groups[address.group_hid].name, address.group_hid)
+                if address.group_hid
                 else None,
-                "group": its_groups[address.group_hid].name if address.group_hid else None,
                 "address": address.address,
-                "network": networks[address.network_hid].label if address.network_hid else None,
+                "network": items.name_or_hid(
+                    networks[address.network_hid].label, address.network_hid
+                )
+                if address.network_hid
+                else None,
                 "role": address.role,
                 "is_primary": address.is_primary,
             }

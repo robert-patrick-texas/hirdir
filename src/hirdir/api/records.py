@@ -44,6 +44,20 @@ Percent = Annotated[
     WithJsonSchema({"type": "string", "pattern": r"^\d{1,3}(\.\d{1,2})?$", "examples": ["30"]}),
 ]
 
+# A sum over many items may be larger than any one amount.
+MoneySum = Annotated[
+    Decimal,
+    Field(ge=0, max_digits=60, decimal_places=2),
+    PlainSerializer(_money, return_type=str, when_used="json"),
+    WithJsonSchema({"type": "string", "pattern": r"^\d+\.\d{2}$", "examples": ["54000.00"]}),
+]
+WeightSum = Annotated[
+    Decimal,
+    Field(ge=0, max_digits=60, decimal_places=2),
+    PlainSerializer(_plain, return_type=str, when_used="json"),
+    WithJsonSchema({"type": "string", "pattern": r"^\d+(\.\d{1,2})?$", "examples": ["2.8"]}),
+]
+
 Name = Annotated[str, Field(max_length=200)]
 ShortText = Annotated[str, Field(max_length=100)]
 HostName = Annotated[str, Field(max_length=255)]
@@ -760,9 +774,9 @@ class Measures(Model):
     items: int = Field(description="Every item of the set, major and minor.")
     component_count: int
     managed_node_count: int
-    support_weight: Weight
-    est_value: Money
-    annual_support_cost: Money
+    support_weight: WeightSum
+    est_value: MoneySum
+    annual_support_cost: MoneySum
 
 
 class KindCount(Model):

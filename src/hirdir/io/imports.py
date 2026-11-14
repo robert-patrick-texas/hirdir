@@ -145,17 +145,18 @@ def _work(
     rows: Sequence[Row],
     skip: frozenset[int] = frozenset(),
 ) -> list[Result]:
-    """Work every row in order, each in a savepoint of its own.
+    """Work every row, each in a savepoint of its own, and report them in the file's order.
 
     A row that is refused leaves nothing behind and is reported as rejected. The rows
     numbered in `skip` are not worked at all.
     """
     run = Run(db, context, role, mode)
     results: list[Result] = []
+    workable = [
+        number for number, row in enumerate(rows, start=1) if number not in skip and not row.reasons
+    ]
     for number, row in enumerate(rows, start=1):
-        if number in skip:
-            continue
-        if row.reasons:
+        if number not in skip and row.reasons:
             results.append(
                 Result(
                     row=number,
@@ -164,12 +165,18 @@ def _work(
                     reasons=row.reasons,
                 )
             )
-            continue
+    # Most files are worked in their own order. An entity whose rows lean on one another
+    # says in which order they are to be worked: an item before what is in it.
+    typed = {number: _typed(which, rows[number - 1].values) for number in workable}
+    places = which.order(run, [typed[number] for number in workable])
+    for worked, place in enumerate(places, start=1):
+        number = workable[place - 1]
+        row = rows[number - 1]
         run.start_row(number)
         result = Result(row=number, outcome="create", key=which.key(row.values, None))
         savepoint = db.begin_nested()
         try:
-            _one(run, which, _typed(which, row.values), result)
+            _one(run, which, typed[number], result)
             savepoint.commit()
         except REFUSALS as error:
             savepoint.rollback()
@@ -178,8 +185,9 @@ def _work(
             result.outcome, result.changes, result.notes = "rejected", [], []
             result.reasons = _reasons(which, error)
         results.append(result)
-        if number % LET_GO_EVERY == 0:
+        if worked % LET_GO_EVERY == 0:
             run.let_go()
+    results.sort(key=lambda result: result.row)
     # What is right or wrong only once every row is in: the members of a stack.
     wrong = which.finish(run)
     for result in results:

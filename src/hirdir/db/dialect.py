@@ -22,7 +22,7 @@ from functools import lru_cache
 from typing import Any
 
 import regex
-from sqlalchemy import Boolean, ColumnElement, String, literal
+from sqlalchemy import Boolean, ColumnElement, String, literal, text
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
 
@@ -135,6 +135,29 @@ def is_busy(error: Exception) -> bool:
     `busy_timeout` says, and is then refused. Nothing of the second was done.
     """
     return "database is locked" in str(getattr(error, "orig", error))
+
+
+# The key of the lock that PostgreSQL holds for a change that is checked against others.
+WRITER_LOCK = 8715
+
+
+def hold_other_writers(db: Any) -> None:
+    """Take the one writer's place now, and keep it until the transaction ends.
+
+    Some rules are about several records at once: an item is in one stack, a stack has
+    one master, an item is never above itself. Such a rule is checked by reading and
+    kept by writing, and of two requests that check at the same moment each would find
+    nothing in its way. So a change of that kind takes the writer's place before it
+    looks, and the second waits until the first is stored and then sees it.
+
+    SQLite gives the place to whoever writes first: a statement that writes nothing
+    takes it. PostgreSQL holds a lock of this name until the transaction ends. One
+    that waits longer than `busy_timeout` is refused, as any change is.
+    """
+    if db.get_bind().dialect.name == "sqlite":
+        db.execute(text("UPDATE settings SET row_version = row_version WHERE 0"))
+    else:
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": WRITER_LOCK})
 
 
 def prepare_sqlite(dbapi_connection: Any) -> None:

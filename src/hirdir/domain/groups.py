@@ -10,11 +10,12 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from hirdir import clock
+from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, Item, Owner
-from hirdir.domain import inheritance, items, records, settings, tags
+from hirdir.domain import items, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
@@ -192,21 +193,36 @@ def controllers(db: Session, domain_hids: Sequence[str]) -> dict[str, list[Item]
     return found
 
 
-def members_disagree(db: Session, group: DeviceGroup) -> list[str]:
-    """Return the fields of a group that one of its current members contradicts.
+def members_disagree(db: Session, found: Sequence[DeviceGroup]) -> dict[str, list[str]]:
+    """Return, for each group, the fields of its own that a current member contradicts.
 
-    For now that is its owner: a member that has another owner in force.
+    For now that is its owner: a member that has another owner in force, its own or
+    the one of the item it is in. One statement answers for all the groups.
     """
-    if group.owner_hid is None:
-        return []
-    for member in current_members(db, group.hid):
-        item = db.get(Item, member.item_hid)
-        if item is None:
-            continue
-        owner = inheritance.of_item(item, None, items.ancestors(db, item))["owner_hid"]
-        if owner.value is not None and owner.value != group.owner_hid:
-            return ["owner_hid"]
-    return []
+    said: dict[str, list[str]] = {group.hid: [] for group in found}
+    owned = [group.hid for group in found if group.owner_hid is not None]
+    if not owned:
+        return said
+    line: list[Any] = [Item]
+    query = (
+        select(DeviceGroup.hid)
+        .join(DeviceGroupMember, DeviceGroupMember.group_hid == DeviceGroup.hid)
+        .join(Item, Item.hid == DeviceGroupMember.item_hid)
+    )
+    for level in range(items.MAX_DEPTH):
+        above: Any = aliased(Item, name=f"member_above_{level}")
+        query = query.outerjoin(above, above.hid == line[-1].parent_item_hid)
+        line.append(above)
+    owner = func.coalesce(*(one.owner_hid for one in line))
+    query = query.where(
+        DeviceGroup.hid.in_(owned),
+        DeviceGroupMember.left_on.is_(None),
+        owner.is_not(None),
+        owner != DeviceGroup.owner_hid,
+    )
+    for group_hid in db.scalars(query.distinct()):
+        said[group_hid] = ["owner_hid"]
+    return said
 
 
 # --- the rules of a group ------------------------------------------------------------
@@ -337,6 +353,7 @@ def _checked(db: Session, fields: dict[str, Any], group: DeviceGroup | None) -> 
 
 def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> DeviceGroup:
     """Create a device group, with the members it is given, and check it as a whole."""
+    dialect.hold_other_writers(db)
     labels = fields.pop("tags", None) or []
     members = fields.pop("members", None) or []
     group = DeviceGroup(**_checked(db, {"type": None, "name": None, **fields}, None))
@@ -357,6 +374,7 @@ def update_group(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> DeviceGroup:
     """Change a device group. One that is made active is checked as a whole."""
+    dialect.hold_other_writers(db)
     group = get_group(db, hid)
     has_tags = "tags" in fields
     labels = fields.pop("tags", None) or []
@@ -369,6 +387,7 @@ def update_group(
 
 def retire_group(db: Session, context: AuditContext, hid: str, row_version: int) -> DeviceGroup:
     """Retire a group: its record stays, and its current memberships end today."""
+    dialect.hold_other_writers(db)
     group = get_group(db, hid)
     records.apply(
         db, context, RECORD_TYPE, group, row_version, {"record_status": "retired"}, action="retire"
@@ -456,6 +475,7 @@ def add_members(
     A membership that is given `left_on` is one that has ended already, entered for
     the record: a file may hold the history of a group.
     """
+    dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
     if group.record_status == "retired" and any(one.get("left_on") is None for one in members):
         raise Invalid(
@@ -508,7 +528,7 @@ def update_member(
     context: AuditContext,
     group_hid: str,
     member_hid: str,
-    row_version: int,
+    row_version: int | None,
     fields: dict[str, Any],
     check: bool = True,
 ) -> DeviceGroupMember:
@@ -517,6 +537,7 @@ def update_member(
     Making a member the master of a stack makes the former master a member, in the
     same change. The master does not leave a stack that has other members.
     """
+    dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
     member = get_member(db, group_hid, member_hid)
     ended = member.left_on is not None
@@ -559,3 +580,29 @@ def update_member(
     if check:
         check_group(db, group)
     return member
+
+
+def leave_all(db: Session, context: AuditContext, item_hid: str) -> None:
+    """End every current membership of an item today, under the rules of leaving.
+
+    An item that is retired is in no group any more. Where its leaving would break a
+    group, as the master of a stack would, the leaving is refused, and so is whatever
+    asked for it.
+    """
+    day = today(db)
+    for member, group in memberships_of(db, [item_hid])[item_hid]:
+        try:
+            update_member(
+                db,
+                context,
+                group.hid,
+                member.hid,
+                None,
+                {"left_on": max(day, member.joined_on)},
+            )
+        except Invalid as error:
+            said = " ".join(error.fields.values())
+            raise Invalid(
+                f"the item is a member of {group.name}: {error}",
+                {"record_status": f"end its membership of {group.name} first: {said}"},
+            ) from None

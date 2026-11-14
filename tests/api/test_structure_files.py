@@ -53,11 +53,17 @@ def test_a_file_puts_minor_items_in_the_item_it_names(make: Maker, files: Files)
     assert make.found(filter="depth:eq:2") == ["Port 1"]
 
 
-def test_a_minor_item_stands_after_its_parent_in_a_file(make: Maker, files: Files) -> None:
-    text = "name,parent,position\nPS-A,chassis-1,PS-A\nchassis-1,,\n"
+def test_a_new_minor_item_finds_the_item_its_file_makes(make: Maker, files: Files) -> None:
+    # A minor item one level down is worked after the major items of its file, so it
+    # finds the item it is in also when that item's row stands below it.
+    text = "name,parent,position\nPS-A,chassis-0,PS-A\nchassis-0,,\n"
     preview = files.preview("items", text)
-    assert counts(preview["job"]) == (1, 0, 0, 1)
-    assert reasons(preview["rows"][0]) == {"parent": "there is no item chassis-1"}
+    assert counts(preview["job"]) == (2, 0, 0, 0)
+    # Deeper than that, the file holds each new item before what is in it.
+    text = "name,parent\nfan-9,PS-9\nPS-9,chassis-9\nchassis-9,\n"
+    preview = files.preview("items", text)
+    assert counts(preview["job"]) == (2, 0, 0, 1)
+    assert reasons(preview["rows"][0]) == {"parent": "there is no item PS-9"}
 
     # An export sorted by depth writes every parent before what is in it.
     chassis = make.item(name="chassis-1")
@@ -481,3 +487,108 @@ def test_the_same_records_travel_as_json(make: Maker, files: Files) -> None:
     for entity in ("networks", "device_groups", "device_group_members", "addresses"):
         text = files.export(entity, format="json", own_values=True)
         assert f'"entity": "{entity}"' in text or f'"entity":"{entity}"' in text
+
+
+# --- found by the review before release 0.4.0 ------------------------------------------
+
+
+def test_an_export_names_an_item_so_that_only_that_item_is_found(make: Maker, files: Files) -> None:
+    first, second = _switch(make), _switch(make, serial_number="FCW0000X002", asset_tag="AT-000102")
+    for switch in (first, second):
+        supply = make.item(name="PS-A", parent_item_hid=switch["hid"], position="PS-A")
+        make.item(name=f"fan of {switch['asset_tag']}", parent_item_hid=supply["hid"])
+        make.address(supply, "192.0.2.10")
+    stack = make.stack("site2-sw-stack1", [first, second])
+    # A network and a group whose names have the form of an HID, of another record.
+    odd = make.network(stack["hid"])
+    make.address(first, "192.0.2.20", odd)
+
+    # Two power supplies are called PS-A, so a file names each by its HID.
+    items = files.export("items", sort=["depth", "name"], own_values=True)
+    parents = {row["name"]: row["parent"] for row in table(items)}
+    assert parents["PS-A"] in ("AT-000101", "AT-000102")
+    assert parents["fan of AT-000101"] != "PS-A"
+    assert len(parents["fan of AT-000101"]) == 36
+    assert counts(files.preview("items", items)["job"]) == (0, 0, 6, 0)
+    addresses = files.export("addresses", own_values=True)
+    assert counts(files.preview("addresses", addresses)["job"]) == (0, 0, 3, 0)
+    assert odd["hid"] in addresses
+    members = files.export("device_group_members", own_values=True)
+    assert counts(files.preview("device_group_members", members)["job"]) == (0, 0, 2, 0)
+
+
+def test_groups_of_one_file_are_worked_a_group_before_the_groups_within_it(
+    make: Maker, files: Files
+) -> None:
+    text = (
+        "name,type,parent\n"
+        "a-cluster,cluster,z-domain\n"
+        "b-custom,custom,a-cluster\n"
+        "z-domain,controller_domain,\n"
+    )
+    preview = files.preview("device_groups", text)
+    assert counts(preview["job"]) == (3, 0, 0, 0)
+    # The rows are reported in the order of the file, whatever order they were worked in.
+    assert [row["key"] for row in preview["rows"]] == ["a-cluster", "b-custom", "z-domain"]
+    files.apply(preview)
+    exported = files.export("device_groups", own_values=True)
+    assert [row["parent"] for row in table(exported)] == ["z-domain", "a-cluster", ""]
+
+
+def test_a_row_that_leans_on_a_rejected_row_is_rejected_with_it(make: Maker, files: Files) -> None:
+    _inventory(make)
+    files.load("device_groups", GROUPS + "site2-sw-stack2,stack,,,,active,\n")
+    files.load("device_group_members", MEMBERS)
+    make.item(name="site2-sw-07", asset_tag="AT-000107")
+    make.item(name="site2-sw-08", asset_tag="AT-000108")
+    text = (
+        "group,item,role,left_on\n"
+        # The second switch leaves the first stack, which would then have one member,
+        "site2-sw-stack1,AT-000102,,2026-11-01\n"
+        # and joins the second, which only works if it has left the first.
+        "site2-sw-stack2,AT-000102,master,\n"
+        "site2-sw-stack2,AT-000107,member,\n"
+        # A row about another group and other items stands by itself.
+        "site2-wireless,AT-000108,endpoint,\n"
+    )
+
+    preview = files.preview("device_group_members", text)
+
+    assert [row["outcome"] for row in preview["rows"]] == [
+        "rejected",
+        "rejected",
+        "rejected",
+        "create",
+    ]
+    assert "would have one member" in reasons(preview["rows"][0])[""]
+    assert "preview the file again without them" in reasons(preview["rows"][1])[""]
+    # What is left is what an apply does.
+    assert files.apply(preview, skip_rejected="true")["status"] == "applied"
+    stack = make.get("/device-groups", filter="name:eq:site2-sw-stack1")["items"][0]
+    assert stack["member_count"] == 2
+    domain = make.get("/device-groups", filter="name:eq:site2-wireless")["items"][0]
+    assert domain["member_count"] == 2
+
+
+def test_a_file_that_changes_an_item_and_its_minor_items_copies_nothing_down(
+    make: Maker, files: Files
+) -> None:
+    make.owner("Network Engineering")
+    make.owner("Voice Services")
+    owner = make.get("/owners", filter="label:eq:Network Engineering")["items"][0]
+    chassis = make.item(name="chassis", owner_hid=owner["hid"], lifecycle_state="Prod")
+    make.item(name="a-blade", parent_item_hid=chassis["hid"])
+
+    # An export by name holds the blade before its chassis, with the values in force.
+    text = files.export("items", columns=["name", "owner", "lifecycle_state", "state_reason"])
+    assert [row["name"] for row in table(text)] == ["a-blade", "chassis"]
+    changed = text.replace("Network Engineering", "Voice Services").replace("Prod", "Down")
+
+    preview = files.preview("items", changed)
+
+    assert [row["outcome"] for row in preview["rows"]] == ["unchanged", "update"]
+    files.apply(preview)
+    blade = make.get("/items", filter="name:eq:a-blade")["items"][0]
+    assert (blade["owner_hid"], blade["lifecycle_state"], blade["row_version"]) == (None, None, 1)
+    assert blade["effective"]["owner_hid"]["label"] == "Voice Services"
+    assert blade["effective"]["lifecycle_state"]["value"] == "Down"

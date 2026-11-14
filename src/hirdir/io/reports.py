@@ -17,6 +17,7 @@ from sqlalchemy import (
     case,
     distinct,
     func,
+    literal_column,
     or_,
     select,
     type_coerce,
@@ -42,7 +43,10 @@ from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
 
-HARDWARE = "hardware"
+# An item with no catalog entry has no kind of its own, and is counted as hardware. The
+# word is written into the statement, so that it is the same expression wherever it
+# stands, in what is selected and in what is grouped by.
+KIND: Any = func.coalesce(CatalogEntry.kind, literal_column("'hardware'"))
 HUNDREDTH = Decimal("0.01")
 # A weight is kept in hundredths and a discount in hundredths of a percent: the sum of
 # weight x quantity x (100% - discount) is exact in units of this size.
@@ -101,8 +105,8 @@ def _whole(column: Any) -> ColumnElement[Any]:
     return type_coerce(column, BigInteger)
 
 
-def _current_group(kind: str) -> Any:
-    """Return, for each item, the active group of a type that it is a current member of."""
+def _current_group(kind: str, statuses: tuple[str, ...]) -> Any:
+    """Return, for each item, the group of a type that it is a current member of."""
     return (
         select(
             DeviceGroupMember.item_hid.label("item_hid"),
@@ -112,7 +116,7 @@ def _current_group(kind: str) -> Any:
         .where(
             DeviceGroupMember.left_on.is_(None),
             DeviceGroup.type == kind,
-            DeviceGroup.record_status == "active",
+            DeviceGroup.record_status.in_(statuses),
         )
         .group_by(DeviceGroupMember.item_hid)
         .subquery(f"in_{kind}")
@@ -127,9 +131,9 @@ class _Terms:
     stack: Any
     cluster: Any
     kind: ColumnElement[Any]
-    component: ColumnElement[bool]
     counted_whatever_kind: ColumnElement[bool]
-    measures: tuple[ColumnElement[Any], ...]
+    counts: tuple[ColumnElement[Any], ...]
+    amounts: tuple[ColumnElement[Any], ...]
 
     def source(self, query: Any) -> Any:
         """Return a statement over the view, with what the measures read joined in."""
@@ -141,55 +145,79 @@ class _Terms:
         )
 
 
-def _terms(db: Session, where: tuple[Any, ...]) -> _Terms:
+def _terms(db: Session, where: tuple[Any, ...], include_drafts: bool) -> _Terms:
     count_states = list(settings.value(db, "count_states"))
     weight_states = list(settings.value(db, "weight_states"))
     count_kinds = list(settings.value(db, "count_kinds"))
     discount = int(Decimal(str(settings.value(db, "stack_discount_pct"))) * 100)
-    stack, cluster = _current_group("stack"), _current_group("cluster")
+    # A draft stack is not yet one device on the network. In a view that holds the
+    # drafts it is, as a draft item is counted there.
+    statuses = ("active", "draft") if include_drafts else ("active",)
+    stack, cluster = _current_group("stack", statuses), _current_group("cluster", statuses)
     major = Item.parent_item_hid.is_(None)
-    # An item with no catalog entry has no kind of its own, and is counted as hardware.
-    kind = func.coalesce(CatalogEntry.kind, HARDWARE)
     counted = and_(
         major, or_(Item.lifecycle_state.is_(None), Item.lifecycle_state.in_(count_states))
     )
-    component = and_(counted, kind.in_(count_kinds))
+    component = and_(counted, KIND.in_(count_kinds))
     # A cluster comes before a stack: an item in both is part of the cluster's one node.
     node = func.coalesce(cluster.c.group_hid, stack.c.group_hid, Item.hid)
-    weight = func.coalesce(_whole(Item.support_weight), _whole(CatalogEntry.support_weight))
-    share = case(
-        (
-            stack.c.group_hid.is_not(None),
-            10_000 - func.coalesce(_whole(CatalogEntry.stack_discount_pct), discount),
-        ),
-        else_=10_000,
-    )
-    weighed = and_(major, Item.lifecycle_state.in_(weight_states))
-    value = func.coalesce(_whole(Item.est_value), _whole(CatalogEntry.est_value))
-    cost = func.coalesce(_whole(Item.annual_support_cost), _whole(CatalogEntry.annual_support_cost))
-    measures = (
+    counts = (
         func.count(distinct(Item.hid)),
         func.count(distinct(case((component, Item.hid)))),
         func.count(distinct(case((component, node)))),
-        func.coalesce(func.sum(case((weighed, weight * Item.quantity * share), else_=0)), 0),
-        func.coalesce(func.sum(value * Item.quantity), 0),
-        func.coalesce(func.sum(cost * Item.quantity), 0),
     )
-    return _Terms(where, stack, cluster, kind, component, counted, measures)
+    weighed = and_(major, Item.lifecycle_state.in_(weight_states))
+    # The amounts of one item, each as the whole number of steps it is stored as. They
+    # are multiplied and summed outside the database, where no number is too large:
+    # here the items that share them are only gathered, and their quantities added.
+    amounts = (
+        case(
+            (
+                weighed,
+                func.coalesce(_whole(Item.support_weight), _whole(CatalogEntry.support_weight)),
+            )
+        ),
+        case(
+            (
+                stack.c.group_hid.is_not(None),
+                10_000 - func.coalesce(_whole(CatalogEntry.stack_discount_pct), discount),
+            ),
+            else_=10_000,
+        ),
+        func.coalesce(_whole(Item.est_value), _whole(CatalogEntry.est_value)),
+        func.coalesce(_whole(Item.annual_support_cost), _whole(CatalogEntry.annual_support_cost)),
+    )
+    return _Terms(where, stack, cluster, KIND, counted, counts, amounts)
 
 
-def _measures(row: Any) -> dict[str, Any]:
-    items, components, nodes, weight, value, cost = row
+@dataclass
+class _Sums:
+    """The sums of one row of a summary, in whole steps, as they are gathered."""
+
+    weight: int = 0
+    value: int = 0
+    cost: int = 0
+
+    def add(self, weight: Any, share: Any, value: Any, cost: Any, quantity: Any) -> None:
+        """Add the items that share these amounts, `quantity` of them in all."""
+        quantity = int(quantity or 0)
+        self.weight += int(weight or 0) * int(share) * quantity
+        self.value += int(value or 0) * quantity
+        self.cost += int(cost or 0) * quantity
+
+
+def _measures(counts: Any, sums: _Sums) -> dict[str, Any]:
+    items, components, nodes = counts
     return {
         "items": items,
         "component_count": components,
         "managed_node_count": nodes,
         # Summed exactly, and rounded once.
-        "support_weight": (Decimal(int(weight)) / WEIGHT_STEPS).quantize(
+        "support_weight": (Decimal(sums.weight) / WEIGHT_STEPS).quantize(
             HUNDREDTH, rounding=ROUND_HALF_UP
         ),
-        "est_value": Decimal(int(value)) / MONEY_STEPS,
-        "annual_support_cost": Decimal(int(cost)) / MONEY_STEPS,
+        "est_value": Decimal(sums.value) / MONEY_STEPS,
+        "annual_support_cost": Decimal(sums.cost) / MONEY_STEPS,
     }
 
 
@@ -198,8 +226,7 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     if by == "vendor":
         return Vendor.hid, Vendor.name, None
     if by == "kind":
-        kind = func.coalesce(CatalogEntry.kind, HARDWARE)
-        return kind, kind, None
+        return KIND, KIND, None
     if by in ("type", "function"):
         column = getattr(CatalogEntry, by)
         return column, column, None
@@ -250,8 +277,14 @@ def summary(
         filters.to_sql(filters.parse(filter_), ITEMS.fields),
         *default_view(ITEMS, include_archived, include_drafts),
     )
-    terms = _terms(db, where)
-    whole = _run(db, terms.source(select(*terms.measures)))[0]
+    terms = _terms(db, where, include_drafts)
+    whole = _run(db, terms.source(select(*terms.counts)))[0]
+    total = _Sums()
+    for row in _run(
+        db,
+        terms.source(select(*terms.amounts, func.sum(Item.quantity))).group_by(*terms.amounts),
+    ):
+        total.add(*row)
     kinds = _run(
         db,
         terms.source(
@@ -264,7 +297,7 @@ def summary(
     )
     order = {kind: place for place, kind in enumerate(settings.CATALOG_KINDS)}
     totals = Totals(
-        **_measures(whole),
+        **_measures(whole, total),
         by_kind=tuple(
             KindCount(kind=kind, items=items, component_count=components)
             for kind, items, components in sorted(
@@ -275,11 +308,17 @@ def summary(
     if by is None:
         return Summary(None, totals)
     key, label, join = _grouping(by)
-    statement = terms.source(select(key, label, *terms.measures))
+    counting = terms.source(select(key, label, *terms.counts))
+    adding = terms.source(select(key, *terms.amounts, func.sum(Item.quantity)))
     if join is not None:
-        statement = join(statement)
-    found = _run(db, statement.group_by(key, label))
-    rows = [Row(key=row[0], label=row[1], **_measures(row[2:])) for row in found]
+        counting, adding = join(counting), join(adding)
+    sums: dict[Any, _Sums] = {}
+    for row in _run(db, adding.group_by(key, *terms.amounts)):
+        sums.setdefault(row[0], _Sums()).add(*row[1:])
+    rows = [
+        Row(key=row[0], label=row[1], **_measures(row[2:], sums.get(row[0], _Sums())))
+        for row in _run(db, counting.group_by(key, label))
+    ]
     # By what people read, the blank one last.
     rows.sort(key=lambda row: (row.key is None, records.key(row.label or ""), row.key or ""))
     return Summary(by, totals, rows)
@@ -351,19 +390,22 @@ def duplicates(
         .having(func.count() > 1)
     )
     total = db.scalar(select(func.count()).select_from(twice.subquery())) or 0
-    page = db.execute(twice.order_by(Address.address, network).limit(limit).offset(offset)).all()
+    paged = twice.order_by(Address.address, network).limit(limit).offset(offset)
+    page = db.execute(paged).all()
     if not page:
         return [], total
-    wanted = or_(
-        *(and_(Address.address == address, network == under) for address, under, _ in page)
-    )
+    # Who holds each address of the page: the page is joined, however long it is.
+    of_page = paged.subquery("page")
     rows = db.execute(
         select(Address, Network.label, func.coalesce(Item.name, Item.hostname), DeviceGroup.name)
         .join(held, held.c.hid == Address.hid)
+        .join(
+            of_page,
+            and_(Address.address == of_page.c.address, network == of_page.c.network),
+        )
         .outerjoin(Network, Network.hid == Address.network_hid)
         .outerjoin(Item, Item.hid == Address.item_hid)
         .outerjoin(DeviceGroup, DeviceGroup.hid == Address.group_hid)
-        .where(wanted)
         .order_by(Address.hid)
     ).all()
     holders: dict[tuple[str, str], list[Holder]] = {}

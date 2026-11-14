@@ -389,7 +389,7 @@ class Address(Bookkeeping, Base):
     __tablename__ = "addresses"
     __table_args__ = (
         CheckConstraint(
-            "(item_hid IS NOT NULL) + (group_hid IS NOT NULL) = 1",
+            "(item_hid IS NULL) <> (group_hid IS NULL)",
             name="addresses_one_holder",
         ),
     )

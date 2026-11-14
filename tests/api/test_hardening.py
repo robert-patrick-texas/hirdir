@@ -1,6 +1,7 @@
 """What must hold when requests race, when input is hostile, and when something breaks.
 
 Each of these was found wrong by review before release 0.2.0, and is kept right here.
+The last section holds what the review before release 0.4.0 found.
 """
 
 import threading
@@ -9,10 +10,12 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, event
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
-from hirdir.domain import items, records
+from hirdir.db.models import Address
+from hirdir.domain import groups, items, records
 from tests.api.inventory import API, Maker, errors
 
 UNKNOWN = "0193a1f4-6c2e-7b41-9d0a-5e3f8c1a7b22"
@@ -495,3 +498,264 @@ def test_history_writes_an_amount_as_the_record_shows_it(make: Maker) -> None:
         {"field": "est_value", "old": "18000.00", "new": "18500.00"},
         {"field": "support_weight", "old": "1.5", "new": "2"},
     ]
+
+
+# --- found by the review before release 0.4.0 ------------------------------------------
+
+
+def _slowly(monkeypatch, module, name: str) -> None:
+    """Make one check take a while, so that two requests are surely inside it together."""
+    real = getattr(module, name)
+
+    def slow(*arguments, **named):
+        found = real(*arguments, **named)
+        time.sleep(0.3)
+        return found
+
+    monkeypatch.setattr(module, name, slow)
+
+
+def test_two_requests_at_once_cannot_put_one_item_into_two_stacks(
+    make: Maker, client: TestClient, monkeypatch
+) -> None:
+    entry = make.entry(make.vendor())
+    shared, *others = make.switches(entry, "site2-sw", 5)
+    first = make.stack("site2-sw-stack1", others[:2])
+    second = make.stack("site2-sw-stack2", others[2:])
+    _slowly(monkeypatch, groups, "_check_joining")
+
+    def join(stack: dict):
+        body = {"members": [{"item_hid": shared["hid"]}]}
+        return lambda caller: caller.post(
+            f"{API}/device-groups/{stack['hid']}/members", json=body, headers=make.headers
+        )
+
+    assert _together(client, [join(first), join(second)]) == [201, 409]
+    assert len(make.get(f"/items/{shared['hid']}")["groups"]) == 1
+
+
+def test_two_requests_at_once_cannot_put_two_items_inside_each_other(
+    make: Maker, client: TestClient, monkeypatch
+) -> None:
+    one, other = make.item(name="chassis-1"), make.item(name="chassis-2")
+    _slowly(monkeypatch, items, "ancestors")
+
+    def put(item: dict, into: dict):
+        body = {"row_version": item["row_version"], "parent_item_hid": into["hid"]}
+        return lambda caller: caller.patch(
+            f"{API}/items/{item['hid']}", json=body, headers=make.headers
+        )
+
+    assert _together(client, [put(one, other), put(other, one)]) == [200, 422]
+    assert sorted(make.found(filter="is_major:eq:true")) in (["chassis-1"], ["chassis-2"])
+
+
+def test_a_member_of_a_stack_is_not_given_a_parent_while_it_joins(
+    make: Maker, client: TestClient, monkeypatch
+) -> None:
+    entry = make.entry(make.vendor())
+    joining, *others = make.switches(entry, "site2-sw", 3)
+    stack = make.stack("site2-sw-stack1", others)
+    chassis = make.item(name="chassis-1")
+    _slowly(monkeypatch, groups, "_check_joining")
+    _slowly(monkeypatch, items, "major_only_groups")
+
+    def join(caller):
+        body = {"members": [{"item_hid": joining["hid"]}]}
+        return caller.post(
+            f"{API}/device-groups/{stack['hid']}/members", json=body, headers=make.headers
+        )
+
+    def nest(caller):
+        body = {"row_version": joining["row_version"], "parent_item_hid": chassis["hid"]}
+        return caller.patch(f"{API}/items/{joining['hid']}", json=body, headers=make.headers)
+
+    answers = _together(client, [join, nest])
+    now = make.get(f"/items/{joining['hid']}")
+    # Whichever came first stands, and the other was refused: never both.
+    assert answers in ([200, 422], [201, 422])
+    assert (now["is_major"], len(now["groups"])) in ((True, 1), (False, 0))
+
+
+def test_the_master_of_a_stack_is_not_retired_until_another_is_master(make: Maker) -> None:
+    entry = make.entry(make.vendor())
+    switches = make.switches(entry, "site2-sw", 3, lifecycle_state="Prod")
+    stack = make.stack("site2-sw-stack1", switches)
+
+    def retire(item: dict, expect: int = 200) -> dict:
+        current = make.get(f"/items/{item['hid']}")
+        return make.post(
+            f"/items/{item['hid']}/retire", {"row_version": current["row_version"]}, expect
+        )
+
+    problem = retire(switches[0], 422)
+    assert "make another member the master first" in errors(problem)["record_status"]
+    assert make.get(f"/items/{switches[0]['hid']}")["record_status"] == "active"
+
+    # A member that is not the master is retired, and leaves the stack that day.
+    retired = retire(switches[2])
+    assert (retired["record_status"], retired["groups"]) == ("retired", [])
+    again = make.get(f"/device-groups/{stack['hid']}")
+    assert (again["member_count"], again["serial_number"]) == (2, switches[0]["serial_number"])
+    past = make.members(stack, include_past="true")
+    assert past[2]["left_on"] is not None
+    # One of the last two cannot go: the stack would not be one.
+    problem = retire(switches[1], 422)
+    assert "at least two members" in errors(problem)["record_status"]
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 2
+    # The discount is earned by the two that are a stack, and by nobody else.
+    assert make.totals()["managed_node_count"] == 1
+
+
+def test_a_bulk_edit_of_an_item_and_its_minor_items_copies_nothing_down(make: Maker) -> None:
+    ours, theirs = make.owner("Network Engineering"), make.owner("Voice Services")
+    chassis = make.item(name="chassis", owner_hid=ours["hid"], lifecycle_state="Prod")
+    blade = make.item(name="blade", parent_item_hid=chassis["hid"])
+    make.item(name="module", parent_item_hid=blade["hid"])
+    make.item(name="zz-fan", parent_item_hid=chassis["hid"])
+
+    # The rows are chosen by name, the blade before its chassis. They are worked the
+    # chassis first, so each minor item is compared with what the chassis will hold.
+    preview = make.post(
+        "/items/bulk-update",
+        {
+            "filter": "owner.label:eq:Network Engineering",
+            "set": {"owner": "Voice Services", "lifecycle_state": "Down"},
+        },
+    )
+    assert [row["key"] for row in preview["rows"]] == ["blade", "chassis", "module", "zz-fan"]
+    # Only the chassis is written to: what the others would be given, they have from it.
+    assert [row["outcome"] for row in preview["rows"]] == [
+        "unchanged",
+        "update",
+        "unchanged",
+        "unchanged",
+    ]
+    make.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+
+    for name in ("blade", "module", "zz-fan"):
+        part = make.get("/items", filter=f"name:eq:{name}")["items"][0]
+        assert (part["owner_hid"], part["lifecycle_state"], part["row_version"]) == (None, None, 1)
+        assert part["effective"]["owner_hid"]["value"] == theirs["hid"]
+        assert part["effective"]["lifecycle_state"] == {
+            "value": "Down",
+            "source": "parent_item",
+            "source_hid": chassis["hid"],
+        }
+    # They still follow the chassis.
+    make.move(make.get(f"/items/{chassis['hid']}"), "Prod")
+    assert make.found(filter="effective.lifecycle_state:eq:Prod") == [
+        "blade",
+        "chassis",
+        "module",
+        "zz-fan",
+    ]
+
+
+def test_one_item_does_not_make_the_summary_fail_for_everybody(make: Maker) -> None:
+    entry = make.entry(
+        make.vendor(), est_value="9999999999999.99", support_weight="99999999.99", kind="software"
+    )
+    make.item(
+        catalog_entry_hid=entry["hid"],
+        name="licences",
+        quantity=1_000_000_000,
+        lifecycle_state="Prod",
+    )
+    make.item(
+        catalog_entry_hid=entry["hid"], name="more", quantity=1_000_000_000, lifecycle_state="Prod"
+    )
+
+    summary = make.get("/reports/summary", by="kind")
+
+    # Exact, however large: nothing is rounded on the way.
+    assert summary["totals"]["est_value"] == "19999999999999980000000.00"
+    assert summary["totals"]["support_weight"] == "199999999980000000"
+    assert summary["rows"][0]["est_value"] == "19999999999999980000000.00"
+
+
+def test_support_weight_is_rounded_half_up(make: Maker) -> None:
+    entry = make.entry(make.vendor(), support_weight="0.01", stack_discount_pct="50")
+    switches = make.switches(entry, "site2-sw", 5, lifecycle_state="Prod")
+    make.stack("site2-sw-stack1", switches)
+    # Five times half a hundredth is 0.025: half up it is 0.03, and half to even 0.02.
+    assert make.totals()["support_weight"] == "0.03"
+
+
+def test_a_draft_stack_is_one_node_where_drafts_are_counted(make: Maker) -> None:
+    entry = make.entry(make.vendor(), support_weight="1")
+    switches = make.switches(entry, "site2-sw", 2, lifecycle_state="Prod", record_status="draft")
+    make.group(
+        "site2-sw-stack1",
+        "stack",
+        [(switches[0], "master"), (switches[1], "member")],
+        record_status="draft",
+    )
+    assert make.totals()["items"] == 0
+    drafts = make.totals(include_drafts="true")
+    assert (drafts["component_count"], drafts["managed_node_count"], drafts["support_weight"]) == (
+        2,
+        1,
+        "1",
+    )
+
+
+def test_the_duplicates_report_holds_at_its_largest_page(make: Maker, db: Session) -> None:
+    holder = make.item(name="site2-rtr-wan-01")
+    other = make.item(name="site2-rtr-wan-02")
+    for number in range(1001):
+        address = f"2001:db8::{number:x}"
+        db.add_all(
+            [
+                Address(item_hid=holder["hid"], address=address, role="virtual"),
+                Address(item_hid=other["hid"], address=address, role="virtual"),
+            ]
+        )
+    db.commit()
+
+    page = make.get("/reports/duplicates", limit=1000)
+
+    assert (page["total"], len(page["items"])) == (1001, 1000)
+    assert all(len(found["holders"]) == 2 for found in page["items"])
+
+
+def test_the_list_of_groups_asks_the_database_no_more_for_more_members(make: Maker) -> None:
+    owner = make.owner()
+    entry = make.entry(make.vendor())
+    statements: list[str] = []
+
+    def note(*call) -> None:
+        statements.append(call[2])
+
+    def asked() -> int:
+        statements.clear()
+        make.get("/device-groups")
+        return len(statements)
+
+    # Every engine of this process is listened to: the application's is among them.
+    event.listen(Engine, "before_cursor_execute", note)
+    try:
+        make.stack("stack-a", make.switches(entry, "a", 2), owner_hid=owner["hid"])
+        few = asked()
+        make.stack("stack-b", make.switches(entry, "b", 8), owner_hid=owner["hid"])
+        make.stack("stack-c", make.switches(entry, "c", 8), owner_hid=owner["hid"])
+        many = asked()
+    finally:
+        event.remove(Engine, "before_cursor_execute", note)
+    assert 0 < many == few
+
+
+def test_a_replacement_never_comes_round_to_where_it_began(make: Maker) -> None:
+    first, second, third = (make.item(name=f"unit-{number}") for number in (1, 2, 3))
+
+    def replace(old: dict, new: dict, expect: int = 201) -> dict:
+        current = make.get(f"/items/{old['hid']}")
+        body = {"row_version": current["row_version"], "reason": "rma", "new_item_hid": new["hid"]}
+        return make.post(f"/items/{old['hid']}/replace", body, expect)
+
+    replace(first, second)
+    problem = replace(second, first, 422)
+    assert "took its own" in problem["detail"]
+    replace(second, third)
+    problem = replace(third, first, 422)
+    assert "took its own" in problem["detail"]

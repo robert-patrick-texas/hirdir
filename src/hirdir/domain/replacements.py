@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, Item, ItemReplacement
 from hirdir.domain import audit, choices, groups, items, records
 from hirdir.domain.audit import AuditContext, change
@@ -40,6 +41,18 @@ def of_items(
         )
     }
     return replaced_by, replaces
+
+
+def _line_before(db: Session, item_hid: str) -> set[str]:
+    """Return the items that an item took the place of, and those before them."""
+    before: set[str] = set()
+    current: str | None = item_hid
+    while current is not None and current not in before:
+        before.add(current)
+        current = db.scalar(
+            select(ItemReplacement.old_item_hid).where(ItemReplacement.new_item_hid == current)
+        )
+    return before - {item_hid}
 
 
 def _take_over(
@@ -86,6 +99,7 @@ def replace(
     The item that takes the place is one that exists, named by its HID, or is created
     here from its fields. Neither item is moved in the lifecycle.
     """
+    dialect.hold_other_writers(db)
     old = items.get_item(db, old_hid)
     if old.row_version != row_version:
         raise StaleVersion(
@@ -134,6 +148,11 @@ def replace(
             raise Conflict(
                 "this item took the place of another already",
                 {"new_item_hid": f"it took the place of {taken.old_item_hid}"},
+            )
+        if new.hid in _line_before(db, old.hid):
+            raise Invalid(
+                "an item does not take the place of one that took its own",
+                {"new_item_hid": "this item was replaced, in the end, by the one it would replace"},
             )
     replacement = ItemReplacement(
         old_item_hid=old.hid,

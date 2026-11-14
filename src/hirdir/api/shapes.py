@@ -340,6 +340,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     master_refs = item_refs(db, list(masters.values()))
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
+    disagree = groups.members_disagree(db, found)
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
@@ -355,7 +356,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 parent=None if parent is None else _group_ref(parent),
                 groups=nested[group.hid],
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
-                members_disagree=groups.members_disagree(db, group),
+                members_disagree=disagree[group.hid],
                 # Read from the master each time it is asked for, and stored nowhere.
                 serial_number=master.serial_number if master is not None else None,
                 master=master_refs[master.hid] if master is not None else None,

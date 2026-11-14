@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -171,6 +171,51 @@ def reference_text(item: Item) -> str:
     return item.asset_tag or item.serial_number or item.name or item.hostname or item.hid
 
 
+def reference_texts(db: Session, found: Sequence[Item]) -> dict[str, str]:
+    """Return how a file names each of the items, so that the name finds that item alone.
+
+    It is what `reference_text` gives, unless another item answers to the same text, or
+    the text has the form of an HID: then it is the item's HID, which never misleads.
+    """
+    texts = {item.hid: reference_text(item) for item in found}
+    # Who answers to each text, found as `known_as` finds them: a serial number and an
+    # asset tag by their keys, a name as text is compared, without regard to case.
+    by_key: dict[str, set[str]] = {records.key(text): set() for text in texts.values()}
+    by_name: dict[str, set[str]] = {text.strip().lower(): set() for text in texts.values()}
+    name = dialect.folded(func.coalesce(Item.name, Item.hostname))
+    wanted = sorted(set(texts.values()))
+    for start in range(0, len(wanted), 500):
+        piece = wanted[start : start + 500]
+        keys = [records.key(text) for text in piece]
+        rows = db.execute(
+            select(Item.hid, Item.serial_key, Item.asset_tag_key, name).where(
+                or_(
+                    Item.serial_key.in_(keys),
+                    Item.asset_tag_key.in_(keys),
+                    name.in_([dialect.folded(literal(text.strip())) for text in piece]),
+                )
+            )
+        )
+        for hid, serial, tag, called in rows:
+            for known in (serial, tag):
+                if known in by_key:
+                    by_key[known].add(hid)
+            if called in by_name:
+                by_name[called].add(hid)
+
+    def alone(hid: str, text: str) -> bool:
+        answering = by_key[records.key(text)] | by_name[text.strip().lower()]
+        return answering == {hid} and not ids.is_hid(text)
+
+    return {hid: text if alone(hid, text) else hid for hid, text in texts.items()}
+
+
+def name_or_hid(name: str, hid: str) -> str:
+    """Return how a file names a record that has a name of its own: by the name, unless
+    the name has the form of an HID and would be read as one."""
+    return hid if ids.is_hid(name.strip()) else name
+
+
 def major_only_groups(db: Session, item_hid: str) -> list[DeviceGroup]:
     """Return the stacks and clusters, not retired, that an item is a current member of."""
     return list(
@@ -193,6 +238,8 @@ def _checked_parent(db: Session, value: Any, item: Item | None) -> str | None:
     if hid is None or (item is not None and item.parent_item_hid == hid):
         return hid
     field = "parent_item_hid"
+    # Checked against other records, so nobody else may be changing them meanwhile.
+    dialect.hold_other_writers(db)
     parent = db.get(Item, hid)
     if parent is None:
         raise Invalid("there is no such item", {field: f"there is no item {hid}"})
@@ -467,8 +514,20 @@ def update_item(
 
 
 def retire_item(db: Session, context: AuditContext, hid: str, row_version: int) -> Item:
-    """Retire an item: keep the record and its history, and leave it out of what is counted."""
+    """Retire an item: keep the record and its history, and leave it out of what is counted.
+
+    Its memberships of groups end today, under the rules of leaving a group: the
+    master of a stack is not retired while the stack has other members.
+    """
+    # Groups are built on items, so the module that knows them is fetched here.
+    from hirdir.domain import groups
+
+    dialect.hold_other_writers(db)
     item = get_item(db, hid)
+    if item.record_status != "retired":
+        if item.row_version != row_version:
+            records.touch(item, context, row_version)
+        groups.leave_all(db, context, hid)
     records.apply(
         db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
     )
