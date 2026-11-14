@@ -217,7 +217,7 @@ sorted as an address. `observed_master` puts the member that is seen as master f
 whichever way round. The history of an item is sorted by its events, and the changes
 of one event stay together. The columns that a page composes from a list of changes
 are not sorted by the server: What changed in the audit trail, and Changes and
-Reasons of the rows of a preview (P-94).
+Reasons of the rows of a preview (D-136).
 
 ## Import and export
 
