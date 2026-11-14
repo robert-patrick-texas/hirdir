@@ -204,7 +204,7 @@ export interface paths {
     };
   };
   "/api/v1/audit-events": {
-    /** List audit events, newest first. */
+    /** List audit events, newest first unless a sort says otherwise. */
     get: {
       parameters: {
         query?: {
@@ -213,6 +213,8 @@ export interface paths {
           action?: string;
           actor_hid?: string;
           request_id?: string;
+          /** What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -1090,12 +1092,17 @@ export interface paths {
     };
   };
   "/api/v1/device-groups/{hid}/members": {
-    /** List the members of a group by position, the current ones first. */
+    /**
+     * List the members of a group by position, the current ones first, unless a sort
+     * says otherwise.
+     */
     get: {
       parameters: {
         query?: {
           /** Show the memberships that have ended as well. */
           include_past?: boolean;
+          /** What to sort by: `position`, `item.name`, `item.pid`, `item.serial_number`, `role`, `observed_master`, `joined_on`, `left_on`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -1346,12 +1353,17 @@ export interface paths {
     };
   };
   "/api/v1/imports": {
-    /** List the stored previews and what became of them, newest first. */
+    /**
+     * List the stored previews and what became of them, newest first unless a sort
+     * says otherwise.
+     */
     get: {
       parameters: {
         query?: {
           /** Imports of files, or bulk edits. */
           source?: "file" | "bulk";
+          /** What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -1498,12 +1510,14 @@ export interface paths {
     };
   };
   "/api/v1/imports/{hid}/rows": {
-    /** List the rows of a preview in the order of the file. */
+    /** List the rows of a preview, in the order of the file unless a sort says otherwise. */
     get: {
       parameters: {
         query?: {
           /** Only rows of this kind. */
           outcome?: "create" | "update" | "unchanged" | "rejected" | null;
+          /** What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -1768,10 +1782,15 @@ export interface paths {
     };
   };
   "/api/v1/items/{hid}/children": {
-    /** List the minor items directly in one item, by position, whatever their status. */
+    /**
+     * List the minor items directly in one item, whatever their status: by position
+     * unless a sort says otherwise.
+     */
     get: {
       parameters: {
         query?: {
+          /** What to sort by: any field the item list is sorted by, such as `position`, `name`, `catalog.pid`, `serial_number`, `effective.lifecycle_state`, `owner.label`, `location.name` and `minor_items`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -1798,10 +1817,16 @@ export interface paths {
     };
   };
   "/api/v1/items/{hid}/history": {
-    /** List every change made to one item, newest first. */
+    /**
+     * List every change made to one item, newest first unless a sort says otherwise.
+     *
+     * The events are sorted, and the changes of one event stay together.
+     */
     get: {
       parameters: {
         query?: {
+          /** What to sort by: `at`, `actor_name`, `action`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -3053,7 +3078,8 @@ export interface paths {
      * List each address that is held more than once under one network.
      *
      * The unlabelled address space counts as one network. The same address under two
-     * networks is two addresses, and is not listed.
+     * networks is two addresses, and is not listed. They are by address unless a sort
+     * says otherwise.
      */
     get: {
       parameters: {
@@ -3062,6 +3088,8 @@ export interface paths {
           include_archived?: boolean;
           /** Count draft records as well. */
           include_drafts?: boolean;
+          /** What to sort by: `address`, `network`, `count`, `holders`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };
@@ -3808,11 +3836,16 @@ export interface paths {
     };
   };
   "/api/v1/users": {
-    /** List users by username. `q` matches part of a username or display name. */
+    /**
+     * List users, by username unless a sort says otherwise. `q` matches part of a
+     * username or display name.
+     */
     get: {
       parameters: {
         query?: {
           q?: string;
+          /** What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
           limit?: number;
           offset?: number;
         };

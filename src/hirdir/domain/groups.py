@@ -116,14 +116,24 @@ def current_members(db: Session, group_hid: str) -> list[DeviceGroupMember]:
 
 
 def list_members(
-    db: Session, group_hid: str, include_past: bool, limit: int, offset: int
+    db: Session,
+    group_hid: str,
+    include_past: bool,
+    limit: int,
+    offset: int,
+    arrange: records.Arrange | None = None,
 ) -> tuple[list[DeviceGroupMember], int]:
-    """Return a page of the memberships of a group, the current ones first, and their number."""
+    """Return a page of the memberships of a group, the current ones first, and their number.
+
+    `arrange` sorts them as was asked for, and that order settles what it leaves tied.
+    """
     get_group(db, group_hid)
     query = select(DeviceGroupMember).where(DeviceGroupMember.group_hid == group_hid)
     if not include_past:
         query = query.where(DeviceGroupMember.left_on.is_(None))
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     order = [DeviceGroupMember.left_on.is_not(None), *_in_order()]
     return list(db.scalars(query.order_by(*order).limit(limit).offset(offset))), total
 

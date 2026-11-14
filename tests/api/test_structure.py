@@ -265,3 +265,30 @@ def test_a_minor_item_is_made_and_changed_by_the_inventory_role_only(
     created = make.audit(record_hid=part["hid"])[0]
     assert created["action"] == "create"
     assert {"field": "parent_item_hid", "old": None, "new": switch["hid"]} in created["changes"]
+
+
+def test_the_children_of_an_item_are_sorted_by_the_columns_of_their_table(make: Maker) -> None:
+    switch = _switch(make)
+    lab = make.owner("Lab Team")
+    slot = _part(make, switch, "Slot 1", serial_number="S-3")
+    _part(make, switch, "PS-B", serial_number="S-1", owner_hid=lab["hid"])
+    _part(make, switch, "PS-A", serial_number="S-2")
+    _part(make, slot, "Bay 1")
+    path = f"/items/{switch['hid']}/children"
+
+    def children(**params) -> list[str]:
+        page = make.get(path, **params)
+        assert page["total"] == 3
+        return [child["position"] for child in page["items"]]
+
+    assert children() == ["PS-A", "PS-B", "Slot 1"]
+    assert children(sort="-position") == ["Slot 1", "PS-B", "PS-A"]
+    assert children(sort="serial_number") == ["PS-B", "PS-A", "Slot 1"]
+    assert children(sort="-name", limit=2) == ["Slot 1", "PS-B"]
+    # The owner in force: two have the switch's, and are by position as they always were.
+    assert children(sort="owner.label") == ["PS-B", "PS-A", "Slot 1"]
+    assert children(sort="-owner.label") == ["PS-A", "Slot 1", "PS-B"]
+    # How many are in each: the one that has any first, whichever way round.
+    assert children(sort="minor_items") == ["Slot 1", "PS-A", "PS-B"]
+    assert children(sort="-minor_items") == ["Slot 1", "PS-A", "PS-B"]
+    assert "sort" in errors(make.get(path, 422, sort="location"))

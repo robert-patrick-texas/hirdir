@@ -516,3 +516,24 @@ def test_a_row_of_the_summary_says_who_is_involved_and_with_how_much(make: Maker
     assert make.get("/reports/summary", operators="true")["rows"] == []
     by_region = make.get("/reports/summary", by="region", operators="true")["rows"]
     assert [one["label"] for one in by_region[0]["operators"]] == ["DW", "LM", "PR", None]
+
+
+def test_operators_are_sorted_by_how_much_each_is_given_to(make: Maker) -> None:
+    marks = _team(make)
+    places = make.layout()
+    lm, ra, pr = (marks[label]["hid"] for label in ("LM", "RA", "PR"))
+    switch = make.item(name="sw-01", operator_hid=lm)
+    make.item(name="sw-02", operator_hid=lm)
+    make.item(name="sw-03", operator_hid=ra)
+    make.group("site2-sw-stack1", "stack", [(switch, "master")], operator_hid=lm)
+    _patch(make, f"/sites/{places['site']['hid']}", operator_hid=pr)
+
+    def given(sort: str) -> list[tuple[str, int]]:
+        found = make.get("/operators", sort=sort)["items"]
+        return [(row["label"], row["uses"]) for row in found]
+
+    # The number is the one the record shows: items, groups and places together.
+    assert given("uses,label") == [("DW", 0), ("PR", 1), ("RA", 1), ("LM", 3)]
+    assert given("-uses,label") == [("LM", 3), ("PR", 1), ("RA", 1), ("DW", 0)]
+    problem = make.get("/operators", 422, filter="uses:gt:1")
+    assert "uses is not a field" in errors(problem)["filter"]

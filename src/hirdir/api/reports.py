@@ -7,9 +7,9 @@ from fastapi import APIRouter, Query
 from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Db, Viewer
-from hirdir.api.lists import Limit, Offset
+from hirdir.api.lists import Limit, Offset, sort_of
 from hirdir.api.schemas import Page
-from hirdir.io import reports
+from hirdir.io import reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -94,13 +94,15 @@ def duplicates(
     db: Db,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
+    sort: Annotated[list[str] | None, sort_of(tables.DUPLICATES)] = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> Page[r.DuplicateOut]:
     """List each address that is held more than once under one network.
 
     The unlabelled address space counts as one network. The same address under two
-    networks is two addresses, and is not listed.
+    networks is two addresses, and is not listed. They are by address unless a sort
+    says otherwise.
     """
     page, total = reports.duplicates(
         db,
@@ -108,6 +110,7 @@ def duplicates(
         include_drafts=include_drafts,
         limit=limit,
         offset=offset,
+        arrange=tables.arrange(tables.DUPLICATES, sort),
     )
     return Page(
         items=[r.DuplicateOut.model_validate(found) for found in page],

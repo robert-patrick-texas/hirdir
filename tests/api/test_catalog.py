@@ -201,3 +201,31 @@ def test_every_inventory_write_needs_the_inventory_role(
                 assert as_viewer == 403, (method, path)
                 checked += 1
     assert checked >= 20
+
+
+def test_vendors_are_sorted_by_their_aliases_and_entries_by_their_tags(make: Maker) -> None:
+    # The least alias without regard to case, whichever was written first.
+    cisco = make.vendor("Cisco", aliases=["zed", "Cisco Systems"])
+    make.vendor("Juniper", aliases=["alpha"])
+    make.vendor("Arista", aliases=["mid"])
+    make.vendor("Extreme")
+
+    def vendors(sort: str) -> list[str]:
+        return [row["name"] for row in make.get("/vendors", sort=sort)["items"]]
+
+    assert vendors("aliases") == ["Juniper", "Cisco", "Arista", "Extreme"]
+    assert vendors("-aliases") == ["Arista", "Cisco", "Juniper", "Extreme"]
+    problem = make.get("/vendors", 422, filter="aliases:contains:zed")
+    assert "aliases is not a field" in errors(problem)["filter"]
+
+    for label in ("Zulu", "beta", "alpha"):
+        make.tag(label)
+    make.entry(cisco, "C9300-48P", tags=["Zulu", "beta"])
+    make.entry(cisco, "C9200L-24T", tags=["alpha"])
+    make.entry(cisco, "C9500-24Y4C")
+
+    def pids(sort: str) -> list[str]:
+        return [row["pid"] for row in make.get("/catalog-entries", sort=sort)["items"]]
+
+    assert pids("tags") == ["C9200L-24T", "C9300-48P", "C9500-24Y4C"]
+    assert pids("-tags") == ["C9300-48P", "C9200L-24T", "C9500-24Y4C"]

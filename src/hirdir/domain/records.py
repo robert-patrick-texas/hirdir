@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import Select
 from sqlalchemy.orm import Session
 
 from hirdir import clock
@@ -13,6 +14,10 @@ from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Invalid, StaleVersion
 
 RECORD_STATUSES = ("draft", "active", "retired")
+# What puts the rows of a statement in the order that was asked for, before the order
+# the statement has of its own. `hirdir.io.tables` makes one from a `sort`.
+type AnySelect = Select[*tuple[Any, ...]]
+type Arrange = Callable[[AnySelect], AnySelect]
 MONEY_FIELDS = ("est_value", "annual_support_cost")
 
 

@@ -65,8 +65,12 @@ class Field:
 
     A record may have several of some fields: an item has the names of all its groups
     and every one of its addresses. Such a field has `among`, which turns a condition
-    on `expression` into "one of them meets it". It can be filtered by and not sorted
-    by.
+    on `expression` into "one of them meets it". It is sorted by the least of them,
+    which `ordered_by` then says, and a field of several with no `ordered_by` cannot be
+    sorted by.
+
+    A field with `ordered_by` and neither `expression` nor `test` is one to sort by
+    and not to filter by: a count or a name that is worked out for the order alone.
     """
 
     kind: str
@@ -74,6 +78,7 @@ class Field:
     test: Callable[[str], ColumnElement[bool]] | None = None
     convert: Callable[[str], Any] | None = None
     # What the field is sorted by, where that is not the order of its values as text.
+    # It is in the statement only when that sort is asked for.
     ordered_by: Any = None
     among: Callable[[ColumnElement[bool]], ColumnElement[bool]] | None = None
     within: Callable[[Any, str], ColumnElement[bool]] | None = None
@@ -287,7 +292,7 @@ def _condition(
 ) -> ColumnElement[bool]:
     name, op, value = condition.field, condition.op, condition.value
     field = fields.get(name)
-    if field is None:
+    if field is None or (field.expression is None and field.test is None):
         raise refuse(f"{name} is not a field this list can be filtered by")
     if op not in OPERATORS:
         raise refuse(f"{op} is not an operator; the operators are {', '.join(OPERATORS)}")
@@ -400,6 +405,17 @@ class SortKey:
     descending: bool
 
 
+def sorted_by(field: Field) -> bool:
+    """Say whether a list can be sorted by a field.
+
+    It can by a field that says what it is sorted by, and by any other that has one
+    value to a record. A place is filtered by and not sorted by: its name is.
+    """
+    if field.ordered_by is not None:
+        return True
+    return field.expression is not None and field.among is None and field.kind != "place"
+
+
 def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[SortKey]:
     """Read a sort: field names, each with `-` in front for descending order.
 
@@ -414,12 +430,7 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
             descending = name.startswith("-")
             name = name.lstrip("+-").strip()
             field = fields.get(name)
-            if (
-                field is None
-                or field.expression is None
-                or field.among is not None
-                or field.kind == "place"
-            ):
+            if field is None or not sorted_by(field):
                 raise Invalid(
                     "the sort is not acceptable",
                     {"sort": f"{name} is not a field this list can be sorted by"},

@@ -17,6 +17,7 @@ and CLI's types are generated from it.
 | Record routes | `GET /items`, `POST /items`, `GET /items/{hid}`, `PATCH /items/{hid}`, `POST /items/{hid}/retire` |
 | Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000 and `offset` at most 10,000,000 |
 | Fewer fields | `fields=hid,name,catalog.pid` returns only the fields named, of each record of a list. A name is a field of the record as the route returns it, or one field of a record within it, written with a dot. `hid` and `row_version` are always returned. A name the record does not have is a `422` |
+| Other paged tables | The users, the audit trail, the stored previews and their rows, the duplicates report, the members of a group, and the minor items and the history of an item are paged with `limit` and `offset`, and take `sort` as a list does. With no `sort` each is in the order it always had. See [Sorting](#sorting) |
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses and locations |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
@@ -125,7 +126,7 @@ with everything it is in, and false for one that can be planned for. A
 location is also found by `site.name`, `site.code` and `region.name`, the name of the
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial
 number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
-A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
+A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
@@ -134,17 +135,89 @@ A filter nests at most 8 deep and holds at most 100 conditions, and a value is a
 field could never hold, such as a number with more decimal places than money has, is a
 `422`.
 
-`sort` is a list such as `["site", "-effective.ldos"]`, written `sort=site,-effective.ldos`
-in a URL. Text sorts without regard to case, blank values come last in either
-direction, and rows that tie keep a steady order, so paging never repeats or skips one.
-On the item list, `name` filters and sorts by the hostname when the name is blank.
-
 The short form used by the CLI and by `filter=` in a URL is one condition per
 `field:op:value`, joined by AND: `lifecycle_state:in:Test,Prod hostname:prefix:site2-`.
 A value runs to the start of the next condition, so it may hold spaces, and the values
 of `in` and `between` are separated by commas. A value that itself looks like the start
 of a condition, `word:word:`, is refused, because it is nearly always a mistyped
 operator; the JSON form takes any value. `filter=` also takes the JSON form.
+
+### Sorting
+
+`sort` is a list such as `["site", "-effective.ldos"]`, written `sort=site,-effective.ldos`
+in a URL. Text sorts without regard to case, blank values come last in either
+direction, and rows that tie keep a steady order, so paging never repeats or skips one.
+On the item list, `name` filters and sorts by the hostname when the name is blank. A
+field the route is not sorted by is a `422`.
+
+A list is sorted by any field it is filtered by, with two exceptions. A field that
+takes `within` is a place, and a list is sorted by the name of the place and not by
+the place: by `location.name`, `planned_location.name`, `site` and `region` on the
+lists of items and of device groups, and by `region.name` on the list of sites. The
+fields that name the records a record has several of, `group.hid`,
+`member.item_hid`, `member.serial_number` and `member.contact_hid`, have no order.
+
+A field that a record may have several of is sorted by the least of them, in the order
+of that value, and a record with none comes last in either direction, as a blank does.
+`tags` is sorted by the first label without regard to case, on every list that has
+tags; `group.name` by the first name and `group.type` by the first type among the
+groups of an item; `network.label` by the first label; and `address` by the lowest
+address, as an address and not as text: 192.0.2.9 comes before 192.0.2.10, and every
+IPv4 address before any IPv6 one. Filtering by such a field is as it was: by any one of
+them.
+
+A grid that the server pages is sorted by the server, over the whole list, so every
+column of such a grid has a field that it is sorted by (D-132). Where a column shows
+what is worked out, the field is sorted by and not filtered by:
+
+| List | Column | `sort` | Sorted by |
+|---|---|---|---|
+| Items | Groups | `group.name` | the first of its groups, by name |
+| Items | Group types | `group.type` | the first type among them |
+| Items, device groups | Management address | `mgmt_address` | the primary management address, the IPv4 one before the IPv6 one |
+| Items, device groups | Addresses | `address` | the lowest address |
+| Items, device groups | Networks | `network.label` | the first label among the networks of its addresses |
+| Items | Minor items | `minor_items` | how many are directly in it; an item with none comes last |
+| Device groups | Serial number | `serial_number` | the serial number the group reports: of the master that is seen, or else of the one intended |
+| Device groups | Health | `health` | the worst first, as an item's is: failed, degraded, unknown, good, and a group that has no health last |
+| Device groups | Intended master | `master.name` | the name that item is shown by: its name, or else its hostname, serial number or asset tag |
+| Device groups | Master seen | `observed_master.name` | likewise |
+| Device groups | Members | `member_count` | the number of current members |
+| Contacts | Assigned | `uses` | how many places, owners and operators name it, as the record counts them |
+| Operators | Given to | `uses` | how many items, groups and places are given it |
+| Vendors | Also known as | `aliases` | the first alias without regard to case |
+| Owners | Primary contact | `primary.name` | the name of that contact |
+| Every list with tags | Tags | `tags` | the first label |
+
+`mgmt_address`, `minor_items`, `serial_number` of a group, `health` of a group,
+`master.name`, `observed_master.name`, `member_count`, `uses`, `aliases` and
+`primary.name` are sorted by and not filtered by. A stack is still found by
+`member.serial_number`, the serial number of any current member.
+
+The tables that are paged and are no list of records take `sort` in the same form.
+Each keeps the order it always had: that is the order with no `sort`, and what settles
+the rows that a sort leaves tied.
+
+| Route | `sort` takes | With no `sort` |
+|---|---|---|
+| `GET /users` | `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at` | by username |
+| `GET /audit-events` | `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid` | newest first |
+| `GET /imports` | `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name` | newest first |
+| `GET /imports/{hid}/rows` | `row`, `key`, `outcome` | the order of the file |
+| `GET /reports/duplicates` | `address`, `network`, `count`, `holders` | by address and network |
+| `GET /device-groups/{hid}/members` | `position`, `item.name`, `item.pid`, `item.serial_number`, `role`, `observed_master`, `joined_on`, `left_on` | the current ones first, by position |
+| `GET /items/{hid}/children` | any field the item list is sorted by: `position`, `name`, `catalog.pid`, `serial_number`, `effective.lifecycle_state`, `owner.label`, `location.name` and `minor_items` are the columns of its table | by position and name |
+| `GET /items/{hid}/history` | `at`, `actor_name`, `action` | newest first |
+
+`role` of a user is the role in force, from the lowest to the highest, and a user with
+none comes last; `groups` is the first of the user's groups by name. `key` of a row is
+how the row names its record, or else the HID of the record it matched. `holders` of a
+duplicate is the first of its holders by name, `network` its label, and `address` is
+sorted as an address. `observed_master` puts the member that is seen as master first,
+whichever way round. The history of an item is sorted by its events, and the changes
+of one event stay together. The columns that a page composes from a list of changes
+are not sorted by the server: What changed in the audit trail, and Changes and
+Reasons of the rows of a preview (P-94).
 
 ## Import and export
 
@@ -249,7 +322,7 @@ are read there too.
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
-| Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, and `outcome=rejected` keeps to one kind |
+| Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, `outcome=rejected` keeps to one kind, and `sort` puts them in another order than that of the file |
 | Apply | `POST /imports/{hid}/apply` applies exactly what was previewed, in one transaction. If any record it would touch has changed since, nothing is applied and a new preview is asked for |
 | What "changed since" means | Apply works the file through again. Every row must come out as it was previewed, with the same changes and the same notes, and every record a row matched must be at the version it was previewed at, also when the row was `unchanged`. Otherwise the answer is a `409` that names the rows, the first fifty of them, and the job is `failed` |
 | Whose preview | A preview is applied once, by anybody who holds the Inventory role, whoever made it: one person may prepare a file and another look it over and apply it. The job says who made it and who applied it. Anybody who may read the inventory may read it |
@@ -353,7 +426,8 @@ rows is a managed node in both, and one in the totals.
 network, with the unlabelled address space as one network of its own: the address, the
 network, and the items and groups that hold it. A holder that a list leaves out by
 default is not counted, unless `include_drafts` or `include_archived` asks for it. It
-pages with `limit` and `offset`.
+pages with `limit` and `offset`, and takes `sort`: `address`, `network`, `count` and
+`holders`, which is the first of the holders by name.
 
 The end-of-life and coverage reports arrive in 0.6.0.
 
@@ -582,10 +656,14 @@ One grid component is used on every list page.
 - Sort by one or more columns, filter per column, resize, reorder, show and hide
   columns. Sorting, filtering and paging are done by the server.
 - Every column of every grid is sorted by its header, by the server and over the
-  whole list. Every other table a page shows, the scoreboard, the people of an owner,
-  the contacts of a place, a history, is sorted by its headers too, in the browser,
-  since it holds all of its rows: text without regard to case, numbers as numbers,
-  dates as dates, and blanks last.
+  whole list: [Sorting](#sorting) names the field of each column that is worked out.
+  A table that the server pages and that is no grid, the users, the audit trail, the
+  past imports and the rows of a preview, the duplicates, the members of a group, the
+  minor items and the history of an item, is sorted by the server too, by the `sort`
+  of its route. Every other table a page shows, the scoreboard, the people of an
+  owner, the contacts of a place, is sorted by its headers in the browser, since it
+  holds all of its rows: text without regard to case, numbers as numbers, dates as
+  dates, and blanks last.
 - Select whole rows: one, a range with Shift, several with Ctrl, or "all that match the
   filter", which is shown as a count and sent to the server as the filter, not as a list
   of rows.

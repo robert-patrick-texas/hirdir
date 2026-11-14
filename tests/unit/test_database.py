@@ -431,6 +431,8 @@ def test_a_small_preview_takes_its_turn_before_it_looks(config: Config) -> None:
 def test_every_list_is_built_before_the_first_request() -> None:
     """The statements of the lists are built by the thread that starts the application,
     so that the first requests, answered side by side, find them ready."""
-    from hirdir.io import fields
+    from hirdir.io import fields, tables
 
     assert fields.warm() == len(fields.LISTINGS) == 16
+    # And those of the tables that are paged and are no list, with every sort they take.
+    assert tables.warm() == len(tables.TABLES) == 8

@@ -417,8 +417,9 @@ def test_an_endpoint_lists_the_controllers_of_its_domain(make: Maker) -> None:
         "site2-ap-01",
         "site2-ap-02",
     ]
-    problem = make.get("/items", expect=422, sort="group.name")
-    assert "cannot be sorted" in problem["detail"] or "sort" in errors(problem)
+    # Which group it is, by its HID, has no order. Its name has: the first of them.
+    assert "sort" in errors(make.get("/items", expect=422, sort="group.hid"))
+    assert make.found(sort="group.name,name")[:3] == ["site2-ap-01", "site2-ap-02", "site2-wlc-03"]
 
 
 def test_a_group_says_when_a_member_has_another_owner(make: Maker) -> None:
@@ -478,3 +479,108 @@ def test_groups_are_read_by_all_and_changed_by_the_inventory_role(
         {"row_version": 1, "role": "master"},
         expect=404,
     )
+
+
+# --- the grid of groups, sorted by its columns -------------------------------------------
+
+
+def test_the_columns_of_a_group_that_are_worked_out_are_sorted_by(make: Maker) -> None:
+    def item(name: str, serial: str) -> dict:
+        return make.item(name=name, serial_number=serial)
+
+    for label in ("Zulu", "beta", "alpha"):
+        make.tag(label)
+    yankee, bravo = item("Yankee", "ZZ-1"), item("bravo", "aa-2")
+    # The stack booted and made its second switch master: its serial number is that one's.
+    floated = make.stack("stack-a", [yankee, bravo], tags=["Zulu", "beta"])
+    make.patch(
+        f"/device-groups/{floated['hid']}",
+        {"row_version": floated["row_version"], "observed_master_hid": bravo["hid"]},
+    )
+    three = make.stack(
+        "stack-b", [item("alpha", "MM-1"), item("m2", "MM-2"), item("m3", "MM-3")], tags=["alpha"]
+    )
+    pair = make.group("cluster-c", "cluster", [(item("x", "XX-1"), "active")])
+    make.group("empty-d", "stack")
+    make.address(floated, "192.0.2.20", is_primary=True)
+    make.address(floated, "192.0.2.9", make.network("Red"), role="virtual")
+    make.address(three, "192.0.2.100", make.network("blue"), is_primary=True)
+    make.address(pair, "2001:db8::5", is_primary=True)
+
+    def by(field: str) -> list[str]:
+        return make.found("/device-groups", sort=f"{field},name")
+
+    shown = {row["name"]: row for row in make.get("/device-groups")["items"]}
+    # The serial number the record reports: of the master that is seen, or else of the
+    # one intended, without regard to case, and a group with none last either way.
+    assert [shown[name]["serial_number"] for name in by("serial_number")] == [
+        "aa-2",
+        "MM-1",
+        None,
+        None,
+    ]
+    assert by("-serial_number") == ["stack-b", "stack-a", "cluster-c", "empty-d"]
+    # The masters, by the names their cells show.
+    assert by("master.name") == ["stack-b", "stack-a", "cluster-c", "empty-d"]
+    assert by("-master.name") == ["stack-a", "stack-b", "cluster-c", "empty-d"]
+    assert by("observed_master.name") == ["stack-a", "cluster-c", "empty-d", "stack-b"]
+    assert by("-observed_master.name") == ["stack-a", "cluster-c", "empty-d", "stack-b"]
+    # The number of current members is the one the record shows, sorted as a number.
+    assert [shown[name]["member_count"] for name in by("member_count")] == [0, 1, 2, 3]
+    assert by("-member_count") == ["stack-b", "stack-a", "cluster-c", "empty-d"]
+    # Addresses, networks and tags as on the item list: the least of them.
+    assert by("address") == ["stack-a", "stack-b", "cluster-c", "empty-d"]
+    assert by("-address") == ["cluster-c", "stack-b", "stack-a", "empty-d"]
+    assert by("mgmt_address") == ["stack-a", "stack-b", "cluster-c", "empty-d"]
+    assert by("network.label") == ["stack-b", "stack-a", "cluster-c", "empty-d"]
+    assert by("tags") == ["stack-b", "stack-a", "cluster-c", "empty-d"]
+    assert by("-tags") == ["stack-a", "stack-b", "cluster-c", "empty-d"]
+    # They are to sort by, and the filter does not know them.
+    for field in ("serial_number", "master.name", "member_count", "health"):
+        problem = make.get("/device-groups", 422, filter=f"{field}:empty:true")
+        assert f"{field} is not a field" in errors(problem)["filter"]
+
+
+def test_the_members_of_a_group_are_sorted_by_the_columns_of_their_table(make: Maker) -> None:
+    vendor = make.vendor()
+    small, large = make.entry(vendor, "C9200L-24T"), make.entry(vendor, "C9300-48P")
+
+    def switch(name: str, serial: str, entry: dict) -> dict:
+        return make.item(name=name, serial_number=serial, catalog_entry_hid=entry["hid"])
+
+    first, second, third = (
+        switch("Delta", "S-30", large),
+        switch("alpha", "S-10", large),
+        switch("Charlie", "S-20", small),
+    )
+    stack = make.stack("site2-sw-stack1", [first, second, third])
+    gone = make.item(name="bravo", serial_number="S-05")
+    past = make.add(stack, [{"item_hid": gone["hid"], "position": 4}])[0]
+    _leave(make, stack, past, LATER)
+    make.patch(
+        f"/device-groups/{stack['hid']}",
+        {"row_version": make.get(f"/device-groups/{stack['hid']}")["row_version"]}
+        | {"observed_master_hid": third["hid"]},
+    )
+
+    def names(**params) -> list[str]:
+        return [member["item"]["name"] for member in make.members(stack, **params)]
+
+    # As it was: by position, and with those that have left after the current ones.
+    assert names() == ["Delta", "alpha", "Charlie"]
+    assert names(include_past="true") == ["Delta", "alpha", "Charlie", "bravo"]
+    assert names(sort="item.name") == ["alpha", "Charlie", "Delta"]
+    assert names(sort="-item.name", include_past="true") == ["Delta", "Charlie", "bravo", "alpha"]
+    assert names(sort="item.serial_number") == ["alpha", "Charlie", "Delta"]
+    # The model, and within one model the order the table always had.
+    assert names(sort="item.pid") == ["Charlie", "Delta", "alpha"]
+    assert names(sort="-item.pid") == ["Delta", "alpha", "Charlie"]
+    assert names(sort="role") == ["Delta", "alpha", "Charlie"]
+    assert names(sort="-role") == ["alpha", "Charlie", "Delta"]
+    assert names(sort="-position") == ["Charlie", "alpha", "Delta"]
+    # The member that is seen as master comes first, whichever way round.
+    assert names(sort="observed_master")[0] == names(sort="-observed_master")[0] == "Charlie"
+    assert names(sort="left_on", include_past="true")[0] == "bravo"
+    assert names(sort="-joined_on,item.name", limit=2, offset=1) == ["Charlie", "Delta"]
+    path = f"/device-groups/{stack['hid']}/members"
+    assert "nope is not a field" in errors(make.get(path, 422, sort="nope"))["sort"]

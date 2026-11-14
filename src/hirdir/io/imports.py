@@ -310,10 +310,18 @@ def get_job(db: Session, hid: str, source: str | None = None) -> ImportJob:
     return job
 
 
-def list_jobs(db: Session, source: str, limit: int, offset: int) -> tuple[list[ImportJob], int]:
-    """Return the stored previews of one source, newest first, and how many there are."""
+def list_jobs(
+    db: Session, source: str, limit: int, offset: int, arrange: records.Arrange | None = None
+) -> tuple[list[ImportJob], int]:
+    """Return the stored previews of one source, newest first, and how many there are.
+
+    `arrange` sorts them as was asked for, and the newest first settles what that
+    leaves tied.
+    """
     query = select(ImportJob).where(ImportJob.source == source)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     page = db.scalars(
         query.order_by(ImportJob.created_at.desc(), ImportJob.hid.desc())
         .limit(limit)
@@ -323,9 +331,18 @@ def list_jobs(db: Session, source: str, limit: int, offset: int) -> tuple[list[I
 
 
 def list_rows(
-    db: Session, hid: str, outcome: str | None, limit: int, offset: int
+    db: Session,
+    hid: str,
+    outcome: str | None,
+    limit: int,
+    offset: int,
+    arrange: records.Arrange | None = None,
 ) -> tuple[list[ImportRow], int]:
-    """Return a page of the rows of a preview in the order of the file, and their number."""
+    """Return a page of the rows of a preview in the order of the file, and their number.
+
+    `arrange` sorts them as was asked for, and the order of the file settles what that
+    leaves tied.
+    """
     get_job(db, hid)
     query = select(ImportRow).where(ImportRow.job_hid == hid)
     if outcome:
@@ -335,6 +352,8 @@ def list_rows(
             )
         query = query.where(ImportRow.outcome == outcome)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     return list(db.scalars(query.order_by(ImportRow.row).limit(limit).offset(offset))), total
 
 

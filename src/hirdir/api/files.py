@@ -11,11 +11,11 @@ from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute, limited_body
-from hirdir.api.lists import Limit, Offset
+from hirdir.api.lists import Limit, Offset, sort_of
 from hirdir.api.problems import problem
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
-from hirdir.io import exports, imports
+from hirdir.io import exports, imports, tables
 
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
@@ -131,11 +131,14 @@ def list_imports(
     source: Annotated[
         Literal["file", "bulk"], Query(description="Imports of files, or bulk edits.")
     ] = "file",
+    sort: Annotated[list[str] | None, sort_of(tables.IMPORT_JOBS)] = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> Page[r.ImportJobOut]:
-    """List the stored previews and what became of them, newest first."""
-    page, total = imports.list_jobs(db, source, limit, offset)
+    """List the stored previews and what became of them, newest first unless a sort
+    says otherwise."""
+    arrange = tables.arrange(tables.IMPORT_JOBS, sort)
+    page, total = imports.list_jobs(db, source, limit, offset, arrange)
     return Page(
         items=[shapes.job_out(db, job) for job in page], total=total, limit=limit, offset=offset
     )
@@ -153,11 +156,13 @@ def list_import_rows(
     _: Viewer,
     db: Db,
     outcome: Annotated[r.Outcome | None, Query(description="Only rows of this kind.")] = None,
+    sort: Annotated[list[str] | None, sort_of(tables.IMPORT_ROWS)] = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> Page[r.ImportRowOut]:
-    """List the rows of a preview in the order of the file."""
-    page, total = imports.list_rows(db, hid, outcome, limit, offset)
+    """List the rows of a preview, in the order of the file unless a sort says otherwise."""
+    arrange = tables.arrange(tables.IMPORT_ROWS, sort)
+    page, total = imports.list_rows(db, hid, outcome, limit, offset, arrange)
     return Page(
         items=[shapes.row_out(row) for row in page], total=total, limit=limit, offset=offset
     )

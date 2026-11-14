@@ -3,15 +3,19 @@
 import json
 import time
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
+from sqlalchemy.orm import Session
 
 from hirdir.app import create_app
 from hirdir.config import Config
 from hirdir.db import dialect, migrate
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import accounts, audit
+from hirdir.io import fields, filters, listing, tables
 from tests.api.inventory import Maker, errors
 from tests.conftest import INVENTORY_CODE, sign_in
 
@@ -220,8 +224,86 @@ def test_bad_filter_is_refused_and_says_why(stocked: Maker, short: str, says: st
 
 
 def test_bad_sort_is_refused(stocked: Maker) -> None:
-    assert "tags is not a field" in errors(stocked.get("/items", 422, sort="tags"))["sort"]
-    assert "sort" in errors(stocked.get("/items", 422, sort="-nope"))
+    # Which group, by its HID, has no order, and neither has a place: its name has.
+    for name in ("group.hid", "location", "nope"):
+        problem = stocked.get("/items", 422, sort=f"-{name}")
+        assert f"{name} is not a field this list can be sorted by" in errors(problem)["sort"]
+    # What is worked out for a column to be sorted by is no field of the filter.
+    problem = stocked.get("/items", 422, filter="mgmt_address:eq:192.0.2.20")
+    assert "mgmt_address is not a field" in errors(problem)["filter"]
+
+
+def test_a_column_of_several_values_is_sorted_by_the_least_of_them(make: Maker) -> None:
+    for label in ("Zulu", "beta", "alpha", "Charlie"):
+        make.tag(label)
+    red, blue, green = make.network("Red"), make.network("blue"), make.network("Green")
+    # a has two of everything, and the one that counts is never the one that came first.
+    a = make.item(name="a", tags=["Zulu", "beta"])
+    b = make.item(name="b", tags=["alpha"])
+    c = make.item(name="c", tags=["Charlie"])
+    d = make.item(name="d")
+    make.address(a, "192.0.2.20", red, is_primary=True)
+    make.address(a, "192.0.2.9", blue, role="secondary")
+    make.address(b, "192.0.2.100", green, is_primary=True)
+    make.address(c, "2001:db8::5", is_primary=True)
+    make.address(c, "192.0.2.5", role="secondary")
+    make.group("site2-wlc-ha", "cluster", [(a, "active")])
+    make.group("Bench", "custom", [(a, "member")])
+    make.stack("alpha-stack", [b])
+    make.group("Zoo", "custom", [(c, "member")])
+    # A group that d has left is none of its groups.
+    left = make.group("Aardvark", "custom", [(d, "member")])
+    membership = make.members(left)[0]
+    make.patch(
+        f"/device-groups/{left['hid']}/members/{membership['hid']}",
+        {"row_version": membership["row_version"], "left_on": "2099-01-01"},
+    )
+
+    def by(field: str) -> tuple[list[str], list[str]]:
+        return make.found(sort=f"{field},name"), make.found(sort=f"-{field},name")
+
+    # The first label without regard to case, and an item with none last either way.
+    assert by("tags") == (["b", "a", "c", "d"], ["c", "a", "b", "d"])
+    # The first group by name, bench before site2-wlc-ha, and the first of their types.
+    assert by("group.name") == (["b", "a", "c", "d"], ["c", "a", "b", "d"])
+    assert by("group.type") == (["a", "c", "b", "d"], ["b", "c", "a", "d"])
+    # The lowest address, as an address: .5, .9 and .100, where the text has .100 first.
+    assert by("address") == (["c", "a", "b", "d"], ["b", "a", "c", "d"])
+    # The primary management address, and IPv4 before IPv6.
+    assert by("mgmt_address") == (["a", "b", "c", "d"], ["c", "b", "a", "d"])
+    # The first label of its networks: blue, then green, and what has none after them.
+    assert by("network.label") == (["a", "b", "c", "d"], ["b", "a", "c", "d"])
+    # Paged, such a sort still shows every row once.
+    pages = [make.found(sort="address", limit=2, offset=offset) for offset in (0, 2)]
+    assert sorted(pages[0] + pages[1]) == ["a", "b", "c", "d"]
+    # A filter by such a field is what it was: by any one of them.
+    assert make.found(filter="address:eq:192.0.2.20") == ["a"]
+    assert make.found(filter="tags:has:zulu") == ["a"]
+
+
+def test_what_a_sort_needs_is_in_the_statement_only_when_it_is_asked_for(db: Session) -> None:
+    statements: list[str] = []
+
+    def note(_connection: object, _cursor: object, statement: str, *_more: object) -> None:
+        statements.append(statement)
+
+    event.listen(db.get_bind(), "before_cursor_execute", note)
+    listing.page(db, fields.ITEMS)
+    plain = [one for one in statements if "FROM items" in one]
+    statements.clear()
+    listing.page(db, fields.ITEMS, sort=["tags", "address", "group.name", "minor_items"])
+    asked = [one for one in statements if "FROM items" in one]
+    event.remove(db.get_bind(), "before_cursor_execute", note)
+
+    # The list as it is asked for by default reads no tag and no address, and counts
+    # no minor item: a sort that nobody asked for costs it nothing.
+    (count, page), (count_when_sorted, sorted_page) = plain, asked
+    for part in ("tag_links", "addresses", "hirdir_address_key", "minor_item"):
+        assert part not in page, part
+        assert part in sorted_page, part
+    # And a sorted list is counted as an unsorted one is: the sort is in the ORDER BY.
+    assert count_when_sorted == count
+    assert sorted_page.split("ORDER BY")[0] == page.split("ORDER BY")[0]
 
 
 def test_pattern_that_backtracks_without_end_is_refused_in_time(make: Maker) -> None:
@@ -233,3 +315,74 @@ def test_pattern_that_backtracks_without_end_is_refused_in_time(make: Maker) -> 
     assert time.monotonic() - started < 2 * dialect.REGEX_REQUEST_SECONDS + 1
     # The server and the database are as they were.
     assert make.found(filter="name:regex:^lab-") == ["lab-sw-01"]
+
+
+LISTS = {
+    "/items": fields.ITEMS,
+    "/device-groups": fields.DEVICE_GROUPS,
+    "/networks": fields.NETWORKS,
+    "/addresses": fields.ADDRESSES,
+    "/catalog-entries": fields.CATALOG_ENTRIES,
+    "/vendors": fields.VENDORS,
+    "/owners": fields.OWNERS,
+    "/regions": fields.REGIONS,
+    "/sites": fields.SITES,
+    "/locations": fields.LOCATIONS,
+    "/contacts": fields.CONTACTS,
+    "/operators": fields.OPERATORS,
+    "/contact-assignments": fields.CONTACT_ASSIGNMENTS,
+}
+
+
+def test_every_list_is_sorted_by_every_field_it_says_it_is(make: Maker) -> None:
+    # One record of each, so that every statement has a row to put in order.
+    places = make.layout()
+    contact = make.contact("Dana Whitfield")
+    make.assign(contact, "technical", site_hid=places["site"]["hid"])
+    make.post("/operators", {"label": "LM", "contact_hid": contact["hid"]})
+    switch = make.item(
+        catalog_entry_hid=make.entry(make.vendor(aliases=["Cisco Systems"]))["hid"],
+        serial_number="FCW0000X001",
+        owner_hid=make.owner()["hid"],
+    )
+    make.address(switch, "192.0.2.10", make.network("Red"), is_primary=True)
+    make.stack("site2-sw-stack1", [switch])
+
+    for path, listed in LISTS.items():
+        names = [name for name, field in listed.fields.items() if filters.sorted_by(field)]
+        assert len(names) >= len(listed.fields) - 4, path
+        for way in ("", "-"):
+            page = make.get(path, sort=",".join(way + name for name in names))
+            assert page["total"] == len(page["items"]) >= 1, path
+
+
+def test_every_paged_table_is_sorted_by_every_field_it_says_it_is(
+    make: Maker, admin: dict[str, str]
+) -> None:
+    switch = make.item(name="site2-sw-access-01")
+    make.item(name="PS-A", parent_item_hid=switch["hid"], position="PS-A")
+    stack = make.stack("site2-sw-stack1", [switch])
+    make.address(switch, "192.0.2.10")
+    make.address(stack, "192.0.2.10")
+    job = make.post("/items/bulk-update", {"hids": [switch["hid"]], "set": {"comments": "x"}})
+    routes: dict[str, tuple[tables.Table, dict[str, Any]]] = {
+        "/users": (tables.USERS, {}),
+        "/audit-events": (tables.AUDIT_EVENTS, {}),
+        "/imports": (tables.IMPORT_JOBS, {"source": "bulk"}),
+        f"/imports/{job['job']['hid']}/rows": (tables.IMPORT_ROWS, {}),
+        "/reports/duplicates": (tables.DUPLICATES, {}),
+        f"/device-groups/{stack['hid']}/members": (tables.GROUP_MEMBERS, {}),
+        f"/items/{switch['hid']}/children": (tables.CHILDREN, {}),
+        f"/items/{switch['hid']}/history": (tables.HISTORY, {}),
+    }
+    as_admin = Maker(make.client, admin)
+    for path, (table, more) in routes.items():
+        names = [name for name, field in table.fields.items() if filters.sorted_by(field)]
+        # With no sort it is as it was, and a field it does not have is refused.
+        total = as_admin.get(path, **more)["total"]
+        assert total >= 1, path
+        for way in ("", "-"):
+            page = as_admin.get(path, sort=",".join(way + name for name in names), **more)
+            assert page["total"] == len(page["items"]) == total, path
+        problem = as_admin.get(path, 422, sort="no_such_field", **more)
+        assert "no_such_field is not a field" in errors(problem)["sort"], path

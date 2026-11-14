@@ -667,11 +667,13 @@ def duplicates(
     include_drafts: bool = False,
     limit: int = 100,
     offset: int = 0,
+    arrange: records.Arrange | None = None,
 ) -> tuple[list[Duplicate], int]:
     """Return a page of the addresses held more than once under one network, and their number.
 
     The unlabelled address space is one network of its own. An address whose item or
-    group a list leaves out by default is not counted.
+    group a list leaves out by default is not counted. `arrange` sorts them as was
+    asked for, and the address and its network settle what that leaves tied.
     """
     held = _held(include_archived, include_drafts).subquery("held")
     network = func.coalesce(Address.network_hid, "")
@@ -682,6 +684,8 @@ def duplicates(
         .having(func.count() > 1)
     )
     total = db.scalar(select(func.count()).select_from(twice.subquery())) or 0
+    if arrange is not None:
+        twice = arrange(twice)
     paged = twice.order_by(Address.address, network).limit(limit).offset(offset)
     page = db.execute(paged).all()
     if not page:

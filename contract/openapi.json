@@ -13854,7 +13854,7 @@
     },
     "/api/v1/audit-events": {
       "get": {
-        "description": "List audit events, newest first.",
+        "description": "List audit events, newest first unless a sort says otherwise.",
         "operationId": "list_audit_events_api_v1_audit_events_get",
         "parameters": [
           {
@@ -13905,6 +13905,27 @@
               "default": "",
               "title": "Request Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -15687,7 +15708,7 @@
     },
     "/api/v1/device-groups/{hid}/members": {
       "get": {
-        "description": "List the members of a group by position, the current ones first.",
+        "description": "List the members of a group by position, the current ones first, unless a sort\nsays otherwise.",
         "operationId": "list_members_api_v1_device_groups__hid__members_get",
         "parameters": [
           {
@@ -15709,6 +15730,27 @@
               "description": "Show the memberships that have ended as well.",
               "title": "Include Past",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "What to sort by: `position`, `item.name`, `item.pid`, `item.serial_number`, `role`, `observed_master`, `joined_on`, `left_on`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `position`, `item.name`, `item.pid`, `item.serial_number`, `role`, `observed_master`, `joined_on`, `left_on`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -16169,7 +16211,7 @@
     },
     "/api/v1/imports": {
       "get": {
-        "description": "List the stored previews and what became of them, newest first.",
+        "description": "List the stored previews and what became of them, newest first unless a sort\nsays otherwise.",
         "operationId": "list_imports_api_v1_imports_get",
         "parameters": [
           {
@@ -16186,6 +16228,27 @@
               ],
               "title": "Source",
               "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -16568,7 +16631,7 @@
     },
     "/api/v1/imports/{hid}/rows": {
       "get": {
-        "description": "List the rows of a preview in the order of the file.",
+        "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.",
         "operationId": "list_import_rows_api_v1_imports__hid__rows_get",
         "parameters": [
           {
@@ -16602,6 +16665,27 @@
               ],
               "description": "Only rows of this kind.",
               "title": "Outcome"
+            }
+          },
+          {
+            "description": "What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -17142,7 +17226,7 @@
     },
     "/api/v1/items/{hid}/children": {
       "get": {
-        "description": "List the minor items directly in one item, by position, whatever their status.",
+        "description": "List the minor items directly in one item, whatever their status: by position\nunless a sort says otherwise.",
         "operationId": "item_children_api_v1_items__hid__children_get",
         "parameters": [
           {
@@ -17152,6 +17236,27 @@
             "schema": {
               "title": "Hid",
               "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: any field the item list is sorted by, such as `position`, `name`, `catalog.pid`, `serial_number`, `effective.lifecycle_state`, `owner.label`, `location.name` and `minor_items`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: any field the item list is sorted by, such as `position`, `name`, `catalog.pid`, `serial_number`, `effective.lifecycle_state`, `owner.label`, `location.name` and `minor_items`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -17209,7 +17314,7 @@
     },
     "/api/v1/items/{hid}/history": {
       "get": {
-        "description": "List every change made to one item, newest first.",
+        "description": "List every change made to one item, newest first unless a sort says otherwise.\n\nThe events are sorted, and the changes of one event stay together.",
         "operationId": "item_history_api_v1_items__hid__history_get",
         "parameters": [
           {
@@ -17219,6 +17324,27 @@
             "schema": {
               "title": "Hid",
               "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: `at`, `actor_name`, `action`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `at`, `actor_name`, `action`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -19809,7 +19935,7 @@
     },
     "/api/v1/reports/duplicates": {
       "get": {
-        "description": "List each address that is held more than once under one network.\n\nThe unlabelled address space counts as one network. The same address under two\nnetworks is two addresses, and is not listed.",
+        "description": "List each address that is held more than once under one network.\n\nThe unlabelled address space counts as one network. The same address under two\nnetworks is two addresses, and is not listed. They are by address unless a sort\nsays otherwise.",
         "operationId": "duplicates_api_v1_reports_duplicates_get",
         "parameters": [
           {
@@ -19834,6 +19960,27 @@
               "description": "Count draft records as well.",
               "title": "Include Drafts",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "What to sort by: `address`, `network`, `count`, `holders`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `address`, `network`, `count`, `holders`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {
@@ -21237,7 +21384,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "List users by username. `q` matches part of a username or display name.",
+        "description": "List users, by username unless a sort says otherwise. `q` matches part of a\nusername or display name.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -21248,6 +21395,27 @@
               "default": "",
               "title": "Q",
               "type": "string"
+            }
+          },
+          {
+            "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
             }
           },
           {

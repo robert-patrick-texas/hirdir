@@ -24,6 +24,7 @@ from hirdir.domain.errors import (
     SignInDelayed,
     SignInRefused,
 )
+from hirdir.domain.records import Arrange
 from hirdir.domain.records import touch as _touch
 
 USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -96,9 +97,12 @@ def find_user(db: Session, username: str) -> User | None:
 
 
 def list_users(
-    db: Session, q: str = "", limit: int = 100, offset: int = 0
+    db: Session, q: str = "", limit: int = 100, offset: int = 0, arrange: Arrange | None = None
 ) -> tuple[list[User], int]:
-    """Return one page of users, by username, and the total that match q."""
+    """Return one page of users, by username, and the total that match q.
+
+    `arrange` sorts them as was asked for, and the username settles what that leaves tied.
+    """
     query = select(User)
     if q:
         pattern = f"%{_key(q)}%"
@@ -106,6 +110,8 @@ def list_users(
             or_(User.username_key.like(pattern), func.lower(User.display_name).like(pattern))
         )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     page = db.scalars(query.order_by(User.username_key).limit(limit).offset(offset))
     return list(page), total
 
