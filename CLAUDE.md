@@ -45,6 +45,7 @@ The next release is the first row of the table in
 | Set up | `uv sync` and `npm --prefix web ci` |
 | Run for development | `make dev` |
 | Format, lint, type-check, test | `make check` |
+| Python tests that a change can reach, while working | `make test-changed` |
 | Acceptance scenarios | `make acceptance` |
 | Build the web UI | `make web` |
 | Build the package | `make deb` |
@@ -52,6 +53,11 @@ The next release is the first row of the table in
 | Build the documentation | `make docs` |
 | Tables for the release notes | `make facts` |
 | Move every dependency to its latest release | `make upgrade` |
+
+The tests run several at once and wait for a busy host, ten minutes at the most: see
+"How long the tests take" in [docs/architecture.md](docs/architecture.md#testing).
+`make test-changed` is for the minutes between changes; a task is done by `make check`
+and `make acceptance`.
 
 Python is run through `uv run`. Formatting and linting are `ruff`; type checking is
 `ty`. Do not silence a rule to make a check pass.

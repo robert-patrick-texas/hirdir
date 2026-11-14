@@ -341,14 +341,56 @@ volume.
 | Command | What it does |
 |---|---|
 | `make check` | `ruff format --check`, `ruff check`, `ty check`, `pytest` over `tests/unit`, `tests/api` and `packaging/tests`, and the web UI's type check, lint and unit tests |
+| `make test` | the Python tests of `make check`, alone |
+| `make test-changed` | only the Python tests that what has changed since their last run can reach; for use while working, never in place of `make check` |
 | `make acceptance` | the scenarios in [build-plan.md](build-plan.md) against a running server |
 | `make e2e` | `make package-test`, with Playwright through nginx and a prefix against the fresh install |
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
 | `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
 
-`make package-test` runs `packaging/package-test.sh`, which makes three passes. Each
-pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
+### How long the tests take
+
+The tests are run several at once, and what every test would otherwise do again for
+itself is done once.
+
+- **As many at once as the host has free.** `scripts/test_load.py` says how many: the
+  cores that are not busy at that moment, and no more than the free memory allows, one
+  at the least. The build host is shared, so before a run starts a busy host is waited
+  for, ten minutes at the most, and the tests are then run all the same with fewer at
+  once. `make check`, `make test`, `make test-changed` and `make acceptance` ask it,
+  and so does `make package-test` for its three passes. `HIRDIR_TEST_WORKERS` sets the
+  number outright and `HIRDIR_TEST_WAIT` the longest wait in seconds.
+- **One migrated database, copied.** The database of a test is a copy of one that was
+  migrated once for each worker. The migrations themselves are tested on databases of
+  their own, in `tests/unit/test_database.py`.
+- **The routes built once.** The application holds everything of one installation in
+  one place, which `bind` in `src/hirdir/app.py` fills: its settings, its database, its
+  key and its count of failed sign-ins. A worker builds the routes once and binds them
+  to the state of each test in turn. A test whose settings differ in more than where
+  its state lives gets an application of its own.
+- **Access codes hashed cheaply, inside the test process only.** Argon2 at its full
+  cost is slow on purpose, and nearly every test makes three users and signs one in.
+  One test keeps the cost that is released and checks it. The acceptance scenarios and
+  the package test start the server as a process of its own, and so always run with
+  the full cost.
+- **Only what a change can reach, while working.** `make test-changed` keeps a record,
+  in `.testmondata`, of the lines of Python each test runs, and runs the tests whose
+  lines have changed since. It does not see a change to a file that is not Python, such
+  as the contract, an example or a script of the package, and it does not cover the
+  acceptance scenarios, whose server is another process. So it is for the minutes
+  between changes, and `make check` and `make acceptance` are what a task is done by.
+
+Measured on the four-core build host with nothing else running, at 0.4.1: the 672
+Python tests of `make check` take 33 seconds, and the 22 scenarios of `make acceptance`
+42 seconds. Run one at a time and with everything done again for each test, as before
+0.4.1, the two together took 475 seconds. A scenario is not shortened further: nearly
+all of its time is the server and `hirdir admin` starting as real processes, which is
+what it is there to show.
+
+`make package-test` runs `packaging/package-test.sh`, which makes three passes, side by
+side when the host has cores and memory free for it and one after another when it has
+not. Each pass starts an Ubuntu 26.04 container of its own with systemd as its init under rootful
 Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
