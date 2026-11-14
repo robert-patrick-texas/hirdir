@@ -1,4 +1,4 @@
-"""The client commands for the inventory: lists, items, import and export.
+"""The client commands for the inventory: lists, items, groups, reports, import and export.
 
 Every command here calls the API. None of them knows a rule: what a value may be, what
 a filter means and what a file may hold are decided by the server, and these commands
@@ -52,7 +52,13 @@ SHOWN = {
     "catalog_entries": "vendor,pid,model_name,kind,type,ldos,review_status",
     "owners": "label,organization,is_external,record_status",
     "tags": "label,colour,description",
+    "networks": "label,kind",
+    "addresses": "address,network,item,group,role,is_primary",
+    "device_groups": "name,type,hostname,serial_number,members,owner,record_status",
 }
+# What a minor item may have from the item it is in.
+FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
+INHERIT = "inherit"
 
 
 def _names(given: str | None) -> list[str] | None:
@@ -156,7 +162,21 @@ vendors = _lists("vendors", "vendors")
 catalog = _lists("catalog_entries", "catalog entries")
 owners = _lists("owners", "owners")
 tags = _lists("tags", "tags")
-GROUPS = {"items": items, "vendors": vendors, "catalog": catalog, "owners": owners, "tags": tags}
+networks = _lists("networks", "networks")
+addresses = _lists("addresses", "addresses")
+groups = _lists("device_groups", "device groups")
+report = typer.Typer(no_args_is_help=True, help="Reports.")
+GROUPS = {
+    "items": items,
+    "vendors": vendors,
+    "catalog": catalog,
+    "owners": owners,
+    "tags": tags,
+    "networks": networks,
+    "addresses": addresses,
+    "groups": groups,
+    "report": report,
+}
 
 
 # --- one item ------------------------------------------------------------------------
@@ -199,6 +219,27 @@ def find_item(target: Target, text: str) -> dict[str, Any]:
     )
 
 
+def _named(ref: dict[str, Any]) -> str:
+    """Return what one line calls an item that another record refers to."""
+    return ref.get("name") or ref.get("serial_number") or ref.get("asset_tag") or ref["hid"]
+
+
+def _address(address: dict[str, Any]) -> str:
+    under = f" under {address['network']}" if address["network"] else ""
+    primary = ", primary" if address["is_primary"] else ""
+    return f"{address['address']}{under} ({address['role']}{primary})"
+
+
+def _in_force(item: dict[str, Any], name: str) -> Any:
+    """Return a value an item has itself, or has from the item it is in, and says so."""
+    effective = item["effective"][name]
+    value = effective.get("label") or effective["value"]
+    if value is None or effective["source"] == "own":
+        return value
+    shown = str(value).lower() if isinstance(value, bool) else value
+    return f"{shown} ({effective['source']})"
+
+
 def _zone(target: Target) -> str:
     """Return the application's time zone, as the server has it set."""
     for setting in client.call(target, "GET", "/settings"):
@@ -227,17 +268,30 @@ def show(
         ("name", found["name"] or found["hostname"]),
         ("model", f"{model['vendor']} {model['pid']}" if model else None),
         *((name, found[name]) for name in ("serial_number", "asset_tag", "mac_address", "fqdn")),
-        ("lifecycle_state", found["lifecycle_state"]),
-        ("disposition", found["disposition"]),
-        ("expected_online", found["expected_online"]),
+        ("in", _named(found["parent"]) if found["parent"] else None),
+        ("position", found["position"]),
+        ("minor_items", found["minor_items"] or None),
+        *((name, _in_force(found, name)) for name in FROM_ABOVE),
         ("state_reason", found["state_reason"]),
-        ("owner", found["owner"]["label"] if found["owner"] else None),
+        ("owner", _in_force(found, "owner_hid")),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
         ("record_status", found["record_status"]),
     ]
+    for group in found["groups"]:
+        place = f", position {group['position']}" if group["position"] is not None else ""
+        lines.append(("group", f"{group['name']} ({group['type']}, {group['role']}{place})"))
+    for controller in found["controllers"]:
+        lines.append(("controller", _named(controller)))
+    for address in found["addresses"]:
+        lines.append(("address", _address(address)))
+    for name in ("replaces", "replaced_by"):
+        if found[name]:
+            other = found[name]
+            why = " ".join(part for part in (other["reason"], other["reference"]) if part)
+            lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
-        if effective["value"] is not None:
+        if name not in ("owner_hid", *FROM_ABOVE) and effective["value"] is not None:
             lines.append((name, f"{effective['value']} ({effective['source']})"))
     for name in ("state_changed_at", "created_at", "updated_at"):
         if found[name]:
@@ -253,7 +307,13 @@ def show(
 @items.command("transition")
 def transition(
     item: Annotated[str, typer.Argument(help="An HID, serial number, asset tag or name.")],
-    to: Annotated[str, typer.Argument(help="The lifecycle state to move to.")],
+    to: Annotated[
+        str,
+        typer.Argument(
+            help="The lifecycle state to move to. For a minor item, `inherit` returns it "
+            "to the standing of the item it is in."
+        ),
+    ],
     reason: Annotated[str | None, typer.Option(help="Why, as a value of the reasons list.")] = None,
     disposition: Annotated[str | None, typer.Option(help="Left out, as the state has it.")] = None,
     online: Annotated[
@@ -269,7 +329,12 @@ def transition(
     """Move an item to another lifecycle state."""
     target = client.load_target(url, token)
     found = find_item(target, item)
-    body: dict[str, Any] = {"row_version": found["row_version"], "to": to, "force": force}
+    back = to.strip().lower() == INHERIT
+    body: dict[str, Any] = {
+        "row_version": found["row_version"],
+        "to": None if back else to,
+        "force": force,
+    }
     if reason is not None:
         body["reason"] = reason
     if disposition is not None:
@@ -278,7 +343,229 @@ def transition(
         body["expected_online"] = online
     moved = client.call(target, "POST", f"/items/{found['hid']}/transition", body)
     was = found["lifecycle_state"] or "no state"
-    typer.echo(f"{_shown_name(moved)}: {was} → {moved['lifecycle_state']}")
+    now = moved["lifecycle_state"]
+    if back:
+        now = (
+            f"{moved['effective']['lifecycle_state']['value'] or 'no state'}, as the item it is in"
+        )
+    typer.echo(f"{_shown_name(moved)}: {was} → {now}")
+
+
+# --- groups --------------------------------------------------------------------------
+
+
+def find_group(target: Target, text: str) -> dict[str, Any]:
+    """Return the device group with an HID or a name."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"/device-groups/{text}")
+    query = {
+        "filter": {"field": "name", "op": "eq", "value": text},
+        "include_archived": True,
+        "include_drafts": True,
+        "limit": 2,
+    }
+    found = client.call(target, "POST", "/device-groups/query", query)["items"]
+    if not found:
+        raise client.fail(f"there is no device group {text}", client.EXIT_INVALID)
+    return found[0]
+
+
+@groups.command("show")
+def show_group(
+    group: Annotated[str, typer.Argument(help="An HID or a name.")],
+    include_past: Annotated[
+        bool, typer.Option("--include-past", help="The memberships that have ended as well.")
+    ] = False,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show one device group with its members, their roles and, for a stack, its serial number."""
+    target = client.load_target(url, token)
+    found = find_group(target, group)
+    members: list[dict[str, Any]] = []
+    while True:
+        page = client.call(
+            target,
+            "GET",
+            f"/device-groups/{found['hid']}/members",
+            params={"include_past": include_past, "limit": 1000, "offset": len(members)},
+        )
+        members += page["items"]
+        if not page["items"] or len(members) >= page["total"]:
+            break
+    if format_ == "json":
+        typer.echo(json.dumps({**found, "members": members}, indent=2))
+        return
+    owner = found["owner"]["label"] if found["owner"] else None
+    if owner and "owner_hid" in found["members_disagree"]:
+        owner += " (a member has another owner)"
+    lines: list[tuple[str, Any]] = [
+        ("hid", found["hid"]),
+        ("name", found["name"]),
+        ("type", found["type"]),
+        ("hostname", found["hostname"]),
+        ("fqdn", found["fqdn"]),
+        ("serial_number", found["serial_number"]),
+        ("in", found["parent"]["name"] if found["parent"] else None),
+        *(("group", f"{inner['name']} ({inner['type']})") for inner in found["groups"]),
+        ("owner", owner),
+        *(("address", _address(address)) for address in found["addresses"]),
+        ("tags", ", ".join(found["tags"]) or None),
+        ("record_status", found["record_status"]),
+        ("members", found["member_count"]),
+        ("row_version", found["row_version"]),
+    ]
+    for name, value in lines:
+        if value is not None:
+            typer.echo(f"{name + ':':<21}{value}")
+    if members:
+        typer.echo("")
+        head = ["position", "role", "name", "pid", "serial_number", "joined_on", "left_on"]
+        _table(
+            [
+                head,
+                *(
+                    [
+                        "" if member["position"] is None else str(member["position"]),
+                        member["role"],
+                        member["item"]["name"] or "",
+                        member["item"]["pid"] or "",
+                        member["item"]["serial_number"] or "",
+                        member["joined_on"],
+                        member["left_on"] or "",
+                    ]
+                    for member in members
+                ),
+            ]
+        )
+
+
+# --- reports -------------------------------------------------------------------------
+
+MEASURES = (
+    "items",
+    "component_count",
+    "managed_node_count",
+    "support_weight",
+    "est_value",
+    "annual_support_cost",
+)
+
+
+def _rows(format_: str, output: Path | None, rows: list[list[str]]) -> None:
+    """Print the rows of a report as a table, or write them as CSV."""
+    if format_ == "table":
+        _table(rows)
+        return
+    handle = output.open("w", encoding="utf-8", newline="") if output is not None else sys.stdout
+    try:
+        csv.writer(handle, lineterminator="\n").writerows(rows)
+    finally:
+        if output is not None:
+            handle.close()
+            typer.echo(f"wrote {output}", err=True)
+
+
+def _checked_format(format_: str) -> None:
+    if format_ not in ("table", "csv", "json"):
+        raise client.fail("--format is one of table, csv, json", 2)
+
+
+@report.command("summary")
+def summary(
+    filter_: Filter = None,
+    by: Annotated[
+        str | None,
+        typer.Option(
+            help="One row for each: vendor, kind, type, function, owner, lifecycle_state, "
+            "disposition or tag."
+        ),
+    ] = None,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Count a view of the items: components, managed nodes, weight, value and cost."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found = client.call(
+        target,
+        "GET",
+        "/reports/summary",
+        params={
+            "filter": filter_,
+            "by": by,
+            "include_archived": include_archived,
+            "include_drafts": include_drafts,
+        },
+    )
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    totals = found["totals"]
+    if by is None:
+        if format_ == "csv":
+            _rows(format_, output, [list(MEASURES), [str(totals[name]) for name in MEASURES]])
+            return
+        for name in MEASURES:
+            typer.echo(f"{name + ':':<21}{totals[name]}")
+        for kind in totals["by_kind"]:
+            typer.echo(
+                f"{kind['kind'] + ':':<21}{kind['items']} items, {kind['component_count']} in hand"
+            )
+        return
+    rows = [[by, *MEASURES]]
+    for row in found["rows"]:
+        rows.append([row["label"] or "(none)", *(str(row[name]) for name in MEASURES)])
+    rows.append(["(all)", *(str(totals[name]) for name in MEASURES)])
+    _rows(format_, output, rows)
+
+
+@report.command("duplicates")
+def duplicates(
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """List each address that is held more than once under one network, and by what."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found: list[dict[str, Any]] = []
+    while True:
+        page = client.call(
+            target,
+            "GET",
+            "/reports/duplicates",
+            params={
+                "include_archived": include_archived,
+                "include_drafts": include_drafts,
+                "limit": 1000,
+                "offset": len(found),
+            },
+        )
+        found += page["items"]
+        if not page["items"] or len(found) >= page["total"]:
+            break
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    if not found and format_ == "table":
+        typer.echo("no address is held more than once under one network", err=True)
+        return
+    rows = [["address", "network", "held_by", "role"]]
+    for one in found:
+        for holder in one["holders"]:
+            rows.append(
+                [one["address"], one["network"] or "", holder["name"] or "", holder["role"]]
+            )
+    _rows(format_, output, rows)
 
 
 # --- changes that are previewed -------------------------------------------------------

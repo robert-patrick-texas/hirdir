@@ -239,3 +239,148 @@ def test_exit_codes_tell_access_from_a_conflict_from_no_server(
     run("items", "show", "site2-sw-1", expect=3)
     monkeypatch.delenv("HIRDIR_URL")
     assert "no server is set" in run("items", "list", expect=2).stderr
+
+
+# --- structure: minor items, groups, addresses and reports ---------------------------
+
+
+@pytest.fixture
+def stack(make: Maker, switches: list) -> dict[str, Any]:
+    """The three switches as one stack, with a power supply in the first and an address."""
+    owner = make.get("/owners", filter="label:eq:Network Engineering")["items"][0]
+    first = make.patch(
+        f"/items/{switches[0]['hid']}", {"row_version": 1, "owner_hid": owner["hid"]}
+    )
+    make.item(name="PS-A", parent_item_hid=first["hid"], position="PS-A")
+    made = make.stack("site2-sw-stack1", switches, hostname="site2-sw-stack1")
+    make.address(made, "192.0.2.1", make.network("Red"), is_primary=True)
+    make.address(switches[1], "192.0.2.254", role="virtual")
+    make.address(switches[2], "192.0.2.254", role="virtual")
+    return made
+
+
+def test_an_item_is_shown_with_where_it_is_and_what_it_has_from_above(run, stack: dict) -> None:
+    shown = run("items", "show", "PS-A").stdout
+    assert f"{'in:':<21}site2-sw-1" in shown
+    assert f"{'position:':<21}PS-A" in shown
+    assert f"{'lifecycle_state:':<21}Prod (parent_item)" in shown
+    assert f"{'expected_online:':<21}true (parent_item)" in shown
+    assert f"{'owner:':<21}Network Engineering (parent_item)" in shown
+
+    switch = run("items", "show", "site2-sw-1").stdout
+    assert f"{'lifecycle_state:':<21}Prod\n" in switch
+    assert f"{'owner:':<21}Network Engineering\n" in switch
+    assert f"{'minor_items:':<21}1" in switch
+    assert f"{'group:':<21}site2-sw-stack1 (stack, master, position 1)" in switch
+    assert f"{'address:':<21}192.0.2.254 (virtual)" in run("items", "show", "site2-sw-2").stdout
+
+
+def test_a_minor_item_is_moved_by_itself_and_returned_to_inheriting(run, stack: dict) -> None:
+    moved = run("items", "transition", "PS-A", "Pending-Removal", "--reason", "rma").stdout
+    assert moved == "PS-A: no state → Pending-Removal\n"
+    back = run("items", "transition", "PS-A", "inherit", "--reason", "found").stdout
+    assert back == "PS-A: Pending-Removal → Prod, as the item it is in\n"
+    refused = run("items", "transition", "site2-sw-1", "inherit", expect=4)
+    assert "leaves a state by moving to another" in refused.stderr
+
+
+def test_a_minor_item_is_put_in_another_item_with_set(run, make: Maker, stack: dict) -> None:
+    run("items", "set", "PS-A", "parent=FCW0000X002", "position=PS-B")
+    part = make.get("/items", filter="name:eq:PS-A")["items"][0]
+    assert (part["parent"]["serial_number"], part["position"]) == ("FCW0000X002", "PS-B")
+    run("items", "set", "PS-A", "parent=")
+    assert make.get(f"/items/{part['hid']}")["is_major"] is True
+
+
+def test_a_group_is_shown_with_its_members_and_its_masters_serial_number(
+    run, make: Maker, stack: dict
+) -> None:
+    shown = run("groups", "show", "SITE2-SW-STACK1").stdout
+    assert f"{'type:':<21}stack" in shown
+    assert f"{'serial_number:':<21}FCW0000X001" in shown
+    assert f"{'address:':<21}192.0.2.1 under Red (management, primary)" in shown
+    assert f"{'members:':<21}3" in shown
+    table = [line.split() for line in shown.split("\n\n")[1].splitlines()]
+    assert table[0] == ["POSITION", "ROLE", "NAME", "PID", "SERIAL_NUMBER", "JOINED_ON", "LEFT_ON"]
+    assert [row[:5] for row in table[1:]] == [
+        ["1", "master", "site2-sw-1", "C9300-48P", "FCW0000X001"],
+        ["2", "member", "site2-sw-2", "C9300-48P", "FCW0000X002"],
+        ["3", "member", "site2-sw-3", "C9300-48P", "FCW0000X003"],
+    ]
+    by_hid = json.loads(run("groups", "show", stack["hid"], "--format", "json").stdout)
+    assert (by_hid["name"], len(by_hid["members"])) == ("site2-sw-stack1", 3)
+    assert "there is no device group nobody" in run("groups", "show", "nobody", expect=4).stderr
+
+    third = make.members(stack)[2]
+    make.patch(
+        f"/device-groups/{stack['hid']}/members/{third['hid']}",
+        {"row_version": third["row_version"], "left_on": third["joined_on"]},
+    )
+    assert "site2-sw-3" not in run("groups", "show", "site2-sw-stack1").stdout
+    assert "site2-sw-3" in run("groups", "show", "site2-sw-stack1", "--include-past").stdout
+
+
+def test_groups_networks_and_addresses_are_listed_as_any_list_is(run, stack: dict) -> None:
+    groups = run("groups", "list").stdout.splitlines()
+    assert groups[0].split() == [
+        "HID", "NAME", "TYPE", "HOSTNAME", "SERIAL_NUMBER", "MEMBERS", "OWNER", "RECORD_STATUS"
+    ]  # fmt: skip
+    assert groups[1].split()[1:] == [
+        "site2-sw-stack1", "stack", "site2-sw-stack1", "FCW0000X001", "3", "active"
+    ]  # fmt: skip
+    assert run("networks", "list", "--format", "csv").stdout.splitlines()[1].endswith(",Red,vrf")
+    rows = list(
+        csv.DictReader(
+            io.StringIO(
+                run("addresses", "list", "--filter", "role:eq:virtual", "--format", "csv").stdout
+            )
+        )
+    )
+    assert [(row["address"], row["item"]) for row in rows] == [
+        ("192.0.2.254", "FCW0000X002"),
+        ("192.0.2.254", "FCW0000X003"),
+    ]
+    assert run("export", "device-group-members", "--format", "csv").stdout.count("\n") == 4
+
+
+def test_the_summary_is_printed_whole_and_by_what_items_share(
+    run, stack: dict, tmp_path: Path
+) -> None:
+    whole = run("report", "summary").stdout
+    assert f"{'items:':<21}4" in whole
+    assert f"{'component_count:':<21}3" in whole
+    assert f"{'managed_node_count:':<21}1" in whole
+    assert f"{'est_value:':<21}54000.00" in whole
+    assert f"{'hardware:':<21}4 items, 3 in hand" in whole
+
+    table = [
+        line.split("  ") for line in run("report", "summary", "--by", "owner").stdout.splitlines()
+    ]
+    assert [cell.strip() for cell in table[0] if cell.strip()][:4] == [
+        "OWNER", "ITEMS", "COMPONENT_COUNT", "MANAGED_NODE_COUNT"
+    ]  # fmt: skip
+    assert [row[0].strip() for row in table[1:]] == ["Network Engineering", "(none)", "(all)"]
+    target = tmp_path / "summary.csv"
+    run("report", "summary", "--by", "lifecycle_state", "--format", "csv", "--output", str(target))
+    rows = list(csv.DictReader(target.open()))
+    assert [(row["lifecycle_state"], row["items"]) for row in rows] == [
+        ("Prod", "4"),
+        ("(all)", "4"),
+    ]
+    filtered = json.loads(
+        run("report", "summary", "--filter", "is_major:eq:false", "--format", "json").stdout
+    )
+    assert (filtered["totals"]["items"], filtered["totals"]["component_count"]) == (1, 0)
+    run("report", "summary", "--by", "site", expect=4)
+    run("report", "summary", "--format", "xml", expect=2)
+
+
+def test_the_duplicates_report_names_who_holds_an_address_twice(run, stack: dict) -> None:
+    table = run("report", "duplicates").stdout.splitlines()
+    assert table[0].split() == ["ADDRESS", "NETWORK", "HELD_BY", "ROLE"]
+    assert [line.split() for line in table[1:]] == [
+        ["192.0.2.254", "site2-sw-2", "virtual"],
+        ["192.0.2.254", "site2-sw-3", "virtual"],
+    ]
+    found = json.loads(run("report", "duplicates", "--format", "json").stdout)
+    assert (found[0]["address"], found[0]["count"]) == ("192.0.2.254", 2)

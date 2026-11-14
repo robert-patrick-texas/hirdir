@@ -301,13 +301,18 @@ hirdir items set <hid> disposition=Spare expected_online=false
 hirdir items set --filter 'tags:has:refresh-2030' owner='Voice Services'          # preview
 hirdir items set --filter 'tags:has:refresh-2030' owner='Voice Services' --apply
 hirdir items transition <hid> Down --reason maintenance
-hirdir groups show site2-sw-stack1
+hirdir items transition PS-A inherit             # a minor item: the standing of the item it is in
+hirdir items set PS-A parent=FCW0000X002 position=PS-B
+hirdir groups list --filter 'type:eq:stack'
+hirdir groups show site2-sw-stack1               # by HID or name; --include-past for who has left
+hirdir addresses list --filter 'network.label:eq:Red'
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
 hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
 hirdir import items.csv --entity items --apply --skip-rejected
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
-hirdir report summary --by site --format json
+hirdir report summary --by owner --format json
+hirdir report duplicates
 hirdir report capacity --include-drafts
 ```
 
