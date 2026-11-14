@@ -69,19 +69,30 @@ it. The test installs the previous release in a container, fills it with account
 group, a role grant, a service token, an inventory and audit events, upgrades it with
 apt, and checks that all of it is still there and still works. The inventory is made
 for what a migration could harm: items with every kind of value between them, a draft
-and a retired one among them, and choices of the site's own. After the upgrade each
-item must be as it was, field for field, at the `row_version` it had and with its
-history, and the `items` table is read from the database file as well, its columns,
-rows, indexes and uniquenesses. The test also makes the new version's migration fail,
-to see that the upgrade stops, names its backup, leaves the items as they were and can
-be undone. It does that by putting a table in the way of the one the new version
-creates last, so a release that creates no table skips that pass and says so. The
-passes are described under "Testing" in [architecture.md](architecture.md#testing).
+and a retired one among them, minor items, a stack, a cluster and a controller domain
+with their members, memberships that were ended, a replacement, networks, addresses,
+and choices of the site's own. After the upgrade each item, group, membership and
+address must be as it was, field for field, at the `row_version` it had, each item
+with its history, and the tables of the inventory are read from the database file as
+well, their columns, rows, indexes and uniquenesses.
+
+The test also makes the new version's migration fail, to see that the upgrade stops,
+names its backup, leaves the inventory as it was and can be undone. It does that in
+the database, so that the package tested is the one that was built. Where the new
+version creates a table, the table it creates last is put in its way. Where it creates
+none, as 0.4.1 creates none, a trigger refuses the new revision when the migration
+comes to write it down, which is the last thing a migration does, so everything else
+it does has been done and must be undone. Only a release with no migration at all has
+nothing that could fail: the pass then says so in a `SKIP` line. The passes are
+described under "Testing" in [architecture.md](architecture.md#testing).
 
 A release whose migration changes a table that holds a site's records adds to that
 inventory what its change could harm, and a check that it was not harmed. The
 inventory is made through the API of the previous release, so it holds what that
-release could store.
+release could store. Where a migration provides for something the previous release
+could not store, the test shows that it could not, writes it into the database, and
+says so: 0.4.0 refuses a choice in the list of conditions, which migration `0006` is
+written to leave alone when it finds one.
 
 The run ends with its counts and with every `FAIL` and `SKIP` line once more. Read each
 `SKIP` line before a release: it names something that this run did not test.
