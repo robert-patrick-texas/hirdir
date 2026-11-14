@@ -77,7 +77,13 @@ with its history, and the tables of the inventory are read from the database fil
 well, their columns, rows, indexes and uniquenesses. What a migration is meant to
 change in what a site has is made as well, left out of that comparison by name, and
 looked at by itself: for 0.4.1 the memberships of items that had left the team's
-hands, which the upgrade ends, each with an event in the audit trail.
+hands, which the upgrade ends, each with an event in the audit trail. A release with
+no migration changes nothing that is held: every table of the inventory must then have
+the rows it had, the schema must be the same statement for statement, and the audit
+trail must hold no event of the upgrade. What such a release says differently of what
+it holds is treated in the same way. For 0.4.2 that is the reason given for a health
+that is not known, and how a time with no zone is read: the test keeps a moment that
+0.4.1 stored from such a time, and sees that the upgrade leaves it the moment it was.
 
 The test also makes the new version's migration fail, to see that the upgrade stops,
 names its backup, leaves the inventory as it was and can be undone. It does that in
@@ -86,7 +92,12 @@ version creates a table, the table it creates last is put in its way. Where it c
 none, as 0.4.1 creates none, a trigger refuses the new revision when the migration
 comes to write it down, which is the last thing a migration does, so everything else
 it does has been done and must be undone. Only a release with no migration at all has
-nothing that could fail: the pass then says so in a `SKIP` line. The passes are
+nothing that could fail: nothing writes a revision, so the trigger would never be
+asked. The pass then says so in a `SKIP` line, which stays in the summary of such a
+release, as it does for 0.4.2, and is read as what it is. It goes on to upgrade and to
+go back by installing the previous package alone, with nothing restored, because that
+is the way back that [install.md](install.md#going-back-to-the-release-before) gives
+for a release that changed no schema. The passes are
 described under "Testing" in [architecture.md](architecture.md#testing).
 
 A release whose migration changes a table that holds a site's records adds to that
