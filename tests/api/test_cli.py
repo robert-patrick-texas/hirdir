@@ -719,6 +719,17 @@ def test_contracts_are_shown_covered_rolled_in_and_renewed(
     by_contract = run("report", "summary", "--by", "contract", "--format", "csv").stdout
     rows = list(csv.reader(io.StringIO(by_contract)))
     assert [row[0] for row in rows] == ["contract", "CON-1 (Cisco)", "CON-2-R1 (Cisco)", "(all)"]
+    # A renewal that is in force at once supersedes one that was waiting, and says so.
+    run(
+        "contracts", "renew", "CON-2-R1", "--number", "CON-2-R2", "--from", "2098-01-01",
+        "--to", "2098-12-31",
+    )  # fmt: skip
+    at_once = run(
+        "contracts", "renew", "CON-2-R1", "--number", "CON-2-R3", "--from", "2026-07-01",
+        "--to", "2097-06-30",
+    )  # fmt: skip
+    assert "CON-2-R1 is now CON-2-R3, 2026-07-01 to 2097-06-30" in at_once.stdout
+    assert "the term that was to begin is superseded by it" in at_once.stderr
 
 
 def test_purchases_are_shown_and_received_from_the_command_line(

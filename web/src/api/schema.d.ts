@@ -4411,7 +4411,8 @@ export interface paths {
      * Register one item or one device group with an external system.
      *
      * A stack that the system knows as one device is registered as the stack: the
-     * registration is then on the stack, and not on its members.
+     * registration is then on the stack, and each of its members says what its stack is
+     * registered with.
      */
     post: {
       parameters: {
@@ -4550,10 +4551,12 @@ export interface paths {
   "/api/v1/reports/coverage": {
     /**
      * Say what contracts cover today: the items in service that none covers, the items
-     * covered though out of service, and those whose cover runs out soon.
+     * out of service that a contract still counts, those whose cover runs out soon, those
+     * that more than one contract covers, and those covered while a renewal is pending.
      *
-     * Each of the three is a list of items. `section` asks for a page of one, and each
-     * says the filter that lists the same items on `GET /items`.
+     * Each of the five is a list of items. `section` asks for a page of one, and each
+     * says the filter that lists the same items on `GET /items`. The contracts that
+     * have lapsed are counted beside them.
      */
     get: {
       parameters: {

@@ -92,7 +92,8 @@ def create_registration(
     """Register one item or one device group with an external system.
 
     A stack that the system knows as one device is registered as the stack: the
-    registration is then on the stack, and not on its members.
+    registration is then on the stack, and each of its members says what its stack is
+    registered with.
     """
     made = systems.create_registration(db, context, body.model_dump(exclude_unset=True))
     return shapes.registrations_out(db, [made])[0]
