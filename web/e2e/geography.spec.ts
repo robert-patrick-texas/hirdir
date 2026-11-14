@@ -1245,6 +1245,12 @@ test("a new site is planned: spares and a stack are given a planned location the
   await expect(region(page, "Make active")).toBeVisible();
   await expect(region(page, "Details").getByLabel("Record status")).toHaveCount(0);
   await expect(page.getByTestId("planned-here")).toContainText("Nothing is planned for this site");
+  // With nothing planned the action says so, and still asks. It is not gone ahead with.
+  await region(page, "Make active").getByRole("button", { name: "Make site active" }).click();
+  await expect(page.getByTestId("activation-text")).toHaveText(
+    `Nothing is planned for ${annexName}: making it active moves nothing.`,
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   await newPlace(page, "New location in it", "location", annexRoom, { kind: "Room" });
 
   // Two spares and one switch in the store room, and a switch that is nowhere yet.
@@ -1404,8 +1410,16 @@ test("a new site is planned: spares and a stack are given a planned location the
   // numbers and that the members go with their group.
   await planning(annex);
   await region(page, "Make active").getByRole("button", { name: "Make site active" }).click();
-  await expect(page.getByTestId("activation-text")).toHaveText(
-    `Making ${annexName} active moves 4 items and 1 device group that are planned for it into it. The members of a group go with their group: those with no plan of their own are among the items. Each record that is changed has the move in its history.`,
+  // The numbers are the server's, read when the question opens: what would be there,
+  // and how many records are written to. The switch with no location of its own goes
+  // with the stack and is not written to: four records, of five that move.
+  const asks = page.getByTestId("activation-text");
+  await expect(asks).toHaveAttribute("data-items", "4");
+  await expect(asks).toHaveAttribute("data-groups", "1");
+  await expect(asks).toHaveAttribute("data-changed", "4");
+  await expect(asks).toHaveAttribute("data-moves", "true");
+  await expect(asks).toHaveText(
+    `Making ${annexName} active moves 4 items and 1 device group that are planned for it into it. 4 records are changed, each with the move in its history; what has no location of its own goes with its group and is not written to.`,
   );
   await page.getByRole("dialog").getByRole("button", { name: "Make site active" }).click();
   await expect(

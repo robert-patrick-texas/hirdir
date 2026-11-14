@@ -11,11 +11,16 @@ interface ConfirmButtonProps {
   confirmLabel: string;
   onConfirm: () => Promise<unknown> | unknown;
   disabled?: boolean;
+  /** Called when the dialog opens: as to read what the dialog is to say. */
+  onOpen?: () => void;
+  /** The button that goes ahead is disabled: what it would do is not known yet. */
+  confirmDisabled?: boolean;
 }
 
 /** A button for something that cannot be undone: it asks first, in a modal dialog. */
 export function ConfirmButton(props: ConfirmButtonProps) {
   const { label, title, children, confirmLabel, onConfirm, disabled } = props;
+  const { onOpen, confirmDisabled = false } = props;
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +41,10 @@ export function ConfirmButton(props: ConfirmButtonProps) {
         type="button"
         className="danger"
         disabled={disabled}
-        onClick={() => dialog.current?.showModal()}
+        onClick={() => {
+          onOpen?.();
+          dialog.current?.showModal();
+        }}
       >
         {label}
       </button>
@@ -47,7 +55,12 @@ export function ConfirmButton(props: ConfirmButtonProps) {
           <button type="button" onClick={() => dialog.current?.close()} disabled={busy}>
             Cancel
           </button>
-          <button type="button" className="danger" onClick={confirm} disabled={busy}>
+          <button
+            type="button"
+            className="danger"
+            onClick={confirm}
+            disabled={busy || confirmDisabled}
+          >
             {confirmLabel}
           </button>
         </p>

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../api/client";
 import {
-  activationText,
   addressLines,
   addressOf,
   clearedShipAddress,
@@ -17,6 +16,8 @@ import {
   NOT_IN_USE,
   nameOf,
   noContactText,
+  openedText,
+  openingText,
   overriddenLevel,
   ownRoles,
   placePath,
@@ -483,53 +484,61 @@ describe("a planned location", () => {
     expect(plannedText({ items: 0, groups: 0 })).toBe("");
   });
 
-  it("says what making a draft place active does, before it is done", () => {
-    const after = " Each record that is changed has the move in its history.";
-    expect(activationText("Site-9", { items: 2, groups: 0 }, null)).toBe(
-      `Making Site-9 active moves 2 items that are planned for it into it.${after}`,
+  const opening = (more: Partial<Parameters<typeof openingText>[1]> = {}) => ({
+    moves_now: true,
+    waits_for: null,
+    items: 0,
+    device_groups: 0,
+    records_changed: 0,
+    ...more,
+  });
+  const SITE_ABOVE = { hid: SITE, name: "Site-9", path: "Americas > East > Site-9" };
+
+  it("says what making a draft place active moves and how many records it writes to, from the server's numbers", () => {
+    expect(openingText("Site-9", opening({ items: 4, device_groups: 1, records_changed: 4 }))).toBe(
+      "Making Site-9 active moves 4 items and 1 device group that are planned for it into it. 4 records are changed, each with the move in its history; what has no location of its own goes with its group and is not written to.",
     );
-    expect(activationText("Site-9", { items: 1, groups: 0 }, null)).toBe(
-      `Making Site-9 active moves 1 item that is planned for it into it.${after}`,
+    expect(openingText("Site-9", opening({ items: 1, records_changed: 1 }))).toBe(
+      "Making Site-9 active moves 1 item that is planned for it into it. 1 record is changed, with the move in its history; what has no location of its own goes with its group and is not written to.",
     );
-    expect(activationText("Site-9", { items: 0, groups: 0 }, null)).toBe(
-      "Nothing is planned for Site-9, so nothing is moved.",
+    // The two numbers are said apart, and no sum of them anywhere.
+    expect(
+      openingText("Site-9", opening({ items: 4, device_groups: 1, records_changed: 3 })),
+    ).not.toContain("5");
+  });
+
+  it("says that nothing moves now while a place above is not active, and which place that is", () => {
+    expect(
+      openingText(
+        "Room 1",
+        opening({ moves_now: false, waits_for: SITE_ABOVE, items: 2, device_groups: 1 }),
+      ),
+    ).toBe(
+      "2 items and 1 device group are planned for Room 1. They move in once Americas > East > Site-9 is active too: making Room 1 active now moves nothing.",
+    );
+    expect(
+      openingText("Room 1", opening({ moves_now: false, waits_for: SITE_ABOVE, items: 1 })),
+    ).toBe(
+      "1 item is planned for Room 1. It moves in once Americas > East > Site-9 is active too: making Room 1 active now moves nothing.",
     );
   });
 
-  it("keeps the items and the groups as two numbers, and says that members go with their group", () => {
-    const members =
-      " The members of a group go with their group: those with no plan of their own are among the items.";
-    const after = " Each record that is changed has the move in its history.";
-    expect(activationText("Site-9", { items: 4, groups: 1 }, null)).toBe(
-      `Making Site-9 active moves 4 items and 1 device group that are planned for it into it.${members}${after}`,
+  it("says that nothing is planned, and is still a question", () => {
+    expect(openingText("Site-9", opening())).toBe(
+      "Nothing is planned for Site-9: making it active moves nothing.",
     );
-    expect(activationText("Site-9", { items: 0, groups: 1 }, null)).toBe(
-      `Making Site-9 active moves 1 device group that is planned for it into it.${members}${after}`,
+    expect(openingText("Room 1", opening({ moves_now: false, waits_for: SITE_ABOVE }))).toBe(
+      "Nothing is planned for Room 1. It is in use once Americas > East > Site-9 is active too.",
     );
-    // No sum of the two is said anywhere.
-    expect(activationText("Site-9", { items: 4, groups: 1 }, null)).not.toContain("5");
   });
 
-  it("says that what is planned waits while a level above is still a draft", () => {
-    expect(
-      activationText("Room 1", { items: 2, groups: 0 }, { level: "site", name: "Site-9" }),
-    ).toBe(
-      "2 items are planned for Room 1. They move in once the site Site-9, which it is in, is active too.",
+  it("says afterwards what is there now, if anything moved", () => {
+    expect(openedText("Site-9", opening({ items: 4, device_groups: 1, records_changed: 4 }))).toBe(
+      "Site-9 is active. What was planned for it is there now: 4 items and 1 device group.",
     );
+    expect(openedText("Site-9", opening())).toBe("Site-9 is active.");
     expect(
-      activationText("Site-9", { items: 1, groups: 0 }, { level: "region", name: "North" }),
-    ).toBe(
-      "1 item is planned for Site-9. It moves in once the region North, which it is in, is active too.",
-    );
-    expect(
-      activationText("Site-9", { items: 1, groups: 2 }, { level: "region", name: "North" }),
-    ).toBe(
-      "1 item and 2 device groups are planned for Site-9. They move in once the region North, which it is in, is active too. The members of a group go with their group: those with no plan of their own are among the items.",
-    );
-    expect(
-      activationText("Site-9", { items: 0, groups: 0 }, { level: "region", name: "North" }),
-    ).toBe(
-      "Nothing is planned for Site-9. It is in use once the region North, which it is in, is active too.",
-    );
+      openedText("Room 1", opening({ moves_now: false, waits_for: SITE_ABOVE, items: 2 })),
+    ).toBe("Room 1 is active.");
   });
 });

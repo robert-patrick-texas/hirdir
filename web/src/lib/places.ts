@@ -436,31 +436,44 @@ export function plannedText(planned: PlannedCount): string {
   return parts.join(" and ");
 }
 
+/** What making a place active would bring about, as the server answers it. */
+export type Opening = Schemas["OpeningOut"];
+
+type OpeningFacts = Pick<
+  Opening,
+  "moves_now" | "waits_for" | "items" | "device_groups" | "records_changed"
+>;
+
 /**
- * What making a draft place active does to the items and the device groups that are
- * planned for it, as the sentences of the question that is asked first. The two numbers
- * are said apart: the items are those planned by their own plan or by that of what they
- * are in, so the members of a planned group are among them. While a level above is still
- * a draft the place is not in use yet, and they move in once that level is active too.
+ * What making a draft place active brings about, as the sentences of the question that
+ * is asked first, from the server's answer: how many items and how many device groups
+ * move in, the two said apart, and how many records are written to. While a place above
+ * is not active nothing moves, and it says which place that is. With nothing planned it
+ * says so.
  */
-export function activationText(
-  name: string,
-  planned: PlannedCount,
-  draftAbove: { level: Level; name: string } | null,
-): string {
-  const what = plannedText(planned);
-  const one = planned.items + planned.groups === 1;
+export function openingText(name: string, opening: OpeningFacts): string {
+  const what = plannedText({ items: opening.items, groups: opening.device_groups });
+  const one = opening.items + opening.device_groups === 1;
+  const above = opening.waits_for?.path ?? "what it is in";
   if (what === "") {
-    return draftAbove
-      ? `Nothing is planned for ${name}. It is in use once the ${draftAbove.level} ${draftAbove.name}, which it is in, is active too.`
-      : `Nothing is planned for ${name}, so nothing is moved.`;
+    return opening.moves_now
+      ? `Nothing is planned for ${name}: making it active moves nothing.`
+      : `Nothing is planned for ${name}. It is in use once ${above} is active too.`;
   }
-  const members =
-    planned.groups > 0
-      ? " The members of a group go with their group: those with no plan of their own are among the items."
-      : "";
-  if (draftAbove) {
-    return `${what} ${one ? "is" : "are"} planned for ${name}. ${one ? "It moves" : "They move"} in once the ${draftAbove.level} ${draftAbove.name}, which it is in, is active too.${members}`;
+  if (!opening.moves_now) {
+    return `${what} ${one ? "is" : "are"} planned for ${name}. ${one ? "It moves" : "They move"} in once ${above} is active too: making ${name} active now moves nothing.`;
   }
-  return `Making ${name} active moves ${what} that ${one ? "is" : "are"} planned for it into it.${members} Each record that is changed has the move in its history.`;
+  const changed =
+    opening.records_changed === 1
+      ? "1 record is changed, with the move in its history"
+      : `${opening.records_changed} records are changed, each with the move in its history`;
+  return `Making ${name} active moves ${what} that ${one ? "is" : "are"} planned for it into it. ${changed}; what has no location of its own goes with its group and is not written to.`;
+}
+
+/** What is said once a place was made active: what is there now, if anything moved. */
+export function openedText(name: string, opening: OpeningFacts): string {
+  const what = plannedText({ items: opening.items, groups: opening.device_groups });
+  return opening.moves_now && what !== ""
+    ? `${name} is active. What was planned for it is there now: ${what}.`
+    : `${name} is active.`;
 }
