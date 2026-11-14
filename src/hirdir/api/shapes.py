@@ -155,15 +155,34 @@ def _exception(owner: Owner | None) -> dict[str, Any]:
     }
 
 
-def _operator(found: Effective, people: dict[str, Any]) -> shapes.EffectiveReference:
-    """Return an operator in force, by the name of the contact, and where it came from."""
+def _operator(
+    found: Effective, people: dict[str, Any], holders: dict[str, str]
+) -> shapes.EffectiveOperator:
+    """Return an operator in force, by the name of the contact, and where it came from.
+
+    `holders` names the items and the groups that an operator may come from.
+    """
     contact = people.get(found.value) if found.value else None
-    return shapes.EffectiveReference(
+    return shapes.EffectiveOperator(
         value=found.value,
         label=contact.name if contact is not None else None,
         source=found.source,
         source_hid=found.source_hid,
+        source_label=holders.get(found.source_hid or "") if found.source != "own" else None,
     )
+
+
+def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -> dict[str, str]:
+    """Return what each record that an operator comes from is called: the item above,
+    or the group."""
+    named = {hid: item_rules.shown_name(item) for hid, item in above.items()}
+    its_groups = _by_hid(
+        db,
+        DeviceGroup,
+        {one.source_hid for one in found.values() if one.source == operators.SOURCE_GROUP},
+    )
+    named.update((hid, group.name) for hid, group in its_groups.items())
+    return named
 
 
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
@@ -524,6 +543,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         Contact,
         {item.operator_hid for item in items} | {one.value for one in looked_after.values()},
     )
+    holders = _holders(db, looked_after, above)
     places = location_refs(
         db, {item.location_hid for item in items} | {one.location_hid for one in above.values()}
     )
@@ -613,7 +633,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 replaced_by=replaced_by.get(item.hid),
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
-                    operator_hid=_operator(looked_after[item.hid], people),
+                    operator_hid=_operator(looked_after[item.hid], people, holders),
                     owner_hid=shapes.EffectiveReference(
                         value=effective["owner_hid"].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
@@ -716,6 +736,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
         Contact,
         {group.operator_hid for group in found} | {one.value for one in looked_after.values()},
     )
+    holders = _holders(db, looked_after, {})
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
@@ -739,7 +760,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 location=places.get(group.location_hid) if group.location_hid else None,
                 operator=_contact_ref(people[group.operator_hid]) if group.operator_hid else None,
                 effective=shapes.GroupEffective(
-                    operator_hid=_operator(looked_after[group.hid], people)
+                    operator_hid=_operator(looked_after[group.hid], people, holders)
                 ),
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,

@@ -43,7 +43,10 @@ def test_an_item_has_its_own_operator_or_the_one_from_above(make: Maker) -> None
         "label": "Lee Marchetti",
         "source": "own",
         "source_hid": stack["hid"],
+        "source_label": None,
     }
+    named = make.get(f"/items/{supply['hid']}")["effective"]["operator_hid"]["source_label"]
+    assert named == "site2-sw-core"
     for item in (*switches, supply, optic):
         assert _in_force(make, item) == ("Lee Marchetti", "device_group", stack["hid"])
     assert _in_force(make, alone) == (None, "none", None)
@@ -115,6 +118,7 @@ def test_a_stack_decides_before_a_cluster_and_a_group_has_it_from_the_one_it_is_
         "label": "Priya Raman",
         "source": "device_group",
         "source_hid": domain["hid"],
+        "source_label": "site2-wireless",
     }
     for item in (*controllers, *points):
         assert _in_force(make, item) == ("Priya Raman", "device_group", domain["hid"])

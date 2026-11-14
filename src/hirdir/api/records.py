@@ -950,13 +950,21 @@ class EffectiveLocation(EffectiveReference):
     region: str | None = Field(description="The name of the region its site is in.")
 
 
+class EffectiveOperator(EffectiveReference):
+    """The operator in force, with what the record that holds it is called."""
+
+    source_label: str | None = Field(
+        description="The name of the item or the group it came from. Null for its own."
+    )
+
+
 class ItemEffective(Model):
     """The values in force of the fields an item inherits: the amounts and the dates
     from its catalog entry, and for a minor item the owner, the location and the
     standing of the item it is in."""
 
     owner_hid: EffectiveReference
-    operator_hid: EffectiveReference = Field(
+    operator_hid: EffectiveOperator = Field(
         description=(
             "The operator in force: its own, that of the item above it, or that of a group "
             "it is a member of. The label is the contact's name."
@@ -1273,7 +1281,7 @@ ManagedAs = Literal["one", "members", "members_and_cluster"]
 class GroupEffective(Model):
     """What a device group has in force of what it may have from the group it is in."""
 
-    operator_hid: EffectiveReference
+    operator_hid: EffectiveOperator
 
 
 class DeviceGroupOut(Model):

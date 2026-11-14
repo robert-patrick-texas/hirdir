@@ -3608,6 +3608,83 @@
         "title": "EffectiveLocation",
         "type": "object"
       },
+      "EffectiveOperator": {
+        "additionalProperties": false,
+        "description": "The operator in force, with what the record that holds it is called.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call the record.",
+            "title": "Label"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "device_group",
+              "location",
+              "site",
+              "region",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the item or the group it came from. Null for its own.",
+            "title": "Source Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The HID of the record.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "source",
+          "source_hid",
+          "source_label"
+        ],
+        "title": "EffectiveOperator",
+        "type": "object"
+      },
       "EffectiveReference": {
         "additionalProperties": false,
         "description": "A record in force, and where it came from.",
@@ -4239,7 +4316,7 @@
         "description": "What a device group has in force of what it may have from the group it is in.",
         "properties": {
           "operator_hid": {
-            "$ref": "#/components/schemas/EffectiveReference"
+            "$ref": "#/components/schemas/EffectiveOperator"
           }
         },
         "required": [
@@ -5228,7 +5305,7 @@
             "$ref": "#/components/schemas/EffectiveLocation"
           },
           "operator_hid": {
-            "$ref": "#/components/schemas/EffectiveReference",
+            "$ref": "#/components/schemas/EffectiveOperator",
             "description": "The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name."
           },
           "owner_hid": {

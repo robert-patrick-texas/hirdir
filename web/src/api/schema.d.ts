@@ -4390,6 +4390,17 @@ export interface components {
       /** The HID of the record. */
       value: string | null;
     };
+    /** The operator in force, with what the record that holds it is called. */
+    EffectiveOperator: {
+      /** What people call the record. */
+      label: string | null;
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
+      source_hid: string | null;
+      /** The name of the item or the group it came from. Null for its own. */
+      source_label: string | null;
+      /** The HID of the record. */
+      value: string | null;
+    };
     /** A record in force, and where it came from. */
     EffectiveReference: {
       /** What people call the record. */
@@ -4500,7 +4511,7 @@ export interface components {
     };
     /** What a device group has in force of what it may have from the group it is in. */
     GroupEffective: {
-      operator_hid: components["schemas"]["EffectiveReference"];
+      operator_hid: components["schemas"]["EffectiveOperator"];
     };
     /** A user group. */
     GroupOut: {
@@ -4659,7 +4670,7 @@ export interface components {
       lifecycle_state: components["schemas"]["EffectiveValue"];
       location_hid: components["schemas"]["EffectiveLocation"];
       /** The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name. */
-      operator_hid: components["schemas"]["EffectiveReference"];
+      operator_hid: components["schemas"]["EffectiveOperator"];
       owner_hid: components["schemas"]["EffectiveReference"];
       support_weight: components["schemas"]["EffectiveValue"];
     };
