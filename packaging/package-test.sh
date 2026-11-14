@@ -7,7 +7,8 @@
 # Usage: packaging/package-test.sh [--e2e] [--upgrade | --failed-upgrade | --fresh]
 #
 # There are three passes, each in a container of its own. With none named, all three
-# run one after another and a summary of them all ends the run.
+# run, side by side when the host has cores and memory free for it and one after another
+# when it has not, and a summary of them all ends the run.
 #
 #   --upgrade          install the previous release, put accounts, a group, a role grant,
 #                      a service token, audit events, an inventory and a changed
@@ -131,12 +132,35 @@ if [ -n "$previous" ]; then previous_version=$(dpkg-deb -f "$previous" Version);
 
 # ---- every pass ---------------------------------------------------------------------------
 
-# With no pass named: run each one as a command of its own, and sum them up.
+# How many passes may run at once: as many as the host has cores and memory free, which
+# scripts/test_load.py says after waiting for a busy host, ten minutes at the most. One
+# at a time where that cannot be asked.
+passes_at_once() {
+    local width
+    width=$(python3 "$(dirname "$self")/../scripts/test_load.py" --wait) || width=1
+    case $width in '' | *[!0-9]*) width=1 ;; esac
+    if [ "$width" -gt "$1" ]; then width=$1; fi
+    if [ "$width" -lt 1 ]; then width=1; fi
+    echo "$width"
+}
+
+# one_pass OPTION...: run one pass as a command of its own.
+one_pass() {
+    # A pass finds the previous package as this run did: by PREVIOUS_DEB when the
+    # person set it, which the pass inherits, and beside the package otherwise.
+    DEB=$deb PACKAGE_TEST_EVERY_PASS=1 bash "$self" "$@" 2>&1
+}
+
+# With no pass named: run each one as a command of its own, and sum them up. Each pass
+# has a container, an image and a port of its own, so they run side by side when the
+# host has room for it. The output of each is then shown whole, in the order of the
+# passes, when all have ended.
 every_pass() {
-    local log failed=0 code option earlier options arguments
+    local log logs failed=0 code option earlier options arguments width running=0 started
     log=$(mktemp)
-    # shellcheck disable=SC2064  # The file's name is fixed now, on purpose.
-    trap "rm -f '$log'" EXIT
+    logs=$(mktemp -d)
+    # shellcheck disable=SC2064  # The names are fixed now, on purpose.
+    trap "rm -rf '$log' '$logs'" EXIT
     if [ -n "$previous" ]; then
         options=(--upgrade --failed-upgrade --fresh)
     else
@@ -148,14 +172,39 @@ every_pass() {
             echo "SKIP  pkg upgrade from the previous release: docs/releases/ holds no release before $version, so there is nothing to upgrade from" | tee -a "$log"
         fi
     fi
+    started=$SECONDS
+    width=$(passes_at_once "${#options[@]}")
+    if [ "$width" -gt 1 ]; then
+        echo "package-test: $width passes at once; what each says is shown when all have ended, and is written meanwhile to $logs/"
+        # Built once here, so that the passes find the image's layers made and do not
+        # each make them.
+        docker build --quiet - <packaging/container/Dockerfile.systemd >/dev/null
+    fi
     for option in "${options[@]}"; do
         arguments=("$option")
         if [ "$e2e" = 1 ] && [ "$option" = --fresh ]; then arguments+=(--e2e); fi
+        if [ "$width" -gt 1 ]; then
+            while [ "$running" -ge "$width" ]; do
+                wait -n || true
+                running=$((running - 1))
+            done
+            (
+                code=0
+                one_pass "${arguments[@]}" >"$logs/${option#--}.log" || code=$?
+                echo "$code" >"$logs/${option#--}.status"
+            ) &
+            running=$((running + 1))
+            continue
+        fi
         code=0
-        # A pass finds the previous package as this run did: by PREVIOUS_DEB when the
-        # person set it, which the pass inherits, and beside the package otherwise.
-        DEB=$deb PACKAGE_TEST_EVERY_PASS=1 bash "$self" "${arguments[@]}" 2>&1 |
-            tee -a "$log" || code=$?
+        one_pass "${arguments[@]}" | tee "$logs/${option#--}.log" || code=$?
+        echo "$code" >"$logs/${option#--}.status"
+    done
+    wait
+    for option in "${options[@]}"; do
+        if [ "$width" -gt 1 ]; then cat "$logs/${option#--}.log"; fi
+        cat "$logs/${option#--}.log" >>"$log"
+        code=$(cat "$logs/${option#--}.status" 2>/dev/null || echo 1)
         if [ "$code" -ne 0 ]; then
             failed=1
             grep -q "^package-test: ${option#--}: " "$log" ||
@@ -163,7 +212,7 @@ every_pass() {
         fi
     done
 
-    printf '\n== every pass\n'
+    printf '\n== every pass, in %s s, %s at once\n' "$((SECONDS - started))" "$width"
     grep -E '^package-test: [a-z-]+: [0-9]+ PASS, ' "$log" || true
     echo "package-test: in all: $(grep -c '^PASS  ' "$log" || true) PASS," \
         "$(grep -c '^FAIL  ' "$log" || true) FAIL, $(grep -c '^SKIP  ' "$log" || true) SKIP"
