@@ -355,60 +355,91 @@ describe("groups and addresses in the item grid", () => {
 });
 
 describe("the operator in the item grid", () => {
-  const LEE = "0193a1f4-0000-7000-8000-0000000000e1";
+  const OP2 = "0193a1f4-0000-7000-8000-0000000000e1";
+  const LEE = "0193a1f4-0000-7000-8000-0000000000e2";
   const STACK = "g-1";
-  const operator = (source: InForce["source"], hid: string | null) => ({
-    value: source === "none" ? null : LEE,
-    label: source === "none" ? null : "Lee Marchetti",
+  const SITE_PATH = "Americas > Central > Site-2";
+  const operator = (
+    source: InForce["source"],
+    hid: string | null,
+    from: string | null,
+    open = false,
+  ) => ({
+    value: source === "none" ? null : OP2,
+    label: source === "none" ? null : "Op2",
+    colour: source === "none" ? null : "#1f6feb",
+    contact_hid: open || source === "none" ? null : LEE,
+    contact: open || source === "none" ? null : "Lee Marchetti",
+    is_open: open,
     source,
     source_hid: hid,
+    source_label: from,
   });
-  const withOperator = (item: Item, source: InForce["source"], hid: string | null) =>
+  const withOperator = (item: Item, inForce: ReturnType<typeof operator>) =>
     ({
       ...item,
-      effective: { ...item.effective, operator_hid: operator(source, hid) },
+      effective: { ...item.effective, operator_hid: inForce },
     }) as unknown as Item;
-  // The switch is a member of the stack g-1, which has the operator; the supply is in it.
-  const fromStack = withOperator(chassis, "device_group", STACK);
-  const fromSwitch = withOperator(supply, "parent_item", SWITCH);
-  const own = withOperator(chassis, "own", SWITCH);
-  const nobody = withOperator(chassis, "none", null);
+  const fromStack = withOperator(chassis, operator("device_group", STACK, "site2-sw-stack1"));
+  const fromSwitch = withOperator(supply, operator("parent_item", SWITCH, "site2-sw-access-01"));
+  const fromSite = withOperator(chassis, operator("site", "s-1", SITE_PATH));
+  const own = withOperator(chassis, operator("own", SWITCH, null));
+  const open = withOperator(chassis, operator("own", SWITCH, null, true));
+  const nobody = withOperator(chassis, operator("none", null, null));
 
-  it("shows the operator in force by name, and nothing for an item nobody is assigned to", () => {
-    expect(column("operator.name").value(fromStack)).toBe("Lee Marchetti");
-    expect(column("operator.name").value(own)).toBe("Lee Marchetti");
-    expect(column("operator.name").value(nobody)).toBe("");
+  it("shows the label of the operator in force, and nothing for an item nobody is assigned to", () => {
+    expect(column("operator.label").value(fromStack)).toBe("Op2");
+    expect(column("operator.label").value(own)).toBe("Op2");
+    expect(column("operator.label").value(nobody)).toBe("");
   });
 
-  it("marks it as inherited where it comes from the group or from the item above", () => {
-    expect(column("operator.name").effective?.(fromStack)?.source).toBe("device_group");
-    expect(column("operator.name").effective?.(fromSwitch)?.source).toBe("parent_item");
-    expect(column("operator.name").effective?.(own)?.source).toBe("own");
+  it("shows it as a mark: a dot in its colour, a link to the operator, and open when it is", () => {
+    expect(column("operator.label").chip?.(own)).toEqual({
+      colour: "#1f6feb",
+      path: `/operators/${OP2}`,
+    });
+    expect(column("operator.label").chip?.(open)).toEqual({
+      colour: "#1f6feb",
+      path: `/operators/${OP2}`,
+      note: "open",
+    });
+    expect(column("operator.label").chip?.(nobody)).toBeNull();
   });
 
-  it("names the record it came from as the hint of the cell", () => {
-    expect(cellHint(column("operator.name"), fromStack)).toBe(
-      "Inherited from the stack site2-sw-stack1",
+  it("marks it as inherited where it comes from above: the item, the group or the place", () => {
+    expect(column("operator.label").effective?.(fromStack)?.source).toBe("device_group");
+    expect(column("operator.label").effective?.(fromSwitch)?.source).toBe("parent_item");
+    expect(column("operator.label").effective?.(fromSite)?.source).toBe("site");
+    expect(column("operator.label").effective?.(own)?.source).toBe("own");
+  });
+
+  it("says the person behind the label and the record it came from as the hint of the cell", () => {
+    expect(cellHint(column("operator.label"), fromStack)).toBe(
+      "Lee Marchetti · Inherited from the group site2-sw-stack1",
     );
-    expect(cellHint(column("operator.name"), fromSwitch)).toBe(
-      "Inherited from the item it is in, site2-sw-access-01",
+    expect(cellHint(column("operator.label"), fromSwitch)).toBe(
+      "Lee Marchetti · Inherited from the item site2-sw-access-01",
     );
-    expect(cellHint(column("operator.name"), own)).toBe("");
-    expect(cellHint(column("operator.name"), nobody)).toBe("");
+    expect(cellHint(column("operator.label"), fromSite)).toBe(
+      `Lee Marchetti · Inherited from the site ${SITE_PATH}`,
+    );
+    expect(cellHint(column("operator.label"), own)).toBe("Lee Marchetti");
+    expect(cellHint(column("operator.label"), open)).toBe("Open: nobody is behind this label");
+    expect(cellHint(column("operator.label"), nobody)).toBe("");
   });
 
-  it("filters and sorts by the name of the operator in force, exports as `operator`, and is hidden at first", () => {
-    expect(asked("operator.name")).toMatchObject({
-      field: "operator.name",
-      sortField: "operator.name",
+  it("filters and sorts by the label of the operator in force, exports as `operator`, and is hidden at first", () => {
+    expect(asked("operator.label")).toMatchObject({
+      field: "operator.label",
+      sortField: "operator.label",
       kind: "text",
     });
-    expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "operator.name" }])).toEqual([
+    expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "operator.label" }])).toEqual([
       "hid",
       "name",
       "operator",
     ]);
-    expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.name")?.hide).toBe(true);
+    expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.label")?.hide).toBe(true);
   });
 });
 

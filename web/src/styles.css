@@ -1324,3 +1324,27 @@ main:has(.geography) {
 .again {
   margin-left: 0.6rem;
 }
+
+/* --- the mark of an operator --------------------------------------------------------- */
+
+/* The label with a dot in its colour beside it. The label is always written out. */
+.operator-mark {
+  white-space: nowrap;
+}
+
+.operator-dot {
+  margin-right: 0.35rem;
+  border-radius: 50%;
+}
+
+.operator-person {
+  margin-left: 0.4rem;
+}
+
+.operator-mark .mark {
+  margin-left: 0.4rem;
+}
+
+.operator-mark + .operator-mark {
+  margin-left: 0.9rem;
+}

@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { api } from "../api";
 import type { Loaded, useAction } from "../lib/hooks";
+import { markOf } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import {
   addressLines,
@@ -22,6 +23,7 @@ import {
   type Standing,
   standingOf,
 } from "../lib/places";
+import { OperatorMark } from "./Operator";
 import { Problem } from "./Problem";
 
 /** The address of the page of a place, with the view of the tree kept. */
@@ -117,6 +119,8 @@ export function InForce(props: InForceProps) {
   const data = effective.data;
   const sitePath = "site" in place ? place.site.path : null;
   const stands = { sitePath, level, to };
+  // The operator of what is at this place and has none from elsewhere.
+  const operator = markOf(data?.operator.value);
   return (
     <section aria-labelledby="in-force">
       <h3 id="in-force">In force</h3>
@@ -204,6 +208,21 @@ export function InForce(props: InForceProps) {
             </table>
           </div>
           <dl className="facts" data-testid="in-force-shipping">
+            <dt>Operator</dt>
+            <dd
+              data-testid="place-operator"
+              data-source={data.operator.source}
+              data-standing={standingOf(data.operator)}
+              className={lighter(standingOf(data.operator))}
+            >
+              {operator ? (
+                <OperatorMark mark={operator} withPerson />
+              ) : (
+                <span className="muted">Nobody</span>
+              )}
+              {" · "}
+              <Stands value={data.operator} {...stands} />
+            </dd>
             <dt>Shipping address</dt>
             <dd
               data-testid="ship-address"
@@ -337,6 +356,50 @@ export function ShippingNote(props: ShippingNoteProps) {
       )}
     </p>
   );
+}
+
+/**
+ * The same for the operator of a place that exists: the one it has from a level above,
+ * shown before one is chosen, or that its own overrides the one above.
+ */
+export function PlaceOperatorNote(props: {
+  operator: PlaceEffective["operator"];
+  level: Level;
+  sitePath: string | null;
+  to: To;
+}) {
+  const { operator, level, sitePath, to } = props;
+  const standing = standingOf(operator);
+  const mark = markOf(operator.value);
+  if (standing === "inherited" && operator.source_hid && mark) {
+    return (
+      <p
+        className="form-note inherited"
+        data-testid="place-operator-note"
+        data-standing="inherited"
+      >
+        <span className="badge badge-plain mark">Inherited</span>{" "}
+        <OperatorMark mark={mark} withPerson />. Inherited from{" "}
+        <Link to={to(operator.source, operator.source_hid)}>
+          {operator.source_path ?? operator.source_hid}
+        </Link>
+        . Choose an operator here to override it.
+      </p>
+    );
+  }
+  if (standing === "override" && operator.overrides_hid) {
+    const above = operator.overrides_path ?? operator.overrides_hid;
+    return (
+      <p className="form-note" data-testid="place-operator-note" data-standing="override">
+        This {level} has an operator of its own. <span className="badge mark">Overrides</span>{" "}
+        <Link to={to(overriddenLevel(level, sitePath, above), operator.overrides_hid)}>
+          {above}
+        </Link>
+        , whose operator is in force again when this one is cleared.
+      </p>
+    );
+  }
+  return null;
 }
 
 /** The same for the shipping instructions of a place that exists. */

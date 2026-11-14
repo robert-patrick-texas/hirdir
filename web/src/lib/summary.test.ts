@@ -118,8 +118,8 @@ describe("rowLabel", () => {
     expect(rowLabel("region", { key: null, label: null })).toBe("Nowhere: no location");
   });
 
-  it("labels an operator by the contact's name, and the blank row as nobody being assigned", () => {
-    expect(rowLabel("operator", { key: OWNER, label: "Lee Marchetti" })).toBe("Lee Marchetti");
+  it("labels an operator by its label, and the blank row as nobody being assigned", () => {
+    expect(rowLabel("operator", { key: OWNER, label: "Op2" })).toBe("Op2");
     expect(rowLabel("operator", { key: null, label: null })).toBe("Nobody is assigned");
   });
 

@@ -16,7 +16,7 @@ import {
   reasonsText,
 } from "../../lib/health";
 import { DISPOSITIONS } from "../../lib/lifecycle";
-import { operatorHint } from "../../lib/operators";
+import { markOf, operatorHint, operatorPath } from "../../lib/operators";
 import {
   CATALOG_KINDS,
   choiceFilterOptions,
@@ -270,16 +270,28 @@ export function itemColumns(
       width: 170,
     },
     {
-      // The operator in force: the person of the team who looks after the item, its own
-      // or the one it has from the item it is in or from its group. `operator.name` is
-      // the name of that one, which is what the list filters and sorts by.
-      id: "operator.name",
+      // The operator in force: the label of who of the team looks after the item, its
+      // own or the one it has from the item it is in, from its group or from where it
+      // is. `operator.label` is what the list filters and sorts by. The cell is the mark
+      // of that operator: the label, a dot in its colour, and "open" when nobody is
+      // behind it; the person and where it came from are the hint.
+      id: "operator.label",
       header: "Operator",
       kind: "text",
       column: "operator",
       value: (item) => effectiveLabel(item.effective.operator_hid),
       effective: (item) => item.effective.operator_hid,
-      hint: (item) => operatorHint(item.effective.operator_hid, item),
+      hint: (item) => operatorHint(item.effective.operator_hid),
+      chip: (item) => {
+        const mark = markOf(item.effective.operator_hid);
+        return (
+          mark && {
+            colour: mark.colour,
+            path: operatorPath(mark.hid),
+            ...(mark.open ? { note: "open" } : {}),
+          }
+        );
+      },
       hide: true,
       width: 180,
     },

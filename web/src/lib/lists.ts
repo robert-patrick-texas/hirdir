@@ -3,6 +3,7 @@
 import { api } from "../api";
 import { groupTypeLabel } from "./groups";
 import { type Loaded, useLoad } from "./hooks";
+import { type Mark, markOf } from "./operators";
 import { ownerOptions } from "./owners";
 import type { Option } from "./patch";
 
@@ -109,6 +110,27 @@ export function useGroupOptions(): Loaded<Option[]> {
       label: group.name,
       group: groupTypeLabel(group.type),
     }));
+  });
+}
+
+/**
+ * The marks of the operators, by HID, released ones among them: for a report whose rows
+ * are operators, which names each by its HID and its label and not by its colour. Asked
+ * for only when wanted.
+ */
+export function useOperatorMarks(wanted: boolean): Loaded<Map<string, Mark>> {
+  return useLoad(`operator-marks ${wanted}`, async (signal) => {
+    const marks = new Map<string, Mark>();
+    if (!wanted) return marks;
+    const page = await api.request("get", "/api/v1/operators", {
+      query: { limit: EVERY, include_drafts: true, include_archived: true },
+      signal,
+    });
+    for (const operator of page.items) {
+      const mark = markOf(operator);
+      if (mark) marks.set(operator.hid, mark);
+    }
+    return marks;
   });
 }
 

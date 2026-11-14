@@ -57,6 +57,9 @@ export function Shell() {
                   <NavLink to="/contacts">Contacts</NavLink>
                 </li>
                 <li>
+                  <NavLink to="/operators">Operators</NavLink>
+                </li>
+                <li>
                   <NavLink to="/owners">Owners</NavLink>
                 </li>
                 <li>

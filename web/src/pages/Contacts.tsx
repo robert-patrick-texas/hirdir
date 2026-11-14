@@ -5,14 +5,15 @@ import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { OperatorMark } from "../components/Operator";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
 import { formatTime, plural } from "../lib/format";
-import { queryBody, queryParams } from "../lib/gridQuery";
+import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY, useChoices, useTags } from "../lib/lists";
-import { operatedGroupsPath, operatedItemsPath } from "../lib/operators";
+import { markOf } from "../lib/operators";
 import { choiceLabel, optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { memberRoleLabel } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
@@ -299,53 +300,49 @@ function Assigned({ contact }: { contact: Contact }) {
       signal,
     }),
   );
-  // What it is the operator of: counted by the server, and listed in the grids.
-  const operated = useLoad(`contact-operates ${contact.hid}`, async (signal) => {
-    const [items, groups] = await Promise.all([
-      api.request("post", "/api/v1/items/query", {
-        body: queryBody({
-          filter: { field: "effective.operator_hid", op: "eq", value: contact.hid },
-          sort: [],
-          limit: 1,
-          offset: 0,
-          include_archived: false,
-          include_drafts: false,
-        }),
-        signal,
-      }),
-      api.request("get", "/api/v1/device-groups", {
-        query: { filter: `operator_hid:eq:${contact.hid}`, limit: 1 },
-        signal,
-      }),
-    ]);
-    return { items: items.total, groups: groups.total };
-  });
+  // The operators it stands behind: the labels that are assigned to this person.
+  const behind = useLoad(`contact-operators ${contact.hid} ${contact.row_version}`, (signal) =>
+    api.request("get", "/api/v1/operators", {
+      query: {
+        filter: `contact_hid:eq:${contact.hid}`,
+        limit: EVERY,
+        include_drafts: true,
+        include_archived: true,
+      },
+      signal,
+    }),
+  );
+  const labels = behind.data?.items ?? [];
   const assignments = places.data?.items ?? [];
   const among = owners.data?.items ?? [];
   const loaded = places.data !== undefined && owners.data !== undefined;
-  const operates = operated.data && operated.data.items + operated.data.groups > 0;
 
   return (
     <section aria-labelledby="assigned">
       <h2 id="assigned">Where it is assigned</h2>
-      <Problem error={places.error ?? owners.error ?? choices.error ?? operated.error} />
+      <Problem error={places.error ?? owners.error ?? choices.error ?? behind.error} />
       {!loaded && !(places.error ?? owners.error) && (
         <p role="status" className="muted loading-late">
           Loading…
         </p>
       )}
-      {loaded && operated.data && assignments.length === 0 && among.length === 0 && !operates && (
-        <p className="muted">This contact is assigned nowhere.</p>
-      )}
-      {operated.data && operates && (
-        <p data-testid="contact-operates">
-          The operator of{" "}
-          <Link to={operatedItemsPath(contact.hid)}>{plural(operated.data.items, "item")}</Link>,
-          its own and those that have it from the item they are in or from their group, and of{" "}
-          <Link to={operatedGroupsPath(contact.hid)}>
-            {plural(operated.data.groups, "device group")}
-          </Link>
-          .
+      {loaded &&
+        behind.data &&
+        assignments.length === 0 &&
+        among.length === 0 &&
+        labels.length === 0 && <p className="muted">This contact is assigned nowhere.</p>}
+      {labels.length > 0 && (
+        <p data-testid="contact-operators">
+          Behind {plural(labels.length, "operator")}:{" "}
+          {labels.map((operator) => {
+            const mark = markOf(operator);
+            return mark && <OperatorMark key={operator.hid} mark={mark} />;
+          })}
+          <span className="muted">
+            {" "}
+            · what each label is on is this person&apos;s to look after. A label is handed over on
+            its own page.
+          </span>
         </p>
       )}
       {assignments.length > 0 && (

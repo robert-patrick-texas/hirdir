@@ -3,6 +3,7 @@ import { Link, NavLink, useSearchParams } from "react-router";
 import { api } from "../api";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { HealthMark } from "../components/Health";
+import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
@@ -11,18 +12,21 @@ import { itemsPath, parseShort } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
 import { useLoad, useTitle } from "../lib/hooks";
-import { useChoices, useSettings } from "../lib/lists";
+import { useChoices, useOperatorMarks, useSettings } from "../lib/lists";
+import { type Mark, operatorPath } from "../lib/operators";
 import type { Option } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
 import { settingText } from "../lib/settings";
 import {
   amountText,
+  type By,
   byLabel,
   countText,
   isBy,
   isByPlace,
   isManagementBy,
   MANAGEMENT_BY,
+  type ManagementBy,
   type ReportView,
   rowLabel,
   SUMMARY_BY,
@@ -38,6 +42,27 @@ const PLACE_ROWS = {
   region:
     "A region is named by its path, and its row holds everything at or beneath it: an item is in the row of each region above it, and the totals count it once. The items that are nowhere are in a row of their own.",
 } as const;
+
+/**
+ * What a row of a report is called. A row of an operator is that operator's mark: the
+ * label in its colour, as a link to its page, with the person behind it on hover. The
+ * report names the operator by its HID and its label; the colour and the person come
+ * from the list of operators, and until that is read the label is the link.
+ */
+function RowName(props: {
+  by: By | ManagementBy;
+  row: { key: string | null; label: string | null };
+  choices: Parameters<typeof rowLabel>[2];
+  operators: ReadonlyMap<string, Mark> | undefined;
+}) {
+  const { by, row, choices, operators } = props;
+  if (by === "operator" && row.key !== null) {
+    const mark = operators?.get(row.key);
+    if (mark) return <OperatorMark mark={mark} withPerson />;
+    return <Link to={operatorPath(row.key)}>{row.label ?? row.key}</Link>;
+  }
+  return rowLabel(by, row, choices);
+}
 
 /** The second row of navigation on the report pages. */
 function ReportsNav() {
@@ -205,6 +230,7 @@ export function Summary() {
   );
   const data = summary.data;
   const by = data?.by ?? "";
+  const operators = useOperatorMarks(by === "operator");
 
   return (
     <>
@@ -280,7 +306,12 @@ export function Summary() {
                     {data.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
-                          {rowLabel(by, row, choices.data)}
+                          <RowName
+                            by={by}
+                            row={row}
+                            choices={choices.data}
+                            operators={operators.data}
+                          />
                         </th>
                         <td className="number">{countText(row.items)}</td>
                         <td className="number">{countText(row.component_count)}</td>
@@ -340,6 +371,7 @@ export function ManagementReport() {
   const money = currency ? ` (${currency})` : "";
   const data = report.data;
   const by = data?.by ?? "";
+  const operators = useOperatorMarks(by === "operator");
 
   return (
     <>
@@ -403,7 +435,12 @@ export function ManagementReport() {
                     {data.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
-                          {rowLabel(by, row, choices.data)}
+                          <RowName
+                            by={by}
+                            row={row}
+                            choices={choices.data}
+                            operators={operators.data}
+                          />
                         </th>
                         <td className="number">{countText(row.items)}</td>
                         <td className="number">{countText(row.component_count)}</td>

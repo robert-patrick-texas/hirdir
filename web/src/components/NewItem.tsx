@@ -73,11 +73,9 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
       {
         name: "operator_hid",
         label: "Operator",
-        kind: "contact",
-        blank: minor
-          ? "The operator of the item it is in, or of its group"
-          : "Nobody of its own: the operator of a group it joins, if any",
-        hint: "The person of the team who looks after it.",
+        kind: "operator",
+        blank: "None of its own: the one it has from above, if any",
+        hint: "The label of who of the team looks after it. Left blank, it has the operator of the item it is in, of a group it joins, or of where it is.",
       },
       {
         name: "location_hid",
