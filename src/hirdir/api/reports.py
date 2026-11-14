@@ -146,10 +146,12 @@ def coverage(
     include_drafts: Drafts = False,
 ) -> r.CoverageReport:
     """Say what contracts cover today: the items in service that none covers, the items
-    covered though out of service, and those whose cover runs out soon.
+    out of service that a contract still counts, those whose cover runs out soon, those
+    that more than one contract covers, and those covered while a renewal is pending.
 
-    Each of the three is a list of items. `section` asks for a page of one, and each
-    says the filter that lists the same items on `GET /items`.
+    Each of the five is a list of items. `section` asks for a page of one, and each
+    says the filter that lists the same items on `GET /items`. The contracts that
+    have lapsed are counted beside them.
     """
     found = planning.coverage(
         db,

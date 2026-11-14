@@ -1434,12 +1434,16 @@ def _renewed(found: dict[str, Any], renewed: dict[str, Any], called: str, follow
         typer.echo(
             f"{called} renews{number} on {waiting['starts_on']}, to "
             f"{waiting['ends_on'] or 'further notice'}; until then it runs on as it is, "
-            f"and {follow}"
+            f"{follow}"
         )
-    elif found["next_term"] is not None and renewed["row_version"] != found["row_version"]:
+    elif found["next_term"] is not None and all(
+        renewed.get(name) == found.get(name) for name in ("number", "starts_on", "ends_on")
+    ):
         typer.echo(f"{called}: the term that was to begin is withdrawn")
     else:
         typer.echo(f"{called} is now {renewed.get('number') or called}, {follow}")
+        if found["next_term"] is not None:
+            typer.echo("the term that was to begin is superseded by it", err=True)
 
 
 def _renewal(
@@ -1499,7 +1503,10 @@ def renew_contract(
         number, from_, to, purchase_reference, annual_cost, withdraw, found["row_version"]
     )
     renewed = client.call(target, "POST", f"/contracts/{found['hid']}/renew", body)
-    follow = f"{_in_force_period(renewed)}; {renewed['items_in_scope']} items follow"
+    scope = renewed["items_in_scope"]
+    follow = (
+        f"{_in_force_period(renewed)}; {scope} {'item follows' if scope == 1 else 'items follow'}"
+    )
     _renewed(found, renewed, found["number"], follow)
 
 
@@ -1525,7 +1532,8 @@ def renew_agreement(
     renewed = client.call(target, "POST", f"/agreements/{found['hid']}/renew", body)
     follow = (
         f"{_period(renewed['starts_on'], renewed['ends_on'])}; "
-        f"{renewed['contracts']} contracts are in it"
+        f"{renewed['contracts']} "
+        f"{'contract is' if renewed['contracts'] == 1 else 'contracts are'} in it"
     )
     _renewed(found, {**renewed, "number": renewed["name"]}, found["name"], follow)
 
@@ -1589,19 +1597,32 @@ def cover(
         return
     dates = {name: value for name, value in (("starts_on", from_), ("ends_on", to)) if value}
     covered = 0
-    # A request covers so many at once, and each request is whole or not at all.
+    # A request covers so many at once, and each request is whole or not at all: so
+    # where a later one is refused, what the earlier ones covered stays covered, and
+    # that is said, with how to go on.
     for start in range(0, len(hids), COVER_IN_ONE_REQUEST):
-        made = client.call(
-            target,
-            "POST",
-            f"/contracts/{found['hid']}/coverage",
-            {
-                "items": [
-                    {"item_hid": hid, **dates} for hid in hids[start : start + COVER_IN_ONE_REQUEST]
-                ]
-            },
-            timeout=SLOW,
-        )
+        try:
+            made = client.call(
+                target,
+                "POST",
+                f"/contracts/{found['hid']}/coverage",
+                {
+                    "items": [
+                        {"item_hid": hid, **dates}
+                        for hid in hids[start : start + COVER_IN_ONE_REQUEST]
+                    ]
+                },
+                timeout=SLOW,
+            )
+        except typer.Exit:
+            if covered:
+                typer.echo(
+                    f"{covered} of {len(hids)} items are covered by {found['number']}, and the "
+                    f"other {len(hids) - covered} are not: put right what was refused, and "
+                    f"cover the rest with --filter 'contract.hid:ne:{found['hid']}' added",
+                    err=True,
+                )
+            raise
         covered += len(made)
     typer.echo(f"{covered} items are covered by {found['number']}, {period}")
 

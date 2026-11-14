@@ -586,6 +586,14 @@ is so co-termed with its agreement.
 Rolling a contract into an agreement leaves what the contract says of its own in
 place, as overrides. They are cleared where the agreement should speak.
 
+A change of the dates of an agreement or of a contract in it, and a renewal of
+either, is refused where it would leave a contract with a period in force that ends
+before it starts, today or on a day when a term of either that is still to begin has
+begun: the two are held together term by term, as they will be in force together.
+The answer to a change of an agreement names the contracts, whose own dates are put
+right first. A contract that is the wrong way round already is not held against
+another change, and can still be given a note.
+
 The status of an agreement is what a person says of it, and gates nothing: a contract
 covers by its own status and by its period in force. An agreement is retired once no
 contract that is not retired is in it.
@@ -637,7 +645,9 @@ period of performance. That is one change of the one record, `POST
 period: nothing is written to any item or to any coverage. The items in scope are
 those whose coverage under the contract has not been ended. A coverage that was ended
 on a day of its own stays ended. The status is `active` after a renewal that is in
-force at once, unless it is told another.
+force at once, unless it is told another. What else a renewal says, the support
+level, the reseller and the notes, is of the contract and not of a term, and is
+changed at once whenever the new period begins.
 
 **A renewal that is early.** A renewal is often entered before the old term ends.
 One whose period begins after today is kept as the **next term** of the contract:
@@ -647,10 +657,21 @@ next term begins, and from that day the contract has the new ones. That is worke
 out when the record is read: no clock writes anything, and the first change that is
 made after that day writes the term down, as a renewal, before it is made itself.
 The items are covered throughout, `covered_until` runs to the end of the term to
-come, and a contract answers to both of its numbers. A next term is withdrawn by a
-renewal that says `withdraw` and nothing else. An agreement is renewed in the same
-way, `POST /agreements/{hid}/renew`, and the contracts that are co-termed with it
-follow.
+come, and a contract answers to both of its numbers, neither of which another
+contract of the vendor may take. A next term is withdrawn by a renewal that says
+`withdraw` and nothing else. An agreement is renewed in the same way, `POST
+/agreements/{hid}/renew`, and the contracts that are co-termed with it follow.
+
+The status that a person gave the present term is left as it is by a renewal that is
+still to begin. On the day the new term begins, a contract that said `expired` or
+`renewal_pending` is `active`, as it is after a renewal that is in force at once:
+both were said of the term that has ended. `pending` and `cancelled` are said of the
+contract, and stay until a person says otherwise.
+
+The `row_version` of a contract or an agreement moves with the term: from the day a
+next term begins, the record is read with the version it will have once the term is
+written down. So an edit that was read before that day and is sent after it is
+refused as stale, and is not made to a term it was not meant for.
 
 **A renewal that is late.** Procurement may take thirty to ninety days after a term
 has ended. In that time the vendor still gives support, by escalation: the account
@@ -658,9 +679,11 @@ manager is asked before the support line is called. A person says so by giving t
 contract the status `renewal_pending`. While it holds, the contract covers past the
 end of its period, its items stay off the list of what no contract covers, each
 says that the renewal is pending, and `covered_until` is blank, since no day is
-known to end it. The coverage report counts the items in that state. When the
+known to end it, until the renewal is entered: it then runs to the end of the term
+to come. The coverage report counts the items in that state. When the
 renewal is entered at last, the contract is `active` again in its new period. The terms a contract had before, each with its number, its period,
-its cost, the purchase reference it was bought under and the moment it was renewed,
+its cost, the purchase reference it was bought under, and when the renewal that
+ended it was entered and by whom,
 are answered by `GET /contracts/{hid}/terms` from the audit trail, and are stored
 nowhere else. They are the purchase history of the contract: a renewal gives the new
 term its own `purchase_reference`, and may name another reseller.
@@ -682,6 +705,11 @@ Rules, checked on every write:
   lists such an item as out of service for as long as the term of its contract runs,
   and a person clears `left_service` once the vendor has been told. A move to
   Pending-Removal ends nothing: the item is still covered, and is on the same list.
+  A coverage that had not begun on that day never was in force: it is removed, as
+  one made by mistake is, and the audit event holds what it was.
+- An item that is brought back is in service again and on no list of what has left.
+  Its coverage does not come back by itself: a person opens it again, by clearing
+  its end and `left_service`, or covers the item anew from the next day.
 - A coverage under a retired contract is not changed.
 
 `annual_cost` is the total of the contract as the vendor bills it. It is shown on the
@@ -693,7 +721,7 @@ On an item, derived when it is read and stored nowhere:
 | Field | Meaning |
 |---|---|
 | `covered` | a coverage of the item is in force today, in the application's time zone |
-| `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract covers or is to cover, to the end of the last term that is known. Blank when one of them names no end, or is under a contract whose renewal is pending, and when there is none. A gap between two of them is not looked for |
+| `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract covers or is to cover, to the end of the last term that is known. Blank when one of them names no end, or is under a contract whose renewal is pending with no term to come, and when there is none. A gap between two of them is not looked for |
 | `contract_count` | how many contracts cover it today. More than one is worth a look before a renewal: two contracts for one device are usually one too many |
 | `coverage` | its coverages, each with the contract, the dates in force, whether it is in force today and whether it was ended because the item left |
 
@@ -735,7 +763,9 @@ them or instead of them a `quantity`, how many more arrived that nothing is know
 yet, together with the day and, when it is known, the location they were put in.
 Each of those that nothing is known of is given a name made from its line and its
 place on it, `RITM0012345/2-003`, to be known by until it has a serial number, which
-is given to it by hand or by a file that names it so. Receiving creates the items in
+is given to it by hand or by a file that names it so: see "Identity and matching".
+The places go on from the highest that was ever given on the line, so an item that
+was taken off the line and still has its name is not named a second time. Receiving creates the items in
 the state Delivered, of the line's model, each with `purchase_line_hid` naming the
 line and `delivered_on` set, in one change, with an audit event for each. The items are then inventory: Delivered is not among the states
 that count, so they are in no component count until they are handed to the team.
@@ -1081,6 +1111,13 @@ first rule that applies decides, and no later rule is tried:
 
 More than one candidate is an error on that row, never a guess. MAC address, hostname
 and IP address are never used to match by themselves.
+
+One exception serves receiving. An item that arrived as a count is on a purchase line
+and has neither a serial number nor an asset tag: it is known by the name its line
+gave it, `RITM0012345/2-003`. A row that gives a serial number or an asset tag which
+no item has, and names such an item by that name, is that item, and gives it what it
+is to be known by; the same row, loaded again, finds it by its serial number. A row
+that names no such item is a new item, as rule 5 says.
 
 A row that matches by rule 2 or 3 and carries a different name updates the name. A row
 with no serial number, no asset tag and a new name is a new item, which is why exports

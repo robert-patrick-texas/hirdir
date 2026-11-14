@@ -448,8 +448,9 @@ CONTRACT_COUNT: ColumnElement[Any] = (
 )
 # The last day a coverage runs to: its own, or the end of the last term of its contract
 # that is known. Under a contract whose renewal is pending no day is known to end it.
+_LAST_STATUS = contracts.last_status_value(_COVERING)
 _COVER_END = case(
-    (_COVERING.status == contracts.RENEWAL_PENDING, _COVER.ends_on),
+    (_LAST_STATUS == contracts.RENEWAL_PENDING, _COVER.ends_on),
     else_=contracts._least(_COVER.ends_on, contracts.last_end_of(_COVERING)),
 )
 COVERED_UNTIL: ColumnElement[Any] = type_coerce(
@@ -461,7 +462,7 @@ COVERED_UNTIL: ColumnElement[Any] = type_coerce(
     .where(
         _COVER.item_hid == Item.hid,
         _COVERING.record_status == "active",
-        _COVERING.status.in_(contracts.COVERING),
+        _LAST_STATUS.in_(contracts.COVERING),
         or_(_COVER_END.is_(None), dialect.today() <= _COVER_END),
     )
     .correlate(Item)
@@ -479,14 +480,17 @@ _COVER_GOES_ON = (
     .correlate(Item)
     .exists()
 )
-OUT_OF_SERVICE_COVER: ColumnElement[Any] = or_(
-    and_(
+# An item that was brought back is in service again, whatever a coverage of it says.
+OUT_OF_SERVICE_COVER: ColumnElement[Any] = and_(
+    or_(Item.record_status == "retired", STATE_IN_FORCE.in_(_OUT_OF_SERVICE)),
+    or_(
         _COVER_GOES_ON,
-        or_(Item.record_status == "retired", STATE_IN_FORCE.in_(_OUT_OF_SERVICE)),
+        _ITS_COVER.where(
+            _COVER.item_hid == Item.hid, contracts.left_while_running(_COVER, _COVERING)
+        )
+        .correlate(Item)
+        .exists(),
     ),
-    _ITS_COVER.where(_COVER.item_hid == Item.hid, contracts.left_while_running(_COVER, _COVERING))
-    .correlate(Item)
-    .exists(),
 )
 # What a list leaves out unless asked, of items: drafts, retired ones and the archived.
 _ITEM_IN_VIEW = (
@@ -1278,6 +1282,7 @@ def _term_fields(model: Any) -> dict[str, Field]:
         ),
         "status": Field("choice", contracts.status_value(model)),
         "record_status": Field("choice", model.record_status),
+        "row_version": Field("integer", contracts.version_value(model)),
         # The term that is still to begin: blank where no renewal waits.
         "next_starts_on": Field("date", model.next_starts_on),
         "next_number": Field("text", model.next_number),

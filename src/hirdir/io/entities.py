@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, ClassVar, Final
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import ids
@@ -1665,11 +1665,13 @@ class Items(Entity):
                 select(Item).where(
                     Item.catalog_entry_hid == entry.hid, Item.serial_key == records.key(serial)
                 )
-            )
+            ) or self._received_as_a_count(db, values)
         if tag:
-            return db.scalar(select(Item).where(Item.asset_tag_key == records.key(tag)))
+            return db.scalar(
+                select(Item).where(Item.asset_tag_key == records.key(tag))
+            ) or self._received_as_a_count(db, values)
         if serial:
-            return None
+            return self._received_as_a_count(db, values)
         # By what it is called: its name, or its host name where it has no name, and
         # for a row that gives only a host name, its host name. The item that answers
         # may have a serial number of its own: a site's file of host names finds the
@@ -1701,6 +1703,42 @@ class Items(Entity):
             if named:
                 return named[0]
         return None
+
+    @staticmethod
+    def _received_as_a_count(db: Session, values: Mapping[str, Any]) -> Any | None:
+        """Return the item that a row gives its serial number or its asset tag to: one
+        that arrived as a count, and has been known by a name alone since.
+
+        It is the one exception to "a serial number that no item has is a new item":
+        the row names an item that is on a purchase line and has neither a serial
+        number nor an asset tag, by the name it was given when it was received. The
+        same row, loaded again, finds the item by the serial number it then gave it.
+        """
+        name, serial = values.get("name"), values.get("serial_number")
+        if not name:
+            return None
+        unknown = and_(Item.serial_number.is_(None), Item.asset_tag.is_(None))
+        if serial:
+            unknown = or_(unknown, Item.serial_key == records.key(serial))
+        called: Any = Item.name
+        waiting = list(
+            db.scalars(
+                select(Item)
+                .where(
+                    dialect.equals_text(called, name.strip()),
+                    Item.record_status != "retired",
+                    Item.purchase_line_hid.is_not(None),
+                    unknown,
+                )
+                .limit(2)
+            )
+        )
+        if len(waiting) > 1:
+            raise Invalid(
+                f"more than one item that waits for its serial number is called {name}",
+                {"name": "more than one item answers to this; give the HID of the one meant"},
+            )
+        return waiting[0] if waiting else None
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         for names in (("vendor", "pid", "serial_number"), ("asset_tag",), ("name",), ("hostname",)):
@@ -2032,11 +2070,12 @@ class Items(Entity):
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
-            covering = [
-                contracts.term(contract, today)["number"]
+            covering_ = {
+                contract.hid: contracts.term(contract, today)["number"]
                 for coverage, contract in cover[item.hid]
                 if contracts.in_force(coverage, contract, today)
-            ]
+            }
+            covering = list(covering_.values())
             in_force = inheritance.of_item(item, entry, line)
             in_force["location_hid"] = placed[item.hid]
             in_force["owner_hid"] = owned[item.hid]
@@ -2072,7 +2111,8 @@ class Items(Entity):
                 "covered": bool(covering),
                 "covered_until": contracts.covered_until(cover[item.hid], today),
                 "contracts": sorted(set(covering), key=records.key),
-                "contract_count": len(set(covering)),
+                # Contracts, and not numbers: two vendors may use one number.
+                "contract_count": len(covering_),
             }
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
@@ -2332,7 +2372,7 @@ _TERMS = (
     Column("reseller", inherits=True),
     Column("starts_on", "date", inherits=True),
     Column("ends_on", "date", inherits=True),
-    Column("status", limit=10),
+    Column("status", limit=20),
     Column("support_level", inherits=True),
     Column("purchase_reference"),
     Column("account_manager", limit=LONG, inherits=True),
@@ -2519,7 +2559,11 @@ class Contracts(Entity):
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         hids = [contract.hid for contract in found]
         today = contracts.today(db)
-        in_force = {contract.hid: contracts.effective(contract, today) for contract in found}
+        # A file holds the record as it is stored: the present term in its own columns
+        # and the one to come in the `next_` ones, also once that one has begun.
+        in_force = {
+            contract.hid: contracts.effective(contract, today, as_stored=True) for contract in found
+        }
         vendors = _by_hid(
             db,
             Vendor,
