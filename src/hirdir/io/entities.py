@@ -49,6 +49,7 @@ from hirdir.domain import (
     inheritance,
     items,
     lifecycle,
+    moves,
     operators,
     owners,
     records,
@@ -106,6 +107,11 @@ def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
         # hold them already.
         return {hid: db.get(model, hid) for hid in wanted}
     return {record.hid: record for record in db.scalars(select(model).where(model.hid.in_(wanted)))}
+
+
+def _counted(count: int, what: str) -> str:
+    """Return a count with its noun: 1 item, 2 items."""
+    return f"{count} {what}" if count == 1 else f"{count} {what}s"
 
 
 class Run:
@@ -717,6 +723,21 @@ class _Places(Entity):
     def _store(self, run: Run, record: Any | None, given: dict[str, Any]) -> Any:
         if record is None:
             return geography.create_place(run.db, run.context, self.level, _new(given))
+        if given.get("record_status") == "active" and record.record_status != "active":
+            # The row opens the place, which reaches into the inventory: a preview
+            # says what moves in, as the page of the place does before it is opened.
+            found = moves.opening(run.db, geography.get_place(run.db, self.level, record.hid))
+            if found.items or found.device_groups:
+                what = (
+                    f"{_counted(found.items, 'item')} and "
+                    f"{_counted(found.device_groups, 'device group')} planned for it"
+                )
+                if found.waits_for is None:
+                    run.notes.append(f"making it active moves in {what}")
+                else:
+                    run.notes.append(
+                        f"{what} move in once {found.waits_for.record.name} is active too"
+                    )
         return geography.update_place(
             run.db, run.context, self.level, record.hid, record.row_version, given
         )

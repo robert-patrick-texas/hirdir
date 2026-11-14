@@ -2171,6 +2171,33 @@ export interface paths {
       };
     };
   };
+  "/api/v1/locations/{hid}/opening": {
+    /** Say what making a location active would bring about, before it is made. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OpeningOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/locations/{hid}/retire": {
     /**
      * Retire a location that nothing that is not retired is in: no location, no item
@@ -2957,6 +2984,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/regions/{hid}/opening": {
+    /**
+     * Say what making a region active would bring about, before it is made: how many
+     * items and device groups that are planned for places in it would move in.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OpeningOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/regions/{hid}/retire": {
     /** Retire a region that no region or site that is not retired is in. */
     post: {
@@ -3400,6 +3457,33 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["PlaceEffective"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites/{hid}/opening": {
+    /** Say what making a site active would bring about, before it is made. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OpeningOut"];
           };
         };
         /** Validation Error */
@@ -5284,6 +5368,27 @@ export interface components {
     NetworkRef: {
       hid: string;
       label: string;
+    };
+    /**
+     * What making a place active would bring about: what is planned for it, or for a
+     * place beneath it that is thereby in use, moves in.
+     */
+    OpeningOut: {
+      /** The device groups that would be there. */
+      device_groups: number;
+      hid: string;
+      /** The items that would be there: by a plan of their own, or with the item or the group they are in. */
+      items: number;
+      level: "region" | "site" | "location";
+      /** False while a place above it is not active: nothing moves until then. */
+      moves_now: boolean;
+      path: string;
+      record_status: "draft" | "active" | "retired";
+      /** How many records would be written to, each with an entry of its own in the audit trail. What has no location of its own is not written to. */
+      records_changed: number;
+      /** The nearest place above it that is not active. Null when none is. */
+      waits_for: components["schemas"]["PlaceRef"] | null;
+      waits_for_level: "region" | "site" | "location" | null;
     };
     /** A new operator: a label, with somebody behind it or open. */
     OperatorCreate: {

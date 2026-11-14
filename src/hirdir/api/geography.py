@@ -11,7 +11,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
-from hirdir.domain import contacts, geography, operators
+from hirdir.domain import contacts, geography, moves, operators
 from hirdir.io import fields, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
@@ -35,6 +35,30 @@ def _page(items: list[Any], total: int, listed: lists.ListRequest, model: Any) -
 
 def _effective(db: Db, level: str, hid: str) -> r.PlaceEffective:
     return shapes.effective_out(db, geography.effective(db, geography.get_place(db, level, hid)))
+
+
+def _opening(db: Db, level: str, hid: str) -> r.OpeningOut:
+    place = geography.get_place(db, level, hid)
+    found = moves.opening(db, place)
+    atlas = geography.Atlas(db)
+    waits = found.waits_for
+    # The status is read as the model has it, and checked against the shape's own list.
+    return r.OpeningOut.model_validate(
+        {
+            "level": place.level,
+            "hid": place.hid,
+            "path": atlas.path(place),
+            "record_status": found.record_status,
+            "moves_now": waits is None,
+            "waits_for": None
+            if waits is None
+            else r.PlaceRef(hid=waits.hid, name=waits.record.name, path=atlas.path(waits)),
+            "waits_for_level": None if waits is None else waits.level,
+            "items": found.items,
+            "device_groups": found.device_groups,
+            "records_changed": found.changed,
+        }
+    )
 
 
 # --- regions -------------------------------------------------------------------------
@@ -88,6 +112,13 @@ def region_effective(hid: str, _: Viewer, db: Db) -> r.PlaceEffective:
     return _effective(db, geography.REGION, hid)
 
 
+@regions.get("/{hid}/opening")
+def region_opening(hid: str, _: Viewer, db: Db) -> r.OpeningOut:
+    """Say what making a region active would bring about, before it is made: how many
+    items and device groups that are planned for places in it would move in."""
+    return _opening(db, geography.REGION, hid)
+
+
 # --- sites ---------------------------------------------------------------------------
 
 
@@ -133,6 +164,12 @@ def retire_site(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: 
 def site_effective(hid: str, _: Viewer, db: Db) -> r.PlaceEffective:
     """Return what a site has in force, each thing with the level it came from."""
     return _effective(db, geography.SITE, hid)
+
+
+@sites.get("/{hid}/opening")
+def site_opening(hid: str, _: Viewer, db: Db) -> r.OpeningOut:
+    """Say what making a site active would bring about, before it is made."""
+    return _opening(db, geography.SITE, hid)
 
 
 # --- locations -----------------------------------------------------------------------
@@ -189,6 +226,12 @@ def retire_location(
     and no device group."""
     retired = geography.retire_place(db, context, geography.LOCATION, hid, body.row_version)
     return shapes.place_out(db, geography.LOCATION, retired)
+
+
+@locations.get("/{hid}/opening")
+def location_opening(hid: str, _: Viewer, db: Db) -> r.OpeningOut:
+    """Say what making a location active would bring about, before it is made."""
+    return _opening(db, geography.LOCATION, hid)
 
 
 @locations.get("/{hid}/effective")

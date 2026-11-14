@@ -8676,6 +8676,99 @@
         "title": "NetworkRef",
         "type": "object"
       },
+      "OpeningOut": {
+        "additionalProperties": false,
+        "description": "What making a place active would bring about: what is planned for it, or for a\nplace beneath it that is thereby in use, moves in.",
+        "properties": {
+          "device_groups": {
+            "description": "The device groups that would be there.",
+            "title": "Device Groups",
+            "type": "integer"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items": {
+            "description": "The items that would be there: by a plan of their own, or with the item or the group they are in.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "moves_now": {
+            "description": "False while a place above it is not active: nothing moves until then.",
+            "title": "Moves Now",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "records_changed": {
+            "description": "How many records would be written to, each with an entry of its own in the audit trail. What has no location of its own is not written to.",
+            "title": "Records Changed",
+            "type": "integer"
+          },
+          "waits_for": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaceRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The nearest place above it that is not active. Null when none is."
+          },
+          "waits_for_level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "region",
+                  "site",
+                  "location"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waits For Level"
+          }
+        },
+        "required": [
+          "level",
+          "hid",
+          "path",
+          "record_status",
+          "moves_now",
+          "waits_for",
+          "waits_for_level",
+          "items",
+          "device_groups",
+          "records_changed"
+        ],
+        "title": "OpeningOut",
+        "type": "object"
+      },
       "OperatorCreate": {
         "additionalProperties": false,
         "description": "A new operator: a label, with somebody behind it or open.",
@@ -17853,6 +17946,49 @@
         ]
       }
     },
+    "/api/v1/locations/{hid}/opening": {
+      "get": {
+        "description": "Say what making a location active would bring about, before it is made.",
+        "operationId": "location_opening_api_v1_locations__hid__opening_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Opening",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
     "/api/v1/locations/{hid}/retire": {
       "post": {
         "description": "Retire a location that nothing that is not retired is in: no location, no item\nand no device group.",
@@ -19556,6 +19692,49 @@
         ]
       }
     },
+    "/api/v1/regions/{hid}/opening": {
+      "get": {
+        "description": "Say what making a region active would bring about, before it is made: how many\nitems and device groups that are planned for places in it would move in.",
+        "operationId": "region_opening_api_v1_regions__hid__opening_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Region Opening",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
     "/api/v1/regions/{hid}/retire": {
       "post": {
         "description": "Retire a region that no region or site that is not retired is in.",
@@ -20480,6 +20659,49 @@
           }
         },
         "summary": "Site Effective",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/sites/{hid}/opening": {
+      "get": {
+        "description": "Say what making a site active would bring about, before it is made.",
+        "operationId": "site_opening_api_v1_sites__hid__opening_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Site Opening",
         "tags": [
           "Geography"
         ]

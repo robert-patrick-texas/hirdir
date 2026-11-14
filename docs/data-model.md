@@ -185,6 +185,13 @@ planned one and the plan is cleared. Each item has an entry of its own for it in
 history, with the request ID of the change that opened the site, and nobody moves
 anything device by device.
 
+Making a place active is so a change that reaches into the inventory, and nobody
+makes it without being shown what it brings about. `GET /sites/{hid}/opening`, and
+the same for a region and a location, says how many items and device groups would
+move in and how many records would be written to, and changes nothing. The web UI
+makes a place active only through a question that shows those numbers, and the
+preview of a file that makes a place active has them in the notes of its row.
+
 A place is in use when it and everything it is in is active: the locations above it,
 its site and the regions above that. Only a location that is not in use is taken as a
 plan. One that is in use is refused, since the item can be moved there now, and so is

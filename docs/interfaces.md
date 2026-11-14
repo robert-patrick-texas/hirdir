@@ -36,7 +36,7 @@ and CLI's types are generated from it.
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace` |
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
 | Addresses | `/networks`, `/addresses` |
-| Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective` |
+| Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
 | People | `/contacts`, `POST /contacts/{hid}/retire`, `/operators`, `POST /operators/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
 | Contracts | `/contracts`, `/contracts/{hid}/coverage` |
 | Purchases | `/purchase-requests`, `/purchase-requests/{hid}/lines`, `POST /purchase-lines/{hid}/receive` |
@@ -400,6 +400,24 @@ whole view, so they no longer add up to it. A place that is asked for so is show
 with what is in it, also when the view would leave it out. `locations=false` stops at the sites, whose counts hold their locations
 all the same, so a page can show the regions and sites at once and fetch the inside of
 a site when it is opened.
+
+`GET /sites/{hid}/opening`, and the same for a region and a location, says what
+making the place active would bring about, and changes nothing:
+
+```json
+{ "level": "site", "hid": "0193a1f4-...", "path": "Americas > Central > Site-3",
+  "record_status": "draft", "moves_now": true, "waits_for": null, "waits_for_level": null,
+  "items": 4, "device_groups": 1, "records_changed": 3 }
+```
+
+`items` and `device_groups` are what would be there: by a plan of their own, or with
+the item or the group they are in. `records_changed` is how many of them are written
+to, each with an entry of its own in the audit trail: what has no location of its own
+is where its group is and is not written to. While a place above is not active,
+`moves_now` is false and `waits_for` names the nearest such place: the numbers are
+then what moves once that place is active too. The preview of a file that makes a
+place active says the same in the `notes` of its row. The web UI asks this before a
+place is made active, and makes one active in no other way.
 
 `GET /locations/{hid}/effective` answers what a location has in force, and
 `GET /sites/{hid}/effective` and `GET /regions/{hid}/effective` the same for a site and

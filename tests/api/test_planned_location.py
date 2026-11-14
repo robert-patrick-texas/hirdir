@@ -128,10 +128,17 @@ def test_a_plan_waits_until_everything_the_location_is_in_is_active(make: Maker)
         now = make.get(f"/items/{spare['hid']}")
         return now["location"]["name"], now["planned_location_hid"]
 
+    # The room says what opening it would do, and what it waits for: the site above.
+    asked = make.get(f"/locations/{room['hid']}/opening")
+    assert (asked["moves_now"], asked["items"], asked["waits_for_level"]) == (False, 1, "site")
+    assert asked["waits_for"]["path"] == "Americas > West > Site-7"
+    assert make.get(f"/regions/{west['hid']}/opening")["items"] == 0
     # The room and the site are made active, and the region is still a draft.
     _patch(make, f"/locations/{room['hid']}", record_status="active")
     _patch(make, f"/sites/{site['hid']}", record_status="active")
     assert where() == ("Staging", room["hid"])
+    asked = make.get(f"/regions/{west['hid']}/opening")
+    assert (asked["moves_now"], asked["items"], asked["records_changed"]) == (True, 1, 1)
     # With the region, the room is in use, and the spare is there.
     _patch(make, f"/regions/{west['hid']}", record_status="active")
     assert where() == ("Room 1", None)
@@ -224,6 +231,9 @@ def test_a_plan_travels_in_files_is_set_on_many_and_a_file_opens_a_site(
         "sites", "name,region,record_status\nSite-3,Americas > Central,active\n"
     )
     assert opening["rows"][0]["outcome"] == "update"
+    assert opening["rows"][0]["notes"] == [
+        "making it active moves in 3 items and 0 device groups planned for it"
+    ]
     assert make.get("/items", filter=f"location:within:{suite}")["total"] == 0
     files.apply(opening)
     assert make.found(filter=f"location:within:{suite}") == ["spare-01", "spare-02", "spare-03"]
@@ -310,12 +320,27 @@ def test_a_device_group_is_planned_for_and_its_members_go_with_it(
     closet = make.location("Closet", parent=suite)
     _patch(make, f"/items/{switches[1]['hid']}", planned_location_hid=closet["hid"])
 
+    # Before the site is made active, it says what that would bring about: the stack,
+    # its three switches and the power supply would be there, and four records are
+    # written to: the stack, the switch with a plan of its own, and the member that
+    # gives its own place up. Asking changes nothing.
+    asked = make.get(f"/sites/{plan['hid']}/opening")
+    assert (asked["moves_now"], asked["waits_for"], asked["record_status"]) == (True, None, "draft")
+    assert (asked["items"], asked["device_groups"], asked["records_changed"]) == (4, 1, 3)
+    assert make.get(f"/locations/{closet['hid']}/opening")["items"] == 1
+    assert make.get(path)["location"]["name"] == "Room 102"
+    events = make.get("/audit-events", limit=1)["total"]
+
     # The site opens. The group is there, and its members with it: the one with a plan
     # of its own is where that said, and the others are where the group is, with no
     # place of their own any more.
     _patch(make, f"/sites/{plan['hid']}", record_status="active")
     moved = make.get(path)
     assert (moved["location"]["name"], moved["planned_location_hid"]) == ("Suite 300", None)
+    # What was written is what was said: those records and the site itself.
+    assert make.get("/audit-events", limit=1)["total"] == events + asked["records_changed"] + 1
+    after = make.get(f"/sites/{plan['hid']}/opening")
+    assert (after["items"], after["device_groups"], after["records_changed"]) == (0, 0, 0)
 
     def now(hid: str) -> tuple[str | None, str, str, str | None]:
         item = make.get(f"/items/{hid}")

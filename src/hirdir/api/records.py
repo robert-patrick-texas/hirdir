@@ -832,6 +832,32 @@ class EffectiveInstructions(Model):
     overrides_path: str | None
 
 
+class OpeningOut(Model):
+    """What making a place active would bring about: what is planned for it, or for a
+    place beneath it that is thereby in use, moves in."""
+
+    level: Level
+    hid: str
+    path: str
+    record_status: RecordStatus
+    moves_now: bool = Field(
+        description="False while a place above it is not active: nothing moves until then."
+    )
+    waits_for: PlaceRef | None = Field(
+        description="The nearest place above it that is not active. Null when none is."
+    )
+    waits_for_level: Level | None
+    items: int = Field(
+        description="The items that would be there: by a plan of their own, or with "
+        "the item or the group they are in."
+    )
+    device_groups: int = Field(description="The device groups that would be there.")
+    records_changed: int = Field(
+        description="How many records would be written to, each with an entry of its "
+        "own in the audit trail. What has no location of its own is not written to."
+    )
+
+
 class PlaceEffective(Model):
     """What a place has in force: its contacts by role, and where deliveries go."""
 
