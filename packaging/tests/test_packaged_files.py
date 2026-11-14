@@ -221,10 +221,13 @@ def test_the_nightly_upgrade_is_shipped_and_is_for_a_site_to_turn_on() -> None:
         "packaging/systemd/hirdir-upgrade.service packaging/systemd/hirdir-upgrade.timer" in build
     )
     # The package enables and starts the service and the backup, and not this.
-    for script in ("postinst", "postrm"):
-        text = (PACKAGING / "debian" / script).read_text(encoding="utf-8")
-        assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in text
-        assert "hirdir-upgrade" not in text
+    postinst = (PACKAGING / "debian" / "postinst").read_text(encoding="utf-8")
+    postrm = (PACKAGING / "debian" / "postrm").read_text(encoding="utf-8")
+    assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in postinst
+    assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in postrm
+    assert "hirdir-upgrade" not in postinst
+    # Removed, the package stops it and takes away the link that turned it on.
     prerm = (PACKAGING / "debian" / "prerm").read_text(encoding="utf-8")
-    assert "systemctl disable --now hirdir-upgrade.timer" in prerm
+    assert "deb-systemd-invoke stop hirdir-upgrade.timer" in prerm
+    assert "rm -f /etc/systemd/system/timers.target.wants/hirdir-upgrade.timer\n" in postrm
     assert "sudo systemctl enable --now hirdir-upgrade.timer" in INSTALL

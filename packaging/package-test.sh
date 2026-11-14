@@ -1957,6 +1957,10 @@ SITE
 purge() {
     section "apt-get purge hirdir"
     local path
+    # A site that turned the nightly upgrade on: the purge must leave no link to it.
+    inside systemctl enable --now hirdir-upgrade.timer >/dev/null 2>&1 || true
+    expect "pkg the nightly upgrade is turned on before the purge, as a site may have it" \
+        "$(inside systemctl is-enabled hirdir-upgrade.timer 2>&1)" enabled
     if apt_get purge hirdir; then
         pass "S01 the package purges"
     else

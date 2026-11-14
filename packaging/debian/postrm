@@ -42,6 +42,10 @@ remove_from_nginx() {
 
 case "$1" in
     remove)
+        # A site turns the nightly upgrade on with "systemctl enable", which the
+        # package's own helper knows nothing of. With the unit gone the link would
+        # point nowhere.
+        rm -f /etc/systemd/system/timers.target.wants/hirdir-upgrade.timer
         if [ -d /run/systemd/system ]; then
             systemctl --system daemon-reload >/dev/null || true
         fi

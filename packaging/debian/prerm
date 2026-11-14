@@ -11,8 +11,9 @@ case "$1" in
             deb-systemd-invoke stop hirdir-backup.timer hirdir-backup.service hirdir.service \
                 >/dev/null || true
             # The nightly upgrade, where a site turned it on: there is nothing left for
-            # it to upgrade, and its unit file is about to go.
-            systemctl disable --now hirdir-upgrade.timer >/dev/null 2>&1 || true
+            # it to upgrade, and its unit file is about to go. postrm takes away the
+            # link that turned it on.
+            deb-systemd-invoke stop hirdir-upgrade.timer >/dev/null 2>&1 || true
         fi
         ;;
     upgrade | deconfigure | failed-upgrade)
