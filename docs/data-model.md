@@ -161,7 +161,9 @@ Release 0.4.0 has every field above except `location_hid`, which arrives in 0.5.
 A replacement is made by `POST /items/{hid}/replace` on the item that leaves. The item
 that takes its place is one that exists, or is created by the same request. An item is
 replaced once, and takes the place of one item, never of one that in the end took its
-own. The new item takes over the old one's
+own. What is handed over is the role, the mark of the intended master with it; the
+master that was seen is not, because nobody has seen the new item as master. The new
+item takes over the old one's
 current memberships of groups, with the same role and position: each of the old ones
 ends on `replaced_on` and each of the new ones begins then, so a stack keeps its HID
 and its master through an RMA. The replacement moves neither item in the lifecycle;
@@ -225,7 +227,8 @@ Rules, checked on every write:
 - A membership is ended by giving it `left_on`, and is never removed. An item that
   comes back joins again, with a new membership. Retiring a group ends its current
   memberships on that day. Retiring an item ends its memberships too, and so does
-  moving it to Released or to Archived, when it has left the team's hands. A move to
+  moving it to Released or to Archived, when it has left the team's hands; such an
+  item joins no group either. A move to
   any other state leaves them as they are: a failed switch in Pending-Removal is still
   a member of its stack, and the stack shows as degraded.
 - A change to these records is checked with no other change under way: of two requests
@@ -573,9 +576,14 @@ management connection, that is the only observation there will ever be, and
 `observed_at` then says when it was last checked. It serves a spare on a shelf as well.
 A blank says that nobody has looked.
 
-`observed_status` is an observation and not a wish. Clearing it clears `observed_at`.
-An import may give `observed_at` with it, for a status that was read from another tool
-earlier; left out, it is the moment of the change. Minor items inherit neither the
+`observed_status` is an observation and not a wish. Clearing it clears `observed_at`,
+which is not cleared by itself. A change may give `observed_at` with the status, for
+one that was read from another tool earlier; left out, it is the moment of the change.
+A moment with no zone is UTC, and one more than a day ahead is refused: nothing is seen
+in the future. A person who states again what is observed, as it is, has looked again,
+and the moment is now: a second walk round the store room is on record. A file that
+states it again, with no moment, changes nothing, so that the same file loaded twice
+changes nothing. Minor items inherit neither the
 condition nor what is observed: each is a fact about one piece of hardware.
 
 **Health** is worked out from those three when a record is read, and is stored
@@ -617,9 +625,11 @@ first rule that applies decides, and no later rule is tried:
 1. `hid` is given: that record, or an error if there is none.
 2. Vendor, PID and serial number are given: the item with that triple.
 3. `asset_tag` is given: the item with that tag.
-4. Neither serial number nor asset tag is given: the one item with that `name` (or
-   `hostname`, when the item's name is blank) that is not retired and itself has no
-   serial number.
+4. Neither serial number nor asset tag is given: the one item, not retired, that has
+   that name or that host name, whether or not it has a serial number of its own. A
+   row that gives `name` is matched on the item's name, or on its host name where the
+   name is blank; a row that gives only `hostname` is matched on the item's host
+   name.
 5. Otherwise the row is a new item.
 
 More than one candidate is an error on that row, never a guess. MAC address, hostname
@@ -628,6 +638,11 @@ and IP address are never used to match by themselves.
 A row that matches by rule 2 or 3 and carries a different name updates the name. A row
 with no serial number, no asset tag and a new name is a new item, which is why exports
 carry the HID and why a rename is best done on the record or with the HID in the file.
+
+Rule 4 is what lets a site load a file of its own that knows its devices by host name
+alone: the status of each as another tool reports it, or their addresses. Such a row
+finds the switch that has that host name, serial number and all, and changes it; the
+preview shows it as an update before anything is applied.
 
 ## Counting and weight
 
