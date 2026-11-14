@@ -236,6 +236,23 @@ def test_a_reason_outlives_its_owners_flag_and_is_cleared_with_the_next_owner(
     marked = make.get(f"/items/{item['hid']}")
     assert (marked["owner_exception"], marked["owner_exception_reason"]) == (True, None)
     make.patch(f"/items/{item['hid']}", {"row_version": marked["row_version"], "comments": "Seen"})
+    # Saying again that it has the owner it has gives it to nobody: what was read is
+    # sent back, and an export loads back unchanged, with no reason asked for.
+    marked = make.get(f"/items/{item['hid']}")
+    same = make.patch(
+        f"/items/{item['hid']}",
+        {"row_version": marked["row_version"], "owner_hid": team["hid"], "comments": "Seen twice"},
+    )
+    assert (same["owner_exception"], same["owner_exception_reason"]) == (True, None)
+    again = files.preview("items", files.export("items", own_values=True))
+    assert (again["job"]["unchanged"], again["job"]["rejected"]) == (1, 0)
+    # Given to another owner outside the team, it is asked why.
+    asked = {"row_version": same["row_version"], "owner_hid": outside["hid"]}
+    make.patch(
+        f"/owners/{outside['hid']}",
+        {"row_version": outside["row_version"] + 1, "is_external": True},
+    )
+    assert "owner_exception_reason" in errors(make.patch(f"/items/{item['hid']}", asked, 422))
 
 
 # --- the tree --------------------------------------------------------------------------

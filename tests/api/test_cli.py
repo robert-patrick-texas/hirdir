@@ -511,7 +511,11 @@ def test_the_geography_is_shown_as_a_tree_and_a_place_with_what_it_has_in_force(
     listed = run("sites", "list").stdout.splitlines()
     assert listed[0].split() == ["HID", "PATH", "CODE", "CITY", "COUNTRY", "RECORD_STATUS"]
     assert "Americas > Central > Site-2" in listed[1]
-    assert "Dana Whitfield" in run("contacts", "list").stdout
+    # A table shows a telephone number as it is, without the apostrophe of a CSV cell.
+    listed = run("contacts", "list").stdout
+    assert "Dana Whitfield" in listed
+    assert " +1 555 0100" in listed
+    assert "'+1" not in listed
     within = run("items", "list", "--filter", "location:within:Americas > Central").stdout
     assert [line.split()[1] for line in within.splitlines()[1:]] == ["site2-sw-1"]
 

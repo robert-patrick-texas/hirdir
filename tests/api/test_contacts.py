@@ -306,6 +306,7 @@ def test_an_item_with_an_owner_outside_the_team_says_why(make: Maker) -> None:
     assert "owner_exception_reason" in errors(make.post("/items", alone, 422))
     item = make.item(hostname="bms-sw-01", owner_hid=outside["hid"], owner_exception_reason=reason)
     assert (item["owner_exception"], item["owner_exception_reason"]) == (True, reason)
+    assert item["owner"] == {"hid": outside["hid"], "label": "Facilities", "is_external": True}
     # A minor item of it is marked too, and has no reason of its own.
     supply = make.item(name="PS-A", parent_item_hid=item["hid"])
     assert (supply["owner_exception"], supply["owner_exception_reason"]) == (True, None)

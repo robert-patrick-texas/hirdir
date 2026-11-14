@@ -105,7 +105,9 @@ is doing. `location` is where the item is, by the location in force, and takes
 names of its site and of the region the site is in, `site.code` the site's code, and
 `location.name` and `location.kind` those of the location; `owner_exception` is true
 for an item whose owner in force is outside the team. The lists of device groups and
-of locations have `location` with `within` too, and the list of sites has `region`. On the list of groups, `member.serial_number` finds a stack by the serial
+of locations have `location` with `within` too, and the list of sites has `region`. A
+location is also found by `site.name`, `site.code` and `region.name`, the name of the
+region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial
 number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
@@ -492,18 +494,18 @@ fresh installation has it, with no account and an empty audit trail.
 |---|---|
 | Sign in | Username, access code, a Sign in button |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. End-of-life and coverage warnings from 0.6.0 |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site and Region are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with its reason. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
 | Catalog | Entries by vendor; the items of each entry |
 | Vendors | The portfolio: everything from one vendor |
 | Groups | Stacks, clusters and controller domains, with members and roles |
 | Addresses | Every address, with the item or group that has it; the networks |
-| Geography | The region tree, sites, locations, effective contacts with their source |
-| Contacts, Owners | |
+| Geography | The tree of regions, sites and locations with the items and components at or beneath each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it |
+| Contacts, Owners | Contacts: the list, and a contact with where it is assigned. Owners: the list, and an owner with its people, the primary first |
 | Contracts | Coverage lists, gaps, expiries |
 | Purchases | Requests and lines; receive a line |
 | Import | Upload, preview, apply, past jobs |
 | Capacity | Demand beside supply by category, the balance and coverage, with and without drafts; the lines, editable |
-| Reports | Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site. Duplicates. End of life and coverage from 0.6.0 |
+| Reports | Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. End of life and coverage from 0.6.0 |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 

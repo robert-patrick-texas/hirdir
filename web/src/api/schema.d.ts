@@ -4367,6 +4367,9 @@ export interface components {
     EffectiveLocation: {
       /** What people call the record. */
       label: string | null;
+      /** The name of the region its site is in. */
+      region: string | null;
+      region_hid: string | null;
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
@@ -4921,6 +4924,9 @@ export interface components {
       name: string;
       /** The names from the top region down, joined with ' > '. */
       path: string;
+      /** The name of the region its site is in. */
+      region: string;
+      region_hid: string;
       /** The name of its site. */
       site: string;
       site_hid: string;
@@ -5086,6 +5092,8 @@ export interface components {
     /** An owner, as named on another record. */
     OwnerRef: {
       hid: string;
+      /** An owner outside the operations team. */
+      is_external: boolean;
       label: string;
     };
     Page_AddressOut_: {

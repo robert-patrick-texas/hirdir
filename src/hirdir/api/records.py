@@ -282,6 +282,8 @@ class LocationRef(PlaceRef):
     kind: str | None
     site_hid: str
     site: str = Field(description="The name of its site.")
+    region_hid: str
+    region: str = Field(description="The name of the region its site is in.")
 
 
 class RegionOut(Model):
@@ -744,6 +746,7 @@ class OwnerRef(Model):
 
     hid: str
     label: str
+    is_external: bool = Field(description="An owner outside the operations team.")
 
 
 class OwnerMemberOut(Model):
@@ -917,6 +920,8 @@ class EffectiveLocation(EffectiveReference):
 
     site_hid: str | None
     site: str | None = Field(description="The name of its site.")
+    region_hid: str | None
+    region: str | None = Field(description="The name of the region its site is in.")
 
 
 class ItemEffective(Model):

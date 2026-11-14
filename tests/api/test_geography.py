@@ -245,13 +245,13 @@ def test_a_place_is_retired_only_when_nothing_that_is_not_retired_is_in_it(make:
         body = {"row_version": now["row_version"]}
         return make.post(f"/{level}/{place['hid']}/retire", body, expect)
 
-    assert "sites" in retire("regions", places["central"], 409)["detail"]
-    assert "regions" in retire("regions", places["americas"], 409)["detail"]
-    assert "locations" in retire("sites", site, 409)["detail"]
-    assert "locations" in retire("locations", building, 409)["detail"]
+    assert "1 site not" in retire("regions", places["central"], 409)["detail"]
+    assert "1 region not" in retire("regions", places["americas"], 409)["detail"]
+    assert "2 locations not" in retire("sites", site, 409)["detail"]
+    assert "1 location not" in retire("locations", building, 409)["detail"]
     refused = retire("locations", room, 409)["detail"]
-    assert "1 items" in refused
-    assert "1 device groups" in refused
+    assert "1 item," in refused
+    assert "1 device group not" in refused
 
     # The switch is moved out and the stack retired: the room can go, then what held it.
     make.patch(
@@ -295,6 +295,8 @@ def test_a_minor_item_is_where_the_item_above_it_is(make: Maker) -> None:
         "source_hid": switch["hid"],
         "site_hid": places["site"]["hid"],
         "site": "Site-2",
+        "region_hid": places["central"]["hid"],
+        "region": "Central",
     }
     assert switch["location"] == {
         "hid": room["hid"],
@@ -303,6 +305,8 @@ def test_a_minor_item_is_where_the_item_above_it_is(make: Maker) -> None:
         "kind": "room",
         "site_hid": places["site"]["hid"],
         "site": "Site-2",
+        "region_hid": places["central"]["hid"],
+        "region": "Central",
     }
     # Both are found within the room, by path, by HID, and by what the site is called.
     assert make.get("/items", filter=f"location:within:{ROOM}")["total"] == 2
@@ -370,6 +374,7 @@ def test_within_finds_what_is_at_or_beneath_a_place_on_every_list(make: Maker) -
         make.get("/locations", filter=f"location:within:{places['building']['hid']}")["total"] == 2
     )
     assert make.get("/locations", filter="is_top:eq:true")["total"] == 2
+    assert make.get("/locations", filter="region.name:eq:east")["total"] == 1
     assert make.get("/regions", filter="region:within:Americas")["total"] == 3
 
     # A place that is not there is said to be so, and a place cannot be sorted by.

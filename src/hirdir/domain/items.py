@@ -411,6 +411,10 @@ def _owner_exception(
     Giving an item such an owner is refused without a reason, unless the item has one
     already. With an owner that is not external, or none, the item has no such reason:
     the one it had is cleared, and one that is given is refused.
+
+    An item may be with such an owner and have no reason: it was given to it before
+    reasons were asked for, or the owner was said to be external afterwards. Saying
+    again that it has the owner it has gives it to nobody, and asks for nothing.
     """
     field = "owner_exception_reason"
     if "owner_hid" not in fields and field not in fields:
@@ -420,6 +424,8 @@ def _owner_exception(
     owner_hid = values.get("owner_hid", item.owner_hid if item is not None else None)
     owner = db.get(Owner, owner_hid) if owner_hid else None
     if owner is not None and owner.is_external:
+        if reason is None and had is None and item is not None and owner_hid == item.owner_hid:
+            return {}
         if reason is None:
             raise Invalid(
                 "an item with an owner outside the operations team says why",

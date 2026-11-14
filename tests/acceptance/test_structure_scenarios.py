@@ -162,6 +162,8 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
             "source_hid": switch["hid"],
             "site_hid": site["hid"],
             "site": "Site-2",
+            "region_hid": region["hid"],
+            "region": "Americas",
         }
         # Nothing was copied down: the minor items were not written to.
         assert child["owner_hid"] is None

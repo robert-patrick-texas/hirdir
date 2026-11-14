@@ -44,7 +44,11 @@ def test_item_needs_only_what_identifies_it(make: Maker, entry: dict) -> None:
     )
     assert all(item[field] is None for field in BLANK_ON_A_NEW_ITEM)
     assert (item["quantity"], item["record_status"], item["tags"]) == (1, "active", [])
-    assert item["owner"] == {"hid": owner["hid"], "label": "Network Engineering"}
+    assert item["owner"] == {
+        "hid": owner["hid"],
+        "label": "Network Engineering",
+        "is_external": False,
+    }
     assert make.item(asset_tag="AT-000123")["catalog"] is None
     assert make.item(hostname="site2-tester-01")["name"] is None
     for body in ({}, {"serial_number": "FCW0000X009"}, {"catalog_entry_hid": entry["hid"]}):

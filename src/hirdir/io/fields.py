@@ -545,6 +545,7 @@ SITES = Listing(
 )
 
 _PARENT_LOCATION: Any = aliased(Location, name="parent_location")
+_LOCATION_REGION: Any = aliased(Region, name="location_region")
 
 LOCATIONS = Listing(
     model=Location,
@@ -556,6 +557,7 @@ LOCATIONS = Listing(
         ),
         "site.name": Field("text", Site.name),
         "site.code": Field("text", Site.code),
+        "region.name": Field("text", _LOCATION_REGION.name),
         "parent.name": Field("text", _PARENT_LOCATION.name),
         "is_top": Field("boolean", Location.parent_location_hid.is_(None)),
         **_columns(Location, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
@@ -564,8 +566,10 @@ LOCATIONS = Listing(
         "record_status": Field("choice", Location.record_status),
         "tags": Field("tags", test=_tagged("location", Location.hid)),
     },
-    joined=lambda query: query.join(Site, Site.hid == Location.site_hid).outerjoin(
-        _PARENT_LOCATION, _PARENT_LOCATION.hid == Location.parent_location_hid
+    joined=lambda query: (
+        query.join(Site, Site.hid == Location.site_hid)
+        .join(_LOCATION_REGION, _LOCATION_REGION.hid == Site.region_hid)
+        .outerjoin(_PARENT_LOCATION, _PARENT_LOCATION.hid == Location.parent_location_hid)
     ),
     default_sort=("site.name", "name"),
 )

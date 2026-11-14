@@ -18,6 +18,7 @@ import typer
 from hirdir import clock
 from hirdir.cli import client
 from hirdir.cli.client import Target
+from hirdir.io.columns import unguarded
 
 Url = Annotated[str | None, typer.Option(help="The server, such as https://host/hirdir.")]
 Token = Annotated[str | None, typer.Option(help="A session or service token.")]
@@ -114,7 +115,8 @@ def _export(
                 if limit is not None and len(rows) > limit:
                     typer.echo(f"the first {limit} are shown; --limit shows more", err=True)
                     break
-                rows.append(row)
+                # A table is read by a person, not opened by a spreadsheet.
+                rows.append([unguarded(cell) for cell in row])
             _table(rows[: limit + 1] if limit is not None else rows)
             return
         if output is not None:
@@ -916,12 +918,9 @@ def find_place(target: Target, text: str, level: str | None = None) -> dict[str,
         target,
         "GET",
         "/geography/tree",
-        params={
-            "root": text,
-            "locations": False,
-            "include_archived": True,
-            "include_drafts": True,
-        },
+        # A place that is asked for by name is shown whatever the view leaves out,
+        # and its counts are those of the view a list shows.
+        params={"root": text, "locations": False},
     )["roots"][0]
     if level is not None and found["level"] != level:
         raise client.fail(

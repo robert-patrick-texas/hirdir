@@ -138,6 +138,10 @@ def vendor_out(vendor: Vendor) -> shapes.VendorOut:
     return shapes.VendorOut.model_validate(vendor)
 
 
+def _owner_ref(owner: Owner) -> shapes.OwnerRef:
+    return shapes.OwnerRef(hid=owner.hid, label=owner.label, is_external=owner.is_external)
+
+
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
     return shapes.ContactRef.model_validate(contact)
 
@@ -206,6 +210,8 @@ def location_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.Locati
             kind=location.kind,
             site_hid=site.hid,
             site=site.name,
+            region_hid=site.region_hid,
+            region=atlas.regions[site.region_hid].name,
         )
     return refs
 
@@ -544,7 +550,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     type=entry.type,
                     function=entry.function,
                 ),
-                owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                owner=None if owner is None else _owner_ref(owner),
                 owner_exception=owner_in_force is not None and owner_in_force.is_external,
                 location=places.get(item.location_hid) if item.location_hid else None,
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
@@ -587,6 +593,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                         source_hid=effective["location_hid"].source_hid,
                         site_hid=place.site_hid if place is not None else None,
                         site=place.site if place is not None else None,
+                        region_hid=place.region_hid if place is not None else None,
+                        region=place.region if place is not None else None,
                     ),
                     **{
                         name: _effective(name, value)
@@ -684,7 +692,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 },
                 parent=None if parent is None else _group_ref(parent),
                 groups=nested[group.hid],
-                owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                owner=None if owner is None else _owner_ref(owner),
                 location=places.get(group.location_hid) if group.location_hid else None,
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,

@@ -190,10 +190,13 @@ def from_cell(column: Column, cell: str) -> Any:
         return BLANK
     if text == CLEAR_MARK:
         return None
-    if text[0] == "'" and _guarded(text):
-        # The apostrophe an export put there, so that a spreadsheet runs no formula.
-        text = text[1:]
-    return read(column, text)
+    return read(column, unguarded(text))
+
+
+def unguarded(text: str) -> str:
+    """Return a cell of a CSV file without the apostrophe an export put before it so
+    that a spreadsheet runs no formula."""
+    return text[1:] if text[:1] == "'" and _guarded(text) else text
 
 
 def from_json(column: Column, value: Any) -> Any:

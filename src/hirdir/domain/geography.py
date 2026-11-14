@@ -780,7 +780,9 @@ def _within_it(db: Session, place: Place) -> list[str]:
                 "device groups",
             )
         )
-    return [f"{count} {what}" for count, what in found if count]
+    one = {"regions": "region", "sites": "site", "locations": "location", "items": "item"}
+    one["device groups"] = "device group"
+    return [f"{count} {one[what] if count == 1 else what}" for count, what in found if count]
 
 
 def _live(model: Any) -> Any:
@@ -798,8 +800,8 @@ def retire_place(db: Session, context: AuditContext, level: str, hid: str, row_v
         inside = _within_it(db, place)
         if inside:
             raise Conflict(
-                f"{record.name} still holds {', '.join(inside)} that are not retired; "
-                "move or retire them first"
+                f"{record.name} still holds {', '.join(inside)} not retired; "
+                "move or retire what is in it first"
             )
     records.apply(
         db, context, level, record, row_version, {"record_status": "retired"}, action="retire"

@@ -3415,6 +3415,29 @@
             "description": "What people call the record.",
             "title": "Label"
           },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the region its site is in.",
+            "title": "Region"
+          },
+          "region_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Hid"
+          },
           "site": {
             "anyOf": [
               {
@@ -3482,7 +3505,9 @@
           "source",
           "source_hid",
           "site_hid",
-          "site"
+          "site",
+          "region_hid",
+          "region"
         ],
         "title": "EffectiveLocation",
         "type": "object"
@@ -7462,6 +7487,15 @@
             "title": "Path",
             "type": "string"
           },
+          "region": {
+            "description": "The name of the region its site is in.",
+            "title": "Region",
+            "type": "string"
+          },
+          "region_hid": {
+            "title": "Region Hid",
+            "type": "string"
+          },
           "site": {
             "description": "The name of its site.",
             "title": "Site",
@@ -7478,7 +7512,9 @@
           "path",
           "kind",
           "site_hid",
-          "site"
+          "site",
+          "region_hid",
+          "region"
         ],
         "title": "LocationRef",
         "type": "object"
@@ -8449,6 +8485,11 @@
             "title": "Hid",
             "type": "string"
           },
+          "is_external": {
+            "description": "An owner outside the operations team.",
+            "title": "Is External",
+            "type": "boolean"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -8456,7 +8497,8 @@
         },
         "required": [
           "hid",
-          "label"
+          "label",
+          "is_external"
         ],
         "title": "OwnerRef",
         "type": "object"
