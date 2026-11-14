@@ -2831,6 +2831,23 @@
               }
             ]
           },
+          "owner_exception": {
+            "description": "Its owner is outside the operations team.",
+            "title": "Owner Exception",
+            "type": "boolean"
+          },
+          "owner_exception_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That owner's reason.",
+            "title": "Owner Exception Reason"
+          },
           "owner_hid": {
             "anyOf": [
               {
@@ -2938,6 +2955,8 @@
           "groups",
           "owner_hid",
           "owner",
+          "owner_exception",
+          "owner_exception_reason",
           "location_hid",
           "location",
           "members_disagree",
@@ -4949,19 +4968,6 @@
             ],
             "title": "Observed Status"
           },
-          "owner_exception_reason": {
-            "anyOf": [
-              {
-                "maxLength": 10000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Needed with an owner outside the operations team.",
-            "title": "Owner Exception Reason"
-          },
           "owner_hid": {
             "anyOf": [
               {
@@ -5555,7 +5561,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why this item is with an owner outside the operations team.",
+            "description": "Why that owner is an exception: its own reason, set on the owner.",
             "title": "Owner Exception Reason"
           },
           "owner_hid": {
@@ -5775,8 +5781,8 @@
           "health",
           "owner_hid",
           "owner",
-          "owner_exception_reason",
           "owner_exception",
+          "owner_exception_reason",
           "location_hid",
           "location",
           "parent_item_hid",
@@ -6093,18 +6099,6 @@
             ],
             "description": "Null clears it, and the moment with it.",
             "title": "Observed Status"
-          },
-          "owner_exception_reason": {
-            "anyOf": [
-              {
-                "maxLength": 10000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Owner Exception Reason"
           },
           "owner_hid": {
             "anyOf": [

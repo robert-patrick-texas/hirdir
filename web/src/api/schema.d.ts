@@ -4296,6 +4296,10 @@ export interface components {
       observed_master_hid: string | null;
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
       owner: components["schemas"]["OwnerRef"] | null;
+      /** Its owner is outside the operations team. */
+      owner_exception: boolean;
+      /** That owner's reason. */
+      owner_exception_reason: string | null;
       owner_hid: string | null;
       parent: components["schemas"]["DeviceGroupRef"] | null;
       parent_group_hid: string | null;
@@ -4611,8 +4615,6 @@ export interface components {
       /** Left out, now. Given with observed_status only. */
       observed_at?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
-      /** Needed with an owner outside the operations team. */
-      owner_exception_reason?: string | null;
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
       parent_item_hid?: string | null;
@@ -4702,7 +4704,7 @@ export interface components {
       owner: components["schemas"]["OwnerRef"] | null;
       /** The owner in force is outside the operations team. */
       owner_exception: boolean;
-      /** Why this item is with an owner outside the operations team. */
+      /** Why that owner is an exception: its own reason, set on the owner. */
       owner_exception_reason: string | null;
       owner_hid: string | null;
       /** The item a minor item is in. */
@@ -4758,7 +4760,6 @@ export interface components {
       observed_at?: string | null;
       /** Null clears it, and the moment with it. */
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
-      owner_exception_reason?: string | null;
       owner_hid?: string | null;
       /** Null takes a minor item out of its parent. */
       parent_item_hid?: string | null;

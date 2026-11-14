@@ -457,8 +457,6 @@ class Item(Bookkeeping, Base):
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
     )
-    # Why this item is with an owner outside the operations team.
-    owner_exception_reason: Mapped[str | None] = mapped_column(Text, default=None)
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )

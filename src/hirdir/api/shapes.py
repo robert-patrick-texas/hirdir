@@ -142,6 +142,18 @@ def _owner_ref(owner: Owner) -> shapes.OwnerRef:
     return shapes.OwnerRef(hid=owner.hid, label=owner.label, is_external=owner.is_external)
 
 
+def _exception(owner: Owner | None) -> dict[str, Any]:
+    """Return whether what an owner has is an exception, and that owner's reason for it.
+
+    The reason is said once, on the owner. What it owns is marked by it and holds none.
+    """
+    outside = owner is not None and owner.is_external
+    return {
+        "owner_exception": outside,
+        "owner_exception_reason": owner.exception_reason if owner is not None and outside else None,
+    }
+
+
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
     return shapes.ContactRef.model_validate(contact)
 
@@ -553,7 +565,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     function=entry.function,
                 ),
                 owner=None if owner is None else _owner_ref(owner),
-                owner_exception=owner_in_force is not None and owner_in_force.is_external,
+                **_exception(owner_in_force),
                 location=places.get(item.location_hid) if item.location_hid else None,
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
@@ -614,6 +626,7 @@ _ITEM_SHAPED = (
     "catalog",
     "owner",
     "owner_exception",
+    "owner_exception_reason",
     "location",
     "parent",
     "is_major",
@@ -695,6 +708,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 parent=None if parent is None else _group_ref(parent),
                 groups=nested[group.hid],
                 owner=None if owner is None else _owner_ref(owner),
+                **_exception(owner),
                 location=places.get(group.location_hid) if group.location_hid else None,
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,
@@ -717,6 +731,8 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
 
 _GROUP_SHAPED = (
     "health",
+    "owner_exception",
+    "owner_exception_reason",
     "location",
     "serial_source",
     "observed_master",

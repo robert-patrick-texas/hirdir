@@ -87,7 +87,7 @@ written as a failing test at the start of its release.
 | S25 | A technical contact on Americas, a shipping contact on Site-2 | Room 102 shows both, each with the level it came from |
 | S26 | Override the technical contact on Building 1, then change the one on Americas | Room 102 keeps Building 1's; a room in another building shows the new one |
 | S27 | Move Site-2 to another region | Paths, inherited contacts and roll-ups change; item HIDs do not; the move is one audit event |
-| S28 | Assign an item to an external owner with no reason, then with one | Refused, then accepted and marked as an exception |
+| S28 | Make an owner outside the team with no reason, then with one, and give it an item | Refused, then accepted, and the item is marked as an exception with the owner's reason |
 | S29 | One contract covering items in two regions, one of them archived | The coverage report lists the archived item as covered but out of service |
 | S30 | An item in Prod with no coverage; an item whose model's LDoS is next year | Each is on its report |
 | S31 | A vendor with switches, a virtual machine template, a software application and a service | The portfolio lists all four kinds with cost and weight totals, and exports |

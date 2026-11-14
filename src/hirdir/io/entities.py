@@ -1416,7 +1416,6 @@ class Items(Entity):
         Column("condition", limit=40),
         *OBSERVATION,
         _OWNER,
-        Column("owner_exception_reason", limit=LONG),
         _LOCATION,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
@@ -1435,6 +1434,7 @@ class Items(Entity):
         Column("site", settable=False),
         Column("region", settable=False),
         Column("owner_exception", "boolean", settable=False),
+        Column("owner_exception_reason", limit=LONG, settable=False),
         *_sources((_OWNER, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
@@ -1482,7 +1482,6 @@ class Items(Entity):
         "condition",
         "observed_status",
         "observed_at",
-        "owner_exception_reason",
         *items.DAYS,
         "tags",
     )
@@ -1791,6 +1790,7 @@ class Items(Entity):
             where = atlas.location(in_force["location_hid"].value or "")
             site = atlas.site(where.site_hid) if where is not None else None
             owner_in_force = its_owners.get(in_force["owner_hid"].value or "")
+            outside = owner_in_force is not None and owner_in_force.is_external
             row: dict[str, Any] = {
                 **_kept(item),
                 "vendor": vendors[entry.vendor_hid].name if entry else None,
@@ -1813,7 +1813,8 @@ class Items(Entity):
                 ).value,
                 "site": site.name if site is not None else None,
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
-                "owner_exception": owner_in_force is not None and owner_in_force.is_external,
+                "owner_exception": outside,
+                "owner_exception_reason": owner_in_force.exception_reason if outside else None,
             }
             for name, effective in in_force.items():
                 column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)

@@ -400,44 +400,61 @@ def test_an_owner_has_one_primary_among_its_people(make: Maker) -> None:
     assert make.get("/owners", filter="tags:has:vendor-managed")["total"] == 1
 
 
-def test_an_item_with_an_owner_outside_the_team_says_why(make: Maker) -> None:
+def test_what_is_with_an_owner_outside_the_team_is_marked_and_the_owner_says_why(
+    make: Maker, files: Files
+) -> None:
     team = make.owner()
-    outside = make.owner("Facilities", is_external=True, exception_reason="Runs the plant rooms")
-    other = make.owner("Landlord", is_external=True, exception_reason="Owns the risers")
-    reason = "Mounted in the plant room"
+    reason = "Runs the plant rooms"
+    assert "exception_reason" in errors(
+        make.post("/owners", {"label": "Facilities", "is_external": True}, 422)
+    )
+    outside = make.owner("Facilities", is_external=True, exception_reason=reason)
 
-    refused = make.post("/items", {"hostname": "bms-sw-01", "owner_hid": outside["hid"]}, 422)
-    assert "Facilities is outside the team" in errors(refused)["owner_exception_reason"]
-    alone = {"hostname": "bms-sw-01", "owner_hid": team["hid"], "owner_exception_reason": reason}
-    assert "owner_exception_reason" in errors(make.post("/items", alone, 422))
-    item = make.item(hostname="bms-sw-01", owner_hid=outside["hid"], owner_exception_reason=reason)
+    # The reason is the owner's. The item is marked by having that owner, and is asked
+    # for nothing of its own.
+    item = make.item(hostname="bms-sw-01", owner_hid=outside["hid"])
     assert (item["owner_exception"], item["owner_exception_reason"]) == (True, reason)
     assert item["owner"] == {"hid": outside["hid"], "label": "Facilities", "is_external": True}
-    # A minor item of it is marked too, and has no reason of its own.
+    assert "owner_exception_reason" in errors(
+        make.post("/items", {"hostname": "x", "owner_exception_reason": "Mine"}, 422)
+    )
+    # A minor item of it is marked too, by the owner in force, and so is a group.
     supply = make.item(name="PS-A", parent_item_hid=item["hid"])
-    assert (supply["owner_exception"], supply["owner_exception_reason"]) == (True, None)
+    assert (supply["owner_exception"], supply["owner_exception_reason"]) == (True, reason)
+    stack = make.group("bms-stack", owner_hid=outside["hid"])
+    assert (stack["owner_exception"], stack["owner_exception_reason"]) == (True, reason)
+    plain = make.group("core-stack", owner_hid=team["hid"])
+    assert (plain["owner_exception"], plain["owner_exception_reason"]) == (False, None)
     assert make.get("/items", filter="owner_exception:eq:true")["total"] == 2
-    assert make.get("/items", filter="owner_exception_reason:contains:plant")["total"] == 1
-    # Given to another owner outside the team, it keeps the reason it has.
-    item = make.patch(
-        f"/items/{item['hid']}", {"row_version": item["row_version"], "owner_hid": other["hid"]}
+    assert make.get("/items", filter="owner_exception_reason:contains:plant")["total"] == 2
+    names = make.get("/device-groups", filter="owner_exception:eq:true")["items"]
+    assert [group["name"] for group in names] == ["bms-stack"]
+
+    # The reason is changed in one place, and everything the owner has shows it.
+    outside = make.patch(
+        f"/owners/{outside['hid']}",
+        {"row_version": outside["row_version"], "exception_reason": "Runs the plant"},
     )
-    assert item["owner_exception_reason"] == reason
-    # A reason is not cleared while the owner is outside the team.
-    cleared = make.patch(
-        f"/items/{item['hid']}",
-        {"row_version": item["row_version"], "owner_exception_reason": None},
-        422,
+    assert make.get(f"/items/{supply['hid']}")["owner_exception_reason"] == "Runs the plant"
+    # An export writes the mark and the reason, and an import passes them over.
+    exported = files.export("items", columns=["hostname", "owner", "owner_exception_reason"])
+    assert "bms-sw-01,Facilities,Runs the plant" in exported
+    again = files.preview("items", exported)
+    assert (again["job"]["unchanged"], again["job"]["rejected"]) == (2, 0)
+    # The owner is taken into the team: nothing it has is an exception any more, and
+    # no item was written to.
+    make.patch(
+        f"/owners/{outside['hid']}", {"row_version": outside["row_version"], "is_external": False}
     )
-    assert "owner_exception_reason" in errors(cleared)
-    # Given back to the team, the item is no exception and the reason is gone.
-    back = make.patch(
-        f"/items/{item['hid']}", {"row_version": item["row_version"], "owner_hid": team["hid"]}
-    )
-    assert (back["owner_exception"], back["owner_exception_reason"]) == (False, None)
-    history = make.get(f"/items/{item['hid']}/history")["items"][0]["changes"]
-    assert {"field": "owner_exception_reason", "old": reason, "new": None} in history
+    now = make.get(f"/items/{item['hid']}")
+    assert (now["owner_exception"], now["owner_exception_reason"]) == (False, None)
+    assert now["row_version"] == item["row_version"]
     assert make.get("/items", filter="owner_exception:eq:true")["total"] == 0
+    # Given back to the team's own owner, as any item is given an owner.
+    back = make.patch(
+        f"/items/{item['hid']}", {"row_version": now["row_version"], "owner_hid": team["hid"]}
+    )
+    assert back["owner_exception"] is False
 
 
 def test_people_travel_in_files(make: Maker, files: Files) -> None:
@@ -491,15 +508,7 @@ def test_people_travel_in_files(make: Maker, files: Files) -> None:
     make.post("/contacts", {"name": "Sam Okafor"})
     twins = files.preview("contacts", "name,phone\nSam Okafor,+1 555 0199\n")
     assert twins["rows"][0]["reasons"][0]["field"] == "name"
-    # An item that a file gives to an owner outside the team carries the reason.
-    rows = files.preview(
-        "items",
-        "hostname,owner,owner_exception_reason\n"
-        "bms-sw-01,Facilities,\nbms-sw-02,Facilities,In the plant room\n"
-        "bms-sw-03,Network Engineering,In the plant room\n",
-    )["rows"]
-    assert [row["outcome"] for row in rows] == ["rejected", "create", "rejected"]
-    assert (
-        rows[0]["reasons"][0]["field"] == rows[2]["reasons"][0]["field"] == "owner_exception_reason"
-    )
+    # An item that a file gives to an owner outside the team is marked by that alone.
+    rows = files.preview("items", "hostname,owner\nbms-sw-01,Facilities\n")["rows"]
+    assert [row["outcome"] for row in rows] == ["create"]
     assert outside["is_external"] is True

@@ -294,7 +294,10 @@ ITEMS = Listing(
         "site_hid": Field("reference", ITEM_SITE.hid),
         "region": Field("text", ITEM_REGION.name),
         "region_hid": Field("reference", ITEM_REGION.hid),
-        "owner_exception_reason": Field("text", Item.owner_exception_reason),
+        # The reason of the owner in force, where that owner is outside the team.
+        "owner_exception_reason": Field(
+            "text", case((Owner.is_external.is_(True), Owner.exception_reason))
+        ),
         # With an owner outside the team: the owner in force, so a minor item is too.
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "effective.lifecycle_state": Field("choice", STATE_IN_FORCE),
@@ -346,6 +349,7 @@ DEVICE_GROUPS = Listing(
         "location.name": Field("text", _GROUP_LOCATION.name),
         "site": Field("text", _GROUP_SITE.name),
         "region": Field("text", _GROUP_REGION.name),
+        "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),

@@ -544,13 +544,8 @@ def test_a_site_is_moved_and_an_item_is_put_somewhere_from_the_command_line(
     run("regions", "move", "Americas", "East > Site-2", expect=4)
     run("sites", "move", "Nowhere", "East", expect=4)
 
-    # An owner outside the team needs the reason with it.
-    run("items", "set", "site2-sw-1", f"owner={outside['label']}", expect=4)
-    run(
-        "items",
-        "set",
-        "site2-sw-1",
-        f"owner={outside['label']}",
-        "owner_exception_reason=In the plant room",
+    # An item given to an owner outside the team is marked, with that owner's reason.
+    run("items", "set", "site2-sw-1", f"owner={outside['label']}")
+    assert (
+        f"{'owner_exception:':<21}Runs the plant rooms" in run("items", "show", "site2-sw-1").stdout
     )
-    assert f"{'owner_exception:':<21}In the plant room" in run("items", "show", "site2-sw-1").stdout

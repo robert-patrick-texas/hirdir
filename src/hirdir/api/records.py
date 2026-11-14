@@ -993,10 +993,10 @@ class ItemOut(Model):
     health: HealthOut
     owner_hid: str | None
     owner: OwnerRef | None
-    owner_exception_reason: str | None = Field(
-        description="Why this item is with an owner outside the operations team."
-    )
     owner_exception: bool = Field(description="The owner in force is outside the operations team.")
+    owner_exception_reason: str | None = Field(
+        description="Why that owner is an exception: its own reason, set on the owner."
+    )
     location_hid: str | None
     location: LocationRef | None = Field(description="Its own location.")
     parent_item_hid: str | None
@@ -1064,9 +1064,6 @@ class ItemCreate(Model):
         default=None, description="Left out, now. Given with observed_status only."
     )
     owner_hid: Hid | None = None
-    owner_exception_reason: LongText | None = Field(
-        default=None, description="Needed with an owner outside the operations team."
-    )
     location_hid: Hid | None = None
     parent_item_hid: Hid | None = Field(
         default=None, description="The item this one is in. Given, the item is a minor item."
@@ -1115,7 +1112,6 @@ class ItemPatch(Model):
     )
     observed_at: datetime | None = None
     owner_hid: Hid | None = None
-    owner_exception_reason: LongText | None = None
     location_hid: Hid | None = Field(
         default=None, description="Null: a minor item is where the item above it is."
     )
@@ -1266,6 +1262,8 @@ class DeviceGroupOut(Model):
     groups: list[DeviceGroupRef] = Field(description="The groups nested directly in this one.")
     owner_hid: str | None
     owner: OwnerRef | None
+    owner_exception: bool = Field(description="Its owner is outside the operations team.")
+    owner_exception_reason: str | None = Field(description="That owner's reason.")
     location_hid: str | None
     location: LocationRef | None
     members_disagree: list[str] = Field(

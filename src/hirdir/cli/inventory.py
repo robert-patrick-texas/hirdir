@@ -457,6 +457,7 @@ def show_group(
         ("serial_number", serial),
         ("intended_master", _named(found["master"]) if found["master"] else None),
         ("observed_master", seen),
+        ("owner_exception", found["owner_exception_reason"]),
         ("location", found["location"]["path"] if found["location"] else None),
         ("managed_as", found["managed_as"]),
         ("expected_members", found["expected_members"]),

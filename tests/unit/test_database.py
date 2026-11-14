@@ -342,12 +342,12 @@ def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_pa
         items = connection.execute(
             text(
                 "SELECT hid, lifecycle_state, condition, owner_hid, parent_item_hid, row_version,"
-                " location_hid, owner_exception_reason FROM items ORDER BY hid"
+                " location_hid FROM items ORDER BY hid"
             )
         ).all()
         assert [tuple(row) for row in items] == [
-            ("i-1", "Prod", "good", "o-out", None, 7, None, None),
-            ("i-2", None, "good", None, "i-1", 2, None, None),
+            ("i-1", "Prod", "good", "o-out", None, 7, None),
+            ("i-2", None, "good", None, "i-1", 2, None),
         ]
         groups = connection.execute(
             text(

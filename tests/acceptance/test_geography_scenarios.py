@@ -239,38 +239,29 @@ def test_s27_moving_a_site_changes_paths_contacts_and_roll_ups_and_no_item(
     ]
 
 
-def test_s28_an_external_owner_needs_a_reason_and_marks_the_item(geography: Geography) -> None:
+def test_s28_an_owner_outside_the_team_says_why_and_marks_what_it_owns(
+    geography: Geography,
+) -> None:
     team = geography.post("/owners", {"label": "Network Engineering"})
-    outside = geography.post(
-        "/owners",
-        {
-            "label": "Facilities",
-            "organization": "Building Services",
-            "is_external": True,
-            "exception_reason": "Looks after the door controllers",
-        },
-    )
+    outside = {"label": "Facilities", "organization": "Building Services", "is_external": True}
+    # An owner outside the team with no reason is refused.
+    refused = geography.post("/owners", outside, expect=422)
+    assert [error["field"] for error in refused["errors"]] == ["exception_reason"]
+    assert geography.get("/owners")["total"] == 1
+
+    # With one it is accepted, and the reason is said there once.
+    reason = "Looks after the door controllers"
+    facilities = geography.post("/owners", {**outside, "exception_reason": reason})
     item = geography.switch("FCW0000X001", None, owner_hid=team["hid"])
-    assert item["owner_exception"] is False
+    assert (item["owner_exception"], item["owner_exception_reason"]) == (False, None)
 
-    refused = geography.patch(
-        f"/items/{item['hid']}",
-        {"row_version": item["row_version"], "owner_hid": outside["hid"]},
-        expect=422,
-    )
-    assert [error["field"] for error in refused["errors"]] == ["owner_exception_reason"]
-    assert geography.get(f"/items/{item['hid']}")["owner_hid"] == team["hid"]
-
+    # An item given to it is marked as an exception, with the owner's reason, and
+    # nothing is asked for a second time.
     given = geography.patch(
         f"/items/{item['hid']}",
-        {
-            "row_version": item["row_version"],
-            "owner_hid": outside["hid"],
-            "owner_exception_reason": "Mounted in the lobby, behind their badge readers",
-        },
+        {"row_version": item["row_version"], "owner_hid": facilities["hid"]},
     )
-    assert given["owner_hid"] == outside["hid"]
-    assert given["owner_exception"] is True
-    assert given["owner_exception_reason"] == "Mounted in the lobby, behind their badge readers"
+    assert given["owner_hid"] == facilities["hid"]
+    assert (given["owner_exception"], given["owner_exception_reason"]) == (True, reason)
     marked = geography.get("/items", filter="owner_exception:eq:true")["items"]
     assert [one["hid"] for one in marked] == [item["hid"]]

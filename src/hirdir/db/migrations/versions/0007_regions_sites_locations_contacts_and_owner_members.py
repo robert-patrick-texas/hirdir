@@ -4,14 +4,13 @@ Revision: 0007
 Revises: 0006
 
 Creates the regions, the sites and the locations within them, the contacts with their
-assignments to those places, and the members of owners. An item gains `location_hid`
-and `owner_exception_reason`, and a device group `location_hid`. Loads the
-`contact_role` and `location_kind` lists with their defaults, written out here so that
-this migration does the same thing whatever a later release changes.
+assignments to those places, and the members of owners. An item and a device group
+gain `location_hid`. Loads the `contact_role` and `location_kind` lists with their
+defaults, written out here so that this migration does the same thing whatever a later
+release changes.
 
 No record there is so far is changed: every item and every group is nowhere until
-somebody says where it is, and an item that is already with an owner outside the team
-has no reason until somebody gives one.
+somebody says where it is.
 """
 
 import uuid
@@ -200,7 +199,6 @@ def upgrade() -> None:
     for column in ("contact_hid", "region_hid", "site_hid", "location_hid"):
         op.create_index(f"ix_contact_assignments_{column}", "contact_assignments", [column])
     with op.batch_alter_table("items") as items:
-        items.add_column(sa.Column("owner_exception_reason", sa.Text))
         items.add_column(sa.Column("location_hid", sa.String(36)))
         items.create_foreign_key("fk_items_location_hid", "locations", ["location_hid"], ["hid"])
         items.create_index("ix_items_location_hid", ["location_hid"])
@@ -238,7 +236,6 @@ def downgrade() -> None:
         items.drop_index("ix_items_location_hid")
         items.drop_constraint("fk_items_location_hid", type_="foreignkey")
         items.drop_column("location_hid")
-        items.drop_column("owner_exception_reason")
     op.drop_table("contact_assignments")
     op.drop_table("contacts")
     op.drop_table("locations")

@@ -117,7 +117,6 @@ lifecycle fields included.
 | `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
-| `owner_exception_reason` | text | why this item is with an owner outside the operations team. Required with such an owner; see `owners` |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
 | `warranty_start`, `warranty_end` | date | |
@@ -383,19 +382,16 @@ member is the primary, marking another member makes the one that had it an
 `alternate`, in the same change, and the primary is not removed while other members
 remain. A member is removed outright, with an audit event that holds what it was.
 
-**An item with an owner outside the team is an exception, and says why.** Giving an
-item an owner that `is_external` is refused unless `owner_exception_reason` comes with
-it, or the item already has one. The reason is the item's: why this switch is looked
-after by somebody else. It is cleared when the item is given an owner that is not
-external, or none. `owner_exception` is derived and is true when the owner in force
-is external, so the minor items of such an item are marked with it. It is a field to
-filter by. A device group may have an external owner and gives no reason.
-
-Whether an owner is external may change after items were given to it. One that is
-made external has items that are exceptions with no reason, until somebody gives
-one. One that is no longer external leaves the reasons of its items where they are:
-they say nothing while that is so, may be sent back as they are, and are cleared the
-next time the item is given an owner.
+**What is with an owner outside the team is an exception, and the owner says why.**
+The reason is said once, where the owner is defined: `exception_reason`, which an
+external owner cannot be without. An item and a device group hold no reason of their
+own, so nothing is entered a second time for each of them. `owner_exception` is
+derived on both: true when the owner in force is external, so the minor items of such
+an item are marked with it. `owner_exception_reason` beside it is that owner's reason,
+read as it is asked for. Both are fields to filter the item list by, and
+`owner_exception` the list of groups. When an owner is said to be external, or no
+longer to be, everything it owns is marked or unmarked at once, and nothing is
+written to any of it.
 
 The owner itself is in release 0.2.0, because an item needs one to point to. Its
 members arrive with contacts in 0.5.0, and so does the marked exception on an item that

@@ -780,7 +780,6 @@ def _items() -> list[dict[str, Any]]:
         lifecycle_state="Archived",
         state_reason="disposed",
         owner="Facilities Management",
-        owner_exception_reason="Served the building management network of the small office",
         comments="Traded in when the office was rewired",
     )
     planned = _hardware(

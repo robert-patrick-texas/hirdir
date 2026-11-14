@@ -639,8 +639,8 @@ The schema goes from revision `0006` to `0007`. Six tables are added: `regions`,
 `sites`, `locations`, `contacts`, `contact_assignments` and `owner_members`. All of
 them are empty after the upgrade.
 
-The `items` table gains two columns, `location_hid` and `owner_exception_reason`, and
-the `device_groups` table one, `location_hid`. To add a column that refers to another
+The `items` table gains one column, `location_hid`, and the `device_groups` table the
+same. To add a column that refers to another
 table, SQLite makes each of the two tables anew and copies every row across, inside
 the one transaction that the whole upgrade runs in. Nothing you have is changed by it.
 Every item, device group, membership, network, address, owner and choice is as it was,
@@ -649,10 +649,9 @@ audit trail holds no event of the upgrade.
 
 What is new is empty until somebody fills it in. No item and no group is anywhere:
 each has no location, the tree of places is empty, and every item is counted under
-"nowhere". An item that is already with an owner outside the team is marked as an
-exception from now on, with no reason given until somebody gives one: the reason is
-asked for the next time such an item is given an owner.
-`GET /api/v1/items?filter=owner_exception:eq:true` lists them.
+"nowhere". An item or a device group that is already with an owner outside the team is
+marked as an exception from now on, with the reason that owner has always had to have.
+`GET /api/v1/items?filter=owner_exception:eq:true` lists the items.
 
 The lists of contact roles and of location kinds are filled with their defaults:
 `shipping`, `technical`, `federal`, `operational` and `escalation`, and `building`,

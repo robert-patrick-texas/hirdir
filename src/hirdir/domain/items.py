@@ -40,7 +40,6 @@ FIELDS = (
     "observed_status",
     "observed_at",
     "owner_hid",
-    "owner_exception_reason",
     "location_hid",
     "parent_item_hid",
     "position",
@@ -333,7 +332,6 @@ def _checked(
         )
     if "owner_hid" in fields:
         values["owner_hid"] = _reference(db, Owner, "owner_hid", fields["owner_hid"], item, "owner")
-    values.update(_owner_exception(db, fields, values, item))
     if "location_hid" in fields:
         if fields["location_hid"] and (item is None or item.location_hid != fields["location_hid"]):
             # Checked against the location, which may be retired only while nothing is
@@ -401,47 +399,6 @@ def _checked(
         )
     _check_unique(db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item)
     return values
-
-
-def _owner_exception(
-    db: Session, fields: dict[str, Any], values: dict[str, Any], item: Item | None
-) -> dict[str, Any]:
-    """Return the reason an item is with an owner outside the team, as a change leaves it.
-
-    Giving an item such an owner is refused without a reason, unless the item has one
-    already. With an owner that is not external, or none, the item has no such reason:
-    the one it had is cleared, and one that is given is refused.
-
-    An item may be with such an owner and have no reason: it was given to it before
-    reasons were asked for, or the owner was said to be external afterwards. Saying
-    again that it has the owner it has gives it to nobody, and asks for nothing.
-    """
-    field = "owner_exception_reason"
-    if "owner_hid" not in fields and field not in fields:
-        return {}
-    had = item.owner_exception_reason if item is not None else None
-    reason = records.clean(fields[field]) if field in fields else had
-    owner_hid = values.get("owner_hid", item.owner_hid if item is not None else None)
-    owner = db.get(Owner, owner_hid) if owner_hid else None
-    if owner is not None and owner.is_external:
-        if reason is None and had is None and item is not None and owner_hid == item.owner_hid:
-            return {}
-        if reason is None:
-            raise Invalid(
-                "an item with an owner outside the operations team says why",
-                {field: f"{owner.label} is outside the team: say why this item is with it"},
-            )
-        return {field: reason}
-    if field in fields and reason is not None:
-        if reason == had and item is not None and owner_hid == item.owner_hid:
-            # Said again as it is, of an owner that was outside the team when the
-            # reason was given and is not any more: nothing is changed by saying so.
-            return {}
-        raise Invalid(
-            "only an item with an owner outside the operations team has such a reason",
-            {field: "the owner of this item is not outside the team; leave this blank"},
-        )
-    return {field: None}
 
 
 def _check_still_there(db: Session, location_hid: str | None) -> None:
