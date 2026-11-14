@@ -45,7 +45,9 @@ export class ChoiceFilter implements FilterDisplayComp<unknown, unknown, ChoiceM
 
   refresh(params: Params): boolean {
     this.params = params;
-    this.show(params.state.model ?? params.model);
+    // What is on show is the state, also when it is nothing: with the last box unticked
+    // it is no model at all, and the filter that is still applied is not put back.
+    this.show(params.state.model);
     return true;
   }
 

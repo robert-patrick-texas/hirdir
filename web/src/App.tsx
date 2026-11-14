@@ -52,6 +52,9 @@ const Items = lazy(() => pages.items().then((page) => ({ default: page.Items }))
 const LifecycleRules = lazy(() =>
   pages.lifecycleRules().then((page) => ({ default: page.LifecycleRules })),
 );
+const ManagementReport = lazy(() =>
+  pages.reports().then((page) => ({ default: page.ManagementReport })),
+);
 const Networks = lazy(() => pages.networks().then((page) => ({ default: page.Networks })));
 const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
 const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
@@ -155,6 +158,14 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <Summary />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/management"
+              element={
+                <RequireRole needs="viewer">
+                  <ManagementReport />
                 </RequireRole>
               }
             />

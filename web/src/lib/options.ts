@@ -34,6 +34,7 @@ export const CHOICE_LISTS: readonly Option[] = [
   { value: "catalog_type", label: "Catalog type" },
   { value: "catalog_function", label: "Catalog function" },
   { value: "state_reason", label: "State reason" },
+  { value: "item_condition", label: "Item condition" },
   { value: "contact_role", label: "Contact role" },
   { value: "location_kind", label: "Location kind" },
   { value: "replacement_reason", label: "Replacement reason" },

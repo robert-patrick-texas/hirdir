@@ -4,6 +4,8 @@ import {
   defaultRole,
   groupTypeLabel,
   isGroupType,
+  MANAGED_AS,
+  managedAsText,
   membershipText,
   nextPosition,
   ownerDisputed,
@@ -11,7 +13,9 @@ import {
   roleLabel,
   roleOptions,
   rolesOf,
+  serialSourceText,
   stackProblem,
+  takesTheMark,
 } from "./groups";
 
 const ONE = "0193a1f4-0000-7000-8000-000000000001";
@@ -38,14 +42,15 @@ describe("types and roles", () => {
     expect(defaultRole("stack")).toBe("member");
     expect(roleOptions("stack")).toEqual([
       { value: "member", label: "Member" },
-      { value: "master", label: "Master" },
+      { value: "master", label: "Intended master" },
     ]);
   });
 
   it("writes a role and a membership for people", () => {
     expect(roleLabel("standby")).toBe("Standby");
     expect(roleLabel("witness")).toBe("witness");
-    expect(membershipText({ role: "master", position: 1 })).toBe("Master, position 1");
+    expect(roleLabel("master")).toBe("Intended master");
+    expect(membershipText({ role: "master", position: 1 })).toBe("Intended master, position 1");
     expect(membershipText({ role: "endpoint", position: null })).toBe("Endpoint");
     expect(membershipText({ role: "member", position: 0 })).toBe("Member, position 0");
   });
@@ -103,26 +108,76 @@ describe("buildMembers", () => {
 
 describe("stackProblem", () => {
   it("has nothing to say of another type of group, nor of a stack with no member", () => {
-    expect(stackProblem("cluster", "active", ["member"])).toBe("");
-    expect(stackProblem("stack", "active", [])).toBe("");
+    expect(stackProblem("cluster", ["member"])).toBe("");
+    expect(stackProblem("cluster", ["master", "master"])).toBe("");
+    expect(stackProblem("stack", [])).toBe("");
   });
 
-  it("lets an active stack stand with one master, alone or with members", () => {
-    expect(stackProblem("stack", "active", ["master"])).toBe("");
-    expect(stackProblem("stack", "active", ["master", "member"])).toBe("");
-    expect(stackProblem("stack", "active", ["member", "member", "master", "member"])).toBe("");
+  it("lets a stack stand with no master: the intended master is optional", () => {
+    expect(stackProblem("stack", ["member"])).toBe("");
+    expect(stackProblem("stack", ["member", "member", "member"])).toBe("");
   });
 
-  it("says what an active stack lacks", () => {
-    expect(stackProblem("stack", "active", ["member"])).toMatch(/exactly one master/);
-    expect(stackProblem("stack", "active", ["member", "member"])).toMatch(/exactly one master/);
+  it("lets a stack be one switch alone, with a master or without", () => {
+    expect(stackProblem("stack", ["master"])).toBe("");
+    expect(stackProblem("stack", ["member"])).toBe("");
   });
 
-  it("lets a draft be built up, and never with two masters", () => {
-    expect(stackProblem("stack", "draft", ["member"])).toBe("");
-    expect(stackProblem("stack", "draft", ["master", "master"])).toMatch(/would have more/);
-    expect(stackProblem("stack", "active", ["master", "master", "member"])).toMatch(
-      /would have more/,
+  it("lets one of the members be marked as the intended master", () => {
+    expect(stackProblem("stack", ["master", "member"])).toBe("");
+    expect(stackProblem("stack", ["member", "member", "master", "member"])).toBe("");
+  });
+
+  it("says that one request names at most one intended master", () => {
+    expect(stackProblem("stack", ["master", "master"])).toMatch(/at most one intended master/);
+    expect(stackProblem("stack", ["master", "member", "master"])).toMatch(
+      /at most one intended master/,
     );
+  });
+});
+
+describe("takesTheMark", () => {
+  it("is true when a new intended master joins a stack that has one", () => {
+    expect(takesTheMark("stack", ["master", "member"], ["master"])).toBe(true);
+  });
+
+  it("is false when the stack has none, when none is added, and for another type", () => {
+    expect(takesTheMark("stack", ["member"], ["master"])).toBe(false);
+    expect(takesTheMark("stack", ["master"], ["member"])).toBe(false);
+    expect(takesTheMark("stack", [], [])).toBe(false);
+    expect(takesTheMark("cluster", ["master"], ["master"])).toBe(false);
+  });
+});
+
+describe("how a cluster is managed", () => {
+  it("offers the three ways, each with a short name and an explanation", () => {
+    expect(MANAGED_AS.map((way) => way.value)).toEqual(["one", "members", "members_and_cluster"]);
+    expect(MANAGED_AS.map((way) => way.label)).toEqual([
+      "One managed node",
+      "One for each member",
+      "Its members and a node of its own",
+    ]);
+    for (const way of MANAGED_AS) expect(way.explained, way.value).toMatch(/manage/);
+    expect(MANAGED_AS[0]?.explained).toMatch(/one device on the network/);
+    expect(MANAGED_AS[1]?.explained).toMatch(/managed at its own address/);
+    expect(MANAGED_AS[2]?.explained).toMatch(/one more managed node/);
+  });
+
+  it("says in a few words how many managed nodes each is", () => {
+    expect(managedAsText("one")).toBe("One managed node");
+    expect(managedAsText("members")).toBe("One managed node for each member");
+    expect(managedAsText("members_and_cluster")).toBe(
+      "One managed node for each member, and one more for the cluster itself",
+    );
+    expect(managedAsText(null)).toBe("");
+    expect(managedAsText("mesh")).toBe("mesh");
+  });
+});
+
+describe("serialSourceText", () => {
+  it("says which master the serial number of a stack is read from", () => {
+    expect(serialSourceText("observed")).toBe("read from the master that is seen");
+    expect(serialSourceText("intended")).toBe("read from the intended master");
+    expect(serialSourceText(null)).toBe("");
   });
 });

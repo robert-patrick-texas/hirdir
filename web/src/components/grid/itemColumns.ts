@@ -2,10 +2,19 @@
 // sorts by. They are kept apart from the page so that those choices can be tested.
 
 import type { Schemas } from "../../api/client";
-import { addressList, networkLabels, primaryAddress } from "../../lib/addresses";
+import { addressList, managementText, networkLabels } from "../../lib/addresses";
 import { effectiveLabel, effectiveText } from "../../lib/effective";
+import type { FilterNode } from "../../lib/filter";
 import { formatMac, formatTime, itemName } from "../../lib/format";
 import { GROUP_TYPES, groupTypeLabel } from "../../lib/groups";
+import {
+  CONDITION_LIST,
+  HEALTHS,
+  healthLabel,
+  OBSERVED,
+  observedLabel,
+  reasonsText,
+} from "../../lib/health";
 import { DISPOSITIONS } from "../../lib/lifecycle";
 import {
   CATALOG_KINDS,
@@ -64,6 +73,10 @@ function groupTypes(item: Item): string {
  * inherited value, and each of these columns filters and sorts by the value in force
  * too, so that a filter keeps the rows whose cell shows what was asked for. The item's
  * own state is `lifecycle_state` in the filter box.
+ *
+ * Health is shown from the start, as a mark in its colour with its word, and filters and
+ * sorts by the health the server works out. The condition and what is observed, the two
+ * facts a person sets, are columns to be asked for.
  *
  * An item may be in several groups and have several addresses. The columns that show
  * them are filtered by any of them, and the server does not sort by them.
@@ -187,6 +200,42 @@ export function itemColumns(
       width: 140,
     },
     {
+      // Worked out by the server from the condition, what is observed and the intent.
+      id: "health",
+      header: "Health",
+      kind: "choice",
+      value: (item) => healthLabel(item.health.value),
+      mark: (item) => item.health.value,
+      hint: (item) => reasonsText(item.health),
+      choices: HEALTHS,
+      width: 130,
+    },
+    {
+      id: "condition",
+      header: "Condition",
+      kind: "choice",
+      value: (item) => choiceLabel(choices, CONDITION_LIST, item.condition),
+      choices: choiceFilterOptions(choices, CONDITION_LIST),
+      hide: true,
+      width: 130,
+    },
+    {
+      id: "observed_status",
+      header: "Observed status",
+      kind: "choice",
+      value: (item) => observedLabel(item.observed_status),
+      choices: OBSERVED,
+      hide: true,
+      width: 150,
+    },
+    {
+      id: "observed_at",
+      header: "Observed at",
+      kind: "timestamp",
+      value: (item) => formatTime(item.observed_at),
+      hide: true,
+    },
+    {
       id: "state_reason",
       header: "State reason",
       kind: "choice",
@@ -232,17 +281,19 @@ export function itemColumns(
       width: 150,
     },
     {
-      // The primary one. It is found through the Addresses column, which filters by
-      // every address an item has: a filter here would keep rows that show another.
+      // The primary one of each family, IPv4 then IPv6. They are found through the
+      // Addresses column, which filters by every address an item has: a filter here
+      // would keep rows that show another. An export writes one column for each family.
       id: "mgmt_address",
       header: "Management address",
       kind: "address",
       field: null,
       sortField: null,
-      value: (item) => primaryAddress(item.addresses)?.address,
+      column: ["mgmt_ipv4", "mgmt_ipv6"],
+      value: (item) => managementText(item.addresses),
       mono: true,
       hide: true,
-      width: 170,
+      width: 240,
     },
     {
       id: "address",
@@ -374,6 +425,13 @@ export function itemColumns(
     },
   ];
 }
+
+/**
+ * What leaves minor items out of the item grid. The team mostly works with lists of
+ * major items, so this is part of every filter the grid sends until Include minor items
+ * is turned on.
+ */
+export const MAJOR_ITEMS: FilterNode = { field: "is_major", op: "eq", value: true };
 
 /**
  * An item that a list shows greyed: a draft, a retired record, or one in Archived. The

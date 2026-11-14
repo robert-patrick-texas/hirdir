@@ -18,6 +18,7 @@ import {
   LIFECYCLE_STATE,
 } from "../lib/bulk";
 import { plural } from "../lib/format";
+import { CONDITION_LIST, OBSERVED_CHOICES } from "../lib/health";
 import { toApiError, useLoad } from "../lib/hooks";
 import { Keys, withKey } from "../lib/idempotency";
 import { EVERY, useOwnerOptions, useTags } from "../lib/lists";
@@ -64,6 +65,7 @@ function bulkFields(
   states: readonly string[],
   owners: readonly Option[],
   entries: readonly Option[],
+  conditions: readonly Option[],
 ): BulkField[] {
   return [
     {
@@ -103,6 +105,24 @@ function bulkFields(
       kind: "tristate",
       blank: "Choose yes or no",
       clearable: true,
+    },
+    {
+      name: "condition",
+      label: "Condition",
+      kind: "choice",
+      blank: "Choose a condition",
+      options: conditions,
+      clearable: true,
+      hint: "The state of the hardware, as a person knows it. It moves no item in the lifecycle.",
+    },
+    {
+      name: "observed_status",
+      label: "Observed status",
+      kind: "choice",
+      blank: "Choose what is seen",
+      options: OBSERVED_CHOICES,
+      clearable: true,
+      hint: "What was seen of each item. Cleared, the moment it was seen is cleared with it.",
     },
     { name: "quantity", label: "Quantity", kind: "integer" },
     { name: "description", label: "Description", kind: "longtext", clearable: true },
@@ -178,8 +198,14 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const tags = useTags();
   const keys = useRef(new Keys());
   const fields = useMemo(
-    () => bulkFields(states, owners.data ?? [], entries.data?.options ?? []),
-    [states, owners.data, entries.data],
+    () =>
+      bulkFields(
+        states,
+        owners.data ?? [],
+        entries.data?.options ?? [],
+        choiceOptions(choices, CONDITION_LIST),
+      ),
+    [states, owners.data, entries.data, choices],
   );
   const labels = (tags.data ?? []).map((tag) => ({ value: tag.label, label: tag.label }));
   const reasons = choiceOptions(choices, "state_reason");
@@ -197,7 +223,8 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const [stale, setStale] = useState<StaleRow[]>([]);
 
   const count = chosenCount(rows);
-  const whole = rows.kind === "all" && view.filter === null;
+  // Every item the list shows: the reader set no filter, whatever a switch of the grid adds.
+  const whole = rows.kind === "all" && (view.filter === null || view.unfiltered === true);
   const built = buildBulk(
     fields,
     { lines, reason, addTags, removeTags },
@@ -280,7 +307,7 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
           </p>
           {whole && (
             <p className="alert alert-info">
-              No filter is set, so this is every item the list shows.
+              No filter is set, so this is every item the grid shows.
             </p>
           )}
           <Problem error={error} shown={names} />

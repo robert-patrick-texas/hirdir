@@ -7,12 +7,12 @@ import { HeadlineTotals } from "../components/Totals";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useSettings } from "../lib/lists";
 import { allows, roleLabel } from "../lib/roles";
-import { settingText } from "../lib/settings";
 import { settingList } from "../lib/summary";
 
 /**
- * The headline totals of the inventory as a list shows it by default: the components
- * beside the managed nodes, the weight, the value and the cost. The server counts them.
+ * The headline of the summary, for the inventory as a list shows it by default: the
+ * components beside the managed nodes, the support weight, and the components by health.
+ * The server counts them. No money is shown here: that is in the management report.
  */
 function Headline() {
   const summary = useLoad("home-summary", (signal) =>
@@ -32,12 +32,13 @@ function Headline() {
         <HeadlineTotals
           totals={summary.data.totals}
           countKinds={settingList(settings.data, "count_kinds")}
-          currency={settingText(settings.data?.find((one) => one.key === "currency")?.value)}
         />
       )}
       <p>
-        <Link to="/reports">The summary</Link>, by vendor, owner, state and more, for any filter of
-        the items. Drafts, retired records and archived items are left out here.
+        <Link to="/reports">The summary</Link>, by vendor, owner, state, health and more, for any
+        filter of the items. Drafts, retired records and archived items are left out here. Estimated
+        value and annual support cost are in the{" "}
+        <Link to="/reports/management">management report</Link>.
       </p>
     </section>
   );
@@ -86,7 +87,8 @@ export function Home() {
                 <Link to="/vendors">Vendors</Link> and <Link to="/owners">owners</Link>
               </li>
               <li>
-                <Link to="/reports">Reports</Link>: the summary, and the{" "}
+                <Link to="/reports">Reports</Link>: the summary, the{" "}
+                <Link to="/reports/management">management report</Link>, and the{" "}
                 <Link to="/reports/duplicates">addresses held more than once</Link>
               </li>
               <li>

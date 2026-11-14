@@ -33,16 +33,66 @@ export function addressRoleLabel(role: string): string {
   return ADDRESS_ROLES.find((known) => known.value === role)?.label ?? role;
 }
 
-/** Only a management address may be the primary one. */
+/** Only a management address may be a primary one. */
 export function mayBePrimary(role: string): boolean {
   return role === "management";
 }
 
-/** The primary management address of a record, if it has one. */
-export function primaryAddress<T extends { is_primary: boolean }>(
+/** The two families of address. A record may have a primary management address of each. */
+export type Family = AddressRef["family"];
+export const FAMILIES: readonly Family[] = [4, 6];
+
+/** A family for people: IPv4, IPv6. */
+export function familyLabel(family: number): string {
+  return `IPv${family}`;
+}
+
+/**
+ * The family of an address as it is being typed, before the server has read it: one
+ * with a colon in it is IPv6. The server decides; this only says which primary a new
+ * address would be.
+ */
+export function typedFamily(address: string): Family {
+  return address.includes(":") ? 6 : 4;
+}
+
+/** The primary management address of one family of a record, if it has one. */
+export function primaryAddress<T extends { is_primary: boolean; family: number }>(
   addresses: readonly T[] | null | undefined,
+  family: Family,
 ): T | null {
-  return (addresses ?? []).find((address) => address.is_primary) ?? null;
+  return (
+    (addresses ?? []).find((address) => address.is_primary && address.family === family) ?? null
+  );
+}
+
+/** The primary management addresses of a record: the IPv4 one, then the IPv6 one. */
+export function primaryAddresses<T extends { is_primary: boolean; family: number }>(
+  addresses: readonly T[] | null | undefined,
+): T[] {
+  const primaries: T[] = [];
+  for (const family of FAMILIES) {
+    const primary = primaryAddress(addresses, family);
+    if (primary) primaries.push(primary);
+  }
+  return primaries;
+}
+
+/**
+ * The management addresses of a record as one line, for a cell of a grid: the primary of
+ * each family, IPv4 first. Blank when it has neither.
+ */
+export function managementText(
+  addresses: ReadonlyArray<{ address: string; is_primary: boolean; family: number }> | null,
+): string {
+  return primaryAddresses(addresses)
+    .map((primary) => primary.address)
+    .join(", ");
+}
+
+/** What the Primary cell of an address says: which family it is the primary of, or nothing. */
+export function primaryText(address: { is_primary: boolean; family: number }): string {
+  return address.is_primary ? `Primary ${familyLabel(address.family)}` : "";
 }
 
 /** An address with the network it is under: `192.0.2.10 (Red)`. */
@@ -104,6 +154,8 @@ export function newAddress(
     role,
     ...(form.network_hid ? { network_hid: form.network_hid } : {}),
     // Only a management address may be primary: the mark is not sent with another role.
+    // The server files it under its own family, and takes the mark off the one of that
+    // family that had it.
     ...(form.is_primary && mayBePrimary(role) ? { is_primary: true } : {}),
   };
 }

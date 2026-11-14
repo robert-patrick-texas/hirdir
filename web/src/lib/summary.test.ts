@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   amountText,
   byLabel,
+  conditionLabel,
   countText,
   isBy,
+  isManagementBy,
   kindLabel,
   kindsShown,
+  MANAGEMENT_BY,
   rowLabel,
   SUMMARY_BY,
   settingList,
@@ -25,16 +28,27 @@ const CHOICES = [
     created_at: "2026-01-31T19:05:09Z",
     updated_at: "2026-01-31T19:05:09Z",
   },
+  {
+    hid: "c-2",
+    list: "item_condition",
+    value: "suspect",
+    label: "Suspect",
+    sort: 4,
+    active: true,
+    row_version: 1,
+    created_at: "2026-01-31T19:05:09Z",
+    updated_at: "2026-01-31T19:05:09Z",
+  },
 ];
 const KINDS = [
-  { kind: "hardware", items: 46, component_count: 42 },
-  { kind: "virtual_machine", items: 3, component_count: 3 },
-  { kind: "software", items: 5, component_count: 4 },
-  { kind: "service", items: 2, component_count: 2 },
+  { key: "hardware", label: "hardware", items: 46, component_count: 42 },
+  { key: "virtual_machine", label: "virtual_machine", items: 3, component_count: 3 },
+  { key: "software", label: "software", items: 5, component_count: 4 },
+  { key: "service", label: "service", items: 2, component_count: 2 },
 ];
 
 describe("what a summary is by", () => {
-  it("offers the eight groupings the server has", () => {
+  it("offers the ten groupings the server has", () => {
     expect(SUMMARY_BY.map((by) => by.value)).toEqual([
       "vendor",
       "kind",
@@ -43,12 +57,32 @@ describe("what a summary is by", () => {
       "owner",
       "lifecycle_state",
       "disposition",
+      "condition",
+      "health",
       "tag",
     ]);
     expect(isBy("owner")).toBe(true);
+    expect(isBy("health")).toBe(true);
     expect(isBy("site")).toBe(false);
     expect(byLabel("lifecycle_state")).toBe("Lifecycle state");
     expect(byLabel(null)).toBe("");
+  });
+
+  it("offers the management report its six, with neither condition nor health", () => {
+    expect(MANAGEMENT_BY.map((by) => by.value)).toEqual([
+      "vendor",
+      "kind",
+      "type",
+      "function",
+      "owner",
+      "tag",
+    ]);
+    expect(isManagementBy("vendor")).toBe(true);
+    expect(isManagementBy("health")).toBe(false);
+    expect(isManagementBy("condition")).toBe(false);
+    expect(isManagementBy("lifecycle_state")).toBe(false);
+    // By site arrives with sites.
+    expect(isManagementBy("site")).toBe(false);
   });
 });
 
@@ -68,6 +102,20 @@ describe("rowLabel", () => {
       "Access point",
     );
     expect(rowLabel("function", { key: "core", label: "core" }, CHOICES)).toBe("core");
+  });
+
+  it("shows a condition by the label of its list, and a health by its word", () => {
+    expect(rowLabel("condition", { key: "suspect", label: "suspect" }, CHOICES)).toBe("Suspect");
+    expect(rowLabel("condition", { key: null, label: null }, CHOICES)).toBe("No condition");
+    expect(rowLabel("health", { key: "degraded", label: "degraded" })).toBe("Degraded");
+    expect(rowLabel("health", { key: "unknown", label: null })).toBe("Unknown");
+  });
+
+  it("names the components of one condition in the totals", () => {
+    expect(conditionLabel({ key: "suspect", label: "Suspect" }, CHOICES)).toBe("Suspect");
+    expect(conditionLabel({ key: "suspect", label: null }, CHOICES)).toBe("Suspect");
+    expect(conditionLabel({ key: "burnt", label: null }, CHOICES)).toBe("burnt");
+    expect(conditionLabel({ key: null, label: null }, CHOICES)).toBe("No condition");
   });
 
   it("says what the items of the blank row lack", () => {
@@ -103,6 +151,17 @@ describe("summaryQuery", () => {
       include_drafts: true,
     });
   });
+
+  it("is the query of the management report too", () => {
+    expect(
+      summaryQuery<"vendor" | "tag">({
+        filter: "catalog.kind:eq:hardware",
+        by: "vendor",
+        includeArchived: false,
+        includeDrafts: false,
+      }),
+    ).toEqual({ filter: "catalog.kind:eq:hardware", by: "vendor" });
+  });
 });
 
 describe("the kinds beside the headline", () => {
@@ -118,8 +177,16 @@ describe("the kinds beside the headline", () => {
 
   it("splits the kinds as the setting has them", () => {
     const shown = kindsShown(KINDS, ["hardware", "virtual_machine"]);
-    expect(shown.counted.map((kind) => kind.kind)).toEqual(["hardware", "virtual_machine"]);
-    expect(shown.beside.map((kind) => kind.kind)).toEqual(["software", "service"]);
+    expect(shown.counted.map((kind) => kind.key)).toEqual(["hardware", "virtual_machine"]);
+    expect(shown.beside.map((kind) => kind.key)).toEqual(["software", "service"]);
+  });
+
+  it("puts the items of no kind beside the headline", () => {
+    const none = { key: null, label: null, items: 2, component_count: 2 };
+    const shown = kindsShown([...KINDS, none], ["hardware"]);
+    expect(shown.counted.map((kind) => kind.key)).toEqual(["hardware"]);
+    expect(shown.beside).toContain(none);
+    expect(kindLabel(null)).toBe("No kind");
   });
 
   it("claims no kind for the headline when the setting is not known", () => {

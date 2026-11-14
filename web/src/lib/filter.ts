@@ -141,6 +141,15 @@ export function parseShort(text: string): ShortResult {
   return { ok: true, filter: all(...conditions) };
 }
 
+/**
+ * The grid of items with a filter in the short form, as a path of the app. A link names
+ * particular items, a model's or an owner's or the ones in a chassis, so it asks for the
+ * minor items among them too, which the grid otherwise leaves out.
+ */
+export function itemsPath(short: string): string {
+  return `/items?filter=${encodeURIComponent(short)}&minor=1`;
+}
+
 function shortValue(value: Condition["value"]): string {
   if (Array.isArray(value)) return value.map(String).join(",");
   return value === undefined ? "" : String(value);

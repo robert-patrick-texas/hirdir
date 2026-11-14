@@ -9,6 +9,7 @@ import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
 import { effectiveText, inheritHint, isInherited, sourceHint, sourceLabel } from "../lib/effective";
+import { itemsPath } from "../lib/filter";
 import { formatTime } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
@@ -429,9 +430,7 @@ function EntryFacts({ entry, choices }: { entry: Entry; choices: readonly Choice
     <section aria-labelledby="entry">
       <h2 id="entry">Catalog entry</h2>
       <p>
-        <Link to={`/items?filter=${encodeURIComponent(`catalog_entry_hid:eq:${entry.hid}`)}`}>
-          Items of this entry
-        </Link>
+        <Link to={itemsPath(`catalog_entry_hid:eq:${entry.hid}`)}>Items of this entry</Link>
       </p>
       <dl className="facts">
         <dt>Vendor</dt>

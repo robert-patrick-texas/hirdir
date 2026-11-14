@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../../api/client";
 import { exportColumns } from "../../lib/transfer";
-import { columnDefaults, queryColumns } from "./columns";
-import { itemColumns, itemIsDimmed } from "./itemColumns";
+import { cellHint, columnDefaults, queryColumns } from "./columns";
+import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "./itemColumns";
 
 type Item = Schemas["ItemOut"];
 type InForce = Schemas["EffectiveValue"];
@@ -36,6 +36,13 @@ const supply = {
   expected_online: null,
   owner: null,
   record_status: "active",
+  condition: null,
+  observed_status: null,
+  observed_at: null,
+  health: {
+    value: "unknown",
+    reasons: ["nothing is said of its condition, and nothing is observed"],
+  },
   groups: [],
   addresses: [],
   effective: {
@@ -63,6 +70,13 @@ const chassis = {
   position: null,
   parent: null,
   lifecycle_state: "Prod",
+  condition: "suspect",
+  observed_status: "unreachable",
+  observed_at: "2026-11-13T14:30:00Z",
+  health: {
+    value: "failed",
+    reasons: ["it is expected online and is observed unreachable"],
+  },
   groups: [
     {
       hid: "m-1",
@@ -91,6 +105,7 @@ const chassis = {
       network_hid: "n-1",
       role: "management",
       is_primary: true,
+      family: 4,
     },
     {
       hid: "a-2",
@@ -99,6 +114,7 @@ const chassis = {
       network_hid: null,
       role: "loopback",
       is_primary: false,
+      family: 6,
     },
   ],
   effective: {
@@ -110,7 +126,21 @@ const chassis = {
   },
 } as unknown as Item;
 
-const COLUMNS = itemColumns([], ["Assigned", "Prod", "Archived"]);
+const CONDITIONS = ["untested", "good", "degraded", "suspect", "failed", "dead"].map(
+  (value, place) => ({
+    hid: `c-${place}`,
+    list: "item_condition",
+    value,
+    label: value.charAt(0).toUpperCase() + value.slice(1),
+    sort: place,
+    active: true,
+    row_version: 1,
+    created_at: "2026-01-31T19:05:09Z",
+    updated_at: "2026-01-31T19:05:09Z",
+  }),
+);
+
+const COLUMNS = itemColumns(CONDITIONS, ["Assigned", "Prod", "Archived"]);
 
 function column(id: string) {
   const found = COLUMNS.find((candidate) => candidate.id === id);
@@ -170,7 +200,71 @@ describe("the standing and the owner in the item grid", () => {
   });
 });
 
+describe("health, condition and what is observed in the item grid", () => {
+  it("shows the health by its word, with a mark in its colour and the reasons as its hint", () => {
+    const health = column("health");
+    expect(health.value(chassis)).toBe("Failed");
+    expect(health.mark?.(chassis)).toBe("failed");
+    expect(cellHint(health, chassis)).toBe("it is expected online and is observed unreachable");
+    expect(health.value(supply)).toBe("Unknown");
+    expect(health.mark?.(supply)).toBe("unknown");
+  });
+
+  it("filters and sorts by the health the server works out, among its four values", () => {
+    expect(asked("health")).toMatchObject({ field: "health", sortField: "health", kind: "choice" });
+    expect(column("health").choices?.map((choice) => choice.value)).toEqual([
+      "good",
+      "degraded",
+      "failed",
+      "unknown",
+    ]);
+  });
+
+  it("shows the condition by the label of its list, and what is observed in words", () => {
+    expect(column("condition").value(chassis)).toBe("Suspect");
+    expect(column("condition").value(supply)).toBe("");
+    expect(column("condition").choices?.map((choice) => choice.value)).toEqual([
+      "untested",
+      "good",
+      "degraded",
+      "suspect",
+      "failed",
+      "dead",
+    ]);
+    expect(column("observed_status").value(chassis)).toBe("Unreachable");
+    expect(column("observed_status").value(supply)).toBe("");
+    expect(column("observed_status").choices?.map((choice) => choice.value)).toEqual([
+      "online",
+      "degraded",
+      "unreachable",
+      "present",
+    ]);
+    expect(column("observed_at").value(chassis)).toMatch(/2026/);
+    expect(column("observed_at").value(supply)).toBe("");
+  });
+
+  it("filters and sorts the two facts and the moment by their own fields", () => {
+    expect(asked("condition")).toMatchObject({ field: "condition", sortField: "condition" });
+    expect(asked("observed_status")).toMatchObject({
+      field: "observed_status",
+      sortField: "observed_status",
+    });
+    expect(asked("observed_at")).toMatchObject({ field: "observed_at", kind: "timestamp" });
+  });
+
+  it("hides the condition and what is observed until they are asked for", () => {
+    expect(column("health").hide).toBeUndefined();
+    for (const id of ["condition", "observed_status", "observed_at"]) {
+      expect(column(id).hide, id).toBe(true);
+    }
+  });
+});
+
 describe("major and minor items in the item grid", () => {
+  it("leaves minor items out by a filter on is_major", () => {
+    expect(MAJOR_ITEMS).toEqual({ field: "is_major", op: "eq", value: true });
+  });
+
   it("says which an item is, where it is and how deep", () => {
     expect(column("is_major").value(supply)).toBe("Minor");
     expect(column("is_major").value(chassis)).toBe("Major");
@@ -201,7 +295,26 @@ describe("groups and addresses in the item grid", () => {
     expect(column("address").value(chassis)).toBe("192.0.2.10 (Red), 2001:db8::10");
     expect(column("network.label").value(chassis)).toBe("Red");
     expect(column("group.name").value(supply)).toBe("");
-    expect(column("mgmt_address").value(supply)).toBeUndefined();
+    expect(column("mgmt_address").value(supply)).toBe("");
+  });
+
+  it("shows the primary management address of each family, IPv4 first", () => {
+    const both = {
+      ...chassis,
+      addresses: [
+        {
+          hid: "a-3",
+          address: "2001:db8::10",
+          network: null,
+          network_hid: null,
+          role: "management",
+          is_primary: true,
+          family: 6,
+        },
+        ...chassis.addresses.slice(0, 1),
+      ],
+    } as Item;
+    expect(column("mgmt_address").value(both)).toBe("192.0.2.10, 2001:db8::10");
   });
 
   it("filters by any of them, and never sorts by what an item may have several of", () => {
@@ -218,17 +331,31 @@ describe("groups and addresses in the item grid", () => {
   it("exports only the columns a file of items has", () => {
     const every = COLUMNS.map((one) => ({ colId: one.id }));
     const exported = exportColumns(COLUMNS, every);
-    for (const name of ["is_major", "parent", "position", "depth", "mgmt_address"]) {
+    for (const name of [
+      "is_major",
+      "parent",
+      "position",
+      "depth",
+      "health",
+      "condition",
+      "observed_status",
+      "observed_at",
+    ]) {
       expect(exported, name).toContain(name);
     }
     for (const name of ["group.name", "group.type", "address", "network.label"]) {
       expect(exported, name).not.toContain(name);
     }
   });
+
+  it("exports the management address as a column of each family", () => {
+    const exported = exportColumns(COLUMNS, [{ colId: "name" }, { colId: "mgmt_address" }]);
+    expect(exported).toEqual(["hid", "name", "mgmt_ipv4", "mgmt_ipv6"]);
+  });
 });
 
 describe("the columns a reader starts with", () => {
-  it("are the ones of the last release: every new column is there to be shown when wanted", () => {
+  it("are the ones of 0.3.0 and the health: every other new column is shown when wanted", () => {
     const shown = columnDefaults(COLUMNS)
       .filter((one) => !one.hide)
       .map((one) => one.id);
@@ -240,6 +367,7 @@ describe("the columns a reader starts with", () => {
       "lifecycle_state",
       "disposition",
       "expected_online",
+      "health",
       "owner.label",
       "tags",
       "effective.est_value",

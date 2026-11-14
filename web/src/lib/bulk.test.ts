@@ -57,6 +57,69 @@ describe("bulkRows", () => {
       include_drafts: false,
     });
   });
+
+  it("sends the filter of a switch that is off, though the reader set none of their own", () => {
+    // The item grid leaves minor items out: what is edited in bulk is what the grid shows.
+    const majorOnly = { field: "is_major", op: "eq", value: true } as const;
+    expect(
+      bulkRows({ kind: "all", count: 39 }, { ...VIEW, filter: majorOnly, unfiltered: true }),
+    ).toEqual({
+      filter: majorOnly,
+      include_archived: true,
+      include_drafts: false,
+    });
+  });
+});
+
+describe("condition and what is observed, in bulk", () => {
+  const fields: BulkField[] = [
+    {
+      name: "condition",
+      label: "Condition",
+      kind: "choice",
+      options: [{ value: "suspect", label: "Suspect" }],
+      clearable: true,
+    },
+    {
+      name: "observed_status",
+      label: "Observed status",
+      kind: "choice",
+      options: [{ value: "present", label: "Present" }],
+      clearable: true,
+    },
+  ];
+
+  it("sets both as columns of an import", () => {
+    const built = buildBulk(
+      fields,
+      draft({
+        lines: [
+          { name: "condition", clear: false, value: "suspect" },
+          { name: "observed_status", clear: false, value: "present" },
+        ],
+      }),
+      ROWS,
+    );
+    expect(built.errors).toEqual({});
+    expect(built.body).toEqual({
+      hids: ["i-1", "i-2"],
+      set: { condition: "suspect", observed_status: "present" },
+    });
+  });
+
+  it("clears both with null", () => {
+    const built = buildBulk(
+      fields,
+      draft({
+        lines: [
+          { name: "condition", clear: true, value: "" },
+          { name: "observed_status", clear: true, value: "" },
+        ],
+      }),
+      ROWS,
+    );
+    expect(built.body.set).toEqual({ condition: null, observed_status: null });
+  });
 });
 
 describe("buildBulk", () => {

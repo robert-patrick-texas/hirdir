@@ -18,6 +18,7 @@ const COLUMNS = [
   { id: "effective.ldos" },
   { id: "vendor_hid", column: null },
   { id: "pid_again", column: "catalog.pid" },
+  { id: "mgmt_address", column: ["mgmt_ipv4", "mgmt_ipv6"] },
   { id: "hid" },
 ];
 
@@ -51,6 +52,17 @@ describe("exportColumns", () => {
   it("leaves out a column no export has, and names a column once", () => {
     const state = [{ colId: "vendor_hid" }, { colId: "catalog.pid" }, { colId: "pid_again" }];
     expect(exportColumns(COLUMNS, state)).toEqual(["hid", "catalog.pid"]);
+  });
+
+  it("writes every column of an export that one column of the grid shows", () => {
+    const state = [{ colId: "name" }, { colId: "mgmt_address" }, { colId: "hostname" }];
+    expect(exportColumns(COLUMNS, state)).toEqual([
+      "hid",
+      "name",
+      "mgmt_ipv4",
+      "mgmt_ipv6",
+      "hostname",
+    ]);
   });
 
   it("passes over a column the page no longer has", () => {

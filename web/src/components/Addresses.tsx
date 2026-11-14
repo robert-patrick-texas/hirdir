@@ -4,11 +4,18 @@ import { api, type Schemas } from "../api";
 import {
   ADDRESS_ROLES,
   type Address,
+  type AddressRef,
   addressRoleLabel,
   addressText,
+  FAMILIES,
+  familyLabel,
   mayBePrimary,
   networkText,
   newAddress,
+  primaryAddress,
+  primaryAddresses,
+  primaryText,
+  typedFamily,
 } from "../lib/addresses";
 import { useAction, useLoad } from "../lib/hooks";
 import { EVERY, useNetworkOptions } from "../lib/lists";
@@ -27,6 +34,28 @@ interface AddressesProps {
   /** What to call the holder in a sentence: "this item", "this group". */
   whose: string;
   mayEdit: boolean;
+  /** An address was added, changed or removed: what the page shows of them is out of date. */
+  onChanged?: () => void;
+}
+
+/**
+ * The primary management addresses of a record, as its page states them among its
+ * facts: one of each family, IPv4 and IPv6, either or neither.
+ */
+export function ManagementAddresses({ addresses }: { addresses: readonly AddressRef[] }) {
+  const primaries = primaryAddresses(addresses);
+  if (primaries.length === 0) return <span className="muted">—</span>;
+  return (
+    <ul className="plain-list" data-testid="mgmt-addresses">
+      {primaries.map((primary) => (
+        <li key={primary.hid} data-family={primary.family}>
+          <span className="muted">{familyLabel(primary.family)} </span>
+          <span className="mono">{primary.address}</span>
+          {primary.network && <span className="muted"> ({primary.network})</span>}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function holderFilter(holder: AddressHolder): string {
@@ -37,11 +66,12 @@ function holderFilter(holder: AddressHolder): string {
 
 /**
  * The addresses of one item or one device group: each with its network and its role,
- * the primary management address first. Inventory may add one, change one, remove one
- * and mark one as primary. An address is removed outright; the audit trail keeps what
- * it was.
+ * the primary management addresses first. There may be a primary of each family, IPv4
+ * and IPv6. Inventory may add an address, change one, remove one and mark one as the
+ * primary of its family, which leaves the other family's alone. An address is removed
+ * outright; the audit trail keeps what it was.
  */
-export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
+export function Addresses({ holder, whose, mayEdit, onChanged }: AddressesProps) {
   const [turn, setTurn] = useState(0);
   const [done, setDone] = useState("");
   const [editing, setEditing] = useState("");
@@ -62,6 +92,7 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
     setDone(text);
     setEditing("");
     setTurn((count) => count + 1);
+    onChanged?.();
   }
 
   async function makePrimary(address: Address) {
@@ -72,7 +103,11 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
         body: { row_version: address.row_version, is_primary: true },
       }),
     );
-    if (result.ok) changed(`${address.address} is now the primary management address.`);
+    if (result.ok) {
+      changed(
+        `${address.address} is now the primary ${familyLabel(address.family)} management address.`,
+      );
+    }
   }
 
   async function remove(address: Address) {
@@ -98,10 +133,16 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
         <p className="muted">There is no address on {whose}.</p>
       )}
       {rows.length > 0 && (
+        <p className="hint">
+          There may be one primary management address of each family, IPv4 and IPv6. Marking another
+          takes the mark off the one of its own family, and leaves the other family&apos;s alone.
+        </p>
+      )}
+      {rows.length > 0 && (
         <div className="scroll">
           <table className="narrow" data-testid="addresses">
             <caption className="visually-hidden">
-              The addresses of {whose}, the primary management address first
+              The addresses of {whose}, the primary management addresses first
             </caption>
             <thead>
               <tr>
@@ -131,7 +172,9 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
                       {networkText(address.network?.label)}
                     </td>
                     <td>{addressRoleLabel(address.role)}</td>
-                    <td>{address.is_primary ? "Primary" : ""}</td>
+                    <td data-primary={address.is_primary ? address.family : undefined}>
+                      {primaryText(address)}
+                    </td>
                     {mayEdit && (
                       <td className="row-actions">
                         {mayBePrimary(address.role) && !address.is_primary && (
@@ -139,7 +182,7 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
                             type="button"
                             disabled={action.busy}
                             onClick={() => makePrimary(address)}
-                            aria-label={`Make ${named} the primary management address`}
+                            aria-label={`Make ${named} the primary ${familyLabel(address.family)} management address`}
                           >
                             Make primary
                           </button>
@@ -205,7 +248,7 @@ export function Addresses({ holder, whose, mayEdit }: AddressesProps) {
         <NewAddress
           holder={holder}
           networks={networks.data ?? []}
-          first={rows.length === 0}
+          primaries={FAMILIES.filter((family) => primaryAddress(rows, family) !== null)}
           onCancel={() => setAdding(false)}
           onCreated={(address) => {
             setAdding(false);
@@ -252,12 +295,12 @@ function EditAddress({ address, networks, onSaved, onReload, onClose }: EditAddr
       { name: "role", label: "Role", kind: "choice", options: ADDRESS_ROLES },
       {
         name: "is_primary",
-        label: "The primary management address",
+        label: `The primary ${familyLabel(address.family)} management address`,
         kind: "boolean",
-        hint: "Only a management address may be. The mark is taken off the one that had it.",
+        hint: "Only a management address may be. There is one of each family, IPv4 and IPv6: the mark is taken off the one of the same family that had it.",
       },
     ],
-    [networks],
+    [networks, address.family],
   );
   return (
     <section className="panel" aria-labelledby="edit-address">
@@ -284,17 +327,23 @@ function EditAddress({ address, networks, onSaved, onReload, onClose }: EditAddr
 interface NewAddressProps {
   holder: AddressHolder;
   networks: readonly Named[];
-  /** The record has no address yet: a first management address is offered as primary. */
-  first: boolean;
+  /**
+   * The families the record has a primary management address of already. The first
+   * management address of a family is offered as its primary.
+   */
+  primaries: ReadonlyArray<4 | 6>;
   onCancel: () => void;
   onCreated: (address: Address) => void;
 }
 
-function NewAddress({ holder, networks, first, onCancel, onCreated }: NewAddressProps) {
+function NewAddress({ holder, networks, primaries, onCancel, onCreated }: NewAddressProps) {
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState("");
   const [role, setRole] = useState("management");
-  const [primary, setPrimary] = useState(first);
+  // Until the reader says, the first management address of its family is the primary one.
+  const [marked, setMarked] = useState<boolean | null>(null);
+  const family = typedFamily(address);
+  const primary = marked ?? !primaries.includes(family);
   const action = useAction();
   const known = ["address", "network_hid", "role", "is_primary"];
   const refused = fieldErrors(action.error, known).shown;
@@ -358,13 +407,13 @@ function NewAddress({ holder, networks, first, onCancel, onCreated }: NewAddress
           </SelectField>
         </div>
         <CheckField
-          label="The primary management address"
+          label={`The primary ${familyLabel(family)} management address`}
           name="is_primary"
           checked={primary && mayBePrimary(role)}
           disabled={!mayBePrimary(role)}
-          onChange={setPrimary}
+          onChange={setMarked}
           error={refused.is_primary}
-          hint="Only a management address may be. The mark is taken off the one that had it."
+          hint="Only a management address may be. There is one of each family, IPv4 and IPv6: the mark is taken off the one of the same family that had it."
         />
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || address.trim() === ""}>

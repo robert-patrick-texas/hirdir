@@ -36,6 +36,15 @@ const prefix = `site2-sw-dist-${suffix}`;
 const hosts = [`${prefix}-01`, `${prefix}-02`, `${prefix}-03`];
 const serials = hosts.map((_, place) => `ENX${suffix.toUpperCase()}${place + 1}`);
 const filter = `hostname:prefix:${prefix}`;
+// What the grid sends for that filter while Include minor items is off, as it is for a
+// new reader: the switch is part of the filter, so what is exported or edited in bulk is
+// what the grid shows.
+const SENT = {
+  and: [
+    { field: "hostname", op: "prefix", value: prefix },
+    { field: "is_major", op: "eq", value: true },
+  ],
+};
 const SHOWN = [
   "hid",
   "name",
@@ -45,6 +54,7 @@ const SHOWN = [
   "lifecycle_state",
   "disposition",
   "expected_online",
+  "health",
   "owner",
   "tags",
   "est_value",
@@ -344,7 +354,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
   await expect(page.getByText("Copied 3 items to the clipboard, with a header row.")).toBeVisible();
   const all = (await sent).postDataJSON();
   expect(all.hids).toBeUndefined();
-  expect(all.filter).toEqual({ field: "hostname", op: "prefix", value: prefix });
+  expect(all.filter).toEqual(SENT);
   expect(all.sort).toEqual(["-name"]);
   const everything = cells(await page.evaluate(() => navigator.clipboard.readText()), "\t");
   expect(everything[0]).toEqual([
@@ -431,7 +441,7 @@ test("S17: a bulk edit shows before and after, and is not applied once an item h
   await form.getByRole("button", { name: "Preview the change" }).click();
   const body = (await previewed).postDataJSON();
   expect(body.hids).toBeUndefined();
-  expect(body.filter).toEqual({ field: "hostname", op: "prefix", value: prefix });
+  expect(body.filter).toEqual(SENT);
   expect(body.set).toEqual({ comments: comment });
 
   // Before and after, for each row. Nothing has been changed yet.

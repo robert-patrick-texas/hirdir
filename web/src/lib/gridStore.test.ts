@@ -27,6 +27,7 @@ const LAYOUT: GridLayout = {
   short: "lifecycle_state:in:Test,Prod",
   includeArchived: true,
   includeDrafts: false,
+  includeMinor: true,
 };
 
 describe("GridStore", () => {
@@ -110,7 +111,15 @@ describe("parseLayout", () => {
       short: "",
       includeArchived: false,
       includeDrafts: false,
+      includeMinor: false,
     });
+  });
+
+  it("reads a layout stored before the minor-items switch as having it off", () => {
+    const raw = JSON.stringify({ v: 1, columns: [{ id: "name", hide: false }], short: "" });
+    expect(parseLayout(raw)?.includeMinor).toBe(false);
+    const on = JSON.stringify({ v: 1, columns: [], includeMinor: true });
+    expect(parseLayout(on)?.includeMinor).toBe(true);
   });
 });
 
@@ -128,10 +137,11 @@ describe("mergeLayout", () => {
       short: "",
       includeArchived: false,
       includeDrafts: false,
+      includeMinor: false,
     });
   });
 
-  it("keeps the reader's order, widths, visibility, sort and filter", () => {
+  it("keeps the reader's order, widths, visibility, sort, filter and switches", () => {
     expect(mergeLayout(DEFAULTS, LAYOUT)).toEqual(LAYOUT);
   });
 

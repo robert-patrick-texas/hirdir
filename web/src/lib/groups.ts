@@ -1,7 +1,12 @@
 // Device groups as words, and what a form of members sends. The types of group and the
-// roles of each are fixed by the data model. The server checks every group as a whole,
-// a stack for its one master, and its refusal is what counts: what
-// is here only offers what the rules allow and says early what they will say.
+// roles of each are fixed by the data model. The server checks every change, and its
+// refusal is what counts: what is here only offers what the rules allow and says early
+// what they will say.
+//
+// The master of a stack is two facts. The role `master` of a membership marks the master
+// that is intended, the member given the priority: it is optional, and a stack has at
+// most one. The master that is seen is recorded on the stack, with the moment, and may
+// be another member. No rule depends on either, and neither stops a member leaving.
 
 import type { Schemas } from "../api/client";
 import type { Option } from "./patch";
@@ -27,7 +32,8 @@ const ROLES: Readonly<Record<GroupType, readonly string[]>> = {
 };
 
 const ROLE_LABELS: Readonly<Record<string, string>> = {
-  master: "Master",
+  // The role marks the master that is meant. The one that is seen is kept on the stack.
+  master: "Intended master",
   member: "Member",
   active: "Active",
   standby: "Standby",
@@ -66,7 +72,7 @@ export function roleOptions(type: string): Option[] {
   return rolesOf(type).map((role) => ({ value: role, label: roleLabel(role) }));
 }
 
-/** A membership in a few words, as an item's page lists it: "Master, position 1". */
+/** A membership in a few words, as an item's page lists it: "Intended master, position 1". */
 export function membershipText(member: { role: string; position: number | null }): string {
   const role = roleLabel(member.role);
   return member.position === null ? role : `${role}, position ${member.position}`;
@@ -136,16 +142,73 @@ export function buildMembers(
 }
 
 /**
- * What the rules will say of a stack with these members, before it is sent: nothing
- * when it would stand. A stack with no member at all is a shell and stands. From its
- * first member on, an active stack has exactly one master, which may be its only member;
- * a draft may have no master yet, and never two masters.
+ * What the rules will say of the members about to be added to a stack, before they are
+ * sent: nothing when they would stand. A stack needs no master, may be one switch alone,
+ * and may have no member at all. The one thing refused is two intended masters named in
+ * one request: `adding` is the roles of the members of that request.
  */
-export function stackProblem(type: string, recordStatus: string, roles: readonly string[]): string {
-  if (type !== "stack" || roles.length === 0) return "";
-  const masters = roles.filter((role) => role === MASTER).length;
-  if (masters > 1) return "A stack has exactly one master: this one would have more.";
-  if (recordStatus === "draft") return "";
-  if (masters === 0) return "A stack has exactly one master: choose which member it is.";
+export function stackProblem(type: string, adding: readonly string[]): string {
+  if (type !== "stack") return "";
+  const masters = adding.filter((role) => role === MASTER).length;
+  if (masters > 1) {
+    return "A stack has at most one intended master: more than one of these members is named as it.";
+  }
+  return "";
+}
+
+/**
+ * True when a member about to be added as the intended master would take the mark from
+ * the current member that has it. That is no fault: the form says so, and nothing more.
+ */
+export function takesTheMark(
+  type: string,
+  current: readonly string[],
+  adding: readonly string[],
+): boolean {
+  return type === "stack" && current.includes(MASTER) && adding.includes(MASTER);
+}
+
+export type ManagedAs = NonNullable<DeviceGroup["managed_as"]>;
+
+/**
+ * How a cluster is managed, which is what it is on the network and so how many managed
+ * nodes it counts as. The component count and the support weight do not depend on it.
+ */
+export const MANAGED_AS: ReadonlyArray<
+  Option & { value: ManagedAs; nodes: string; explained: string }
+> = [
+  {
+    value: "one",
+    label: "One managed node",
+    nodes: "One managed node",
+    explained:
+      "The cluster is one device on the network, and its members do not appear by themselves: a pair of wireless LAN controllers in HA, with one address to manage.",
+  },
+  {
+    value: "members",
+    label: "One for each member",
+    nodes: "One managed node for each member",
+    explained:
+      "Every member is managed at its own address, and virtual addresses are shared between them: a pair of firewalls in HA.",
+  },
+  {
+    value: "members_and_cluster",
+    label: "Its members and a node of its own",
+    nodes: "One managed node for each member, and one more for the cluster itself",
+    explained:
+      "Every member is managed, and the cluster answers as a virtual node as well: one more managed node than it has members.",
+  },
+];
+
+/** How a cluster is managed, in a few words, for a cell or a fact. Blank for a group that is no cluster. */
+export function managedAsText(managedAs: string | null | undefined): string {
+  if (!managedAs) return "";
+  return MANAGED_AS.find((known) => known.value === managedAs)?.nodes ?? managedAs;
+}
+
+/** Which master the serial number of a stack is read from, in words. Blank when from neither. */
+export function serialSourceText(source: string | null | undefined): string {
+  if (source === "observed") return "read from the master that is seen";
+  if (source === "intended") return "read from the intended master";
   return "";
 }

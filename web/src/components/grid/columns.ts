@@ -5,6 +5,7 @@ import { type Effective, isInherited, sourceHint } from "../../lib/effective";
 import type { Kind } from "../../lib/filter";
 import type { QueryColumn } from "../../lib/gridQuery";
 import type { ColumnDefault, GridLayout } from "../../lib/gridStore";
+import { healthTone } from "../../lib/health";
 import type { Option } from "../../lib/patch";
 import { ChoiceFilter } from "./choiceFilter";
 
@@ -17,12 +18,25 @@ export interface GridColumn<T> {
   field?: string | null;
   /** The field the server sorts by. Left out, the filter's. Null for a column with no sort. */
   sortField?: string | null;
-  /** The column of an export that holds this one. Left out, the ID. Null when none does. */
-  column?: string | null;
+  /**
+   * The column of an export that holds this one, or the columns when it shows several.
+   * Left out, the ID. Null when none does.
+   */
+  column?: string | readonly string[] | null;
   /** The text of a cell. */
   value: (row: T) => string | null | undefined;
   /** For a field that inherits: its value in force, to style it and to name its source. */
   effective?: (row: T) => Effective | null | undefined;
+  /**
+   * For a health: the colour of the mark that stands before the text of the cell, by the
+   * name of the health. The text stays, so the colour is never all there is.
+   */
+  mark?: (row: T) => string | null | undefined;
+  /**
+   * What more there is to say of a cell, such as the reasons of a health: shown on hover,
+   * and beneath the grid when the cell has the focus.
+   */
+  hint?: (row: T) => string | null | undefined;
   /** Show the cell as the link to its record. */
   link?: boolean;
   /**
@@ -178,6 +192,34 @@ function linkRenderer<T>(context: ColumnContext<T>) {
   };
 }
 
+/**
+ * A cell with a mark in the colour of its health before its text. The mark is decoration
+ * and hidden from a screen reader: the word beside it says the same.
+ */
+function markRenderer<T>(mark: (row: T) => string | null | undefined) {
+  return (params: ICellRendererParams<T, string>): HTMLElement => {
+    const cell = document.createElement("span");
+    const text = params.value ?? "";
+    if (!params.data || text === "") return cell;
+    cell.className = `health health-${healthTone(mark(params.data))}`;
+    const dot = document.createElement("span");
+    dot.className = "health-dot";
+    dot.setAttribute("aria-hidden", "true");
+    cell.append(dot, text);
+    return cell;
+  };
+}
+
+/**
+ * What more a cell has to say: its own hint, or for an inherited value where it came
+ * from. Blank when there is nothing.
+ */
+export function cellHint<T>(column: GridColumn<T>, row: T): string {
+  const own = column.hint?.(row);
+  if (own) return own;
+  return column.effective ? sourceHint(column.effective(row)) : "";
+}
+
 /** The grid's column definitions: the page's columns, laid out as the reader left them. */
 export function columnDefs<T>(
   columns: readonly GridColumn<T>[],
@@ -217,11 +259,16 @@ export function columnDefs<T>(
               "cell-inherited": (params) =>
                 Boolean(params.data) && isInherited(effective(params.data as T)),
             },
+          }
+        : {}),
+      ...(effective || column.hint
+        ? {
             tooltipValueGetter: (params) =>
-              params.data ? sourceHint(effective(params.data)) || null : null,
+              params.data ? cellHint(column, params.data) || null : null,
           }
         : {}),
       ...(column.link ? { cellRenderer: linkRenderer(context) } : {}),
+      ...(column.mark ? { cellRenderer: markRenderer(column.mark) } : {}),
     });
   }
   return defs;

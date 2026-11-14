@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { mergeLayout } from "../../lib/gridStore";
-import { columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import { cellHint, columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
 
 interface Row {
   name: string;
   value: string | null;
+  health?: string;
+  why?: string;
 }
 
 const COLUMNS: GridColumn<Row>[] = [
@@ -45,6 +47,18 @@ const COLUMNS: GridColumn<Row>[] = [
     ],
   },
   { id: "address", header: "Addresses", kind: "address", sortField: null, value: () => null },
+  {
+    id: "health",
+    header: "Health",
+    kind: "choice",
+    value: (row) => row.health,
+    mark: (row) => row.health,
+    hint: (row) => row.why,
+    choices: [
+      { value: "good", label: "Good" },
+      { value: "failed", label: "Failed" },
+    ],
+  },
 ];
 
 const CONTEXT = { href: () => "/items/x", open: () => {} };
@@ -208,6 +222,39 @@ describe("columnDefs", () => {
     expect(tooltip(blank as TipParams)).toBeNull();
   });
 
+  it("shows a health as a mark before its word, with the reasons as its hint", () => {
+    const column = def("health");
+    // The word is the cell's value, so it is what is copied, read out and searched.
+    const value = column.valueGetter;
+    const tooltip = column.tooltipValueGetter;
+    if (typeof value !== "function" || typeof tooltip !== "function") {
+      throw new Error("the column has no value or no tooltip");
+    }
+    type ValueParams = Parameters<typeof value>[0];
+    type TipParams = Parameters<typeof tooltip>[0];
+    const failed = { data: { name: "a", value: null, health: "Failed", why: "it is dead" } };
+    expect(value(failed as ValueParams)).toBe("Failed");
+    expect(typeof column.cellRenderer).toBe("function");
+    expect(tooltip(failed as TipParams)).toBe("it is dead");
+    expect(tooltip({ data: { name: "b", value: null } } as TipParams)).toBeNull();
+    // A column with neither a mark nor a link is drawn by the grid itself.
+    expect(def("state").cellRenderer).toBeUndefined();
+    expect(def("state").tooltipValueGetter).toBeUndefined();
+  });
+
+  it("says of a cell what its hint says, or where an inherited value came from", () => {
+    const health = COLUMNS.find((column) => column.id === "health");
+    const value = COLUMNS.find((column) => column.id === "effective.est_value");
+    const name = COLUMNS.find((column) => column.id === "name");
+    if (!health || !value || !name) throw new Error("a column is missing");
+    expect(cellHint(health, { name: "a", value: null, why: "it is dead" })).toBe("it is dead");
+    expect(cellHint(health, { name: "a", value: null })).toBe("");
+    expect(cellHint(value, { name: "a", value: "18000.00" })).toBe(
+      "Inherited from the catalog entry",
+    );
+    expect(cellHint(name, { name: "a", value: "18000.00" })).toBe("");
+  });
+
   it("lays the columns out as the reader left them", () => {
     const layout = mergeLayout(columnDefaults(COLUMNS), {
       columns: [
@@ -222,6 +269,7 @@ describe("columnDefs", () => {
       short: "",
       includeArchived: false,
       includeDrafts: false,
+      includeMinor: false,
     });
     const laid = defs(layout);
     // The two columns the reader placed keep their order; the rest follow where the page has them.
@@ -230,6 +278,7 @@ describe("columnDefs", () => {
       "aliases",
       "is_major",
       "address",
+      "health",
       "name",
       "effective.est_value",
       "ldos",
@@ -238,7 +287,7 @@ describe("columnDefs", () => {
       "online",
     ]);
     expect(laid[0]).toMatchObject({ initialWidth: 90, initialHide: false });
-    expect(laid[4]).toMatchObject({ initialHide: true, initialSort: "asc", initialSortIndex: 1 });
+    expect(laid[5]).toMatchObject({ initialHide: true, initialSort: "asc", initialSortIndex: 1 });
     expect(laid.find((column) => column.colId === "ldos")).toMatchObject({
       initialSort: "desc",
       initialSortIndex: 0,

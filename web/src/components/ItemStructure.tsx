@@ -6,6 +6,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { effectiveLabel, effectiveText, isInherited, sourceHint } from "../lib/effective";
+import { itemsPath } from "../lib/filter";
 import { itemName, plural, today } from "../lib/format";
 import { groupTypeLabel, membershipText } from "../lib/groups";
 import { useAction, useLoad } from "../lib/hooks";
@@ -217,7 +218,7 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
   );
   const rows = children.data?.items ?? [];
   const name = itemName(item);
-  const inGrid = `/items?filter=${encodeURIComponent(`parent_item_hid:eq:${item.hid}`)}`;
+  const inGrid = itemsPath(`parent_item_hid:eq:${item.hid}`);
 
   return (
     <section aria-labelledby="minor-items">
@@ -317,7 +318,11 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
   );
 }
 
-/** The groups an item is a current member of, and for an endpoint its controllers. */
+/**
+ * The groups an item is a current member of, and for an endpoint its controllers, each
+ * with the cluster it is in: a domain may hold several clusters, and an endpoint that
+ * fails over between them is a member of the domain alone.
+ */
 export function Memberships({ item }: { item: Item }) {
   return (
     <section aria-labelledby="groups">
@@ -360,8 +365,18 @@ export function Memberships({ item }: { item: Item }) {
           <h3 id="controllers">Controllers</h3>
           <ul aria-labelledby="controllers" data-testid="controllers">
             {item.controllers.map((controller) => (
-              <li key={controller.hid}>
+              <li key={controller.hid} data-cluster={controller.cluster ?? ""}>
                 <Link to={itemPath(controller.hid)}>{pickLabel(controller)}</Link>
+                {controller.cluster_hid ? (
+                  <span className="muted">
+                    {" · in the cluster "}
+                    <Link to={`/groups/${encodeURIComponent(controller.cluster_hid)}`}>
+                      {controller.cluster ?? "(no name)"}
+                    </Link>
+                  </span>
+                ) : (
+                  <span className="muted"> · a controller of the domain itself</span>
+                )}
               </li>
             ))}
           </ul>

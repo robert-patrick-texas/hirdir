@@ -11,8 +11,10 @@ import {
   ADDRESS_ROLES,
   type Address,
   addressRoleLabel,
+  familyLabel,
   holderPath,
   NETWORK_KINDS,
+  primaryText,
 } from "../lib/addresses";
 import { formatTime, itemName, plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
@@ -84,10 +86,23 @@ const COLUMNS: GridColumn<Address>[] = [
     width: 140,
   },
   {
+    // The server neither filters nor sorts by the family, and no file of addresses has it.
+    id: "family",
+    header: "Family",
+    kind: "choice",
+    field: null,
+    sortField: null,
+    column: null,
+    value: (address) => familyLabel(address.family),
+    width: 100,
+  },
+  {
+    // A record may have a primary management address of each family.
     id: "is_primary",
     header: "Primary",
     kind: "boolean",
     value: (address) => (address.is_primary ? "Yes" : "No"),
+    hint: (address) => (address.is_primary ? `${primaryText(address)} management address` : ""),
     width: 110,
   },
   {

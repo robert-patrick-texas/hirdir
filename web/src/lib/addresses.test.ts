@@ -4,13 +4,18 @@ import {
   addressList,
   addressRoleLabel,
   addressText,
+  familyLabel,
   holderKind,
   holderPath,
+  managementText,
   mayBePrimary,
   networkLabels,
   networkText,
   newAddress,
   primaryAddress,
+  primaryAddresses,
+  primaryText,
+  typedFamily,
 } from "./addresses";
 
 const ITEM = "0193a1f4-0000-7000-8000-000000000001";
@@ -25,6 +30,7 @@ function ref(address: string, network: string | null, more: Partial<AddressRef> 
     network_hid: network ? RED : null,
     role: "management",
     is_primary: false,
+    family: address.includes(":") ? 6 : 4,
     ...more,
   };
 }
@@ -50,10 +56,43 @@ describe("addresses as words", () => {
     expect(addressList(undefined)).toBe("");
   });
 
-  it("finds the primary management address, or none", () => {
-    expect(primaryAddress(ADDRESSES)?.address).toBe("192.0.2.10");
-    expect(primaryAddress(ADDRESSES.slice(1))).toBeNull();
-    expect(primaryAddress(null)).toBeNull();
+  it("finds the primary management address of each family, or none", () => {
+    expect(primaryAddress(ADDRESSES, 4)?.address).toBe("192.0.2.10");
+    expect(primaryAddress(ADDRESSES, 6)).toBeNull();
+    expect(primaryAddress(ADDRESSES.slice(1), 4)).toBeNull();
+    expect(primaryAddress(null, 4)).toBeNull();
+    const both = [
+      ref("2001:db8::10", null, { is_primary: true }),
+      ref("192.0.2.11", "Red"),
+      ref("192.0.2.10", "Red", { is_primary: true }),
+    ];
+    expect(primaryAddress(both, 6)?.address).toBe("2001:db8::10");
+    expect(primaryAddress(both, 4)?.address).toBe("192.0.2.10");
+    // IPv4 first, whatever order the record lists them in.
+    expect(primaryAddresses(both).map((address) => address.address)).toEqual([
+      "192.0.2.10",
+      "2001:db8::10",
+    ]);
+    expect(managementText(both)).toBe("192.0.2.10, 2001:db8::10");
+    expect(managementText(ADDRESSES)).toBe("192.0.2.10");
+    expect(managementText([ref("2001:db8::10", null, { is_primary: true })])).toBe("2001:db8::10");
+    expect(managementText(ADDRESSES.slice(1))).toBe("");
+    expect(managementText(null)).toBe("");
+    expect(primaryAddresses(undefined)).toEqual([]);
+  });
+
+  it("says which family an address is the primary of", () => {
+    expect(familyLabel(4)).toBe("IPv4");
+    expect(familyLabel(6)).toBe("IPv6");
+    expect(primaryText(ref("192.0.2.10", null, { is_primary: true }))).toBe("Primary IPv4");
+    expect(primaryText(ref("2001:db8::10", null, { is_primary: true }))).toBe("Primary IPv6");
+    expect(primaryText(ref("192.0.2.11", null))).toBe("");
+  });
+
+  it("takes an address with a colon in it for IPv6 while it is typed", () => {
+    expect(typedFamily("192.0.2.10")).toBe(4);
+    expect(typedFamily("2001:DB8::1")).toBe(6);
+    expect(typedFamily("")).toBe(4);
   });
 
   it("names each network once", () => {

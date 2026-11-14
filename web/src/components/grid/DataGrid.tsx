@@ -2,8 +2,8 @@
 //
 // AG Grid Community shows the rows; the server sorts, filters and pages them. The grid
 // asks for a block of rows at a time, with its sort and its column filters, and this
-// component turns that into the server's filter grammar. The reader's column layout and
-// last filter are remembered in localStorage.
+// component turns that into the server's filter grammar. The reader's column layout,
+// last filter and switches are remembered in localStorage.
 //
 // Rows are selected whole: one, a range, several, or all that the filter keeps. "All"
 // is never a list of rows: it is shown as a count and sent to the server as the filter.
@@ -27,6 +27,7 @@ import {
   GridStateModule,
   InfiniteRowModelModule,
   ModuleRegistry,
+  RowApiModule,
   RowSelectionModule,
   RowStyleModule,
   TextFilterModule,
@@ -49,7 +50,7 @@ import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
 import { routerBasename } from "../../lib/base";
 import { ClipboardRefused, copyText } from "../../lib/clipboard";
-import { all, parseShort } from "../../lib/filter";
+import { all, type FilterNode, parseShort } from "../../lib/filter";
 import { plural } from "../../lib/format";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
@@ -67,7 +68,7 @@ import {
 } from "../../lib/transfer";
 import { CheckField, TextField } from "../Field";
 import { Notice, Problem } from "../Problem";
-import { columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
+import { cellHint, columnDefaults, columnDefs, type GridColumn, queryColumns } from "./columns";
 import { saveFile } from "./save";
 
 ModuleRegistry.registerModules([
@@ -81,6 +82,8 @@ ModuleRegistry.registerModules([
   TooltipModule,
   ColumnApiModule,
   GridStateModule,
+  // To read the row of the cell that has the focus.
+  RowApiModule,
 ]);
 
 // How many rows the grid asks the server for at a time.
@@ -111,6 +114,14 @@ export interface DataGridProps<T> {
   startFilter?: string | null;
   /** Offer the switches for records a list leaves out by default. */
   switches?: { archived?: string; drafts?: string };
+  /**
+   * Rows the grid leaves out until a switch is turned on, as the item grid leaves out
+   * minor items: the label of the switch, and the filter that leaves them out. While the
+   * switch is off that filter is part of every filter sent, so what is copied, exported
+   * or edited in bulk is what the grid shows. `start` turns the switch on for this visit,
+   * as a link to particular rows does, without changing what is remembered.
+   */
+  minor?: { label: string; without: FilterNode; start?: boolean };
   /** Change it to read the list again, as after a record was created. */
   reloadKey?: number;
   /** The kind of record the rows are, as an export names it. With it, Copy and Export are offered. */
@@ -125,6 +136,7 @@ interface View {
   short: string;
   includeArchived: boolean;
   includeDrafts: boolean;
+  includeMinor: boolean;
 }
 
 function layoutOf(
@@ -149,7 +161,7 @@ function layoutOf(
 
 export function DataGrid<T>(props: DataGridProps<T>) {
   const { id, noun, columns, shortFilter, switches, reloadKey = 0, children } = props;
-  const { entity, onBulkEdit } = props;
+  const { entity, onBulkEdit, minor } = props;
   const { user } = useAuth();
   const navigate = useNavigate();
   const host = useRef<HTMLDivElement>(null);
@@ -169,6 +181,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const [shortError, setShortError] = useState("");
   const [includeArchived, setIncludeArchived] = useState(start.includeArchived);
   const [includeDrafts, setIncludeDrafts] = useState(start.includeDrafts);
+  const [includeMinor, setIncludeMinor] = useState(start.includeMinor || minor?.start === true);
+  // What is remembered of that switch is the reader's own choice, not what a link turned on.
+  const minorChosen = useRef(start.includeMinor);
+  // What the cell that has the focus has to say: the reasons of a health, a value's source.
+  const [note, setNote] = useState("");
   const [grid, setGrid] = useState<GridApi<T> | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(
     () => new Set(start.columns.filter((column) => column.hide).map((column) => column.id)),
@@ -211,7 +228,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     if (api.isDestroyed()) return;
     const state = api.getColumnState();
     setHidden(new Set(state.filter((column) => column.hide).map((column) => column.colId)));
-    saveLayout(api, { short, includeArchived, includeDrafts });
+    saveLayout(api, { short, includeArchived, includeDrafts, includeMinor: minorChosen.current });
   });
 
   // Make the grid. It is made again only if the page gives it other columns.
@@ -272,6 +289,18 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         const key = event.event instanceof KeyboardEvent ? event.event.key : "";
         if (key === "Enter" && event.data) open(event.data);
       },
+      // What a cell shows on hover it also says when it has the focus, beneath the grid,
+      // for whoever moves through the grid with the keyboard.
+      onCellFocused: (event) => {
+        const colId = typeof event.column === "string" ? event.column : event.column?.getColId();
+        const column = columns.find((candidate) => candidate.id === colId);
+        const row =
+          event.rowIndex === null || event.rowPinned
+            ? undefined
+            : event.api.getDisplayedRowAtIndex(event.rowIndex)?.data;
+        const hint = column && row !== undefined ? cellHint(column, row) : "";
+        setNote(column && hint ? `${column.header}: ${hint}` : "");
+      },
     });
     setGrid(api);
     return () => {
@@ -284,9 +313,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // A new source empties the grid's cache, so every row on show is read again.
   const parsed = useMemo(() => parseShort(short), [short]);
   const shortNode = parsed.ok ? parsed.filter : null;
+  // The filter of the switch that is off. Read when the grid is made, as the columns are.
+  const [without] = useState(() => minor?.without ?? null);
+  const leftOut = includeMinor ? null : without;
   const wanted = useMemo(
-    () => ({ shortNode, includeArchived, includeDrafts, reloadKey, turn }),
-    [shortNode, includeArchived, includeDrafts, reloadKey, turn],
+    () => ({ shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn }),
+    [shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn],
   );
   useEffect(() => {
     if (!grid) return;
@@ -296,7 +328,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     grid.setGridOption("datasource", {
       getRows: (params) => {
         const request: ListRequest = {
-          filter: all(wanted.shortNode, gridFilter(query, params.filterModel)),
+          filter: all(wanted.shortNode, gridFilter(query, params.filterModel), wanted.leftOut),
           sort: gridSort(query, params.sortModel),
           limit: params.endRow - params.startRow,
           offset: params.startRow,
@@ -331,7 +363,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     setShortError("");
     setShort(text.trim());
     setDraft(text.trim());
-    if (grid) saveLayout(grid, { short: text.trim(), includeArchived, includeDrafts });
+    if (grid) {
+      saveLayout(grid, {
+        short: text.trim(),
+        includeArchived,
+        includeDrafts,
+        includeMinor: minorChosen.current,
+      });
+    }
   }
 
   function submitShort(event: FormEvent) {
@@ -339,10 +378,21 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     showShort(draft);
   }
 
-  function setSwitch(which: "includeArchived" | "includeDrafts", on: boolean) {
+  function setSwitch(which: "includeArchived" | "includeDrafts" | "includeMinor", on: boolean) {
     if (which === "includeArchived") setIncludeArchived(on);
-    else setIncludeDrafts(on);
-    if (grid) saveLayout(grid, { short, includeArchived, includeDrafts, [which]: on });
+    else if (which === "includeDrafts") setIncludeDrafts(on);
+    else {
+      setIncludeMinor(on);
+      minorChosen.current = on;
+    }
+    if (!grid) return;
+    saveLayout(grid, {
+      short,
+      includeArchived,
+      includeDrafts,
+      includeMinor: minorChosen.current,
+      [which]: on,
+    });
   }
 
   function showColumn(column: string, on: boolean) {
@@ -363,6 +413,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     setDraft("");
     setIncludeArchived(false);
     setIncludeDrafts(false);
+    setIncludeMinor(false);
+    minorChosen.current = false;
     if (!grid) return;
     const first = mergeLayout(defaults, null);
     grid.applyColumnState({
@@ -378,16 +430,24 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     grid.setFilterModel(null);
     // The grid told of its changes while the box and the switches were still as they
     // were: remember them as they are now.
-    saveLayout(grid, { short: "", includeArchived: false, includeDrafts: false });
+    saveLayout(grid, {
+      short: "",
+      includeArchived: false,
+      includeDrafts: false,
+      includeMinor: false,
+    });
   }
 
   /** What the grid shows now, as the server takes it: the filter, the sort, the switches. */
   function viewOf(api: GridApi<T>): GridView {
+    const own = all(shortNode, gridFilter(query, api.getFilterModel()));
     return {
-      filter: all(shortNode, gridFilter(query, api.getFilterModel())),
+      // The rows a switch leaves out are left out of what is copied, exported and edited too.
+      filter: all(own, leftOut),
       sort: gridSort(query, sortModelOf(api.getColumnState())),
       include_archived: includeArchived,
       include_drafts: includeDrafts,
+      unfiltered: own === null,
     };
   }
 
@@ -523,6 +583,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               onChange={(on) => setSwitch("includeDrafts", on)}
             />
           )}
+          {minor && (
+            <CheckField
+              label={minor.label}
+              name="include_minor"
+              checked={includeMinor}
+              onChange={(on) => setSwitch("includeMinor", on)}
+            />
+          )}
           <details className="grid-columns">
             <summary>Columns</summary>
             <div className="grid-columns-menu">
@@ -645,6 +713,9 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         className={`grid-host ag-theme-quartz${allMatching ? " grid-all" : ""}`}
         data-testid={`grid-${id}`}
       />
+      <p className="grid-cell-note" role="status" data-testid="grid-cell-note">
+        {note}
+      </p>
       <p className="hint">
         Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
         it, with Shift for a range and Ctrl for several. A double click opens the row. With the
@@ -652,6 +723,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         Enter opens it.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
+        {minor &&
+          ` Until ${minor.label} is on, minor items are left out of the grid, and so of what is copied, exported and edited in bulk.`}
       </p>
     </div>
   );

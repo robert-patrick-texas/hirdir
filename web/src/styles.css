@@ -1086,3 +1086,67 @@ td select {
   padding: 0;
   list-style: none;
 }
+
+/* --- condition, observation and health --------------------------------------------- */
+
+/* A health: a mark in its colour, and always its word beside it. */
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.health-dot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: var(--muted);
+  border-radius: 50%;
+}
+
+.health-good .health-dot {
+  background: var(--ok);
+}
+
+.health-degraded .health-dot {
+  background: var(--warn);
+}
+
+.health-failed .health-dot {
+  background: var(--danger);
+}
+
+/* Unknown is a ring, so that it is told from the rest by more than its grey. */
+.health-unknown .health-dot {
+  background: transparent;
+  border: 2px solid var(--muted);
+}
+
+.health-reasons {
+  margin-top: 0.15rem;
+  color: var(--muted);
+}
+
+.health-counts dt {
+  color: var(--text);
+}
+
+/* What the grid says of the cell that has the focus: the reasons of a health, the source
+   of an inherited value. The same is shown on hover. */
+.grid-cell-note {
+  min-height: 1.4rem;
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Something worth knowing that is no fault and asks for nothing. */
+.note {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.8rem;
+  background: var(--info-surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 4px;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Schemas } from "../api/client";
 import {
+  CHOICE_LISTS,
   choiceFilterOptions,
   choiceLabel,
   choiceOptions,
@@ -70,5 +71,12 @@ describe("labels", () => {
     expect(optionLabel(RECORD_STATUSES, "retired")).toBe("Retired");
     expect(optionLabel(RECORD_STATUSES, "held")).toBe("held");
     expect(optionLabel(RECORD_STATUSES, undefined)).toBe("");
+  });
+});
+
+describe("the lists of choices that are edited", () => {
+  it("has the list of conditions among them", () => {
+    expect(CHOICE_LISTS.map((list) => list.value)).toContain("item_condition");
+    expect(optionLabel(CHOICE_LISTS, "item_condition")).toBe("Item condition");
   });
 });

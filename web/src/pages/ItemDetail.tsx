@@ -2,9 +2,10 @@ import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { Addresses } from "../components/Addresses";
+import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField } from "../components/Field";
+import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
@@ -19,6 +20,7 @@ import {
   sourceLabel,
 } from "../lib/effective";
 import { formatMac, formatValue, itemName } from "../lib/format";
+import { CONDITION_LIST } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   DISPOSITIONS,
@@ -118,6 +120,14 @@ export function ItemDetail() {
       {record && (
         <>
           <Facts item={record} choices={choices.data} />
+          <Doing
+            key={`doing ${record.hid} ${record.row_version}`}
+            item={record}
+            choices={choices.data}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+            onReload={item.reload}
+          />
           <Place
             key={`place ${record.hid} ${record.row_version}`}
             item={record}
@@ -137,6 +147,7 @@ export function ItemDetail() {
             holder={{ item_hid: record.hid }}
             whose={itemName(record)}
             mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={item.reload}
           />
           <ValuesInForce item={record} />
           <Lifecycle
@@ -249,6 +260,9 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </span>
           )}
         </Fact>
+        <Fact label="Management address">
+          <ManagementAddresses addresses={item.addresses} />
+        </Fact>
         <Fact label="Quantity">{String(item.quantity)}</Fact>
         <Fact label="Tags">{item.tags.join(", ")}</Fact>
         <Fact label="Description">{item.description}</Fact>
@@ -270,6 +284,128 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
           <span className="mono">{item.hid}</span>
         </Fact>
       </dl>
+    </section>
+  );
+}
+
+interface DoingProps {
+  item: Item;
+  choices: readonly Choice[] | undefined;
+  mayEdit: boolean;
+  onChanged: (text: string) => void;
+  onReload: () => void;
+}
+
+/**
+ * How the item is doing. Three facts are kept apart: the condition, which a person
+ * records; what is observed, with the moment it was seen; and the intent, which is under
+ * Lifecycle. The health is what the server makes of the three, with its reasons.
+ */
+function Doing({ item, choices, mayEdit, onChanged, onReload }: DoingProps) {
+  const [condition, setCondition] = useState(item.condition ?? "");
+  const saving = useAction();
+  const seeing = useAction();
+  const conditions = choiceOptions(choices, CONDITION_LIST, item.condition);
+  const refused = fieldErrors(saving.error, ["condition"]).shown;
+  const intent = item.effective.expected_online.value;
+
+  async function saveCondition(event: FormEvent) {
+    event.preventDefault();
+    const result = await saving.run(() =>
+      api.request("patch", "/api/v1/items/{hid}", {
+        path: { hid: item.hid },
+        body: { row_version: item.row_version, condition: condition === "" ? null : condition },
+      }),
+    );
+    if (result.ok) onChanged("The condition of the item was saved.");
+  }
+
+  return (
+    <section aria-labelledby="doing">
+      <h2 id="doing">Condition and health</h2>
+      <dl className="facts">
+        <dt>Health</dt>
+        <dd>
+          <HealthWithReasons health={item.health} testId="health" />
+        </dd>
+        <dt>Condition</dt>
+        <dd data-testid="condition" data-condition={item.condition ?? ""}>
+          {choiceLabel(choices, CONDITION_LIST, item.condition) || (
+            <span className="muted">Nobody has said</span>
+          )}
+        </dd>
+        <dt>Observed</dt>
+        <dd data-testid="observed" data-observed={item.observed_status ?? ""}>
+          <ObservedText status={item.observed_status} at={item.observed_at} />
+        </dd>
+        <dt>Expected online</dt>
+        <dd>{typeof intent === "boolean" ? intent ? "Yes" : "No" : <Dash />}</dd>
+      </dl>
+      <p className="hint">
+        The condition is the state of the hardware as a person knows it, and holds while the item is
+        on a shelf. What is observed is what is seen of the item on the network, or Present: what a
+        person saw of something that is never on the network. Health is worked out from the two and
+        from whether the item is expected online, each time the item is read. None of them moves the
+        item in the lifecycle: a move is made under Lifecycle, with its own reason.
+        {!item.is_major &&
+          " A minor item inherits neither: each is a fact about one piece of hardware."}
+      </p>
+      {mayEdit && (
+        <>
+          <section aria-labelledby="set-condition" className="panel">
+            <h3 id="set-condition">Record the condition</h3>
+            <form onSubmit={saveCondition} className="stack" noValidate>
+              <Problem error={saving.error} shown={["condition"]} onReload={onReload} />
+              <div className="inline">
+                <SelectField
+                  label="Condition"
+                  name="condition"
+                  value={condition}
+                  onChange={setCondition}
+                  disabled={saving.busy}
+                  error={refused.condition}
+                  hint="Untested is new and not yet tried, and so of unknown health"
+                >
+                  <option value="">Nobody has said</option>
+                  {conditions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+              <p className="actions">
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={saving.busy || condition === (item.condition ?? "")}
+                >
+                  Save condition
+                </button>
+              </p>
+            </form>
+          </section>
+          <section aria-labelledby="set-observed" className="panel">
+            <h3 id="set-observed">Record what is seen</h3>
+            <Observation
+              whose={itemName(item)}
+              status={item.observed_status}
+              busy={seeing.busy}
+              error={seeing.error}
+              onReload={onReload}
+              onChange={async (patch, done) => {
+                const result = await seeing.run(() =>
+                  api.request("patch", "/api/v1/items/{hid}", {
+                    path: { hid: item.hid },
+                    body: { row_version: item.row_version, ...patch },
+                  }),
+                );
+                if (result.ok) onChanged(done);
+              }}
+            />
+          </section>
+        </>
+      )}
     </section>
   );
 }
@@ -802,8 +938,8 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
                 <p>
                   Its {item.groups.length === 1 ? "membership" : "memberships"} of{" "}
                   {item.groups.map((group) => group.name).join(", ")} end
-                  {item.groups.length === 1 ? "s" : ""} today. The master of a stack that has other
-                  members is not retired until another member is made the master.
+                  {item.groups.length === 1 ? "s" : ""} today, and stay
+                  {item.groups.length === 1 ? "s" : ""} on record with that day.
                 </p>
               )}
             </ConfirmButton>

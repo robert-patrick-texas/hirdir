@@ -1,5 +1,5 @@
 // How each reader left each grid: the order, width and visibility of its columns, its
-// sort, and the last filter. Kept in localStorage under a key that names the user, so
+// sort, the last filter, and the switches for what a list leaves out. Kept in localStorage under a key that names the user, so
 // two people who share a browser do not inherit each other's layout. Nothing here is
 // sent anywhere.
 
@@ -29,6 +29,8 @@ export interface GridLayout {
   short: string;
   includeArchived: boolean;
   includeDrafts: boolean;
+  /** For a grid that leaves minor items out until asked: whether they were asked for. */
+  includeMinor: boolean;
 }
 
 /** A column as the page defines it, before the reader changed anything. */
@@ -78,6 +80,8 @@ export function parseLayout(raw: string | null): GridLayout | null {
     short: typeof value.short === "string" ? value.short : "",
     includeArchived: value.includeArchived === true,
     includeDrafts: value.includeDrafts === true,
+    // A layout stored before the switch existed has it off, as a new one has.
+    includeMinor: value.includeMinor === true,
   };
 }
 
@@ -104,6 +108,7 @@ export function mergeLayout(
       short: "",
       includeArchived: false,
       includeDrafts: false,
+      includeMinor: false,
     };
   }
   const known = new Map(defaults.map((column) => [column.id, column]));
@@ -128,6 +133,7 @@ export function mergeLayout(
     short: stored.short,
     includeArchived: stored.includeArchived,
     includeDrafts: stored.includeDrafts,
+    includeMinor: stored.includeMinor,
   };
 }
 

@@ -20,6 +20,11 @@ export interface GridView {
   sort: string[];
   include_archived: boolean;
   include_drafts: boolean;
+  /**
+   * True when the reader set no filter of their own, so that `filter` holds at most what
+   * a switch of the grid adds, such as the one that leaves minor items out.
+   */
+  unfiltered?: boolean;
 }
 
 /**
@@ -36,8 +41,11 @@ export function chosenCount(chosen: Chosen): number {
 export interface ExportColumn {
   /** The column's ID in the grid. */
   id: string;
-  /** The column of an export that holds it. Left out, the ID. Null when no export has it. */
-  column?: string | null;
+  /**
+   * The column of an export that holds it, or the columns when it shows several, as the
+   * management addresses of both families. Left out, the ID. Null when no export has it.
+   */
+  column?: string | readonly string[] | null;
 }
 
 /** A column of the grid as the grid reports it: where it stands and whether it is hidden. */
@@ -59,8 +67,10 @@ export function exportColumns(
     if (entry.hide === true) continue;
     const column = columns.find((candidate) => candidate.id === entry.colId);
     if (!column) continue;
-    const name = column.column === undefined ? column.id : column.column;
-    if (name !== null && !names.includes(name)) names.push(name);
+    const named = column.column === undefined ? column.id : column.column;
+    for (const name of typeof named === "string" ? [named] : (named ?? [])) {
+      if (!names.includes(name)) names.push(name);
+    }
   }
   return names;
 }

@@ -84,6 +84,14 @@ export function Choices() {
           ))}
         </SelectField>
       </div>
+      {list === "item_condition" && (
+        <p className="hint">
+          The condition of an item: the state of its hardware, as a person knows it. Health is
+          worked out from the six values the list starts with: good is good, degraded and suspect
+          are degraded, failed and dead are failed, and untested is unknown. A value added here is a
+          condition like any other, and says nothing about health either way.
+        </p>
+      )}
 
       <Problem error={choices.error} />
       <Problem error={action.error} onReload={choices.reload} />

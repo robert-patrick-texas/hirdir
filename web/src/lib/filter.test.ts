@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { all, any, formatShort, KINDS, OPERATORS, parseShort } from "./filter";
+import { all, any, formatShort, itemsPath, KINDS, OPERATORS, parseShort } from "./filter";
 
 function parsed(text: string) {
   const result = parseShort(text);
   if (!result.ok) throw new Error(result.error);
   return result.filter;
 }
+
+describe("itemsPath", () => {
+  it("links to the grid of items with the filter, and asks for minor items too", () => {
+    expect(itemsPath("parent_item_hid:eq:0193a1f4-0000-7000-8000-000000000001")).toBe(
+      "/items?filter=parent_item_hid%3Aeq%3A0193a1f4-0000-7000-8000-000000000001&minor=1",
+    );
+    expect(itemsPath("hostname:prefix:site2- tags:has:core")).toBe(
+      "/items?filter=hostname%3Aprefix%3Asite2-%20tags%3Ahas%3Acore&minor=1",
+    );
+  });
+});
 
 describe("parseShort", () => {
   it("reads one condition", () => {

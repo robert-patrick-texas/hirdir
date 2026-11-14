@@ -1,19 +1,21 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, Fragment, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { Addresses } from "../components/Addresses";
+import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { CheckField, TextField } from "../components/Field";
+import { CheckField, SelectField, TextField } from "../components/Field";
 import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { MemberPicker } from "../components/MemberPicker";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
-import { addressList, networkLabels, primaryAddress } from "../lib/addresses";
+import { addressList, managementText, networkLabels } from "../lib/addresses";
+import { itemsPath } from "../lib/filter";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import {
@@ -22,15 +24,20 @@ import {
   defaultRole,
   GROUP_TYPES,
   groupTypeLabel,
+  MANAGED_AS,
   MASTER,
   type Member,
+  managedAsText,
   ownerDisputed,
   type PendingMember,
   roleLabel,
   roleOptions,
   rolesOf,
+  serialSourceText,
   stackProblem,
+  takesTheMark,
 } from "../lib/groups";
+import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
@@ -61,9 +68,11 @@ function Dash() {
 }
 
 /**
- * The columns of the grid of device groups. The serial number, the master and the
- * number of members are read from the members as the list is asked for: the server
- * neither filters nor sorts by them.
+ * The columns of the grid of device groups. The serial number, the two masters, the
+ * number of members and the health are read from the members as the list is asked for,
+ * and the server does not sort by them. A stack answers to the serial number of any of
+ * its current members, so that is what the Serial number column filters by. The health
+ * of a group is shown and not yet filtered by.
  */
 const COLUMNS: GridColumn<DeviceGroup>[] = [
   {
@@ -91,24 +100,51 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
   },
   { id: "fqdn", header: "FQDN", kind: "text", value: (group) => group.fqdn, hide: true },
   {
-    // For a stack, the serial number of its master.
+    // For a stack: the serial number of the master that is seen, or else of the one
+    // intended. The filter finds a stack by the serial number of any current member.
     id: "serial_number",
     header: "Serial number",
     kind: "text",
-    field: null,
+    field: "member.serial_number",
     sortField: null,
     value: (group) => group.serial_number,
+    hint: (group) =>
+      group.serial_source ? `The serial number is ${serialSourceText(group.serial_source)}` : "",
     mono: true,
     width: 150,
   },
   {
+    id: "health",
+    header: "Health",
+    kind: "choice",
+    field: null,
+    sortField: null,
+    value: (group) => healthLabel(group.health?.value),
+    mark: (group) => group.health?.value,
+    hint: (group) => reasonsText(group.health),
+    width: 130,
+  },
+  {
     id: "master",
-    header: "Master",
+    header: "Intended master",
     kind: "text",
     field: null,
     sortField: null,
     column: null,
     value: (group) => (group.master ? itemName(group.master) : ""),
+    hide: true,
+    width: 180,
+  },
+  {
+    id: "observed_master",
+    header: "Master seen",
+    kind: "text",
+    field: null,
+    sortField: null,
+    column: null,
+    value: (group) => (group.observed_master ? itemName(group.observed_master) : ""),
+    hint: (group) =>
+      group.master_as_intended === false ? "Not the intended master, which is no fault" : "",
     hide: true,
     width: 180,
   },
@@ -122,6 +158,41 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     value: (group) => String(group.member_count),
     numeric: true,
     width: 110,
+  },
+  {
+    id: "expected_members",
+    header: "Expected members",
+    kind: "integer",
+    value: (group) => (group.expected_members === null ? "" : String(group.expected_members)),
+    numeric: true,
+    hide: true,
+    width: 160,
+  },
+  {
+    id: "observed_status",
+    header: "Observed status",
+    kind: "choice",
+    value: (group) => observedLabel(group.observed_status),
+    choices: OBSERVED,
+    hide: true,
+    width: 150,
+  },
+  {
+    id: "observed_at",
+    header: "Observed at",
+    kind: "timestamp",
+    value: (group) => formatTime(group.observed_at),
+    hide: true,
+  },
+  {
+    // A cluster only: what it is on the network, and so how many managed nodes.
+    id: "managed_as",
+    header: "Managed as",
+    kind: "choice",
+    value: (group) => managedAsText(group.managed_as),
+    choices: MANAGED_AS.map((way) => ({ value: way.value, label: way.nodes })),
+    hide: true,
+    width: 220,
   },
   {
     id: "owner.label",
@@ -139,15 +210,17 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
   },
   { id: "tags", header: "Tags", kind: "tags", value: (group) => group.tags.join(", "), width: 160 },
   {
+    // The primary one of each family. An export writes a column for each.
     id: "mgmt_address",
     header: "Management address",
     kind: "address",
     field: null,
     sortField: null,
-    value: (group) => primaryAddress(group.addresses)?.address,
+    column: ["mgmt_ipv4", "mgmt_ipv6"],
+    value: (group) => managementText(group.addresses),
     mono: true,
     hide: true,
-    width: 170,
+    width: 240,
   },
   {
     id: "address",
@@ -239,12 +312,29 @@ export function DeviceGroups() {
   );
 }
 
-/** The fields of a group that a form sets. `current` is the group being changed, if any. */
+/**
+ * The fields of a group that a form sets. `current` is the group being changed, if any,
+ * and `type` the type the form holds: only a cluster says how it is managed.
+ */
 function groupSpecs(
   lists: { owners: readonly Option[]; groups: readonly Option[]; tags: readonly string[] },
   current: DeviceGroup | null,
+  type: string,
 ): FieldSpec[] {
   const { owner, parent } = current ?? {};
+  const managed: FieldSpec[] =
+    type === "cluster"
+      ? [
+          {
+            name: "managed_as",
+            label: "Managed as",
+            kind: "choice",
+            options: MANAGED_AS,
+            ...(current ? {} : { blank: "Not said: one managed node" }),
+            hint: "What the cluster is on the network. The three ways are explained above the form.",
+          },
+        ]
+      : [];
   return [
     { name: "name", label: "Name", kind: "text", required: true, maxLength: 200 },
     {
@@ -263,6 +353,18 @@ function groupSpecs(
       hint: "A stack or a cluster answers to one name; its members usually have none",
     },
     { name: "fqdn", label: "FQDN", kind: "text", maxLength: 255 },
+    ...managed,
+    {
+      name: "expected_members",
+      label: "Expected members",
+      kind: "integer",
+      hint:
+        type === "stack"
+          ? "How many members it is meant to have. With fewer it shows as degraded, also once a failed switch has been taken out. Left blank, a stack that is one switch alone is degraded: say 1 for a stack that is meant to be one."
+          : type === "cluster"
+            ? "How many members it is meant to have. With fewer it shows as degraded."
+            : "How many members it is meant to have. Optional.",
+    },
     {
       name: "parent_group_hid",
       label: "In group",
@@ -272,7 +374,7 @@ function groupSpecs(
         lists.groups.filter((option) => option.value !== current?.hid),
         parent ? { value: parent.hid, label: parent.name } : null,
       ),
-      hint: "A cluster of controllers is nested in its controller domain",
+      hint: "A cluster of controllers is nested in its controller domain. A domain may hold several.",
     },
     {
       name: "owner_hid",
@@ -286,7 +388,10 @@ function groupSpecs(
       label: "Record status",
       kind: "choice",
       options: SETTABLE_STATUSES,
-      hint: "A draft stack may be built up one member at a time, and is not yet one managed node",
+      hint:
+        type === "stack" || type === "cluster"
+          ? `A draft ${type} is not yet one managed node: its members count as the items they are`
+          : "A draft is left out of default views",
     },
     {
       name: "tags",
@@ -298,6 +403,26 @@ function groupSpecs(
       })),
     },
   ];
+}
+
+/** The three ways a cluster is managed, each explained: shown with the form of a cluster. */
+function ManagedAsHelp() {
+  return (
+    <div data-testid="managed-as-help">
+      <p className="hint">
+        A cluster says how it is managed: what it is on the network, and so how many managed nodes
+        it counts as. The component count and the support weight do not depend on it.
+      </p>
+      <dl className="facts">
+        {MANAGED_AS.map((way) => (
+          <Fragment key={way.value}>
+            <dt>{way.label}</dt>
+            <dd>{way.explained}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 function useGroupLists() {
@@ -327,23 +452,21 @@ interface NewGroupProps {
 /** The form for a new group: its fields, and its first members, sent as one request. */
 function NewGroup({ onCancel, onCreated }: NewGroupProps) {
   const { lists, error } = useGroupLists();
-  const specs = useMemo(() => groupSpecs(lists, null), [lists]);
   const [values, setValues] = useState<FormValues>(() => ({
-    ...formOf(specs),
+    ...formOf(groupSpecs(lists, null, "cluster")),
     type: "stack",
     record_status: "active",
   }));
+  const type = typeof values.type === "string" ? values.type : "stack";
+  const specs = useMemo(() => groupSpecs(lists, null, type), [lists, type]);
   const [pending, setPending] = useState<PendingMember[]>([]);
   const [found, setFound] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const action = useAction();
   const names = specs.map((spec) => spec.name);
   const refused = fieldErrors(action.error, names).shown;
-  const type = typeof values.type === "string" ? values.type : "stack";
-  const status = typeof values.record_status === "string" ? values.record_status : "active";
   const problem = stackProblem(
     type,
-    status,
     pending.map((row) => row.role),
   );
 
@@ -388,6 +511,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
       <Problem error={error} />
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={names} />
+        {type === "cluster" && <ManagedAsHelp />}
         <FormFields
           specs={specs}
           values={values}
@@ -398,8 +522,10 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
         <fieldset className="plain">
           <legend>Its first members</legend>
           <p className="hint">
-            They are added together with the group, and the group is checked as a whole. A group may
-            also be made with none, and given its members later.
+            They are added together with the group, by one request. A group may also be made with
+            none, and given its members later.
+            {type === "stack" &&
+              " A stack may be one switch alone. The role Intended master marks the member given the priority: it is optional, and at most one member has it. Which member is seen to be master is recorded on the page of the stack."}
           </p>
           <MemberPicker
             type={type}
@@ -463,13 +589,24 @@ export function DeviceGroupDetail() {
       {record && (
         <>
           <GroupFacts group={record} />
-          <Members group={record} mayEdit={open} onChanged={changed} />
+          {record.health && (
+            <GroupHealth
+              key={`health ${record.hid} ${record.row_version}`}
+              group={record}
+              health={record.health}
+              mayEdit={open}
+              onChanged={changed}
+              onReload={group.reload}
+            />
+          )}
+          <Members group={record} mayEdit={open} onChanged={changed} onReload={group.reload} />
           <Nested group={record} />
           <Addresses
             key={`addresses ${record.hid}`}
             holder={{ group_hid: record.hid }}
             whose={record.name}
             mayEdit={open}
+            onChanged={group.reload}
           />
           {open && (
             <GroupDetails
@@ -494,9 +631,10 @@ export function DeviceGroupDetail() {
 }
 
 function GroupFacts({ group }: { group: DeviceGroup }) {
-  const { owner, parent, master } = group;
+  const { owner, parent, master, observed_master: seen } = group;
   const disputed = ownerDisputed(group);
-  const members = `/items?filter=${encodeURIComponent(`group.hid:eq:${group.hid}`)}`;
+  const members = itemsPath(`group.hid:eq:${group.hid}`);
+  const source = serialSourceText(group.serial_source);
   return (
     <section aria-labelledby="group-facts">
       <h2 id="group-facts">The group</h2>
@@ -518,14 +656,50 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
               ) : (
                 <Dash />
               )}
-              <span className="muted"> · read from its master, and stored nowhere</span>
+              <span
+                className="muted"
+                data-testid="serial-source"
+                data-source={group.serial_source ?? ""}
+              >
+                {source
+                  ? ` · ${source}, and stored nowhere`
+                  : " · no master is recorded to read it from"}
+              </span>
             </dd>
-            <dt>Master</dt>
+            <dt>Intended master</dt>
             <dd data-testid="group-master">
-              {master ? <Link to={itemPath(master.hid)}>{pickLabel(master)}</Link> : <Dash />}
+              {master ? (
+                <Link to={itemPath(master.hid)}>{pickLabel(master)}</Link>
+              ) : (
+                <span className="muted">None is marked</span>
+              )}
+            </dd>
+            <dt>Master seen</dt>
+            <dd data-testid="group-observed-master">
+              {seen ? (
+                <>
+                  <Link to={itemPath(seen.hid)}>{pickLabel(seen)}</Link>
+                  <span className="muted"> · seen </span>
+                  <Time at={group.master_observed_at} />
+                </>
+              ) : (
+                <span className="muted">Nobody has recorded one</span>
+              )}
             </dd>
           </>
         )}
+        {group.type === "cluster" && (
+          <>
+            <dt>Managed as</dt>
+            <dd data-testid="managed-as" data-managed-as={group.managed_as ?? ""}>
+              {managedAsText(group.managed_as) || <Dash />}
+            </dd>
+          </>
+        )}
+        <dt>Management address</dt>
+        <dd>
+          <ManagementAddresses addresses={group.addresses} />
+        </dd>
         <dt>Members</dt>
         <dd>
           <span data-testid="member-count">{plural(group.member_count, "current member")}</span>
@@ -535,7 +709,21 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
               <Link to={members}>in the grid of items</Link>
             </>
           )}
+          {group.expected_members !== null && (
+            <span className="muted" data-testid="expected-members">
+              {" "}
+              · {group.expected_members} expected
+            </span>
+          )}
         </dd>
+        {!group.health && group.observed_status && (
+          <>
+            <dt>Observed</dt>
+            <dd>
+              <ObservedText status={group.observed_status} at={group.observed_at} />
+            </dd>
+          </>
+        )}
         <dt>Owner</dt>
         <dd data-testid="group-owner" data-disputed={disputed ? "true" : "false"}>
           {owner ? (
@@ -556,6 +744,13 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
         <dt>HID</dt>
         <dd className="mono">{group.hid}</dd>
       </dl>
+      {group.master_as_intended === false && (
+        <p className="note" data-testid="master-differs">
+          The master that is seen is not the one intended. A stack chooses its master as it boots,
+          and the choice may move from one member to another, so the two may differ: this is no
+          fault. The serial number of the stack is that of the master that is seen.
+        </p>
+      )}
       {disputed && (
         <p className="warning" data-testid="owner-disputed">
           The owner above is the group's own. At least one current member has another owner in
@@ -566,18 +761,91 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
   );
 }
 
+interface GroupHealthProps {
+  group: DeviceGroup;
+  health: NonNullable<DeviceGroup["health"]>;
+  mayEdit: boolean;
+  onChanged: (text: string) => void;
+  onReload: () => void;
+}
+
+/**
+ * How a stack or a cluster is doing: its health with the reasons, worked out by the
+ * server from its current members, and what is seen of the group as one device.
+ */
+function GroupHealth({ group, health, mayEdit, onChanged, onReload }: GroupHealthProps) {
+  const seeing = useAction();
+  const what = groupTypeLabel(group.type).toLowerCase();
+  return (
+    <section aria-labelledby="group-doing">
+      <h2 id="group-doing">Health</h2>
+      <dl className="facts">
+        <dt>Health</dt>
+        <dd>
+          <HealthWithReasons health={health} testId="health" />
+        </dd>
+        <dt>Observed</dt>
+        <dd data-testid="observed" data-observed={group.observed_status ?? ""}>
+          <ObservedText status={group.observed_status} at={group.observed_at} />
+        </dd>
+        <dt>Expected members</dt>
+        <dd>
+          {group.expected_members === null ? (
+            <span className="muted">No number is named</span>
+          ) : (
+            String(group.expected_members)
+          )}
+          <span className="muted"> · it has {plural(group.member_count, "current member")}</span>
+        </dd>
+      </dl>
+      <p className="hint">
+        The health of a {what} is worked out from its current members each time it is read: from the
+        health of each, from a member that is in Down or Pending-Removal, from whether it has the
+        members it is expected to have, and from what is observed of the {what} itself as one
+        device.
+        {group.type === "stack" &&
+          " A stack that names no number of expected members is degraded when it is one switch alone."}{" "}
+        The number of expected members is set under Details.
+      </p>
+      {mayEdit && (
+        <section aria-labelledby="set-observed" className="panel">
+          <h3 id="set-observed">Record what is seen of the {what}</h3>
+          <Observation
+            whose={group.name}
+            status={group.observed_status}
+            busy={seeing.busy}
+            error={seeing.error}
+            onReload={onReload}
+            onChange={async (patch, done) => {
+              const result = await seeing.run(() =>
+                api.request("patch", "/api/v1/device-groups/{hid}", {
+                  path: { hid: group.hid },
+                  body: { row_version: group.row_version, ...patch },
+                }),
+              );
+              if (result.ok) onChanged(done);
+            }}
+          />
+        </section>
+      )}
+    </section>
+  );
+}
+
 interface MembersProps {
   group: DeviceGroup;
   mayEdit: boolean;
   onChanged: (text: string) => void;
+  onReload: () => void;
 }
 
 /**
  * Who is in the group, by position, and who was. Members are added several at a time,
- * a membership is ended with a date and never removed, and in a stack another member
- * is made the master by one change.
+ * and a membership is ended with a date and never removed. In a stack one member may be
+ * marked as the intended master, which takes the mark from the one that had it, and the
+ * master that is seen is recorded apart.
  */
-function Members({ group, mayEdit, onChanged }: MembersProps) {
+function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   const [past, setPast] = useState(false);
   const [offset, setOffset] = useState(0);
   const [turn, setTurn] = useState(0);
@@ -604,14 +872,16 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
     onChanged(text);
   }
 
-  async function makeMaster(member: Member) {
+  async function markMaster(member: Member) {
     const result = await action.run(() =>
       api.request("patch", "/api/v1/device-groups/{hid}/members/{member_hid}", {
         path: { hid: group.hid, member_hid: member.hid },
         body: { row_version: member.row_version, role: MASTER },
       }),
     );
-    if (result.ok) changed(`${itemName(member.item)} is now the master of ${group.name}.`);
+    if (result.ok) {
+      changed(`${itemName(member.item)} is now the intended master of ${group.name}.`);
+    }
   }
 
   return (
@@ -653,6 +923,7 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
                 <th scope="col">PID</th>
                 <th scope="col">Serial number</th>
                 <th scope="col">Role</th>
+                {group.type === "stack" && <th scope="col">Seen as master</th>}
                 <th scope="col">Joined</th>
                 <th scope="col">Left</th>
                 {mayEdit && (
@@ -666,11 +937,13 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
               {rows.map((member) => {
                 const name = itemName(member.item);
                 const ended = member.left_on !== null;
+                const seen = !ended && group.observed_master_hid === member.item_hid;
                 return (
                   <tr
                     key={member.hid}
                     data-item={member.item_hid}
                     data-role={member.role}
+                    data-seen-master={seen ? "true" : "false"}
                     data-current={ended ? "false" : "true"}
                     className={ended ? "muted" : undefined}
                   >
@@ -681,6 +954,7 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
                     <td>{member.item.pid || <Dash />}</td>
                     <td className="mono">{member.item.serial_number || <Dash />}</td>
                     <td>{roleLabel(member.role)}</td>
+                    {group.type === "stack" && <td>{seen ? "Seen as master" : ""}</td>}
                     <td className="nowrap">{member.joined_on}</td>
                     <td className="nowrap">{member.left_on ?? <Dash />}</td>
                     {mayEdit && (
@@ -689,10 +963,10 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
                           <button
                             type="button"
                             disabled={action.busy}
-                            onClick={() => makeMaster(member)}
-                            aria-label={`Make ${name} the master`}
+                            onClick={() => markMaster(member)}
+                            aria-label={`Mark ${name} as the intended master`}
                           >
-                            Make master
+                            Mark as intended master
                           </button>
                         )}
                         <button
@@ -774,6 +1048,15 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
           </button>
         </p>
       )}
+      {mayEdit && group.type === "stack" && (current.length > 0 || group.observed_master_hid) && (
+        <ObservedMaster
+          key={`seen ${group.hid} ${group.row_version}`}
+          group={group}
+          current={current}
+          onChanged={changed}
+          onReload={onReload}
+        />
+      )}
       {mayEdit && adding && (
         <AddMembers
           group={group}
@@ -783,6 +1066,116 @@ function Members({ group, mayEdit, onChanged }: MembersProps) {
           onAdded={(count) => changed(`${plural(count, "member")} added to ${group.name}.`)}
         />
       )}
+    </section>
+  );
+}
+
+interface ObservedMasterProps {
+  group: DeviceGroup;
+  /** The current members on show: any of them may be the master that is seen. */
+  current: readonly Member[];
+  onChanged: (text: string) => void;
+  onReload: () => void;
+}
+
+/**
+ * The master that is seen: which member the stack made master, recorded with the moment.
+ * It is set to any current member, stated again with the present moment, or cleared.
+ */
+function ObservedMaster({ group, current, onChanged, onReload }: ObservedMasterProps) {
+  const [chosen, setChosen] = useState(group.observed_master_hid ?? "");
+  const action = useAction();
+  const known = ["observed_master_hid", "master_observed_at"];
+  const refused = fieldErrors(action.error, known).shown;
+  const seen = group.observed_master;
+  const picked = current.find((member) => member.item_hid === chosen);
+
+  async function send(body: Omit<Schemas["DeviceGroupPatch"], "row_version">, done: string) {
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/device-groups/{hid}", {
+        path: { hid: group.hid },
+        body: { row_version: group.row_version, ...body },
+      }),
+    );
+    if (result.ok) onChanged(done);
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!picked) return;
+    send(
+      { observed_master_hid: picked.item_hid },
+      `${itemName(picked.item)} is recorded as the master that is seen of ${group.name}.`,
+    );
+  }
+
+  return (
+    <section className="panel" aria-labelledby="observed-master">
+      <h3 id="observed-master">The master that is seen</h3>
+      <p className="hint">
+        A stack decides which member is master as it boots, and that may move from one member to
+        another over time, so it is an observation, recorded here with the moment it was seen. It
+        need not be the intended master, and nothing depends on it but the serial number the stack
+        shows.
+      </p>
+      <form onSubmit={submit} className="stack" noValidate>
+        <Problem error={action.error} shown={known} onReload={onReload} />
+        <div className="inline">
+          <SelectField
+            label="Member seen as master"
+            name="observed_master_hid"
+            value={chosen}
+            onChange={setChosen}
+            disabled={action.busy}
+            error={refused.observed_master_hid ?? refused.master_observed_at}
+          >
+            <option value="">Choose a member</option>
+            {seen && !current.some((member) => member.item_hid === seen.hid) && (
+              <option value={seen.hid}>{pickLabel(seen)}</option>
+            )}
+            {current.map((member) => (
+              <option key={member.hid} value={member.item_hid}>
+                {member.position === null ? "" : `${member.position}: `}
+                {itemName(member.item)}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+        <p className="actions">
+          <button
+            type="submit"
+            className="primary"
+            disabled={action.busy || !picked || chosen === group.observed_master_hid}
+          >
+            Record the master that is seen
+          </button>
+          {seen && (
+            <button
+              type="button"
+              disabled={action.busy}
+              onClick={() =>
+                send(
+                  { observed_master_hid: seen.hid, master_observed_at: new Date().toISOString() },
+                  `${itemName(seen)} was seen as the master again, now.`,
+                )
+              }
+            >
+              Seen now
+            </button>
+          )}
+          {seen && (
+            <button
+              type="button"
+              disabled={action.busy}
+              onClick={() =>
+                send({ observed_master_hid: null }, "The master that was seen was cleared.")
+              }
+            >
+              Clear the master that is seen
+            </button>
+          )}
+        </p>
+      </form>
     </section>
   );
 }
@@ -804,13 +1197,15 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
   const action = useAction();
   const known = ["joined_on"];
   const refused = fieldErrors(action.error, known).shown;
-  const problem =
-    current === null || pending.length === 0
-      ? ""
-      : stackProblem(group.type, group.record_status, [
-          ...current.map((member) => member.role),
-          ...pending.map((row) => row.role),
-        ]);
+  const adding = pending.map((row) => row.role);
+  const problem = stackProblem(group.type, adding);
+  const takes =
+    current !== null &&
+    takesTheMark(
+      group.type,
+      current.map((member) => member.role),
+      adding,
+    );
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -859,6 +1254,11 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
             {problem}
           </p>
         )}
+        {!problem && takes && (
+          <p className="note" role="status" data-testid="takes-the-mark">
+            The member added as the intended master takes the mark from the member that has it now.
+          </p>
+        )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || pending.length === 0}>
             {pending.length > 1 ? `Add ${pending.length} members` : "Add member"}
@@ -893,7 +1293,17 @@ function ChangeMember({
       ...(ended
         ? []
         : ([
-            { name: "role", label: "Role", kind: "choice", options: roleOptions(group.type) },
+            {
+              name: "role",
+              label: "Role",
+              kind: "choice",
+              options: roleOptions(group.type),
+              ...(group.type === "stack"
+                ? {
+                    hint: "The intended master is the member given the priority. It is optional, and marking a member takes the mark from the one that had it.",
+                  }
+                : {}),
+            },
             {
               name: "position",
               label: "Position",
@@ -970,7 +1380,7 @@ function EndMembership({
       <p className="hint">
         The membership is kept with the day it ended, and {name} is free to join again.
         {group.type === "stack" &&
-          " The master does not leave a stack that has other members: make another the master first."}
+          " Any member may leave, the master among them: the stack is then without the mark, or without a master that is seen, until one is recorded again."}
       </p>
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={known} onReload={onReload} />
@@ -1019,7 +1429,9 @@ function Nested({ group }: { group: DeviceGroup }) {
       {group.type === "controller_domain" && (
         <p className="hint">
           The controllers of an endpoint of this domain are its members with the role Controller,
-          and the current members of every cluster nested here.
+          and the current members of every cluster nested here, at any depth. A domain may hold
+          several clusters: an endpoint that fails over between them is a member of the domain
+          alone, and its page lists each controller with the cluster it is in.
         </p>
       )}
     </section>
@@ -1034,12 +1446,13 @@ interface GroupDetailsProps {
 
 function GroupDetails({ group, onSaved, onReload }: GroupDetailsProps) {
   const { lists, error, ready } = useGroupLists();
-  const specs = useMemo(() => groupSpecs(lists, group), [lists, group]);
+  const specs = useMemo(() => groupSpecs(lists, group, group.type), [lists, group]);
   return (
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
       <Problem error={error} />
       {!ready && <p role="status">Loading…</p>}
+      {ready && group.type === "cluster" && <ManagedAsHelp />}
       {ready && (
         <EditForm<DeviceGroup, Schemas["DeviceGroupPatch"]>
           specs={specs}

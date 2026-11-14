@@ -1,13 +1,16 @@
-// The browser scenarios of release 0.4.0: what a person does in S18 to S23.
+// The browser scenarios of release 0.4.0, as release 0.4.1 has them: what a person does
+// in S18 to S23.
 //
 //   S18  Two power supplies and a module in a switch; the switch is given another owner
 //        and moved to Prod. The minor items show the new owner and the new state, as
 //        inherited from the item they are in; the component count is one, not four.
-//   S19  A stack of four switches with one master shows the master's serial number, and
-//        another's at once when another member is made the master.
+//   S19  A stack of four switches with one marked as the intended master shows that
+//        master's serial number; another member is recorded as the master that is seen,
+//        and the stack shows that one's at once. It is found by the serial number of any
+//        member.
 //   S20  The stack weighs 2.00 under the global discount of 50, and 2.80 with 30 set on
 //        its model; four components and one managed node throughout; the annual support
-//        cost is that of four switches.
+//        cost, read from the management report, is that of four switches.
 //   S21  The stack's master is replaced for an RMA: two item records linked by the
 //        replacement, the departed switch's membership ended, the stack's HID unchanged.
 //   S22  A controller domain: a cluster of two controllers and forty access points.
@@ -15,6 +18,12 @@
 //        controllers.
 //   S23  The same address under two networks, then twice under one: all are accepted,
 //        and only the pair under one network is in the report of duplicates.
+//
+// And what 0.4.1 added: minor items stay out of the item grid until Include minor items
+// is turned on; a condition is set on an item's page, what is seen of it is recorded, and
+// its health is a mark in the grid; a stack and a cluster have a health; a cluster says
+// how it is managed; a record has a primary management address of each family; the
+// summary holds no money, which is in the management report.
 //
 // On the way: the files of the new entities on the Import page, the new columns of the
 // item grid, a minor item given a state of its own and returned to inheriting, an item
@@ -28,7 +37,16 @@
 // earlier ones made.
 
 import { randomBytes } from "node:crypto";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import {
+  type Download,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type TestInfo,
+  test,
+} from "@playwright/test";
 import { expectClean, signIn, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -86,6 +104,8 @@ const shared = `2001:db8:${Number.parseInt(suffix.slice(0, 4), 16).toString(16)}
   16,
 ).toString(16)}::10`;
 const second = shared.replace(/::10$/, "::11");
+// An IPv4 address beside them, for the primary of the other family.
+const fourth = `192.0.2.${(Number.parseInt(suffix.slice(0, 2), 16) % 250) + 2}`;
 
 function main(page: Page): Locator {
   return page.getByRole("navigation", { name: "Main" });
@@ -132,9 +152,12 @@ async function importFile(
   await expect(page.getByTestId("preview-applied")).toContainText(`${rows.length} created`);
 }
 
-/** Open an item from the grid, by its hostname. */
+/**
+ * Open an item from the grid, by its hostname. The link asks for minor items too, as the
+ * links of the app do: the grid leaves them out otherwise.
+ */
 async function openItem(page: Page, hostname: string) {
-  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${hostname}`)}`);
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${hostname}`)}&minor=1`);
   await page.getByTestId("grid-items").getByRole("link", { name: hostname, exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: hostname })).toBeVisible();
 }
@@ -151,6 +174,38 @@ async function summary(page: Page, filter: string, by = "") {
   await page.goto(`./reports?${query.toString()}`);
   await expect(page.getByRole("heading", { level: 1, name: "Summary" })).toBeVisible();
   await expect(page.getByTestId("totals")).toBeVisible();
+}
+
+/** The management report of the items a filter keeps: the money, and nothing of health. */
+async function management(page: Page, filter: string, by = "") {
+  const query = new URLSearchParams({ filter, ...(by ? { by } : {}) });
+  await page.goto(`./reports/management?${query.toString()}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Management report" })).toBeVisible();
+  await expect(page.getByTestId("management-totals")).toBeVisible();
+}
+
+/** Start the grid of items as a new reader has it, with one filter in the filter box. */
+async function freshGrid(page: Page, filter: string) {
+  await page.goto("./items");
+  await expect(page.getByTestId("grid-items")).toBeVisible();
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByLabel("Filter", { exact: true }).fill(filter);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+}
+
+/** The rows of a file the browser saved, the header among them. */
+async function savedRows(download: Download, testInfo: TestInfo): Promise<string[]> {
+  const path = testInfo.outputPath(download.suggestedFilename());
+  await download.saveAs(path);
+  return (await readFile(path, "utf8")).replace(/\n$/, "").split("\n");
+}
+
+function exportsSent(page: Page): Promise<Request> {
+  return page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/v1/exports"),
+  );
 }
 
 /** Find an item in a picker by what is typed, and choose it. */
@@ -197,10 +252,21 @@ test("the catalog, the owners and the items the scenarios use are loaded from fi
   const seen = await watch(page.context());
   await signIn(page);
 
-  // The first page shows the headline totals of the inventory.
-  await expect(region(page, "The inventory in numbers").getByTestId("totals")).toBeVisible();
+  // The first page shows the headline of the summary: the components beside the managed
+  // nodes, the support weight and the components by health. It shows no money.
+  const headline = region(page, "The inventory in numbers");
+  await expect(headline.getByTestId("totals")).toBeVisible();
   await expect(page.getByTestId("total-components")).toHaveText(/^[\d,]+$/);
   await expect(page.getByTestId("total-nodes")).toHaveText(/^[\d,]+$/);
+  await expect(page.getByTestId("total-weight")).toBeVisible();
+  for (const health of ["good", "degraded", "failed", "unknown"]) {
+    await expect(headline.getByTestId(`total-health-${health}`)).toHaveText(/^[\d,]+$/);
+  }
+  await expect(headline.getByTestId("totals-by-health")).toContainText("Degraded");
+  await expect(page.getByTestId("total-value")).toHaveCount(0);
+  await expect(page.getByTestId("total-cost")).toHaveCount(0);
+  await expect(headline.getByTestId("totals")).not.toContainText(/value|cost/i);
+  await expect(headline.getByRole("link", { name: "management report" })).toBeVisible();
 
   await importFile(
     page,
@@ -370,21 +436,23 @@ test("S18: minor items have the owner and the standing of the item they are in",
   await expect(moves).toHaveCount(2);
 
   // The grid: the state in force in the State column, lighter for the minor items, and
-  // filtered by what the column shows.
+  // filtered by what the column shows. Minor items are in it once they are asked for.
   await page.goto(`./items?filter=${encodeURIComponent(filter)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText("4 items");
   await page.getByText("Columns", { exact: true }).click();
   await page.getByRole("button", { name: "Reset layout and filters" }).click();
   const columns = page.getByRole("group", { name: "Columns to show" });
   for (const column of ["Major or minor", "In item", "Position", "Depth"]) {
     await columns.getByLabel(column, { exact: true }).check();
   }
-  for (const column of ["Vendor", "Serial number", "Tags", "Estimated value", "LDoS"]) {
+  // The grid draws only the columns in view: room is made for the ones looked at here.
+  for (const column of ["Vendor", "Serial number", "Health", "Tags", "Estimated value", "LDoS"]) {
     await columns.getByLabel(column, { exact: true }).uncheck();
   }
   await page.getByText("Columns", { exact: true }).click();
   await page.getByLabel("Filter", { exact: true }).fill(filter);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await page.getByLabel("Include minor items").check();
   await expect(page.getByTestId("grid-total")).toHaveText("4 items");
   const grid = page.getByTestId("grid-items");
   const gridRow = (host: string) => grid.locator("[row-id]", { hasText: host });
@@ -449,21 +517,301 @@ test("S18: minor items have the owner and the standing of the item they are in",
   await expectClean(page, seen);
 });
 
-test("S19, S20: a stack reads its serial number from its master, and earns the discount", async ({
+test("minor items stay out of the grid of items until Include minor items is on", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page);
+  const filter = `hostname:prefix:${chassisPrefix}`;
+  const typed = { field: "hostname", op: "prefix", value: chassisPrefix };
+  const total = page.getByTestId("grid-total");
+  const minor = page.getByLabel("Include minor items");
+
+  // As a new reader has the grid: the switch is off, and the switch alone is in it.
+  await freshGrid(page, filter);
+  await expect(minor).not.toBeChecked();
+  await expect(total).toHaveText("1 item");
+  await expect(page.getByTestId("grid-items").getByRole("link", { name: chassis })).toBeVisible();
+  await expect(page.getByTestId("grid-items").getByRole("link", { name: supplyA })).toHaveCount(0);
+
+  // What is exported is what the grid shows: the switch is part of the filter that is sent.
+  await page.getByRole("button", { name: "Select all that match" }).click();
+  await expect(page.getByTestId("grid-selected")).toContainText(
+    "all 1 item that match the filter selected",
+  );
+  let sent = exportsSent(page);
+  let download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  expect((await sent).postDataJSON().filter).toEqual({
+    and: [typed, { field: "is_major", op: "eq", value: true }],
+  });
+  expect(await savedRows(await download, testInfo)).toHaveLength(2);
+  // And what is edited in bulk: one item, by the same filter.
+  const previewed = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/items/bulk-update"),
+  );
+  await page.getByRole("button", { name: "Bulk edit" }).click();
+  const bulk = page.getByTestId("bulk-edit");
+  await expect(bulk).toContainText("all 1 item that match the filter");
+  // The condition and what is observed are among what a bulk edit sets.
+  const offered = await bulk.getByLabel("Field to change").locator("option").allTextContents();
+  expect(offered).toContain("Condition");
+  expect(offered).toContain("Observed status");
+  await bulk.getByLabel("Field to change").selectOption({ label: "Comments" });
+  await bulk.getByRole("button", { name: "Add", exact: true }).click();
+  await bulk.getByRole("group", { name: "Comments" }).getByLabel("Set to").fill("Major only");
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  expect((await previewed).postDataJSON().filter).toEqual({
+    and: [typed, { field: "is_major", op: "eq", value: true }],
+  });
+  await expect(count(page, "updated")).toHaveText("1");
+  // Nothing is applied: the preview was what was wanted.
+  await bulk.getByRole("button", { name: "Cancel" }).click();
+  await expect(bulk).toHaveCount(0);
+
+  // Turned on, the three minor items are in the grid, and in what is exported.
+  await minor.check();
+  await expect(total).toHaveText("4 items");
+  await expect(page.getByTestId("grid-items").getByRole("link", { name: supplyA })).toBeVisible();
+  sent = exportsSent(page);
+  download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  expect((await sent).postDataJSON().filter).toEqual(typed);
+  expect(await savedRows(await download, testInfo)).toHaveLength(5);
+
+  // The switch is remembered, as the layout of the columns is.
+  await page.reload();
+  await expect(minor).toBeChecked();
+  await expect(total).toHaveText("4 items");
+  await minor.uncheck();
+  await expect(total).toHaveText("1 item");
+  await page.reload();
+  await expect(minor).not.toBeChecked();
+  await expect(total).toHaveText("1 item");
+
+  // A link to particular items shows the minor items among them, whatever was remembered:
+  // the minor items of the switch, from its own page.
+  await openItem(page, chassis);
+  await region(page, "Minor items").getByRole("link", { name: "3 minor items" }).click();
+  await expect(total).toHaveText("3 items");
+  await expect(minor).toBeChecked();
+  // The link did not change what is remembered.
+  await main(page).getByRole("link", { name: "Items" }).click();
+  await expect(page.getByTestId("grid-items")).toBeVisible();
+  await expect(minor).not.toBeChecked();
+
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await expectClean(page, seen);
+});
+
+test("a condition set on the item's page, what is seen of it, and its health in the grid", async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page);
+  const health = page.getByTestId("health");
+  const observed = page.getByTestId("observed");
+
+  // Nobody has said anything of the switch yet: its health is unknown, and says why.
+  await openItem(page, chassis);
+  await expect(health).toHaveAttribute("data-health", "unknown");
+  await expect(health).toContainText("Unknown");
+  await expect(health).toContainText("nothing is said of its condition");
+  await expect(page.getByTestId("condition")).toHaveText("Nobody has said");
+  await expect(observed).toHaveText("Nobody has looked");
+
+  // A condition, from the list of choices.
+  const condition = region(page, "Record the condition");
+  await expect(condition.getByLabel("Condition").locator("option")).toHaveText([
+    "Nobody has said",
+    "Untested",
+    "Good",
+    "Degraded",
+    "Suspect",
+    "Failed",
+    "Dead",
+  ]);
+  await condition.getByLabel("Condition").selectOption({ label: "Good" });
+  await condition.getByRole("button", { name: "Save condition" }).click();
+  await expect(page.getByText("The condition of the item was saved.")).toBeVisible();
+  await expect(page.getByTestId("condition")).toHaveText("Good");
+  await expect(health).toHaveAttribute("data-health", "good");
+  await expect(health).toContainText("its condition is good");
+
+  // It is seen unreachable. The switch is in Prod and expected online: it has failed.
+  const seeing = region(page, "Record what is seen");
+  await seeing.getByLabel("Observed status").selectOption("unreachable");
+  await seeing.getByRole("button", { name: "Record what is seen" }).click();
+  await expect(page.getByText(`What is seen of ${chassis} was recorded.`)).toBeVisible();
+  await expect(observed).toHaveAttribute("data-observed", "unreachable");
+  await expect(observed).toContainText("Unreachable · seen");
+  await expect(health).toHaveAttribute("data-health", "failed");
+  await expect(health).toContainText("it is expected online and is observed unreachable");
+  // The moment it was seen is on the page. "Seen now" states the same again, later.
+  const moment = observed.locator("time");
+  const first = await moment.getAttribute("datetime");
+  expect(first).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  await page.waitForTimeout(1100);
+  await seeing.getByRole("button", { name: "Seen now" }).click();
+  await expect(page.getByText("Unreachable was seen again, now.")).toBeVisible();
+  await expect(observed).toHaveAttribute("data-observed", "unreachable");
+  await expect.poll(() => moment.getAttribute("datetime")).not.toBe(first);
+
+  // Present is what a person saw, and the page words it so.
+  await expect(seeing.getByLabel("Observed status").locator('option[value="present"]')).toHaveText(
+    "Present: a person saw it, in place and in order",
+  );
+  await seeing.getByLabel("Observed status").selectOption("present");
+  await seeing.getByRole("button", { name: "Record what is seen" }).click();
+  await expect(observed).toHaveAttribute("data-observed", "present");
+  await expect(observed).toContainText("a person saw it, in place and in order");
+  await expect(observed).toContainText("last checked");
+  await expect(health).toHaveAttribute("data-health", "good");
+
+  // The hardware is thought to be bad: degraded, whatever is seen.
+  await condition.getByLabel("Condition").selectOption({ label: "Suspect" });
+  await condition.getByRole("button", { name: "Save condition" }).click();
+  await expect(page.getByTestId("condition")).toHaveText("Suspect");
+  await expect(health).toHaveAttribute("data-health", "degraded");
+  await expect(health).toContainText("its condition is suspect");
+  // Neither moved the switch in the lifecycle.
+  await expect(page.getByTestId("state")).toHaveText("Prod");
+  // Each change is in the history, the condition as an ordinary field.
+  await expect(region(page, "History").locator("tbody tr", { hasText: "condition" })).toHaveCount(
+    2,
+  );
+
+  // The grid: the health is a mark in its colour, with its word, shown from the start.
+  await freshGrid(page, `hostname:eq:${chassis}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  const grid = page.getByTestId("grid-items");
+  const cell = grid.locator("[row-id]").first().locator('[col-id="health"]');
+  await expect(cell).toHaveText("Degraded");
+  await expect(cell.locator(".health")).toHaveClass(/health-degraded/);
+  await expect(cell.locator(".health-dot")).toHaveAttribute("aria-hidden", "true");
+  // The mark has a colour of its own, and it is not the colour of an unknown health.
+  const amber = await cell
+    .locator(".health-dot")
+    .evaluate((dot) => getComputedStyle(dot).backgroundColor);
+  expect(amber).not.toBe("rgba(0, 0, 0, 0)");
+  // The reasons show when the cell has the focus, beneath the grid, and on hover.
+  await cell.click();
+  await expect(page.getByTestId("grid-cell-note")).toHaveText("Health: its condition is suspect");
+  await grid.locator("[row-id]").first().locator('[col-id="name"]').hover();
+  await cell.hover();
+  await expect(page.locator(".ag-tooltip")).toHaveText("its condition is suspect");
+  // Condition and Observed status are columns too, hidden until asked for.
+  await expect(grid.locator('[role="columnheader"][col-id="condition"]')).toHaveCount(0);
+  await expect(grid.locator('[role="columnheader"][col-id="observed_status"]')).toHaveCount(0);
+  await page.getByText("Columns", { exact: true }).click();
+  const columns = page.getByRole("group", { name: "Columns to show" });
+  await columns.getByLabel("Condition", { exact: true }).check();
+  await columns.getByLabel("Observed status", { exact: true }).check();
+  await columns.getByLabel("Observed at", { exact: true }).check();
+  // The grid draws only the columns in view: room is made for the ones looked at here.
+  for (const column of ["Vendor", "PID", "Serial number", "Owner", "Tags"]) {
+    await columns.getByLabel(column, { exact: true }).uncheck();
+  }
+  await page.getByText("Columns", { exact: true }).click();
+  const row = grid.locator("[row-id]").first();
+  await expect(row.locator('[col-id="condition"]')).toHaveText("Suspect");
+  await expect(row.locator('[col-id="observed_status"]')).toHaveText("Present");
+  await expect(row.locator('[col-id="observed_at"]')).toHaveText(/\d{4}/);
+  // The grid filters by the health: this switch is among the degraded, not among the good.
+  await grid.locator('[role="columnheader"][col-id="health"]').focus();
+  await page.keyboard.press("Control+Enter");
+  await page.getByRole("group", { name: "Show rows where Health is" }).getByLabel("Good").check();
+  await page.locator(".ag-popup").getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("No items");
+  await grid.locator('[role="columnheader"][col-id="health"]').focus();
+  await page.keyboard.press("Control+Enter");
+  const healths = page.getByRole("group", { name: "Show rows where Health is" });
+  await healths.getByLabel("Good").uncheck();
+  await healths.getByLabel("Degraded").check();
+  await page.locator(".ag-popup").getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  // And sorts by it.
+  const sorted = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/items/query"),
+  );
+  await grid.locator('[role="columnheader"][col-id="health"]').click();
+  expect((await sorted).postDataJSON().sort).toEqual(["health"]);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await page.getByText("Columns", { exact: true }).click();
+
+  // The summary counts the components by health and by condition, and can be by either.
+  await summary(page, `hostname:prefix:${chassisPrefix}`, "health");
+  await expect(page.getByTestId("total-health-degraded")).toHaveText("1");
+  await expect(page.getByTestId("total-health-good")).toHaveText("0");
+  const suspect = page.getByTestId("totals-by-condition").locator('tr[data-condition="suspect"]');
+  await expect(suspect.locator("th")).toHaveText("Suspect");
+  await expect(suspect.locator("td").nth(1)).toHaveText("1");
+  const degraded = page.getByTestId("summary-rows").locator('tr[data-key="degraded"]');
+  await expect(degraded.locator("th")).toHaveText("Degraded");
+  await expect(degraded.locator('td[data-health="degraded"]')).toHaveText("1");
+  await page.getByLabel("By", { exact: true }).selectOption("condition");
+  await expect(page.getByTestId("summary-rows").locator('tr[data-key="suspect"] th')).toHaveText(
+    "Suspect",
+  );
+
+  // What was seen is cleared, and the moment with it. The condition stands.
+  await openItem(page, chassis);
+  await region(page, "Record what is seen")
+    .getByRole("button", { name: "Clear what is seen" })
+    .click();
+  await expect(page.getByText(`What was seen of ${chassis} was cleared.`)).toBeVisible();
+  await expect(observed).toHaveText("Nobody has looked");
+  await expect(health).toHaveAttribute("data-health", "degraded");
+  // The condition is cleared in turn: nobody says anything of the switch again.
+  await region(page, "Record the condition")
+    .getByLabel("Condition")
+    .selectOption({ label: "Nobody has said" });
+  await region(page, "Record the condition")
+    .getByRole("button", { name: "Save condition" })
+    .click();
+  await expect(page.getByTestId("condition")).toHaveText("Nobody has said");
+  await expect(health).toHaveAttribute("data-health", "unknown");
+
+  // The list of conditions is edited where the other lists of choices are.
+  await page.goto("./admin/choices?list=item_condition");
+  await expect(page.getByRole("heading", { level: 1, name: "Choices" })).toBeVisible();
+  await expect(page.getByLabel("List")).toHaveValue("item_condition");
+  await expect(page.getByRole("rowheader")).toHaveText([
+    "untested",
+    "good",
+    "degraded",
+    "suspect",
+    "failed",
+    "dead",
+  ]);
+  await expect(page.getByText("says nothing about health either way")).toBeVisible();
+
+  await expectClean(page, seen);
+});
+
+test("S19, S20: the two masters of a stack, its serial number, its health and its discount", async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
   const seen = await watch(page.context());
   await signIn(page);
   const filter = `group.name:eq:${stack}`;
+  const [one = "", two = "", three = "", four = ""] = stackHosts;
 
-  // A stack of four, made with its members: one request, checked as a whole.
+  // A stack of four, made with its members by one request.
   await main(page).getByRole("link", { name: "Groups" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Groups" })).toBeVisible();
   await page.getByRole("button", { name: "New group" }).click();
   const form = region(page, "New group");
   await form.getByLabel("Name (required)").fill(stack);
   await form.getByLabel("Type").selectOption("stack");
+  // Only a cluster says how it is managed: a stack is always one managed node.
+  await expect(form.getByLabel("Managed as")).toHaveCount(0);
   await form.getByLabel("Hostname").fill(stack);
   await form.getByLabel("Owner").selectOption({ label: engineering });
   for (const host of stackHosts) {
@@ -471,49 +819,178 @@ test("S19, S20: a stack reads its serial number from its master, and earns the d
   }
   const pending = page.getByTestId("pending-members").locator("tbody tr");
   await expect(pending).toHaveCount(4);
-  // Each was given the next position. No master yet: the page says so before the server does.
-  await expect(form.getByLabel(`Position of ${stackHosts[3]}`)).toHaveValue("4");
-  await expect(page.getByTestId("stack-problem")).toContainText("exactly one master");
-  await form.getByLabel(`Role of ${stackHosts[0]}`).selectOption("master");
+  // Each was given the next position. A stack needs no master: nothing is said of that.
+  await expect(form.getByLabel(`Position of ${four}`)).toHaveValue("4");
+  await expect(page.getByTestId("stack-problem")).toHaveCount(0);
+  // Two intended masters in one request is the one thing the page warns of.
+  await form.getByLabel(`Role of ${one}`).selectOption("master");
+  await form.getByLabel(`Role of ${two}`).selectOption("master");
+  await expect(page.getByTestId("stack-problem")).toContainText("at most one intended master");
+  await form.getByLabel(`Role of ${two}`).selectOption("member");
   await expect(page.getByTestId("stack-problem")).toHaveCount(0);
   await form.getByRole("button", { name: "Create group" }).click();
   await expect(page.getByRole("heading", { level: 1, name: stack })).toBeVisible();
   const stackPath = new URL(page.url()).pathname;
 
-  // The stack shows the serial number of its master (S19).
-  await expect(page.getByTestId("group-serial")).toHaveText(stackSerials[0] ?? "");
-  await expect(page.getByTestId("group-master")).toContainText(stackHosts[0] ?? "");
+  // S19. The stack shows the serial number of its intended master, and says which it is from.
+  const serial = page.getByTestId("group-serial");
+  const source = page.getByTestId("serial-source");
+  await expect(serial).toHaveText(stackSerials[0] ?? "");
+  await expect(source).toHaveAttribute("data-source", "intended");
+  await expect(source).toContainText("read from the intended master");
+  await expect(page.getByTestId("group-master")).toContainText(one);
+  await expect(page.getByTestId("group-observed-master")).toHaveText("Nobody has recorded one");
+  await expect(page.getByTestId("master-differs")).toHaveCount(0);
   await expect(page.getByTestId("member-count")).toHaveText("4 current members");
   await expect(page.getByTestId("members").locator("tbody tr")).toHaveCount(4);
-  await expect(memberRow(page, stackHosts[0] ?? "")).toHaveAttribute("data-role", "master");
+  await expect(memberRow(page, one)).toHaveAttribute("data-role", "master");
   // Nobody disagrees about the owner: every member has the owner the stack has.
   await expect(page.getByTestId("group-owner")).toHaveAttribute("data-disputed", "false");
 
-  // Another member is made the master: the serial number changes at once.
-  await memberRow(page, stackHosts[1] ?? "")
-    .getByRole("button", { name: `Make ${stackHosts[1]} the master` })
-    .click();
-  await expect(page.getByText(`${stackHosts[1]} is now the master of ${stack}.`)).toBeVisible();
-  await expect(page.getByTestId("group-serial")).toHaveText(stackSerials[1] ?? "");
-  await expect(memberRow(page, stackHosts[1] ?? "")).toHaveAttribute("data-role", "master");
-  await expect(memberRow(page, stackHosts[0] ?? "")).toHaveAttribute("data-role", "member");
-  // And back, so that the first switch is the master again.
-  await memberRow(page, stackHosts[0] ?? "")
-    .getByRole("button", { name: `Make ${stackHosts[0]} the master` })
-    .click();
-  await expect(page.getByTestId("group-serial")).toHaveText(stackSerials[0] ?? "");
+  // Another member is recorded as the master that is seen: the serial number is that
+  // one's at once. The intended master keeps its mark, and the page says the two differ.
+  const seenMaster = region(page, "The master that is seen");
+  await seenMaster.getByLabel("Member seen as master").selectOption({ label: `2: ${two}` });
+  await seenMaster.getByRole("button", { name: "Record the master that is seen" }).click();
+  await expect(
+    page.getByText(`${two} is recorded as the master that is seen of ${stack}.`),
+  ).toBeVisible();
+  await expect(serial).toHaveText(stackSerials[1] ?? "");
+  await expect(source).toHaveAttribute("data-source", "observed");
+  await expect(source).toContainText("read from the master that is seen");
+  await expect(page.getByTestId("group-observed-master")).toContainText(two);
+  await expect(page.getByTestId("group-observed-master").locator("time")).toBeVisible();
+  await expect(page.getByTestId("group-master")).toContainText(one);
+  await expect(memberRow(page, one)).toHaveAttribute("data-role", "master");
+  await expect(memberRow(page, two)).toHaveAttribute("data-role", "member");
+  await expect(memberRow(page, two)).toHaveAttribute("data-seen-master", "true");
+  await expect(memberRow(page, two)).toContainText("Seen as master");
+  const differs = page.getByTestId("master-differs");
+  await expect(differs).toContainText("The master that is seen is not the one intended.");
+  await expect(differs).toContainText("this is no fault");
+  // Seen again, with the present moment.
+  await region(page, "The master that is seen").getByRole("button", { name: "Seen now" }).click();
+  await expect(page.getByText(`${two} was seen as the master again, now.`)).toBeVisible();
 
-  // The master does not leave a stack that has other members: the server says so.
-  await memberRow(page, stackHosts[0] ?? "")
-    .getByRole("button", { name: `End the membership of ${stackHosts[0]}` })
+  // The stack is found by the serial number of any of its current members.
+  for (const memberSerial of [stackSerials[2] ?? "", stackSerials[0] ?? ""]) {
+    await page.goto(
+      `./groups?filter=${encodeURIComponent(`member.serial_number:eq:${memberSerial}`)}`,
+    );
+    await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+    const found = page.getByTestId("grid-device-groups").locator("[row-id]").first();
+    await expect(found.getByRole("link", { name: stack, exact: true })).toBeVisible();
+    // The grid shows the serial number the stack answers with: the observed master's.
+    await expect(found.locator('[col-id="serial_number"]')).toHaveText(stackSerials[1] ?? "");
+    await expect(found.locator('[col-id="type"]')).toHaveText("Stack");
+    await expect(found.locator('[col-id="member_count"]')).toHaveText("4");
+  }
+
+  // The mark of the intended master moves to another member by one change, and takes the
+  // mark from the one that had it. The two masters then agree, and nothing is said.
+  await openGroup(page, stack);
+  await memberRow(page, two)
+    .getByRole("button", { name: `Mark ${two} as the intended master` })
     .click();
-  const ending = region(page, `End the membership of ${stackHosts[0]}`);
-  await ending.getByRole("button", { name: "End membership" }).click();
-  await expect(ending.getByText("make another member the master first")).toBeVisible();
+  await expect(page.getByText(`${two} is now the intended master of ${stack}.`)).toBeVisible();
+  await expect(memberRow(page, two)).toHaveAttribute("data-role", "master");
+  await expect(memberRow(page, one)).toHaveAttribute("data-role", "member");
+  await expect(page.getByTestId("master-differs")).toHaveCount(0);
+  await expect(serial).toHaveText(stackSerials[1] ?? "");
+  // The intended master is optional: the mark is taken off, and the stack stands.
+  await memberRow(page, two)
+    .getByRole("button", { name: `Change the membership of ${two}` })
+    .click();
+  const change = region(page, `The membership of ${two}`);
+  await change.getByLabel("Role").selectOption("member");
+  await change.getByRole("button", { name: "Save membership" }).click();
+  await expect(page.getByText(`The membership of ${two} was saved.`)).toBeVisible();
+  await expect(page.getByTestId("group-master")).toHaveText("None is marked");
+  await expect(page.getByTestId("members").locator('tbody tr[data-role="master"]')).toHaveCount(0);
+  // The serial number is still read from the master that is seen.
+  await expect(serial).toHaveText(stackSerials[1] ?? "");
+  // The master that is seen is cleared: with neither, there is none to read it from.
+  await region(page, "The master that is seen")
+    .getByRole("button", { name: "Clear the master that is seen" })
+    .click();
+  await expect(page.getByText("The master that was seen was cleared.")).toBeVisible();
+  await expect(page.getByTestId("group-observed-master")).toHaveText("Nobody has recorded one");
+  await expect(serial).toHaveCount(0);
+  await expect(source).toContainText("no master is recorded to read it from");
+  // The first switch is the intended master again.
+  await memberRow(page, one)
+    .getByRole("button", { name: `Mark ${one} as the intended master` })
+    .click();
+  await expect(serial).toHaveText(stackSerials[0] ?? "");
+  await expect(source).toHaveAttribute("data-source", "intended");
+  // Nothing stops a member leaving, the master among them, and the page says so.
+  await memberRow(page, one)
+    .getByRole("button", { name: `End the membership of ${one}` })
+    .click();
+  const ending = region(page, `End the membership of ${one}`);
+  await expect(ending).toContainText("Any member may leave, the master among them");
   await ending.getByRole("button", { name: "Cancel" }).click();
 
+  // The health of the stack, from its members. Nothing is said of any of them: unknown.
+  const health = region(page, "Health").getByTestId("health");
+  await expect(health).toHaveAttribute("data-health", "unknown");
+  // It is meant to have five members and has four: degraded, and says why.
+  const groupDetails = region(page, "Details");
+  await groupDetails.getByLabel("Expected members").fill("5");
+  await groupDetails.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("The group was saved.")).toBeVisible();
+  await expect(health).toHaveAttribute("data-health", "degraded");
+  await expect(health).toContainText("it has 4 of the 5 members it is to have");
+  await expect(page.getByTestId("expected-members")).toContainText("5 expected");
+  await region(page, "Details").getByLabel("Expected members").fill("4");
+  await region(page, "Details").getByRole("button", { name: "Save" }).click();
+  await expect(health).toHaveAttribute("data-health", "unknown");
+  // What is seen of the stack itself, as one device: online, and so good.
+  const seeing = region(page, "Record what is seen of the stack");
+  await seeing.getByLabel("Observed status").selectOption("online");
+  await seeing.getByRole("button", { name: "Record what is seen" }).click();
+  await expect(page.getByText(`What is seen of ${stack} was recorded.`)).toBeVisible();
+  await expect(region(page, "Health").getByTestId("observed")).toContainText("Online · seen");
+  await expect(health).toHaveAttribute("data-health", "good");
+  await expect(health).toContainText("it is observed online");
+  // A member whose hardware has failed: the stack is degraded, and says how many.
+  await openItem(page, three);
+  await region(page, "Record the condition").getByLabel("Condition").selectOption("failed");
+  await region(page, "Record the condition")
+    .getByRole("button", { name: "Save condition" })
+    .click();
+  await expect(page.getByTestId("health")).toHaveAttribute("data-health", "failed");
+  await openGroup(page, stack);
+  await expect(health).toHaveAttribute("data-health", "degraded");
+  await expect(health).toContainText("1 member is failed");
+  // The grid of groups shows the health as a mark, with the expected members to be asked for.
+  await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${stack}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+  const groupRow = page.getByTestId("grid-device-groups").locator("[row-id]").first();
+  await expect(groupRow.locator('[col-id="health"]')).toHaveText("Degraded");
+  await expect(groupRow.locator('[col-id="health"] .health')).toHaveClass(/health-degraded/);
+  await groupRow.locator('[col-id="health"]').click();
+  await expect(page.getByTestId("grid-cell-note")).toContainText("Health: 1 member is failed");
+  await page.getByText("Columns", { exact: true }).click();
+  const groupColumns = page.getByRole("group", { name: "Columns to show" });
+  await groupColumns.getByLabel("Expected members", { exact: true }).check();
+  await groupColumns.getByLabel("Observed status", { exact: true }).check();
+  await page.getByText("Columns", { exact: true }).click();
+  await expect(groupRow.locator('[col-id="expected_members"]')).toHaveText("4");
+  await expect(groupRow.locator('[col-id="observed_status"]')).toHaveText("Online");
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await page.getByText("Columns", { exact: true }).click();
+  // The switch is good again, and so is the stack.
+  await openItem(page, three);
+  await region(page, "Record the condition").getByLabel("Condition").selectOption("good");
+  await region(page, "Record the condition")
+    .getByRole("button", { name: "Save condition" })
+    .click();
+  await expect(page.getByTestId("health")).toHaveAttribute("data-health", "good");
+
   // A member of the stack with another owner: the owner of the stack is marked (P-67).
-  await openItem(page, stackHosts[3] ?? "");
+  await openItem(page, four);
   const details = region(page, "Details");
   await details.getByLabel("Owner").selectOption({ label: campus });
   await details.getByRole("button", { name: "Save" }).click();
@@ -531,16 +1008,8 @@ test("S19, S20: a stack reads its serial number from its master, and earns the d
   await expect(page.getByTestId("group-owner")).toContainText("Members disagree");
   await expect(page.getByTestId("owner-disputed")).toBeVisible();
 
-  // The grid of groups: the stack, with its master's serial number and four members.
-  await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${stack}`)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
-  const groupRow = page.getByTestId("grid-device-groups").locator("[row-id]").first();
-  await expect(groupRow.locator('[col-id="type"]')).toHaveText("Stack");
-  await expect(groupRow.locator('[col-id="serial_number"]')).toHaveText(stackSerials[0] ?? "");
-  await expect(groupRow.locator('[col-id="member_count"]')).toHaveText("4");
-
   // S20. Under the global discount of 50, four switches of weight 1.00 weigh 2.00 as a
-  // stack: four components, one managed node, and the support cost of four switches.
+  // stack: four components and one managed node.
   await page.goto(`./catalog?filter=${encodeURIComponent(`pid:eq:${switchPid}`)}`);
   await page.getByTestId("grid-catalog").getByRole("link", { name: switchPid }).click();
   await expect(
@@ -553,12 +1022,37 @@ test("S19, S20: a stack reads its serial number from its master, and earns the d
   await expect(page.getByTestId("total-nodes")).toHaveText("1");
   // A weight is written without the zeros that say nothing: 2, or 2.00.
   await expect(page.getByTestId("total-weight")).toHaveText(/^2(\.00?)?$/);
-  await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
-  await expect(page.getByTestId("total-value")).toHaveText("72,000.00");
+  // The summary holds no money, and counts the four components by their health.
+  await expect(page.getByTestId("total-cost")).toHaveCount(0);
+  await expect(page.getByTestId("total-value")).toHaveCount(0);
+  await expect(page.getByTestId("total-health-good")).toHaveText("1");
+  await expect(page.getByTestId("total-health-unknown")).toHaveText("3");
   // The kinds beside the headline count: these are hardware, which the count takes.
   const hardware = page.getByTestId("totals-by-kind").locator('tr[data-kind="hardware"]');
   await expect(hardware.locator("td").nth(0)).toHaveText("4");
   await expect(hardware.locator("td").nth(2)).toHaveText("Yes");
+  // The money is in the management report: the support cost of four switches, with no
+  // stack discount, and their value. It has neither condition nor health.
+  await page
+    .getByRole("navigation", { name: "Reports" })
+    .getByRole("link", { name: "Management" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "Management report" })).toBeVisible();
+  await management(page, filter);
+  await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
+  await expect(page.getByTestId("total-value")).toHaveText("72,000.00");
+  await expect(page.getByTestId("total-components")).toHaveText("4");
+  await expect(page.getByTestId("total-items")).toHaveText("4");
+  await expect(page.getByTestId("totals-by-health")).toHaveCount(0);
+  await expect(page.getByLabel("By", { exact: true }).locator("option")).toHaveText([
+    "The totals only",
+    "Vendor",
+    "Kind",
+    "Type",
+    "Function",
+    "Owner",
+    "Tag",
+  ]);
 
   // The model sets its own discount of 30: the stack weighs 2.80. Nothing else changes.
   await page.goto(`./catalog?filter=${encodeURIComponent(`pid:eq:${switchPid}`)}`);
@@ -572,7 +1066,6 @@ test("S19, S20: a stack reads its serial number from its master, and earns the d
   await expect(page.getByTestId("total-weight")).toHaveText(/^2\.80?$/);
   await expect(page.getByTestId("total-components")).toHaveText("4");
   await expect(page.getByTestId("total-nodes")).toHaveText("1");
-  await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
   // By owner: the stack's members fall in two rows, and it is a managed node in both.
   await page.getByLabel("By", { exact: true }).selectOption("owner");
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
@@ -580,12 +1073,24 @@ test("S19, S20: a stack reads its serial number from its master, and earns the d
   await expect(rows.filter({ hasText: campus }).locator("td").nth(2)).toHaveText("1");
   await expect(rows.filter({ hasText: engineering }).locator("td").nth(2)).toHaveText("1");
   await expect(page.getByTestId("total-nodes")).toHaveText("1");
+  // The cost is what it was: the discount never applies to it. By owner, it is in two rows.
+  await management(page, filter, "owner");
+  await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
+  const paid = page.getByTestId("management-rows").locator("tbody tr");
+  await expect(paid).toHaveCount(2);
+  await expect(paid.filter({ hasText: campus }).locator("td").nth(3)).toHaveText("1,200.00");
+  await expect(paid.filter({ hasText: engineering }).locator("td").nth(3)).toHaveText("3,600.00");
+  await expect(paid.filter({ hasText: engineering }).locator("td").nth(2)).toHaveText("54,000.00");
+  // The report can be come back to: what it is by and its filter are in the address.
+  await page.reload();
+  await expect(page.getByLabel("By", { exact: true })).toHaveValue("owner");
+  await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
 
   // The item grid finds the members by the group they are in, and by its type.
   await page.goto(`./items?filter=${encodeURIComponent(`${filter} group.type:eq:stack`)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("4 items");
 
-  await expectClean(page, seen, ["422 PATCH"]);
+  await expectClean(page, seen);
 });
 
 test("S21: the master of the stack is replaced, and the stack stays the stack", async ({
@@ -634,13 +1139,16 @@ test("S21: the master of the stack is replaced, and the stack stays the stack", 
   await expect(page.getByTestId("replaces")).toContainText(master);
   const memberships = page.getByTestId("memberships").locator("tbody tr");
   await expect(memberships.first()).toContainText(stack);
-  await expect(memberships.first()).toContainText("Master, position 1");
+  await expect(memberships.first()).toContainText("Intended master, position 1");
 
-  // The stack is the same record: its HID is unchanged, and its master is the new switch.
+  // The stack is the same record: its HID is unchanged, and its intended master is the
+  // new switch, whose serial number it shows.
   await memberships.first().getByRole("link", { name: stack }).click();
   await expect(page.getByRole("heading", { level: 1, name: stack })).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(stackPath);
   await expect(page.getByTestId("group-serial")).toHaveText(spareSerial);
+  await expect(page.getByTestId("serial-source")).toHaveAttribute("data-source", "intended");
+  await expect(page.getByTestId("group-master")).toContainText(spare);
   await expect(page.getByTestId("member-count")).toHaveText("4 current members");
   await expect(page.getByTestId("members").locator("tbody tr")).toHaveCount(4);
   await expect(memberRow(page, spare)).toHaveAttribute("data-role", "master");
@@ -686,6 +1194,7 @@ test("S22: a controller domain, a cluster of controllers and forty access points
   await form.getByRole("button", { name: "Create group" }).click();
   await expect(page.getByRole("heading", { level: 1, name: domain })).toBeVisible();
   await expect(page.getByTestId("member-count")).toHaveText("0 current members");
+  await expect(page.getByRole("region", { name: "Health", exact: true })).toHaveCount(0);
 
   // The cluster of the two controllers, nested in the domain.
   await main(page).getByRole("link", { name: "Groups" }).click();
@@ -693,6 +1202,24 @@ test("S22: a controller domain, a cluster of controllers and forty access points
   form = region(page, "New group");
   await form.getByLabel("Name (required)").fill(cluster);
   await form.getByLabel("Type").selectOption("cluster");
+  // A cluster says how it is managed, and the form explains the three ways. Left as it
+  // is, the cluster is one managed node.
+  const managed = form.getByLabel("Managed as");
+  await expect(managed.locator("option")).toHaveCount(4);
+  await expect(managed.locator('option[value="one"]')).toContainText("One managed node");
+  await expect(managed.locator('option[value="members"]')).toContainText("One for each member");
+  await expect(managed.locator('option[value="members_and_cluster"]')).toContainText(
+    "Its members and a node of its own",
+  );
+  const explained = form.getByTestId("managed-as-help");
+  await expect(explained.getByRole("term")).toHaveText([
+    "One managed node",
+    "One for each member",
+    "Its members and a node of its own",
+  ]);
+  await expect(explained).toContainText("a pair of wireless LAN controllers in HA");
+  await expect(explained).toContainText("a pair of firewalls in HA");
+  await expect(explained).toContainText("one more managed node than it has members");
   await form.getByLabel("In group").selectOption({ label: domain });
   for (const host of controllers) {
     await pick(form, "Find an item to add", `${wirelessPrefix}-wlc`, host);
@@ -703,6 +1230,13 @@ test("S22: a controller domain, a cluster of controllers and forty access points
   await expect(page.getByRole("heading", { level: 1, name: cluster })).toBeVisible();
   await expect(page.getByTestId("member-count")).toHaveText("2 current members");
   await expect(memberRow(page, controllers[1] ?? "")).toHaveAttribute("data-role", "standby");
+  await expect(page.getByTestId("managed-as")).toHaveAttribute("data-managed-as", "one");
+  await expect(page.getByTestId("managed-as")).toHaveText("One managed node");
+  // A cluster has a health, as a stack has. A controller domain has none.
+  await expect(region(page, "Health").getByTestId("health")).toHaveAttribute(
+    "data-health",
+    "unknown",
+  );
 
   // Forty access points join the domain as its endpoints, from a file of members.
   await importFile(
@@ -721,13 +1255,18 @@ test("S22: a controller domain, a cluster of controllers and forty access points
     page.getByTestId("nested-groups").getByRole("link", { name: cluster }),
   ).toBeVisible();
 
-  // Each access point lists its controllers: the members of the cluster in its domain.
+  // Each access point lists its controllers: the members of the cluster in its domain,
+  // each with the cluster it is in.
   for (const host of [accessPoints[0] ?? "", accessPoints[39] ?? ""]) {
     await openItem(page, host);
     const listed = page.getByTestId("controllers").getByRole("listitem");
     await expect(listed).toHaveCount(2);
     await expect(listed.nth(0)).toContainText(controllers[0] ?? "");
     await expect(listed.nth(1)).toContainText(controllers[1] ?? "");
+    for (const place of [0, 1]) {
+      await expect(listed.nth(place)).toHaveAttribute("data-cluster", cluster);
+      await expect(listed.nth(place).getByRole("link", { name: cluster })).toBeVisible();
+    }
     await expect(page.getByTestId("memberships").locator("tbody tr").first()).toContainText(
       "Endpoint",
     );
@@ -754,6 +1293,28 @@ test("S22: a controller domain, a cluster of controllers and forty access points
     `hostname:prefix:${wirelessPrefix}`,
   );
   await expect(page.getByTestId("total-components")).toHaveText("42");
+
+  // How the cluster is managed decides how many managed nodes it is. Each member managed
+  // at its own address: one for each, forty-two in all. Components do not change.
+  for (const [way, text, nodes] of [
+    ["members", "One managed node for each member", "42"],
+    [
+      "members_and_cluster",
+      "One managed node for each member, and one more for the cluster itself",
+      "43",
+    ],
+    ["one", "One managed node", "41"],
+  ] as const) {
+    await openGroup(page, cluster);
+    await region(page, "Details").getByLabel("Managed as").selectOption(way);
+    await region(page, "Details").getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("The group was saved.")).toBeVisible();
+    await expect(page.getByTestId("managed-as")).toHaveAttribute("data-managed-as", way);
+    await expect(page.getByTestId("managed-as")).toHaveText(text);
+    await summary(page, `hostname:prefix:${wirelessPrefix}`);
+    await expect(page.getByTestId("total-nodes")).toHaveText(nodes);
+    await expect(page.getByTestId("total-components")).toHaveText("42");
+  }
 
   // The grid of items, by the group an item is in.
   await page.goto(`./items?filter=${encodeURIComponent(`group.name:eq:${domain}`)}`);
@@ -816,8 +1377,8 @@ test("S23: the same address under two networks, and twice under one", async ({ p
   // Written in upper case and with leading zeros: the server stores the canonical form.
   await addAddress(shared.toUpperCase().replace("::10", "::0010"), red, shared);
   await expect(addressRow(shared)).toContainText(red);
-  // The first management address of an item is its primary one.
-  await expect(addressRow(shared)).toContainText("Primary");
+  // The first management address of its family is the primary one of that family.
+  await expect(addressRow(shared)).toContainText("Primary IPv6");
   await openItem(page, other);
   await addAddress(shared, black);
   await expect(addressRow(shared)).toContainText(black);
@@ -847,21 +1408,55 @@ test("S23: the same address under two networks, and twice under one", async ({ p
   await held.getByRole("link", { name: third }).click();
   await expect(page.getByRole("heading", { level: 1, name: third })).toBeVisible();
 
-  // A second management address, marked as primary: the mark leaves the first.
+  // A second management address of the same family, marked as primary: the mark leaves
+  // the first.
   await addAddress(second, red);
-  await expect(addressRow(shared)).toContainText("Primary");
+  await expect(addressRow(shared)).toContainText("Primary IPv6");
   await expect(addressRow(second)).not.toContainText("Primary");
   await addressRow(second)
-    .getByRole("button", { name: `Make ${second} (${red}) the primary management address` })
+    .getByRole("button", { name: `Make ${second} (${red}) the primary IPv6 management address` })
     .click();
-  await expect(page.getByText(`${second} is now the primary management address.`)).toBeVisible();
-  await expect(addressRow(second).locator("td").nth(2)).toHaveText("Primary");
+  await expect(
+    page.getByText(`${second} is now the primary IPv6 management address.`),
+  ).toBeVisible();
+  await expect(addressRow(second).locator("td").nth(2)).toHaveText("Primary IPv6");
   await expect(addressRow(shared).locator("td").nth(2)).toHaveText("");
-  // The primary one is listed first.
-  await expect(page.getByTestId("addresses").locator("tbody tr").first()).toHaveAttribute(
+  // An address of the other family: the first IPv4 one is the primary IPv4 address, and
+  // the IPv6 one keeps its mark. The item has a primary management address of each.
+  await region(page, "Addresses").getByRole("button", { name: "Add an address" }).click();
+  const newAddress = region(page, "New address");
+  await newAddress.getByLabel("Address (required)").fill(fourth);
+  await expect(newAddress.getByLabel("The primary IPv4 management address")).toBeChecked();
+  await newAddress.getByLabel("Network").selectOption({ label: red });
+  await newAddress.getByRole("button", { name: "Add address" }).click();
+  await expect(page.getByText(`The address ${fourth} was added.`)).toBeVisible();
+  await expect(addressRow(fourth).locator("td").nth(2)).toHaveText("Primary IPv4");
+  await expect(addressRow(second).locator("td").nth(2)).toHaveText("Primary IPv6");
+  await expect(page.getByTestId("addresses").locator("tbody td[data-primary]")).toHaveCount(2);
+  // The primary ones are listed first, and the page states both among the item's facts.
+  await expect(page.getByTestId("addresses").locator("tbody tr").nth(2)).toHaveAttribute(
     "data-address",
-    second,
+    shared,
   );
+  const stated = region(page, "Identity").getByTestId("mgmt-addresses").getByRole("listitem");
+  await expect(stated).toHaveCount(2);
+  await expect(stated.nth(0)).toContainText(`IPv4 ${fourth}`);
+  await expect(stated.nth(1)).toContainText(`IPv6 ${second}`);
+  // And so does the grid of items, in its Management address column.
+  await freshGrid(page, `hostname:eq:${third}`);
+  await page.getByText("Columns", { exact: true }).click();
+  await page
+    .getByRole("group", { name: "Columns to show" })
+    .getByLabel("Management address", { exact: true })
+    .check();
+  await page.getByText("Columns", { exact: true }).click();
+  await expect(
+    page.getByTestId("grid-items").locator("[row-id]").first().locator('[col-id="mgmt_address"]'),
+  ).toHaveText(`${fourth}, ${second}`);
+  await page.getByText("Columns", { exact: true }).click();
+  await page.getByRole("button", { name: "Reset layout and filters" }).click();
+  await page.getByText("Columns", { exact: true }).click();
+  await openItem(page, third);
   // An address is changed: a loopback now, which cannot be primary.
   await addressRow(shared)
     .getByRole("button", { name: `Change the address ${shared} (${red})` })
@@ -875,10 +1470,10 @@ test("S23: the same address under two networks, and twice under one", async ({ p
     addressRow(shared).getByRole("button", { name: /the primary management address$/ }),
   ).toHaveCount(0);
 
-  // The grid of every address: the three of this run that are under Red.
+  // The grid of every address: the four of this run that are under Red.
   await page.goto(`./addresses?filter=${encodeURIComponent(`network.label:eq:${red}`)}`);
   await expect(page.getByRole("heading", { level: 1, name: "Addresses" })).toBeVisible();
-  await expect(page.getByTestId("grid-total")).toHaveText("3 addresses");
+  await expect(page.getByTestId("grid-total")).toHaveText("4 addresses");
   // The item grid finds an item by any of its addresses, and by the network of one.
   await page.goto(
     `./items?filter=${encodeURIComponent(`address:eq:${shared} network.label:eq:${black}`)}`,
@@ -889,7 +1484,7 @@ test("S23: the same address under two networks, and twice under one", async ({ p
   // A network that addresses are under cannot be removed.
   await page.goto("./networks");
   const redRow = page.getByTestId("networks").locator("tbody tr").filter({ hasText: red });
-  await expect(redRow).toContainText("3 addresses");
+  await expect(redRow).toContainText("4 addresses");
   await expect(redRow.getByRole("button", { name: "Remove" })).toBeDisabled();
 
   // The second address is removed. The pair under Red stays in the report.

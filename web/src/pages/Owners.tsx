@@ -8,6 +8,7 @@ import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
+import { itemsPath } from "../lib/filter";
 import { formatTime } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
@@ -169,9 +170,7 @@ export function OwnerDetail() {
       {record && (
         <>
           <p>
-            <Link to={`/items?filter=${encodeURIComponent(`owner_hid:eq:${record.hid}`)}`}>
-              Items of this owner
-            </Link>
+            <Link to={itemsPath(`owner_hid:eq:${record.hid}`)}>Items of this owner</Link>
           </p>
           <dl className="facts">
             <dt>Label</dt>
