@@ -7,6 +7,7 @@ import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
 import { ReportsNav } from "../components/ReportsNav";
+import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { itemsPath, parseShort } from "../lib/filter";
@@ -18,6 +19,7 @@ import { type Mark, operatorPath } from "../lib/operators";
 import type { Option } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
 import { settingText } from "../lib/settings";
+import { decimalValue, type SortColumns } from "../lib/sort";
 import {
   amountText,
   type By,
@@ -31,9 +33,11 @@ import {
   type ReportView,
   rowLabel,
   SUMMARY_BY,
+  type SummaryRow,
   settingList,
   summaryQuery,
 } from "../lib/summary";
+import { useSorting } from "../lib/useSorting";
 
 const DUPLICATES_PAGE = 50;
 
@@ -64,6 +68,32 @@ function RowName(props: {
   }
   return rowLabel(by, row, choices);
 }
+
+/**
+ * What a row of a report is sorted by under its name: what it is called on the page, an
+ * operator by its label. The row of the items that have none is a row like the others,
+ * and sorts by what it is called.
+ */
+function rowName(
+  by: By | ManagementBy | "",
+  row: { key: string | null; label: string | null },
+  choices: Parameters<typeof rowLabel>[2],
+  operators: ReadonlyMap<string, Mark> | undefined,
+): string | null {
+  if (by === "") return null;
+  if (by === "operator" && row.key !== null) {
+    return operators?.get(row.key)?.label ?? row.label ?? row.key;
+  }
+  return rowLabel(by, row, choices);
+}
+
+// The four columns of health of the summary: each is sorted by the count it shows.
+const BY_HEALTH: SortColumns<SummaryRow> = Object.fromEntries(
+  HEALTHS.map((health) => [
+    `health.${health.value}`,
+    (row: SummaryRow) => row.by_health[health.value],
+  ]),
+);
 
 /** What the address of the page asks a report for. `known` says what that report can be by. */
 function viewOf<B extends string>(
@@ -211,6 +241,14 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
+  const sorting = useSorting(data?.rows, {
+    name: (row) => rowName(by, row, choices.data, operators.data),
+    items: (row) => row.items,
+    component_count: (row) => row.component_count,
+    managed_node_count: (row) => row.managed_node_count,
+    support_weight: (row) => decimalValue(row.support_weight),
+    ...BY_HEALTH,
+  });
 
   return (
     <>
@@ -262,28 +300,35 @@ export function Summary() {
                   </caption>
                   <thead>
                     <tr>
-                      <th scope="col">{byLabel(by)}</th>
-                      <th scope="col" className="number">
+                      <SortTh sort={sorting} column="name">
+                        {byLabel(by)}
+                      </SortTh>
+                      <SortTh sort={sorting} column="items" className="number">
                         Items
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="component_count" className="number">
                         Components
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="managed_node_count" className="number">
                         Managed nodes
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="support_weight" className="number">
                         Support weight
-                      </th>
+                      </SortTh>
                       {HEALTHS.map((health) => (
-                        <th scope="col" className="number" key={health.value}>
+                        <SortTh
+                          sort={sorting}
+                          column={`health.${health.value}`}
+                          className="number"
+                          key={health.value}
+                        >
                           <HealthMark value={health.value} />
-                        </th>
+                        </SortTh>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {data.rows.map((row) => (
+                    {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
@@ -352,6 +397,13 @@ export function ManagementReport() {
   const data = report.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
+  const sorting = useSorting(data?.rows, {
+    name: (row) => rowName(by, row, choices.data, operators.data),
+    items: (row) => row.items,
+    component_count: (row) => row.component_count,
+    est_value: (row) => decimalValue(row.est_value),
+    annual_support_cost: (row) => decimalValue(row.annual_support_cost),
+  });
 
   return (
     <>
@@ -396,23 +448,25 @@ export function ManagementReport() {
                   </caption>
                   <thead>
                     <tr>
-                      <th scope="col">{byLabel(by)}</th>
-                      <th scope="col" className="number">
+                      <SortTh sort={sorting} column="name">
+                        {byLabel(by)}
+                      </SortTh>
+                      <SortTh sort={sorting} column="items" className="number">
                         Items
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="component_count" className="number">
                         Components
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="est_value" className="number">
                         Estimated value{money}
-                      </th>
-                      <th scope="col" className="number">
+                      </SortTh>
+                      <SortTh sort={sorting} column="annual_support_cost" className="number">
                         Annual support cost{money}
-                      </th>
+                      </SortTh>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.rows.map((row) => (
+                    {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
@@ -475,6 +529,17 @@ export function Duplicates() {
     }),
   );
   const rows = found.data?.items ?? [];
+  // One page of a longer list is not sorted here: only a page that holds every address.
+  const sorting = useSorting(
+    rows,
+    {
+      address: (row) => row.address,
+      network: (row) => networkText(row.network),
+      count: (row) => row.count,
+      holders: (row) => row.holders.map((holder) => holder.name || "(no name)").join(", "),
+    },
+    { enabled: (found.data?.total ?? 0) <= rows.length },
+  );
 
   function show(next: { offset?: number; archived?: boolean; drafts?: boolean }) {
     const archived = next.archived ?? includeArchived;
@@ -525,14 +590,22 @@ export function Duplicates() {
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Address</th>
-                  <th scope="col">Network</th>
-                  <th scope="col">Held</th>
-                  <th scope="col">By</th>
+                  <SortTh sort={sorting} column="address">
+                    Address
+                  </SortTh>
+                  <SortTh sort={sorting} column="network">
+                    Network
+                  </SortTh>
+                  <SortTh sort={sorting} column="count">
+                    Held
+                  </SortTh>
+                  <SortTh sort={sorting} column="holders">
+                    By
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {sorting.rows.map((row) => (
                   <tr
                     key={`${row.network_hid ?? ""} ${row.address}`}
                     data-address={row.address}

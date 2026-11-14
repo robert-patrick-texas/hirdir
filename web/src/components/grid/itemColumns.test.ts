@@ -302,7 +302,8 @@ describe("major and minor items in the item grid", () => {
     ]);
     expect(asked("position")).toMatchObject({ field: "position", sortField: "position" });
     expect(asked("depth")).toMatchObject({ field: "depth", sortField: "depth", kind: "integer" });
-    expect(asked("parent")).toMatchObject({ field: null, sortField: null });
+    // The item above is found by its HID, and sorted by its name.
+    expect(asked("parent")).toMatchObject({ field: null, sortField: "parent.name" });
   });
 });
 
@@ -660,8 +661,12 @@ describe("the planned location in the item grid", () => {
     );
   });
 
-  it("has no filter and no sort of its own: the list finds a plan with `within`, in the filter box", () => {
-    expect(asked("planned_location")).toMatchObject({ field: null, sortField: null });
+  it("filters and sorts by the name of the place, on the server", () => {
+    expect(asked("planned_location")).toMatchObject({
+      field: "planned_location.name",
+      sortField: "planned_location.name",
+      kind: "text",
+    });
   });
 
   it("exports as `planned_location`, and is hidden until it is asked for", () => {

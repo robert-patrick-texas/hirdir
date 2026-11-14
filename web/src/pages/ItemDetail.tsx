@@ -13,6 +13,7 @@ import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { aboveItem, descentHint, isFromAbove, knownAbove, ownerSource } from "../lib/descent";
 import {
@@ -59,6 +60,8 @@ import type { FieldSpec } from "../lib/patch";
 import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { dateValue, decimalValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 type Item = Schemas["ItemOut"];
 type Choice = Schemas["ChoiceOut"];
@@ -84,6 +87,14 @@ const INHERITED: ReadonlyArray<[field: Inherited, label: string]> = [
   ["end_of_hw_support", "End of hardware support"],
   ["ldos", "Last day of support (LDoS)"],
 ];
+
+// Those of them that are dates. The rest are decimals, as the server writes them.
+const INHERITED_DATES: ReadonlySet<Inherited> = new Set([
+  "end_of_sale",
+  "end_of_sw_support",
+  "end_of_hw_support",
+  "ldos",
+]);
 
 function Dash() {
   return <span className="muted">—</span>;
@@ -481,6 +492,15 @@ function Doing({ item, choices, mayEdit, onChanged, onReload }: DoingProps) {
 
 /** Every field the item inherits: the value in force, and where it came from. */
 function ValuesInForce({ item }: { item: Item }) {
+  const sorting = useSorting(INHERITED, {
+    field: ([, label]) => label,
+    // A date is sorted as a date and a decimal as a number, and none is last.
+    value: ([field]) => {
+      const text = effectiveText(item.effective[field]);
+      return INHERITED_DATES.has(field) ? dateValue(text) : decimalValue(text);
+    },
+    source: ([field]) => sourceLabel(item.effective[field]),
+  });
   return (
     <section aria-labelledby="values">
       <h2 id="values">Values in force</h2>
@@ -492,13 +512,19 @@ function ValuesInForce({ item }: { item: Item }) {
           <caption className="visually-hidden">Values in force, each with its source</caption>
           <thead>
             <tr>
-              <th scope="col">Field</th>
-              <th scope="col">Value in force</th>
-              <th scope="col">Source</th>
+              <SortTh sort={sorting} column="field">
+                Field
+              </SortTh>
+              <SortTh sort={sorting} column="value">
+                Value in force
+              </SortTh>
+              <SortTh sort={sorting} column="source">
+                Source
+              </SortTh>
             </tr>
           </thead>
           <tbody>
-            {INHERITED.map(([field, label]) => {
+            {sorting.rows.map(([field, label]) => {
               const effective = item.effective[field];
               const inherited = isInherited(effective);
               return (
@@ -1128,6 +1154,17 @@ function History({ item }: { item: Item }) {
     }),
   );
   const events = history.data?.items ?? [];
+  // The events are sorted, each with its rows kept together, and only when the page holds
+  // every one: one page of a longer history is not sorted here.
+  const sorting = useSorting(
+    events,
+    {
+      at: (event) => dateValue(event.at),
+      actor_name: (event) => event.actor_name,
+      action: (event) => event.action,
+    },
+    { enabled: (history.data?.total ?? 0) <= events.length },
+  );
 
   return (
     <section aria-labelledby="history">
@@ -1141,15 +1178,21 @@ function History({ item }: { item: Item }) {
               <caption className="visually-hidden">Changes to this item, newest first</caption>
               <thead>
                 <tr>
-                  <th scope="col">When</th>
-                  <th scope="col">Who</th>
-                  <th scope="col">Action</th>
+                  <SortTh sort={sorting} column="at">
+                    When
+                  </SortTh>
+                  <SortTh sort={sorting} column="actor_name">
+                    Who
+                  </SortTh>
+                  <SortTh sort={sorting} column="action">
+                    Action
+                  </SortTh>
                   <th scope="col">Field</th>
                   <th scope="col">Was</th>
                   <th scope="col">Is</th>
                 </tr>
               </thead>
-              {events.map((event) => {
+              {sorting.rows.map((event) => {
                 const changes = event.changes.length > 0 ? event.changes : [{}];
                 return (
                   <tbody key={event.hid} data-action={event.action}>

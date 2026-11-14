@@ -10,6 +10,7 @@
 import type { Schemas } from "../api/client";
 import { itemsPath } from "./filter";
 import { markOf } from "./operators";
+import { decimalValue, type SortColumns, type SortState } from "./sort";
 
 export type ScoreRow = Schemas["SummaryRow"];
 export type RowOperator = Schemas["RowOperator"];
@@ -36,30 +37,55 @@ type Weighed = Pick<ScoreRow, "support_weight" | "component_count" | "items"> & 
 
 /**
  * The order of a scoreboard: the most support weight first, then the most components,
- * then the most items, then by name, so that the order is steady.
+ * then the most items, then by name, so that the order is steady. Of two that are equal
+ * the row with a name comes before the blank row.
  */
 export function byLoad(one: Weighed, other: Weighed): number {
   return (
     hundredths(other.support_weight) - hundredths(one.support_weight) ||
     other.component_count - one.component_count ||
     other.items - one.items ||
+    Number(one.label === null) - Number(other.label === null) ||
     (one.label ?? "").localeCompare(other.label ?? "")
   );
 }
 
 /**
- * The rows of a scoreboard, in order, and the blank row set apart: what nobody is
- * assigned to in a summary by operator, the items that are nowhere in one by site.
+ * Every row of a scoreboard in the order it has at first: the most support weight
+ * first. The blank row, what nobody is assigned to or the items that are nowhere, is a
+ * row like the others, and stands where its weight puts it.
  */
-export function ranked<T extends Weighed & { key: string | null }>(
-  rows: readonly T[] | null | undefined,
-): { rows: T[]; blank: T | null } {
-  const named = (rows ?? []).filter((row) => row.key !== null);
+export function board<T extends Weighed>(rows: readonly T[] | null | undefined): T[] {
+  return [...(rows ?? [])].sort(byLoad);
+}
+
+/** What the first column of a scoreboard says of a row: the label, or what the blank row is. */
+export function rowName(row: Pick<ScoreRow, "key" | "label">, blank: string): string {
+  return row.key === null ? blank : (row.label ?? row.key);
+}
+
+/**
+ * What each column of a scoreboard is sorted by. The share is a part of one whole, so
+ * it sorts as the support weight does; the operators involved sort as the cell reads.
+ */
+export function scoreColumns(blank: string): SortColumns<ScoreRow> {
   return {
-    rows: [...named].sort(byLoad),
-    blank: (rows ?? []).find((row) => row.key === null) ?? null,
+    name: (row) => rowName(row, blank),
+    components: (row) => row.component_count,
+    nodes: (row) => row.managed_node_count,
+    items: (row) => row.items,
+    weight: (row) => decimalValue(row.support_weight),
+    share: (row) => decimalValue(row.support_weight),
+    good: (row) => row.by_health.good,
+    degraded: (row) => row.by_health.degraded,
+    failed: (row) => row.by_health.failed,
+    unknown: (row) => row.by_health.unknown,
+    involved: (row) => involvedText(row.operators),
   };
 }
+
+/** The order of a scoreboard at first: by support weight, the most first. */
+export const BY_WEIGHT: SortState = { column: "weight", descending: true };
 
 /**
  * A part of the view's support weight, in hundredths of a per cent of the whole, so
@@ -148,8 +174,8 @@ export function toCsv(rows: ReadonlyArray<ReadonlyArray<string | number>>): stri
   return rows.map((row) => `${row.map(cell).join(",")}\r\n`).join("");
 }
 
-/** The operators table as a file: one line for each, what nobody is assigned to last. */
-export function operatorsCsv(rows: readonly ScoreRow[], blank: ScoreRow | null, whole: string) {
+/** The operators table as a file: one line for each row, in the order they are given. */
+export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
   const line = (row: ScoreRow): Array<string | number> => {
     const mark = operatorOfRow(row);
     return [
@@ -185,7 +211,6 @@ export function operatorsCsv(rows: readonly ScoreRow[], blank: ScoreRow | null, 
       "unknown",
     ],
     ...rows.map(line),
-    ...(blank ? [line(blank)] : []),
   ]);
 }
 
@@ -199,8 +224,8 @@ export function involvedText(operators: readonly RowOperator[] | null | undefine
     .join("; ");
 }
 
-/** The sites table as a file: one line for each, the items that are nowhere last. */
-export function sitesCsv(rows: readonly ScoreRow[], blank: ScoreRow | null) {
+/** The sites table as a file: one line for each row, in the order they are given. */
+export function sitesCsv(rows: readonly ScoreRow[]) {
   const line = (row: ScoreRow): Array<string | number> => [
     row.key ?? "",
     row.label ?? "",
@@ -221,6 +246,5 @@ export function sitesCsv(rows: readonly ScoreRow[], blank: ScoreRow | null) {
       "operators: components (support weight)",
     ],
     ...rows.map(line),
-    ...(blank ? [line(blank)] : []),
   ]);
 }

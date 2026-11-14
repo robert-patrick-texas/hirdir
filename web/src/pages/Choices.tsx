@@ -6,10 +6,12 @@ import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
+import { SortTh } from "../components/SortTh";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { CHOICE_LISTS, optionLabel } from "../lib/options";
 import { reordered } from "../lib/reorder";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Choice = Schemas["ChoiceOut"];
 
@@ -27,6 +29,15 @@ export function Choices() {
   const [done, setDone] = useState("");
   const action = useAction();
   const rows = choices.data ?? [];
+  const sorting = useSorting(rows, {
+    value: (choice) => choice.value,
+    label: (choice) => choice.label,
+    offered: (choice) => choice.active,
+  });
+  // The list has an order of its own, and Up and Down move a value in that order: the
+  // place of a value is its place in the list, not in the table as a header has sorted it.
+  const places = new Map(rows.map((choice, place) => [choice.hid, place]));
+  const sorted = sorting.state !== null;
 
   function changed(text: string) {
     setDone(text);
@@ -97,6 +108,13 @@ export function Choices() {
       <Problem error={action.error} onReload={choices.reload} />
       <Notice text={done} />
       {choices.loading && !choices.data && <p role="status">Loading…</p>}
+      {choices.data && sorted && (
+        <p className="actions">
+          <button type="button" onClick={sorting.reset}>
+            Back to their own order
+          </button>
+        </p>
+      )}
       {choices.data && (
         <div className="scroll">
           <table>
@@ -105,9 +123,15 @@ export function Choices() {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Value</th>
-                <th scope="col">Label</th>
-                <th scope="col">Offered</th>
+                <SortTh sort={sorting} column="value">
+                  Value
+                </SortTh>
+                <SortTh sort={sorting} column="label">
+                  Label
+                </SortTh>
+                <SortTh sort={sorting} column="offered">
+                  Offered
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -116,7 +140,7 @@ export function Choices() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((choice, place) => (
+              {sorting.rows.map((choice) => (
                 <tr key={choice.hid} className={choice.active ? undefined : "dim"}>
                   <th scope="row" className="mono">
                     {choice.value}
@@ -138,7 +162,7 @@ export function Choices() {
                     <td className="row-actions">
                       <button
                         type="button"
-                        disabled={action.busy || place === 0}
+                        disabled={action.busy || sorted || places.get(choice.hid) === 0}
                         onClick={() => move(choice, -1)}
                         aria-label={`Move ${choice.value} up`}
                       >
@@ -146,7 +170,9 @@ export function Choices() {
                       </button>
                       <button
                         type="button"
-                        disabled={action.busy || place === rows.length - 1}
+                        disabled={
+                          action.busy || sorted || places.get(choice.hid) === rows.length - 1
+                        }
                         onClick={() => move(choice, 1)}
                         aria-label={`Move ${choice.value} down`}
                       >

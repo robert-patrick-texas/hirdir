@@ -4,9 +4,12 @@ import { api } from "../api";
 import { TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { formatChanges } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
+import { dateValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 const PAGE = 50;
 
@@ -85,6 +88,20 @@ export function Audit() {
     }),
   );
   const items = events.data?.items ?? [];
+  // The server pages the trail, newest first, and does not sort it by a column: the
+  // headers sort only when the page on show holds every event there is.
+  const sorting = useSorting(
+    items,
+    {
+      time: (event) => dateValue(event.at),
+      who: (event) => event.actor_name,
+      via: (event) => event.via,
+      action: (event) => event.action,
+      record_type: (event) => `${event.record_type} ${event.record_hid ?? ""}`,
+      changes: (event) => formatChanges(event.changes).join("\n"),
+    },
+    { enabled: events.data ? events.data.total === items.length : false },
+  );
 
   function show(next: { action: string; recordType: string; offset: number }) {
     const wanted = new URLSearchParams();
@@ -160,16 +177,28 @@ export function Audit() {
               <caption className="visually-hidden">Audit events, newest first</caption>
               <thead>
                 <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Who</th>
-                  <th scope="col">Via</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Record type</th>
-                  <th scope="col">What changed</th>
+                  <SortTh sort={sorting} column="time">
+                    Time
+                  </SortTh>
+                  <SortTh sort={sorting} column="who">
+                    Who
+                  </SortTh>
+                  <SortTh sort={sorting} column="via">
+                    Via
+                  </SortTh>
+                  <SortTh sort={sorting} column="action">
+                    Action
+                  </SortTh>
+                  <SortTh sort={sorting} column="record_type">
+                    Record type
+                  </SortTh>
+                  <SortTh sort={sorting} column="changes">
+                    What changed
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {items.map((event) => {
+                {sorting.rows.map((event) => {
                   const changes = formatChanges(event.changes);
                   return (
                     <tr key={event.hid}>

@@ -7,6 +7,7 @@ import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { SortTh } from "../components/SortTh";
 import {
   ADDRESS_ROLES,
   type Address,
@@ -24,6 +25,7 @@ import { EVERY } from "../lib/lists";
 import { optionLabel } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
+import { useSorting } from "../lib/useSorting";
 
 type Network = Schemas["NetworkOut"];
 
@@ -192,6 +194,16 @@ export function Networks() {
   const action = useAction();
   const rows = networks.data?.items ?? [];
   const open = rows.find((network) => network.hid === editing) ?? null;
+  // The list is read whole, and is sorted here only when it is.
+  const sorting = useSorting(
+    rows,
+    {
+      label: (network) => network.label,
+      kind: (network) => optionLabel(NETWORK_KINDS, network.kind),
+      uses: (network) => network.uses,
+    },
+    { enabled: (networks.data?.total ?? 0) <= rows.length },
+  );
 
   function changed(text: string) {
     setDone(text);
@@ -253,9 +265,15 @@ export function Networks() {
             <caption className="visually-hidden">Networks, by label</caption>
             <thead>
               <tr>
-                <th scope="col">Label</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Addresses</th>
+                <SortTh sort={sorting} column="label">
+                  Label
+                </SortTh>
+                <SortTh sort={sorting} column="kind">
+                  Kind
+                </SortTh>
+                <SortTh sort={sorting} column="uses">
+                  Addresses
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -264,7 +282,7 @@ export function Networks() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((network) => (
+              {sorting.rows.map((network) => (
                 <tr key={network.hid}>
                   <th scope="row">{network.label}</th>
                   <td>{optionLabel(NETWORK_KINDS, network.kind)}</td>

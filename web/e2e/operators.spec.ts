@@ -576,9 +576,13 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   // of the 7.50 in view. A weight is written with or without the zero that says nothing.
   const operators = page.getByTestId("score-operators");
   const ranked = operators.locator("tbody tr");
-  await expect(ranked).toHaveCount(2);
+  await expect(ranked).toHaveCount(3);
   await expect(ranked.nth(0)).toHaveAttribute("data-label", edge);
   await expect(ranked.nth(1)).toHaveAttribute("data-label", core);
+  await expect(operators.getByRole("columnheader", { name: "Support weight" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
   const heavier = ranked.nth(0);
   await expect(markIn(heavier, edge)).toBeVisible();
   await expect(heavier).toContainText(ana);
@@ -592,8 +596,10 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(markIn(lighter, core)).toHaveAttribute("data-open", "true");
   await expect(lighter.locator('[data-measure="components"]')).toHaveText("1");
   await expect(lighter.locator('[data-measure="share"] .share-text')).toHaveText("20%");
-  // What nobody is assigned to is set apart beneath, and what is under an open label is said.
+  // What nobody is assigned to is a row like the others, here the last by its weight,
+  // and what is under an open label is said.
   const nobody = page.getByTestId("score-nobody");
+  await expect(ranked.nth(2)).toHaveAttribute("data-testid", "score-nobody");
   await expect(nobody).toContainText("Nobody is assigned");
   await expect(nobody.locator('[data-measure="components"]')).toHaveText("1");
   await expect(nobody.locator('[data-measure="weight"]')).toHaveText(/^1\.50?$/);
@@ -602,10 +608,11 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   );
 
   // The sites: the one site, with the operators involved there and how much each has,
-  // the heavier first; and the item that is nowhere beneath, which is nobody's.
+  // the heavier first; and the item that is nowhere, a row like the others, which is
+  // nobody's.
   const sites = page.getByTestId("score-sites");
-  const site = sites.locator("tbody tr");
-  await expect(site).toHaveCount(1);
+  await expect(sites.locator("tbody tr")).toHaveCount(2);
+  const site = sites.locator("tbody tr").first();
   await expect(site).toHaveAttribute("data-path", sitePath);
   await expect(site.locator('[data-measure="components"]')).toHaveText("4");
   await expect(site.locator('[data-measure="weight"]')).toHaveText(/^6(\.00?)?$/);
@@ -633,8 +640,47 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   expect(lines[2]).toContain(`,${core},,true,1,1,1,`);
   expect(lines[3]).toMatch(/^,,,,1,1,1,/);
 
+  // A header sorts the table by its column, and another click turns the order round.
+  // What nobody is assigned to sorts with the others, and the file follows the order.
+  const byComponents = operators.getByRole("button", { name: "Components", exact: true });
+  await byComponents.click();
+  await expect(operators.getByRole("columnheader", { name: "Components" })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+  await expect(operators.getByRole("columnheader", { name: "Support weight" })).toHaveAttribute(
+    "aria-sort",
+    "none",
+  );
+  await expect(ranked.nth(2)).toHaveAttribute("data-label", edge);
+  await expect(ranked.nth(0)).toHaveAttribute("data-label", core);
+  await expect(ranked.nth(1)).toHaveAttribute("data-testid", "score-nobody");
+  const savedAgain = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV of the operators" }).click();
+  const sortedPath = testInfo.outputPath("sorted-operators.csv");
+  await (await savedAgain).saveAs(sortedPath);
+  const sorted = (await readFile(sortedPath, "utf8")).trimEnd().split("\r\n");
+  expect(sorted[1]).toContain(`,${core},,true,1,1,1,`);
+  expect(sorted[2]).toMatch(/^,,,,1,1,1,/);
+  expect(sorted[3]).toContain(`,${edge},${ana},false,3,3,3,`);
+  await byComponents.click();
+  await expect(operators.getByRole("columnheader", { name: "Components" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+  await expect(ranked.nth(0)).toHaveAttribute("data-label", edge);
+  // By the name each row shows, without regard to case.
+  await operators.getByRole("button", { name: "Operator", exact: true }).click();
+  await expect(operators.getByRole("columnheader", { name: "Operator" })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+
   // Each row is the way to its items, and a site to its place.
-  await heavier.getByRole("link", { name: "items" }).click();
+  await operators
+    .locator(`tbody tr[data-label="${edge}"]`)
+    .getByRole("link", { name: "items" })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await page.goto(

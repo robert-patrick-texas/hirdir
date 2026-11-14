@@ -5,6 +5,7 @@ import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
 import { Problem } from "../components/Problem";
 import { ReportsNav } from "../components/ReportsNav";
+import { SortTh } from "../components/SortTh";
 import { type ItemView, ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
@@ -12,12 +13,15 @@ import { type Loaded, useLoad, useTitle } from "../lib/hooks";
 import { markOf } from "../lib/operators";
 import { placePath } from "../lib/places";
 import {
+  BY_WEIGHT,
+  board,
   operatorCondition,
   operatorOfRow,
   operatorsCsv,
-  ranked,
   rowItemsPath,
+  rowName,
   type ScoreRow,
+  scoreColumns,
   share,
   shareText,
   siteCondition,
@@ -25,6 +29,11 @@ import {
   underOpenLabels,
 } from "../lib/scoreboard";
 import { amountText, countText } from "../lib/summary";
+import { useSorting } from "../lib/useSorting";
+
+// What the blank row of each table is called: it is a row like the others.
+const NOBODY = "Nobody is assigned";
+const NOWHERE = "Nowhere: no location";
 
 /** The query of the summary for a view, by one thing, with the operators of each row. */
 function scoreQuery(view: ItemView, by: "operator" | "site") {
@@ -96,8 +105,9 @@ export function Scoreboard() {
       <p>
         Who looks after how much, and where: the operators in force for the items in view, each with
         its components, managed nodes and support weight, the most support weight first, and the
-        sites in the same way, each with the operators involved there. Every item the filter keeps
-        is counted, major and minor. The counts by owner, state and the rest are in the{" "}
+        sites in the same way, each with the operators involved there. Each table is sorted by any
+        column by its header, and a file that is saved follows the order on show. Every item the
+        filter keeps is counted, major and minor. The counts by owner, state and the rest are in the{" "}
         <Link to="/reports">summary</Link>.
       </p>
       <ItemViewForm
@@ -118,9 +128,12 @@ type Summary = Loaded<Schemas["SummaryOut"]>;
 /** The operators, the one with the most support weight first, and what nobody is assigned to. */
 function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const data = summary.data;
-  const { rows, blank } = ranked(data?.rows);
+  // Every row, what nobody is assigned to among them, by support weight at first: the
+  // headers sort them by any column, and the file that is saved follows the order on show.
+  const sorting = useSorting(board(data?.rows), scoreColumns(NOBODY), { initial: BY_WEIGHT });
+  const rows = sorting.rows;
   const whole = data?.totals.support_weight ?? "0";
-  const open = underOpenLabels(rows);
+  const open = underOpenLabels(rows.filter((row) => row.key !== null));
   const openItems = rowItemsPath(view.filter, "operator.is_open:eq:true");
 
   return (
@@ -137,29 +150,39 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
           <div className="scroll">
             <table data-testid="score-operators">
               <caption className="visually-hidden">
-                The operators in force for the items in view, the most support weight first, each
-                with its components, managed nodes, items, support weight and share
+                The operators in force for the items in view, and what nobody is assigned to, each
+                with its components, managed nodes, items, support weight and share: by support
+                weight at first, and sorted by any column by its header
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Operator</th>
-                  <th scope="col" className="number">
+                  <SortTh sort={sorting} column="name">
+                    Operator
+                  </SortTh>
+                  <SortTh sort={sorting} column="components" className="number">
                     Components
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="nodes" className="number">
                     Managed nodes
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="items" className="number">
                     Items
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="weight" className="number">
                     Support weight
-                  </th>
-                  <th scope="col">Share of the weight</th>
+                  </SortTh>
+                  <SortTh sort={sorting} column="share">
+                    Share of the weight
+                  </SortTh>
                   {HEALTHS.map((health) => (
-                    <th scope="col" className="number" key={health.value}>
+                    <SortTh
+                      sort={sorting}
+                      column={health.value}
+                      className="number"
+                      key={health.value}
+                    >
                       <HealthMark value={health.value} />
-                    </th>
+                    </SortTh>
                   ))}
                   <th scope="col">In the grid</th>
                 </tr>
@@ -168,12 +191,21 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 {rows.map((row) => {
                   const mark = operatorOfRow(row);
                   return (
-                    <tr key={row.key} data-operator={row.key} data-label={mark?.label ?? ""}>
+                    <tr
+                      key={row.key ?? ""}
+                      data-operator={row.key ?? ""}
+                      data-label={mark?.label ?? ""}
+                      {...(row.key === null ? { "data-testid": "score-nobody" } : {})}
+                    >
                       <th scope="row">
-                        {mark ? <OperatorMark mark={mark} withPerson /> : row.label}
+                        {mark ? <OperatorMark mark={mark} withPerson /> : rowName(row, NOBODY)}
                       </th>
                       <Measures row={row} />
-                      <ShareCell part={row.support_weight} whole={whole} of={mark?.label ?? ""} />
+                      <ShareCell
+                        part={row.support_weight}
+                        whole={whole}
+                        of={mark?.label ?? rowName(row, NOBODY)}
+                      />
                       {HEALTHS.map((health) => (
                         <td className="number" key={health.value} data-health={health.value}>
                           {countText(row.by_health[health.value])}
@@ -188,43 +220,11 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={11} className="muted">
-                      No item in view has an operator.
+                      No item is in view.
                     </td>
                   </tr>
                 )}
               </tbody>
-              {blank && (
-                <tfoot>
-                  <tr data-operator="" data-testid="score-nobody">
-                    <th scope="row" className="tree-count tree-count-first">
-                      Nobody is assigned
-                    </th>
-                    <td className="number tree-count tree-count-first" data-measure="components">
-                      {countText(blank.component_count)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="nodes">
-                      {countText(blank.managed_node_count)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="items">
-                      {countText(blank.items)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="weight">
-                      {amountText(blank.support_weight)}
-                    </td>
-                    <td className="tree-count tree-count-first">
-                      {shareText(blank.support_weight, whole)}
-                    </td>
-                    {HEALTHS.map((health) => (
-                      <td className="number tree-count tree-count-first" key={health.value}>
-                        {countText(blank.by_health[health.value])}
-                      </td>
-                    ))}
-                    <td className="tree-count tree-count-first">
-                      <ItemsLink view={view} condition={operatorCondition(null)} />
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
             </table>
           </div>
           <p data-testid="score-open" data-labels={open.labels}>
@@ -248,10 +248,8 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
           <p className="actions">
             <button
               type="button"
-              disabled={rows.length === 0 && !blank}
-              onClick={() =>
-                saveCsv(operatorsCsv(rows, blank, whole), "hirdir-scoreboard-operators.csv")
-              }
+              disabled={rows.length === 0}
+              onClick={() => saveCsv(operatorsCsv(rows, whole), "hirdir-scoreboard-operators.csv")}
             >
               Export CSV
               <span className="visually-hidden"> of the operators</span>
@@ -288,7 +286,9 @@ function ShareCell({ part, whole, of }: { part: string; whole: string; of: strin
 /** The sites, the one with the most support weight first, each with the operators involved. */
 function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const data = summary.data;
-  const { rows, blank } = ranked(data?.rows);
+  // Every row, the items that are nowhere among them, by support weight at first.
+  const sorting = useSorting(board(data?.rows), scoreColumns(NOWHERE), { initial: BY_WEIGHT });
+  const rows = sorting.rows;
 
   const involved = (row: ScoreRow) => (
     <ul className="plain-list involved" data-testid="involved">
@@ -327,36 +327,46 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
           <div className="scroll">
             <table data-testid="score-sites">
               <caption className="visually-hidden">
-                The sites of the items in view, the most support weight first, each with its
-                components, managed nodes, items, support weight and the operators involved
+                The sites of the items in view, and the items that are nowhere, each with its
+                components, managed nodes, items, support weight and the operators involved: by
+                support weight at first, and sorted by any column by its header
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Site</th>
-                  <th scope="col" className="number">
+                  <SortTh sort={sorting} column="name">
+                    Site
+                  </SortTh>
+                  <SortTh sort={sorting} column="components" className="number">
                     Components
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="nodes" className="number">
                     Managed nodes
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="items" className="number">
                     Items
-                  </th>
-                  <th scope="col" className="number">
+                  </SortTh>
+                  <SortTh sort={sorting} column="weight" className="number">
                     Support weight
-                  </th>
-                  <th scope="col">Operators involved</th>
+                  </SortTh>
+                  <SortTh sort={sorting} column="involved">
+                    Operators involved
+                  </SortTh>
                   <th scope="col">In the grid</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.key} data-site={row.key} data-path={row.label ?? ""}>
+                  <tr
+                    key={row.key ?? ""}
+                    data-site={row.key ?? ""}
+                    data-path={row.key === null ? "" : (row.label ?? "")}
+                    {...(row.key === null ? { "data-testid": "score-nowhere" } : {})}
+                  >
                     <th scope="row">
                       {row.key ? (
                         <Link to={placePath("site", row.key)}>{row.label ?? row.key}</Link>
                       ) : (
-                        row.label
+                        rowName(row, NOWHERE)
                       )}
                     </th>
                     <Measures row={row} />
@@ -369,43 +379,18 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={7} className="muted">
-                      No item in view is at a site.
+                      No item is in view.
                     </td>
                   </tr>
                 )}
               </tbody>
-              {blank && (
-                <tfoot>
-                  <tr data-site="" data-testid="score-nowhere">
-                    <th scope="row" className="tree-count tree-count-first">
-                      Nowhere: no location
-                    </th>
-                    <td className="number tree-count tree-count-first" data-measure="components">
-                      {countText(blank.component_count)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="nodes">
-                      {countText(blank.managed_node_count)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="items">
-                      {countText(blank.items)}
-                    </td>
-                    <td className="number tree-count tree-count-first" data-measure="weight">
-                      {amountText(blank.support_weight)}
-                    </td>
-                    <td className="tree-count tree-count-first">{involved(blank)}</td>
-                    <td className="tree-count tree-count-first">
-                      <ItemsLink view={view} condition={siteCondition(null)} />
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
             </table>
           </div>
           <p className="actions">
             <button
               type="button"
-              disabled={rows.length === 0 && !blank}
-              onClick={() => saveCsv(sitesCsv(rows, blank), "hirdir-scoreboard-sites.csv")}
+              disabled={rows.length === 0}
+              onClick={() => saveCsv(sitesCsv(rows), "hirdir-scoreboard-sites.csv")}
             >
               Export CSV
               <span className="visually-hidden"> of the sites</span>

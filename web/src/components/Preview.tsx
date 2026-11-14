@@ -29,9 +29,12 @@ import {
   staleRows,
 } from "../lib/preview";
 import { allows } from "../lib/roles";
+import type { SortColumns } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 import { SelectField } from "./Field";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
+import { SortTh } from "./SortTh";
 
 /** Give each line a key of its own, even when two lines read the same. */
 function keyed(lines: readonly string[]): Array<{ key: string; line: string }> {
@@ -64,6 +67,16 @@ export function JobCounts({ job }: { job: Job }) {
   );
 }
 
+// What the rows of a preview are sorted by, each column by what its cell shows: the
+// lines of a cell as one text.
+const ROW_COLUMNS: SortColumns<PreviewRow> = {
+  row: (row) => row.row,
+  record: (row) => row.key || row.record_hid,
+  outcome: (row) => outcomeLabel(row.outcome),
+  changes: (row) => row.changes.map(changeText).join("; "),
+  reasons: (row) => [...row.reasons.map(reasonText), ...row.notes].join("; "),
+};
+
 interface PreviewRowsProps {
   job: Job;
   /** The answer the preview was made with, which holds the first rows already. */
@@ -88,6 +101,11 @@ export function PreviewRows({ job, preview, stale = [], turn = 0 }: PreviewRowsP
     });
   });
   const inTheWay = new Map(stale.map((entry) => [entry.row, entry.message]));
+  // The server pages the rows and does not sort them: they are sorted here only when the
+  // page holds every one of them. A page of more stays in the order of the file.
+  const sorting = useSorting(rows.data?.items, ROW_COLUMNS, {
+    enabled: rows.data !== undefined && rows.data.items.length === rows.data.total,
+  });
 
   return (
     <section aria-labelledby={`rows-${job.hid}`}>
@@ -124,15 +142,25 @@ export function PreviewRows({ job, preview, stale = [], turn = 0 }: PreviewRowsP
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Row</th>
-                  <th scope="col">Record</th>
-                  <th scope="col">Outcome</th>
-                  <th scope="col">Before → after</th>
-                  <th scope="col">Reasons and notes</th>
+                  <SortTh sort={sorting} column="row">
+                    Row
+                  </SortTh>
+                  <SortTh sort={sorting} column="record">
+                    Record
+                  </SortTh>
+                  <SortTh sort={sorting} column="outcome">
+                    Outcome
+                  </SortTh>
+                  <SortTh sort={sorting} column="changes">
+                    Before → after
+                  </SortTh>
+                  <SortTh sort={sorting} column="reasons">
+                    Reasons and notes
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {rows.data.items.map((row) => (
+                {sorting.rows.map((row) => (
                   <Row key={row.row} row={row} entity={job.entity} stale={inTheWay.get(row.row)} />
                 ))}
                 {rows.data.items.length === 0 && (

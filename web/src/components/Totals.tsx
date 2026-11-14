@@ -1,4 +1,5 @@
 import type { Schemas } from "../api";
+import type { SortColumns } from "../lib/sort";
 import {
   amountText,
   type Counted,
@@ -9,7 +10,9 @@ import {
   type ManagementMeasures,
   type Totals,
 } from "../lib/summary";
+import { useSorting } from "../lib/useSorting";
 import { HealthCounts } from "./Health";
+import { SortTh } from "./SortTh";
 
 type Choice = Schemas["ChoiceOut"];
 
@@ -27,6 +30,15 @@ interface HeadlineTotalsProps {
  */
 export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
   const kinds = kindsShown(totals.by_kind, countKinds);
+  // What the count takes first, as before, until a header is pressed. The entries with
+  // no kind are a row like the others, and sort by what the row is called.
+  const columns: SortColumns<Counted> = {
+    kind: (kind) => kindLabel(kind.key),
+    items: (kind) => kind.items,
+    components: (kind) => kind.component_count,
+    counted: (kind) => (kinds.counted.includes(kind) ? "Yes" : "No, beside it"),
+  };
+  const sorting = useSorting([...kinds.counted, ...kinds.beside], columns);
   return (
     <div data-testid="totals">
       <dl className="totals">
@@ -59,18 +71,24 @@ export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Kind</th>
-                <th scope="col" className="number">
+                <SortTh sort={sorting} column="kind">
+                  Kind
+                </SortTh>
+                <SortTh sort={sorting} column="items" className="number">
                   Items
-                </th>
-                <th scope="col" className="number">
+                </SortTh>
+                <SortTh sort={sorting} column="components" className="number">
                   Components
-                </th>
-                {countKinds !== null && <th scope="col">In the component count</th>}
+                </SortTh>
+                {countKinds !== null && (
+                  <SortTh sort={sorting} column="counted">
+                    In the component count
+                  </SortTh>
+                )}
               </tr>
             </thead>
             <tbody>
-              {[...kinds.counted, ...kinds.beside].map((kind) => (
+              {sorting.rows.map((kind) => (
                 <tr key={kind.key ?? ""} data-kind={kind.key ?? ""}>
                   <th scope="row">{kindLabel(kind.key)}</th>
                   <td className="number">{countText(kind.items)}</td>
@@ -96,23 +114,32 @@ export function ConditionTotals({
   conditions: readonly Counted[];
   choices: readonly Choice[] | undefined;
 }) {
+  // The components of which nobody has said are a row like the others, and sort by what
+  // the row is called.
+  const sorting = useSorting(conditions, {
+    condition: (condition) => conditionLabel(condition, choices),
+    items: (condition) => condition.items,
+    components: (condition) => condition.component_count,
+  });
   return (
     <div className="scroll">
       <table className="narrow" data-testid="totals-by-condition">
         <caption>By condition: the state of the hardware, as people have recorded it</caption>
         <thead>
           <tr>
-            <th scope="col">Condition</th>
-            <th scope="col" className="number">
+            <SortTh sort={sorting} column="condition">
+              Condition
+            </SortTh>
+            <SortTh sort={sorting} column="items" className="number">
               Items
-            </th>
-            <th scope="col" className="number">
+            </SortTh>
+            <SortTh sort={sorting} column="components" className="number">
               Components
-            </th>
+            </SortTh>
           </tr>
         </thead>
         <tbody>
-          {conditions.map((condition) => (
+          {sorting.rows.map((condition) => (
             <tr key={condition.key ?? ""} data-condition={condition.key ?? ""}>
               <th scope="row" className={condition.key === null ? "muted" : undefined}>
                 {conditionLabel(condition, choices)}

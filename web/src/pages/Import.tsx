@@ -6,6 +6,7 @@ import { SelectField } from "../components/Field";
 import { Pager } from "../components/Pager";
 import { ApplyPreview, JobCounts, PreviewRows } from "../components/Preview";
 import { Problem } from "../components/Problem";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { toApiError, useLoad, useTitle } from "../lib/hooks";
 import { Keys, withKey } from "../lib/idempotency";
@@ -24,7 +25,9 @@ import {
 import { countsText, type Job, type Preview, type StaleRow, statusLabel } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { dateValue } from "../lib/sort";
 import type { Entity } from "../lib/transfer";
+import { useSorting } from "../lib/useSorting";
 
 const JOBS_PAGE = 20;
 
@@ -311,6 +314,21 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
     }),
   );
   const items = jobs.data?.items ?? [];
+  // The server pages this list, newest first, and does not sort it by a column: the
+  // headers sort only when the page on show holds every job there is.
+  const sorting = useSorting(
+    items,
+    {
+      made: (job) => dateValue(job.created_at),
+      file: (job) => job.file_name || (source === "bulk" ? "Bulk edit" : "A file with no name"),
+      records: (job) => entityLabel(job.entity),
+      mode: (job) => modeLabel(job.mode),
+      status: (job) => statusLabel(job),
+      rows: (job) => countsText(job),
+      by: (job) => job.created_by_name,
+    },
+    { enabled: jobs.data ? jobs.data.total === items.length : false },
+  );
 
   return (
     <section aria-labelledby="import-jobs">
@@ -344,17 +362,31 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Made</th>
-                  <th scope="col">{source === "bulk" ? "Preview" : "File"}</th>
-                  <th scope="col">Records</th>
-                  <th scope="col">Mode</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Rows</th>
-                  <th scope="col">By</th>
+                  <SortTh sort={sorting} column="made">
+                    Made
+                  </SortTh>
+                  <SortTh sort={sorting} column="file">
+                    {source === "bulk" ? "Preview" : "File"}
+                  </SortTh>
+                  <SortTh sort={sorting} column="records">
+                    Records
+                  </SortTh>
+                  <SortTh sort={sorting} column="mode">
+                    Mode
+                  </SortTh>
+                  <SortTh sort={sorting} column="status">
+                    Status
+                  </SortTh>
+                  <SortTh sort={sorting} column="rows">
+                    Rows
+                  </SortTh>
+                  <SortTh sort={sorting} column="by">
+                    By
+                  </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {items.map((job) => (
+                {sorting.rows.map((job) => (
                   <tr key={job.hid} aria-current={job.hid === current ? "true" : undefined}>
                     <td className="nowrap">
                       <Time at={job.created_at} />

@@ -22,6 +22,7 @@ import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { addressList, managementText, networkLabels } from "../lib/addresses";
 import {
@@ -59,13 +60,7 @@ import {
 import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
-import {
-  markOf,
-  markTitle,
-  operatorOptionLabel,
-  operatorPath,
-  operatorSource,
-} from "../lib/operators";
+import { markOf, operatorHint, operatorOptionLabel, operatorPath } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import {
@@ -80,6 +75,8 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { dateValue } from "../lib/sort";
+import { useSorting } from "../lib/useSorting";
 
 const MEMBERS_PAGE = 100;
 
@@ -234,16 +231,19 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 170,
   },
   {
-    // The group's own operator, by its label: what the list of groups filters and sorts
-    // by. A group with none of its own may have one from a group it is nested in or from
-    // where it is, which its page shows and the hint of the cell says.
+    // The operator in force of the group, by its label: its own, or the one it has from
+    // the group it is nested in, which shows lighter. It is what the list of groups
+    // filters and sorts by, so that the cell, the filter and the sort agree. The cell is
+    // the mark of that operator; the person and where it came from are the hint.
     id: "operator.label",
     header: "Operator",
     kind: "text",
     column: "operator",
-    value: (group) => group.operator?.label,
+    value: (group) => effectiveLabel(group.effective.operator_hid),
+    effective: (group) => group.effective.operator_hid,
+    hint: (group) => operatorHint(group.effective.operator_hid),
     chip: (group) => {
-      const mark = markOf(group.operator);
+      const mark = markOf(group.effective.operator_hid);
       return (
         mark && {
           colour: mark.colour,
@@ -251,15 +251,6 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
           ...(mark.open ? { note: "open" } : {}),
         }
       );
-    },
-    hint: (group) => {
-      const own = markOf(group.operator);
-      if (own) return markTitle(own);
-      const inForce = group.effective.operator_hid;
-      const from = operatorSource(inForce);
-      return from && inForce.label
-        ? `None of its own: ${inForce.label}, inherited from ${from.text}`
-        : "";
     },
     hide: true,
     width: 180,
@@ -299,13 +290,14 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
   },
   {
     // Where the group is going: a place that is not in use yet, by its own plan or by
-    // that of the group it is nested in. The list finds it with
-    // `planned_location:within:<place>` in the filter box; the column has no filter.
+    // that of the group it is nested in. The list filters and sorts by the name of the
+    // place, `planned_location.name`; what is planned for a place and all within it is
+    // found with `planned_location:within:<place>` in the filter box.
     id: "planned_location",
     header: "Planned location",
     kind: "text",
-    field: null,
-    sortField: null,
+    field: "planned_location.name",
+    sortField: "planned_location.name",
     value: (group) => nameOf(group.effective.planned_location_hid.label),
     effective: (group) => group.effective.planned_location_hid,
     hint: (group) => locationHint(group.effective.planned_location_hid),
@@ -1140,6 +1132,24 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
   // Every current member is on show: what a stack would be with more can be said early.
   const whole = offset === 0 && current.length === group.member_count;
   const open = rows.find((member) => member.hid === editing?.hid) ?? null;
+  // One page of a longer list is not sorted here: only a page that holds every membership.
+  const sorting = useSorting(
+    rows,
+    {
+      position: (member) => member.position,
+      item: (member) => itemName(member.item),
+      pid: (member) => member.item.pid,
+      serial_number: (member) => member.item.serial_number,
+      role: (member) => roleLabel(member.role),
+      seen: (member) =>
+        member.left_on === null && group.observed_master_hid === member.item_hid
+          ? "Seen as master"
+          : "",
+      joined_on: (member) => dateValue(member.joined_on),
+      left_on: (member) => dateValue(member.left_on),
+    },
+    { enabled: (members.data?.total ?? 0) <= rows.length },
+  );
 
   function changed(text: string) {
     setEditing(null);
@@ -1194,14 +1204,32 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Position</th>
-                <th scope="col">Item</th>
-                <th scope="col">PID</th>
-                <th scope="col">Serial number</th>
-                <th scope="col">Role</th>
-                {group.type === "stack" && <th scope="col">Seen as master</th>}
-                <th scope="col">Joined</th>
-                <th scope="col">Left</th>
+                <SortTh sort={sorting} column="position">
+                  Position
+                </SortTh>
+                <SortTh sort={sorting} column="item">
+                  Item
+                </SortTh>
+                <SortTh sort={sorting} column="pid">
+                  PID
+                </SortTh>
+                <SortTh sort={sorting} column="serial_number">
+                  Serial number
+                </SortTh>
+                <SortTh sort={sorting} column="role">
+                  Role
+                </SortTh>
+                {group.type === "stack" && (
+                  <SortTh sort={sorting} column="seen">
+                    Seen as master
+                  </SortTh>
+                )}
+                <SortTh sort={sorting} column="joined_on">
+                  Joined
+                </SortTh>
+                <SortTh sort={sorting} column="left_on">
+                  Left
+                </SortTh>
                 {mayEdit && (
                   <th scope="col">
                     <span className="visually-hidden">Actions</span>
@@ -1210,7 +1238,7 @@ function Members({ group, mayEdit, onChanged, onReload }: MembersProps) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((member) => {
+              {sorting.rows.map((member) => {
                 const name = itemName(member.item);
                 const ended = member.left_on !== null;
                 const seen = !ended && group.observed_master_hid === member.item_hid;

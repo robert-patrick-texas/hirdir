@@ -181,6 +181,24 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   await expect(page.getByTestId("member-count")).toHaveText("4 current members");
   await expect(page.getByTestId("members").locator("tbody tr")).toHaveCount(4);
   await expect(memberRow(page, one)).toHaveAttribute("data-role", "master");
+  // The members are a table that holds all of its rows: a header sorts it in the
+  // browser, another click turns the order round, and the header says which way.
+  const members = page.getByTestId("members");
+  const byPosition = members.getByRole("button", { name: "Position", exact: true });
+  const positionHeader = members.getByRole("columnheader", { name: "Position" });
+  await expect(positionHeader).toHaveAttribute("aria-sort", "none");
+  await byPosition.click();
+  await expect(positionHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(members.locator("tbody tr").first()).toHaveAttribute("data-role", "master");
+  await byPosition.click();
+  await expect(positionHeader).toHaveAttribute("aria-sort", "descending");
+  await expect(members.locator("tbody tr").last()).toHaveAttribute("data-role", "master");
+  await expect(members.locator("tbody tr").first()).toContainText(four);
+  // The header is a button: the keyboard reaches it and presses it.
+  await byPosition.focus();
+  await page.keyboard.press("Enter");
+  await expect(positionHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(members.locator("tbody tr").first()).toHaveAttribute("data-role", "master");
   // Nobody disagrees about the owner: every member has the owner the stack has.
   await expect(page.getByTestId("group-owner")).toHaveAttribute("data-disputed", "false");
 

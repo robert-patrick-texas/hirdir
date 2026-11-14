@@ -3,6 +3,7 @@
 // until that place is made active, and is moved in by that same change, by the server.
 // This shows what is planned, and asks before the change that moves it.
 
+import { useState } from "react";
 import { Link } from "react-router";
 import { api } from "../api";
 import { itemName, plural } from "../lib/format";
@@ -12,23 +13,26 @@ import {
   activationText,
   type Level,
   levelLabel,
+  nameOf,
   type Place,
   plannedGroupsWithin,
   plannedWithin,
 } from "../lib/places";
+import { nextSort, type SortState } from "../lib/sort";
+import type { SortControl } from "../lib/useSorting";
 import { ConfirmButton } from "./ConfirmButton";
 import { Problem } from "./Problem";
+import { SortTh } from "./SortTh";
 
 // How many of the items planned for a place are listed on its page.
 const LISTED = 5;
 
-/** What is planned for a place: how many items, and the first few of them. */
+/** What is planned for a place: how many items and how many device groups. */
 export interface Planned {
   /** The items planned for the place or for a place beneath it, as the tree counts them. */
   count: number;
   /** The device groups planned for it or beneath it. */
   groups: number;
-  first: Array<{ hid: string; name: string; from: string }>;
   /** The nearest level above the place that is still a draft, if there is one. */
   draftAbove: { level: Level; name: string } | null;
 }
@@ -72,9 +76,8 @@ async function readDraftAbove(
 }
 
 /**
- * Read what is planned for a place: the count from the tree of places, the first few
- * items from the item list, and for a draft place whether a level above it is a draft
- * too.
+ * Read what is planned for a place: the counts from the tree of places, and for a draft
+ * place whether a level above it is a draft too.
  */
 export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
   return useLoad(`planned ${place?.hid ?? ""} ${place?.row_version ?? ""}`, async (signal) => {
@@ -93,7 +96,7 @@ export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
         body: queryBody({
           filter: { field: "planned_location", op: "within", value: place.hid },
           sort: ["name"],
-          limit: LISTED,
+          limit: 1,
           offset: 0,
           include_archived: false,
           include_drafts: true,
@@ -109,11 +112,6 @@ export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
     return {
       count: tree?.roots[0]?.planned ?? items.total,
       groups: tree?.roots[0]?.planned_groups ?? groups.total,
-      first: items.items.map((item) => ({
-        hid: item.hid,
-        name: itemName(item),
-        from: item.effective.location_hid.label ?? "",
-      })),
       draftAbove,
     };
   });
@@ -123,6 +121,89 @@ interface PlannedHereProps {
   level: Level;
   place: Place;
   planned: Loaded<Planned | null>;
+}
+
+// The field of the item list that each column of the table below is sorted by.
+const SORTED_BY: Readonly<Record<string, string>> = { name: "name", from: "location.name" };
+
+/**
+ * The first few items that are planned for a place, with where each is now. There may
+ * be more of them than are shown, so the table is sorted by the server, over all of
+ * them: a click on a header asks for the first few in that order.
+ */
+function PlannedItems({ place, count }: { place: Place; count: number }) {
+  const [state, setState] = useState<SortState>({ column: "name", descending: false });
+  const field = SORTED_BY[state.column] ?? "name";
+  const listed = useLoad(
+    `planned-items ${place.hid} ${place.row_version} ${count} ${field} ${state.descending}`,
+    (signal) =>
+      api.request("post", "/api/v1/items/query", {
+        body: queryBody({
+          filter: { field: "planned_location", op: "within", value: place.hid },
+          sort: [`${state.descending ? "-" : ""}${field}`],
+          limit: LISTED,
+          offset: 0,
+          include_archived: false,
+          include_drafts: true,
+        }),
+        signal,
+      }),
+  );
+  const sort: SortControl = {
+    state,
+    by: (column) => setState((was) => nextSort(was, column)),
+    enabled: true,
+  };
+  const items = listed.data?.items ?? [];
+  const total = listed.data?.total ?? count;
+  return (
+    <>
+      <Problem error={listed.error} />
+      <div className="scroll">
+        <table className="narrow" data-testid="planned-items">
+          <caption className="visually-hidden">
+            The first items planned for this place, each with the location it is at now and the path
+            of that. A header sorts all of them, on the server, by the name.
+          </caption>
+          <thead>
+            <tr>
+              <SortTh sort={sort} column="name">
+                Item
+              </SortTh>
+              <SortTh sort={sort} column="from">
+                Now in
+              </SortTh>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.hid}>
+                <th scope="row">
+                  <Link to={`/items/${encodeURIComponent(item.hid)}`}>{itemName(item)}</Link>
+                </th>
+                <td>
+                  {item.effective.location_hid.label ? (
+                    <>
+                      {nameOf(item.effective.location_hid.label)}
+                      <span className="muted"> · {item.effective.location_hid.label}</span>
+                    </>
+                  ) : (
+                    <span className="muted">nowhere</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {total > items.length && listed.data && (
+        <p className="muted" data-testid="planned-more">
+          and {plural(total - items.length, "more")}: all of them are in the grid, by the link
+          above.
+        </p>
+      )}
+    </>
+  );
 }
 
 /**
@@ -167,17 +248,7 @@ export function PlannedHere({ level, place, planned }: PlannedHereProps) {
             item or the group they are in. Each stays where it is, and is counted there, until the
             place it is planned for is in use.
           </p>
-          <ul data-testid="planned-items">
-            {data.first.map((item) => (
-              <li key={item.hid}>
-                <Link to={`/items/${encodeURIComponent(item.hid)}`}>{item.name}</Link>
-                <span className="muted"> · now {item.from ? `in ${item.from}` : "nowhere"}</span>
-              </li>
-            ))}
-            {data.count > data.first.length && (
-              <li className="muted">and {plural(data.count - data.first.length, "more")}</li>
-            )}
-          </ul>
+          <PlannedItems place={place} count={data.count} />
         </>
       )}
     </section>
