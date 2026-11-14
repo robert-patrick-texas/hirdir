@@ -475,7 +475,13 @@ describe("the location, the site and the region in the item grid", () => {
     ]);
   });
 
-  it("says whether the owner in force is outside the team, and why the item is with it", () => {
+  it("says whether the owner in force is outside the team, and that owner's reason", () => {
+    // The reason is the owner's own, as the server sends it with the item: a minor item
+    // of such an item shows it too, and the column filters by it.
+    expect(asked("owner_exception_reason")).toMatchObject({
+      field: "owner_exception_reason",
+      kind: "text",
+    });
     expect(column("owner_exception").value(placed)).toBe("Yes");
     expect(column("owner_exception").value(nowhere)).toBe("No");
     expect(column("owner_exception_reason").value(placed)).toBe("In the plant room");

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { asked, buildCreate, buildPatch, canonicalDecimal, type FieldSpec, formOf } from "./patch";
+import {
+  asked,
+  buildCreate,
+  buildPatch,
+  canonicalDecimal,
+  type FieldSpec,
+  formOf,
+  hintOf,
+} from "./patch";
 
 const SPECS: FieldSpec[] = [
   { name: "name", label: "Name", kind: "text" },
@@ -217,57 +225,80 @@ describe("buildCreate", () => {
   });
 });
 
+describe("what is said beneath a field", () => {
+  const note = "This owner is outside the operations team.";
+  const owner: FieldSpec = {
+    name: "owner_hid",
+    label: "Owner",
+    kind: "choice",
+    hint: "Who answers for it",
+    options: [
+      { value: "o-engineering", label: "Network Engineering" },
+      { value: "o-facilities", label: "Campus Facilities", note },
+    ],
+  };
+  const { hint: _, ...plain } = owner;
+
+  it("is the field's own hint, or the one the record gives it", () => {
+    expect(hintOf(owner, "")).toBe("Who answers for it");
+    expect(hintOf(owner, "o-engineering")).toBe("Who answers for it");
+    expect(hintOf(owner, "", "Blank has the owner of the item it is in.")).toBe(
+      "Blank has the owner of the item it is in.",
+    );
+    expect(hintOf({ name: "name", label: "Name", kind: "text" }, "x")).toBeUndefined();
+  });
+
+  it("adds what the option that is chosen says of itself", () => {
+    expect(hintOf(owner, "o-facilities")).toBe(`Who answers for it ${note}`);
+    expect(hintOf(plain, "o-facilities")).toBe(note);
+    // Only a choice has options that speak, and only the one that is chosen does.
+    expect(hintOf({ ...owner, kind: "text" }, "o-facilities")).toBe("Who answers for it");
+  });
+});
+
 describe("a field that is asked for only sometimes", () => {
-  // The reason for an exception is asked for while the owner chosen is outside the team.
-  const outside = "o-facilities";
+  // Only a cluster says how it is managed: the form asks while the type is a cluster.
   const specs: FieldSpec[] = [
-    { name: "owner_hid", label: "Owner", kind: "choice" },
+    { name: "type", label: "Type", kind: "choice" },
     {
-      name: "owner_exception_reason",
-      label: "Reason for the exception",
-      kind: "longtext",
+      name: "managed_as",
+      label: "Managed as",
+      kind: "choice",
       required: true,
-      when: (values) => values.owner_hid === outside,
+      when: (values) => values.type === "cluster",
     },
   ];
-  const item = { row_version: 4, owner_hid: null, owner_exception_reason: null };
+  const group = { row_version: 4, type: "stack", managed_as: null };
 
   it("is asked for when the form holds what it depends on, and not otherwise", () => {
-    const [, reason] = specs;
-    expect(reason && asked(reason, { owner_hid: outside })).toBe(true);
-    expect(reason && asked(reason, { owner_hid: "o-engineering" })).toBe(false);
+    const [, managed] = specs;
+    expect(managed && asked(managed, { type: "cluster" })).toBe(true);
+    expect(managed && asked(managed, { type: "stack" })).toBe(false);
     expect(specs[0] && asked(specs[0], {})).toBe(true);
   });
 
   it("is sent with a change while it is asked for", () => {
-    const built = buildPatch(specs, item, {
-      owner_hid: outside,
-      owner_exception_reason: "In the plant room",
-    });
-    expect(built.body).toEqual({
-      row_version: 4,
-      owner_hid: outside,
-      owner_exception_reason: "In the plant room",
-    });
+    const built = buildPatch(specs, group, { type: "cluster", managed_as: "members" });
+    expect(built.body).toEqual({ row_version: 4, type: "cluster", managed_as: "members" });
   });
 
   it("is left out of a change while it is not, whatever the form still holds of it", () => {
     const built = buildPatch(
       specs,
-      { row_version: 4, owner_hid: outside, owner_exception_reason: "In the plant room" },
-      { owner_hid: "o-engineering", owner_exception_reason: "No longer true" },
+      { row_version: 4, type: "cluster", managed_as: "members" },
+      { type: "stack", managed_as: "one" },
     );
-    expect(built.body).toEqual({ row_version: 4, owner_hid: "o-engineering" });
-    expect(built.changed).toEqual(["owner_hid"]);
+    expect(built.body).toEqual({ row_version: 4, type: "stack" });
+    expect(built.changed).toEqual(["type"]);
   });
 
   it("is required of a new record only while it is asked for", () => {
-    expect(buildCreate(specs, { owner_hid: outside, owner_exception_reason: "" }).errors).toEqual({
-      owner_exception_reason: "Must not be blank.",
+    expect(buildCreate(specs, { type: "cluster", managed_as: "" }).errors).toEqual({
+      managed_as: "Must not be blank.",
     });
-    const inside = buildCreate(specs, { owner_hid: "o-engineering", owner_exception_reason: "" });
-    expect(inside.errors).toEqual({});
-    expect(inside.body).toEqual({ owner_hid: "o-engineering" });
+    const stack = buildCreate(specs, { type: "stack", managed_as: "" });
+    expect(stack.errors).toEqual({});
+    expect(stack.body).toEqual({ type: "stack" });
   });
 });
 

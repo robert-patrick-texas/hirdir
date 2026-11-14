@@ -278,6 +278,7 @@ export function itemColumns(
       width: 190,
     },
     {
+      // The reason of that owner, which is the owner's own: an item holds none.
       id: "owner_exception_reason",
       header: "Reason for the exception",
       kind: "text",

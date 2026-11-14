@@ -99,14 +99,14 @@ function ownerSpecs(tags: readonly string[], current: Owner | null = null): Fiel
       name: "is_external",
       label: "Outside the operations team",
       kind: "boolean",
-      hint: "An owner outside the team is an exception, and needs a reason",
+      hint: "An owner outside the team is an exception, and says why: the reason below is needed",
     },
     {
       name: "exception_reason",
       label: "Reason for the exception",
       kind: "longtext",
       maxLength: 10000,
-      hint: "Required for an owner outside the operations team",
+      hint: "Required for an owner outside the operations team. It is said here once: every item and group that has this owner is marked as an exception and shows this reason.",
     },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
     {
@@ -227,7 +227,18 @@ export function OwnerDetail() {
             <dt>Outside the operations team</dt>
             <dd>{record.is_external ? "Yes" : "No"}</dd>
             <dt>Reason for the exception</dt>
-            <dd>{record.exception_reason || <span className="muted">—</span>}</dd>
+            <dd>
+              <span data-testid="owner-reason">
+                {record.exception_reason || <span className="muted">—</span>}
+              </span>
+              {record.is_external && (
+                <span className="muted" data-testid="owner-reason-shown">
+                  {" "}
+                  · every item and group that has this owner is marked as an exception, and shows
+                  this reason. It is changed here, and nowhere else.
+                </span>
+              )}
+            </dd>
             <dt>Tags</dt>
             <dd data-testid="owner-tags">
               {record.tags.join(", ") || <span className="muted">—</span>}

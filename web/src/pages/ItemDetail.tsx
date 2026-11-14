@@ -50,7 +50,7 @@ import {
   RECORD_STATUSES,
   SETTABLE_STATUSES,
 } from "../lib/options";
-import { EXCEPTION_HINT, externalOwners, ownerOption } from "../lib/owners";
+import { ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
 import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
@@ -271,11 +271,13 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </span>
           )}
         </Fact>
-        {item.owner_exception && (
+        {item.owner_exception && typeof owner.value === "string" && (
           <Fact label="Reason for the exception">
-            <span data-testid="owner-exception-reason">
-              {item.owner_exception_reason ||
-                (ownerInherited ? "Given on the item that has the owner" : "")}
+            <span data-testid="owner-exception-reason">{item.owner_exception_reason}</span>
+            <span className="muted">
+              {" "}
+              · the owner&apos;s own reason, changed on{" "}
+              <Link to={`/owners/${encodeURIComponent(owner.value)}`}>the page of the owner</Link>
             </span>
           </Fact>
         )}
@@ -808,9 +810,11 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
     const { catalog, owner } = item;
     const minor = !item.is_major;
     // The owners to choose from, the item's own among them as the item names it, also
-    // when the list no longer brings it; and which of them are outside the team.
-    const offered = withCurrent(owners.data, owner && ownerOption(owner));
-    const outside = externalOwners(offered);
+    // when the list no longer brings it. One outside the team says so, with its reason.
+    const offered = withCurrent(
+      owners.data,
+      owner && ownerOption({ ...owner, exception_reason: item.owner_exception_reason }),
+    );
     return [
       {
         name: "catalog_entry_hid",
@@ -848,15 +852,6 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         kind: "choice",
         blank: minor ? "The owner of the item it is in" : "No owner",
         options: offered,
-      },
-      {
-        // Asked for only while the owner chosen is outside the team.
-        name: "owner_exception_reason",
-        label: "Reason for the exception",
-        kind: "longtext",
-        maxLength: 10000,
-        hint: EXCEPTION_HINT,
-        when: (values) => outside.has(String(values.owner_hid ?? "")),
       },
       {
         name: "location_hid",

@@ -11,8 +11,8 @@
 //        new one. A level that says "none here" stops the looking further up.
 //   S27  Site-2 is moved to another region: the paths, what is inherited and the counts
 //        follow, and the items are the records they were.
-//   S28  An item is given to an owner outside the team with no reason, which is refused,
-//        then with one, and is marked as an exception.
+//   S28  An owner outside the team is made with no reason, which is refused, then with
+//        one; an item given to it is marked as an exception, with the owner's reason.
 //
 // On the way: the location half of S18, a minor item that is where the item it is in is;
 // the Location and Site columns of the item grid; a location chosen by searching, in the
@@ -100,6 +100,9 @@ const leeMail = `lee.okafor.${id}@example.net`;
 const priya = `Priya Raman ${id}`;
 const priyaMail = `priya.raman.${id}@example.net`;
 const facilities = `Campus Facilities ${id}`;
+// Why that owner is outside the team: said on the owner, and found by on the items.
+const why = `Runs the building systems ${id}`;
+const whyNow = `Runs the plant rooms ${id}`;
 
 // The places as they are made: the address of the page of each, by its path.
 const pages = new Map<string, string>();
@@ -776,7 +779,7 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   await expectClean(page, seen);
 });
 
-test("S28: an item is given to an owner outside the team only with a reason, and is marked", async ({
+test("S28: an owner outside the team says why, once, and what is given to it is marked with that", async ({
   page,
   account,
 }) => {
@@ -784,16 +787,29 @@ test("S28: an item is given to an owner outside the team only with a reason, and
   const seen = await watch(page.context());
   await signIn(page, account);
 
-  // An owner outside the operations team, with its people.
+  // An owner outside the operations team says why it is one. With no reason it is
+  // refused, as the server says it, at the field; with one it is accepted.
   await main(page).getByRole("link", { name: "Owners" }).click();
   await page.getByRole("button", { name: "New owner" }).click();
   const newOwner = region(page, "New owner");
   await newOwner.getByLabel("Label").fill(facilities);
   await newOwner.getByLabel("Outside the operations team").check();
-  await newOwner.getByLabel("Reason for the exception").fill("Runs the building systems");
+  await newOwner.getByRole("button", { name: "Create owner" }).click();
+  await expect(newOwner.locator('.alert-error[data-status="422"]')).toBeVisible();
+  await expect(newOwner.getByLabel("Reason for the exception")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await newOwner.getByLabel("Reason for the exception").fill(why);
   await newOwner.getByRole("button", { name: "Create owner" }).click();
   await expect(page.getByRole("heading", { level: 1, name: facilities })).toBeVisible();
   await expect(page.getByTestId("owner-external")).toBeVisible();
+  // Its page says that this reason is what everything it has shows.
+  await expect(page.getByTestId("owner-reason")).toHaveText(why);
+  await expect(page.getByTestId("owner-reason-shown")).toContainText(
+    "every item and group that has this owner is marked as an exception",
+  );
+  const ownerPage = page.url();
 
   // The first of its people is the primary; another is added, and made the primary,
   // which makes the first an alternate in the same change.
@@ -833,37 +849,95 @@ test("S28: an item is given to an owner outside the team only with a reason, and
   await expect(page.getByTestId("contact-owners")).toContainText(facilities);
   await expect(page.getByTestId("contact-owners")).toContainText("Primary");
 
-  // The item is given that owner. The form asks for the reason once the owner chosen
-  // is outside the team, and says why it asks.
+  // The item is given that owner, and nothing more is asked: the form has no input for
+  // a reason, and says of the owner chosen that it is outside the team, and why.
   await openItem(page, second);
   const details = region(page, "Details");
   await expect(details.getByLabel("Reason for the exception")).toHaveCount(0);
+  await expect(details).not.toContainText("This owner is outside the operations team");
   await details.getByLabel("Owner").selectOption({ label: facilities });
-  const reason = details.getByLabel("Reason for the exception");
-  await expect(reason).toBeVisible();
-  await expect(details).toContainText("Asked because this owner is outside the operations team");
-  // With no reason it is refused, as the server says it, at the field.
-  await details.getByRole("button", { name: "Save" }).click();
-  await expect(details.locator('.alert-error[data-status="422"]')).toBeVisible();
-  await expect(reason).toHaveAttribute("aria-invalid", "true");
-  await expect(page.getByTestId("owner-exception")).toHaveCount(0);
-  // With one it is accepted, and the item is marked as an exception, with the reason.
-  await reason.fill("In the plant room, looked after with the building systems");
+  await expect(details.getByLabel("Reason for the exception")).toHaveCount(0);
+  await expect(details).toContainText("This owner is outside the operations team");
+  await expect(details).toContainText(`Its reason: ${why}.`);
   await details.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("The item was saved.")).toBeVisible();
+  // It is marked as an exception, with the owner's reason, read-only, and the way to
+  // where that reason is changed.
   await expect(page.getByTestId("owner")).toContainText(facilities);
   await expect(page.getByTestId("owner-exception")).toHaveText("Outside the operations team");
-  await expect(page.getByTestId("owner-exception-reason")).toHaveText(
-    "In the plant room, looked after with the building systems",
-  );
-  // The grid finds the exceptions.
-  await page.goto(`./items?filter=${encodeURIComponent(`${filter} owner_exception:eq:true`)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
-  await expect(
-    page.getByTestId("grid-items").getByRole("link", { name: second, exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("owner-exception-reason")).toHaveText(why);
+  const itemPage = page.url();
 
-  await expectClean(page, seen, ["422 PATCH"]);
+  // A bulk edit gives an owner outside the team like any other, with no reason beside it.
+  await page.goto(`./items?filter=${encodeURIComponent(`hostname:eq:${fourth}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await page.getByRole("button", { name: "Select all that match" }).click();
+  await page.getByRole("button", { name: "Bulk edit" }).click();
+  const bulk = page.getByTestId("bulk-edit");
+  await bulk.getByLabel("Field to change").selectOption({ label: "Owner" });
+  await bulk.getByRole("button", { name: "Add", exact: true }).click();
+  const line = bulk.getByRole("group", { name: "Owner" });
+  await line.getByLabel("Set to").selectOption({ label: facilities });
+  await expect(bulk.getByLabel("Reason for the exception")).toHaveCount(0);
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  await expect(count(page, "updated")).toHaveText("1");
+  await bulk.getByRole("button", { name: "Apply 1 item" }).click();
+  await expect(page.getByTestId("preview-applied")).toContainText("1 updated");
+
+  // A device group that is given that owner is marked in the same way, and the list of
+  // groups finds it by that.
+  await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${group}`)}`);
+  await page.getByTestId("grid-device-groups").getByRole("link", { name: group }).click();
+  await expect(page.getByRole("heading", { level: 1, name: group })).toBeVisible();
+  await expect(page.getByTestId("group-owner-exception")).toHaveCount(0);
+  const groupDetails = region(page, "Details");
+  await groupDetails.getByLabel("Owner").selectOption({ label: facilities });
+  await groupDetails.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("group-owner-exception")).toHaveText("Outside the operations team");
+  await expect(page.getByTestId("group-owner-exception-reason")).toHaveText(why);
+  await page.goto(
+    `./groups?filter=${encodeURIComponent(`name:eq:${group} owner_exception:eq:true`)}`,
+  );
+  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+
+  // The reason is changed where the owner is defined, once, and what has the owner
+  // shows the new one at once: nothing was written to the item.
+  await page.goto(itemPage);
+  await page
+    .getByTestId("owner-exception-reason")
+    .locator("..")
+    .getByRole("link", { name: "the page of the owner" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: facilities })).toBeVisible();
+  expect(page.url()).toBe(ownerPage);
+  const ownerDetails = region(page, "Details");
+  await ownerDetails.getByLabel("Reason for the exception").fill(whyNow);
+  await ownerDetails.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("The owner was saved.")).toBeVisible();
+  await page.goto(itemPage);
+  await expect(page.getByTestId("owner-exception-reason")).toHaveText(whyNow);
+
+  // The grid finds the exceptions, and finds them by the owner's reason. The reason is
+  // a column, hidden until it is asked for.
+  await page.goto(`./items?filter=${encodeURIComponent(`${filter} owner_exception:eq:true`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  await page.goto(`./items?filter=${encodeURIComponent(`owner_exception_reason:eq:${whyNow}`)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  const grid = page.getByTestId("grid-items");
+  await expect(grid.getByRole("link", { name: second, exact: true })).toBeVisible();
+  await expect(grid.getByRole("link", { name: fourth, exact: true })).toBeVisible();
+  await page.getByText("Columns", { exact: true }).click();
+  const columns = page.getByRole("group", { name: "Columns to show" });
+  await columns.getByLabel("Reason for the exception", { exact: true }).check();
+  for (const column of ["Vendor", "PID", "Serial number", "Health", "Tags", "LDoS"]) {
+    await columns.getByLabel(column, { exact: true }).uncheck();
+  }
+  await page.getByText("Columns", { exact: true }).click();
+  await expect(
+    grid.locator("[row-id]", { hasText: second }).locator('[col-id="owner_exception_reason"]'),
+  ).toHaveText(whyNow);
+
+  await expectClean(page, seen, ["422 POST"]);
 });
 
 test("what is retired is not brought back into what is retired", async ({ page, account }) => {

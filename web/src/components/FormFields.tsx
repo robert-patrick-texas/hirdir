@@ -1,5 +1,12 @@
 import { Fragment, type ReactNode } from "react";
-import { asked, type FieldSpec, type FormValue, type FormValues, type Option } from "../lib/patch";
+import {
+  asked,
+  type FieldSpec,
+  type FormValue,
+  type FormValues,
+  hintOf,
+  type Option,
+} from "../lib/patch";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
 
@@ -77,7 +84,7 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
   return specs.map((spec) => {
     const { name, label, kind } = spec;
     const value = values[name];
-    const hint = hints?.[name] ?? spec.hint;
+    const hint = hintOf(spec, value, hints?.[name]);
     const shared = {
       label,
       name,
