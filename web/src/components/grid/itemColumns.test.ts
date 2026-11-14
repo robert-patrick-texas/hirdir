@@ -354,6 +354,109 @@ describe("groups and addresses in the item grid", () => {
   });
 });
 
+describe("the location and the site in the item grid", () => {
+  const ROOM = "0193a1f4-0000-7000-8000-0000000000c1";
+  const SITE = "0193a1f4-0000-7000-8000-0000000000c2";
+  const PATH = "Americas > Central > Site-2 > Building 1 > Room 102";
+  const placed = {
+    ...chassis,
+    owner_exception: true,
+    owner_exception_reason: "In the plant room",
+    effective: {
+      ...chassis.effective,
+      location_hid: { ...from(ROOM, "own", SWITCH), label: PATH, site: "Site-2", site_hid: SITE },
+    },
+  } as unknown as Item;
+  const within = {
+    ...supply,
+    owner_exception: true,
+    owner_exception_reason: null,
+    effective: {
+      ...supply.effective,
+      location_hid: {
+        ...from(ROOM, "parent_item", SWITCH),
+        label: PATH,
+        site: "Site-2",
+        site_hid: SITE,
+      },
+    },
+  } as unknown as Item;
+  const nowhere = {
+    ...chassis,
+    owner_exception: false,
+    owner_exception_reason: null,
+    effective: {
+      ...chassis.effective,
+      location_hid: { ...none, label: null, site: null, site_hid: null },
+    },
+  } as unknown as Item;
+
+  it("shows the location in force by its name, and its site", () => {
+    expect(column("location.name").value(placed)).toBe("Room 102");
+    expect(column("site").value(placed)).toBe("Site-2");
+    expect(column("location.name").value(nowhere)).toBe("");
+    expect(column("site").value(nowhere) ?? "").toBe("");
+  });
+
+  it("marks them as inherited for a minor item that is where the item above it is", () => {
+    for (const id of ["location.name", "site"]) {
+      expect(column(id).effective?.(within)?.source, id).toBe("parent_item");
+      expect(column(id).effective?.(placed)?.source, id).toBe("own");
+    }
+  });
+
+  it("says the whole path as the hint of the cell, with where it came from", () => {
+    expect(cellHint(column("location.name"), placed)).toBe(PATH);
+    expect(cellHint(column("location.name"), within)).toBe(
+      `${PATH} · Inherited from the item it is in`,
+    );
+    expect(cellHint(column("location.name"), nowhere)).toBe("");
+    expect(cellHint(column("site"), within)).toBe("Inherited from the item it is in");
+  });
+
+  it("filters and sorts by the name of the location and of the site, on the server", () => {
+    expect(asked("location.name")).toMatchObject({
+      field: "location.name",
+      sortField: "location.name",
+    });
+    expect(asked("site")).toMatchObject({ field: "site", sortField: "site" });
+  });
+
+  it("exports the location by its path and the site by its name", () => {
+    const exported = exportColumns(COLUMNS, [
+      { colId: "name" },
+      { colId: "location.name" },
+      { colId: "site" },
+      { colId: "owner_exception" },
+      { colId: "owner_exception_reason" },
+    ]);
+    expect(exported).toEqual([
+      "hid",
+      "name",
+      "location",
+      "site",
+      "owner_exception",
+      "owner_exception_reason",
+    ]);
+  });
+
+  it("says whether the owner in force is outside the team, and why the item is with it", () => {
+    expect(column("owner_exception").value(placed)).toBe("Yes");
+    expect(column("owner_exception").value(nowhere)).toBe("No");
+    expect(column("owner_exception_reason").value(placed)).toBe("In the plant room");
+    expect(asked("owner_exception")).toMatchObject({ field: "owner_exception", kind: "boolean" });
+  });
+
+  it("hides all four until they are asked for", () => {
+    const hidden = columnDefaults(COLUMNS)
+      .filter((one) => one.hide)
+      .map((one) => one.id);
+    for (const id of ["location.name", "site", "owner_exception", "owner_exception_reason"]) {
+      expect(hidden, id).toContain(id);
+    }
+  });
+});
+
 describe("the columns a reader starts with", () => {
   it("are the ones of 0.3.0 and the health: every other new column is shown when wanted", () => {
     const shown = columnDefaults(COLUMNS)

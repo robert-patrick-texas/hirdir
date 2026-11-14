@@ -24,6 +24,8 @@ export const NOT_IN_BULK: readonly string[] = [
 /** The line of the form that names a catalog entry. It sets two columns: vendor and PID. */
 export const CATALOG_ENTRY = "catalog_entry";
 export const LIFECYCLE_STATE = "lifecycle_state";
+/** The line that names an owner. An owner outside the team has a reason beside it. */
+export const OWNER = "owner";
 
 /** A field a bulk edit may change. */
 export interface BulkField extends FieldSpec {
@@ -42,6 +44,8 @@ export interface BulkDraft {
   lines: readonly BulkLine[];
   /** Why the items move, when the lifecycle state is among the lines. */
   reason: string;
+  /** Why the items are with an owner outside the team, when such an owner is set. */
+  ownerReason?: string;
   addTags: readonly string[];
   removeTags: readonly string[];
 }
@@ -86,6 +90,7 @@ export function buildBulk(
   draft: BulkDraft,
   rows: Rows,
   entries: Readonly<Record<string, EntryRef>> = {},
+  external: ReadonlySet<string> = new Set(),
 ): BuiltBulk {
   const set: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
@@ -120,6 +125,14 @@ export function buildBulk(
   // A reason is taken with a move to another state, and with nothing else.
   const reason = draft.reason.trim();
   if (reason !== "" && typeof set[LIFECYCLE_STATE] === "string") set.state_reason = reason;
+  // The reason for an exception goes beside an owner outside the team, and with nothing
+  // else. Left blank it is left out: an item that has one already keeps it, and the
+  // server rejects the rows that have none.
+  const ownerReason = (draft.ownerReason ?? "").trim();
+  const owner = set[OWNER];
+  if (ownerReason !== "" && typeof owner === "string" && external.has(owner)) {
+    set.owner_exception_reason = ownerReason;
+  }
 
   const addTags = [...new Set(draft.addTags)];
   const removeTags = [...new Set(draft.removeTags)];

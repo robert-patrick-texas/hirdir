@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 
 /** Whatever was thrown, as an ApiError. */
@@ -69,6 +69,19 @@ export function useLoad<T>(key: string, load: (signal: AbortSignal) => Promise<T
     loading: current ? state.loading : true,
     reload,
   };
+}
+
+/**
+ * Read something again whenever `changed` is another value than it was. What was read
+ * stays on show meanwhile, so that a page does not go blank after every change made on it.
+ */
+export function useReloadOn(changed: string | number, reload: () => void): void {
+  const seen = useRef(changed);
+  useEffect(() => {
+    if (seen.current === changed) return;
+    seen.current = changed;
+    reload();
+  }, [changed, reload]);
 }
 
 export interface Action {

@@ -3,7 +3,7 @@
 
 import type { Schemas } from "../../api/client";
 import { addressList, managementText, networkLabels } from "../../lib/addresses";
-import { effectiveLabel, effectiveText } from "../../lib/effective";
+import { effectiveLabel, effectiveText, locationHint } from "../../lib/effective";
 import type { FilterNode } from "../../lib/filter";
 import { formatMac, formatTime, itemName } from "../../lib/format";
 import { GROUP_TYPES, groupTypeLabel } from "../../lib/groups";
@@ -23,6 +23,7 @@ import {
   RECORD_STATUSES,
 } from "../../lib/options";
 import type { Option } from "../../lib/patch";
+import { nameOf } from "../../lib/places";
 import type { GridColumn } from "./columns";
 
 type Item = Schemas["ItemOut"];
@@ -78,6 +79,12 @@ function groupTypes(item: Item): string {
  * Health is shown from the start, as a mark in its colour with its word, and filters and
  * sorts by the health the server works out. The condition and what is observed, the two
  * facts a person sets, are columns to be asked for.
+ *
+ * The location and the site are those of the location in force: a minor item with no
+ * location of its own is where the item it is in is, and shows that lighter. The
+ * Location column shows the name of the location, which is what the server filters and
+ * sorts by, with the whole path as the hint of the cell and in an export. Both are
+ * hidden until asked for, as every column that arrived after the first ones is.
  *
  * An item may be in several groups and have several addresses. The columns that show
  * them are filtered by any of them, and the server does not sort by them.
@@ -259,6 +266,46 @@ export function itemColumns(
       value: (item) => effectiveLabel(item.effective.owner_hid),
       effective: (item) => item.effective.owner_hid,
       width: 170,
+    },
+    {
+      // True for an item whose owner in force is outside the operations team.
+      id: "owner_exception",
+      header: "Outside the team",
+      kind: "boolean",
+      value: (item) => (item.owner_exception ? "Yes" : "No"),
+      hide: true,
+      width: 190,
+    },
+    {
+      id: "owner_exception_reason",
+      header: "Reason for the exception",
+      kind: "text",
+      value: (item) => item.owner_exception_reason,
+      hide: true,
+      width: 240,
+    },
+    {
+      // The location in force, by its name: `location.name` is what the list filters and
+      // sorts by. An export writes the whole path, in the column `location`.
+      id: "location.name",
+      header: "Location",
+      kind: "text",
+      column: "location",
+      value: (item) => nameOf(item.effective.location_hid.label),
+      effective: (item) => item.effective.location_hid,
+      hint: (item) => locationHint(item.effective.location_hid),
+      hide: true,
+      width: 200,
+    },
+    {
+      // The site of the location in force.
+      id: "site",
+      header: "Site",
+      kind: "text",
+      value: (item) => item.effective.location_hid.site,
+      effective: (item) => item.effective.location_hid,
+      hide: true,
+      width: 150,
     },
     {
       id: "group.name",

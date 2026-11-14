@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCreate, buildPatch, canonicalDecimal, type FieldSpec, formOf } from "./patch";
+import { asked, buildCreate, buildPatch, canonicalDecimal, type FieldSpec, formOf } from "./patch";
 
 const SPECS: FieldSpec[] = [
   { name: "name", label: "Name", kind: "text" },
@@ -214,6 +214,83 @@ describe("buildCreate", () => {
     expect(
       buildCreate(SPECS, { ...formOf(SPECS), est_value: "a lot" }).errors.est_value,
     ).toBeDefined();
+  });
+});
+
+describe("a field that is asked for only sometimes", () => {
+  // The reason for an exception is asked for while the owner chosen is outside the team.
+  const outside = "o-facilities";
+  const specs: FieldSpec[] = [
+    { name: "owner_hid", label: "Owner", kind: "choice" },
+    {
+      name: "owner_exception_reason",
+      label: "Reason for the exception",
+      kind: "longtext",
+      required: true,
+      when: (values) => values.owner_hid === outside,
+    },
+  ];
+  const item = { row_version: 4, owner_hid: null, owner_exception_reason: null };
+
+  it("is asked for when the form holds what it depends on, and not otherwise", () => {
+    const [, reason] = specs;
+    expect(reason && asked(reason, { owner_hid: outside })).toBe(true);
+    expect(reason && asked(reason, { owner_hid: "o-engineering" })).toBe(false);
+    expect(specs[0] && asked(specs[0], {})).toBe(true);
+  });
+
+  it("is sent with a change while it is asked for", () => {
+    const built = buildPatch(specs, item, {
+      owner_hid: outside,
+      owner_exception_reason: "In the plant room",
+    });
+    expect(built.body).toEqual({
+      row_version: 4,
+      owner_hid: outside,
+      owner_exception_reason: "In the plant room",
+    });
+  });
+
+  it("is left out of a change while it is not, whatever the form still holds of it", () => {
+    const built = buildPatch(
+      specs,
+      { row_version: 4, owner_hid: outside, owner_exception_reason: "In the plant room" },
+      { owner_hid: "o-engineering", owner_exception_reason: "No longer true" },
+    );
+    expect(built.body).toEqual({ row_version: 4, owner_hid: "o-engineering" });
+    expect(built.changed).toEqual(["owner_hid"]);
+  });
+
+  it("is required of a new record only while it is asked for", () => {
+    expect(buildCreate(specs, { owner_hid: outside, owner_exception_reason: "" }).errors).toEqual({
+      owner_exception_reason: "Must not be blank.",
+    });
+    const inside = buildCreate(specs, { owner_hid: "o-engineering", owner_exception_reason: "" });
+    expect(inside.errors).toEqual({});
+    expect(inside.body).toEqual({ owner_hid: "o-engineering" });
+  });
+});
+
+describe("a location in a form", () => {
+  const specs: FieldSpec[] = [{ name: "location_hid", label: "Location", kind: "location" }];
+
+  it("is held as the HID of the location, and blank as none", () => {
+    expect(formOf(specs, { location_hid: "l-102" })).toEqual({ location_hid: "l-102" });
+    expect(formOf(specs, { location_hid: null })).toEqual({ location_hid: "" });
+  });
+
+  it("is sent as that HID, and cleared with null, so that a minor item inherits again", () => {
+    const item = { row_version: 2, location_hid: "l-102" };
+    expect(buildPatch(specs, item, { location_hid: "l-201" }).body).toEqual({
+      row_version: 2,
+      location_hid: "l-201",
+    });
+    expect(buildPatch(specs, item, { location_hid: "" }).body).toEqual({
+      row_version: 2,
+      location_hid: null,
+    });
+    expect(buildPatch(specs, item, { location_hid: "l-102" }).changed).toEqual([]);
+    expect(buildCreate(specs, { location_hid: "" }).body).toEqual({});
   });
 });
 

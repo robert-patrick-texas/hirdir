@@ -14,6 +14,7 @@ import { useEntryOptions } from "../lib/lists";
 import { choiceLabel, choiceOptions } from "../lib/options";
 import { buildCreate, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
 import { pickLabel } from "../lib/pick";
+import { nameOf } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { SelectField, TextField } from "./Field";
 import { FormFields } from "./FormFields";
@@ -106,7 +107,7 @@ export function Place({ item, mayEdit, onChanged, onReload }: ChangeProps) {
       <p className="hint">
         {item.is_major
           ? "A major item is counted, and carries support weight. Put in another item it becomes a minor item of it, and is not."
-          : "A minor item is not counted on its own. Left blank, its owner and its standing are those of the item it is in."}
+          : "A minor item is not counted on its own. Left blank, its owner, its location and its standing are those of the item it is in."}
       </p>
       <Problem error={action.error} shown={moving ? known : []} onReload={onReload} />
       {mayEdit && !moving && (
@@ -237,7 +238,8 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
           <div className="scroll">
             <table data-testid="minor-items">
               <caption className="visually-hidden">
-                The minor items in {name}, by position, with the standing and owner in force
+                The minor items in {name}, by position, with the standing, the owner and the
+                location in force
               </caption>
               <thead>
                 <tr>
@@ -247,6 +249,7 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
                   <th scope="col">Serial number</th>
                   <th scope="col">State</th>
                   <th scope="col">Owner</th>
+                  <th scope="col">Location</th>
                   <th scope="col">Minor items</th>
                 </tr>
               </thead>
@@ -273,6 +276,10 @@ export function MinorItems({ item, states, mayEdit, onChanged }: MinorItemsProps
                     <InForce
                       text={effectiveLabel(child.effective.owner_hid)}
                       effective={child.effective.owner_hid}
+                    />
+                    <InForce
+                      text={nameOf(child.effective.location_hid.label)}
+                      effective={child.effective.location_hid}
                     />
                     <td>{child.minor_items > 0 ? String(child.minor_items) : <Dash />}</td>
                   </tr>

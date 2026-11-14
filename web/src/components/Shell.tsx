@@ -45,10 +45,16 @@ export function Shell() {
                   <NavLink to="/addresses">Addresses</NavLink>
                 </li>
                 <li>
+                  <NavLink to="/geography">Geography</NavLink>
+                </li>
+                <li>
                   <NavLink to="/catalog">Catalog</NavLink>
                 </li>
                 <li>
                   <NavLink to="/vendors">Vendors</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/contacts">Contacts</NavLink>
                 </li>
                 <li>
                   <NavLink to="/owners">Owners</NavLink>

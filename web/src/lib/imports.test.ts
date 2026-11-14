@@ -16,7 +16,13 @@ describe("entities", () => {
       "tags",
       "vendors",
       "catalog_entries",
+      "regions",
+      "sites",
+      "locations",
+      "contacts",
+      "contact_assignments",
       "owners",
+      "owner_members",
       "networks",
       "items",
       "device_groups",
@@ -33,6 +39,21 @@ describe("entities", () => {
     expect(isEntity("device_group_members")).toBe(true);
     expect(entityLabel("device_group_members")).toBe("Members of device groups");
     expect(entityLabel("addresses")).toBe("Addresses");
+  });
+
+  it("know the six kinds of record that came with places and people", () => {
+    for (const entity of [
+      "regions",
+      "sites",
+      "locations",
+      "contacts",
+      "contact_assignments",
+      "owner_members",
+    ]) {
+      expect(isEntity(entity), entity).toBe(true);
+    }
+    expect(entityLabel("contact_assignments")).toBe("Contacts of places");
+    expect(entityLabel("owner_members")).toBe("People of owners");
   });
 });
 
@@ -76,6 +97,18 @@ describe("guessEntity", () => {
     expect(guessEntity("device_groups.csv")).toBe("device_groups");
     expect(guessEntity("device-group-members.csv")).toBe("device_group_members");
     expect(guessEntity("hirdir-device_group_members.json")).toBe("device_group_members");
+  });
+
+  it("tells places and people apart by the name of their file", () => {
+    expect(guessEntity("regions.csv")).toBe("regions");
+    expect(guessEntity("sites.csv")).toBe("sites");
+    expect(guessEntity("locations.json")).toBe("locations");
+    expect(guessEntity("contacts.csv")).toBe("contacts");
+    expect(guessEntity("contact-assignments.csv")).toBe("contact_assignments");
+    expect(guessEntity("owners.csv")).toBe("owners");
+    expect(guessEntity("owner_members.csv")).toBe("owner_members");
+    // A file of items named after a site is a file of items.
+    expect(guessEntity("items-site2.csv")).toBe("items");
   });
 
   it("guesses nothing from a name that says nothing", () => {

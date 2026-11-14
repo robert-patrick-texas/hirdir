@@ -20,6 +20,7 @@ import {
   byLabel,
   countText,
   isBy,
+  isByPlace,
   isManagementBy,
   MANAGEMENT_BY,
   type ReportView,
@@ -30,6 +31,13 @@ import {
 } from "../lib/summary";
 
 const DUPLICATES_PAGE = 50;
+
+// What to say beneath a report whose rows are places.
+const PLACE_ROWS = {
+  site: "A site is named by its path, and holds the items whose location in force is in it. The items that are nowhere are in a row of their own.",
+  region:
+    "A region is named by its path, and its row holds everything at or beneath it: an item is in the row of each region above it, and the totals count it once. The items that are nowhere are in a row of their own.",
+} as const;
 
 /** The second row of navigation on the report pages. */
 function ReportsNav() {
@@ -79,6 +87,11 @@ interface ViewFormProps<B extends string> {
   view: ReportView<B>;
   /** What the report can be by. */
   by: ReadonlyArray<Option & { value: B }>;
+  /**
+   * What the report is by when the view names nothing. Left out, the totals only, which
+   * the form then offers; the management report is by site, and has no such view.
+   */
+  unasked?: B;
   known: (value: string) => value is B;
   /** What the server said of the filter, if it refused it. */
   filterRefused: string | undefined;
@@ -90,7 +103,7 @@ interface ViewFormProps<B extends string> {
  * switches of the list. Both reports take the same.
  */
 function ViewForm<B extends string>(props: ViewFormProps<B>) {
-  const { view, by, known, filterRefused, onShow } = props;
+  const { view, by, unasked, known, filterRefused, onShow } = props;
   const [draft, setDraft] = useState(view.filter);
   const [filterError, setFilterError] = useState("");
 
@@ -124,11 +137,11 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
         <SelectField
           label="By"
           name="by"
-          value={view.by}
+          value={view.by || (unasked ?? "")}
           onChange={(next) => onShow({ ...view, by: known(next) ? next : "" })}
           hint="One row for each value. An item with no value is in a row of its own."
         >
-          <option value="">The totals only</option>
+          {unasked === undefined && <option value="">The totals only</option>}
           {by.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -297,6 +310,7 @@ export function Summary() {
                   " An item with several tags is in the row of each, and the totals count it once."}{" "}
                 A stack whose members fall in two rows is a managed node in both, and one in the
                 totals.
+                {isByPlace(by) && ` ${PLACE_ROWS[by]}`}
               </p>
             </section>
           )}
@@ -309,8 +323,8 @@ export function Summary() {
 /**
  * Reports → Management, for the people who pay for the network: the estimated value and
  * the annual support cost of a view of the items, whole and with one row for each value
- * of what the view is taken by. It holds neither condition nor health. By site, which
- * is what it will show unless asked otherwise, arrives with sites.
+ * of what the view is taken by. It holds neither condition nor health. It is by site
+ * unless asked otherwise: the whole inventory, and each site beneath it.
  */
 export function ManagementReport() {
   useTitle("Management report");
@@ -341,6 +355,7 @@ export function ManagementReport() {
         key={view.filter}
         view={view}
         by={MANAGEMENT_BY}
+        unasked="site"
         known={isManagementBy}
         filterRefused={fieldErrors(report.error, ["filter"]).shown.filter}
         onShow={(next) => setParams(paramsOf(next))}
@@ -411,6 +426,7 @@ export function ManagementReport() {
                   An item with several tags is in the row of each, and the totals count it once.
                 </p>
               )}
+              {isByPlace(by) && <p className="hint">{PLACE_ROWS[by]}</p>}
             </section>
           )}
         </>

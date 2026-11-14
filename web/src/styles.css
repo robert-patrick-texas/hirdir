@@ -1150,3 +1150,153 @@ td select {
   border-left-width: 4px;
   border-radius: 4px;
 }
+
+/* --- geography --------------------------------------------------------------------- */
+
+/* The tree beside the place that is chosen, where the window has room for both. */
+main:has(.geography) {
+  max-width: none;
+}
+
+.geography-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 2rem;
+  align-items: start;
+}
+
+@media (min-width: 72rem) {
+  .geography-columns {
+    grid-template-columns: minmax(26rem, 2fr) minmax(0, 3fr);
+  }
+}
+
+.geography-tree,
+.geography-place > section:first-child {
+  margin-top: 0.5rem;
+}
+
+.tree-name {
+  white-space: nowrap;
+}
+
+/* How far in a place stands: one step for each place it is in. */
+.tree-depth-1 {
+  padding-left: 1.85rem;
+}
+
+.tree-depth-2 {
+  padding-left: 3.1rem;
+}
+
+.tree-depth-3 {
+  padding-left: 4.35rem;
+}
+
+.tree-depth-4 {
+  padding-left: 5.6rem;
+}
+
+.tree-depth-5 {
+  padding-left: 6.85rem;
+}
+
+.tree-depth-6 {
+  padding-left: 8.1rem;
+}
+
+.tree-depth-7 {
+  padding-left: 9.35rem;
+}
+
+.tree-depth-8 {
+  padding-left: 10.6rem;
+}
+
+.tree-depth-9 {
+  padding-left: 11.85rem;
+}
+
+.tree-depth-10 {
+  padding-left: 13.1rem;
+}
+
+.tree-depth-11 {
+  padding-left: 14.35rem;
+}
+
+.tree-depth-12 {
+  padding-left: 15.6rem;
+}
+
+.tree-depth-13 {
+  padding-left: 16.85rem;
+}
+
+.tree-depth-14 {
+  padding-left: 18.1rem;
+}
+
+.tree-depth-15 {
+  padding-left: 19.35rem;
+}
+
+.tree-depth-16 {
+  padding-left: 20.6rem;
+}
+
+.tree-toggle {
+  display: inline-block;
+  width: 1.6rem;
+  margin-right: 0.35rem;
+  padding: 0;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.tree-leaf {
+  visibility: hidden;
+}
+
+/* The rows beneath the tree that make its numbers add up. */
+.tree-count {
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.tree-count-first {
+  border-top-width: 2px;
+}
+
+.place-path {
+  margin: -0.4rem 0 0.75rem;
+  color: var(--muted);
+}
+
+.place-detail h3 {
+  margin-top: 1.25rem;
+}
+
+/* What a place has from a level above it is shown lighter, its links too. */
+.link-inherited {
+  color: inherit;
+}
+
+/* --- a location in a form ---------------------------------------------------------- */
+
+.fields > .place-field {
+  grid-column: 1 / -1;
+}
+
+.place-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  margin: 0 0 0.35rem;
+}
+
+.place-field input[type="search"] {
+  max-width: 34rem;
+}

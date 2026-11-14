@@ -23,7 +23,9 @@ export type FieldKind =
   /** A list of text, one to a line. */
   | "lines"
   /** A set of labels, in no order. */
-  | "set";
+  | "set"
+  /** A location, found by searching for it. What the form holds is its HID. */
+  | "location";
 
 export interface Option {
   value: string;
@@ -41,16 +43,34 @@ export interface FieldSpec {
   hint?: string;
   required?: boolean;
   maxLength?: number;
-  /** For a choice or a set: what may be chosen. */
+  /**
+   * For a choice or a set: what may be chosen. For a location: the ones the form already
+   * knows what to call, such as the one the record has, each by its HID with its path.
+   */
   options?: readonly Option[];
-  /** For a choice, or for yes or no: the text of the blank option. Left out, there is none. */
+  /**
+   * For a choice, or for yes or no: the text of the blank option. Left out, there is
+   * none. For a location: what to say while none is chosen.
+   */
   blank?: string;
   /** A heading to put above this field, which starts a new group of fields. */
   heading?: string;
+  /**
+   * Whether the form asks for this field, given what it holds now: the reason for an
+   * exception is asked for only while the owner chosen is outside the team. A field that
+   * is not asked for is not shown, and nothing of it is sent.
+   */
+  when?: (values: FormValues) => boolean;
 }
 
 export type FormValue = string | boolean | string[];
 export type FormValues = Record<string, FormValue>;
+
+/** Whether a form asks for a field, given what the form holds now. */
+export function asked(spec: FieldSpec, values: FormValues): boolean {
+  return spec.when === undefined || spec.when(values);
+}
+
 type Stored = Readonly<Record<string, unknown>>;
 
 function text(value: unknown): string {
@@ -182,6 +202,7 @@ export function buildPatch<T extends { row_version: number }>(
   const changed: string[] = [];
   const errors: Record<string, string> = {};
   for (const spec of specs) {
+    if (!asked(spec, values)) continue;
     const result = read(spec, values[spec.name]);
     if ("error" in result) {
       // What was typed cannot be sent. If it is what the form started with, it is no change.
@@ -206,6 +227,7 @@ export function buildCreate<T>(specs: readonly FieldSpec[], values: FormValues):
   const changed: string[] = [];
   const errors: Record<string, string> = {};
   for (const spec of specs) {
+    if (!asked(spec, values)) continue;
     const result = read(spec, values[spec.name]);
     if ("error" in result) {
       errors[spec.name] = result.error;
