@@ -224,8 +224,10 @@ Rules, checked on every write:
   domain, so one that fails over from one pair to the other needs no change.
 - A membership is ended by giving it `left_on`, and is never removed. An item that
   comes back joins again, with a new membership. Retiring a group ends its current
-  memberships on that day. Retiring an item ends its memberships too. A move in the
-  lifecycle leaves memberships as they are.
+  memberships on that day. Retiring an item ends its memberships too, and so does
+  moving it to Released or to Archived, when it has left the team's hands. A move to
+  any other state leaves them as they are: a failed switch in Pending-Removal is still
+  a member of its stack, and the stack shows as degraded.
 - A change to these records is checked with no other change under way: of two requests
   that would put one item into two stacks at the same moment, the second waits, sees
   the first, and is refused.
