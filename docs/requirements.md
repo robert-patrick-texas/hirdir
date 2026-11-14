@@ -48,6 +48,9 @@ later, for example a Last Day of Support date on its model.
 | **Lifecycle state** | Where the item is between purchase and disposal. |
 | **Disposition** | What an item in hand is for: Staging, Production, Spare or Excess. |
 | **Expected online** | The intent that the item is powered and reachable. What monitoring observes is a separate fact. |
+| **Condition** | The state of an item's hardware as a person knows it: untested, good, degraded, suspect, failed or dead. It holds while the item is on a shelf. |
+| **Observed status** | What is seen of an item or a group right now: online, degraded or unreachable. Set by hand or by an import until a monitoring tool writes it. |
+| **Health** | What the condition, the observed status and the intent say together, as good, degraded, failed or unknown. For a stack or a cluster it follows from its members, and is worked out when read. |
 | **Network** | A label for an address space: a VRF, a tenant, a coloured network. |
 | **Registration** | A link from an item or group to an external system that knows it: a monitoring tool, an SDN controller, a cloud service. |
 | **Purchase request** | An internal request number (RITM) with lines of model and quantity, before serial numbers exist. |
@@ -69,8 +72,10 @@ later, for example a Last Day of Support date on its model.
    what is. Items are archived, not deleted. The one exception is made on the server
    itself, by an operator who clears a trial inventory with `hirdir admin reset`, and
    it takes a backup first.
-5. **Intent and observation are separate.** The inventory records what should be. A
-   later release compares that with what discovery and monitoring report.
+5. **Intent and observation are separate.** The inventory records what should be. What
+   is observed is kept beside it, as its own fact with the moment it was seen, and the
+   two are compared. Until discovery and monitoring report it, what is observed is
+   entered by hand or by an import.
 
 ## Functional requirements
 

@@ -102,6 +102,7 @@ marked as replaced, not removed.
 | D-89 | Minor items nest at most three deep beneath a major item: a chassis, a blade, a module, a transceiver. `depth` is 0 for a major item and is a field to filter and sort by. (Was P-63.) |
 | D-90 | The name of a device group is unique among groups. A group carries `record_status` and tags. Its type is not changed once it has had a member, and groups nest at most eight deep. A `custom` group takes the role `member`. An item is a current member of one group at most once, and of at most one stack and one cluster among the groups that are not retired. (Was P-64.) |
 | D-91 | A stack has exactly one master among its current members, and may be its master alone: one that waits for its second switch in staging, or has lost a member in production. A stack with no members at all is accepted whatever its status, as a shell whose members are still to come, and a draft one may have no master yet. Members are added several at a time, by one request, and checked together. In a file of members the check is made once the file has been worked through, and the rows of a group it would leave wrong are rejected together. Sharpens D-21. (Was P-65, changed: an active stack needed at least two members.) |
+| D-92 | An item has a condition, the state of the hardware as a person knows it: untested, good, degraded, suspect, failed or dead, from a list that can be edited. It is a field and not a tag, set by people and audited, and it holds while the item is on a shelf. A device group has a health that is worked out from its members when it is read and stored nowhere: a stack that is its master alone, or has a member that is not in good condition, is degraded, and says why. What is observed of an item or a group, online, degraded or unreachable, is a third fact, kept apart from the condition and from the intent. It is set by hand or by an import until a monitoring tool writes it, which waits for the integrations after 1.0.0. Built in 0.4.1. |
 
 ## Proposed
 
@@ -115,8 +116,11 @@ D-70, D-74, D-75, D-77 and D-78 are decisions that the answers brought with them
 reset, the setup tool that upgrades and the nightly timer among them. P-48 is left as
 it is to be looked at again, and P-58 stands unanswered.
 
-P-60 to P-76 are the choices of release 0.4.0, made where the other pages were silent
-or disagreed with the build plan. Each is built, and none is answered yet.
+P-60 to P-77 are the choices of release 0.4.0, made where the other pages were silent
+or disagreed with the build plan. Each is built. They are being answered one at a
+time, from 2026-11-13: P-60 to P-65 are D-86 to D-91, the last changed by its answer,
+which let a stack be its master alone. The answer brought D-92 with it, the condition
+of an item and the health of a stack, and P-78 is the detail of that, for 0.4.1.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
@@ -150,6 +154,7 @@ or disagreed with the build plan. Each is built, and none is answered yet.
 | P-75 | A change that is checked against other records takes the one writer's place before it looks: a membership, the item a minor item is in, a replacement, a group's status. Of two such requests at the same moment the second waits for the first, then sees what it stored and is answered accordingly. | The review of 0.4.0 put one item into two stacks by two requests at once. These rules are about several records, and no constraint of the database can hold them. | 0.4.0 |
 | P-76 | In the web UI the State, Disposition, Expected online and Owner columns of the item grid show, filter and sort by the value in force, so a minor item is found under what it has from the item above; the item's own state is a field of the filter box. The columns that arrive with 0.4.0 are hidden until asked for. The summary is under Reports, with its headline totals on the first page, and addresses with their networks have an entry of their own in the navigation. | The pages table named a Summary page and no place for addresses, and nothing said which of two values a column of the grid goes by. | 0.4.0 |
 | P-77 | The text of a GitHub release is the release's notes with each paragraph and list item on one line, and with links to other pages made whole, printed by `make release-body`. The file in `docs/releases/` stays wrapped like every other page. Sharpens P-11. | GitHub shows a line break in the text of a release as a line break, so the wrapped file showed at half the width of the page, beside the few lines that were never wrapped. | 0.4.0 |
+| P-78 | The fields of D-92. An item has `condition`, a value of the `item_condition` list, blank until somebody says. An item and a device group have `observed_status`, one of `online`, `degraded` and `unreachable`, and `observed_at`, which is the moment it was set unless a file gives another. `health` is derived, for an item and for a stack or a cluster, as `good`, `degraded`, `failed` or `unknown`, with the reasons: the worst of what the condition says and what is observed against the intent, and for a group the worst of its members, of what is observed of the group itself, and of a member that is missing or is Down or in Pending-Removal. A group has `expected_members`, optional, so that a stack whose failed switch has been taken out still shows as short of one. Neither the condition nor the health moves an item in the lifecycle. An item's health can be filtered and sorted by; a group's is shown and not yet filtered by. | D-92 gave the three facts and their values. It did not name the fields, say how the health of a group follows from its members, or how a stack is known to be short of a member that is no longer in it. | 0.4.1 |
 
 ## Open
 

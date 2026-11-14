@@ -112,6 +112,9 @@ lifecycle fields included.
 | `expected_online` | boolean | intent, not observation |
 | `state_reason` | choice | "RMA", "maintenance", "lost", and so on |
 | `state_changed_at` | timestamp | |
+| `condition` | choice | the state of the hardware as a person knows it; see "Condition, observation and health" |
+| `observed_status` | choice | `online`, `degraded` or `unreachable`: what is seen of it now. Blank until somebody says |
+| `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
@@ -176,6 +179,8 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. `location_hid` arrives in 0.5.0 |
+| `expected_members` | integer | optional: how many members the group is meant to have |
+| `observed_status`, `observed_at` | choice, timestamp | what is seen of the group as one device, as on an item |
 | `record_status` | choice | see Conventions |
 
 | Member field | Type | Notes |
@@ -370,8 +375,8 @@ record cannot be removed.
 ### `choices` and `settings`
 
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
-lists are `catalog_type`, `catalog_function`, `state_reason`, `contact_role`,
-`location_kind`, `replacement_reason` and `capacity_category`. A value is lower-case
+lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
+`contact_role`, `location_kind`, `replacement_reason` and `capacity_category`. A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
@@ -523,6 +528,60 @@ item leaves a state by moving to another.
 An item **should be monitored** when it is a major item in Test or Prod and
 `expected_online` is true. That is an expectation for reports to compare against, not a
 switch that enrols anything.
+
+## Condition, observation and health
+
+Three facts say how an item is doing, and they are kept apart because they are known
+by different people and change at different speeds.
+
+| Fact | Field | Who says | Values |
+|---|---|---|---|
+| The state of the hardware | `condition` | a person; it holds while the item is on a shelf | the `item_condition` list: `untested`, `good`, `degraded`, `suspect`, `failed`, `dead` |
+| What is seen now | `observed_status`, `observed_at` | by hand or by an import; LATER a monitoring tool | `online`, `degraded`, `unreachable` |
+| What is meant | `expected_online` | the lifecycle; see above | true or false |
+
+`untested` is new and not yet tried, `good` is the last known good, `degraded` runs
+with a fault such as a failed fan, `suspect` is thought to be bad, `failed` has a
+hardware fault, and `dead` will not come back. The list can be edited. A condition is
+an ordinary field, audited like any other, and moves the item nowhere in the
+lifecycle: an item whose hardware failed is moved to Down or to Pending-Removal by a
+transition, with its own reason.
+
+`observed_status` is an observation and not a wish. Clearing it clears `observed_at`.
+An import may give `observed_at` with it, for a status that was read from another tool
+earlier; left out, it is the moment of the change. Minor items inherit neither the
+condition nor what is observed: each is a fact about one piece of hardware.
+
+**Health** is worked out from those three when a record is read, and is stored
+nowhere. It is one of `good`, `degraded`, `failed` and `unknown`, and comes with its
+reasons. For an item it is the worst of:
+
+| Health | When |
+|---|---|
+| `failed` | the condition is `failed` or `dead`; or the item is expected online and is observed `unreachable` |
+| `degraded` | the condition is `degraded` or `suspect`; or it is observed `degraded`; or it is observed `unreachable` and is not expected online |
+| `good` | the condition is `good` and nothing observed says otherwise; or it is observed `online` and no condition says otherwise |
+| `unknown` | nothing is said: the condition is blank or `untested`, and nothing is observed |
+
+A **stack** and a **cluster** have a health too, from their current members and from
+what is observed of the group itself:
+
+- `failed` when the group is observed `unreachable`, or every current member is
+  `failed`;
+- `degraded` when it is observed `degraded`; when a member is `failed` or `degraded`;
+  when a member is in Down or Pending-Removal; when it has fewer current members than
+  `expected_members`; or, for a stack that names no number, when it is its master
+  alone;
+- `good` when it is observed `online` or every member is `good`, and nothing above
+  holds;
+- `unknown` otherwise, and for a group with no members.
+
+A controller domain and a custom group have none. `expected_members` is how a stack
+whose failed switch has been taken out for an RMA still shows as short of one.
+
+A page shows health as a colour: green for `good`, amber for `degraded`, red for
+`failed`, grey for `unknown`. LATER, a monitoring tool writes `observed_status`, and
+the same colours then follow what it reports.
 
 ## Identity and matching
 

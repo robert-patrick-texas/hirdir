@@ -37,13 +37,17 @@ reading; it does not settle a policy question in code.
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
 
 After the MVP, in the order currently expected: RADIUS sign-in; access-code rules; SAML;
-discovery observations and reconciliation; outward change feed and host lists for
-monitoring tools; planning views for draft sites and items; cell-range selection and
+discovery observations and reconciliation; the observed status of items and groups
+written by monitoring tools, which until then is set by hand or by an import (D-92);
+outward change feed and host lists for monitoring tools; planning views for draft sites and items; cell-range selection and
 editing in the grid; PostgreSQL; a container image.
 
 A release between two rows of the table carries corrections to the one before it and
 adds no scenario. 0.2.1 followed 0.2.0 with the answers to its proposals: one time zone
 for everybody, support weight to two places, and a skipped upgrade test that says so.
+0.4.1 follows 0.4.0 with the answers to its proposals, a stack that may be its master
+alone among them, and with the condition of an item, what is observed of it, and the
+health that follows for an item and for a stack (D-92).
 
 ## Acceptance scenarios
 
