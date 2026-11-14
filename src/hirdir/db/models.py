@@ -279,6 +279,45 @@ class ShippingAddress:
     ship_instructions: Mapped[str | None] = mapped_column(Text, default=None)
 
 
+class Contact(Bookkeeping, Base):
+    """A person or a shared mailbox, to be assigned to places and to owners."""
+
+    __tablename__ = "contacts"
+    __table_args__ = (UniqueConstraint("email_key", name="contacts_email"),)
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200), index=True)
+    organization: Mapped[str | None] = mapped_column(String(200), default=None)
+    email: Mapped[str | None] = mapped_column(String(254), default=None)
+    email_key: Mapped[str | None] = mapped_column(String(254), default=None)
+    phone: Mapped[str | None] = mapped_column(String(50), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Operator(Bookkeeping, Base):
+    """A short label that stands for the member of the team who looks after what it is on.
+
+    Items, groups and places hold the label and never the person, so the person behind
+    it is changed in one place. With no contact it is an open assignment; retired, it
+    stands for nothing.
+    """
+
+    __tablename__ = "operators"
+    __table_args__ = (UniqueConstraint("label_key", name="operators_label"),)
+
+    hid: Mapped[str] = _hid()
+    label: Mapped[str] = mapped_column(String(40))
+    label_key: Mapped[str] = mapped_column(String(40))
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    colour: Mapped[str | None] = mapped_column(String(20), default=None)
+    contact_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("contacts.hid"), default=None, index=True
+    )
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
 class Region(Bookkeeping, ShippingAddress, Base):
     """A part of the world that sites are in. Regions nest to any depth."""
 
@@ -292,6 +331,9 @@ class Region(Bookkeeping, ShippingAddress, Base):
     name_key: Mapped[str] = mapped_column(String(200))
     parent_region_hid: Mapped[str | None] = mapped_column(
         ForeignKey("regions.hid"), default=None, index=True
+    )
+    operator_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("operators.hid"), default=None, index=True
     )
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
@@ -314,6 +356,9 @@ class Site(Bookkeeping, StreetAddress, ShippingAddress, Base):
     region_hid: Mapped[str] = mapped_column(ForeignKey("regions.hid"), index=True)
     # Deliveries go to the street address: the shipping address is read from it.
     ship_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
+    operator_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("operators.hid"), default=None, index=True
+    )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
@@ -337,25 +382,11 @@ class Location(Bookkeeping, StreetAddress, ShippingAddress, Base):
     )
     kind: Mapped[str | None] = mapped_column(String(40), default=None)
     ship_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
+    operator_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("operators.hid"), default=None, index=True
+    )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
-    notes: Mapped[str | None] = mapped_column(Text, default=None)
-    record_status: Mapped[str] = mapped_column(String(10), default="active")
-
-
-class Contact(Bookkeeping, Base):
-    """A person or a shared mailbox, to be assigned to places and to owners."""
-
-    __tablename__ = "contacts"
-    __table_args__ = (UniqueConstraint("email_key", name="contacts_email"),)
-
-    hid: Mapped[str] = _hid()
-    name: Mapped[str] = mapped_column(String(200))
-    name_key: Mapped[str] = mapped_column(String(200), index=True)
-    organization: Mapped[str | None] = mapped_column(String(200), default=None)
-    email: Mapped[str | None] = mapped_column(String(254), default=None)
-    email_key: Mapped[str | None] = mapped_column(String(254), default=None)
-    phone: Mapped[str | None] = mapped_column(String(50), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
@@ -460,9 +491,9 @@ class Item(Bookkeeping, Base):
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )
-    # The person of the team who looks after it: a contact.
+    # The label of the person of the team who looks after it.
     operator_hid: Mapped[str | None] = mapped_column(
-        ForeignKey("contacts.hid"), default=None, index=True
+        ForeignKey("operators.hid"), default=None, index=True
     )
     parent_item_hid: Mapped[str | None] = mapped_column(
         ForeignKey("items.hid"), default=None, index=True
@@ -521,9 +552,9 @@ class DeviceGroup(Bookkeeping, Base):
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )
-    # The person who looks after the group, and after its members that have none.
+    # Who looks after the group, and after its members that have none of their own.
     operator_hid: Mapped[str | None] = mapped_column(
-        ForeignKey("contacts.hid"), default=None, index=True
+        ForeignKey("operators.hid"), default=None, index=True
     )
     # How a cluster is managed: as one node, as its members, or as both.
     managed_as: Mapped[str | None] = mapped_column(String(20), default=None)

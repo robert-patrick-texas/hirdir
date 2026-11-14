@@ -268,6 +268,18 @@ Longitude = Annotated[
 ]
 
 
+class OperatorRef(Model):
+    """An operator, as shown on what it is given to: the label, and who is behind it."""
+
+    hid: str
+    label: str
+    colour: str | None
+    contact_hid: str | None
+    contact: str | None = Field(description="The name of the person behind the label.")
+    is_open: bool = Field(description="Nobody is behind it: no contact, or one that is retired.")
+    record_status: RecordStatus
+
+
 class PlaceRef(Model):
     """A region, a site or a location, as named on another record."""
 
@@ -302,6 +314,8 @@ class RegionOut(Model):
     ship_postal_code: str | None
     ship_country: str | None
     ship_instructions: str | None
+    operator_hid: str | None
+    operator: OperatorRef | None = Field(description="Its own operator.")
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
@@ -327,6 +341,7 @@ class RegionCreate(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    operator_hid: Hid | None = None
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -348,6 +363,7 @@ class RegionPatch(Model):
     ship_postal_code: Name | None = None
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
+    operator_hid: Hid | None = None
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -378,6 +394,8 @@ class SiteOut(Model):
     ship_same_as_address: bool = Field(
         description="Deliveries go to the street address: the shipping address is read from it."
     )
+    operator_hid: str | None
+    operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
     notes: str | None
@@ -409,6 +427,7 @@ class SiteCreate(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     ship_same_as_address: bool = False
+    operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -437,6 +456,7 @@ class SitePatch(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     ship_same_as_address: bool | None = None
+    operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -473,6 +493,8 @@ class LocationOut(Model):
     ship_same_as_address: bool = Field(
         description="Deliveries go to the street address: the shipping address is read from it."
     )
+    operator_hid: str | None
+    operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
     notes: str | None
@@ -511,6 +533,7 @@ class LocationCreate(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     ship_same_as_address: bool = False
+    operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -542,6 +565,7 @@ class LocationPatch(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     ship_same_as_address: bool | None = None
+    operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
     notes: LongText | None = None
@@ -605,8 +629,7 @@ class ContactOut(Model):
     tags: list[str]
     uses: int = Field(
         description=(
-            "How many places and owners it is assigned to, and items and groups it is "
-            "the operator of."
+            "How many places and owners it is assigned to, and operators it stands behind."
         )
     )
     row_version: int
@@ -637,6 +660,47 @@ class ContactPatch(Model):
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class OperatorOut(Model):
+    """A short label that stands for the member of the team who looks after what it is on."""
+
+    hid: str
+    label: str
+    description: str | None
+    colour: str | None
+    contact_hid: str | None
+    contact: ContactRef | None
+    is_open: bool = Field(description="Nobody is behind it: no contact, or one that is retired.")
+    record_status: RecordStatus
+    uses: int = Field(description="How many items, groups and places are given it as their own.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class OperatorCreate(Model):
+    """A new operator: a label, with somebody behind it or open."""
+
+    label: str = Field(min_length=1, max_length=40)
+    description: LongText | None = None
+    colour: str | None = Field(default=None, max_length=20, description="In the form #1f6feb.")
+    contact_hid: Hid | None = Field(default=None, description="Left out, an open assignment.")
+    record_status: Literal["draft", "active"] = "active"
+
+
+class OperatorPatch(Model):
+    """Fields of an operator to change, and the version they were read at."""
+
+    row_version: int
+    label: str | None = Field(default=None, max_length=40)
+    description: LongText | None = None
+    colour: str | None = Field(default=None, max_length=20)
+    contact_hid: Hid | None = Field(
+        default=None,
+        description="Another contact hands over everything the label is on. Null leaves it open.",
+    )
+    record_status: Literal["draft", "active"] | None = None
 
 
 class AssignedPlace(PlaceRef):
@@ -742,6 +806,17 @@ class EffectiveShipAddress(Model):
     overrides_path: str | None
 
 
+class EffectivePlaceOperator(Model):
+    """The operator of what is at a place and has none from elsewhere, and its level."""
+
+    value: OperatorRef | None
+    source: PlaceSource
+    source_hid: str | None
+    source_path: str | None
+    overrides_hid: str | None
+    overrides_path: str | None
+
+
 class EffectiveInstructions(Model):
     """The shipping instructions in force, and the level they came from."""
 
@@ -762,6 +837,7 @@ class PlaceEffective(Model):
     contacts: list[RoleContacts]
     ship_address: EffectiveShipAddress
     ship_instructions: EffectiveInstructions
+    operator: EffectivePlaceOperator
 
 
 # --- owners --------------------------------------------------------------------------
@@ -951,11 +1027,15 @@ class EffectiveLocation(EffectiveReference):
 
 
 class EffectiveOperator(EffectiveReference):
-    """The operator in force, with what the record that holds it is called."""
+    """The operator in force: the label, who is behind it, and where it came from."""
 
     source_label: str | None = Field(
-        description="The name of the item or the group it came from. Null for its own."
+        description="The name of the item or group, or the path of the place, it came from."
     )
+    colour: str | None
+    contact_hid: str | None
+    contact: str | None = Field(description="The name of the person behind the label.")
+    is_open: bool = Field(description="Nobody is behind the label.")
 
 
 class ItemEffective(Model):
@@ -966,8 +1046,8 @@ class ItemEffective(Model):
     owner_hid: EffectiveReference
     operator_hid: EffectiveOperator = Field(
         description=(
-            "The operator in force: its own, that of the item above it, or that of a group "
-            "it is a member of. The label is the contact's name."
+            "The operator in force: its own, that of the item above it, of a group it is "
+            "a member of, or of the place it is at."
         )
     )
     location_hid: EffectiveLocation
@@ -1019,8 +1099,8 @@ class ItemOut(Model):
     location_hid: str | None
     location: LocationRef | None = Field(description="Its own location.")
     operator_hid: str | None
-    operator: ContactRef | None = Field(
-        description="Its own operator: the person of the team who looks after it."
+    operator: OperatorRef | None = Field(
+        description="Its own operator: the label of who of the team looks after it."
     )
     parent_item_hid: str | None
     parent: ItemRef | None = Field(description="The item a minor item is in.")
@@ -1089,7 +1169,7 @@ class ItemCreate(Model):
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
     operator_hid: Hid | None = Field(
-        default=None, description="A contact: the person of the team who looks after it."
+        default=None, description="An operator: the label of who of the team looks after it."
     )
     parent_item_hid: Hid | None = Field(
         default=None, description="The item this one is in. Given, the item is a minor item."
@@ -1302,8 +1382,8 @@ class DeviceGroupOut(Model):
     location_hid: str | None
     location: LocationRef | None
     operator_hid: str | None
-    operator: ContactRef | None = Field(
-        description="Its own operator, who is that of its members that have none."
+    operator: OperatorRef | None = Field(
+        description="Its own operator, which is that of its members that have none."
     )
     effective: GroupEffective
     members_disagree: list[str] = Field(
@@ -1716,10 +1796,11 @@ EntityName = Literal[
     "tags",
     "vendors",
     "catalog_entries",
+    "contacts",
+    "operators",
     "regions",
     "sites",
     "locations",
-    "contacts",
     "contact_assignments",
     "owners",
     "owner_members",

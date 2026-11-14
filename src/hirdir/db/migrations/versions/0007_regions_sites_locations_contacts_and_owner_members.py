@@ -3,9 +3,10 @@
 Revision: 0007
 Revises: 0006
 
-Creates the regions, the sites and the locations within them, the contacts with their
-assignments to those places, and the members of owners. An item and a device group
-gain `location_hid` and `operator_hid`. Loads the `contact_role` and `location_kind`
+Creates the contacts, the operators, which are labels with a contact behind them, the
+regions, the sites and the locations within them, the assignments of contacts to those
+places, and the members of owners. An item and a device group gain `location_hid` and
+`operator_hid`. Loads the `contact_role` and `location_kind`
 lists with their defaults, written out here so that this migration does the same thing
 whatever a later release changes.
 
@@ -107,63 +108,6 @@ def _load_defaults(list_name: str, values: list[tuple[str, str]]) -> None:
 
 def upgrade() -> None:
     op.create_table(
-        "regions",
-        sa.Column("hid", sa.String(36), primary_key=True),
-        sa.Column("code", sa.String(40)),
-        sa.Column("code_key", sa.String(40)),
-        sa.Column("name", sa.String(200), nullable=False),
-        sa.Column("name_key", sa.String(200), nullable=False),
-        sa.Column("parent_region_hid", sa.String(36), sa.ForeignKey("regions.hid")),
-        *_shipping(),
-        sa.Column("notes", sa.Text),
-        sa.Column("record_status", sa.String(10), nullable=False),
-        *_bookkeeping(),
-        sa.UniqueConstraint("code_key", name="regions_code"),
-    )
-    op.create_index("ix_regions_parent_region_hid", "regions", ["parent_region_hid"])
-    op.create_table(
-        "sites",
-        sa.Column("hid", sa.String(36), primary_key=True),
-        sa.Column("code", sa.String(40)),
-        sa.Column("code_key", sa.String(40)),
-        sa.Column("name", sa.String(200), nullable=False),
-        sa.Column("name_key", sa.String(200), nullable=False),
-        sa.Column("region_hid", sa.String(36), sa.ForeignKey("regions.hid"), nullable=False),
-        *_street(),
-        *_shipping(),
-        sa.Column("ship_same_as_address", sa.Boolean, nullable=False),
-        sa.Column("latitude", sa.BigInteger),
-        sa.Column("longitude", sa.BigInteger),
-        sa.Column("notes", sa.Text),
-        sa.Column("record_status", sa.String(10), nullable=False),
-        *_bookkeeping(),
-        sa.UniqueConstraint("code_key", name="sites_code"),
-        sa.UniqueConstraint("region_hid", "name_key", name="sites_region_name"),
-    )
-    op.create_index("ix_sites_region_hid", "sites", ["region_hid"])
-    op.create_table(
-        "locations",
-        sa.Column("hid", sa.String(36), primary_key=True),
-        sa.Column("code", sa.String(40)),
-        sa.Column("code_key", sa.String(40)),
-        sa.Column("name", sa.String(200), nullable=False),
-        sa.Column("name_key", sa.String(200), nullable=False),
-        sa.Column("site_hid", sa.String(36), sa.ForeignKey("sites.hid"), nullable=False),
-        sa.Column("parent_location_hid", sa.String(36), sa.ForeignKey("locations.hid")),
-        sa.Column("kind", sa.String(40)),
-        *_street(),
-        *_shipping(),
-        sa.Column("ship_same_as_address", sa.Boolean, nullable=False),
-        sa.Column("latitude", sa.BigInteger),
-        sa.Column("longitude", sa.BigInteger),
-        sa.Column("notes", sa.Text),
-        sa.Column("record_status", sa.String(10), nullable=False),
-        *_bookkeeping(),
-        sa.UniqueConstraint("site_hid", "code_key", name="locations_site_code"),
-    )
-    op.create_index("ix_locations_site_hid", "locations", ["site_hid"])
-    op.create_index("ix_locations_parent_location_hid", "locations", ["parent_location_hid"])
-    op.create_table(
         "contacts",
         sa.Column("hid", sa.String(36), primary_key=True),
         sa.Column("name", sa.String(200), nullable=False),
@@ -178,6 +122,82 @@ def upgrade() -> None:
         sa.UniqueConstraint("email_key", name="contacts_email"),
     )
     op.create_index("ix_contacts_name_key", "contacts", ["name_key"])
+    op.create_table(
+        "operators",
+        sa.Column("hid", sa.String(36), primary_key=True),
+        sa.Column("label", sa.String(40), nullable=False),
+        sa.Column("label_key", sa.String(40), nullable=False),
+        sa.Column("description", sa.Text),
+        sa.Column("colour", sa.String(20)),
+        sa.Column("contact_hid", sa.String(36), sa.ForeignKey("contacts.hid")),
+        sa.Column("record_status", sa.String(10), nullable=False),
+        *_bookkeeping(),
+        sa.UniqueConstraint("label_key", name="operators_label"),
+    )
+    op.create_index("ix_operators_contact_hid", "operators", ["contact_hid"])
+    op.create_table(
+        "regions",
+        sa.Column("hid", sa.String(36), primary_key=True),
+        sa.Column("code", sa.String(40)),
+        sa.Column("code_key", sa.String(40)),
+        sa.Column("name", sa.String(200), nullable=False),
+        sa.Column("name_key", sa.String(200), nullable=False),
+        sa.Column("parent_region_hid", sa.String(36), sa.ForeignKey("regions.hid")),
+        *_shipping(),
+        sa.Column("operator_hid", sa.String(36), sa.ForeignKey("operators.hid")),
+        sa.Column("notes", sa.Text),
+        sa.Column("record_status", sa.String(10), nullable=False),
+        *_bookkeeping(),
+        sa.UniqueConstraint("code_key", name="regions_code"),
+    )
+    op.create_index("ix_regions_parent_region_hid", "regions", ["parent_region_hid"])
+    op.create_index("ix_regions_operator_hid", "regions", ["operator_hid"])
+    op.create_table(
+        "sites",
+        sa.Column("hid", sa.String(36), primary_key=True),
+        sa.Column("code", sa.String(40)),
+        sa.Column("code_key", sa.String(40)),
+        sa.Column("name", sa.String(200), nullable=False),
+        sa.Column("name_key", sa.String(200), nullable=False),
+        sa.Column("region_hid", sa.String(36), sa.ForeignKey("regions.hid"), nullable=False),
+        *_street(),
+        *_shipping(),
+        sa.Column("ship_same_as_address", sa.Boolean, nullable=False),
+        sa.Column("operator_hid", sa.String(36), sa.ForeignKey("operators.hid")),
+        sa.Column("latitude", sa.BigInteger),
+        sa.Column("longitude", sa.BigInteger),
+        sa.Column("notes", sa.Text),
+        sa.Column("record_status", sa.String(10), nullable=False),
+        *_bookkeeping(),
+        sa.UniqueConstraint("code_key", name="sites_code"),
+        sa.UniqueConstraint("region_hid", "name_key", name="sites_region_name"),
+    )
+    op.create_index("ix_sites_region_hid", "sites", ["region_hid"])
+    op.create_index("ix_sites_operator_hid", "sites", ["operator_hid"])
+    op.create_table(
+        "locations",
+        sa.Column("hid", sa.String(36), primary_key=True),
+        sa.Column("code", sa.String(40)),
+        sa.Column("code_key", sa.String(40)),
+        sa.Column("name", sa.String(200), nullable=False),
+        sa.Column("name_key", sa.String(200), nullable=False),
+        sa.Column("site_hid", sa.String(36), sa.ForeignKey("sites.hid"), nullable=False),
+        sa.Column("parent_location_hid", sa.String(36), sa.ForeignKey("locations.hid")),
+        sa.Column("kind", sa.String(40)),
+        *_street(),
+        *_shipping(),
+        sa.Column("ship_same_as_address", sa.Boolean, nullable=False),
+        sa.Column("operator_hid", sa.String(36), sa.ForeignKey("operators.hid")),
+        sa.Column("latitude", sa.BigInteger),
+        sa.Column("longitude", sa.BigInteger),
+        sa.Column("notes", sa.Text),
+        sa.Column("record_status", sa.String(10), nullable=False),
+        *_bookkeeping(),
+        sa.UniqueConstraint("site_hid", "code_key", name="locations_site_code"),
+    )
+    op.create_index("ix_locations_site_hid", "locations", ["site_hid"])
+    op.create_index("ix_locations_parent_location_hid", "locations", ["parent_location_hid"])
+    op.create_index("ix_locations_operator_hid", "locations", ["operator_hid"])
     op.create_table(
         "contact_assignments",
         sa.Column("hid", sa.String(36), primary_key=True),
@@ -202,7 +222,7 @@ def upgrade() -> None:
         items.add_column(sa.Column("location_hid", sa.String(36)))
         items.add_column(sa.Column("operator_hid", sa.String(36)))
         items.create_foreign_key("fk_items_location_hid", "locations", ["location_hid"], ["hid"])
-        items.create_foreign_key("fk_items_operator_hid", "contacts", ["operator_hid"], ["hid"])
+        items.create_foreign_key("fk_items_operator_hid", "operators", ["operator_hid"], ["hid"])
         items.create_index("ix_items_location_hid", ["location_hid"])
         items.create_index("ix_items_operator_hid", ["operator_hid"])
     with op.batch_alter_table("device_groups") as groups:
@@ -212,7 +232,7 @@ def upgrade() -> None:
         )
         groups.add_column(sa.Column("operator_hid", sa.String(36)))
         groups.create_foreign_key(
-            "fk_device_groups_operator_hid", "contacts", ["operator_hid"], ["hid"]
+            "fk_device_groups_operator_hid", "operators", ["operator_hid"], ["hid"]
         )
         groups.create_index("ix_device_groups_location_hid", ["location_hid"])
         groups.create_index("ix_device_groups_operator_hid", ["operator_hid"])
@@ -251,7 +271,8 @@ def downgrade() -> None:
         items.drop_column("operator_hid")
         items.drop_column("location_hid")
     op.drop_table("contact_assignments")
-    op.drop_table("contacts")
     op.drop_table("locations")
     op.drop_table("sites")
     op.drop_table("regions")
+    op.drop_table("operators")
+    op.drop_table("contacts")

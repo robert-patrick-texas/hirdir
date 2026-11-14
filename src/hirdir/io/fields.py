@@ -23,6 +23,7 @@ from hirdir.db.models import (
     Item,
     Location,
     Network,
+    Operator,
     Owner,
     OwnerMember,
     Region,
@@ -101,8 +102,9 @@ LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.location_hid for one
 
 def _operator_in_force() -> ColumnElement[Any]:
     """Return the operator in force for an item, as `hirdir.domain.operators` works it
-    out: its own, that of the nearest item above it, or that of a group the item at
-    the top of the line is a current member of."""
+    out: its own, that of the nearest item above it, that of a group the item at the
+    top of the line is a current member of, or that of the place it is at. An operator
+    that is retired is passed over at every level."""
     top = case(
         *((one.parent_item_hid.is_(None), one.hid) for one in _LINE[:-1]),
         else_=_LINE[-1].hid,
@@ -132,11 +134,21 @@ def _operator_in_force() -> ColumnElement[Any]:
         .correlate(*_LINE)
         .scalar_subquery()
     )
-    return func.coalesce(*(one.operator_hid for one in _LINE), from_group)
+    places = operators.location_reach()
+    from_place = (
+        select(places.c.operator_hid)
+        .where(places.c.location_hid == LOCATION_IN_FORCE)
+        .correlate(*_LINE)
+        .scalar_subquery()
+    )
+    return func.coalesce(
+        *(operators.live(one.operator_hid) for one in _LINE), from_group, from_place
+    )
 
 
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
-ITEM_OPERATOR: Any = aliased(Contact, name="item_operator")
+ITEM_OPERATOR: Any = aliased(Operator, name="item_operator")
+ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
 ITEM_LOCATION: Any = aliased(Location, name="item_location")
 ITEM_SITE: Any = aliased(Site, name="item_site")
 ITEM_REGION: Any = aliased(Region, name="item_region")
@@ -324,8 +336,19 @@ ITEMS = Listing(
         "operator_hid": Field("reference", Item.operator_hid),
         # The operator in force: who looks after the item, by its own word or from above.
         "effective.operator_hid": Field("reference", OPERATOR_IN_FORCE),
-        "operator.name": Field("text", ITEM_OPERATOR.name),
-        "operator.email": Field("text", ITEM_OPERATOR.email),
+        "operator.label": Field("text", ITEM_OPERATOR.label),
+        "operator.contact": Field("text", ITEM_OPERATOR_CONTACT.name),
+        # Assigned to a label that nobody is behind: no contact, or one that is retired.
+        "operator.is_open": Field(
+            "boolean",
+            and_(
+                ITEM_OPERATOR.hid.is_not(None),
+                or_(
+                    ITEM_OPERATOR_CONTACT.hid.is_(None),
+                    ITEM_OPERATOR_CONTACT.record_status == "retired",
+                ),
+            ),
+        ),
         # Where the item is, by the location in force.
         "location": Field(
             "place",
@@ -368,6 +391,7 @@ ITEMS = Listing(
         .outerjoin(Vendor, Vendor.hid == CatalogEntry.vendor_hid)
         .outerjoin(Owner, Owner.hid == OWNER_IN_FORCE)
         .outerjoin(ITEM_OPERATOR, ITEM_OPERATOR.hid == OPERATOR_IN_FORCE)
+        .outerjoin(ITEM_OPERATOR_CONTACT, ITEM_OPERATOR_CONTACT.hid == ITEM_OPERATOR.contact_hid)
         .outerjoin(ITEM_LOCATION, ITEM_LOCATION.hid == LOCATION_IN_FORCE)
         .outerjoin(ITEM_SITE, ITEM_SITE.hid == ITEM_LOCATION.site_hid)
         .outerjoin(ITEM_REGION, ITEM_REGION.hid == ITEM_SITE.region_hid)
@@ -379,7 +403,7 @@ _PARENT_GROUP: Any = aliased(DeviceGroup, name="parent_group")
 _GROUP_LOCATION: Any = aliased(Location, name="group_location")
 _GROUP_SITE: Any = aliased(Site, name="group_site")
 _GROUP_REGION: Any = aliased(Region, name="group_region")
-_GROUP_OPERATOR: Any = aliased(Contact, name="group_operator")
+_GROUP_OPERATOR: Any = aliased(Operator, name="group_operator")
 
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
@@ -398,8 +422,7 @@ DEVICE_GROUPS = Listing(
         "region": Field("text", _GROUP_REGION.name),
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "operator_hid": Field("reference", DeviceGroup.operator_hid),
-        "operator.name": Field("text", _GROUP_OPERATOR.name),
-        "operator.email": Field("text", _GROUP_OPERATOR.email),
+        "operator.label": Field("text", _GROUP_OPERATOR.label),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),
@@ -574,6 +597,7 @@ REGIONS = Listing(
         "parent.name": Field("text", _PARENT_REGION.name),
         # At or beneath a region: the region itself, and every region within it.
         "region": Field("place", Region.hid, within=_within(region=Region.hid)),
+        "operator_hid": Field("reference", Region.operator_hid),
         **_columns(Region, "text", "name", "code", "notes", *_SHIPPING),
         "record_status": Field("choice", Region.record_status),
         "tags": Field("tags", test=_tagged("region", Region.hid)),
@@ -593,6 +617,7 @@ SITES = Listing(
             "place", Site.region_hid, within=_within(site=Site.hid, region=Site.region_hid)
         ),
         "region.name": Field("text", Region.name),
+        "operator_hid": Field("reference", Site.operator_hid),
         **_columns(Site, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
         **_columns(Site, "number", "latitude", "longitude"),
         "ship_same_as_address": Field("boolean", Site.ship_same_as_address),
@@ -619,6 +644,7 @@ LOCATIONS = Listing(
         "region.name": Field("text", _LOCATION_REGION.name),
         "parent.name": Field("text", _PARENT_LOCATION.name),
         "is_top": Field("boolean", Location.parent_location_hid.is_(None)),
+        "operator_hid": Field("reference", Location.operator_hid),
         **_columns(Location, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
         "kind": Field("choice", Location.kind),
         **_columns(Location, "number", "latitude", "longitude"),
@@ -644,6 +670,28 @@ CONTACTS = Listing(
     },
     joined=lambda query: query,
     default_sort=("name",),
+)
+
+_OPERATOR_CONTACT: Any = aliased(Contact, name="operator_contact")
+
+OPERATORS = Listing(
+    model=Operator,
+    fields={
+        **_bookkeeping(Operator),
+        **_columns(Operator, "text", "label", "description", "colour"),
+        "contact_hid": Field("reference", Operator.contact_hid),
+        "contact.name": Field("text", _OPERATOR_CONTACT.name),
+        "contact.email": Field("text", _OPERATOR_CONTACT.email),
+        "is_open": Field(
+            "boolean",
+            or_(_OPERATOR_CONTACT.hid.is_(None), _OPERATOR_CONTACT.record_status == "retired"),
+        ),
+        "record_status": Field("choice", Operator.record_status),
+    },
+    joined=lambda query: query.outerjoin(
+        _OPERATOR_CONTACT, _OPERATOR_CONTACT.hid == Operator.contact_hid
+    ),
+    default_sort=("label",),
 )
 
 CONTACT_ASSIGNMENTS = Listing(

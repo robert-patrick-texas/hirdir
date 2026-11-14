@@ -28,6 +28,7 @@ from hirdir.db.models import (
     DeviceGroup,
     Item,
     Location,
+    Operator,
     Region,
     Site,
 )
@@ -50,7 +51,15 @@ MAX_REGION_DEPTH = 16
 KIND_LIST = "location_kind"
 ROLE_LIST = "contact_role"
 SHIPPING = (*SHIP_FIELDS, "ship_instructions")
-REGION_FIELDS = ("code", "name", "parent_region_hid", *SHIPPING, "notes", "record_status")
+REGION_FIELDS = (
+    "code",
+    "name",
+    "parent_region_hid",
+    *SHIPPING,
+    "operator_hid",
+    "notes",
+    "record_status",
+)
 SAME = "ship_same_as_address"
 SITE_FIELDS = (
     "code",
@@ -59,6 +68,7 @@ SITE_FIELDS = (
     *ADDRESS_FIELDS,
     *SHIPPING,
     SAME,
+    "operator_hid",
     "latitude",
     "longitude",
     "notes",
@@ -73,6 +83,7 @@ LOCATION_FIELDS = (
     *ADDRESS_FIELDS,
     *SHIPPING,
     SAME,
+    "operator_hid",
     "latitude",
     "longitude",
     "notes",
@@ -540,6 +551,23 @@ def _linked(db: Session, model: Any, name: str, hid: Any, record: Any | None, wh
     return found
 
 
+def _operator(db: Session, fields: dict[str, Any], values: dict[str, Any], record: Any) -> None:
+    """Take the operator of a place: who looks after what is there and has none else."""
+    if "operator_hid" not in fields:
+        return
+    hid = fields["operator_hid"] or None
+    if hid is not None:
+        found = db.get(Operator, hid)
+        if found is None:
+            raise Invalid(
+                "there is no such operator", {"operator_hid": f"there is no operator {hid}"}
+            )
+        unchanged = record is not None and record.operator_hid == hid
+        if found.record_status == "retired" and not unchanged:
+            raise Invalid("the operator is retired", {"operator_hid": "this operator is retired"})
+    values["operator_hid"] = hid
+
+
 def _status(fields: dict[str, Any], values: dict[str, Any]) -> None:
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
@@ -573,6 +601,7 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
     _name(fields, values)
     _code(fields, values)
     _texts(fields, values, (*SHIPPING, "notes"))
+    _operator(db, fields, values, region)
     _status(fields, values)
     if "parent_region_hid" in fields:
         parent_hid = fields["parent_region_hid"] or None
@@ -613,6 +642,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
     _same_as_address(fields, values, site)
+    _operator(db, fields, values, site)
     _coordinates(fields, values, site)
     _status(fields, values)
     if "region_hid" in fields:
@@ -660,6 +690,7 @@ def _checked_location(
     _code(fields, values)
     _texts(fields, values, (*ADDRESS_FIELDS, *SHIPPING, "notes"))
     _same_as_address(fields, values, location)
+    _operator(db, fields, values, location)
     _coordinates(fields, values, location)
     _status(fields, values)
     if "kind" in fields:
@@ -885,6 +916,8 @@ class InForce:
     contacts: list[RoleContacts]
     ship_address: Inherited
     ship_instructions: Inherited
+    # The operator of what is here and has none from elsewhere: the HID of the label.
+    operator: Inherited = field(default_factory=lambda: NOWHERE)
 
 
 NOWHERE = Inherited(None, "none", None, None)
@@ -962,6 +995,13 @@ def effective(db: Session, place: Place) -> InForce:
         }
         return (held, False) if any(value is not None for value in held.values()) else None
 
+    gone = set(db.scalars(select(Operator.hid).where(Operator.record_status == "retired")))
+
+    def operator(one: Place) -> tuple[str, bool] | None:
+        """Return the operator a level has, passing over one that is retired."""
+        held = one.record.operator_hid
+        return (held, False) if held is not None and held not in gone else None
+
     def instructions(one: Place) -> tuple[str, bool] | None:
         said = one.record.ship_instructions
         return (said, False) if said is not None else None
@@ -988,4 +1028,5 @@ def effective(db: Session, place: Place) -> InForce:
         contacts=by_role,
         ship_address=nearest(address),
         ship_instructions=nearest(instructions),
+        operator=nearest(operator),
     )

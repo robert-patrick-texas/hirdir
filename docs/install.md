@@ -182,10 +182,11 @@ cd /usr/share/doc/hirdir
 hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
+hirdir import examples/contacts.csv --entity contacts --apply
+hirdir import examples/operators.csv --entity operators --apply
 hirdir import examples/regions.csv --entity regions --apply
 hirdir import examples/sites.csv --entity sites --apply
 hirdir import examples/locations.csv --entity locations --apply
-hirdir import examples/contacts.csv --entity contacts --apply
 hirdir import examples/contact-assignments.csv --entity contact_assignments --apply
 hirdir import examples/owners.csv --entity owners --apply
 hirdir import examples/owner-members.csv --entity owner_members --apply
@@ -205,10 +206,10 @@ it, a stack whose master is seen to be another switch than the one intended, clu
 that say how they are managed, and an address that two routers share, which their
 cluster holds.
 
-Six of the files are new in 0.5.0: the regions, the sites and the locations within
-them, the contacts, who is the contact of which place in which role, and the people of
-each owner. The items and the device groups say where they are, and one item says why
-it is with an owner outside the team.
+Seven of the files are new in 0.5.0: the contacts, the operators, which are the labels
+of who looks after what, the regions, the sites and the locations within them, who is
+the contact of which place in which role, and the people of each owner. The items and
+the device groups say where they are and which operator they have of their own.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -266,7 +267,7 @@ sudo systemctl start hirdir
 
 `reset` refuses while the service is running. It removes every item with its
 replacements, addresses and memberships, every device group, network, catalog entry,
-vendor, owner with its people, region, site, location and contact with its
+vendor, owner with its people, region, site, location, operator and contact with its
 assignments, and tag, the stored imports, and the history of those records. It keeps
 the accounts, groups, roles and service tokens, so people sign in as before, and the
 settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it
@@ -635,8 +636,8 @@ moment it was read as.
 
 ### From 0.4.2 to 0.5.0
 
-The schema goes from revision `0006` to `0007`. Six tables are added: `regions`,
-`sites`, `locations`, `contacts`, `contact_assignments` and `owner_members`. All of
+The schema goes from revision `0006` to `0007`. Seven tables are added: `contacts`,
+`operators`, `regions`, `sites`, `locations`, `contact_assignments` and `owner_members`. All of
 them are empty after the upgrade.
 
 The `items` table gains two columns, `location_hid` and `operator_hid`, and the
@@ -673,7 +674,7 @@ Three things answer differently from now on, for a script that reads them:
 `/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is
 the one 0.4.2 wrote, so the upgrade says nothing of either and nginx is not reloaded.
 
-The package now carries fifteen example files, where it carried nine: see
+The package now carries sixteen example files, where it carried nine: see
 [Try it with the examples](#try-it-with-the-examples).
 
 Going back to 0.4.2 is as under

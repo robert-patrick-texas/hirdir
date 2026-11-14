@@ -36,6 +36,7 @@ from hirdir.domain import (
     geography,
     groups,
     items,
+    operators,
     owners,
     tags,
 )
@@ -600,19 +601,36 @@ OWNER_MEMBERS = (
 )
 
 
-# Who of the team looks after what. A group is given its operator once, and its members
-# have it: the switches of a stack, the access points of the controller domain, and the
-# pair of controllers in it, through the domain their cluster is nested in. One switch
-# has an operator of its own. What is named nowhere here is looked after by nobody in
-# particular, and a report by operator says how much that is.
+# The operators: a short label for each member of the team who looks after equipment,
+# its description, its colour and who is behind it. One is open: the person has moved
+# on, and what the label is on stays together until somebody takes it over.
+OPERATORS: tuple[tuple[str, str, str, str | None], ...] = (
+    ("LM", "Core and distribution", "#1f6feb", "Lee Marchetti"),
+    ("RA", "Access and the lab", "#8250df", "Robin Achterberg"),
+    ("TL", "Wireless and voice", "#1a7f37", "Tomas Lindqvist"),
+    ("DW", "WAN", "#bf8700", "Dana Whitfield"),
+    ("PR", "Security", "#d1242f", "Priya Raman"),
+    ("OP6", "The small offices", "#6e7781", None),
+)
+# Who looks after what. A group is given its operator once, and its members have it:
+# the switches of a stack, the access points of the controller domain, and the pair of
+# controllers in it, through the domain their cluster is nested in. One switch has an
+# operator of its own. A place may have one as well, for what is there and has none
+# from elsewhere: the lab, and the small office, whose label is open. What is named
+# nowhere here is looked after by nobody in particular, and a report by operator says
+# how much that is.
 GROUP_OPERATORS = {
-    "site2-sw-core": "Lee Marchetti",
-    "site2-sw-floor": "Robin Achterberg",
-    "site2-wireless": "Tomas Lindqvist",
-    "site2-rtr-wan": "Dana Whitfield",
-    "site2-fw-edge": "Priya Raman",
+    "site2-sw-core": "LM",
+    "site2-sw-floor": "RA",
+    "site2-wireless": "TL",
+    "site2-rtr-wan": "DW",
+    "site2-fw-edge": "PR",
 }
-ITEM_OPERATORS = {"site2-sw-access-01": "Robin Achterberg", "site2-fw-oob-01": "Priya Raman"}
+ITEM_OPERATORS = {"site2-sw-access-01": "RA", "site2-fw-oob-01": "PR"}
+PLACE_OPERATORS = {
+    "Americas > Central > Site-2 > Building 1 > Lab": "RA",
+    "Americas > East > Site-1": "OP6",
+}
 
 
 def _placed(item: dict[str, Any]) -> str | None:
@@ -935,6 +953,7 @@ def build(db: Session) -> None:
                 **more,
             },
         )
+    marks: dict[str, Any] = {}
     people = {}
     for name, organization, mailbox, phone in CONTACTS:
         people[name] = contacts.create_contact(
@@ -946,6 +965,27 @@ def build(db: Session) -> None:
                 "email": f"{mailbox}@{DOMAIN}",
                 "phone": phone,
             },
+        )
+    for label, description, colour, person in OPERATORS:
+        marks[label] = operators.create_operator(
+            db,
+            SEED,
+            {
+                "label": label,
+                "description": description,
+                "colour": colour,
+                "contact_hid": people[person].hid if person else None,
+            },
+        )
+    for path, label in PLACE_OPERATORS.items():
+        place = geography.the_place(db, path, "place")
+        geography.update_place(
+            db,
+            SEED,
+            place.level,
+            place.hid,
+            place.record.row_version,
+            {"operator_hid": marks[label].hid},
         )
     for path, role, contact in ASSIGNMENTS:
         place = geography.the_place(db, path, "place")
@@ -983,7 +1023,7 @@ def build(db: Session) -> None:
         if where is not None:
             fields["location_hid"] = places[where].hid
         if item.get("hostname") in ITEM_OPERATORS:
-            fields["operator_hid"] = people[ITEM_OPERATORS[item["hostname"]]].hid
+            fields["operator_hid"] = marks[ITEM_OPERATORS[item["hostname"]]].hid
         items.create_item(db, SEED, fields)
     db.flush()
 
@@ -1014,7 +1054,7 @@ def build(db: Session) -> None:
         if where is not None:
             fields["location_hid"] = places[where].hid
         if name in GROUP_OPERATORS:
-            fields["operator_hid"] = people[GROUP_OPERATORS[name]].hid
+            fields["operator_hid"] = marks[GROUP_OPERATORS[name]].hid
         fields["members"] = [
             {
                 "item_hid": item(hostname).hid,

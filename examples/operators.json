@@ -1,0 +1,8 @@
+{"schema": "hirdir/1", "entity": "operators", "mode": "upsert", "records": [
+  {"label": "DW", "description": "WAN", "colour": "#bf8700", "contact": "dana.whitfield@example.net", "record_status": "active"},
+  {"label": "LM", "description": "Core and distribution", "colour": "#1f6feb", "contact": "lee.marchetti@example.net", "record_status": "active"},
+  {"label": "OP6", "description": "The small offices", "colour": "#6e7781", "contact": null, "record_status": "active"},
+  {"label": "PR", "description": "Security", "colour": "#d1242f", "contact": "priya.raman@example.net", "record_status": "active"},
+  {"label": "RA", "description": "Access and the lab", "colour": "#8250df", "contact": "robin.achterberg@example.net", "record_status": "active"},
+  {"label": "TL", "description": "Wireless and voice", "colour": "#1a7f37", "contact": "tomas.lindqvist@example.net", "record_status": "active"}
+]}

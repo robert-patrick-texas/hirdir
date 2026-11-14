@@ -30,6 +30,7 @@ from hirdir.db.models import (
     Item,
     Location,
     Network,
+    Operator,
     Owner,
     OwnerMember,
     Region,
@@ -86,6 +87,7 @@ SAME_AS_ADDRESS = Column(geography.SAME, "boolean")
 CODE = Column("code", limit=40)
 NOTES = Column("notes", limit=LONG)
 PATH = Column("path", limit=LONG, settable=False)
+OPERATOR = Column("operator", limit=40)
 
 
 def _sources(columns: tuple[Column, ...]) -> tuple[Column, ...]:
@@ -282,6 +284,10 @@ class Run:
     def contact(self, text: str, field: str = "contact") -> Contact:
         """Return the one contact a row names: by HID, email address or name."""
         return contacts.the_one(self.db, text, field)
+
+    def operator(self, text: str, field: str = "operator") -> Operator:
+        """Return the operator a row names, by its HID or its label."""
+        return operators.the_one(self.db, text, field)
 
     def network(self, text: str, field: str = "network") -> Network:
         """Return the network a row names, by HID or label. A network is never made here."""
@@ -694,6 +700,19 @@ class _Places(Entity):
             given[geography.SAME] = False
         return given
 
+    @staticmethod
+    def _operator(run: Run, values: Mapping[str, Any], given: dict[str, Any]) -> None:
+        """Take the operator a row names for a place, by its label."""
+        if "operator" in values:
+            named = values["operator"]
+            given["operator_hid"] = run.operator(named).hid if named is not None else None
+
+    @staticmethod
+    def _labels(db: Session, found: list[Any]) -> dict[str, str]:
+        """Return how a file names the operator of each place that has one."""
+        marks = _by_hid(db, Operator, {record.operator_hid for record in found})
+        return {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
+
     def _store(self, run: Run, record: Any | None, given: dict[str, Any]) -> Any:
         if record is None:
             return geography.create_place(run.db, run.context, self.level, _new(given))
@@ -725,6 +744,7 @@ class Regions(_Places):
         Column("parent", limit=LONG),
         CODE,
         *SHIPPING,
+        OPERATOR,
         NOTES,
         STATUS,
         TAGS,
@@ -762,14 +782,17 @@ class Regions(_Places):
             given["parent_region_hid"] = (
                 run.place(parent, "parent", geography.REGION).hid if parent is not None else None
             )
+        self._operator(run, values, given)
         return self._store(run, record, given)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         atlas = geography.Atlas(db)
         labels = tags.labels_of(db, self.record_type, [region.hid for region in found])
+        marks = self._labels(db, found)
         return [
             {
                 **self._row(region, labels, atlas.region_path(region.hid)),
+                "operator": marks.get(region.operator_hid or ""),
                 "parent": _region_named(atlas, region.parent_region_hid),
             }
             for region in found
@@ -792,6 +815,7 @@ class Sites(_Places):
         *STREET,
         *SHIPPING,
         SAME_AS_ADDRESS,
+        OPERATOR,
         *COORDINATES,
         NOTES,
         STATUS,
@@ -827,15 +851,18 @@ class Sites(_Places):
             given["region_hid"] = run.place(values["region"], "region", geography.REGION).hid
         elif "region" in values:
             raise Invalid("a site is in a region", {"region": "is not cleared"})
+        self._operator(run, values, given)
         return self._store(run, record, given)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         atlas = geography.Atlas(db)
         atlas.take(found)
         labels = tags.labels_of(db, self.record_type, [site.hid for site in found])
+        marks = self._labels(db, found)
         return [
             {
                 **self._row(site, labels, atlas.site_path(site.hid)),
+                "operator": marks.get(site.operator_hid or ""),
                 "region": _region_named(atlas, site.region_hid),
             }
             for site in found
@@ -860,6 +887,7 @@ class Locations(_Places):
         *STREET,
         *SHIPPING,
         SAME_AS_ADDRESS,
+        OPERATOR,
         *COORDINATES,
         NOTES,
         STATUS,
@@ -956,6 +984,7 @@ class Locations(_Places):
             given["site_hid"] = site.hid
         if "parent" in values:
             given["parent_location_hid"] = parent.hid if parent is not None else None
+        self._operator(run, values, given)
         return self._store(run, record, given)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
@@ -964,9 +993,11 @@ class Locations(_Places):
         atlas.read_locations(location.parent_location_hid for location in found)
         atlas.read_sites(location.site_hid for location in found)
         labels = tags.labels_of(db, self.record_type, [location.hid for location in found])
+        marks = self._labels(db, found)
         return [
             {
                 **self._row(location, labels, atlas.location_path(location.hid)),
+                "operator": marks.get(location.operator_hid or ""),
                 "site": atlas.site_path(location.site_hid),
                 "parent": atlas.location_path(location.parent_location_hid) or None,
             }
@@ -1038,6 +1069,68 @@ class Contacts(Entity):
                 "tags": labels[contact.hid],
             }
             for contact in found
+        ]
+
+
+class Operators(Entity):
+    """Operators: the labels, and who is behind each."""
+
+    name = "operators"
+    record_type = "operator"
+    model = Operator
+    listing = fields.OPERATORS
+    columns = (
+        HID,
+        Column("label", limit=40),
+        Column("description", limit=LONG),
+        Column("colour", limit=20),
+        Column("contact", limit=254),
+        STATUS,
+        Column("is_open", "boolean", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "contact_hid": "contact",
+        "contact.name": "contact",
+        "contact.email": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"contact_hid": "contact"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        label = values.get("label")
+        if not label:
+            return None
+        return run.db.scalar(select(Operator).where(Operator.label_key == records.key(label)))
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("label") or (record.label if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {
+            **_plain_fields(values, ("label", "description", "colour")),
+            **_status(values, record),
+        }
+        if "contact" in values:
+            named = values["contact"]
+            given["contact_hid"] = run.contact(named).hid if named is not None else None
+        if record is None:
+            return operators.create_operator(run.db, run.context, _new(given))
+        return operators.update_operator(run.db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        return [
+            {
+                **_kept(operator),
+                "label": operator.label,
+                "description": operator.description,
+                "colour": operator.colour,
+                "contact": named[operator.contact_hid] if operator.contact_hid else None,
+                "record_status": operator.record_status,
+                "is_open": operators.is_open(operator, people.get(operator.contact_hid or "")),
+            }
+            for operator in found
         ]
 
 
@@ -1392,7 +1485,7 @@ class Items(Entity):
     # What a minor item has from the item it is in, when it has none of its own.
     _OWNER = Column("owner", inherits=True)
     _LOCATION = Column("location", limit=LONG, inherits=True)
-    _OPERATOR = Column("operator", limit=254, inherits=True)
+    _OPERATOR = Column("operator", limit=40, inherits=True)
     _STANDING = (
         Column("lifecycle_state", limit=20, inherits=True),
         Column("disposition", limit=12, inherits=True),
@@ -1458,8 +1551,7 @@ class Items(Entity):
         "location.name": "location",
         "operator_hid": "operator",
         "effective.operator_hid": "operator",
-        "operator.name": "operator",
-        "operator.email": "operator",
+        "operator.label": "operator",
         "site_hid": "site",
         "region_hid": "region",
         **{f"effective.{name}": name for name in inheritance.STANDING},
@@ -1664,15 +1756,28 @@ class Items(Entity):
         run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]
     ) -> str | None:
         """Return the operator an item has with none of its own: that of the item above
-        it, or that of a group the item at the top of the line is a member of."""
-        if record is None and not above:
-            return None
-        line = above if record is None else [record, *above]
-        held = next((one.operator_hid for one in above if one.operator_hid), None)
+        it, of a group the item at the top of the line is a member of, or of the place
+        it is, or will be, at."""
+        gone = operators.released(run.db)
+        held = next(
+            (
+                one.operator_hid
+                for one in above
+                if one.operator_hid and one.operator_hid not in gone
+            ),
+            None,
+        )
         if held is not None:
             return held
-        top = line[-1].hid
-        return operators.from_groups(run.db, [top])[top].value
+        line = above if record is None else [record, *above]
+        if line:
+            top = line[-1].hid
+            held = operators.from_groups(run.db, [top], gone)[top].value
+            if held is not None:
+                return held
+        own = given.get("location_hid", record.location_hid if record is not None else None)
+        place = own or next((one.location_hid for one in above if one.location_hid), None)
+        return operators.from_places(run.db, [place], gone)[place].value if place else None
 
     @staticmethod
     def _standing(
@@ -1729,7 +1834,7 @@ class Items(Entity):
                 given["owner_hid"] = owner_hid
         if "operator" in values:
             named = values["operator"]
-            operator_hid = run.contact(named, "operator").hid if named is not None else None
+            operator_hid = run.operator(named).hid if named is not None else None
             own = record.operator_hid if record is not None else None
             if (
                 operator_hid is None
@@ -1817,12 +1922,12 @@ class Items(Entity):
             | {one.location_hid for line in lines.values() for one in line}
         )
         looked_after = operators.of_items(db, found, lines)
-        people = _by_hid(
+        marks = _by_hid(
             db,
-            Contact,
+            Operator,
             {item.operator_hid for item in found} | {one.value for one in looked_after.values()},
         )
-        called = contacts.reference_texts(db, list(people.values()))
+        called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -1918,7 +2023,7 @@ class DeviceGroups(Entity):
         Column("fqdn", limit=255),
         Column("parent"),
         Column("owner"),
-        Column("operator", limit=254),
+        OPERATOR,
         Column("location", limit=LONG),
         Column("managed_as", limit=20),
         Column("expected_members", "integer"),
@@ -1950,8 +2055,7 @@ class DeviceGroups(Entity):
         "location_hid": "location",
         "location.name": "location",
         "operator_hid": "operator",
-        "operator.name": "operator",
-        "operator.email": "operator",
+        "operator.label": "operator",
         "parent.name": "parent",
         "parent_group_hid": "parent",
         **MGMT_SPELLINGS,
@@ -2001,9 +2105,7 @@ class DeviceGroups(Entity):
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
         if "operator" in values:
             named = values["operator"]
-            given["operator_hid"] = (
-                run.contact(named, "operator").hid if named is not None else None
-            )
+            given["operator_hid"] = run.operator(named).hid if named is not None else None
         if "location" in values:
             place = values["location"]
             given["location_hid"] = (
@@ -2030,8 +2132,8 @@ class DeviceGroups(Entity):
         healths = groups.health_of(db, found)
         atlas = geography.Atlas(db)
         atlas.read_locations(group.location_hid for group in found)
-        people = _by_hid(db, Contact, {group.operator_hid for group in found})
-        called = contacts.reference_texts(db, list(people.values()))
+        marks = _by_hid(db, Operator, {group.operator_hid for group in found})
+        called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
         rows = []
         for group in found:
             master = seen.get(group.hid) or masters.get(group.hid)
@@ -2352,10 +2454,11 @@ ENTITIES: Mapping[str, Entity] = {
         Tags(),
         Vendors(),
         CatalogEntries(),
+        Contacts(),
+        Operators(),
         Regions(),
         Sites(),
         Locations(),
-        Contacts(),
         ContactAssignments(),
         Owners(),
         OwnerMembers(),
@@ -2372,10 +2475,11 @@ LOAD_ORDER = (
     "tags",
     "vendors",
     "catalog_entries",
+    "contacts",
+    "operators",
     "regions",
     "sites",
     "locations",
-    "contacts",
     "contact_assignments",
     "owners",
     "owner_members",

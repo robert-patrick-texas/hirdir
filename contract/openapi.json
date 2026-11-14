@@ -2080,7 +2080,7 @@
             "type": "string"
           },
           "uses": {
-            "description": "How many places and owners it is assigned to, and items and groups it is the operator of.",
+            "description": "How many places and owners it is assigned to, and operators it stands behind.",
             "title": "Uses",
             "type": "integer"
           }
@@ -2839,13 +2839,13 @@
           "operator": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ContactRef"
+                "$ref": "#/components/schemas/OperatorRef"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Its own operator, who is that of its members that have none."
+            "description": "Its own operator, which is that of its members that have none."
           },
           "operator_hid": {
             "anyOf": [
@@ -3610,8 +3610,47 @@
       },
       "EffectiveOperator": {
         "additionalProperties": false,
-        "description": "The operator in force, with what the record that holds it is called.",
+        "description": "The operator in force: the label, who is behind it, and where it came from.",
         "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the person behind the label.",
+            "title": "Contact"
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "is_open": {
+            "description": "Nobody is behind the label.",
+            "title": "Is Open",
+            "type": "boolean"
+          },
           "label": {
             "anyOf": [
               {
@@ -3659,7 +3698,7 @@
                 "type": "null"
               }
             ],
-            "description": "The name of the item or the group it came from. Null for its own.",
+            "description": "The name of the item or group, or the path of the place, it came from.",
             "title": "Source Label"
           },
           "value": {
@@ -3680,9 +3719,94 @@
           "label",
           "source",
           "source_hid",
-          "source_label"
+          "source_label",
+          "colour",
+          "contact_hid",
+          "contact",
+          "is_open"
         ],
         "title": "EffectiveOperator",
+        "type": "object"
+      },
+      "EffectivePlaceOperator": {
+        "additionalProperties": false,
+        "description": "The operator of what is at a place and has none from elsewhere, and its level.",
+        "properties": {
+          "overrides_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Hid"
+          },
+          "overrides_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Path"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "location",
+              "site",
+              "region",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "source_path",
+          "overrides_hid",
+          "overrides_path"
+        ],
+        "title": "EffectivePlaceOperator",
         "type": "object"
       },
       "EffectiveReference": {
@@ -3916,10 +4040,11 @@
               "tags",
               "vendors",
               "catalog_entries",
+              "contacts",
+              "operators",
               "regions",
               "sites",
               "locations",
-              "contacts",
               "contact_assignments",
               "owners",
               "owner_members",
@@ -5124,7 +5249,7 @@
                 "type": "null"
               }
             ],
-            "description": "A contact: the person of the team who looks after it.",
+            "description": "An operator: the label of who of the team looks after it.",
             "title": "Operator Hid"
           },
           "owner_hid": {
@@ -5306,7 +5431,7 @@
           },
           "operator_hid": {
             "$ref": "#/components/schemas/EffectiveOperator",
-            "description": "The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name."
+            "description": "The operator in force: its own, that of the item above it, of a group it is a member of, or of the place it is at."
           },
           "owner_hid": {
             "$ref": "#/components/schemas/EffectiveReference"
@@ -5704,13 +5829,13 @@
           "operator": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ContactRef"
+                "$ref": "#/components/schemas/OperatorRef"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Its own operator: the person of the team who looks after it."
+            "description": "Its own operator: the label of who of the team looks after it."
           },
           "operator_hid": {
             "anyOf": [
@@ -6923,6 +7048,18 @@
             ],
             "title": "Notes"
           },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "parent_location_hid": {
             "anyOf": [
               {
@@ -7226,6 +7363,28 @@
             ],
             "title": "Notes"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own operator."
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "parent": {
             "anyOf": [
               {
@@ -7413,6 +7572,8 @@
           "ship_country",
           "ship_instructions",
           "ship_same_as_address",
+          "operator_hid",
+          "operator",
           "latitude",
           "longitude",
           "notes",
@@ -7556,6 +7717,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
           },
           "parent_location_hid": {
             "anyOf": [
@@ -8349,6 +8522,328 @@
           "label"
         ],
         "title": "NetworkRef",
+        "type": "object"
+      },
+      "OperatorCreate": {
+        "additionalProperties": false,
+        "description": "A new operator: a label, with somebody behind it or open.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "In the form #1f6feb.",
+            "title": "Colour"
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, an open assignment.",
+            "title": "Contact Hid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "label": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "OperatorCreate",
+        "type": "object"
+      },
+      "OperatorOut": {
+        "additionalProperties": false,
+        "description": "A short label that stands for the member of the team who looks after what it is on.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "is_open": {
+            "description": "Nobody is behind it: no contact, or one that is retired.",
+            "title": "Is Open",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "uses": {
+            "description": "How many items, groups and places are given it as their own.",
+            "title": "Uses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "description",
+          "colour",
+          "contact_hid",
+          "contact",
+          "is_open",
+          "record_status",
+          "uses",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OperatorOut",
+        "type": "object"
+      },
+      "OperatorPatch": {
+        "additionalProperties": false,
+        "description": "Fields of an operator to change, and the version they were read at.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Another contact hands over everything the label is on. Null leaves it open.",
+            "title": "Contact Hid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "OperatorPatch",
+        "type": "object"
+      },
+      "OperatorRef": {
+        "additionalProperties": false,
+        "description": "An operator, as shown on what it is given to: the label, and who is behind it.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the person behind the label.",
+            "title": "Contact"
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "is_open": {
+            "description": "Nobody is behind it: no contact, or one that is retired.",
+            "title": "Is Open",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "colour",
+          "contact_hid",
+          "contact",
+          "is_open",
+          "record_status"
+        ],
+        "title": "OperatorRef",
         "type": "object"
       },
       "OwnerCreate": {
@@ -9192,6 +9687,38 @@
         "title": "Page[NetworkOut]",
         "type": "object"
       },
+      "Page_OperatorOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[OperatorOut]",
+        "type": "object"
+      },
       "Page_OwnerMemberOut_": {
         "additionalProperties": false,
         "properties": {
@@ -9429,6 +9956,9 @@
             "title": "Level",
             "type": "string"
           },
+          "operator": {
+            "$ref": "#/components/schemas/EffectivePlaceOperator"
+          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -9446,7 +9976,8 @@
           "path",
           "contacts",
           "ship_address",
-          "ship_instructions"
+          "ship_instructions",
+          "operator"
         ],
         "title": "PlaceEffective",
         "type": "object"
@@ -9568,6 +10099,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
           },
           "parent_region_hid": {
             "anyOf": [
@@ -9731,6 +10274,28 @@
             ],
             "title": "Notes"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own operator."
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "parent": {
             "anyOf": [
               {
@@ -9883,6 +10448,8 @@
           "ship_postal_code",
           "ship_country",
           "ship_instructions",
+          "operator_hid",
+          "operator",
           "notes",
           "record_status",
           "tags",
@@ -9934,6 +10501,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
           },
           "parent_region_hid": {
             "anyOf": [
@@ -10890,6 +11469,18 @@
             ],
             "title": "Notes"
           },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "postal_code": {
             "anyOf": [
               {
@@ -11153,6 +11744,28 @@
             ],
             "title": "Notes"
           },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperatorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own operator."
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
+          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -11315,6 +11928,8 @@
           "ship_country",
           "ship_instructions",
           "ship_same_as_address",
+          "operator_hid",
+          "operator",
           "latitude",
           "longitude",
           "notes",
@@ -11445,6 +12060,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "operator_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Hid"
           },
           "postal_code": {
             "anyOf": [
@@ -15286,10 +15913,11 @@
                     "tags",
                     "vendors",
                     "catalog_entries",
+                    "contacts",
+                    "operators",
                     "regions",
                     "sites",
                     "locations",
-                    "contacts",
                     "contact_assignments",
                     "owners",
                     "owner_members",
@@ -15380,10 +16008,11 @@
                       "tags",
                       "vendors",
                       "catalog_entries",
+                      "contacts",
+                      "operators",
                       "regions",
                       "sites",
                       "locations",
-                      "contacts",
                       "contact_assignments",
                       "owners",
                       "owner_members",
@@ -17367,6 +17996,370 @@
         "summary": "Update Network",
         "tags": [
           "Addresses"
+        ]
+      }
+    },
+    "/api/v1/operators": {
+      "get": {
+        "description": "List operators, by label unless a sort says otherwise.",
+        "operationId": "list_operators_api_v1_operators_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_OperatorOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Operators",
+        "tags": [
+          "People"
+        ]
+      },
+      "post": {
+        "description": "Create an operator: a short label, with somebody behind it or open.",
+        "operationId": "create_operator_api_v1_operators_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Operator",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/operators/{hid}": {
+      "get": {
+        "description": "Return one operator.",
+        "operationId": "get_operator_api_v1_operators__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Operator",
+        "tags": [
+          "People"
+        ]
+      },
+      "patch": {
+        "description": "Change an operator. Given another contact, everything the label is on is handed\nover at once; given none, it is an open assignment. Nothing else is written to.",
+        "operationId": "update_operator_api_v1_operators__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Operator",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/operators/{hid}/retire": {
+      "post": {
+        "description": "Release what an operator is on: retired, the label stands for nothing, and each\nthing it was on has the operator of the next level up, or none.",
+        "operationId": "retire_operator_api_v1_operators__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Operator",
+        "tags": [
+          "People"
         ]
       }
     },

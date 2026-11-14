@@ -1386,7 +1386,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -1400,7 +1400,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -2344,6 +2344,170 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["NetworkOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/operators": {
+    /** List operators, by label unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_OperatorOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create an operator: a short label, with somebody behind it or open. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OperatorCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["OperatorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/operators/{hid}": {
+    /** Return one operator. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OperatorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change an operator. Given another contact, everything the label is on is handed
+     * over at once; given none, it is an open assignment. Nothing else is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OperatorPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OperatorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/operators/{hid}/retire": {
+    /**
+     * Release what an operator is on: retired, the label stands for nothing, and each
+     * thing it was on has the operator of the next level up, or none.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OperatorOut"];
           };
         };
         /** Validation Error */
@@ -4200,7 +4364,7 @@ export interface components {
       row_version: number;
       tags: string[];
       updated_at: string;
-      /** How many places and owners it is assigned to, and items and groups it is the operator of. */
+      /** How many places and owners it is assigned to, and operators it stands behind. */
       uses: number;
     };
     /** Fields of a contact to change, and the version they were read at. */
@@ -4297,8 +4461,8 @@ export interface components {
       observed_master: components["schemas"]["ItemRef"] | null;
       observed_master_hid: string | null;
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
-      /** Its own operator, who is that of its members that have none. */
-      operator: components["schemas"]["ContactRef"] | null;
+      /** Its own operator, which is that of its members that have none. */
+      operator: components["schemas"]["OperatorRef"] | null;
       operator_hid: string | null;
       owner: components["schemas"]["OwnerRef"] | null;
       /** Its owner is outside the operations team. */
@@ -4390,16 +4554,31 @@ export interface components {
       /** The HID of the record. */
       value: string | null;
     };
-    /** The operator in force, with what the record that holds it is called. */
+    /** The operator in force: the label, who is behind it, and where it came from. */
     EffectiveOperator: {
+      colour: string | null;
+      /** The name of the person behind the label. */
+      contact: string | null;
+      contact_hid: string | null;
+      /** Nobody is behind the label. */
+      is_open: boolean;
       /** What people call the record. */
       label: string | null;
       source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
-      /** The name of the item or the group it came from. Null for its own. */
+      /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
       /** The HID of the record. */
       value: string | null;
+    };
+    /** The operator of what is at a place and has none from elsewhere, and its level. */
+    EffectivePlaceOperator: {
+      overrides_hid: string | null;
+      overrides_path: string | null;
+      source: "own" | "location" | "site" | "region" | "none";
+      source_hid: string | null;
+      source_path: string | null;
+      value: components["schemas"]["OperatorRef"] | null;
     };
     /** A record in force, and where it came from. */
     EffectiveReference: {
@@ -4436,7 +4615,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -4636,7 +4815,7 @@ export interface components {
       /** Left out, now. Given with observed_status only. */
       observed_at?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
-      /** A contact: the person of the team who looks after it. */
+      /** An operator: the label of who of the team looks after it. */
       operator_hid?: string | null;
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
@@ -4669,7 +4848,7 @@ export interface components {
       ldos: components["schemas"]["EffectiveValue"];
       lifecycle_state: components["schemas"]["EffectiveValue"];
       location_hid: components["schemas"]["EffectiveLocation"];
-      /** The operator in force: its own, that of the item above it, or that of a group it is a member of. The label is the contact's name. */
+      /** The operator in force: its own, that of the item above it, of a group it is a member of, or of the place it is at. */
       operator_hid: components["schemas"]["EffectiveOperator"];
       owner_hid: components["schemas"]["EffectiveReference"];
       support_weight: components["schemas"]["EffectiveValue"];
@@ -4726,8 +4905,8 @@ export interface components {
       observed_at: string | null;
       /** What is seen of it: on the network, or `present`, by a person. */
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
-      /** Its own operator: the person of the team who looks after it. */
-      operator: components["schemas"]["ContactRef"] | null;
+      /** Its own operator: the label of who of the team looks after it. */
+      operator: components["schemas"]["OperatorRef"] | null;
       operator_hid: string | null;
       owner: components["schemas"]["OwnerRef"] | null;
       /** The owner in force is outside the operations team. */
@@ -4874,6 +5053,7 @@ export interface components {
       longitude?: string | null;
       name: string;
       notes?: string | null;
+      operator_hid?: string | null;
       parent_location_hid?: string | null;
       postal_code?: string | null;
       record_status?: "draft" | "active";
@@ -4910,6 +5090,9 @@ export interface components {
       longitude: string | null;
       name: string;
       notes: string | null;
+      /** Its own operator. */
+      operator: components["schemas"]["OperatorRef"] | null;
+      operator_hid: string | null;
       parent: components["schemas"]["PlaceRef"] | null;
       parent_location_hid: string | null;
       path: string;
@@ -4943,6 +5126,7 @@ export interface components {
       longitude?: string | null;
       name?: string | null;
       notes?: string | null;
+      operator_hid?: string | null;
       /** Another location of the same site moves it. Null: in the site. */
       parent_location_hid?: string | null;
       postal_code?: string | null;
@@ -5071,6 +5255,55 @@ export interface components {
     NetworkRef: {
       hid: string;
       label: string;
+    };
+    /** A new operator: a label, with somebody behind it or open. */
+    OperatorCreate: {
+      /** In the form #1f6feb. */
+      colour?: string | null;
+      /** Left out, an open assignment. */
+      contact_hid?: string | null;
+      description?: string | null;
+      label: string;
+      record_status?: "draft" | "active";
+    };
+    /** A short label that stands for the member of the team who looks after what it is on. */
+    OperatorOut: {
+      colour: string | null;
+      contact: components["schemas"]["ContactRef"] | null;
+      contact_hid: string | null;
+      created_at: string;
+      description: string | null;
+      hid: string;
+      /** Nobody is behind it: no contact, or one that is retired. */
+      is_open: boolean;
+      label: string;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      updated_at: string;
+      /** How many items, groups and places are given it as their own. */
+      uses: number;
+    };
+    /** Fields of an operator to change, and the version they were read at. */
+    OperatorPatch: {
+      colour?: string | null;
+      /** Another contact hands over everything the label is on. Null leaves it open. */
+      contact_hid?: string | null;
+      description?: string | null;
+      label?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+    };
+    /** An operator, as shown on what it is given to: the label, and who is behind it. */
+    OperatorRef: {
+      colour: string | null;
+      /** The name of the person behind the label. */
+      contact: string | null;
+      contact_hid: string | null;
+      hid: string;
+      /** Nobody is behind it: no contact, or one that is retired. */
+      is_open: boolean;
+      label: string;
+      record_status: "draft" | "active" | "retired";
     };
     /** A new owner. */
     OwnerCreate: {
@@ -5216,6 +5449,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_OperatorOut_: {
+      items: components["schemas"]["OperatorOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_OwnerMemberOut_: {
       items: components["schemas"]["OwnerMemberOut"][];
       limit: number;
@@ -5263,6 +5502,7 @@ export interface components {
       contacts: components["schemas"]["RoleContacts"][];
       hid: string;
       level: "region" | "site" | "location";
+      operator: components["schemas"]["EffectivePlaceOperator"];
       path: string;
       ship_address: components["schemas"]["EffectiveShipAddress"];
       ship_instructions: components["schemas"]["EffectiveInstructions"];
@@ -5292,6 +5532,7 @@ export interface components {
       code?: string | null;
       name: string;
       notes?: string | null;
+      operator_hid?: string | null;
       /** The region it is in. Left out, a region at the top. */
       parent_region_hid?: string | null;
       record_status?: "draft" | "active";
@@ -5311,6 +5552,9 @@ export interface components {
       hid: string;
       name: string;
       notes: string | null;
+      /** Its own operator. */
+      operator: components["schemas"]["OperatorRef"] | null;
+      operator_hid: string | null;
       parent: components["schemas"]["PlaceRef"] | null;
       parent_region_hid: string | null;
       path: string;
@@ -5335,6 +5579,7 @@ export interface components {
       code?: string | null;
       name?: string | null;
       notes?: string | null;
+      operator_hid?: string | null;
       /** Another region moves it, with everything in it. */
       parent_region_hid?: string | null;
       record_status?: "draft" | "active" | null;
@@ -5485,6 +5730,7 @@ export interface components {
       longitude?: string | null;
       name: string;
       notes?: string | null;
+      operator_hid?: string | null;
       postal_code?: string | null;
       record_status?: "draft" | "active";
       region_hid: string;
@@ -5514,6 +5760,9 @@ export interface components {
       longitude: string | null;
       name: string;
       notes: string | null;
+      /** Its own operator. */
+      operator: components["schemas"]["OperatorRef"] | null;
+      operator_hid: string | null;
       path: string;
       postal_code: string | null;
       record_status: "draft" | "active" | "retired";
@@ -5544,6 +5793,7 @@ export interface components {
       longitude?: string | null;
       name?: string | null;
       notes?: string | null;
+      operator_hid?: string | null;
       postal_code?: string | null;
       record_status?: "draft" | "active" | null;
       /** Another region moves the site. */

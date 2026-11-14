@@ -286,7 +286,7 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
         return Owner.hid, Owner.label, None
     if by == "operator":
         # The operator in force: the blank row is what nobody is assigned to.
-        return fields.ITEM_OPERATOR.hid, fields.ITEM_OPERATOR.name, None
+        return fields.ITEM_OPERATOR.hid, fields.ITEM_OPERATOR.label, None
     if by == "site":
         return fields.ITEM_SITE.hid, fields.ITEM_SITE.hid, None
     if by == "region":

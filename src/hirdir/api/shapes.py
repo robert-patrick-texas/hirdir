@@ -27,6 +27,7 @@ from hirdir.db.models import (
     LifecycleRule,
     Location,
     Network,
+    Operator,
     Owner,
     OwnerMember,
     Region,
@@ -155,26 +156,55 @@ def _exception(owner: Owner | None) -> dict[str, Any]:
     }
 
 
-def _operator(
-    found: Effective, people: dict[str, Any], holders: dict[str, str]
-) -> shapes.EffectiveOperator:
-    """Return an operator in force, by the name of the contact, and where it came from.
+class _Labels:
+    """The operators a page of records refers to, each read once with who is behind it."""
 
-    `holders` names the items and the groups that an operator may come from.
-    """
-    contact = people.get(found.value) if found.value else None
-    return shapes.EffectiveOperator(
-        value=found.value,
-        label=contact.name if contact is not None else None,
-        source=found.source,
-        source_hid=found.source_hid,
-        source_label=holders.get(found.source_hid or "") if found.source != "own" else None,
-    )
+    def __init__(self, db: Session, hids: set[str | None]) -> None:
+        self.found: dict[str, Operator] = _by_hid(db, Operator, hids)
+        self.people: dict[str, Contact] = _by_hid(
+            db, Contact, {operator.contact_hid for operator in self.found.values()}
+        )
+
+    def ref(self, hid: str | None) -> shapes.OperatorRef | None:
+        """Return an operator as what it is given to shows it."""
+        operator = self.found.get(hid or "")
+        if operator is None:
+            return None
+        contact = self.people.get(operator.contact_hid or "")
+        return shapes.OperatorRef.model_validate(
+            {
+                "hid": operator.hid,
+                "label": operator.label,
+                "colour": operator.colour,
+                "contact_hid": operator.contact_hid,
+                "contact": contact.name if contact is not None else None,
+                "is_open": operators.is_open(operator, contact),
+                "record_status": operator.record_status,
+            }
+        )
+
+    def in_force(self, found: Effective, holders: dict[str, str]) -> shapes.EffectiveOperator:
+        """Return an operator in force: the label, who is behind it, where it came from.
+
+        `holders` names the items, the groups and the places that it may come from.
+        """
+        ref = self.ref(found.value)
+        return shapes.EffectiveOperator(
+            value=found.value,
+            label=ref.label if ref is not None else None,
+            source=found.source,
+            source_hid=found.source_hid,
+            source_label=holders.get(found.source_hid or "") if found.source != "own" else None,
+            colour=ref.colour if ref is not None else None,
+            contact_hid=ref.contact_hid if ref is not None else None,
+            contact=ref.contact if ref is not None else None,
+            is_open=ref.is_open if ref is not None else False,
+        )
 
 
 def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -> dict[str, str]:
-    """Return what each record that an operator comes from is called: the item above,
-    or the group."""
+    """Return what each record that an operator comes from is called: the item above
+    or the group by its name, a place by its path."""
     named = {hid: item_rules.shown_name(item) for hid, item in above.items()}
     its_groups = _by_hid(
         db,
@@ -182,7 +212,33 @@ def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -
         {one.source_hid for one in found.values() if one.source == operators.SOURCE_GROUP},
     )
     named.update((hid, group.name) for hid, group in its_groups.items())
+    atlas = geography.Atlas(db)
+    for one in found.values():
+        if one.source in geography.LEVELS and one.source_hid:
+            place = geography.Place(
+                one.source, db.get(geography.MODELS[one.source], one.source_hid)
+            )
+            if place.record is not None:
+                named[one.source_hid] = atlas.path(place)
     return named
+
+
+def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut]:
+    """Return operators, each with who is behind it and how much it is given to."""
+    people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
+    uses = operators.uses(db, [operator.hid for operator in found])
+    out = []
+    for operator in found:
+        contact = people.get(operator.contact_hid or "")
+        out.append(
+            shapes.OperatorOut(
+                **_own(operator, shapes.OperatorOut, ("contact", "is_open", "uses")),
+                contact=_contact_ref(contact) if contact is not None else None,
+                is_open=operators.is_open(operator, contact),
+                uses=uses[operator.hid],
+            )
+        )
+    return out
 
 
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
@@ -285,12 +341,18 @@ def regions_out(db: Session, found: list[Region]) -> list[shapes.RegionOut]:
     labels = tags.labels_of(db, geography.REGION, hids)
     within = _live_counts(db, Region, Region.parent_region_hid, hids)
     sites = _live_counts(db, Site, Site.region_hid, hids)
+    marks = _Labels(db, {region.operator_hid for region in found})
     out = []
     for region in found:
         parent = atlas.regions.get(region.parent_region_hid or "")
         out.append(
             shapes.RegionOut(
-                **_own(region, shapes.RegionOut, ("parent", "path", "tags", "regions", "sites")),
+                **_own(
+                    region,
+                    shapes.RegionOut,
+                    ("parent", "path", "tags", "regions", "sites", "operator"),
+                ),
+                operator=marks.ref(region.operator_hid),
                 parent=None
                 if parent is None
                 else shapes.PlaceRef(
@@ -312,9 +374,11 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
     hids = [site.hid for site in found]
     labels = tags.labels_of(db, geography.SITE, hids)
     locations = _live_counts(db, Location, Location.site_hid, hids)
+    marks = _Labels(db, {site.operator_hid for site in found})
     return [
         shapes.SiteOut(
-            **_own(site, shapes.SiteOut, ("region", "path", "tags", "locations")),
+            **_own(site, shapes.SiteOut, ("region", "path", "tags", "locations", "operator")),
+            operator=marks.ref(site.operator_hid),
             region=shapes.PlaceRef(
                 hid=site.region_hid,
                 name=atlas.regions[site.region_hid].name,
@@ -338,6 +402,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     labels = tags.labels_of(db, geography.LOCATION, hids)
     within = _live_counts(db, Location, Location.parent_location_hid, hids)
     placed = _live_counts(db, Item, Item.location_hid, hids)
+    marks = _Labels(db, {location.operator_hid for location in found})
     out = []
     for location in found:
         site = atlas.site(location.site_hid)
@@ -349,8 +414,9 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                 **_own(
                     location,
                     shapes.LocationOut,
-                    ("site", "parent", "path", "depth", "tags", "locations", "items"),
+                    ("site", "parent", "path", "depth", "tags", "locations", "items", "operator"),
                 ),
+                operator=marks.ref(location.operator_hid),
                 site=shapes.PlaceRef(
                     hid=location.site_hid,
                     name=site.name if site is not None else "",
@@ -427,8 +493,10 @@ def assignments_out(db: Session, found: list[ContactAssignment]) -> list[shapes.
     return out
 
 
-def effective_out(found: geography.InForce) -> shapes.PlaceEffective:
+def effective_out(db: Session, found: geography.InForce) -> shapes.PlaceEffective:
     """Return what a place has in force."""
+    looked_after = found.operator
+    mark = _Labels(db, {looked_after.value}).ref(looked_after.value)
     return shapes.PlaceEffective.model_validate(
         {
             "level": found.level,
@@ -458,6 +526,14 @@ def effective_out(found: geography.InForce) -> shapes.PlaceEffective:
             ],
             "ship_address": found.ship_address,
             "ship_instructions": found.ship_instructions,
+            "operator": {
+                "value": mark,
+                "source": looked_after.source,
+                "source_hid": looked_after.source_hid,
+                "source_path": looked_after.source_path,
+                "overrides_hid": looked_after.overrides_hid,
+                "overrides_path": looked_after.overrides_path,
+            },
         }
     )
 
@@ -538,10 +614,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     )
     labels = tags.labels_of(db, "item", hids)
     looked_after = operators.of_items(db, items, lines)
-    people = _by_hid(
-        db,
-        Contact,
-        {item.operator_hid for item in items} | {one.value for one in looked_after.values()},
+    marks = _Labels(
+        db, {item.operator_hid for item in items} | {one.value for one in looked_after.values()}
     )
     holders = _holders(db, looked_after, above)
     places = location_refs(
@@ -605,7 +679,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner_in_force),
                 location=places.get(item.location_hid) if item.location_hid else None,
-                operator=_contact_ref(people[item.operator_hid]) if item.operator_hid else None,
+                operator=marks.ref(item.operator_hid),
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
                 health=_health(
@@ -633,7 +707,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 replaced_by=replaced_by.get(item.hid),
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
-                    operator_hid=_operator(looked_after[item.hid], people, holders),
+                    operator_hid=marks.in_force(looked_after[item.hid], holders),
                     owner_hid=shapes.EffectiveReference(
                         value=effective["owner_hid"].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
@@ -731,10 +805,8 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     disagree = groups.members_disagree(db, found)
     places = location_refs(db, {group.location_hid for group in found})
     looked_after = operators.of_groups(db, found)
-    people = _by_hid(
-        db,
-        Contact,
-        {group.operator_hid for group in found} | {one.value for one in looked_after.values()},
+    marks = _Labels(
+        db, {group.operator_hid for group in found} | {one.value for one in looked_after.values()}
     )
     holders = _holders(db, looked_after, {})
     out = []
@@ -758,9 +830,9 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner),
                 location=places.get(group.location_hid) if group.location_hid else None,
-                operator=_contact_ref(people[group.operator_hid]) if group.operator_hid else None,
+                operator=marks.ref(group.operator_hid),
                 effective=shapes.GroupEffective(
-                    operator_hid=_operator(looked_after[group.hid], people, holders)
+                    operator_hid=marks.in_force(looked_after[group.hid], holders)
                 ),
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,

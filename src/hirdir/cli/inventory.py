@@ -56,6 +56,7 @@ SHOWN = {
     "sites": "path,code,city,country,record_status",
     "locations": "path,kind,code,record_status",
     "contacts": "name,organization,email,phone,record_status",
+    "operators": "label,description,contact,is_open,record_status",
     "tags": "label,colour,description",
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
@@ -175,6 +176,7 @@ regions = _lists("regions", "regions")
 sites = _lists("sites", "sites")
 locations = _lists("locations", "locations")
 contacts = _lists("contacts", "contacts")
+operators = _lists("operators", "operators")
 geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
 GROUPS = {
@@ -190,6 +192,7 @@ GROUPS = {
     "sites": sites,
     "locations": locations,
     "contacts": contacts,
+    "operators": operators,
     "geography": geography,
     "report": report,
 }
@@ -256,6 +259,20 @@ def _in_force(item: dict[str, Any], name: str) -> Any:
     return f"{shown} ({effective['source']})"
 
 
+def _operator(effective: dict[str, Any]) -> str | None:
+    """Return an operator in force as one line: the label, who is behind it or that
+    nobody is, and where it came from when it is not the record's own."""
+    if effective["value"] is None:
+        return None
+    behind = "open: nobody is behind it" if effective["is_open"] else effective["contact"]
+    shown = f"{effective['label']} ({behind})"
+    if effective["source"] == "own":
+        return shown
+    where = effective["source"].replace("_", " ")
+    named = f" {effective['source_label']}" if effective["source_label"] else ""
+    return f"{shown}, from the {where}{named}"
+
+
 def _health(health: dict[str, Any] | None) -> str | None:
     """Return a health with its reasons, as one line."""
     if health is None:
@@ -309,7 +326,7 @@ def show(
         ("health", _health(found["health"])),
         ("owner", _in_force(found, "owner_hid")),
         ("owner_exception", found["owner_exception_reason"] or found["owner_exception"] or None),
-        ("operator", _in_force(found, "operator_hid")),
+        ("operator", _operator(found["effective"]["operator_hid"])),
         ("location", _in_force(found, "location_hid")),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
@@ -459,7 +476,7 @@ def show_group(
         ("intended_master", _named(found["master"]) if found["master"] else None),
         ("observed_master", seen),
         ("owner_exception", found["owner_exception_reason"]),
-        ("operator", _in_force(found, "operator_hid")),
+        ("operator", _operator(found["effective"]["operator_hid"])),
         ("location", found["location"]["path"] if found["location"] else None),
         ("managed_as", found["managed_as"]),
         ("expected_members", found["expected_members"]),
@@ -1084,3 +1101,82 @@ def tree(
         if name == "totals" or found[name]["items"]:
             rows.append([label, "", *(str(found[name][count]) for count in PLACE_COUNTS)])
     _rows(format_, output, rows)
+
+
+# --- operators -----------------------------------------------------------------------
+
+
+def find_operator(target: Target, text: str) -> dict[str, Any]:
+    """Return the operator with an HID or a label."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"/operators/{text}")
+    found = client.call(
+        target,
+        "GET",
+        "/operators",
+        params={
+            "filter": json.dumps({"field": "label", "op": "eq", "value": text}),
+            "include_archived": True,
+            "include_drafts": True,
+            "limit": 2,
+        },
+    )["items"]
+    if not found:
+        raise client.fail(f"there is no operator {text}", client.EXIT_INVALID)
+    return found[0]
+
+
+@operators.command("assign")
+def assign_operator(
+    operator: Annotated[str, typer.Argument(help="A label or an HID.")],
+    contact: Annotated[
+        str | None, typer.Argument(help="The email address or the HID of the person behind it.")
+    ] = None,
+    open_: Annotated[
+        bool, typer.Option("--open", help="Nobody is behind it for now: an open assignment.")
+    ] = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Put a person behind an operator, or leave it open. Everything the label is on
+    follows at once, and none of it is written to."""
+    if (contact is None) != open_:
+        raise client.fail("name the contact, or say --open", 2)
+    target = client.load_target(url, token)
+    found = find_operator(target, operator)
+    person = None
+    if contact is not None:
+        key = "hid" if _is_hid(contact) else "email"
+        people = client.call(
+            target,
+            "GET",
+            "/contacts",
+            params={"filter": json.dumps({"field": key, "op": "eq", "value": contact}), "limit": 2},
+        )["items"]
+        if len(people) != 1:
+            raise client.fail(f"there is no contact {contact}", client.EXIT_INVALID)
+        person = people[0]
+    changed = client.call(
+        target,
+        "PATCH",
+        f"/operators/{found['hid']}",
+        {"row_version": found["row_version"], "contact_hid": person["hid"] if person else None},
+    )
+    behind = changed["contact"]["name"] if changed["contact"] else "nobody: it is open"
+    typer.echo(f"{changed['label']} is {behind}; it is on {changed['uses']} records of its own")
+
+
+@operators.command("release")
+def release_operator(
+    operator: Annotated[str, typer.Argument(help="A label or an HID.")],
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Release what an operator is on: the label is retired and stands for nothing, and
+    each thing it was on has the operator of the next level up, or none."""
+    target = client.load_target(url, token)
+    found = find_operator(target, operator)
+    client.call(
+        target, "POST", f"/operators/{found['hid']}/retire", {"row_version": found["row_version"]}
+    )
+    typer.echo(f"{found['label']} is released; it was on {found['uses']} records of its own")

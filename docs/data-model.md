@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -31,7 +31,7 @@ where it came from.**
 | Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | its catalog entry |
 | Catalog entry: `stack_discount_pct` | the global setting |
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
-| Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of; then the group that group is nested in |
+| Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of, and the group that group is nested in; then the location it is at, the locations above that, the site, and each region outward |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
 | Site: the same three | each region outward |
@@ -118,7 +118,7 @@ lifecycle fields included.
 | `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
-| `operator_hid` | reference | a contact: the person of the team who looks after the item. Blank inherits; see "The operator" |
+| `operator_hid` | reference | an operator: the label of the person of the team who looks after the item. Blank inherits; see "The operator" |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
 | `warranty_start`, `warranty_end` | date | |
@@ -154,28 +154,35 @@ Release 0.5.0 has every field above except `purchase_line_hid`, which arrives in
 
 **The operator.** The owner of an item is the part of the organization that answers
 for it. Its operator is one person: the member of the team who looks after it, and
-who is asked about it. `operator_hid` names a contact, on an item and on a device
-group. For an item it is resolved when it is read, the nearest first:
+who is asked about it. An item is not given the person but a label that stands for
+the person, a record of `operators`, below. `operator_hid` names one, on an item, on
+a device group, and on a region, a site and a location. For an item the operator in
+force is resolved when it is read, the nearest first:
 
 1. the item's own;
 2. for a minor item, that of the nearest item above it that has one;
 3. that of a group which the item at the top of that line is a current member of: a
    stack before a cluster, a cluster before a controller domain, a controller domain
-   before any other group, and of two of one type the first by name;
-4. where that group has none, that of the nearest group it is nested in.
+   before any other group, and of two of one type the first by name; where that group
+   has none, that of the nearest group it is nested in;
+4. that of the location the item is at, then of the locations above it, of its site,
+   and of each region outward.
+
+An operator that is retired is passed over at every level, as if it were not there.
 
 So a stack is given an operator once and its four switches have it, with their power
-supplies; forty access points have the operator of their controller domain; and the
+supplies; forty access points have the operator of their controller domain; a switch
+that arrives at a site with nobody named for it has the operator of the site; and the
 one switch that somebody else looks after is given its own. The answer says where it
-came from: `own`, `parent_item` or `device_group`, with the record that holds it.
-Nothing is copied down: giving the stack another operator changes what its members
-show and writes to none of them. A device group shows its operator in force in the
-same way, its own or that of a group it is nested in.
+came from: `own`, `parent_item`, `device_group`, `location`, `site` or `region`, with
+the record that holds it. Nothing is copied down: giving the stack another operator
+changes what its members show and writes to none of them. A device group shows its
+operator in force in the same way, its own or that of a group it is nested in, and a
+place its own or that of the place it is in.
 
 An item with no operator in force is looked after by nobody in particular. It is
 found with `effective.operator_hid:empty:true`, and counted in the blank row of a
-report by `operator`. A contact that is retired stays the operator of what it had,
-shown as retired, until somebody else is given it.
+report by `operator`.
 
 ### `item_replacements`
 
@@ -209,7 +216,7 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
-| `operator_hid` | reference | optional. A contact: the person who looks after the group, and after each member that has no operator of its own |
+| `operator_hid` | reference | optional. An operator, for the group and for each member that has none of its own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |
 | `observed_master_hid` | reference | a stack only: the current member that is seen to be master now. Set with `observed_at` of its own, `master_observed_at` |
@@ -300,9 +307,9 @@ that holds what was removed.
 
 | Record | Fields | Rules |
 |---|---|---|
-| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
-| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
-| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
+| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `operator_hid`, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
+| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
+| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
 
 Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`.
 The shipping set is the same six with the prefix `ship_`, plus `ship_instructions`. A
@@ -329,6 +336,10 @@ in: `site_hid` is not changed, and a location is moved within its site by giving
 another parent. A site is moved by giving it another region, and a region with
 everything in it by giving it another parent. Each move is one change of one record,
 and one audit event. No record is ever beneath itself.
+
+**The operator of a place**, `operator_hid`, is the operator of what is there and has
+none from elsewhere: see "The operator" under `items`. A place with none has that of
+the place it is in, as it has its contacts.
 
 **What an item is given** is a location: `location_hid` on the item, and on a device
 group that is in one place. Its site and its regions follow from the location. A
@@ -391,6 +402,33 @@ has are shown with its status.
 An assignment is removed outright, and the audit event of the removal holds what it
 was. Nothing is copied down: changing the technical contact of a region changes what
 every location beneath it shows, unless a level between them has its own.
+
+### `operators`
+
+A short label that stands for the member of the team who looks after what it is on.
+
+| Field | Type | Notes |
+|---|---|---|
+| `label` | text, unique | of the site's choosing, at most 40 characters: initials, a surname, a code. "LM", "Op2" |
+| `description` | text | what the label is for: "Core and distribution", "Second shift" |
+| `colour` | text | written `#1f6feb`, for the mark that lists and reports show |
+| `contact_hid` | reference | the person behind the label. Blank while nobody is |
+| `record_status` | choice | see Conventions |
+
+Items, groups and places hold the label and never the person, so the person is
+changed in one place. Three things follow, each one change of one record with
+nothing written to what the label is on:
+
+- **Handing over.** Give the operator another contact, for a new hire or when the
+  team swaps what each of them looks after: everything the label is on is the new
+  person's at once.
+- **An open assignment.** An operator with no contact, or whose contact is retired,
+  is open: `is_open` is true. What it is on still shows the label, marked as open,
+  so the set stays together until somebody is put behind it.
+  `operator.is_open:eq:true` finds the items.
+- **Releasing.** An operator that is retired stands for nothing. Each thing it was on
+  has the operator of the next level up, or none, and is listed among what nobody is
+  assigned to when that is so. Brought back, it is on everything it was on.
 
 ### `owners` and `owner_members`
 
@@ -566,7 +604,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `regions`, `sites`, `locations`, `contacts`, `contact_assignments`, `owners`, `owner_members`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
+| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |

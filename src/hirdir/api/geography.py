@@ -11,7 +11,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
-from hirdir.domain import contacts, geography
+from hirdir.domain import contacts, geography, operators
 from hirdir.io import fields, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
@@ -19,6 +19,7 @@ sites = APIRouter(prefix="/sites", tags=["Geography"], route_class=IdempotentRou
 locations = APIRouter(prefix="/locations", tags=["Geography"], route_class=IdempotentRoute)
 tree = APIRouter(prefix="/geography", tags=["Geography"])
 contact_routes = APIRouter(prefix="/contacts", tags=["People"], route_class=IdempotentRoute)
+operator_routes = APIRouter(prefix="/operators", tags=["People"], route_class=IdempotentRoute)
 assignments = APIRouter(prefix="/contact-assignments", tags=["People"], route_class=IdempotentRoute)
 
 
@@ -33,7 +34,7 @@ def _page(items: list[Any], total: int, listed: lists.ListRequest, model: Any) -
 
 
 def _effective(db: Db, level: str, hid: str) -> r.PlaceEffective:
-    return shapes.effective_out(geography.effective(db, geography.get_place(db, level, hid)))
+    return shapes.effective_out(db, geography.effective(db, geography.get_place(db, level, hid)))
 
 
 # --- regions -------------------------------------------------------------------------
@@ -286,6 +287,49 @@ def retire_contact(
     return shapes.contacts_out(db, [retired])[0]
 
 
+# --- operators -----------------------------------------------------------------------
+
+
+@operator_routes.get("")
+def list_operators(_: Viewer, db: Db, listed: Listed) -> Page[r.OperatorOut]:
+    """List operators, by label unless a sort says otherwise."""
+    page, total = lists.read(db, fields.OPERATORS, listed)
+    return _page(shapes.operators_out(db, page), total, listed, r.OperatorOut)
+
+
+@operator_routes.post("", status_code=201)
+def create_operator(body: r.OperatorCreate, _: Inventory, context: Audit, db: Db) -> r.OperatorOut:
+    """Create an operator: a short label, with somebody behind it or open."""
+    made = operators.create_operator(db, context, body.model_dump())
+    return shapes.operators_out(db, [made])[0]
+
+
+@operator_routes.get("/{hid}")
+def get_operator(hid: str, _: Viewer, db: Db) -> r.OperatorOut:
+    """Return one operator."""
+    return shapes.operators_out(db, [operators.get_operator(db, hid)])[0]
+
+
+@operator_routes.patch("/{hid}")
+def update_operator(
+    hid: str, body: r.OperatorPatch, _: Inventory, context: Audit, db: Db
+) -> r.OperatorOut:
+    """Change an operator. Given another contact, everything the label is on is handed
+    over at once; given none, it is an open assignment. Nothing else is written to."""
+    changed = operators.update_operator(db, context, hid, body.row_version, _changes(body))
+    return shapes.operators_out(db, [changed])[0]
+
+
+@operator_routes.post("/{hid}/retire")
+def retire_operator(
+    hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
+) -> r.OperatorOut:
+    """Release what an operator is on: retired, the label stands for nothing, and each
+    thing it was on has the operator of the next level up, or none."""
+    retired = operators.retire_operator(db, context, hid, body.row_version)
+    return shapes.operators_out(db, [retired])[0]
+
+
 # --- contact assignments -------------------------------------------------------------
 
 
@@ -331,4 +375,4 @@ def delete_assignment(hid: str, _: Inventory, context: Audit, db: Db) -> None:
     contacts.delete_assignment(db, context, hid)
 
 
-ROUTERS = (regions, sites, locations, tree, contact_routes, assignments)
+ROUTERS = (regions, sites, locations, tree, contact_routes, operator_routes, assignments)

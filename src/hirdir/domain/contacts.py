@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import ids
 from hirdir.db import dialect
-from hirdir.db.models import Contact, ContactAssignment, DeviceGroup, Item, OwnerMember
+from hirdir.db.models import Contact, ContactAssignment, Operator, OwnerMember
 from hirdir.domain import audit, choices, geography, records, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -178,14 +178,13 @@ def retire_contact(db: Session, context: AuditContext, hid: str, row_version: in
 
 def uses(db: Session, hids: list[str]) -> dict[str, int]:
     """Return how many places and owners each of the contacts is assigned to, and how
-    many items and groups it is the operator of."""
+    many operators it stands behind."""
     counts = dict.fromkeys(hids, 0)
     if hids:
         for column in (
             ContactAssignment.contact_hid,
             OwnerMember.contact_hid,
-            Item.operator_hid,
-            DeviceGroup.operator_hid,
+            Operator.contact_hid,
         ):
             counted = db.execute(
                 select(column, func.count()).where(column.in_(hids)).group_by(column)

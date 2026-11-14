@@ -551,17 +551,52 @@ def test_a_site_is_moved_and_an_item_is_put_somewhere_from_the_command_line(
     )
 
 
-def test_who_looks_after_an_item_is_shown_and_counted(run, make: Maker, switches: list) -> None:
+def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
+    run, make: Maker, switches: list
+) -> None:
     lee = make.contact("Lee Marchetti")
-    make.stack("site2-sw-stack1", switches[:2], operator_hid=lee["hid"])
+    make.contact("Robin Achterberg")
+    make.post("/operators", {"label": "LM", "description": "Core", "contact_hid": lee["hid"]})
+    make.post("/operators", {"label": "Op2"})
+    make.stack(
+        "site2-sw-stack1", switches[:2], operator_hid=make.get("/operators")["items"][0]["hid"]
+    )
 
+    listed = run("operators", "list").stdout.splitlines()
+    assert listed[0].split() == [
+        "HID",
+        "LABEL",
+        "DESCRIPTION",
+        "CONTACT",
+        "IS_OPEN",
+        "RECORD_STATUS",
+    ]
+    assert [line.split()[1] for line in listed[1:]] == ["LM", "Op2"]
     shown = run("items", "show", "site2-sw-1").stdout
-    assert f"{'operator:':<21}Lee Marchetti (device_group)" in shown
-    run("items", "set", "site2-sw-3", "operator=lee.marchetti@example.net")
-    assert f"{'operator:':<21}Lee Marchetti\n" in run("items", "show", "site2-sw-3").stdout
-    assert f"{'operator:':<21}Lee Marchetti\n" in run("groups", "show", "site2-sw-stack1").stdout
-    run("items", "set", "site2-sw-3", "operator=")
+    assert f"{'operator:':<21}LM (Lee Marchetti), from the device group site2-sw-stack1" in shown
+    run("items", "set", "site2-sw-3", "operator=op2")
+    assert (
+        f"{'operator:':<21}Op2 (open: nobody is behind it)\n"
+        in run("items", "show", "site2-sw-3").stdout
+    )
+    assert (
+        f"{'operator:':<21}LM (Lee Marchetti)\n" in run("groups", "show", "site2-sw-stack1").stdout
+    )
     table = run("report", "summary", "--by", "operator").stdout.splitlines()
-    assert [line.split("  ")[0] for line in table[1:]] == ["Lee Marchetti", "(none)", "(all)"]
+    assert [line.split("  ")[0] for line in table[1:]] == ["LM", "Op2", "(all)"]
+
+    # The label is handed over, left open and released, each in one command.
+    handed = run("operators", "assign", "LM", "robin.achterberg@example.net").stdout
+    assert handed.strip() == "LM is Robin Achterberg; it is on 1 records of its own"
+    assert "LM (Robin Achterberg)" in run("items", "show", "site2-sw-2").stdout
+    assert "nobody: it is open" in run("operators", "assign", "lm", "--open").stdout
+    open_ones = run("items", "list", "--filter", "operator.is_open:eq:true").stdout
+    assert len(open_ones.splitlines()) == 4
+    run("operators", "assign", "LM", expect=2)
+    run("operators", "assign", "LM", "nobody@example.net", expect=4)
+    assert run("operators", "release", "Op2").stdout.strip() == (
+        "Op2 is released; it was on 1 records of its own"
+    )
     nobody = run("items", "list", "--filter", "effective.operator_hid:empty:true").stdout
     assert [line.split()[1] for line in nobody.splitlines()[1:]] == ["site2-sw-3"]
+    run("operators", "release", "ZZ", expect=4)

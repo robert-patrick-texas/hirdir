@@ -1,0 +1,7 @@
+hid,label,description,colour,contact,record_status
+,DW,WAN,#bf8700,dana.whitfield@example.net,active
+,LM,Core and distribution,#1f6feb,lee.marchetti@example.net,active
+,OP6,The small offices,#6e7781,,active
+,PR,Security,#d1242f,priya.raman@example.net,active
+,RA,Access and the lab,#8250df,robin.achterberg@example.net,active
+,TL,Wireless and voice,#1a7f37,tomas.lindqvist@example.net,active
