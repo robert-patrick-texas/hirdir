@@ -179,6 +179,7 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. `location_hid` arrives in 0.5.0 |
+| `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |
 | `observed_master_hid` | reference | a stack only: the current member that is seen to be master now. Set with `observed_at` of its own, `master_observed_at` |
 | `observed_status`, `observed_at` | choice, timestamp | what is seen of the group as one device, as on an item |
@@ -616,10 +617,25 @@ For a set of items chosen by any filter:
 | Measure | Definition |
 |---|---|
 | Component count | Major items of `count_kinds` in the view, whose state is one of `count_states` or is blank. The view decides whether drafts and retired records are among them; unless asked, they are not. An item with no catalog entry is counted as hardware. |
-| Managed-node count | Of those: each current stack or cluster counts as one, and each item in neither counts as one. An item in both is part of its cluster. |
+| Managed-node count | Of those: each current stack counts as one, each current cluster as its `managed_as` says, and each item in neither counts as one. |
 | Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). Summed exactly, and rounded to two places once, half up. |
 | Estimated value | Sum of effective `est_value` × `quantity` over all items in the set, major and minor. |
 | Annual support cost | Sum of effective `annual_support_cost` × `quantity` over all items in the set. No stack discount. |
+
+**How a cluster is managed** decides what it is on the network, and so how it is
+counted. A cluster says so itself, in `managed_as`:
+
+| `managed_as` | The cluster on the network | Managed nodes |
+|---|---|--:|
+| `one` | one device: its members do not appear by themselves, as a pair of wireless LAN controllers in HA with one address to manage | 1 |
+| `members` | every member is managed at its own address, and virtual addresses are shared between them, as a pair of firewalls in HA | one for each member |
+| `members_and_cluster` | every member is managed, and the cluster answers as a virtual node of its own as well | one for each member, and one more |
+
+Each member is a component whichever it is, and the support weight does not depend on
+it. An item in both a stack and a cluster is part of the cluster's node where the
+cluster is managed as `one`, and otherwise counts through its stack. In a view that
+holds only some of a cluster's members, the cluster's own virtual node is counted
+where any of its members is.
 
 A stack or a cluster is **current** for these measures when the group is `active` and
 the membership has no `left_on`. The stack discount is earned by the members of a
