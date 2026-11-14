@@ -183,11 +183,17 @@ hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
 hirdir import examples/owners.csv --entity owners --apply
+hirdir import examples/networks.csv --entity networks --apply
 hirdir import examples/items.csv --entity items --apply
+hirdir import examples/device-groups.csv --entity device_groups --apply
+hirdir import examples/device-group-members.csv --entity device_group_members --apply
+hirdir import examples/addresses.csv --entity addresses --apply
 ```
 
 Without `--apply` a command shows what the file would do and changes nothing. Loaded a
-second time, every row is `unchanged`.
+second time, every row is `unchanged`. Four of the files are new in 0.4.0: the networks,
+the device groups, which are stacks, a cluster and a controller domain, their members,
+and the addresses of items and of groups. So are the minor items among the items.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -459,6 +465,37 @@ Going back to 0.2.1 is as under
 [Going back to the release before](#going-back-to-the-release-before). The backup of
 this upgrade is at revision `0003`. The snippet stays as 0.3.0 wrote it, which 0.2.1
 serves under just as well, and apt asks nothing about it.
+
+### From 0.3.0 to 0.4.0
+
+The schema goes from revision `0004` to `0005`. Five tables are added:
+`item_replacements`, `device_groups`, `device_group_members`, `networks` and
+`addresses`. They hold what is new in this release: replacements, stacks, clusters and
+controller domains with their members, and the addresses of items and of groups.
+
+The `items` table gains two columns, `parent_item_hid` and `position`, for minor items.
+To add them, SQLite makes the table anew and copies every row across, inside the one
+transaction that the whole upgrade runs in. Nothing you have is changed by it. Every
+item is as it was, field for field, at the `row_version` it had and with its history,
+and every item there is so far is a major item, as before: it has no parent. A serial
+number is still unique within its model, and an asset tag among all items.
+
+The list of reasons for a replacement, `replacement_reason`, is filled with its
+defaults: `rma`, `refresh`, `project`, `upgrade` and `other`. A reason you entered in
+that list yourself stays as it is, also where it has the value of a default: it keeps
+your label, and the default is not added beside it.
+
+`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is the
+one 0.3.0 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+
+The package now carries nine example files, where it carried five: see
+[Try it with the examples](#try-it-with-the-examples). `hirdir admin reset` clears the
+new records with the rest of the inventory.
+
+Going back to 0.3.0 is as under
+[Going back to the release before](#going-back-to-the-release-before). The backup of
+this upgrade is at revision `0004`, and it holds no group, network or address, because
+0.3.0 had none: whatever was entered with 0.4.0 is lost with the rest.
 
 ### If the upgrade stops
 

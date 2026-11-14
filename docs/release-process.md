@@ -64,13 +64,22 @@ Pushing to `main` publishes the documentation. Nothing else is automatic.
 
 A release is not done until `make package-test` has upgraded the previous release to
 it. The test installs the previous release in a container, fills it with accounts, a
-group, a role grant, a service token, a vendor with a catalog entry and an item, and
-audit events, upgrades it with apt, and checks that all of it is still there and still
-works. It also makes the new version's migration fail, to see that the upgrade stops,
-names its backup and can be undone. It does that by putting a table in the way of one
-the new version creates, so a release that creates no table skips that pass and says
-so. The passes are described under "Testing" in
-[architecture.md](architecture.md#testing).
+group, a role grant, a service token, an inventory and audit events, upgrades it with
+apt, and checks that all of it is still there and still works. The inventory is made
+for what a migration could harm: items with every kind of value between them, a draft
+and a retired one among them, and choices of the site's own. After the upgrade each
+item must be as it was, field for field, at the `row_version` it had and with its
+history, and the `items` table is read from the database file as well, its columns,
+rows, indexes and uniquenesses. The test also makes the new version's migration fail,
+to see that the upgrade stops, names its backup, leaves the items as they were and can
+be undone. It does that by putting a table in the way of the one the new version
+creates last, so a release that creates no table skips that pass and says so. The
+passes are described under "Testing" in [architecture.md](architecture.md#testing).
+
+A release whose migration changes a table that holds a site's records adds to that
+inventory what its change could harm, and a check that it was not harmed. The
+inventory is made through the API of the previous release, so it holds what that
+release could store.
 
 The run ends with its counts and with every `FAIL` and `SKIP` line once more. Read each
 `SKIP` line before a release: it names something that this run did not test.

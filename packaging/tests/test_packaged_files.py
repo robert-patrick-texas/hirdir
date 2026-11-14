@@ -7,6 +7,7 @@ from pathlib import Path
 import hirdir_setup as setup
 
 from hirdir import config
+from hirdir.domain import reset
 from hirdir.io import files
 
 PACKAGING = Path(__file__).resolve().parents[1]
@@ -14,6 +15,18 @@ ROOT = PACKAGING.parent
 ARCHITECTURE = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
 INSTALL = (ROOT / "docs" / "install.md").read_text(encoding="utf-8")
 MB = 1024 * 1024
+# The files of examples/ in the order they load in: a record names the ones it refers to.
+LOAD_ORDER = [
+    "tags",
+    "vendors",
+    "catalog-entries",
+    "owners",
+    "networks",
+    "items",
+    "device-groups",
+    "device-group-members",
+    "addresses",
+]
 
 
 def shape(directive: setup.Directive) -> tuple:
@@ -71,9 +84,33 @@ def test_the_examples_are_shipped_where_the_install_page_says() -> None:
     assert "local doc=$STAGE/usr/share/doc/hirdir\n" in build
     assert 'install -Dm644 -t "$doc/examples" "${examples[@]}"\n' in build
     assert "/usr/share/doc/hirdir/examples/" in INSTALL
-    for name in ("tags", "vendors", "catalog-entries", "owners", "items"):
+    for name in LOAD_ORDER:
         assert (ROOT / "examples" / f"{name}.csv").is_file()
         assert (ROOT / "examples" / f"{name}.json").is_file()
+    # Nothing is in examples/ that the load order leaves out.
+    assert {path.stem for path in (ROOT / "examples").glob("*.csv")} == set(LOAD_ORDER)
+    assert {path.stem for path in (ROOT / "examples").glob("*.json")} == set(LOAD_ORDER)
+
+
+def test_the_examples_load_in_one_order_wherever_it_is_written() -> None:
+    """The package test, the install page and examples/README.md give the same nine files."""
+    readme = (ROOT / "examples" / "README.md").read_text(encoding="utf-8")
+    assert re.findall(r"^\d+\. `(.+)\.csv`$", readme, re.M) == LOAD_ORDER
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (tested,) = re.findall(r"^load_order=\((.+)\)$", script, re.M)
+    assert tested.split() == LOAD_ORDER
+    # The install page loads each with the entity that the file holds.
+    commands = re.findall(
+        r"^hirdir import examples/(.+)\.csv --entity (\w+) --apply$", INSTALL, re.M
+    )
+    assert commands == [(name, name.replace("-", "_")) for name in LOAD_ORDER]
+
+
+def test_the_package_test_names_the_tables_that_a_reset_clears() -> None:
+    """Its check of hirdir admin reset reads every table a reset clears, new ones too."""
+    script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
+    (named,) = re.findall(r'^inventory_tables="(.+)"$', script, re.M)
+    assert sorted(named.split()) == sorted(model.__tablename__ for model in reset.CLEARED)
 
 
 def test_the_snippet_redirects_the_prefix_without_its_slash() -> None:
