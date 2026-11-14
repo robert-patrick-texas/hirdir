@@ -9,7 +9,7 @@ export type PurchaseRequest = Schemas["PurchaseRequestOut"];
 export type PurchaseLine = Schemas["PurchaseLineOut"];
 export type Arrived = Schemas["Arrived"];
 
-/** What a person says of a request. A delivery never changes it. */
+/** What a person says of a request. The delivery that completes it says Received. */
 export const REQUEST_STATUSES: readonly Option[] = [
   { value: "draft", label: "Draft" },
   { value: "pending", label: "Pending" },
@@ -41,42 +41,80 @@ export function isArrivedBy(value: string): value is ArrivedBy {
 }
 
 export interface ArrivedRead {
+  /** The items that are known by something: a serial number, an asset tag or a name. */
   items: Arrived[];
+  /** How many more arrived that nothing is known of yet. */
+  quantity: number;
+  /** Both together: how many items the receipt makes. */
+  total: number;
   /** What is wrong with what was typed, found before anything is sent. Blank for nothing. */
   error: string;
+  /** What is wrong with the count, said beside its input. Blank for nothing. */
+  countError: string;
 }
 
 /**
- * What was typed of a delivery, one item to a line, as the items to receive. A blank
- * line is passed over. The same serial number, asset tag or name twice is a mistake of
- * typing, and more than the line still expects is refused by the server anyway: both
- * are said here, before anything is sent.
+ * What was said of a delivery, as what to receive: the items that are known by
+ * something, one to a line, and a count of those that nothing is known of yet, each of
+ * which the server names for its line. A blank line is passed over. The same serial
+ * number, asset tag or name twice is a mistake of typing, and more than the line still
+ * expects is refused by the server anyway: both are said here, before anything is sent.
  */
-export function arrivedOf(text: string, by: ArrivedBy, pending: number): ArrivedRead {
+export function arrivedOf(
+  text: string,
+  by: ArrivedBy,
+  count: string,
+  pending: number,
+): ArrivedRead {
   const values = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line !== "");
   const items = values.map((value) => ({ [by]: value }) as Arrived);
-  if (values.length === 0) {
-    return { items, error: "Say what arrived, one item to a line." };
+  const typed = count.trim();
+  const counted = /^\d{1,6}$/.test(typed);
+  const quantity = counted ? Number.parseInt(typed, 10) : 0;
+  const read = (error: string, countError = ""): ArrivedRead => ({
+    items,
+    quantity,
+    total: items.length + quantity,
+    error,
+    countError,
+  });
+  if (typed !== "" && !counted) return read("", "A whole number, with digits only.");
+  if (items.length + quantity === 0) {
+    return read(
+      "Say what arrived: one item to a line, or how many arrived that nothing is known of yet.",
+    );
   }
   const seen = new Set<string>();
   for (const value of values) {
     const key = value.toLowerCase();
-    if (seen.has(key)) return { items, error: `${value} is there twice.` };
+    if (seen.has(key)) return read(`${value} is there twice.`);
     seen.add(key);
   }
-  if (values.length > pending) {
-    return {
-      items,
-      error:
-        pending === 0
-          ? "Nothing more is expected on this line. Raise its quantity first."
-          : `${values.length} items are more than the ${pending} this line still expects. Raise its quantity first.`,
-    };
+  if (items.length + quantity > pending) {
+    return read(
+      pending === 0
+        ? "Nothing more is expected on this line. Raise its quantity first."
+        : `${items.length + quantity} items are more than the ${pending} this line still expects. Raise its quantity first.`,
+    );
   }
-  return { items, error: "" };
+  return read("");
+}
+
+/**
+ * The part of the body of a receipt that says what arrived: the items that are known,
+ * the count of those that are not, or both. What there is none of is left out.
+ */
+export function receiptOf(read: Pick<ArrivedRead, "items" | "quantity">): {
+  items?: Arrived[];
+  quantity?: number;
+} {
+  return {
+    ...(read.items.length > 0 ? { items: read.items } : {}),
+    ...(read.quantity > 0 ? { quantity: read.quantity } : {}),
+  };
 }
 
 /**

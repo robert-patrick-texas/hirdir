@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -8,16 +8,17 @@ import {
   Dash,
   InForceValue,
   Lines,
+  StatusMarks,
   SupportLink,
 } from "../components/ContractParts";
 import { ContractsTable } from "../components/ContractsTable";
 import { ContractCoverage } from "../components/Coverage";
 import { SelectField } from "../components/Field";
-import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { Renew } from "../components/Renew";
 import { Retire } from "../components/Retire";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -26,15 +27,17 @@ import {
   agreementPath,
   CONTRACT_STATUSES,
   type Contract,
-  type ContractRenew,
   contractPath,
   coveredItemsPath,
   INHERITED,
   type Inherited,
   inForce,
+  LAPSED,
+  LAPSED_NOTE,
+  nextTermText,
   periodText,
-  RENEW_SPECS,
-  renewProblem,
+  RENEWAL_PENDING,
+  RENEWAL_PENDING_NOTE,
   STANDALONE,
   type Term,
 } from "../lib/contracts";
@@ -44,7 +47,7 @@ import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY, useAgreementOptions, useMoney, useTags, useVendorOptions } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
-import { buildPatch, type FieldSpec, type FormValue, type FormValues, formOf } from "../lib/patch";
+import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
@@ -82,8 +85,24 @@ const COLUMNS: GridColumn<Contract>[] = [
     header: "Status",
     kind: "choice",
     value: (contract) => optionLabel(CONTRACT_STATUSES, contract.status),
+    hint: (contract) => (contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : ""),
     choices: CONTRACT_STATUSES,
-    width: 120,
+    width: 150,
+  },
+  {
+    // Its period has ended and its status still says Active: it covers nothing, and
+    // wants renewing or saying that it has expired.
+    id: "lapsed",
+    header: "Lapsed",
+    kind: "boolean",
+    column: null,
+    value: (contract) => (contract.lapsed ? "Lapsed" : ""),
+    hint: (contract) => (contract.lapsed ? LAPSED_NOTE : ""),
+    choices: [
+      { value: "true", label: "Lapsed: ended, and still says Active" },
+      { value: "false", label: "Not lapsed" },
+    ],
+    width: 100,
   },
   {
     // The period in force: the contract's own dates, or its agreement's, shown lighter.
@@ -146,6 +165,24 @@ const COLUMNS: GridColumn<Contract>[] = [
     header: "Purchase reference",
     kind: "text",
     value: (contract) => contract.purchase_reference,
+    hide: true,
+    width: 170,
+  },
+  {
+    // A renewal that is still to begin: the day its term starts, and the number it brings.
+    id: "next_starts_on",
+    header: "Next term starts",
+    kind: "date",
+    value: (contract) => contract.next_term?.starts_on,
+    hint: (contract) => (contract.next_term ? nextTermText(contract.next_term) : ""),
+    hide: true,
+    width: 160,
+  },
+  {
+    id: "next_number",
+    header: "Next number",
+    kind: "text",
+    value: (contract) => contract.next_term?.number,
     hide: true,
     width: 170,
   },
@@ -338,6 +375,7 @@ function Grouped() {
     data !== undefined &&
     data.agreements.total <= data.agreements.items.length &&
     data.contracts.total <= data.contracts.items.length;
+  const lapsed = data?.contracts.items.filter((contract) => contract.lapsed).length ?? 0;
 
   return (
     <section aria-labelledby="by-agreement" data-testid="contracts-grouped">
@@ -352,6 +390,15 @@ function Grouped() {
         <p className="warning">
           There are more agreements or contracts than are grouped here at once. The grid beneath
           holds all of them: filter it by <span className="mono">agreement.name</span>.
+        </p>
+      )}
+      {lapsed > 0 && (
+        <p className="warning" data-testid="lapsed-contracts" data-count={lapsed}>
+          <Link to={`/contracts?filter=${encodeURIComponent(LAPSED)}`}>
+            {plural(lapsed, "contract has", "contracts have")} lapsed
+          </Link>
+          : the period has ended and the status still says Active. A lapsed contract covers nothing:
+          renew it, or say that it has expired.
         </p>
       )}
       {data && data.agreements.items.length === 0 && (
@@ -370,9 +417,7 @@ function Grouped() {
               {agreement.number ? ` · ${agreement.number}` : ""} ·{" "}
               {periodText(agreement.starts_on, agreement.ends_on)}
             </span>
-            {agreement.status !== "active" && (
-              <span className="badge">{optionLabel(CONTRACT_STATUSES, agreement.status)}</span>
-            )}
+            <StatusMarks record={agreement} />
           </h3>
           <ContractsTable
             contracts={data.contracts.items.filter(
@@ -440,6 +485,8 @@ export function ContractDetail() {
   }
 
   const open = mayEdit && record?.record_status !== "retired";
+  // Whom to go through while a renewal is pending: the account manager in force.
+  const accountManager = record ? effectiveText(record.effective.account_manager) : "";
   return (
     <>
       <ContractsNav />
@@ -454,12 +501,7 @@ export function ContractDetail() {
       </p>
       <h1>
         {record ? record.number : "Contract"}
-        {record && (
-          <span className="badge badge-plain">{optionLabel(CONTRACT_STATUSES, record.status)}</span>
-        )}
-        {record && record.record_status !== "active" && (
-          <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
-        )}
+        {record && <StatusMarks record={record} always />}
       </h1>
       <Problem error={contract.error} />
       <Problem error={agreement.error ?? listsError} />
@@ -487,7 +529,44 @@ export function ContractDetail() {
                 )}
               </dd>
               <dt>Status</dt>
-              <dd>{optionLabel(CONTRACT_STATUSES, record.status)}</dd>
+              <dd data-testid="contract-status" data-status={record.status}>
+                {optionLabel(CONTRACT_STATUSES, record.status)}
+                {record.status === RENEWAL_PENDING && (
+                  <span data-testid="renewal-pending">
+                    {" "}
+                    · the term has ended and the renewal is in procurement. Support is still given,
+                    by escalation: go through the account manager
+                    {accountManager ? ` (${accountManager})` : ""} before the support line is
+                    called.
+                  </span>
+                )}
+                {record.lapsed && (
+                  <span className="badge" data-testid="lapsed" title={LAPSED_NOTE}>
+                    Lapsed
+                  </span>
+                )}
+              </dd>
+              {record.lapsed && (
+                <>
+                  <dt>Lapsed</dt>
+                  <dd>
+                    Its period has ended and its status still says Active: it covers nothing. Renew
+                    it, or say that it has expired, or that its renewal is pending.
+                  </dd>
+                </>
+              )}
+              {record.next_term && (
+                <>
+                  <dt>Next term</dt>
+                  <dd data-testid="contract-next-term">
+                    {nextTermText(record.next_term)}
+                    <span className="muted">
+                      {" "}
+                      · until then the present number and period stay in force
+                    </span>
+                  </dd>
+                </>
+              )}
               <dt>Covers today</dt>
               <dd data-testid="covers-today">
                 {record.covers_today ? (
@@ -497,8 +576,8 @@ export function ContractDetail() {
                     No
                     <span className="muted">
                       {" "}
-                      · it covers when it is active, its status is Active and today is within its
-                      period
+                      · it covers while it is active and its status is Active, within its period, or
+                      while its renewal is pending
                     </span>
                   </>
                 )}
@@ -549,9 +628,40 @@ export function ContractDetail() {
             />
           )}
           {open && (
-            <Renew
+            <Renew<Contract>
               key={`renew ${record.hid} ${record.row_version}`}
-              contract={record}
+              record={record}
+              name={record.number}
+              what="contract"
+              follows={
+                <p>
+                  A renewal gives the contract its new number and its new period. It changes this
+                  one record: <strong>{plural(record.items_in_scope, "item")}</strong> in scope{" "}
+                  {record.items_in_scope === 1 ? "follows" : "follow"}, and nothing is written to
+                  any of them. The term it has now is kept beneath, as its history.
+                </p>
+              }
+              submitLabel={`Renew for ${plural(record.items_in_scope, "item")}`}
+              note={
+                record.agreement ? (
+                  <p className="form-note">
+                    {record.number} is in {record.agreement.name}. A date left blank here is the
+                    agreement&apos;s: the contract then ends when the agreement does.
+                  </p>
+                ) : undefined
+              }
+              send={(body) =>
+                api.request("post", "/api/v1/contracts/{hid}/renew", {
+                  path: { hid: record.hid },
+                  body,
+                })
+              }
+              renewed={(after) =>
+                `Renewed as ${after.number}, ${periodText(
+                  after.effective.starts_on.value,
+                  after.effective.ends_on.value,
+                ).toLowerCase()}. ${plural(after.items_in_scope, "item follows", "items follow")}: nothing was written to ${after.items_in_scope === 1 ? "it" : "any of them"}.`
+              }
               onChanged={changed}
               onReload={contract.reload}
             />
@@ -781,124 +891,6 @@ function InAgreement({ contract, onChanged, onReload }: ChangeProps) {
           </button>
         )}
       </p>
-    </section>
-  );
-}
-
-/**
- * Renew the contract: its new number, its new period, or both, with what else a new term
- * changes. It is one change of the one record, and every item in scope has the new
- * number and the new period at once.
- */
-function Renew({ contract, onChanged, onReload }: ChangeProps) {
-  const [open, setOpen] = useState(false);
-  const stored = contract as Contract & Readonly<Record<string, unknown>>;
-  const [values, setValues] = useState<FormValues>(() => formOf(RENEW_SPECS, stored));
-  const [found, setFound] = useState<Record<string, string>>({});
-  const [problem, setProblem] = useState("");
-  const action = useAction();
-  const names = RENEW_SPECS.map((spec) => spec.name);
-  const built = buildPatch<ContractRenew>(RENEW_SPECS, stored, values);
-  const refused = fieldErrors(action.error, names).shown;
-  const scope = plural(contract.items_in_scope, "item");
-
-  function change(name: string, value: FormValue) {
-    setValues((was) => ({ ...was, [name]: value }));
-    setProblem("");
-    setFound((was) => {
-      const { [name]: _, ...rest } = was;
-      return rest;
-    });
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setFound(built.errors);
-    if (Object.keys(built.errors).length > 0) return;
-    const wrong = renewProblem(built.changed);
-    setProblem(wrong);
-    if (wrong) return;
-    const result = await action.run(() =>
-      api.request("post", "/api/v1/contracts/{hid}/renew", {
-        path: { hid: contract.hid },
-        body: built.body,
-      }),
-    );
-    if (result.ok) {
-      const renewed = result.value;
-      onChanged(
-        `Renewed as ${renewed.number}, ${periodText(
-          renewed.effective.starts_on.value,
-          renewed.effective.ends_on.value,
-        ).toLowerCase()}. ${plural(renewed.items_in_scope, "item follows", "items follow")}: nothing was written to ${renewed.items_in_scope === 1 ? "it" : "any of them"}.`,
-      );
-    }
-  }
-
-  return (
-    <section aria-labelledby="renew">
-      <h2 id="renew">Renew</h2>
-      <p data-testid="renew-scope">
-        A renewal gives the contract its new number and its new period. It changes this one record:{" "}
-        <strong>{scope}</strong> in scope {contract.items_in_scope === 1 ? "follows" : "follow"} at
-        once, and nothing is written to any of them. The term it has now is kept beneath, as its
-        history.
-      </p>
-      {!open ? (
-        <p className="actions">
-          <button type="button" className="primary" onClick={() => setOpen(true)}>
-            Renew
-          </button>
-        </p>
-      ) : (
-        <form onSubmit={submit} className="panel stack" noValidate data-testid="renew-form">
-          <Problem error={action.error} shown={names} onReload={onReload} />
-          {problem && (
-            <div className="alert alert-error" role="alert">
-              <p>{problem}</p>
-            </div>
-          )}
-          {contract.agreement && (
-            <p className="form-note">
-              {contract.number} is in {contract.agreement.name}. A date left blank here is the
-              agreement&apos;s: the contract then ends when the agreement does.
-            </p>
-          )}
-          <FormFields
-            specs={RENEW_SPECS}
-            values={values}
-            onChange={change}
-            errors={{ ...refused, ...found }}
-            disabled={action.busy}
-          />
-          <p className="hint">
-            After a renewal the status is Active. The items in scope are those whose coverage under
-            the contract has not been ended.
-          </p>
-          <p className="actions">
-            <button
-              type="submit"
-              className="primary"
-              disabled={action.busy || built.changed.length === 0}
-            >
-              Renew for {scope}
-            </button>
-            <button
-              type="button"
-              disabled={action.busy}
-              onClick={() => {
-                setOpen(false);
-                setValues(formOf(RENEW_SPECS, stored));
-                setFound({});
-                setProblem("");
-                action.clear();
-              }}
-            >
-              Cancel
-            </button>
-          </p>
-        </form>
-      )}
     </section>
   );
 }

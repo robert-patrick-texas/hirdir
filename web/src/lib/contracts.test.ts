@@ -4,22 +4,35 @@ import {
   agreementHint,
   agreementPath,
   agreementValue,
+  CONTRACT_STATUSES,
+  COVER_AT_ONCE,
+  COVER_MOST,
   type Contract,
   contractLabel,
   contractPath,
   contractsOfPath,
   coverageDay,
+  coverBatches,
   coverBody,
   coveredItemsPath,
   coveringNumbers,
+  coveringStatuses,
   endable,
   INHERITED,
   inForce,
+  LAPSED,
+  nextTermText,
   overrides,
   periodText,
   RENEW_SPECS,
+  RENEWAL_PENDING,
+  RENEWAL_PENDING_NOTE,
+  renewalPending,
+  renewBody,
+  renewPeriodProblem,
   renewProblem,
   STANDALONE,
+  startsLater,
 } from "./contracts";
 import { parseShort } from "./filter";
 import { buildPatch } from "./patch";
@@ -250,6 +263,133 @@ describe("a renewal", () => {
     expect(built.changed).toEqual(["annual_cost"]);
     expect(renewProblem(built.changed)).toContain("a new number, a new period, or both");
     expect(renewProblem([])).not.toBe("");
+  });
+});
+
+describe("a renewal that is entered early", () => {
+  const TODAY = "2026-11-14";
+
+  it("is the next term when its period begins after today, and in force at once otherwise", () => {
+    expect(startsLater({ starts_on: "2027-01-01" }, TODAY)).toBe(true);
+    expect(startsLater({ starts_on: TODAY }, TODAY)).toBe(false);
+    expect(startsLater({ starts_on: "2026-01-01" }, TODAY)).toBe(false);
+    expect(startsLater({ starts_on: null }, TODAY)).toBe(false);
+    expect(startsLater({}, TODAY)).toBe(false);
+  });
+
+  it("always says the end of a term to come: the day the form holds, or that it names none", () => {
+    const early = { row_version: 3, number: "CON-2027-0002", starts_on: "2027-01-01" };
+    expect(renewBody(early, "2027-12-31", TODAY)).toEqual({ ...early, ends_on: "2027-12-31" });
+    expect(renewBody(early, null, TODAY)).toEqual({ ...early, ends_on: null });
+    // An end that the form changed is in the body already, and stays as it is.
+    const withEnd = { ...early, ends_on: "2028-06-30" };
+    expect(renewBody(withEnd, "2027-12-31", TODAY)).toBe(withEnd);
+  });
+
+  it("sends a renewal that is in force at once as it was built", () => {
+    const now = { row_version: 3, number: "CON-2026-0009", starts_on: "2026-11-01" };
+    expect(renewBody(now, "2026-12-31", TODAY)).toBe(now);
+    const numberOnly = { row_version: 3, number: "CON-2026-0009" };
+    expect(renewBody(numberOnly, "2026-12-31", TODAY)).toBe(numberOnly);
+  });
+
+  it("says before it is sent that a term to come cannot keep the end of the term before", () => {
+    const body = renewBody({ row_version: 3, starts_on: "2027-01-01" }, "2026-12-31", TODAY);
+    expect(renewPeriodProblem(body, TODAY)).toBe(
+      "A term that begins on 2027-01-01 cannot end on 2026-12-31. Give the day the new term ends, or leave it blank for none.",
+    );
+    expect(
+      renewPeriodProblem({ row_version: 3, starts_on: "2027-01-01", ends_on: "2027-12-31" }, TODAY),
+    ).toBe("");
+    expect(
+      renewPeriodProblem({ row_version: 3, starts_on: "2027-01-01", ends_on: null }, TODAY),
+    ).toBe("");
+    // A renewal that is in force at once is the server's to judge.
+    expect(
+      renewPeriodProblem({ row_version: 3, starts_on: "2026-01-01", ends_on: "2025-12-31" }, TODAY),
+    ).toBe("");
+  });
+
+  it("says of a term to come the number it brings, the day it begins and the day it ends", () => {
+    expect(
+      nextTermText({
+        number: "CON-2027-0001",
+        starts_on: "2027-01-01",
+        ends_on: "2027-12-31",
+        annual_cost: null,
+        purchase_reference: null,
+      }),
+    ).toBe("Renews as CON-2027-0001 on 2027-01-01, until 2027-12-31");
+    // An agreement may have no number, and a term no end.
+    expect(
+      nextTermText({
+        number: null,
+        starts_on: "2028-01-01",
+        ends_on: null,
+        annual_cost: null,
+        purchase_reference: null,
+      }),
+    ).toBe("Renews on 2028-01-01, with no end named");
+  });
+});
+
+describe("a renewal that is late, and a contract that has lapsed", () => {
+  const ref = (number: string, status: string, in_force: boolean) =>
+    ({ contract: { number, status }, in_force }) as Parameters<typeof renewalPending>[0][number];
+
+  it("has Renewal pending among the statuses a person may give, after Active", () => {
+    expect(CONTRACT_STATUSES.map((status) => status.value)).toEqual([
+      "active",
+      "renewal_pending",
+      "pending",
+      "expired",
+      "cancelled",
+    ]);
+    expect(RENEWAL_PENDING).toBe("renewal_pending");
+    expect(RENEWAL_PENDING_NOTE).toContain("account manager");
+  });
+
+  it("says of an item that its cover is under a contract whose renewal is pending", () => {
+    expect(renewalPending([ref("A-1", "renewal_pending", true)])).toBe(true);
+    expect(renewalPending([ref("A-1", "active", true)])).toBe(false);
+    // A coverage that is not in force says nothing of today.
+    expect(renewalPending([ref("A-1", "renewal_pending", false)])).toBe(false);
+    expect(renewalPending([])).toBe(false);
+  });
+
+  it("lists the statuses of the contracts that cover an item today, each once, in words", () => {
+    expect(
+      coveringStatuses([
+        ref("A-1", "active", true),
+        ref("B-2", "renewal_pending", true),
+        ref("C-3", "active", true),
+        ref("D-4", "expired", false),
+      ]),
+    ).toBe("Active, Renewal pending");
+    expect(coveringStatuses([])).toBe("");
+  });
+
+  it("finds the contracts that have lapsed by a filter the list takes", () => {
+    expect(parseShort(LAPSED)).toEqual({
+      ok: true,
+      filter: { field: "lapsed", op: "eq", value: "true" },
+    });
+  });
+});
+
+describe("covering many items", () => {
+  it("sends a thousand to a request, the rest in requests of their own", () => {
+    const hids = Array.from({ length: 2500 }, (_, place) => `i-${place}`);
+    const batches = coverBatches(hids);
+    expect(batches.map((batch) => batch.length)).toEqual([1000, 1000, 500]);
+    expect(batches.flat()).toEqual(hids);
+    expect(COVER_AT_ONCE).toBe(1000);
+    expect(COVER_MOST).toBeGreaterThan(COVER_AT_ONCE);
+  });
+
+  it("sends few in one request, and none for none", () => {
+    expect(coverBatches(["i-1", "i-2"])).toEqual([["i-1", "i-2"]]);
+    expect(coverBatches([])).toEqual([]);
   });
 });
 

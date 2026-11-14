@@ -720,6 +720,8 @@ describe("coverage, registrations and the purchase line in the item grid", () =>
     covered_until: "2027-12-31",
     coverage: [ref("CON-2026-0001", true), ref("CON-2025-0009", false), ref("CON-2026-0001", true)],
     registrations: [registration("NetWatch", "registered"), registration("ConfigVault", "removed")],
+    group_registrations: [],
+    contract_count: 1,
     purchase_line_hid: LINE,
     purchase_line: {
       hid: LINE,
@@ -736,9 +738,84 @@ describe("coverage, registrations and the purchase line in the item grid", () =>
     covered_until: null,
     coverage: [],
     registrations: [],
+    group_registrations: [],
+    contract_count: 0,
     purchase_line_hid: null,
     purchase_line: null,
   } as unknown as Item;
+  /**
+   * A member of a stack: under two contracts at once, one of them with its renewal
+   * pending, with no registration of its own and the stack's two beside it.
+   */
+  const member = {
+    ...covered,
+    covered_until: null,
+    contract_count: 2,
+    coverage: [
+      ref("CON-2026-0001", true),
+      {
+        ...ref("CON-2025-0044", true),
+        contract: { ...ref("CON-2025-0044", true).contract, status: "renewal_pending" },
+      },
+    ],
+    registrations: [],
+    group_registrations: [
+      {
+        ...registration("NetWatch", "registered"),
+        group: { hid: "g-1", name: "site2-sw-stack1", type: "stack" },
+      },
+      {
+        ...registration("Fabric Controller", "removed"),
+        group: { hid: "g-1", name: "site2-sw-stack1", type: "stack" },
+      },
+    ],
+  } as unknown as Item;
+
+  it("says how many contracts cover the item today, and the status of each", () => {
+    expect(column("contract_count").value(covered)).toBe("1");
+    expect(column("contract_count").value(bare)).toBe("0");
+    expect(column("contract_count").value(member)).toBe("2");
+    expect(column("contract.status").value(covered)).toBe("Active");
+    expect(column("contract.status").value(member)).toBe("Active, Renewal pending");
+    expect(column("contract.status").value(bare)).toBe("");
+  });
+
+  it("says of cover under a contract whose renewal is pending whom to go through", () => {
+    expect(column("covered").value(member)).toBe("Yes");
+    expect(cellHint(column("covered"), member)).toBe(
+      "Renewal pending: go through the account manager",
+    );
+    expect(cellHint(column("contract.status"), member)).toContain("account manager");
+    expect(cellHint(column("covered"), covered)).toBe("");
+  });
+
+  it("lists for a member what its stack is registered with, and says through which group", () => {
+    // The filter of the item list finds the member by the stack's system too.
+    expect(column("registration.system").value(member)).toBe("NetWatch");
+    expect(cellHint(column("registration.system"), member)).toBe(
+      "Through site2-sw-stack1, which it is a member of",
+    );
+    expect(cellHint(column("registration.system"), covered)).toBe("");
+  });
+
+  it("filters and sorts the count and the status by the fields the server has, and hides both", () => {
+    expect(asked("contract_count")).toMatchObject({
+      field: "contract_count",
+      sortField: "contract_count",
+      kind: "integer",
+    });
+    expect(asked("contract.status")).toMatchObject({
+      field: "contract.status",
+      sortField: "contract.status",
+      kind: "choice",
+    });
+    expect(column("contract_count").hide).toBe(true);
+    expect(column("contract.status").hide).toBe(true);
+    // An export has the count, and no column for the status.
+    expect(
+      exportColumns(COLUMNS, [{ colId: "contract_count" }, { colId: "contract.status" }]),
+    ).toEqual(["hid", "contract_count"]);
+  });
 
   it("says whether a contract covers the item today, and the last day its cover runs to", () => {
     expect(column("covered").value(covered)).toBe("Yes");

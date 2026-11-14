@@ -13,7 +13,7 @@ export type CoverageSection = NonNullable<CoverageReport["section"]>;
 export type EndOfLifeSection = NonNullable<EndOfLifeReport["section"]>;
 export type EndOfLifeDate = EndOfLifeReport["date"];
 
-/** The three lists of the coverage report. */
+/** The five lists of the coverage report. */
 export const COVERAGE_SECTIONS: ReadonlyArray<{
   value: CoverageSection;
   label: string;
@@ -31,9 +31,21 @@ export const COVERAGE_SECTIONS: ReadonlyArray<{
   },
   {
     value: "out_of_service",
-    label: "Cover on items out of service",
+    label: "Out of service, and still counted",
     about:
-      "Items that a contract covers today though they are retired, or in Pending-Removal, Released or Archived: cover that is paid for and no longer needed.",
+      "Items that are out of service and that a contract still counts: those whose cover goes on, and those whose coverage was ended because they left while the term of the contract still runs. The list to send the vendor: cover that is paid for and no longer needed.",
+  },
+  {
+    value: "renewal_pending",
+    label: "Covered while a renewal is pending",
+    about:
+      "Items covered by a contract whose term has ended and whose renewal is in procurement. Support is still given, by escalation: go through the account manager.",
+  },
+  {
+    value: "overlapping",
+    label: "Under more than one contract",
+    about:
+      "Items that more than one contract covers today. A list to look at before a renewal, and not a fault: two contracts for one device are usually one too many, and now and then are meant.",
   },
 ];
 

@@ -18,10 +18,40 @@ export type ContractRenew = Schemas["ContractRenew"];
 /** What a person says of a contract or of an agreement. The clock never changes it. */
 export const CONTRACT_STATUSES: readonly Option[] = [
   { value: "active", label: "Active" },
+  // The term has ended and the renewal is in procurement: the vendor still gives
+  // support, by escalation, and the contract covers past its end date meanwhile.
+  { value: "renewal_pending", label: "Renewal pending" },
   { value: "pending", label: "Pending" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+/** The status of a contract whose renewal is late and in procurement. */
+export const RENEWAL_PENDING = "renewal_pending";
+
+/** What a person is told wherever cover is under a contract whose renewal is pending. */
+export const RENEWAL_PENDING_NOTE = "Renewal pending: go through the account manager";
+
+/** What is said of a contract or an agreement whose period ended while it still says active. */
+export const LAPSED_NOTE =
+  "Lapsed: its period has ended and its status still says Active. It covers nothing until it is renewed, or said to have expired.";
+
+/** The contracts that have lapsed, in the grid of contracts. */
+export const LAPSED = "lapsed:eq:true";
+
+/** The term of a contract or an agreement that is still to begin. */
+export type NextTerm = NonNullable<Contract["next_term"]>;
+
+/**
+ * A term that is still to begin, in a sentence: the number it brings, where the renewal
+ * gives another, the day it begins and the day it ends. Until that day the present
+ * number and period stay in force.
+ */
+export function nextTermText(next: NextTerm): string {
+  const as = next.number ? `Renews as ${next.number}` : "Renews";
+  const until = next.ends_on ? `, until ${next.ends_on}` : ", with no end named";
+  return `${as} on ${next.starts_on}${until}`;
+}
 
 export function contractPath(hid: string): string {
   return `/contracts/${encodeURIComponent(hid)}`;
@@ -159,7 +189,7 @@ export const RENEW_SPECS: readonly FieldSpec[] = [
     label: "New number",
     kind: "text",
     maxLength: 200,
-    hint: "The number of the new term. Left as it is, the contract keeps its number.",
+    hint: "The number of the new term. Left as it is, the number stays.",
   },
   { name: "starts_on", label: "New period: starts on", kind: "date" },
   { name: "ends_on", label: "New period: ends on", kind: "date" },
@@ -181,6 +211,40 @@ export const RENEW_SPECS: readonly FieldSpec[] = [
 export function renewProblem(changed: readonly string[]): string {
   const renews = ["number", "starts_on", "ends_on"].some((name) => changed.includes(name));
   return renews ? "" : "A renewal gives the contract a new number, a new period, or both.";
+}
+
+/** True for a renewal whose period begins after today: it is kept as the next term. */
+export function startsLater(body: Pick<ContractRenew, "starts_on">, today: string): boolean {
+  return typeof body.starts_on === "string" && body.starts_on > today;
+}
+
+/**
+ * The body of a renewal as it is sent. A renewal whose period begins after today is the
+ * next term, and says the day that term ends, or that it names none: the end the form
+ * holds goes with it also where it was left as it stood, since the old end is seldom
+ * the new one and the server asks for it.
+ */
+export function renewBody(
+  built: ContractRenew,
+  endsOn: string | null,
+  today: string,
+): ContractRenew {
+  if (!startsLater(built, today) || "ends_on" in built) return built;
+  return { ...built, ends_on: endsOn };
+}
+
+/**
+ * What is wrong with the period of a renewal, found before it is sent: a term that is
+ * still to begin ends on or after the day it starts, so the end the term before had
+ * cannot stay.
+ */
+export function renewPeriodProblem(body: ContractRenew, today: string): string {
+  if (!startsLater(body, today)) return "";
+  const { starts_on: starts, ends_on: ends } = body;
+  if (typeof starts === "string" && typeof ends === "string" && ends < starts) {
+    return `A term that begins on ${starts} cannot end on ${ends}. Give the day the new term ends, or leave it blank for none.`;
+  }
+  return "";
 }
 
 /**
@@ -205,7 +269,18 @@ export function coverBody(
 }
 
 /** The most items one request puts under a contract, as the server has it. */
-export const COVER_AT_ONCE = 10_000;
+export const COVER_AT_ONCE = 1000;
+/** The most items the page puts under a contract in one go, a request after another. */
+export const COVER_MOST = 10_000;
+
+/** The items to cover, in the batches one request takes. */
+export function coverBatches(itemHids: readonly string[]): string[][] {
+  const batches: string[][] = [];
+  for (let at = 0; at < itemHids.length; at += COVER_AT_ONCE) {
+    batches.push(itemHids.slice(at, at + COVER_AT_ONCE));
+  }
+  return batches;
+}
 
 /**
  * The days of a coverage as a cell shows them: the day in force, and whether it is the
@@ -243,4 +318,24 @@ export function coveringNumbers(coverage: readonly CoverageRef[]): string {
     if (one.in_force && !numbers.includes(one.contract.number)) numbers.push(one.contract.number);
   }
   return numbers.join(", ");
+}
+
+/**
+ * The statuses of the contracts that cover an item today, each once, as the item grid
+ * shows them: Active, or Renewal pending where the renewal is late.
+ */
+export function coveringStatuses(coverage: readonly CoverageRef[]): string {
+  const statuses: string[] = [];
+  for (const one of coverage) {
+    const label =
+      CONTRACT_STATUSES.find((status) => status.value === one.contract.status)?.label ??
+      one.contract.status;
+    if (one.in_force && !statuses.includes(label)) statuses.push(label);
+  }
+  return statuses.join(", ");
+}
+
+/** True for an item that a contract covers today while the renewal of that contract is pending. */
+export function renewalPending(coverage: readonly CoverageRef[]): boolean {
+  return coverage.some((one) => one.in_force && one.contract.status === RENEWAL_PENDING);
 }

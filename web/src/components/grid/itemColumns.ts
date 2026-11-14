@@ -3,7 +3,13 @@
 
 import type { Schemas } from "../../api/client";
 import { addressList, managementText, networkLabels } from "../../lib/addresses";
-import { coveringNumbers } from "../../lib/contracts";
+import {
+  CONTRACT_STATUSES,
+  coveringNumbers,
+  coveringStatuses,
+  RENEWAL_PENDING_NOTE,
+  renewalPending,
+} from "../../lib/contracts";
 import { inheritedHint, knownAbove, locationHint, ownerSource } from "../../lib/descent";
 import { effectiveLabel, effectiveText } from "../../lib/effective";
 import type { FilterNode } from "../../lib/filter";
@@ -446,6 +452,8 @@ export function itemColumns(
       header: "Covered",
       kind: "boolean",
       value: (item) => (item.covered ? "Yes" : "No"),
+      // Under a contract whose renewal is late, support goes through the account manager.
+      hint: (item) => (renewalPending(item.coverage) ? RENEWAL_PENDING_NOTE : ""),
       choices: [
         { value: "true", label: "Covered: a contract covers it today" },
         { value: "false", label: "Not covered" },
@@ -474,13 +482,43 @@ export function itemColumns(
       width: 180,
     },
     {
-      // The external systems it is registered with, by their names: found by any of
-      // them, a registration that is removed not counting. No export has the column.
+      // How many contracts cover it today. More than one is worth a look before a
+      // renewal: two contracts for one device are usually one too many.
+      id: "contract_count",
+      header: "Contracts covering it",
+      kind: "integer",
+      value: (item) => String(item.contract_count),
+      numeric: true,
+      hide: true,
+      width: 170,
+    },
+    {
+      // The status of a contract that covers it today: Renewal pending where the term
+      // has ended and the renewal is in procurement. Found by any of them.
+      id: "contract.status",
+      header: "Contract status",
+      kind: "choice",
+      column: null,
+      value: (item) => coveringStatuses(item.coverage),
+      hint: (item) => (renewalPending(item.coverage) ? RENEWAL_PENDING_NOTE : ""),
+      choices: CONTRACT_STATUSES,
+      hide: true,
+      width: 160,
+    },
+    {
+      // The external systems that know it, by their names: those it is registered with
+      // itself, and those a stack or a cluster it is a member of is registered with.
+      // Found by any of them, a registration that is removed not counting. No export
+      // has the column.
       id: "registration.system",
       header: "Registered with",
       kind: "text",
       column: null,
-      value: (item) => registeredWith(item.registrations),
+      value: (item) => registeredWith(item.registrations, item.group_registrations),
+      hint: (item) =>
+        item.group_registrations.some((one) => one.status !== "removed")
+          ? `Through ${[...new Set(item.group_registrations.map((one) => one.group.name))].join(", ")}, which it is a member of`
+          : "",
       hide: true,
       width: 180,
     },

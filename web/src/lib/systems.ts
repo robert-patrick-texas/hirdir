@@ -66,15 +66,24 @@ export function registeredRecord(
   return null;
 }
 
+/** What a stack or a cluster an item is a member of is registered with: read only. */
+export type GroupRegistration = Schemas["GroupRegistrationRef"];
+
 /**
- * The names of the systems a record is registered with, as a cell of a grid shows them.
- * A registration that is removed does not count, as it does not for the filter.
+ * The names of the systems that know a record, each once, as a cell of a grid shows
+ * them: those it is registered with itself, and for an item those a stack or a cluster
+ * it is a member of is registered with, which is what the filter of the item list finds
+ * it by. A registration that is removed does not count.
  */
-export function registeredWith(registrations: readonly RegistrationRef[]): string {
-  return registrations
-    .filter((one) => one.status !== REMOVED)
-    .map((one) => one.system.name)
-    .join(", ");
+export function registeredWith(
+  registrations: readonly Pick<RegistrationRef, "status" | "system">[],
+  throughGroups: readonly Pick<GroupRegistration, "status" | "system">[] = [],
+): string {
+  const names: string[] = [];
+  for (const one of [...registrations, ...throughGroups]) {
+    if (one.status !== REMOVED && !names.includes(one.system.name)) names.push(one.system.name);
+  }
+  return names.join(", ");
 }
 
 /** The items, or the device groups, registered with a system, in their grid. */

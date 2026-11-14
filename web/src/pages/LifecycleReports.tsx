@@ -13,7 +13,7 @@ import { ItemsGrid } from "../components/ItemsGrid";
 import { Problem } from "../components/Problem";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
-import { itemsViewPath, parseFilter, viewFilter } from "../lib/filter";
+import { filterText, itemsViewPath, parseFilter, viewFilter } from "../lib/filter";
 import { formatTime, itemName, plural } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
 import {
@@ -183,7 +183,8 @@ function SectionCard({ name, label, about, section, shown, onShow }: SectionCard
         <button type="button" onClick={onShow} aria-pressed={shown} disabled={shown}>
           {shown ? "Shown beneath" : "Show these items"}
         </button>
-        {section && (
+        {/* A report asked with a filter as large as a filter may be gives none to hand on. */}
+        {section?.filter && (
           <Link to={itemsViewPath(section)} data-testid={`grid-link-${name}`}>
             Open in the item grid
           </Link>
@@ -193,9 +194,20 @@ function SectionCard({ name, label, about, section, shown, onShow }: SectionCard
   );
 }
 
+/** The columns that each list of the coverage report is about, after the name of the item. */
+const COVERAGE_COLUMNS: Readonly<Record<CoverageSection, readonly string[]>> = {
+  uncovered: ["covered", "covered_until", "contract.number"],
+  expiring: ["covered_until", "contract.number", "covered"],
+  out_of_service: ["covered", "contract.number", "covered_until"],
+  renewal_pending: ["contract.status", "contract.number", "covered"],
+  overlapping: ["contract_count", "contract.number", "covered_until"],
+};
+
 /**
- * Reports → Coverage: the items in service that no contract covers, the cover on items
- * that are out of service, and the cover that runs out soon. It is of today.
+ * Reports → Coverage: the items in service that no contract covers, the cover that runs
+ * out soon, the items out of service that a contract still counts, what is covered
+ * while a renewal is pending, what more than one contract covers, and the contracts that
+ * have lapsed. It is of today.
  */
 export function CoverageReport() {
   useTitle("Coverage");
@@ -279,13 +291,45 @@ export function CoverageReport() {
                 <dd data-testid="total-expiring">{countText(data.totals.expiring)}</dd>
               </div>
               <div>
-                <dt>Covered though out of service</dt>
+                <dt>Out of service, still counted</dt>
                 <dd data-testid="total-out-of-service">{countText(data.totals.out_of_service)}</dd>
               </div>
+              <div>
+                <dt>Covered while a renewal is pending</dt>
+                <dd data-testid="total-renewal-pending">
+                  {countText(data.totals.renewal_pending)}
+                </dd>
+              </div>
+              <div>
+                <dt>Under more than one contract</dt>
+                <dd data-testid="total-overlapping">{countText(data.totals.overlapping)}</dd>
+              </div>
             </dl>
+            <p
+              className={data.lapsed_contracts.count > 0 ? "warning" : "muted"}
+              data-testid="lapsed-contracts"
+              data-count={data.lapsed_contracts.count}
+            >
+              {data.lapsed_contracts.count > 0 ? (
+                <>
+                  <Link
+                    to={`/contracts?filter=${encodeURIComponent(
+                      filterText(viewFilter(data.lapsed_contracts.filter)),
+                    )}`}
+                  >
+                    {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
+                  </Link>
+                  : the period has ended and the status still says Active. A lapsed contract covers
+                  nothing, so its items are among those with no cover: renew it, or say that it has
+                  expired or that its renewal is pending.
+                </>
+              ) : (
+                "No contract has lapsed: none has a period that has ended while its status still says Active."
+              )}
+            </p>
           </section>
           <section aria-labelledby="coverage-lists">
-            <h2 id="coverage-lists">The three lists</h2>
+            <h2 id="coverage-lists">The five lists</h2>
             <div className="cards">
               {COVERAGE_SECTIONS.map((one) => (
                 <SectionCard
@@ -304,13 +348,42 @@ export function CoverageReport() {
             <h2 id="coverage-items" data-testid="section-heading">
               {COVERAGE_SECTIONS.find((one) => one.value === shown)?.label}
             </h2>
-            {section && (
+            {section?.filter && (
               <ItemsGrid
                 key={shown}
                 id={`coverage-${shown}`}
                 within={within}
-                shown={["covered", "covered_until", "contract.number"]}
+                shown={COVERAGE_COLUMNS[shown]}
               />
+            )}
+            {section && !section.filter && (
+              // The filter the report was asked with is as large as a filter may be: the
+              // server gives none for the list, and reads its items itself.
+              <>
+                <p className="hint">
+                  The filter of this report is as large as a filter may be, so the list cannot be
+                  handed on to the item grid or exported from here: it is read as the report gives
+                  it, and its columns do not filter. A shorter filter gives the whole grid.
+                </p>
+                <ItemsGrid
+                  key={`${shown} section`}
+                  id={`coverage-${shown}`}
+                  within={{ sort: within.sort }}
+                  shown={COVERAGE_COLUMNS[shown]}
+                  read={(request, signal) =>
+                    api.request("get", "/api/v1/reports/coverage", {
+                      query: {
+                        ...query,
+                        section: shown,
+                        ...(request.sort.length > 0 ? { sort: request.sort } : {}),
+                        limit: request.limit,
+                        offset: request.offset,
+                      },
+                      signal,
+                    })
+                  }
+                />
+              </>
             )}
           </section>
         </>

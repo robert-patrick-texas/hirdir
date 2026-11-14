@@ -34,6 +34,21 @@ describe("what a record is registered with", () => {
     expect(registeredWith([])).toBe("");
   });
 
+  it("names for an item also what its stack or cluster is registered with, each system once", () => {
+    // What the filter of the item list finds an item by: its own, and its group's.
+    expect(
+      registeredWith(
+        [ref("ConfigVault", "registered")],
+        [
+          ref("NetWatch", "registered"),
+          ref("ConfigVault", "registered"),
+          ref("Old poller", "removed"),
+        ],
+      ),
+    ).toBe("ConfigVault, NetWatch");
+    expect(registeredWith([], [ref("NetWatch", "registered")])).toBe("NetWatch");
+  });
+
   it("is listed by the record: an item by item_hid, a group by group_hid", () => {
     expect(holderFilter({ item_hid: "i-1" })).toBe("item_hid:eq:i-1");
     expect(holderFilter({ group_hid: "g-1" })).toBe("group_hid:eq:g-1");

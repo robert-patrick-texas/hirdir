@@ -10,13 +10,18 @@ import { api, type Schemas } from "../api";
 import {
   CONTRACT_STATUSES,
   COVER_AT_ONCE,
+  COVER_MOST,
   type Contract,
   type Coverage,
   contractLabel,
   contractPath,
   coverageDay,
+  coverBatches,
   coverBody,
   endable,
+  RENEWAL_PENDING,
+  RENEWAL_PENDING_NOTE,
+  renewalPending,
 } from "../lib/contracts";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
@@ -27,6 +32,7 @@ import { fieldErrors } from "../lib/problems";
 import { dateValue } from "../lib/sort";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
 import { useSorting } from "../lib/useSorting";
+import { ConfirmButton } from "./ConfirmButton";
 import { ContractField } from "./ContractField";
 import { TextField } from "./Field";
 import type { GridColumn } from "./grid/columns";
@@ -36,6 +42,14 @@ import { Notice, Problem } from "./Problem";
 import { SortTh } from "./SortTh";
 
 type Item = Schemas["ItemOut"];
+
+/** What is said of a coverage that hirdir ended on the day its item left service. */
+const LEFT_SERVICE_NOTE =
+  "Ended on the day the item was retired, released or archived. The vendor still counts it until it has been told: say so here once it has.";
+
+/** What is said before a coverage is removed outright. */
+const REMOVE_NOTE =
+  "Removing is for a coverage that was a mistake, as an item put under the wrong contract: it is gone, and the audit trail holds what it was. Cover that was true for a time is ended with a date instead, and stays on record.";
 
 /** What the page says of the dates of a coverage, wherever they are asked for. */
 const DATES_HINT =
@@ -211,12 +225,39 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
   });
   const day = today();
   const open = rows.find((row) => row.hid === ending) ?? null;
+  const action = useAction();
+  const pending = renewalPending(item.coverage);
 
   function changed(text: string) {
     setAdding(false);
     setEnding(null);
     setTurn((count) => count + 1);
     onChanged(text);
+  }
+
+  /** Say that the vendor has been told the item left: the mark is cleared. */
+  async function vendorTold(row: Coverage) {
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", {
+        path: { hid: row.contract_hid, coverage_hid: row.hid },
+        body: { row_version: row.row_version, left_service: false },
+      }),
+    );
+    if (result.ok) {
+      changed(`${row.contract.vendor} has been told that ${itemName(item)} left service.`);
+    }
+  }
+
+  /** Remove a coverage that was a mistake. What it was is in the audit trail. */
+  async function remove(row: Coverage) {
+    const result = await action.run(() =>
+      api.request("delete", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", {
+        path: { hid: row.contract_hid, coverage_hid: row.hid },
+      }),
+    );
+    if (result.ok) {
+      changed(`The coverage of ${itemName(item)} under ${row.contract.number} was removed.`);
+    }
   }
 
   return (
@@ -226,11 +267,29 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
         <dt>Covered today</dt>
         <dd data-testid="item-covered" data-covered={item.covered ? "true" : "false"}>
           {item.covered ? "Yes" : "No: no contract covers it today"}
+          {pending && (
+            <span className="badge" data-testid="item-renewal-pending">
+              {RENEWAL_PENDING_NOTE}
+            </span>
+          )}
+        </dd>
+        <dt>Contracts that cover it today</dt>
+        <dd data-testid="item-contract-count" data-count={item.contract_count}>
+          {item.contract_count}
+          {item.contract_count > 1 && (
+            <span className="muted">
+              {" "}
+              · more than one: worth a look before a renewal, since two contracts for one device are
+              usually one too many
+            </span>
+          )}
         </dd>
         <dt>Covered until</dt>
         <dd data-testid="item-covered-until">
           {item.covered_until ??
-            (item.covered ? (
+            (pending ? (
+              <span className="muted">No day is known: the renewal is pending</span>
+            ) : item.covered ? (
               <span className="muted">No end is named</span>
             ) : (
               <span className="muted">—</span>
@@ -238,6 +297,7 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
         </dd>
       </dl>
       <Problem error={found.error} />
+      <Problem error={action.error} onReload={() => setTurn((count) => count + 1)} />
       {found.loading && !found.data && (
         <p role="status" className="muted loading-late">
           Loading…
@@ -288,6 +348,7 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
                     key={row.hid}
                     data-contract={row.contract.number}
                     data-in-force={row.in_force ? "true" : "false"}
+                    data-left-service={row.left_service ? "true" : "false"}
                     className={row.in_force ? undefined : "muted"}
                   >
                     <th scope="row">
@@ -299,15 +360,43 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
                       )}
                     </th>
                     <td>{row.contract.vendor}</td>
-                    <td>{optionLabel(CONTRACT_STATUSES, row.contract.status)}</td>
+                    <td
+                      title={
+                        row.contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : undefined
+                      }
+                    >
+                      {optionLabel(CONTRACT_STATUSES, row.contract.status)}
+                    </td>
                     <CoverageDay day={starts} blank="From the beginning" />
                     <CoverageDay day={ends} blank="Until further notice" />
-                    <td>{row.in_force ? "Yes" : "No"}</td>
+                    <td>
+                      {row.in_force ? "Yes" : "No"}
+                      {row.left_service && (
+                        <span
+                          className="badge"
+                          data-testid="left-service"
+                          title={LEFT_SERVICE_NOTE}
+                        >
+                          Ended: it left service
+                        </span>
+                      )}
+                    </td>
                     {mayEdit && (
                       <td className="row-actions">
+                        {row.left_service && (
+                          <button
+                            type="button"
+                            disabled={action.busy}
+                            aria-label={`The vendor has been told, for ${row.contract.number}`}
+                            onClick={() => vendorTold(row)}
+                          >
+                            Vendor told
+                          </button>
+                        )}
                         {endable(row, day) && row.contract.record_status !== "retired" && (
                           <button
                             type="button"
+                            disabled={action.busy}
                             aria-label={`End the coverage under ${row.contract.number}`}
                             onClick={() => {
                               setAdding(false);
@@ -317,6 +406,15 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
                             End
                           </button>
                         )}
+                        <ConfirmButton
+                          label="Remove"
+                          title={`Remove the coverage under ${row.contract.number}?`}
+                          confirmLabel="Remove the coverage"
+                          onConfirm={() => remove(row)}
+                          disabled={action.busy}
+                        >
+                          <p>{REMOVE_NOTE}</p>
+                        </ConfirmButton>
                       </td>
                     )}
                   </tr>
@@ -329,7 +427,9 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
       {rows.length > 0 && (
         <p className="hint">
           A day shown lighter is the contract&apos;s: the coverage has none of its own, and follows
-          the contract when it is renewed.
+          the contract when it is renewed. A coverage that was ended because the item left service
+          is marked until the vendor has been told. End is for cover that was true for a time;
+          Remove is for one that was a mistake.
         </p>
       )}
       {mayEdit && open && (
@@ -392,11 +492,11 @@ interface CoverItemsProps {
   onClose: () => void;
 }
 
-/** Every HID a view keeps, read a page at a time. More than one request may hold is refused. */
+/** Every HID a view keeps, read a page at a time. More than the page takes in one go is refused. */
 async function hidsOf(view: GridView, count: number): Promise<string[]> {
-  if (count > COVER_AT_ONCE) {
+  if (count > COVER_MOST) {
     throw new Error(
-      `${count} items are more than the ${COVER_AT_ONCE} one request puts under a contract. Narrow the filter.`,
+      `${count} items are more than the ${COVER_MOST} that are put under a contract in one go. Narrow the filter.`,
     );
   }
   const hids: string[] = [];
@@ -423,33 +523,45 @@ async function hidsOf(view: GridView, count: number): Promise<string[]> {
 
 /**
  * Put items under a contract: the rows selected in the item grid, or one item from its
- * own page. It is one request, so either all of them are covered or none is. A contract
- * is one record applied to many items: nothing is written to any of them.
+ * own page. A request takes a thousand items, and either all of its items are covered or
+ * none is; more than a thousand go as one request after another, and should one of them
+ * be refused the page says how many were covered before it. A contract is one record
+ * applied to many items: nothing is written to any of them.
  */
 export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsProps) {
   const [contract, setContract] = useState("");
   const [starts, setStarts] = useState("");
   const [ends, setEnds] = useState("");
+  const [covered, setCovered] = useState(0);
   const action = useAction();
   const known = ["contract_hid", "starts_on", "ends_on"];
   const refused = fieldErrors(action.error, known).shown;
   const count = chosenCount(rows);
   const whom = what ?? plural(count, "item");
+  const several = count > COVER_AT_ONCE;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setCovered(0);
     const result = await action.run(async () => {
       const hids = rows.kind === "rows" ? rows.hids : view ? await hidsOf(view, rows.count) : [];
-      return api.request("post", "/api/v1/contracts/{hid}/coverage", {
-        path: { hid: contract },
-        body: coverBody(hids, starts, ends),
-      });
+      let done = 0;
+      let number = "the contract";
+      for (const batch of coverBatches(hids)) {
+        const made = await api.request("post", "/api/v1/contracts/{hid}/coverage", {
+          path: { hid: contract },
+          body: coverBody(batch, starts, ends),
+        });
+        done += made.length;
+        number = made[0]?.contract.number ?? number;
+        setCovered(done);
+      }
+      return { done, number };
     });
     if (!result.ok) return;
-    const [first] = result.value;
-    const number = first ? first.contract.number : "the contract";
+    const { done, number } = result.value;
     onCovered(
-      `${plural(result.value.length, "item is", "items are")} now under ${number}. Nothing was written to ${result.value.length === 1 ? "it" : "any of them"}.`,
+      `${plural(done, "item is", "items are")} now under ${number}. Nothing was written to ${done === 1 ? "it" : "any of them"}.`,
     );
   }
 
@@ -457,14 +569,21 @@ export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsP
     <section className="panel" aria-labelledby="cover-items" data-testid="cover-items">
       <h2 id="cover-items">Cover {whom} with a contract</h2>
       <p className="hint">
-        {rows.kind === "all"
-          ? `All ${plural(count, "item")} that match the filter are put under the contract, in one request: all of them, or none.`
+        {rows.kind === "all" && `All ${plural(count, "item")} that match the filter. `}
+        {several
+          ? `They go ${COVER_AT_ONCE} to a request, one request after another: each request covers all of its items, or none.`
           : "In one request: all of them, or none."}{" "}
         An item under a contract holds only the link: the number, the period and the support level
         it shows are the contract&apos;s.
       </p>
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={known} labels={{ items: "The items" }} />
+        {action.error && covered > 0 && (
+          <p className="warning">
+            {plural(covered, "item was", "items were")} put under the contract before this was
+            refused, and {covered === 1 ? "is" : "are"} covered.
+          </p>
+        )}
         <div className="fields">
           <ContractField
             label="Contract"
@@ -592,6 +711,19 @@ const COVERAGE_COLUMNS: GridColumn<Coverage>[] = [
     width: 140,
   },
   {
+    // hirdir ended it on the day its item left service; cleared once the vendor is told.
+    id: "left_service",
+    header: "Left service",
+    kind: "boolean",
+    value: (row) => (row.left_service ? "Ended: it left service" : ""),
+    hint: (row) => (row.left_service ? LEFT_SERVICE_NOTE : ""),
+    choices: [
+      { value: "true", label: "Ended because the item left: the vendor is still to be told" },
+      { value: "false", label: "Not so" },
+    ],
+    width: 180,
+  },
+  {
     id: "starts_on",
     header: "Its own start",
     kind: "date",
@@ -632,6 +764,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
   const [reloads, setReloads] = useState(0);
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<Coverage[] | null>(null);
+  const [settling, setSettling] = useState<{ what: Settle; rows: Coverage[] } | null>(null);
   const [done, setDone] = useState("");
   const within = useMemo(
     () => ({ filter: { field: "contract_hid", op: "eq" as const, value: contract.hid } }),
@@ -643,6 +776,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
   function changed(text: string) {
     setAdding(false);
     setEnding(null);
+    setSettling(null);
     setReloads((count) => count + 1);
     setDone("");
     onChanged(text);
@@ -654,9 +788,21 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
       <p>
         Each item under the contract, with its days. A day shown lighter is the contract&apos;s own:
         such a coverage follows the contract when it is renewed. Filter{" "}
-        <span className="mono">In force today</span> to what it covers now.
+        <span className="mono">In force today</span> to what it covers now. A coverage is ended on
+        the day its item is retired, released or archived, and is marked Left service until the
+        vendor has been told.
       </p>
       <Notice text={done} />
+      {open && settling && (
+        <SettleCoverage
+          key={`${settling.what} ${settling.rows.map((one) => `${one.hid} ${one.row_version}`).join(" ")}`}
+          what={settling.what}
+          coverages={settling.rows}
+          onDone={changed}
+          onClose={() => setSettling(null)}
+          onReload={() => setReloads((count) => count + 1)}
+        />
+      )}
       {open && adding && (
         <AddCoverage
           contract={contract}
@@ -708,6 +854,7 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
                   run: (_chosen, _view, rows) => {
                     const still = rows.filter((row) => endable(row, day));
                     setAdding(false);
+                    setSettling(null);
                     if (still.length === 0) {
                       setEnding(null);
                       setDone("The coverage selected has ended already.");
@@ -715,6 +862,32 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
                       setDone("");
                       setEnding(still);
                     }
+                  },
+                },
+                {
+                  label: "Vendor told",
+                  rowsOnly: true,
+                  run: (_chosen, _view, rows) => {
+                    const left = rows.filter((row) => row.left_service);
+                    setAdding(false);
+                    setEnding(null);
+                    if (left.length === 0) {
+                      setSettling(null);
+                      setDone("None of the coverage selected is marked as ended because it left.");
+                    } else {
+                      setDone("");
+                      setSettling({ what: "told", rows: left });
+                    }
+                  },
+                },
+                {
+                  label: "Remove coverage",
+                  rowsOnly: true,
+                  run: (_chosen, _view, rows) => {
+                    setAdding(false);
+                    setEnding(null);
+                    setDone("");
+                    setSettling({ what: "remove", rows });
                   },
                 },
               ],
@@ -734,6 +907,113 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
           </button>
         )}
       </DataGrid>
+    </section>
+  );
+}
+
+/** What is done with the coverage selected: the vendor was told, or it was a mistake. */
+type Settle = "told" | "remove";
+
+interface SettleCoverageProps {
+  what: Settle;
+  /** The coverages, as they were read: each goes with its own version. */
+  coverages: readonly Coverage[];
+  onDone: (text: string) => void;
+  onClose: () => void;
+  onReload: () => void;
+}
+
+/**
+ * Say that the vendor has been told that the items of the coverage selected left
+ * service, which clears the mark; or remove the coverage selected, which was a mistake.
+ * Each coverage is one change of its own: the first that is refused stops the rest.
+ */
+function SettleCoverage({ what, coverages, onDone, onClose, onReload }: SettleCoverageProps) {
+  const [settled, setSettled] = useState(0);
+  const action = useAction();
+  const remove = what === "remove";
+  const count = coverages.length;
+
+  async function run() {
+    let made = 0;
+    setSettled(0);
+    const result = await action.run(async () => {
+      for (const coverage of coverages) {
+        const path = { hid: coverage.contract_hid, coverage_hid: coverage.hid };
+        if (remove) {
+          await api.request("delete", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", { path });
+        } else {
+          await api.request("patch", "/api/v1/contracts/{hid}/coverage/{coverage_hid}", {
+            path,
+            body: { row_version: coverage.row_version, left_service: false },
+          });
+        }
+        made += 1;
+        setSettled(made);
+      }
+    });
+    if (!result.ok) return;
+    onDone(
+      remove
+        ? `${plural(made, "coverage was", "coverages were")} removed. The audit trail holds what ${made === 1 ? "it was" : "they were"}.`
+        : `The vendor has been told of ${plural(made, "item")} that left service.`,
+    );
+  }
+
+  return (
+    <section className="panel" aria-labelledby="settle-coverage" data-testid="settle-coverage">
+      <h3 id="settle-coverage">
+        {remove
+          ? `Remove ${plural(count, "coverage")}`
+          : `The vendor has been told of ${plural(count, "item")}`}
+      </h3>
+      <p className="hint">{remove ? REMOVE_NOTE : LEFT_SERVICE_NOTE}</p>
+      <ul className="plain-list">
+        {coverages.map((coverage) => (
+          <li key={coverage.hid}>
+            {itemName(coverage.item)}
+            <span className="muted">
+              {" "}
+              · {coverage.effective_starts_on ?? "from the beginning"} to{" "}
+              {coverage.effective_ends_on ?? "further notice"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <Problem
+        error={action.error}
+        onReload={() => {
+          onReload();
+          onClose();
+        }}
+      />
+      {action.error && settled > 0 && (
+        <p className="warning">
+          {plural(settled, "coverage was", "coverages were")} done before this one was refused.
+        </p>
+      )}
+      <p className="actions">
+        <button
+          type="button"
+          className={remove ? "danger" : "primary"}
+          disabled={action.busy}
+          onClick={run}
+        >
+          {remove
+            ? `Remove ${count === 1 ? "the coverage" : `${count} coverages`}`
+            : "The vendor has been told"}
+        </button>
+        <button
+          type="button"
+          disabled={action.busy}
+          onClick={() => {
+            if (settled > 0) onReload();
+            onClose();
+          }}
+        >
+          Cancel
+        </button>
+      </p>
     </section>
   );
 }

@@ -8,12 +8,14 @@ import {
   contractSpecs,
   Dash,
   Lines,
+  StatusMarks,
   SupportLink,
 } from "../components/ContractParts";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { Renew } from "../components/Renew";
 import { Retire } from "../components/Retire";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -26,6 +28,8 @@ import {
   contractsOfPath,
   INHERITED,
   inForce,
+  LAPSED_NOTE,
+  nextTermText,
   periodText,
 } from "../lib/contracts";
 import { formatTime, plural } from "../lib/format";
@@ -66,7 +70,31 @@ const COLUMNS: GridColumn<Agreement>[] = [
     kind: "choice",
     value: (agreement) => optionLabel(CONTRACT_STATUSES, agreement.status),
     choices: CONTRACT_STATUSES,
-    width: 120,
+    width: 150,
+  },
+  {
+    // Its period has ended and its status still says Active.
+    id: "lapsed",
+    header: "Lapsed",
+    kind: "boolean",
+    column: null,
+    value: (agreement) => (agreement.lapsed ? "Lapsed" : ""),
+    hint: (agreement) => (agreement.lapsed ? LAPSED_NOTE : ""),
+    choices: [
+      { value: "true", label: "Lapsed: ended, and still says Active" },
+      { value: "false", label: "Not lapsed" },
+    ],
+    width: 100,
+  },
+  {
+    // A renewal that is still to begin: the day its term starts.
+    id: "next_starts_on",
+    header: "Next term starts",
+    kind: "date",
+    value: (agreement) => agreement.next_term?.starts_on,
+    hint: (agreement) => (agreement.next_term ? nextTermText(agreement.next_term) : ""),
+    hide: true,
+    width: 160,
   },
   {
     id: "starts_on",
@@ -289,12 +317,7 @@ export function AgreementDetail() {
       </p>
       <h1>
         {record ? record.name : "Support agreement"}
-        {record && (
-          <span className="badge badge-plain">{optionLabel(CONTRACT_STATUSES, record.status)}</span>
-        )}
-        {record && record.record_status !== "active" && (
-          <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
-        )}
+        {record && <StatusMarks record={record} always />}
       </h1>
       <Problem error={agreement.error} />
       <Problem error={listsError} />
@@ -322,9 +345,26 @@ export function AgreementDetail() {
                   {" "}
                   · what a person says of it: a contract covers by its own status
                 </span>
+                {record.lapsed && (
+                  <span className="badge" data-testid="lapsed" title={LAPSED_NOTE}>
+                    Lapsed
+                  </span>
+                )}
               </dd>
               <dt>Period</dt>
               <dd data-testid="agreement-period">{periodText(record.starts_on, record.ends_on)}</dd>
+              {record.next_term && (
+                <>
+                  <dt>Next term</dt>
+                  <dd data-testid="agreement-next-term">
+                    {nextTermText(record.next_term)}
+                    <span className="muted">
+                      {" "}
+                      · until then the present number and period stay in force
+                    </span>
+                  </dd>
+                </>
+              )}
               <dt>Reseller</dt>
               <dd>
                 {record.reseller ? (
@@ -394,6 +434,34 @@ export function AgreementDetail() {
                 period, the reseller, the support level and whom to ask, it has from the agreement.
               </p>
             </CreateForm>
+          )}
+          {open && (
+            <Renew<Agreement>
+              key={`renew ${record.hid} ${record.row_version}`}
+              record={record}
+              name={record.name}
+              what="agreement"
+              follows={
+                <p>
+                  A renewal gives the agreement its new period, and its new number where it has one.
+                  It changes this one record: the contracts in it that have no dates of their own
+                  are co-termed with it and follow, and so does every item under them. Nothing is
+                  written to any of them.
+                </p>
+              }
+              submitLabel="Renew the agreement"
+              send={(body) =>
+                api.request("post", "/api/v1/agreements/{hid}/renew", {
+                  path: { hid: record.hid },
+                  body,
+                })
+              }
+              renewed={(after) =>
+                `${after.name} was renewed: ${periodText(after.starts_on, after.ends_on).toLowerCase()}. The contracts that are co-termed with it follow.`
+              }
+              onChanged={changed}
+              onReload={agreement.reload}
+            />
           )}
           {open && !listsLoading && (
             <section aria-labelledby="details">
@@ -541,7 +609,14 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
                       </span>
                     )}
                   </th>
-                  <td>{optionLabel(CONTRACT_STATUSES, contract.status)}</td>
+                  <td data-status={contract.status}>
+                    {optionLabel(CONTRACT_STATUSES, contract.status)}
+                    {contract.lapsed && (
+                      <span className="badge" data-mark="lapsed" title={LAPSED_NOTE}>
+                        Lapsed
+                      </span>
+                    )}
+                  </td>
                   <td className="number">{contract.covered_items}</td>
                   {INHERITED.map(({ field }) => {
                     const value = inForce(contract, field, agreement);

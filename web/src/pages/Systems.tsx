@@ -385,6 +385,14 @@ function SystemRegistrations({ system, mayEdit, onChanged }: SystemRegistrations
             setReloads((count) => count + 1);
             onChanged(`The registration of ${name} was saved.`);
           }}
+          onRemoved={() => {
+            const name = registeredRecord(editing)?.name ?? "the record";
+            setEditing(null);
+            setReloads((count) => count + 1);
+            onChanged(
+              `The registration of ${name} with ${system.name} was removed. The audit trail holds what it was.`,
+            );
+          }}
           onReload={() => {
             setEditing(null);
             setReloads((count) => count + 1);
@@ -420,8 +428,9 @@ function SystemRegistrations({ system, mayEdit, onChanged }: SystemRegistrations
       />
       {mayEdit && (
         <p className="hint">
-          Change registration takes one row: select it, then choose the button. A registration is
-          never deleted.
+          Change registration takes one row: select it, then choose the button. A registration that
+          ends is given the status Removed and stays on record; one that was a mistake is removed
+          there.
         </p>
       )}
     </section>

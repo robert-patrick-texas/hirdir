@@ -182,7 +182,8 @@ export function ItemDetail() {
             key={`registrations ${record.hid}`}
             holder={{ item_hid: record.hid }}
             whose={itemName(record)}
-            note="A stack that a system knows as one device is registered as the stack: that registration is on the page of the stack, and not here."
+            note="The registrations of the item itself. A stack or a cluster that a system knows as one device is registered as the group: what the group this item is a member of is registered with is listed beneath, to be read."
+            throughGroups={record.group_registrations}
             mayEdit={mayEdit && record.record_status !== "retired"}
             onChanged={changed}
           />

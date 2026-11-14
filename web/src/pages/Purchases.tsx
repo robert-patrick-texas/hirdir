@@ -30,6 +30,7 @@ import {
   type PurchaseLine,
   type PurchaseRequest,
   REQUEST_STATUSES,
+  receiptOf,
   requestPath,
 } from "../lib/purchases";
 import { allows } from "../lib/roles";
@@ -145,7 +146,7 @@ const REQUEST_SPECS: FieldSpec[] = [
     label: "Status",
     kind: "choice",
     options: REQUEST_STATUSES,
-    hint: "What you say of it. A delivery never changes it. A request that is a draft or cancelled receives nothing.",
+    hint: "What you say of it. One exception: a request that is pending or ordered becomes Received by the delivery that completes its last line. A request that is a draft or cancelled receives nothing.",
   },
   { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
 ];
@@ -409,7 +410,8 @@ export function PurchaseDetail() {
               {optionLabel(REQUEST_STATUSES, record.status)}
               <span className="muted">
                 {" "}
-                · what a person says of it: a delivery does not change it
+                · what a person says of it, and Received by itself once every line has arrived in
+                full
               </span>
             </dd>
             <dt>Requested on</dt>
@@ -823,14 +825,15 @@ function Receive({
 }: LineFormProps & { onReceived: (text: string) => void }) {
   const [by, setBy] = useState<ArrivedBy>("serial_number");
   const [typed, setTyped] = useState("");
+  const [count, setCount] = useState("");
   const [day, setDay] = useState(() => today());
   const [location, setLocation] = useState("");
-  const [found, setFound] = useState("");
+  const [found, setFound] = useState({ error: "", countError: "" });
   const action = useAction();
-  const known = ["delivered_on", "location_hid"];
+  const known = ["delivered_on", "location_hid", "quantity"];
   const refused = fieldErrors(action.error, known).shown;
   const stopped = notReceivable(line);
-  const read = arrivedOf(typed, by, line.pending_quantity);
+  const read = arrivedOf(typed, by, count, line.pending_quantity);
   // The server names an item it refuses by its place in the request.
   const labels: Record<string, string> = { items: "" };
   for (const [place, item] of read.items.entries()) {
@@ -843,8 +846,8 @@ function Receive({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setFound(read.error);
-    if (read.error) {
+    setFound({ error: read.error, countError: read.countError });
+    if (read.error || read.countError) {
       action.clear();
       return;
     }
@@ -853,7 +856,7 @@ function Receive({
         path: { hid: line.hid },
         body: {
           row_version: line.row_version,
-          items: read.items,
+          ...receiptOf(read),
           ...(day === "" ? {} : { delivered_on: day }),
           ...(location === "" ? {} : { location_hid: location }),
         },
@@ -862,11 +865,20 @@ function Receive({
     if (result.ok) {
       const made = result.value;
       onReceived(
-        `${plural(made.items.length, "item was", "items were")} received on ${made.name}, in the state Delivered. ${
+        [
+          `${plural(made.items.length, "item was", "items were")} received on ${made.name}, in the state Delivered.`,
+          read.quantity > 0
+            ? `${plural(read.quantity, "of them is", "of them are")} named for the line until ${read.quantity === 1 ? "it has a serial number" : "they have serial numbers"}.`
+            : "",
           made.pending_quantity === 0
             ? "Nothing more is to come on it."
-            : `${made.pending_quantity} still to come.`
-        }`,
+            : `${made.pending_quantity} still to come.`,
+          made.request_status === "received" && line.request_status !== "received"
+            ? `Every line of ${made.reference} has arrived in full: the request is Received.`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
   }
@@ -891,9 +903,15 @@ function Receive({
             {plural(line.pending_quantity, "item is", "items are")} still to come on this line. Each
             item that arrived is made in the state Delivered, of this model, naming this line: all
             of them, or none. Delivered is not a state that counts, so they are in no component
-            count until they are handed to the team.
+            count until they are handed to the team. Say what arrived by what it is known by, or how
+            many arrived that nothing is known of yet, or both.
           </p>
           <Problem error={action.error} shown={known} labels={labels} onReload={onReload} />
+          {found.error && (
+            <div className="alert alert-error" role="alert" data-testid="receive-problem">
+              <p>{found.error}</p>
+            </div>
+          )}
           <div className="fields">
             <SelectField
               label="What arrived, by"
@@ -916,12 +934,24 @@ function Receive({
               value={typed}
               onChange={(next) => {
                 setTyped(next);
-                setFound("");
+                setFound({ error: "", countError: "" });
               }}
               disabled={action.busy}
-              required
-              hint="One item to a line."
-              error={found || undefined}
+              hint="One item to a line. Left blank when nothing is known of what arrived."
+            />
+            <TextField
+              label="How many more arrived, with nothing to know them by yet"
+              name="quantity"
+              value={count}
+              onChange={(next) => {
+                setCount(next);
+                setFound({ error: "", countError: "" });
+              }}
+              inputMode="numeric"
+              autoComplete="off"
+              disabled={action.busy}
+              error={found.countError || refused.quantity}
+              hint={`Each is given a name made from the line, as ${line.name}-003, to be known by until it has a serial number, which is given to it by hand or by a file that names it so.`}
             />
             <TextField
               label="Delivered on"
@@ -944,8 +974,12 @@ function Receive({
             />
           </div>
           <p className="actions">
-            <button type="submit" className="primary" disabled={action.busy || typed.trim() === ""}>
-              Receive {read.items.length > 0 ? plural(read.items.length, "item") : "items"}
+            <button
+              type="submit"
+              className="primary"
+              disabled={action.busy || (typed.trim() === "" && count.trim() === "")}
+            >
+              Receive {read.total > 0 ? plural(read.total, "item") : "items"}
             </button>
             <button type="button" onClick={onClose} disabled={action.busy}>
               Cancel

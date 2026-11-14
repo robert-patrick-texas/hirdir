@@ -13,8 +13,12 @@ import {
   CONTRACT_STATUSES,
   type Contract,
   type InForce,
+  LAPSED_NOTE,
+  nextTermText,
+  RENEWAL_PENDING,
+  RENEWAL_PENDING_NOTE,
 } from "../lib/contracts";
-import { SETTABLE_STATUSES } from "../lib/options";
+import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import type { FieldSpec, Option } from "../lib/patch";
 
 /** The second row of navigation on the pages of contracts and of agreements. */
@@ -40,6 +44,54 @@ export function ContractsNav() {
 
 export function Dash() {
   return <span className="muted">—</span>;
+}
+
+interface StatusMarksProps {
+  record: Pick<Contract, "status" | "lapsed" | "next_term" | "record_status">;
+  /** Say the status also where it is Active: beside the name of a page. */
+  always?: boolean;
+}
+
+/**
+ * How a contract or an agreement stands, as marks beside its name: its status where
+ * that is not Active, that it has lapsed, that its renewal is pending, that a term is
+ * still to begin, and its record status where that is not active.
+ */
+export function StatusMarks({ record, always = false }: StatusMarksProps) {
+  const pending = record.status === RENEWAL_PENDING;
+  return (
+    <>
+      {!pending && (always || record.status !== "active") && (
+        <span className="badge badge-plain" data-mark="status">
+          {optionLabel(CONTRACT_STATUSES, record.status)}
+        </span>
+      )}
+      {pending && (
+        <span className="badge" data-mark="renewal-pending" title={RENEWAL_PENDING_NOTE}>
+          Renewal pending
+        </span>
+      )}
+      {record.lapsed && (
+        <span className="badge" data-mark="lapsed" title={LAPSED_NOTE}>
+          Lapsed
+        </span>
+      )}
+      {record.next_term && (
+        <span
+          className="badge badge-plain"
+          data-mark="next-term"
+          title={nextTermText(record.next_term)}
+        >
+          Renewed from {record.next_term.starts_on}
+        </span>
+      )}
+      {record.record_status !== "active" && (
+        <span className="badge" data-mark="record-status">
+          {optionLabel(RECORD_STATUSES, record.record_status)}
+        </span>
+      )}
+    </>
+  );
 }
 
 /** Free text of several lines, such as whom to call for support, with its lines kept. */
@@ -261,7 +313,7 @@ export function contractSpecs(lists: ContractLists, current: Contract | null = n
       label: "Status",
       kind: "choice",
       options: CONTRACT_STATUSES,
-      hint: "What you say of it. Only an active contract covers, and the clock never changes this.",
+      hint: "What you say of it: the clock never changes it. An active contract covers within its period. Renewal pending is for a term that has ended while the renewal is in procurement: the contract covers on, and support goes through the account manager.",
     },
     {
       name: "reseller_hid",

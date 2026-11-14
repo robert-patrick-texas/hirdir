@@ -5,11 +5,11 @@
 
 import { type ReactNode, useMemo } from "react";
 import { api, type Schemas } from "../api";
-import { queryBody } from "../lib/gridQuery";
+import { type ListRequest, queryBody } from "../lib/gridQuery";
 import { stateNames } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
 import { broughtForward } from "./grid/columns";
-import { DataGrid, type GridAction, type GridWithin } from "./grid/DataGrid";
+import { DataGrid, type GridAction, type GridWithin, type Page } from "./grid/DataGrid";
 import { itemColumns, itemIsDimmed } from "./grid/itemColumns";
 import { Problem } from "./Problem";
 
@@ -28,6 +28,13 @@ interface ItemsGridProps {
   /** Change it to read the rows again. */
   reloadKey?: number;
   actions?: ReadonlyArray<GridAction<Item>>;
+  /**
+   * Read the rows from another route than the item list, where the page has no filter
+   * to give for them, as a report asked with a filter that is as large as one may be.
+   * The grid is then sorted and paged by that route, its columns do not filter, and it
+   * is neither copied nor exported: no filter says which rows those would be.
+   */
+  read?: (request: ListRequest, signal: AbortSignal) => Promise<Page<Item>>;
   children?: ReactNode;
 }
 
@@ -38,16 +45,27 @@ export function ItemsGrid({
   shown = [],
   reloadKey,
   actions,
+  read,
   children,
 }: ItemsGridProps) {
   const choices = useChoices();
   const rules = useRules();
   const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   const wanted = shown.join(" ");
-  const columns = useMemo(
-    () => broughtForward(itemColumns(choices.data, states), wanted.split(" ")),
-    [choices.data, states, wanted],
-  );
+  const sorted = read !== undefined;
+  const columns = useMemo(() => {
+    const made = broughtForward(itemColumns(choices.data, states), wanted.split(" "));
+    if (!sorted) return made;
+    // Sorted by the field it has, and filtered by none.
+    return made.map((column) => {
+      const field = column.field === undefined ? column.id : column.field;
+      return {
+        ...column,
+        field: null,
+        sortField: column.sortField === undefined ? field : column.sortField,
+      };
+    });
+  }, [choices.data, states, wanted, sorted]);
   const ready = !choices.loading && !rules.loading;
 
   return (
@@ -62,13 +80,15 @@ export function ItemsGrid({
         <DataGrid<Item>
           id={id}
           noun={["item", "items"]}
-          entity="items"
+          {...(read ? {} : { entity: "items" as const })}
           columns={columns}
           within={within}
           {...(reloadKey === undefined ? {} : { reloadKey })}
           {...(actions ? { actions } : {})}
-          load={(request, signal) =>
-            api.request("post", "/api/v1/items/query", { body: queryBody(request), signal })
+          load={
+            read ??
+            ((request, signal) =>
+              api.request("post", "/api/v1/items/query", { body: queryBody(request), signal }))
           }
           rowId={(item) => item.hid}
           rowLink={(item) => `/items/${encodeURIComponent(item.hid)}`}

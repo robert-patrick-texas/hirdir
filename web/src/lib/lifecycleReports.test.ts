@@ -12,16 +12,27 @@ import {
 } from "./lifecycleReports";
 
 describe("the lists of the coverage report", () => {
-  it("are the three the server answers, the gaps first", () => {
+  it("are the five the server answers, the gaps first", () => {
     expect(COVERAGE_SECTIONS.map((section) => section.value)).toEqual([
       "uncovered",
       "expiring",
       "out_of_service",
+      "renewal_pending",
+      "overlapping",
     ]);
     for (const section of COVERAGE_SECTIONS) expect(section.about).not.toBe("");
   });
 
+  it("say of the items under more than one contract that they are no fault", () => {
+    const overlapping = COVERAGE_SECTIONS.find((section) => section.value === "overlapping");
+    expect(overlapping?.about).toContain("not a fault");
+    const pending = COVERAGE_SECTIONS.find((section) => section.value === "renewal_pending");
+    expect(pending?.about).toContain("account manager");
+  });
+
   it("are known by their names, and nothing else is", () => {
+    expect(isCoverageSection("overlapping")).toBe(true);
+    expect(isCoverageSection("renewal_pending")).toBe(true);
     expect(isCoverageSection("expiring")).toBe(true);
     expect(isCoverageSection("covered")).toBe(false);
     expect(isCoverageSection(null)).toBe(false);

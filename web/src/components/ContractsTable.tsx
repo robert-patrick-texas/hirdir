@@ -7,7 +7,11 @@ import {
   INHERITED,
   type Inherited,
   inForce,
+  LAPSED_NOTE,
+  nextTermText,
   overrides,
+  RENEWAL_PENDING,
+  RENEWAL_PENDING_NOTE,
 } from "../lib/contracts";
 import { effectiveText } from "../lib/effective";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
@@ -121,7 +125,23 @@ export function ContractsTable({ contracts, agreement, empty }: ContractsTablePr
                   )}
                 </th>
                 {!agreement && <td>{contract.vendor.name}</td>}
-                <td>{optionLabel(CONTRACT_STATUSES, contract.status)}</td>
+                <td
+                  data-status={contract.status}
+                  title={contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : undefined}
+                >
+                  {optionLabel(CONTRACT_STATUSES, contract.status)}
+                  {contract.lapsed && (
+                    <span className="badge" data-mark="lapsed" title={LAPSED_NOTE}>
+                      Lapsed
+                    </span>
+                  )}
+                  {contract.next_term && (
+                    <span className="muted" data-mark="next-term">
+                      {" "}
+                      · {nextTermText(contract.next_term)}
+                    </span>
+                  )}
+                </td>
                 {cell("starts_on")}
                 {cell("ends_on")}
                 {cell("support_level")}
