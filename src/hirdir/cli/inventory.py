@@ -61,6 +61,12 @@ SHOWN = {
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
     "device_groups": "name,type,hostname,serial_number,members,health,owner,record_status",
+    "agreements": "name,number,vendor,starts_on,ends_on,status,contracts,record_status",
+    "contracts": "number,vendor,agreement,starts_on,ends_on,status,covered_items,record_status",
+    "purchase_requests": "reference,requested_on,status,notes",
+    "external_systems": "name,kind,url,record_status",
+    "registrations": "system,item,group,external_id,status,confirmed_at",
+    "capacity_lines": "side,category,name,quantity,units_each,units,vendor,record_status",
 }
 # What a minor item may have from the item it is in.
 FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
@@ -177,6 +183,12 @@ sites = _lists("sites", "sites")
 locations = _lists("locations", "locations")
 contacts = _lists("contacts", "contacts")
 operators = _lists("operators", "operators")
+agreements = _lists("agreements", "support agreements")
+contracts = _lists("contracts", "contracts")
+purchases = _lists("purchase_requests", "purchase requests")
+systems = _lists("external_systems", "external systems")
+registrations = _lists("registrations", "registrations")
+capacity = _lists("capacity_lines", "capacity lines")
 geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
 GROUPS = {
@@ -193,6 +205,12 @@ GROUPS = {
     "locations": locations,
     "contacts": contacts,
     "operators": operators,
+    "agreements": agreements,
+    "contracts": contracts,
+    "purchases": purchases,
+    "systems": systems,
+    "registrations": registrations,
+    "capacity": capacity,
     "geography": geography,
     "report": report,
 }
@@ -1199,3 +1217,741 @@ def release_operator(
         target, "POST", f"/operators/{found['hid']}/retire", {"row_version": found["row_version"]}
     )
     typer.echo(f"{found['label']} is released; it was on {found['uses']} records of its own")
+
+
+# --- contracts -----------------------------------------------------------------------
+
+Day = Annotated[str | None, typer.Option(help="A day, as YYYY-MM-DD.")]
+COVER_AT_ONCE = 10_000
+CONTRACT_TEXTS = (
+    "number",
+    "starts_on",
+    "ends_on",
+    "status",
+    "support_level",
+    "purchase_reference",
+    "account_manager",
+    "support_contact",
+    "support_url",
+    "annual_cost",
+    "notes",
+)
+
+
+def _one_named(target: Target, path: str, field: str, text: str, what: str) -> dict[str, Any]:
+    """Return the one record of a list with an HID, or with text in a field."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"{path}/{text}")
+    found = client.call(
+        target,
+        "GET",
+        path,
+        params={
+            "filter": json.dumps({"field": field, "op": "eq", "value": text}),
+            "include_archived": True,
+            "include_drafts": True,
+            "limit": 20,
+        },
+    )["items"]
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise client.fail(f"there is no {what} {text}", client.EXIT_INVALID)
+    for one in found:
+        typer.echo(f"  {one['hid']}  {one.get('vendor', {}).get('name', '')}", err=True)
+    raise client.fail(
+        f"more than one {what} answers to {text}: name the one meant by its HID",
+        client.EXIT_INVALID,
+    )
+
+
+def find_contract(target: Target, text: str) -> dict[str, Any]:
+    """Return the contract with an HID or a number."""
+    return _one_named(target, "/contracts", "number", text, "contract")
+
+
+def _period(starts_on: str | None, ends_on: str | None) -> str:
+    return f"{starts_on or 'the beginning'} to {ends_on or 'further notice'}"
+
+
+def _in_force_period(contract: dict[str, Any]) -> str:
+    """Return the period a contract has in force: its own, or its agreement's."""
+    in_force = contract["effective"]
+    return _period(in_force["starts_on"]["value"], in_force["ends_on"]["value"])
+
+
+def _from_agreement(contract: dict[str, Any], name: str) -> str | None:
+    """Return what a contract has in force in a field, and says so where it is not its own."""
+    found = contract["effective"][name]
+    value = found.get("label") or found["value"]
+    if value is None or found["source"] == "own":
+        return value
+    return f"{value} ({found['source']})"
+
+
+@contracts.command("show")
+def show_contract(
+    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
+    limit: Annotated[int, typer.Option(help="How many of its items are shown.")] = LIMIT,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show a contract: what it says, what it has from its agreement, and what it covers."""
+    target = client.load_target(url, token)
+    found = find_contract(target, contract)
+    covered = client.call(
+        target,
+        "GET",
+        f"/contracts/{found['hid']}/coverage",
+        params={"limit": min(limit, 1000), "sort": "item.name"},
+    )
+    terms = client.call(target, "GET", f"/contracts/{found['hid']}/terms")
+    if format_ == "json":
+        typer.echo(json.dumps({**found, "coverage": covered["items"], "terms": terms}, indent=2))
+        return
+    lines = [
+        ("hid", found["hid"]),
+        ("number", found["number"]),
+        ("vendor", found["vendor"]["name"]),
+        ("agreement", found["agreement"]["name"] if found["agreement"] else None),
+        ("reseller", _from_agreement(found, "reseller_hid")),
+        ("starts_on", _from_agreement(found, "starts_on")),
+        ("ends_on", _from_agreement(found, "ends_on")),
+        ("status", found["status"]),
+        ("covers today", "yes" if found["covers_today"] else "no"),
+        ("support_level", _from_agreement(found, "support_level")),
+        ("purchase_reference", found["purchase_reference"]),
+        ("account_manager", _from_agreement(found, "account_manager")),
+        ("support_contact", _from_agreement(found, "support_contact")),
+        ("support_url", _from_agreement(found, "support_url")),
+        ("annual_cost", found["annual_cost"]),
+        ("notes", found["notes"]),
+        ("tags", ", ".join(found["tags"]) or None),
+        ("record_status", found["record_status"]),
+        ("items covered", str(found["covered_items"])),
+        ("items in scope", str(found["items_in_scope"])),
+    ]
+    for name, value in lines:
+        if value not in (None, ""):
+            typer.echo(f"{name + ':':<21}{value}")
+    for term in terms:
+        typer.echo(
+            f"{'earlier term:':<21}{term['number']}, "
+            f"{_period(term['starts_on'], term['ends_on'])}"
+            + (f", {term['purchase_reference']}" if term["purchase_reference"] else "")
+        )
+    if covered["items"]:
+        typer.echo("")
+        rows = [["item", "pid", "serial_number", "starts_on", "ends_on", "in_force"]]
+        for one in covered["items"]:
+            rows.append(
+                [
+                    _named(one["item"]),
+                    one["item"]["pid"] or "",
+                    one["item"]["serial_number"] or "",
+                    one["effective_starts_on"] or "",
+                    one["effective_ends_on"] or "",
+                    "yes" if one["in_force"] else "no",
+                ]
+            )
+        _table(rows)
+        if covered["total"] > len(covered["items"]):
+            typer.echo(
+                f"the first {len(covered['items'])} of {covered['total']} are shown; "
+                "--limit shows more",
+                err=True,
+            )
+
+
+@contracts.command("set")
+def set_contract(
+    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
+    changes: Annotated[
+        list[str],
+        typer.Argument(
+            help="field=value to set and field= to clear. agreement= and reseller= take a "
+            "name: agreement='Cisco Enterprise Agreement' rolls the contract into it."
+        ),
+    ],
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Change a contract. Every item under it shows the change at once, and none of
+    them is written to."""
+    target = client.load_target(url, token)
+    found = find_contract(target, contract)
+    body: dict[str, Any] = {"row_version": found["row_version"]}
+    for argument in changes:
+        name, equals, value = argument.partition("=")
+        name, value = name.strip(), value.strip()
+        if not equals or not name:
+            raise client.fail(f"{argument!r} is not field=value", 2)
+        if name == "agreement":
+            body["agreement_hid"] = (
+                _one_named(target, "/agreements", "name", value, "agreement")["hid"]
+                if value
+                else None
+            )
+        elif name == "reseller":
+            body["reseller_hid"] = (
+                _one_named(target, "/vendors", "name", value, "vendor")["hid"] if value else None
+            )
+        elif name in CONTRACT_TEXTS:
+            body[name] = value or None
+        else:
+            known = ", ".join(("agreement", "reseller", *CONTRACT_TEXTS))
+            raise client.fail(f"{name} is not a field of a contract: one of {known}", 2)
+    changed = client.call(target, "PATCH", f"/contracts/{found['hid']}", body)
+    within = f" in {changed['agreement']['name']}" if changed["agreement"] else ""
+    typer.echo(
+        f"{changed['number']}{within}: "
+        f"{_in_force_period(changed)}, "
+        f"{changed['items_in_scope']} items in scope"
+    )
+
+
+@contracts.command("renew")
+def renew_contract(
+    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
+    number: Annotated[str | None, typer.Option(help="The new number of the contract.")] = None,
+    from_: Annotated[
+        str | None, typer.Option("--from", help="The first day of the new period.")
+    ] = None,
+    to: Annotated[str | None, typer.Option(help="The last day of the new period.")] = None,
+    purchase_reference: Annotated[
+        str | None, typer.Option(help="The request or tracking number of the new term.")
+    ] = None,
+    annual_cost: Annotated[str | None, typer.Option(help="What the new term costs a year.")] = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Renew a contract: its new number, its new period, or both, in one change. Every
+    item in scope follows at once, and none of them is written to."""
+    target = client.load_target(url, token)
+    found = find_contract(target, contract)
+    body: dict[str, Any] = {"row_version": found["row_version"]}
+    for name, value in (
+        ("number", number),
+        ("starts_on", from_),
+        ("ends_on", to),
+        ("purchase_reference", purchase_reference),
+        ("annual_cost", annual_cost),
+    ):
+        if value is not None:
+            body[name] = value
+    renewed = client.call(target, "POST", f"/contracts/{found['hid']}/renew", body)
+    typer.echo(
+        f"{found['number']} is now {renewed['number']}, "
+        f"{_in_force_period(renewed)}; "
+        f"{renewed['items_in_scope']} items follow"
+    )
+
+
+@contracts.command("cover")
+def cover(
+    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
+    named: Annotated[
+        list[str] | None,
+        typer.Argument(help="Items, each by its HID, serial number, asset tag or name."),
+    ] = None,
+    filter_: Filter = None,
+    from_: Annotated[str | None, typer.Option("--from", help="Left out, the contract's.")] = None,
+    to: Annotated[str | None, typer.Option(help="Left out, the contract's.")] = None,
+    apply: Annotated[bool, typer.Option("--apply", help="Cover them.")] = False,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Put items under a contract: the items named, or those of a filter. A preview
+    unless --apply is given."""
+    if bool(named) == (filter_ is not None):
+        raise client.fail("name the items, or the rows with --filter", 2)
+    target = client.load_target(url, token)
+    found = find_contract(target, contract)
+    hids: list[str] = []
+    if named:
+        hids = [find_item(target, text)["hid"] for text in named]
+    else:
+        while True:
+            page = client.call(
+                target,
+                "GET",
+                "/items",
+                params={
+                    "filter": filter_,
+                    "fields": "hid",
+                    "limit": 1000,
+                    "offset": len(hids),
+                    "include_archived": include_archived,
+                    "include_drafts": include_drafts,
+                },
+            )
+            hids += [item["hid"] for item in page["items"]]
+            if not page["items"] or len(hids) >= page["total"]:
+                break
+            if len(hids) > COVER_AT_ONCE:
+                raise client.fail(
+                    f"more than {COVER_AT_ONCE} items match: narrow the filter", client.EXIT_INVALID
+                )
+    period = _period(
+        from_ or found["effective"]["starts_on"]["value"],
+        to or found["effective"]["ends_on"]["value"],
+    )
+    if not hids:
+        raise client.fail("no item matches", client.EXIT_INVALID)
+    if not apply:
+        typer.echo(f"{len(hids)} items would be covered by {found['number']}, {period}")
+        typer.echo("nothing was changed; add --apply to cover them", err=True)
+        return
+    dates = {name: value for name, value in (("starts_on", from_), ("ends_on", to)) if value}
+    made = client.call(
+        target,
+        "POST",
+        f"/contracts/{found['hid']}/coverage",
+        {"items": [{"item_hid": hid, **dates} for hid in hids]},
+        timeout=SLOW,
+    )
+    typer.echo(f"{len(made)} items are covered by {found['number']}, {period}")
+
+
+# --- purchases -----------------------------------------------------------------------
+
+
+def find_line(target: Target, text: str) -> dict[str, Any]:
+    """Return the purchase line with an HID, or named as `RITM0012345/2`."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"/purchase-lines/{text}")
+    reference, slash, number = text.rpartition("/")
+    if not slash or not number.strip().isdigit():
+        raise client.fail(f"{text} is not a line: a line is named as RITM0012345/2", 2)
+    found = client.call(
+        target,
+        "GET",
+        "/purchase-lines",
+        params={
+            "filter": json.dumps(
+                {
+                    "and": [
+                        {"field": "request.reference", "op": "eq", "value": reference.strip()},
+                        {"field": "line", "op": "eq", "value": int(number)},
+                    ]
+                }
+            ),
+            "limit": 2,
+        },
+    )["items"]
+    if len(found) != 1:
+        raise client.fail(f"there is no purchase line {text}", client.EXIT_INVALID)
+    return found[0]
+
+
+@purchases.command("show")
+def show_purchase(
+    request: Annotated[str, typer.Argument(help="A reference or an HID.")],
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show a purchase request and its lines, with what is still to come on each."""
+    target = client.load_target(url, token)
+    found = _one_named(target, "/purchase-requests", "reference", request, "purchase request")
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    for name in ("hid", "reference", "requested_on", "status", "notes"):
+        if found[name] not in (None, ""):
+            typer.echo(f"{name + ':':<21}{found[name]}")
+    typer.echo(f"{'still to come:':<21}{found['pending_quantity']} of {found['quantity']}")
+    if found["lines"]:
+        typer.echo("")
+        rows = [
+            [
+                "line",
+                "vendor",
+                "pid",
+                "quantity",
+                "received",
+                "pending",
+                "destination",
+                "expected_on",
+            ]
+        ]
+        for line in found["lines"]:
+            site = line["destination_site"]
+            rows.append(
+                [
+                    line["name"],
+                    line["catalog"]["vendor"],
+                    line["catalog"]["pid"],
+                    str(line["quantity"]),
+                    str(line["received_quantity"]),
+                    str(line["pending_quantity"]),
+                    site["path"] if site else "",
+                    line["expected_on"] or "",
+                ]
+            )
+        _table(rows)
+
+
+@purchases.command("receive")
+def receive(
+    line: Annotated[str, typer.Argument(help="A line, as RITM0012345/2, or its HID.")],
+    serial: Annotated[
+        list[str] | None, typer.Option(help="The serial number of an item that arrived.")
+    ] = None,
+    asset_tag: Annotated[
+        list[str] | None, typer.Option(help="The asset tag of an item that arrived.")
+    ] = None,
+    name: Annotated[
+        list[str] | None, typer.Option(help="The name of an item that arrived.")
+    ] = None,
+    location: Annotated[
+        str | None, typer.Option(help="Where they were put: the path or the HID of a location.")
+    ] = None,
+    on: Annotated[str | None, typer.Option(help="The day they arrived. Left out, today.")] = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Receive items on a purchase line: one --serial, --asset-tag or --name for each
+    item that arrived. Each is created in Delivered, of the line's model."""
+    arrived = [
+        *({"serial_number": value} for value in serial or []),
+        *({"asset_tag": value} for value in asset_tag or []),
+        *({"name": value} for value in name or []),
+    ]
+    if not arrived:
+        raise client.fail("say what arrived: --serial, --asset-tag or --name for each item", 2)
+    target = client.load_target(url, token)
+    found = find_line(target, line)
+    body: dict[str, Any] = {"row_version": found["row_version"], "items": arrived}
+    if on is not None:
+        body["delivered_on"] = on
+    if location is not None:
+        body["location_hid"] = find_place(target, location, "location")["hid"]
+    received = client.call(target, "POST", f"/purchase-lines/{found['hid']}/receive", body)
+    typer.echo(
+        f"{len(received['items'])} items received on {received['name']}; "
+        f"{received['pending_quantity']} of {received['quantity']} are still to come"
+    )
+
+
+# --- the portfolio of a vendor --------------------------------------------------------
+
+HELD = ("items", "component_count", "support_weight", "est_value", "annual_support_cost")
+PORTFOLIO_COLUMNS = (
+    "vendor,pid,model_name,kind,type,name,hostname,serial_number,asset_tag,lifecycle_state,"
+    "site,covered,covered_until,contracts,ldos,support_weight,annual_support_cost"
+)
+
+
+@vendors.command("portfolio")
+def portfolio(
+    vendor: Annotated[str, typer.Argument(help="A name or an HID.")],
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show everything from one vendor: the totals, the four kinds and the models. As
+    csv or json, the items of the vendor, one row each, with their cover: the working
+    list for a renewal."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found = _one_named(target, "/vendors", "name", vendor, "vendor")
+    view = {"include_archived": include_archived, "include_drafts": include_drafts}
+    held = client.call(target, "GET", f"/vendors/{found['hid']}/portfolio", params=view)
+    if format_ != "table":
+        _export(
+            target,
+            "items",
+            format_=format_,
+            filter_=json.dumps(held["filter"]),
+            sort="catalog.pid,name",
+            columns=PORTFOLIO_COLUMNS,
+            output=output,
+            **view,
+        )
+        return
+    totals = held["totals"]
+    typer.echo(f"{'vendor:':<21}{held['vendor']['name']}")
+    for name in HELD:
+        typer.echo(f"{name + ':':<21}{totals[name]}")
+    typer.echo(f"{'covered:':<21}{totals['covered']} of {totals['covered'] + totals['uncovered']}")
+    for agreement in held["agreements"]:
+        typer.echo(
+            f"{'agreement:':<21}{agreement['name']}, "
+            f"{_period(agreement['starts_on'], agreement['ends_on'])}, "
+            f"{agreement['contracts']} contracts"
+        )
+    for contract in held["contracts"]:
+        typer.echo(
+            f"{'contract:':<21}{contract['number']}, "
+            f"{_in_force_period(contract)}, "
+            f"{contract['covered_items']} items"
+        )
+    typer.echo("")
+    rows = [["kind", *HELD, "covered"]]
+    for kind in held["kinds"]:
+        rows.append([kind["kind"], *(str(kind[name]) for name in HELD), str(kind["covered"])])
+    _table(rows)
+    if held["models"]:
+        typer.echo("")
+        rows = [["pid", "kind", "items", "covered", "covered_until", "ldos", "annual_support_cost"]]
+        for model in held["models"]:
+            rows.append(
+                [
+                    model["pid"],
+                    model["kind"],
+                    str(model["items"]),
+                    str(model["covered"]),
+                    model["covered_until"] or "",
+                    model["ldos"] or "",
+                    str(model["annual_support_cost"]),
+                ]
+            )
+        _table(rows)
+
+
+# --- the reports that look ahead ------------------------------------------------------
+
+SECTION_COLUMNS = ("name", "pid", "serial_number", "lifecycle_state", "site")
+
+
+def _section_rows(found: dict[str, Any], extra: str) -> list[list[str]]:
+    """Return the items of a section of a report as rows, with one column of its own."""
+    rows = [[*SECTION_COLUMNS, extra]]
+    for item in found["items"]:
+        effective = item["effective"]
+        rows.append(
+            [
+                _shown_name(item),
+                item["catalog"]["pid"] if item["catalog"] else "",
+                item["serial_number"] or "",
+                effective["lifecycle_state"]["value"] or "",
+                effective["location_hid"].get("site") or "",
+                str(effective[extra]["value"] if extra in effective else item[extra] or ""),
+            ]
+        )
+    return rows
+
+
+def _all_of_section(target: Target, path: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Return a report with every item of the section that is asked for."""
+    found = client.call(target, "GET", path, params={**params, "limit": 1000})
+    while found["section"] and len(found["items"]) < found["total"]:
+        more = client.call(
+            target, "GET", path, params={**params, "limit": 1000, "offset": len(found["items"])}
+        )
+        if not more["items"]:
+            break
+        found["items"] += more["items"]
+    return found
+
+
+@report.command("coverage")
+def coverage_report(
+    filter_: Filter = None,
+    section: Annotated[
+        str | None,
+        typer.Option(help="List the items of one: uncovered, out_of_service or expiring."),
+    ] = None,
+    within_days: Annotated[
+        int | None, typer.Option(help="How far ahead cover that runs out is looked for.")
+    ] = None,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Say what contracts cover today: what is in service with no cover, what is covered
+    though out of service, and what runs out soon."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    params = {
+        "filter": filter_,
+        "section": section,
+        "within_days": within_days,
+        "include_drafts": include_drafts,
+    }
+    found = _all_of_section(target, "/reports/coverage", params)
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    if section is not None:
+        _rows(format_, output, _section_rows(found, "covered_until"))
+        return
+    names = ("in_service", "covered", "uncovered", "out_of_service", "expiring")
+    if format_ == "csv":
+        _rows(format_, output, [list(names), [str(found["totals"][name]) for name in names]])
+        return
+    typer.echo(f"{'as of:':<21}{found['as_of']}")
+    for name in names:
+        note = f" (within {found['within_days']} days)" if name == "expiring" else ""
+        typer.echo(f"{name + ':':<21}{found['totals'][name]}{note}")
+
+
+@report.command("end-of-life")
+def end_of_life_report(
+    filter_: Filter = None,
+    date_: Annotated[
+        str,
+        typer.Option("--date", help="end_of_sale, end_of_sw_support, end_of_hw_support or ldos."),
+    ] = "ldos",
+    section: Annotated[
+        str | None, typer.Option(help="List the items of one: past or approaching.")
+    ] = None,
+    within_days: Annotated[
+        int | None, typer.Option(help="How far ahead a date counts as approaching.")
+    ] = None,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Count the items past and approaching each end-of-life date, and those of one date
+    by fiscal year."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    params = {
+        "filter": filter_,
+        "date": date_,
+        "section": section,
+        "within_days": within_days,
+        "include_archived": include_archived,
+        "include_drafts": include_drafts,
+    }
+    found = _all_of_section(target, "/reports/end-of-life", params)
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    if section is not None:
+        _rows(format_, output, _section_rows(found, date_))
+        return
+    rows = [["date", "past", "past_components", "approaching", "approaching_components"]]
+    for name, counted in found["dates"].items():
+        rows.append(
+            [
+                name,
+                str(counted["past"]["items"]),
+                str(counted["past"]["component_count"]),
+                str(counted["approaching"]["items"]),
+                str(counted["approaching"]["component_count"]),
+            ]
+        )
+    _rows(format_, output, rows)
+    if format_ == "table" and found["by_fiscal_year"]:
+        typer.echo("")
+        years = [["fiscal_year", "starts_on", "ends_on", "items", "component_count"]]
+        for year in found["by_fiscal_year"]:
+            years.append(
+                [
+                    str(year["fiscal_year"]),
+                    year["starts_on"],
+                    year["ends_on"],
+                    str(year["items"]),
+                    str(year["component_count"]),
+                ]
+            )
+        _table(years)
+
+
+@report.command("replacements")
+def replacements_report(
+    filter_: Filter = None,
+    sort: Sort = None,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """List the replacements: the item that left and the item that took its place."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    params = {"filter": filter_, "sort": sort, "limit": 1000}
+    found = client.call(target, "GET", "/reports/replacements", params=params)
+    while len(found["items"]) < found["total"]:
+        more = client.call(
+            target,
+            "GET",
+            "/reports/replacements",
+            params={**params, "offset": len(found["items"])},
+        )
+        if not more["items"]:
+            break
+        found["items"] += more["items"]
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    if not found["items"] and format_ == "table":
+        typer.echo("no item has been replaced", err=True)
+        return
+    rows = [["replaced_on", "old_item", "new_item", "reason", "reference"]]
+    for one in found["items"]:
+        rows.append(
+            [
+                one["replaced_on"],
+                _named(one["old_item"]),
+                _named(one["new_item"]),
+                one["reason_label"],
+                one["reference"] or "",
+            ]
+        )
+    _rows(format_, output, rows)
+    if format_ == "table":
+        counted = ", ".join(f"{one['label']} {one['count']}" for one in found["by_reason"])
+        typer.echo(f"\n{found['total']} replacements: {counted}")
+
+
+BALANCE = (
+    "support_weight",
+    "infrastructure_demand",
+    "other_demand",
+    "demand",
+    "supply",
+    "balance",
+    "coverage_pct",
+    "own_units",
+    "outside_units",
+    "own_share_pct",
+    "annual_cost",
+)
+
+
+@report.command("capacity")
+def capacity_report(
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show demand beside supply by category, the balance and the coverage, without the
+    drafts and with them."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found = client.call(target, "GET", "/reports/capacity")
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    views = (found["active"], found["with_drafts"])
+
+    def shown(value: Any) -> str:
+        return "" if value is None else str(value)
+
+    rows = [["measure", "active", "with_drafts"]]
+    rows += [[name, *(shown(view[name]) for view in views)] for name in BALANCE]
+    for place, category in enumerate(found["active"]["by_category"]):
+        rows.append(
+            [
+                f"supply: {category['label']}",
+                shown(category["units"]),
+                shown(found["with_drafts"]["by_category"][place]["units"]),
+            ]
+        )
+    _rows(format_, output, rows)

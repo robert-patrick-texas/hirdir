@@ -616,3 +616,224 @@ def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
     nobody = run("items", "list", "--filter", "effective.operator_hid:empty:true").stdout
     assert [line.split()[1] for line in nobody.splitlines()[1:]] == ["site2-sw-3"]
     run("operators", "release", "ZZ", expect=4)
+
+
+# --- the commands of 0.6.0 ------------------------------------------------------------
+
+
+@pytest.fixture
+def covered(make: Maker, switches: list) -> dict[str, Any]:
+    """An agreement with a contract in it, a contract by itself, and one switch covered."""
+    cisco = make.get("/vendors", filter="name:eq:Cisco")["items"][0]
+    agreement = make.post(
+        "/agreements",
+        {
+            "name": "Cisco Enterprise Agreement",
+            "vendor_hid": cisco["hid"],
+            "starts_on": "2025-01-01",
+            "ends_on": "2099-12-31",
+            "account_manager": "Jordan Reyes, +1 555 0142",
+        },
+    )
+    inside = make.post("/contracts", {"number": "CON-1", "agreement_hid": agreement["hid"]})
+    alone = make.post(
+        "/contracts",
+        {
+            "number": "CON-2",
+            "vendor_hid": cisco["hid"],
+            "starts_on": "2026-01-01",
+            "ends_on": "2098-12-31",
+            "purchase_reference": "RITM0001",
+        },
+    )
+    make.post(f"/contracts/{inside['hid']}/coverage", {"items": [{"item_hid": switches[0]["hid"]}]})
+    return {"agreement": agreement, "inside": inside, "alone": alone, "vendor": cisco}
+
+
+def test_contracts_are_shown_covered_rolled_in_and_renewed(
+    run, make: Maker, switches: list, covered: dict
+) -> None:
+    listed = run("agreements", "list", "--format", "csv").stdout.splitlines()
+    assert listed[0].startswith("hid,name,number,vendor,reseller,starts_on,ends_on")
+    table = run("contracts", "list").stdout.splitlines()
+    assert [line.split()[1] for line in table[1:]] == ["CON-1", "CON-2"]
+    shown = run("contracts", "show", "CON-1").stdout
+    assert "agreement:           Cisco Enterprise Agreement" in shown
+    # What it has from its agreement says so.
+    assert "ends_on:             2099-12-31 (agreement)" in shown
+    assert "account_manager:     Jordan Reyes, +1 555 0142 (agreement)" in shown
+    assert "items covered:       1" in shown
+    assert "site2-sw-1" in shown
+    as_json = json.loads(run("contracts", "show", "CON-1", "--format", "json").stdout)
+    assert [one["item"]["serial_number"] for one in as_json["coverage"]] == ["FCW0000X001"]
+    run("contracts", "show", "CON-9", expect=4)
+
+    # Covering is previewed, and done with --apply.
+    preview = run("contracts", "cover", "CON-2", "--filter", "hostname:prefix:site2-sw-")
+    assert "3 items would be covered by CON-2, 2026-01-01 to 2098-12-31" in preview.stdout
+    assert "nothing was changed" in preview.stderr
+    assert make.get(f"/contracts/{covered['alone']['hid']}")["covered_items"] == 0
+    done = run("contracts", "cover", "CON-2", "FCW0000X002", "site2-sw-3", "--apply")
+    assert "2 items are covered by CON-2" in done.stdout
+    run("contracts", "cover", "CON-2", "FCW0000X002", "--apply", expect=5)
+    run("contracts", "cover", "CON-2", expect=2)
+    run("contracts", "cover", "CON-2", "--filter", "hostname:eq:nothing", expect=4)
+
+    # Rolled into the agreement by one change, and its own dates cleared.
+    rolled = run("contracts", "set", "CON-2", "agreement=Cisco Enterprise Agreement", "ends_on=")
+    assert "CON-2 in Cisco Enterprise Agreement: 2026-01-01 to 2099-12-31, 2 items in scope" in (
+        rolled.stdout
+    )
+    run("contracts", "set", "CON-2", "colour=red", expect=2)
+    run("contracts", "set", "CON-2", "agreement=No such agreement", expect=4)
+    out = run("contracts", "set", "CON-2", "agreement=").stdout
+    assert out.startswith("CON-2: ")
+
+    renewed = run(
+        "contracts", "renew", "CON-2", "--number", "CON-2-R1", "--from", "2027-01-01",
+        "--to", "2097-12-31", "--purchase-reference", "RITM0002",
+    )  # fmt: skip
+    assert "CON-2 is now CON-2-R1, 2027-01-01 to 2097-12-31; 2 items follow" in renewed.stdout
+    shown = run("contracts", "show", "CON-2-R1").stdout
+    assert "earlier term:        CON-2, 2026-01-01 to further notice, RITM0001" in shown
+    run("contracts", "renew", "CON-2-R1", expect=4)
+
+    by_contract = run("report", "summary", "--by", "contract", "--format", "csv").stdout
+    rows = list(csv.reader(io.StringIO(by_contract)))
+    assert [row[0] for row in rows] == ["contract", "CON-1 (Cisco)", "(none)", "(all)"]
+
+
+def test_purchases_are_shown_and_received_from_the_command_line(
+    run, make: Maker, switches: list
+) -> None:
+    entry = make.get("/catalog-entries", filter="pid:eq:C9300-48P")["items"][0]
+    room = make.layout()["room"]
+    make.post(
+        "/purchase-requests",
+        {
+            "reference": "RITM0012345",
+            "status": "ordered",
+            "lines": [{"catalog_entry_hid": entry["hid"], "quantity": 3}],
+        },
+    )
+    assert run("purchases", "list").stdout.splitlines()[1].split()[1] == "RITM0012345"
+    shown = run("purchases", "show", "RITM0012345").stdout
+    assert "still to come:       3 of 3" in shown
+    assert shown.splitlines()[-1].split()[:6] == [
+        "RITM0012345/1",
+        "Cisco",
+        "C9300-48P",
+        "3",
+        "0",
+        "3",
+    ]
+    received = run(
+        "purchases", "receive", "RITM0012345/1", "--serial", "FCW-101", "--serial", "FCW-102",
+        "--location", room["path"], "--on", "2026-11-02",
+    )  # fmt: skip
+    assert "2 items received on RITM0012345/1; 1 of 3 are still to come" in received.stdout
+    arrived = make.get("/items", filter="serial_number:prefix:FCW-10", sort="serial_number")
+    assert [(item["lifecycle_state"], item["delivered_on"]) for item in arrived["items"]] == [
+        ("Delivered", "2026-11-02")
+    ] * 2
+    assert arrived["items"][0]["location"]["path"] == room["path"]
+    run("purchases", "receive", "RITM0012345/1", "--name", "a", "--asset-tag", "b", expect=4)
+    run("purchases", "receive", "RITM0012345/1", expect=2)
+    run("purchases", "receive", "RITM0012345", "--serial", "x", expect=2)
+    run("purchases", "receive", "RITM0099999/1", "--serial", "x", expect=4)
+    run("purchases", "show", "RITM0099999", expect=4)
+
+
+def test_the_reports_that_look_ahead_are_printed(
+    run, make: Maker, switches: list, covered: dict
+) -> None:
+    coverage = run("report", "coverage").stdout
+    assert "in_service:          3" in coverage
+    assert "uncovered:           2" in coverage
+    uncovered = run("report", "coverage", "--section", "uncovered", "--format", "csv").stdout
+    rows = list(csv.reader(io.StringIO(uncovered)))
+    assert rows[0] == ["name", "pid", "serial_number", "lifecycle_state", "site", "covered_until"]
+    assert [row[2] for row in rows[1:]] == ["FCW0000X002", "FCW0000X003"]
+    as_json = json.loads(run("report", "coverage", "--format", "json").stdout)
+    assert as_json["totals"]["covered"] == 1
+    run("report", "coverage", "--section", "nonsense", expect=4)
+
+    end_of_life = run("report", "end-of-life", "--within-days", "36500").stdout.splitlines()
+    assert end_of_life[0].split() == [
+        "DATE", "PAST", "PAST_COMPONENTS", "APPROACHING", "APPROACHING_COMPONENTS",
+    ]  # fmt: skip
+    assert ["ldos", "0", "0", "3", "3"] in [line.split() for line in end_of_life]
+    assert end_of_life[-1].split()[0] == "2034"
+    listed = run(
+        "report", "end-of-life", "--section", "approaching", "--within-days", "36500",
+        "--format", "csv",
+    ).stdout  # fmt: skip
+    assert listed.splitlines()[1].endswith(",2034-04-30")
+
+    assert "no item has been replaced" in run("report", "replacements").stderr
+    make.post(
+        f"/items/{switches[0]['hid']}/replace",
+        {
+            "row_version": make.get(f"/items/{switches[0]['hid']}")["row_version"],
+            "new_item_hid": switches[1]["hid"],
+            "reason": "rma",
+            "reference": "RMA-1",
+        },
+    )
+    replaced = run("report", "replacements").stdout
+    assert replaced.splitlines()[1].split()[1:] == ["site2-sw-1", "site2-sw-2", "RMA", "RMA-1"]
+    assert "1 replacements: RMA 1" in replaced
+
+    make.post(
+        "/capacity-lines",
+        {
+            "side": "supply",
+            "category": "staff",
+            "name": "Engineer",
+            "quantity": "3",
+            "units_each": "1",
+        },
+    )
+    assert run("capacity", "list").stdout.splitlines()[1].split()[1:4] == [
+        "supply",
+        "staff",
+        "Engineer",
+    ]
+    capacity = run("report", "capacity", "--format", "csv").stdout
+    rows = {row[0]: row[1:] for row in csv.reader(io.StringIO(capacity))}
+    assert rows["measure"] == ["active", "with_drafts"]
+    assert (rows["supply"], rows["supply: Staff"], rows["coverage_pct"]) == (
+        ["3", "3"],
+        ["3", "3"],
+        ["", ""],
+    )
+
+    portfolio = run("vendors", "portfolio", "Cisco").stdout
+    assert "items:               3" in portfolio
+    assert "agreement:           Cisco Enterprise Agreement, 2025-01-01 to 2099-12-31" in portfolio
+    hardware = next(line for line in portfolio.splitlines() if line.startswith("hardware"))
+    assert hardware.split()[:3] == ["hardware", "3", "3"]
+    as_file = run("vendors", "portfolio", "Cisco", "--format", "csv").stdout
+    rows = list(csv.DictReader(io.StringIO(as_file)))
+    assert [(row["serial_number"], row["covered"], row["contracts"]) for row in rows] == [
+        ("FCW0000X001", "true", "CON-1"),
+        ("FCW0000X002", "false", ""),
+        ("FCW0000X003", "false", ""),
+    ]
+    run("vendors", "portfolio", "Nobody", expect=4)
+
+
+def test_systems_and_registrations_are_listed(run, make: Maker, switches: list) -> None:
+    watch = make.post("/external-systems", {"name": "NetWatch", "kind": "monitoring"})
+    make.post(
+        "/registrations",
+        {"system_hid": watch["hid"], "item_hid": switches[0]["hid"], "external_id": "node-1"},
+    )
+    assert run("systems", "list").stdout.splitlines()[1].split()[1:3] == ["NetWatch", "monitoring"]
+    listed = run(
+        "registrations", "list", "--filter", "system.name:eq:NetWatch", "--format", "csv"
+    ).stdout
+    rows = list(csv.DictReader(io.StringIO(listed)))
+    assert [(row["system"], row["item"], row["external_id"]) for row in rows] == [
+        ("NetWatch", "FCW0000X001", "node-1")
+    ]
