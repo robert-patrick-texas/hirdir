@@ -24,6 +24,7 @@ CONDITION_LIST = "item_condition"
 FAILED_CONDITIONS = ("failed", "dead")
 POOR_CONDITIONS = ("degraded", "suspect")
 GOOD_CONDITION = "good"
+UNTESTED_CONDITION = "untested"
 
 OBSERVED = ("online", "degraded", "unreachable", "present")
 UNREACHABLE = "unreachable"
@@ -81,7 +82,15 @@ def of_item(
         good.append(f"it is observed {observed_status}")
     if good:
         return Health(GOOD, tuple(good))
-    return Health(UNKNOWN, ("nothing is said of its condition, and nothing is observed",))
+    # Nothing decides it. What is said of the condition is told all the same: untested
+    # is not known good, and a condition of the site's own says nothing either way.
+    if condition is None:
+        said = "nothing is said of its condition"
+    elif condition == UNTESTED_CONDITION:
+        said = f"its condition is {condition}"
+    else:
+        said = f"its condition is {condition}, which says nothing of its health"
+    return Health(UNKNOWN, (f"{said}, and nothing is observed",))
 
 
 def _counted(count: int, what: str) -> str:

@@ -53,11 +53,23 @@ def test_an_item_has_a_condition_from_a_list_that_can_be_edited(make: Maker) -> 
 
     problem = make.post("/items", {"name": "x", "condition": "shiny"}, expect=422)
     assert "condition" in errors(problem)
-    # A site adds a condition of its own. It says nothing of health either way.
+    # A site adds a condition of its own. It says nothing of health either way, and the
+    # reason says that, and not that nothing is said.
     make.post("/choices", {"list": "item_condition", "value": "on-loan", "label": "On loan"})
-    assert (
-        _patch(make, f"/items/{item['hid']}", condition="on-loan")["health"]["value"] == "unknown"
-    )
+    assert _patch(make, f"/items/{item['hid']}", condition="on-loan")["health"] == {
+        "value": "unknown",
+        "reasons": [
+            "its condition is on-loan, which says nothing of its health, and nothing is observed"
+        ],
+    }
+    assert _patch(make, f"/items/{item['hid']}", condition="untested")["health"] == {
+        "value": "unknown",
+        "reasons": ["its condition is untested, and nothing is observed"],
+    }
+    # What is observed decides it then, and is the reason.
+    seen = _patch(make, f"/items/{item['hid']}", condition="on-loan", observed_status="present")
+    assert seen["health"] == {"value": "good", "reasons": ["it is observed present"]}
+    _patch(make, f"/items/{item['hid']}", observed_status=None)
     # A condition moves the item nowhere in the lifecycle.
     assert cleared["lifecycle_state"] is None
 

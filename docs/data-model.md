@@ -597,7 +597,7 @@ reasons. For an item it is the worst of:
 | `failed` | the condition is `failed` or `dead`; or the item is expected online and is observed `unreachable` |
 | `degraded` | the condition is `degraded` or `suspect`; or it is observed `degraded`; or it is observed `unreachable` and is not expected online |
 | `good` | the condition is `good` and nothing observed says otherwise; or it is observed `online` or `present` and no condition says otherwise |
-| `unknown` | nothing is said: the condition is blank or `untested`, and nothing is observed |
+| `unknown` | nothing decides it: the condition is blank, `untested` or one the site added to the list, and nothing is observed. The reason names the condition that is there: "its condition is in-repair, which says nothing of its health" |
 
 A **stack** and a **cluster** have a health too, from their current members and from
 what is observed of the group itself:
