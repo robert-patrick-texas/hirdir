@@ -204,6 +204,19 @@ record above it is. One with a plan of its own goes where that says. So a stack 
 its switches are planned for a new site by one change of the stack, and are all there
 when the site is made active.
 
+**A draft place as a workspace.** A room that is rebuilt is replaced in the same way.
+The new room is made as a draft beside the old one, under the name of the project. New
+equipment is given it as its location; what is live in the old room is given it as
+its planned location, by one bulk edit. Making the new room active is the cut-over:
+everything planned for it is there. The old room, now empty, is retired. A retired
+place keeps its name, and two places in one place may not have one name, so the old
+room is renamed out of the way, which a retired place allows, and the new room is
+then given the real name. A rename is one change of one record: the paths of what is
+in the room follow, and no item is written to. The contacts, the shipping details
+and the operator of the old room are its own and do not move with the equipment:
+they are set on the new room while it is a draft. Where a room is only given another
+name, it is renamed, and none of this is needed.
+
 **The operator.** The owner of an item is the part of the organization that answers
 for it. Its operator is one person: the member of the team who looks after it, and
 who is asked about it. An item is not given the person but a label that stands for

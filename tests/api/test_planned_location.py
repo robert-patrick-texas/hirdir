@@ -525,3 +525,64 @@ def test_a_group_list_finds_groups_by_the_operator_in_force(make: Maker) -> None
     assert [group["name"] for group in found["items"]] == ["cluster-a", "domain"]
     nobody = make.get("/device-groups", filter="effective.operator_hid:empty:true")
     assert [group["name"] for group in nobody["items"]] == ["alone"]
+
+
+def test_a_room_is_replaced_under_a_project_name_and_takes_the_real_name_at_the_end(
+    make: Maker,
+) -> None:
+    """A planned location as a workspace: the new room is assembled as a draft under a
+    project name, what is in the old room is planned for it, the cut-over is one
+    change, the old room is retired and renamed out of the way, and the new room is
+    given the real name."""
+    places = make.layout()
+    old, building = places["room"], places["building"]
+    live = make.switches(make.entry(make.vendor()), "sw", 2, location_hid=old["hid"])
+    stack = make.stack("site2-sw-stack1", live[:1], location_hid=old["hid"])
+    # The workspace: a draft beside the old room, under the name of the project.
+    new = make.location("PRJ-0042", parent=building, kind="room", record_status="draft")
+    # New equipment is assembled in it directly, and what is live is planned for it.
+    fresh = make.item(hostname="sw-new-01", location_hid=new["hid"])
+    assert fresh["location"]["name"] == "PRJ-0042"
+    edit = make.post(
+        "/items/bulk-update",
+        {
+            "filter": f"location_hid:eq:{old['hid']}",
+            "set": {"planned_location": "Americas > Central > Site-2 > Building 1 > PRJ-0042"},
+        },
+        201,
+    )
+    assert edit["job"]["updated"] == 2
+    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    _patch(make, f"/device-groups/{stack['hid']}", planned_location_hid=new["hid"])
+    # The old room is not retired while it is in use.
+    refused = make.post(f"/locations/{old['hid']}/retire", {"row_version": old["row_version"]}, 409)
+    assert "2 items" in refused["detail"]
+
+    # The cut-over: one change, of the new room.
+    _patch(make, f"/locations/{new['hid']}", record_status="active")
+    there = make.found(filter=f"location_hid:eq:{new['hid']}")
+    assert there == ["sw-01", "sw-02", "sw-new-01"]
+    assert make.get(f"/device-groups/{stack['hid']}")["location"]["name"] == "PRJ-0042"
+    assert make.get("/items", filter=f"location:within:{old['hid']}")["total"] == 0
+    # The old room is empty: retired, and renamed out of the way though it is retired.
+    gone = make.post(f"/locations/{old['hid']}/retire", {"row_version": old["row_version"]}, 200)
+    taken = _patch(make, f"/locations/{new['hid']}", 409, name="Room 102")
+    assert "name" in errors(taken)
+    renamed = make.patch(
+        f"/locations/{old['hid']}", {"row_version": gone["row_version"], "name": "z-Room 102"}
+    )
+    assert (renamed["name"], renamed["record_status"]) == ("z-Room 102", "retired")
+    # The new room takes the real name: one change, and nothing in it is written to.
+    versions = [make.get(f"/items/{item['hid']}")["row_version"] for item in live]
+    final = _patch(make, f"/locations/{new['hid']}", name="Room 102")
+    assert final["path"] == "Americas > Central > Site-2 > Building 1 > Room 102"
+    moved = make.get(f"/items/{live[0]['hid']}")
+    assert moved["location"]["path"] == final["path"]
+    assert [make.get(f"/items/{item['hid']}")["row_version"] for item in live] == versions
+    assert make.found(
+        filter="location:within:Americas > Central > Site-2 > Building 1 > Room 102"
+    ) == [
+        "sw-01",
+        "sw-02",
+        "sw-new-01",
+    ]
