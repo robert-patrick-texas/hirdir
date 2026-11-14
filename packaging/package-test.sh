@@ -4,7 +4,7 @@
 # "make e2e" runs it with --e2e. It needs docker, curl, python3, make and dpkg-deb on
 # the host.
 #
-# Usage: packaging/package-test.sh [--e2e] [--upgrade | --failed-upgrade | --fresh]
+# Usage: packaging/package-test.sh [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh]
 #
 # There are three passes, each in a container of its own. With none named, all three
 # run, side by side when the host has cores and memory free for it and one after another
@@ -15,10 +15,11 @@
 #                      configuration into it, upgrade it with apt, and see that all of
 #                      it is still there and still works, under the prefix it had; then
 #                      everything the fresh pass does. The inventory is made for what an
-#                      upgrade could harm: items with every kind of value between
-#                      them, minor items, stacks, clusters, a controller domain, their
-#                      members, a replacement, conditions, what is observed and when,
-#                      addresses, and choices of the site's own
+#                      upgrade could harm, of everything the previous release can
+#                      store: items with every kind of value between them, minor items,
+#                      stacks, clusters, a controller domain, their members, a
+#                      replacement, conditions, what is observed and when, addresses,
+#                      and choices of the site's own
 #   --failed-upgrade   install the previous release, with the same inventory, and make
 #                      the migration of the new one fail, in the database: by a table in
 #                      the way of one it creates, or, where it creates none, by a
@@ -28,6 +29,11 @@
 #                      must work. A release with no migration has nothing that could
 #                      fail: the pass says so in a SKIP line, upgrades, and goes back by
 #                      installing the older package alone
+#   --upgrade-alone    the upgrade pass up to where it goes on to what the fresh pass
+#                      does, and no further. For work on the upgrade passes, and for a
+#                      pair of older releases, whose package cannot do what the fresh
+#                      pass asks of this tree's. It says in a SKIP line what it left out,
+#                      and is not the release check
 #   --fresh            install on a system that never had hirdir, as a new
 #                      installation does, and exercise it: the examples imported and
 #                      exported through nginx, minor items, a stack, a replacement and
@@ -39,7 +45,9 @@
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
 #                      asks for the host's, or PW_TEST_CONNECT_WS_ENDPOINT names one.
 # Environment:
-#   DEB            the package to test (default: dist/hirdir_<version>_amd64.deb)
+#   DEB            the package to test (default: dist/hirdir_<version>_amd64.deb, for
+#                  the version of this tree). The version that is tested is read from
+#                  the package.
 #   PREVIOUS_DEB   the package of the previous release, for the two upgrade passes.
 #                  Left out, it is the hirdir_*_amd64.deb beside DEB with the highest
 #                  version below the one being tested.
@@ -47,6 +55,13 @@
 # When no previous package is found, the two upgrade passes are skipped and the run
 # says so with a SKIP line that names what was not tested and how to test it. The
 # fresh install is tested all the same. --fresh alone asks for just that.
+#
+# The two upgrade passes are written for no pair of releases. They read from the two
+# packages which versions they are and which revision the migrations of each end at,
+# and so whether there is a migration between them and which. What every upgrade must
+# show is in this file. What one migration, or one release, alone has is in a file of
+# its own in packaging/package-test.d/, which is read when the pair crosses it: see
+# "what one upgrade alone has" below. A release with no migration needs no change here.
 #
 # Every check prints a line that starts with PASS, FAIL or SKIP. A failed check is
 # counted and the run goes on, so that one run reports every problem. The exit status
@@ -67,12 +82,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 self=packaging/package-test.sh
 
 usage() {
-    echo "usage: $self [--e2e] [--upgrade | --failed-upgrade | --fresh]" >&2
+    echo "usage: $self [--e2e] [--upgrade | --upgrade-alone | --failed-upgrade | --fresh]" >&2
     exit 2
 }
 
 e2e=0
 mode=""
+alone=0
 for argument in "$@"; do
     case $argument in
         --e2e) e2e=1 ;;
@@ -80,16 +96,24 @@ for argument in "$@"; do
             [ -z "$mode" ] || usage
             mode=${argument#--}
             ;;
+        --upgrade-alone)
+            [ -z "$mode" ] || usage
+            mode=upgrade
+            alone=1
+            ;;
         *) usage ;;
     esac
 done
 
-version=$(make -s version)
-deb=${DEB:-dist/hirdir_${version}_amd64.deb}
+# The package under test is the one of this tree's version unless DEB names another. Its
+# version is then read from the package itself, as that of the previous one is.
+tree_version=$(make -s version)
+deb=${DEB:-dist/hirdir_${tree_version}_amd64.deb}
 if [ ! -f "$deb" ]; then
     echo "package-test: there is no $deb. Build the package first: make deb" >&2
     exit 2
 fi
+version=$(dpkg-deb -f "$deb" Version)
 
 # ---- the previous release ---------------------------------------------------------------
 
@@ -133,6 +157,61 @@ fi
 previous_version=""
 if [ -n "$previous" ]; then previous_version=$(dpkg-deb -f "$previous" Version); fi
 
+# ---- the pair of releases -----------------------------------------------------------------
+
+# migrations PACKAGE QUESTION [REVISION]: read the migrations that a package carries.
+#   head              the newest revision, which is where the schema of that release ends
+#   after REVISION    the revisions after that one, in order, on one line
+#   created REVISION  the table that the migrations after REVISION create last, or nothing
+#   tables REVISION   every table that the migrations after REVISION create, in order
+migrations() {
+    local from=$1
+    shift
+    dpkg-deb --fsys-tarfile "$from" |
+        tar --extract --to-stdout --wildcards '*/site-packages/hirdir/db/migrations/versions/*.py' |
+        python3 -c '
+import re, sys
+
+# Each file names its revision before the tables it creates.
+parts = re.split(r"^revision = \"([^\"]+)\"$", sys.stdin.read(), flags=re.M)
+tables = {
+    revision: re.findall(r"op\.create_table\(\s*\"([^\"]+)\"", source)
+    for revision, source in zip(parts[1::2], parts[2::2])
+}
+if sys.argv[1] == "head":
+    print(max(tables, default=""))
+    sys.exit()
+later = [revision for revision in sorted(tables) if revision > sys.argv[2]]
+created = [name for revision in later for name in tables[revision]]
+if sys.argv[1] == "after":
+    print(" ".join(later))
+else:
+    print(" ".join(created) if sys.argv[1] == "tables" else created[-1] if created else "")' "$@"
+}
+
+# What the two packages say of themselves, which is all that the upgrade passes are told
+# of the pair: the revision that the migrations of each end at, and so the migrations
+# that the upgrade runs. $crossed is their revisions, in order, and is empty when the
+# two releases have the same schema: the upgrade then has no migration.
+head=$(migrations "$deb" head)
+previous_head=""
+crossed=""
+if [ -n "$previous" ]; then
+    previous_head=$(migrations "$previous" head)
+    crossed=$(migrations "$deb" after "$previous_head")
+fi
+
+# Whether the upgrade from the previous release runs a migration.
+migrating() { [ -n "$crossed" ]; }
+
+# In words, for the lines that say it.
+if migrating; then
+    crossing="migration $crossed"
+    case $crossed in *' '*) crossing="migrations ${crossed// /, }" ;; esac
+else
+    crossing="no migration"
+fi
+
 # ---- every pass ---------------------------------------------------------------------------
 
 # How many passes may run at once: as many as the host has cores and memory free, which
@@ -166,6 +245,7 @@ every_pass() {
     trap "rm -rf '$log' '$logs'" EXIT
     if [ -n "$previous" ]; then
         options=(--upgrade --failed-upgrade --fresh)
+        echo "package-test: hirdir $previous_version, with its schema at revision $previous_head, to $version, at $head: the upgrade runs $crossing"
     else
         options=(--fresh)
         earlier=$(earlier_release)
@@ -399,26 +479,32 @@ job_counts() {
 # keep NAME: keep the JSON of the last response for unchanged to compare with.
 keep() { cp "$work/body" "$work/kept-$1.json"; }
 
-# unchanged NAME [more | fields]: print "same" when every record kept under NAME is in
-# the last response with the same HID and every field as it was, and no record was
-# added. With "more", records may have been added. With "fields", a newer version may
-# have given a record more fields, also inside a record it holds, such as the block of
-# effective values, and inside each record of a list it holds, such as its addresses:
-# every field that was there must still be there as it was. A third word names what is
+# unchanged NAME [more | fields | "fields more"]: print "same" when every record kept
+# under NAME is in the last response with the same HID and every field as it was, and
+# no record was added. With "more", records may have been added. With "fields", a newer
+# version may have given a record more fields, also inside a record it holds, such as
+# the block of effective values, and inside each record of a list it holds, such as its
+# addresses: every field that was there must still be there as it was. Both may be
+# said, with a space between them. A third word names what is
 # meant to have changed and is looked at by itself, each as HID.field, with a space
-# between them: those fields are passed over. Otherwise print what differs.
+# between them: those fields are passed over. Otherwise print what differs. What was
+# kept may be a list of records, a page of them, or one record by itself.
 unchanged() {
     python3 -c '
 import json, sys
 
 def records(path):
     document = json.load(open(path, encoding="utf-8"))
-    return document["items"] if isinstance(document, dict) else document
+    if isinstance(document, dict):
+        return document["items"] if "items" in document else [document]
+    return document
+
+how = sys.argv[3].split()
 
 def same(was, now):
-    if sys.argv[3] == "fields" and isinstance(was, dict) and isinstance(now, dict):
+    if "fields" in how and isinstance(was, dict) and isinstance(now, dict):
         return all(key in now and same(value, now[key]) for key, value in was.items())
-    if sys.argv[3] == "fields" and isinstance(was, list) and isinstance(now, list):
+    if "fields" in how and isinstance(was, list) and isinstance(now, list):
         return len(was) == len(now) and all(same(*pair) for pair in zip(was, now))
     return was == now
 
@@ -430,7 +516,7 @@ except Exception as error:
     sys.exit()
 problems = []
 meant = set(sys.argv[4].split())
-if len(now) != len(before) and sys.argv[3] != "more":
+if len(now) != len(before) and "more" not in how:
     problems.append(f"{len(now)} records where there were {len(before)}")
 for record in before:
     hid = record["hid"]
@@ -626,12 +712,16 @@ print(hashlib.sha256(repr(rows).encode()).hexdigest())' "$1" 2>&1 | tail -n 1
 #                    uniqueness is left out, because it is numbered anew in a rebuild.
 #   rows COLUMN...   how many rows there are, and one checksum of what they hold in the
 #                    columns named, which are those the first answer listed
+#   rows-of HID,HID COLUMN...
+#                    the same, of the rows with these HIDs alone
+#   hids [HID,HID]   the HID of every row, but for those named, with a comma between them
 table_read() {
     inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
 import hashlib, sqlite3, sys
 
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
 table, question, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+hids = names.pop(0).split(",") if names and question in ("rows-of", "hids") else None
 if not all(name.replace("_", "").isalnum() for name in [table, *names]):
     sys.exit("table_read: a table and its columns are named by letters, digits and _")
 if question == "columns":
@@ -646,21 +736,30 @@ elif question == "keys":
     for row in held.execute(f"PRAGMA foreign_key_list({table})"):
         lines.append(f"foreign key {row[3]} to {row[2]}.{row[4]}")
     print("\n".join(sorted(lines)))
+elif question == "hids":
+    found = [hid for (hid,) in held.execute(f"SELECT hid FROM {table} ORDER BY hid")]
+    print(",".join(hid for hid in found if hid not in (hids or [])))
 else:
     if not names:
         sys.exit("table_read rows: name the columns")
-    rows = held.execute("SELECT " + ", ".join(names) + f" FROM {table} ORDER BY hid").fetchall()
+    only = "" if hids is None else " WHERE hid IN (" + ", ".join("?" * len(hids)) + ")"
+    rows = held.execute("SELECT " + ", ".join(names) + f" FROM {table}{only} ORDER BY hid", hids or []).fetchall()
     print(len(rows), "rows", hashlib.sha256(repr(rows).encode()).hexdigest())' "$@" 2>&1
 }
 
 # table_columns TABLE: the names of its columns, on one line.
 table_columns() { table_read "$1" columns | cut -d' ' -f1 | xargs; }
 
-# table_rows TABLE "COLUMN ...": table_read rows, for the columns that one line names.
+# table_rows TABLE "COLUMN ..." [HID,HID]: table_read rows, for the columns that one
+# line names: of every row, or of the rows with these HIDs alone.
 table_rows() {
     local names
     read -ra names <<<"$2"
-    table_read "$1" rows "${names[@]}"
+    if [ $# -ge 3 ]; then
+        table_read "$1" rows-of "$3" "${names[@]}"
+    else
+        table_read "$1" rows "${names[@]}"
+    fi
 }
 
 # sqlite_text SQL: every value of every row of one query on the database of the
@@ -675,29 +774,6 @@ for row in sqlite3.connect("/var/lib/hirdir/hirdir.db").execute(sys.argv[1]):
 
 # The schema revision the installed hirdir finds in its database.
 revision_now() { inside hirdir admin check 2>/dev/null | sed -n 's/^schema revision: *\([^ ]*\) .*/\1/p'; }
-
-# migrations QUESTION [REVISION]: read the migrations the package under test carries.
-#   head             the newest revision
-#   created REVISION the table that the migrations after REVISION create last, or nothing
-#   tables REVISION  every table that the migrations after REVISION create, in order
-migrations() {
-    dpkg-deb --fsys-tarfile "$deb" |
-        tar --extract --to-stdout --wildcards '*/site-packages/hirdir/db/migrations/versions/*.py' |
-        python3 -c '
-import re, sys
-
-# Each file names its revision before the tables it creates.
-parts = re.split(r"^revision = \"([^\"]+)\"$", sys.stdin.read(), flags=re.M)
-tables = {
-    revision: re.findall(r"op\.create_table\(\s*\"([^\"]+)\"", source)
-    for revision, source in zip(parts[1::2], parts[2::2])
-}
-if sys.argv[1] == "head":
-    print(max(tables, default=""))
-else:
-    later = [name for revision in sorted(tables) if revision > sys.argv[2] for name in tables[revision]]
-    print(" ".join(later) if sys.argv[1] == "tables" else later[-1] if later else "")' "$@"
-}
 
 # shipped_snippet PACKAGE: the nginx snippet a package ships. From 0.3.0 it is the text
 # that hirdir-setup --renew writes out, and before that it was a conffile.
@@ -738,6 +814,30 @@ import sys
 before, now = (open(path, encoding="utf-8").read() for path in sys.argv[1:3])
 print("kept" if now.startswith(before.rstrip("\n") + "\n") else "changed", "same" if now == before else "more")' \
         "$1" "$work/settings-now.toml"
+}
+
+# new_settings: the settings that the package under test ships and the previous one
+# does not, each on a line: its name, as files.max_megabytes, a tab, and its line in the
+# file, commented out at its default. A heading that is new comes before its settings,
+# as itself in both places.
+new_settings() {
+    python3 -c '
+import re, sys
+
+def settings(text):
+    found, section = {}, ""
+    for line in text.splitlines():
+        if head := re.fullmatch(r"\[(.+)\]", line):
+            section = head[1]
+            found[line] = line
+        elif key := re.fullmatch(r"# ([a-z_]+) = .+", line):
+            found[f"{section}.{key[1]}"] = line
+    return found
+
+before, now = (settings(text) for text in sys.argv[1:3])
+for name, line in now.items():
+    if name not in before:
+        print(name, line, sep="\t")' "$(shipped_settings "$previous")" "$(shipped_settings "$deb")"
 }
 
 # The nginx snippet of the installation, without the three lines that hold the prefix.
@@ -820,17 +920,160 @@ install_previous() {
         tail -n 20 "$work/apt.log"
     fi
     expect "pkg the installed version is $previous_version" "$(installed_version)" "$previous_version"
+    revision_before=$(revision_now)
+    expect "pkg hirdir admin check of $previous_version names its schema revision, which is the one that the migrations of its package end at" \
+        "$revision_before" "$previous_head"
+}
+
+# ---- what one upgrade alone has ------------------------------------------------------------
+
+# Everything else in the two upgrade passes is what every upgrade must show. What only
+# one migration has, or only one release, is in a file of its own in
+# packaging/package-test.d/:
+#
+#   migration-REVISION.sh   read when the upgrade runs that migration: its revision is
+#                           after the schema of the previous release, and the new
+#                           version has it
+#   release-VERSION.sh      read when the upgrade crosses that release: the previous
+#                           release is older than it, and the new version is not. For a
+#                           release that says or reads differently, with no migration,
+#                           something that it holds as before. Most releases have none
+#
+# Such a file says what it has to say in up to three functions. They are named for its
+# revision, as before_0006 is, or for its version with _ for each dot, as before_0_4_2
+# is. Any of them may be left out.
+#
+#   before_KEY        runs with the previous release serving, when the inventory is
+#                     made and before it is kept. It makes what the migration could
+#                     harm, or is meant to change, through the API of the previous
+#                     release, and says what is meant to change, in the names below
+#   changed_KEY WHEN  runs with the new version serving, each time the inventory has
+#                     been compared with what was kept. It looks, by itself, at what
+#                     was left out of that comparison by name, and at what the
+#                     migration puts into what it creates. It changes nothing. WHEN
+#                     begins its lines
+#   after_KEY         runs in the upgrade pass alone, last of what is asked of the
+#                     inventory. It tries what is new on what was carried over, and
+#                     may write
+#
+# What a file says is meant to change, so that the comparison passes over it by name:
+#
+#   meant[LIST]          fields of records, each as HID.field, with a space before each.
+#                        LIST is items, device-groups, members, networks, addresses,
+#                        choices or stack, which is the first stack read by itself
+#   may_add[NAME]        set when the new version may add records to that list, or
+#                        rows to the table of that name: choices is both
+#   rows_apart[TABLE]    the HIDs of the rows of a table that are meant to change, with
+#                        a comma between them
+#   new_columns[TABLE]   the columns that the migration adds to a table, as table_read
+#                        columns prints them, one on a line
+#   new_keys[TABLE]      the indexes and foreign keys that it adds, as table_read keys
+#                        prints them, one on a line
+#   counted_view         the view of the items that must be counted as before, as a
+#                        query with its question mark, where the migration is meant to
+#                        change how some are counted. Empty, it is all of them
+#   fail_by=trigger      make the migration fail by the trigger on alembic_version
+#                        though it creates a table: for a migration that creates its
+#                        tables before it changes those that hold a site's records
+#
+# The tables that a migration creates are read from the package and are not named. A
+# file may also set, as it is read, what the inventory is to expect of the previous
+# release where that differs from every release since: see $zoneless_moment and
+# $witness_weight.
+#
+# A migration that has no file is given what every upgrade is given, and a SKIP line
+# that says so, in both passes. Nobody has then said what it adds, so what was there
+# must be as it was, and what is there beside it, columns, rows or records, is let be
+# until its file names it. Its file is then still to be written, or to be made with
+# nothing in it but the reason why it needs nothing.
+particulars_dir=packaging/package-test.d
+particulars=()
+particular_files=()
+unwritten=""
+declare -A meant=() may_add=() rows_apart=() new_columns=() new_keys=() rest_of=() rest_before=()
+counted_view=""
+fail_by=""
+# The days, in UTC, that the upgrade which went through began and ended on.
+upgrade_days=""
+
+# Read the files of the migrations that the upgrade runs, and of the releases it crosses.
+load_particulars() {
+    local revision file found
+    for revision in $crossed; do
+        file=$particulars_dir/migration-$revision.sh
+        if [ -f "$file" ]; then
+            # shellcheck source=/dev/null
+            . "$file"
+            particulars+=("$revision")
+            particular_files+=("$file")
+        else
+            unwritten="${unwritten:+$unwritten }$revision"
+        fi
+    done
+    for file in $(printf '%s\n' "$particulars_dir"/release-*.sh | sort -V); do
+        [ -f "$file" ] || continue
+        found=${file##*/release-}
+        found=${found%.sh}
+        if dpkg --compare-versions "$previous_version" lt "$found" &&
+            dpkg --compare-versions "$found" le "$version"; then
+            # shellcheck source=/dev/null
+            . "$file"
+            particulars+=("${found//./_}")
+            particular_files+=("$file")
+        fi
+    done
+}
+
+# particular WHAT [ARGUMENT...]: run the function WHAT_KEY of every file that was read
+# and has one.
+particular() {
+    local what=$1 key
+    shift
+    for key in "${particulars[@]}"; do
+        if declare -F "${what}_$key" >/dev/null; then "${what}_$key" "$@"; fi
+    done
+}
+
+# What the pass was told of the pair, and what it read for it.
+pair_said() {
+    local file revision
+    note "hirdir $previous_version has its schema at revision $previous_head, and $version at $head: the upgrade runs $crossing"
+    if [ "$version" != "$tree_version" ]; then
+        note "the package under test is hirdir $version, which DEB names, and this tree is $tree_version"
+    fi
+    for file in "${particular_files[@]}"; do
+        note "read for this pair: $file"
+    done
+    for revision in $unwritten; do
+        skip "pkg what migration $revision alone has: there is no $particulars_dir/migration-$revision.sh, so this pass shows of that migration what every upgrade must show, and nothing of what it alone is meant to change or to create"
+    done
+}
+
+# previous_at REVISION: whether the schema of the previous release is at that revision
+# or at a later one. The inventory is made through the API of the previous release, and
+# each part of it that a release before some revision could not store, or would have
+# refused, is made only where this says that the previous release has it.
+previous_at() { [[ ! $previous_head < $1 ]]; }
+
+# tables_there "NAME ...": those of the tables named that the database has, in order.
+tables_there() {
+    local name found=""
+    for name in $1; do
+        found="${found:+$found }$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
+    done
+    printf '%s' "$found"
 }
 
 # ---- the pass whose migration fails --------------------------------------------------------
 
 failed_upgrade() {
-    local witness_code revision_before planted tables_before backup good_backup command body
-    local schema_before snippet_before created name database=/var/lib/hirdir/hirdir.db
+    local witness_code planted tables_before backup good_backup command body
+    local schema_before snippet_before created database=/var/lib/hirdir/hirdir.db
     local cause cause_sql said cure cure_sql table events_then
 
     section "the previous release, $previous_version, with an account in it"
     previous_package
+    pair_said
     if ! apt_get update; then
         fail "pkg apt-get update succeeds"
         tail -n 20 "$work/apt.log"
@@ -848,37 +1091,41 @@ failed_upgrade() {
     api POST /auth/sign-in "$body"
     token=$(json_field token)
     witness_inventory
+    particular before
     witness_kept
-    revision_before=$(revision_now)
-    check "pkg hirdir admin check of $previous_version names its schema revision ($revision_before)" \
-        test -n "$revision_before"
+
+    if ! migrating; then
+        skip "pkg a migration that fails stops the upgrade: $version has no migration after revision $revision_before, the schema of $previous_version, so there is nothing that could fail and this pass tested no failure. It upgrades and goes back all the same, to see that going back needs no backup"
+        without_migration "$body"
+        return
+    fi
 
     # The migration is made to fail by the database, not by the package, which is
     # installed exactly as it was built. Where the new version creates a table, the
-    # table it creates last is already there. Where it creates none, a trigger refuses
-    # the last thing every migration does, which is to write its revision into
-    # alembic_version: by then the migration has made every change it makes, to the
-    # tables and to what they hold, and all of it has to be undone. A column of a name
-    # the migration adds would not do: SQLite refuses it where the column is added to
-    # the table as it stands, and at the first statement, with nothing to undo, and
-    # where the table is rebuilt the column is taken over without a word.
-    planted=$(migrations created "$revision_before")
+    # table it creates last is already there. Where it creates none, or where the file
+    # of the migration asks for it, a trigger refuses the last thing every migration
+    # does, which is to write its revision into alembic_version: by then the migration
+    # has made every change it makes, to the tables and to what they hold, and all of
+    # it has to be undone. A column of a name the migration adds would not do: SQLite
+    # refuses it where the column is added to the table as it stands, and at the first
+    # statement, with nothing to undo, and where the table is rebuilt the column is
+    # taken over without a word.
+    planted=""
+    if [ "$fail_by" != trigger ]; then planted=$(migrations "$deb" created "$revision_before"); fi
     if [ -n "$planted" ]; then
         cause="a table named $planted, which the migration creates last, is put in its way"
         cause_sql="CREATE TABLE \"$planted\" (planted_by_package_test INTEGER)"
         said="table \"\?$planted\"\? already exists"
         cure="the table that was in the way is taken out"
         cure_sql="DROP TABLE \"$planted\""
-    elif [ "$head" != "$revision_before" ]; then
-        cause="no migration of $version after revision $revision_before creates a table, so a trigger is put on alembic_version that refuses the new revision: the migration fails at its last statement, with everything else it does done"
+    else
+        cause="no migration of $version after revision $revision_before creates a table"
+        if [ "$fail_by" = trigger ]; then cause="the file of the migration asks for it"; fi
+        cause="$cause, so a trigger is put on alembic_version that refuses the new revision: the migration fails at its last statement, with everything else it does done"
         cause_sql="CREATE TRIGGER planted_by_package_test BEFORE UPDATE ON alembic_version BEGIN SELECT RAISE(ABORT, 'refused by the trigger of the package test'); END"
         said="refused by the trigger of the package test"
         cure="the trigger that refused the revision is taken out"
         cure_sql="DROP TRIGGER planted_by_package_test"
-    else
-        skip "pkg a migration that fails stops the upgrade: $version has no migration after revision $revision_before, the schema of $previous_version, so there is nothing that could fail and this pass tested no failure. It upgrades and goes back all the same, to see that going back needs no backup"
-        without_migration "$body"
-        return
     fi
     if sqlite_run "$cause_sql" >/dev/null 2>&1; then
         pass "pkg $cause"
@@ -970,7 +1217,9 @@ failed_upgrade() {
 
     section "the upgrade again, with its cause put right"
     check "pkg $cure" sqlite_run "$cure_sql"
+    upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
+        upgrade_days="$upgrade_days $(date -u +%F)"
         pass "pkg apt upgrades hirdir $previous_version to $version"
     else
         fail "pkg apt upgrades hirdir $previous_version to $version"
@@ -981,13 +1230,13 @@ failed_upgrade() {
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok installed"
     expect "pkg the schema is at revision $head" "$(revision_now)" "$head"
     check "pkg hirdir admin check exits 0" inside hirdir admin check
-    if [ -n "$planted" ]; then
-        created=""
-        for name in $(migrations tables "$revision_before"); do
-            created="${created:+$created }$(sqlite_value "$database" "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
-        done
-        expect "pkg every table that the migration creates is there now ($(migrations tables "$revision_before"))" \
-            "$created" "$(migrations tables "$revision_before")"
+    created=$(migrations "$deb" tables "$revision_before")
+    if [ -n "$created" ]; then
+        expect "pkg every table that the migration creates is there now ($created)" "$(tables_there "$created")" "$created"
+        if [ -z "$planted" ]; then
+            expect "pkg and nothing of the trigger is left" \
+                "$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'")" 0
+        fi
     else
         expect "pkg the migration creates no table: the database has the tables it had, and nothing of the trigger is left" \
             "$(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'table'") $(sqlite_value "$database" "SELECT count(*) FROM sqlite_master WHERE type = 'trigger'")" \
@@ -1005,12 +1254,7 @@ failed_upgrade() {
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
     witness_carried fields "after the upgrade that went through,"
-    # A migration may be meant to change rows of these tables, as 0006 ended memberships:
-    # the release that has such a migration leaves those rows out here by name.
-    for table in $witness_tables; do
-        expect "pkg and every row of the $table table holds what it held, in the columns it had (${rows_before[$table]})" \
-            "$(table_rows "$table" "$(columns_then "$table")")" "${rows_before[$table]}"
-    done
+    tables_carried "after the upgrade that went through," migrated
 
     # The way docs/install.md gives under "Going back to the release before". The first
     # step is the older package meeting a database it cannot read: it must stop there.
@@ -1138,17 +1382,21 @@ witness_entry=""
 witness_second=""
 witness_owner=""
 witness_item=""
-witness_weight=""
 witness_full=""
 witness_items=()
 witness_groups=()
 witness_stack=""
 witness_cluster=""
+witness_domain=""
+witness_endpoint=""
 witness_lone=""
 witness_moment=""
 witness_own=""
 witness_untested=""
+witness_day=""
 witness_tables=""
+members_made=0
+addresses_made=0
 declare -A columns_before=() keys_before=() rows_before=()
 tables_then=0
 schema_then=""
@@ -1156,8 +1404,15 @@ events_then=""
 counted_before=""
 cluster_before=""
 lone_before=""
-stack_before=""
 duplicates_before=""
+# What the inventory expects of the previous release where a release once did otherwise.
+# The file of the migration or of the release that changed it says how it was before.
+#   the support weight given to the first model, and what the new version makes of it
+witness_weight=1.25
+witness_weight_after=1.25
+#   the moment kept for 09:00 on 3 November 2026 written with no zone, and its words
+zoneless_moment=2026-11-03T14:00:00Z
+zoneless_said="09:00 in the application's time zone, New York here, which is 14:00 in UTC"
 users_before=0
 events_before=0
 conffiles_before=""
@@ -1203,14 +1458,12 @@ print(json.dumps({
 # them: serial numbers, asset tags, a MAC address, tags, overrides of what
 # the catalog gives, a state reached by moves, a draft and a retired one. A previous
 # release from before there was an inventory is given none, and $witness_entry stays
-# empty. 0.2.0 kept support weight to three places, and every release since keeps two.
+# empty.
 witness_inventory() {
     local vendor move made rma row_version=1
 
     api GET /vendors
     [ "$status" = 200 ] || return 0
-    witness_weight=1.25
-    if [ "$previous_version" = 0.2.0 ]; then witness_weight=0.125; fi
     api POST /vendors '{"name": "Upgrade Witness Networks"}'
     expect "pkg $previous_version holds a vendor" "$status" 201
     vendor=$(json_field hid)
@@ -1233,10 +1486,10 @@ witness_inventory() {
     api POST /tags '{"label": "upgrade-spare"}'
     expect "pkg a second model, an owner and two tags" "$made $status" "201 201 201 201"
     # Choices of the site's own. One is a reason for a move, and an item below is moved
-    # for it. The other two are reasons for a replacement, a list that the releases up
-    # to 0.3.0 offered and used for nothing, and that 0.4.0 loads with its defaults. rma
-    # is one of those defaults: up to 0.3.0 the site enters it itself, and from 0.4.0
-    # the site gives the one that is there a label of its own.
+    # for it. The other two are reasons for a replacement, a list that the first
+    # releases offered and used for nothing, and that the later ones load with their
+    # defaults. rma is one of those defaults: where the previous release has it, the
+    # site gives it a label of its own, and where it has not, the site enters it.
     api POST /choices '{"list": "state_reason", "value": "site-audit", "label": "Found at the site audit"}'
     made=$status
     api POST /choices '{"list": "replacement_reason", "value": "site-swap", "label": "Swapped at the site"}'
@@ -1309,19 +1562,28 @@ witness_said() {
     echo "$status $(json '[d["condition"], d["observed_status"], d["observed_at"], d["health"]["value"]]')"
 }
 
-# witness_structure: the records that 0.4.0 and 0.4.1 brought, made through the API of
-# the previous release for a later upgrade to carry: minor items two deep; a stack with
-# the master that is intended and another that is seen, the number of members it is to
-# have and what is observed of it; a cluster that says how it is managed; a controller
-# domain with a cluster within it; a stack that is one switch alone; a group that is a
-# draft; a replacement; memberships that were ended, one of them by a move out of the
-# team's hands; conditions, one of the site's own; observations, with a moment that
-# names a zone and one that names none; networks, and addresses of items and of groups,
-# with a primary management address of each family on one item. A previous release from
-# before there were groups is given none of this, and $witness_groups stays empty. Every
-# name is invented, and the addresses are from the ranges reserved for documentation.
+# witness_structure: the records that came after the first inventory, made through the
+# API of the previous release for an upgrade to carry: minor items two deep; a stack
+# with the master that is intended and another that is seen, the number of members it
+# is to have and what is observed of it; a cluster that says how it is managed; a
+# controller domain with a cluster within it; a stack that is one switch alone; a group
+# that is a draft; a replacement; memberships that were ended, one of them by a move
+# out of the team's hands; conditions, one of the site's own; observations, with a
+# moment that names a zone and one that names none; networks, and addresses of items
+# and of groups, with a primary management address of each family on one item.
+#
+# Each kind is made where the previous release can hold it. One from before there were
+# groups is given none of this, and $witness_groups stays empty. What came with
+# revision 0006 is made where previous_at says that the previous release is there: the
+# condition of an item and what is observed of it, how a cluster is managed and how
+# many members a group is to have, the master that is seen, a stack of one switch, a
+# membership that ends when its item leaves the team's hands, and a primary address of
+# each family. Every name is invented, and the addresses are from the ranges reserved
+# for documentation.
+# shellcheck disable=SC2034  # Some of what it notes is for the files of package-test.d.
 witness_structure() {
     local s1 s2 s3 s4 s9 module f1 f2 w1 w2 w3 a1 a2 d1 domain wlc member mgmt dmz made day row_version good
+    local more wanted addresses
     local items_then=${#witness_items[@]}
 
     api GET '/device-groups?limit=1'
@@ -1340,21 +1602,30 @@ witness_structure() {
         "$made $status $(json '[d["is_major"], d["depth"], d["position"]]')" '201 201 201 [false, 2, "1"]'
 
     # A stack of four with a master, which is to have four members and is observed
-    # online. A fourth switch joins and leaves again, and the second is replaced, so
-    # the stack has had five members and has three. Then its third switch is seen to be
-    # master, at a moment that is written with no zone.
+    # online, where the previous release can say so. A fourth switch joins and leaves
+    # again, and the second is replaced, so the stack has had five members and has
+    # three. Then its third switch is seen to be master, at a moment that is written
+    # with no zone, where that can be said too.
     witness_made UWN0000S002 "$witness_entry" '"lifecycle_state": "Prod"'
     s2=$made_hid
     witness_made UWN0000S003 "$witness_entry" '"lifecycle_state": "Prod"'
     s3=$made_hid
     witness_made UWN0000S004 "$witness_entry" '"lifecycle_state": "Prod"'
     s4=$made_hid
-    api POST /device-groups "{\"type\": \"stack\", \"name\": \"upgrade-stack\", \"hostname\": \"upgrade-stack\", \"fqdn\": \"upgrade-stack.example.net\", \"owner_hid\": \"$witness_owner\", \"tags\": [\"upgrade-witness\"], \"expected_members\": 4, \"observed_status\": \"online\", \"observed_at\": \"2026-11-02T15:00:00Z\", \"members\": [{\"item_hid\": \"$s1\", \"role\": \"master\", \"position\": 1}, {\"item_hid\": \"$s2\", \"role\": \"member\", \"position\": 2}, {\"item_hid\": \"$s3\", \"role\": \"member\", \"position\": 3}, {\"item_hid\": \"$s4\", \"role\": \"member\", \"position\": 4, \"joined_on\": \"2026-03-02\"}]}"
-    expect "pkg a stack of four switches with a master, a host name, an owner and a tag, which is to have four members and is observed online, and shows the master's serial number" \
-        "$status $(json '[d["type"], d["member_count"], d["serial_number"], d["expected_members"], d["observed_status"], d["observed_at"]]')" \
-        '201 ["stack", 4, "UWN0000S001", 4, "online", "2026-11-02T15:00:00Z"]'
+    more=""
+    if previous_at 0006; then
+        more='"expected_members": 4, "observed_status": "online", "observed_at": "2026-11-02T15:00:00Z", '
+    fi
+    api POST /device-groups "{\"type\": \"stack\", \"name\": \"upgrade-stack\", \"hostname\": \"upgrade-stack\", \"fqdn\": \"upgrade-stack.example.net\", \"owner_hid\": \"$witness_owner\", \"tags\": [\"upgrade-witness\"], $more\"members\": [{\"item_hid\": \"$s1\", \"role\": \"master\", \"position\": 1}, {\"item_hid\": \"$s2\", \"role\": \"member\", \"position\": 2}, {\"item_hid\": \"$s3\", \"role\": \"member\", \"position\": 3}, {\"item_hid\": \"$s4\", \"role\": \"member\", \"position\": 4, \"joined_on\": \"2026-03-02\"}]}"
+    expect "pkg a stack of four switches with a master, a host name, an owner and a tag, which shows the master's serial number" \
+        "$status $(json '[d["type"], d["member_count"], d["serial_number"]]')" '201 ["stack", 4, "UWN0000S001"]'
+    if previous_at 0006; then
+        expect "pkg and which is to have four members and is observed online" \
+            "$(json '[d["expected_members"], d["observed_status"], d["observed_at"]]')" '[4, "online", "2026-11-02T15:00:00Z"]'
+    fi
     witness_stack=$(json_field hid)
     witness_groups=("$witness_stack")
+    members_made=4
     api GET "/device-groups/$witness_stack/members"
     member=$(json '[m["hid"] for m in d["items"] if m["position"] == 4][0]')
     api PATCH "/device-groups/$witness_stack/members/$member" '{"row_version": 1, "left_on": "2026-09-30"}'
@@ -1366,36 +1637,44 @@ witness_structure() {
         "$status $(json '[d["reason"], d["reference"], d["new_item"]["serial_number"]]')" '201 ["rma", "RMA-0000-041", "UWN0000S009"]'
     s9=$(json 'd["new_item"]["hid"]')
     day=$(json_field replaced_on)
+    witness_day=$day
     witness_items+=("$s9")
+    members_made=$((members_made + 1))
     api GET "/device-groups/$witness_stack/members?include_past=true"
     expect "pkg the stack has three members now and has had five: two memberships are ended, each with its day" \
         "$status $(json '[sum(1 for m in d["items"] if not m["left_on"]), sorted(m["left_on"] for m in d["items"] if m["left_on"])]')" \
         "200 [3, $(python3 -c 'import json, sys; print(json.dumps(sorted(["2026-09-30", sys.argv[1]])))' "$day")]"
-    api GET "/device-groups/$witness_stack"
-    api PATCH "/device-groups/$witness_stack" "{\"row_version\": $(json_field row_version), \"observed_master_hid\": \"$s3\", \"master_observed_at\": \"2026-11-03T09:00:00\"}"
-    expect "pkg its third switch is seen to be master, which is not the one intended: the stack shows that switch's serial number, and is short of a member" \
-        "$status $(json '[d["serial_number"], d["serial_source"], d["master"]["serial_number"], d["master_as_intended"], d["health"]["value"]]')" \
-        '200 ["UWN0000S003", "observed", "UWN0000S001", false, "degraded"]'
-    # The moment was written with no zone. 0.4.1 read such a moment as UTC, and every
-    # release since reads it in the application's time zone, America/New_York here.
-    if [ "$previous_version" = 0.4.1 ]; then
-        expect "pkg the moment it was seen at, written as 09:00 with no zone, is kept by $previous_version as 09:00 in UTC" \
-            "$(json_field master_observed_at)" "2026-11-03T09:00:00Z"
-    else
-        expect "pkg the moment it was seen at, written as 09:00 with no zone, is kept as 09:00 in New York, which is 14:00 in UTC" \
-            "$(json_field master_observed_at)" "2026-11-03T14:00:00Z"
+    if previous_at 0006; then
+        api GET "/device-groups/$witness_stack"
+        api PATCH "/device-groups/$witness_stack" "{\"row_version\": $(json_field row_version), \"observed_master_hid\": \"$s3\", \"master_observed_at\": \"2026-11-03T09:00:00\"}"
+        expect "pkg its third switch is seen to be master, which is not the one intended: the stack shows that switch's serial number, and is short of a member" \
+            "$status $(json '[d["serial_number"], d["serial_source"], d["master"]["serial_number"], d["master_as_intended"], d["health"]["value"]]')" \
+            '200 ["UWN0000S003", "observed", "UWN0000S001", false, "degraded"]'
+        # The moment was written with no zone, and is read in the application's time
+        # zone, America/New_York here. A release that read it otherwise has that in
+        # its file, which sets $zoneless_moment.
+        expect "pkg the moment it was seen at, written as 09:00 with no zone, is kept by $previous_version as $zoneless_said" \
+            "$(json_field master_observed_at)" "$zoneless_moment"
     fi
 
-    # A cluster of two, each member managed at its own address: two managed nodes.
+    # A cluster of two. Where the previous release can say how a cluster is managed,
+    # each member is managed at its own address, which makes two managed nodes. Where
+    # it cannot, a cluster is one managed node.
     witness_made UWN0000F001 "$witness_second" '"lifecycle_state": "Prod"'
     f1=$made_hid
     witness_made UWN0000F002 "$witness_second" '"lifecycle_state": "Prod"'
     f2=$made_hid
-    api POST /device-groups "{\"type\": \"cluster\", \"name\": \"upgrade-cluster\", \"hostname\": \"upgrade-fw\", \"managed_as\": \"members\", \"members\": [{\"item_hid\": \"$f1\", \"role\": \"active\"}, {\"item_hid\": \"$f2\", \"role\": \"standby\"}]}"
-    expect "pkg a cluster of two, one active and one standby, that is managed by its members" \
-        "$status $(json '[d["type"], d["member_count"], d["managed_as"]]')" '201 ["cluster", 2, "members"]'
+    more=""
+    if previous_at 0006; then more='"managed_as": "members", '; fi
+    api POST /device-groups "{\"type\": \"cluster\", \"name\": \"upgrade-cluster\", \"hostname\": \"upgrade-fw\", $more\"members\": [{\"item_hid\": \"$f1\", \"role\": \"active\"}, {\"item_hid\": \"$f2\", \"role\": \"standby\"}]}"
+    expect "pkg a cluster of two, one active and one standby" \
+        "$status $(json '[d["type"], d["member_count"]]')" '201 ["cluster", 2]'
+    if previous_at 0006; then
+        expect "pkg which is managed by its members" "$(json_field managed_as)" members
+    fi
     witness_cluster=$(json_field hid)
     witness_groups+=("$witness_cluster")
+    members_made=$((members_made + 2))
 
     # A controller domain: a controller by itself, a pair of controllers as a cluster
     # within it, and two endpoints. An endpoint lists its controllers, the one that is
@@ -1403,7 +1682,9 @@ witness_structure() {
     # membership on that day.
     api POST /device-groups '{"type": "controller_domain", "name": "upgrade-wireless"}'
     made=$status
+    wanted=201
     domain=$(json_field hid)
+    witness_domain=$domain
     witness_groups+=("$domain")
     witness_made UWN0000W001 "$witness_second" '"lifecycle_state": "Prod"'
     w1=$made_hid
@@ -1415,125 +1696,155 @@ witness_structure() {
     a1=$made_hid
     witness_made UWN0000A002 "$witness_second" '"lifecycle_state": "Prod"'
     a2=$made_hid
-    api POST /device-groups "{\"type\": \"cluster\", \"name\": \"upgrade-wlc\", \"parent_group_hid\": \"$domain\", \"expected_members\": 2, \"members\": [{\"item_hid\": \"$w2\", \"role\": \"active\"}, {\"item_hid\": \"$w3\", \"role\": \"standby\"}]}"
-    made="$made $status $(json_field managed_as)"
+    more=""
+    if previous_at 0006; then more='"expected_members": 2, '; fi
+    api POST /device-groups "{\"type\": \"cluster\", \"name\": \"upgrade-wlc\", \"parent_group_hid\": \"$domain\", $more\"members\": [{\"item_hid\": \"$w2\", \"role\": \"active\"}, {\"item_hid\": \"$w3\", \"role\": \"standby\"}]}"
+    made="$made $status"
+    wanted="$wanted 201"
+    if previous_at 0006; then
+        made="$made $(json_field managed_as)"
+        wanted="$wanted one"
+    fi
     wlc=$(json_field hid)
     witness_groups+=("$wlc")
     api POST "/device-groups/$domain/members" "{\"members\": [{\"item_hid\": \"$w1\", \"role\": \"controller\"}, {\"item_hid\": \"$a1\", \"role\": \"endpoint\"}, {\"item_hid\": \"$a2\", \"role\": \"endpoint\"}]}"
     made="$made $status"
+    members_made=$((members_made + 5))
     api GET "/items/$a1"
-    expect "pkg a controller domain with a controller by itself, a cluster of two controllers within it that is managed as one, and two endpoints: an endpoint names its three controllers" \
+    expect "pkg a controller domain with a controller by itself, a cluster of two controllers within it, which is managed as one where that is said of a cluster, and two endpoints: an endpoint names its three controllers" \
         "$made $(json '[c["serial_number"] for c in d["controllers"]]')" \
-        '201 201 one 201 ["UWN0000W001", "UWN0000W002", "UWN0000W003"]'
-    row_version=1
-    for made in Pending-Removal:decommissioned Released:disposed; do
-        api POST "/items/$a2/transition" "{\"to\": \"${made%:*}\", \"reason\": \"${made#*:}\", \"row_version\": $row_version}"
-        row_version=$(json_field row_version)
-    done
-    made="$status $(json '[d["lifecycle_state"], d["groups"]]')"
-    api GET "/device-groups/$domain/members?include_past=true"
-    expect "pkg one endpoint is moved to Released, which ends its membership of the domain on that day" \
-        "$made $(json '[[m["joined_on"] <= m["left_on"]] for m in d["items"] if m["item_hid"] == "'"$a2"'"]') $(json 'sum(1 for m in d["items"] if not m["left_on"])')" \
-        '200 ["Released", []] [[true]] 2'
+        "$wanted 201 [\"UWN0000W001\", \"UWN0000W002\", \"UWN0000W003\"]"
+    # A release before revision 0006 let the membership of such an item stand, and
+    # migration 0006 ends it: the file of that migration makes the move there.
+    witness_endpoint=$a2
+    if previous_at 0006; then
+        row_version=1
+        for made in Pending-Removal:decommissioned Released:disposed; do
+            api POST "/items/$a2/transition" "{\"to\": \"${made%:*}\", \"reason\": \"${made#*:}\", \"row_version\": $row_version}"
+            row_version=$(json_field row_version)
+        done
+        made="$status $(json '[d["lifecycle_state"], d["groups"]]')"
+        api GET "/device-groups/$domain/members?include_past=true"
+        expect "pkg one endpoint is moved to Released, which ends its membership of the domain on that day" \
+            "$made $(json '[[m["joined_on"] <= m["left_on"]] for m in d["items"] if m["item_hid"] == "'"$a2"'"]') $(json 'sum(1 for m in d["items"] if not m["left_on"])')" \
+            '200 ["Released", []] [[true]] 2'
+    fi
 
-    # A stack that is one switch alone, with no master, and a group that is a draft.
-    witness_made UWN0000D001 "$witness_entry" '"lifecycle_state": "Prod"'
-    d1=$made_hid
-    api POST /device-groups "{\"type\": \"stack\", \"name\": \"upgrade-lone\", \"members\": [{\"item_hid\": \"$d1\", \"position\": 1}]}"
-    expect "pkg a stack that is one switch alone, with no master and so no serial number, which says that it is degraded for it" \
-        "$status $(json '[d["member_count"], d["serial_number"], d["health"]]')" \
-        '201 [1, null, {"reasons": ["it is one switch alone"], "value": "degraded"}]'
-    witness_lone=$(json_field hid)
-    witness_groups+=("$witness_lone")
+    # A stack that is one switch alone, with no master, where the previous release
+    # takes one, and a group that is a draft.
+    if previous_at 0006; then
+        witness_made UWN0000D001 "$witness_entry" '"lifecycle_state": "Prod"'
+        d1=$made_hid
+        api POST /device-groups "{\"type\": \"stack\", \"name\": \"upgrade-lone\", \"members\": [{\"item_hid\": \"$d1\", \"position\": 1}]}"
+        expect "pkg a stack that is one switch alone, with no master and so no serial number, which says that it is degraded for it" \
+            "$status $(json '[d["member_count"], d["serial_number"], d["health"]]')" \
+            '201 [1, null, {"reasons": ["it is one switch alone"], "value": "degraded"}]'
+        witness_lone=$(json_field hid)
+        witness_groups+=("$witness_lone")
+        members_made=$((members_made + 1))
+    fi
     api POST /device-groups '{"type": "custom", "name": "upgrade-lab", "record_status": "draft", "tags": ["upgrade-spare"]}'
     expect "pkg and a group of the site's own kind that is a draft, with a tag and no member" \
         "$status $(json '[d["type"], d["record_status"], d["member_count"]]')" '201 ["custom", "draft", 0]'
     witness_groups+=("$(json_field hid)")
     expect "pkg every one of the $((${#witness_items[@]} - items_then)) items of these groups was made" "$not_made" 0
 
-    # Conditions: the list has its six, and the site adds one of its own and gives one
-    # of the six a label of its own.
-    api POST /choices '{"list": "item_condition", "value": "in-repair", "label": "Away for repair"}'
-    made=$status
-    api GET '/choices?list=item_condition'
-    good=$(json '([c["hid"] + " " + str(c["row_version"]) for c in d if c["value"] == "good"] or ["none 0"])[0]')
-    api PATCH "/choices/${good% *}" "{\"row_version\": ${good#* }, \"label\": \"Works as it should\"}"
-    expect "pkg a condition of the site's own in the item_condition list, in-repair, and a label of the site's for good" \
-        "$made $status $(json_field label)" "201 200 Works as it should"
+    if previous_at 0006; then
+        # Conditions: the list has its six, and the site adds one of its own and gives
+        # one of the six a label of its own.
+        api POST /choices '{"list": "item_condition", "value": "in-repair", "label": "Away for repair"}'
+        made=$status
+        api GET '/choices?list=item_condition'
+        good=$(json '([c["hid"] + " " + str(c["row_version"]) for c in d if c["value"] == "good"] or ["none 0"])[0]')
+        api PATCH "/choices/${good% *}" "{\"row_version\": ${good#* }, \"label\": \"Works as it should\"}"
+        expect "pkg a condition of the site's own in the item_condition list, in-repair, and a label of the site's for good" \
+            "$made $status $(json_field label)" "201 200 Works as it should"
 
-    # What is said of items: a condition, and what is observed, with the health that
-    # follows. One moment names its zone and one names none.
-    expect "pkg a switch whose condition is good and which is observed online, at a moment that names its zone: its health is good" \
-        "$(witness_said "$s1" '"condition": "good", "observed_status": "online", "observed_at": "2026-11-02T15:00:00Z"')" \
-        '200 ["good", "online", "2026-11-02T15:00:00Z", "good"]'
-    expect "pkg a switch whose condition is degraded, and a member of the cluster that is observed unreachable, which is failed" \
-        "$(witness_said "$s3" '"condition": "degraded"') $(witness_said "$f2" '"observed_status": "unreachable"' | sed -E 's/"20[0-9T:.-]+Z"/"NOW"/')" \
-        '200 ["degraded", null, null, "degraded"] 200 [null, "unreachable", "NOW", "failed"]'
-    witness_moment=$f1
-    if [ "$previous_version" = 0.4.1 ]; then
-        expect "pkg the other member is observed present at 09:00, written with no zone: $previous_version keeps that as 09:00 in UTC" \
+        # What is said of items: a condition, and what is observed, with the health
+        # that follows. One moment names its zone and one names none.
+        expect "pkg a switch whose condition is good and which is observed online, at a moment that names its zone: its health is good" \
+            "$(witness_said "$s1" '"condition": "good", "observed_status": "online", "observed_at": "2026-11-02T15:00:00Z"')" \
+            '200 ["good", "online", "2026-11-02T15:00:00Z", "good"]'
+        expect "pkg a switch whose condition is degraded, and a member of the cluster that is observed unreachable, which is failed" \
+            "$(witness_said "$s3" '"condition": "degraded"') $(witness_said "$f2" '"observed_status": "unreachable"' | sed -E 's/"20[0-9T:.-]+Z"/"NOW"/')" \
+            '200 ["degraded", null, null, "degraded"] 200 [null, "unreachable", "NOW", "failed"]'
+        witness_moment=$f1
+        expect "pkg the other member is observed present at 09:00, written with no zone: $previous_version keeps that as $zoneless_said" \
             "$(witness_said "$f1" '"observed_status": "present", "observed_at": "2026-11-03T09:00:00"')" \
-            '200 [null, "present", "2026-11-03T09:00:00Z", "good"]'
-    else
-        expect "pkg the other member is observed present at 09:00, written with no zone: that is 09:00 in New York, 14:00 in UTC" \
-            "$(witness_said "$f1" '"observed_status": "present", "observed_at": "2026-11-03T09:00:00"')" \
-            '200 [null, "present", "2026-11-03T14:00:00Z", "good"]'
+            "200 [null, \"present\", \"$zoneless_moment\", \"good\"]"
+        witness_own=$w1
+        witness_untested=$a1
+        expect "pkg a controller with the condition of the site's own, and an endpoint that is untested: the health of each is not known" \
+            "$(witness_said "$w1" '"condition": "in-repair"') $(witness_said "$a1" '"condition": "untested"')" \
+            '200 ["in-repair", null, null, "unknown"] 200 ["untested", null, null, "unknown"]'
     fi
-    witness_own=$w1
-    witness_untested=$a1
-    expect "pkg a controller with the condition of the site's own, and an endpoint that is untested: the health of each is not known" \
-        "$(witness_said "$w1" '"condition": "in-repair"') $(witness_said "$a1" '"condition": "untested"')" \
-        '200 ["in-repair", null, null, "unknown"] 200 ["untested", null, null, "unknown"]'
 
     # Networks and addresses: of items and of groups, both families, one address under
     # two networks, one twice under the same, and on the first switch a primary
-    # management address of each family.
+    # management address of each family, where the previous release holds one of each:
+    # before revision 0006 a record had one primary address in all.
     api POST /networks '{"label": "upgrade-mgmt"}'
     made=$status
     mgmt=$(json_field hid)
     api POST /networks '{"label": "upgrade-dmz", "kind": "vrf"}'
     made="$made $status"
+    wanted="201 201"
     dmz=$(json_field hid)
-    for member in \
-        "\"item_hid\": \"$s1\", \"address\": \"192.0.2.101\", \"network_hid\": \"$mgmt\", \"is_primary\": true" \
-        "\"item_hid\": \"$s1\", \"address\": \"2001:0DB8:0000:0001:0000:0000:0000:0111\", \"network_hid\": \"$mgmt\", \"is_primary\": true" \
-        "\"item_hid\": \"$s1\", \"address\": \"2001:0DB8:0000:0001:0000:0000:0000:0101\", \"role\": \"loopback\"" \
-        "\"item_hid\": \"$s3\", \"address\": \"192.0.2.101\", \"network_hid\": \"$mgmt\", \"role\": \"secondary\"" \
-        "\"item_hid\": \"$f1\", \"address\": \"192.0.2.101\", \"network_hid\": \"$dmz\"" \
-        "\"group_hid\": \"$witness_stack\", \"address\": \"192.0.2.100\", \"network_hid\": \"$mgmt\", \"is_primary\": true" \
-        "\"group_hid\": \"$witness_cluster\", \"address\": \"203.0.113.50\", \"network_hid\": \"$dmz\", \"role\": \"virtual\"" \
-        "\"group_hid\": \"$witness_cluster\", \"address\": \"2001:db8:0:1::50\", \"is_primary\": true"; do
+    addresses=(
+        "\"item_hid\": \"$s1\", \"address\": \"192.0.2.101\", \"network_hid\": \"$mgmt\", \"is_primary\": true"
+        "\"item_hid\": \"$s1\", \"address\": \"2001:0DB8:0000:0001:0000:0000:0000:0101\", \"role\": \"loopback\""
+        "\"item_hid\": \"$s3\", \"address\": \"192.0.2.101\", \"network_hid\": \"$mgmt\", \"role\": \"secondary\""
+        "\"item_hid\": \"$f1\", \"address\": \"192.0.2.101\", \"network_hid\": \"$dmz\""
+        "\"group_hid\": \"$witness_stack\", \"address\": \"192.0.2.100\", \"network_hid\": \"$mgmt\", \"is_primary\": true"
+        "\"group_hid\": \"$witness_cluster\", \"address\": \"203.0.113.50\", \"network_hid\": \"$dmz\", \"role\": \"virtual\""
+        "\"group_hid\": \"$witness_cluster\", \"address\": \"2001:db8:0:1::50\", \"is_primary\": true"
+    )
+    if previous_at 0006; then
+        addresses+=("\"item_hid\": \"$s1\", \"address\": \"2001:0DB8:0000:0001:0000:0000:0000:0111\", \"network_hid\": \"$mgmt\", \"is_primary\": true")
+    fi
+    for member in "${addresses[@]}"; do
         api POST /addresses "{$member}"
         made="$made $status"
+        wanted="$wanted 201"
     done
-    expect "pkg two networks and eight addresses: of items and of groups, of both families, one address under two networks and twice under one of them" \
-        "$made" "201 201 201 201 201 201 201 201 201 201"
-    api GET "/items/$s1"
-    expect "pkg the first switch has a primary management address of each family, and a loopback address that is not primary" \
-        "$status $(json 'sorted([a["family"], a["address"], a["role"], a["is_primary"]] for a in d["addresses"])')" \
-        '200 [[4, "192.0.2.101", "management", true], [6, "2001:db8:0:1::101", "loopback", false], [6, "2001:db8:0:1::111", "management", true]]'
-    duplicates_before=$(duplicates 192.0.2.101)
-    expect "pkg GET /reports/duplicates of $previous_version lists the pair that is under one network" "$duplicates_before" '[["upgrade-mgmt", 2, 2]]'
+    addresses_made=${#addresses[@]}
+    expect "pkg two networks and $addresses_made addresses: of items and of groups, of both families, one address under two networks and twice under one of them" \
+        "$made" "$wanted"
+    if previous_at 0006; then
+        api GET "/items/$s1"
+        expect "pkg the first switch has a primary management address of each family, and a loopback address that is not primary" \
+            "$status $(json 'sorted([a["family"], a["address"], a["role"], a["is_primary"]] for a in d["addresses"])')" \
+            '200 [[4, "192.0.2.101", "management", true], [6, "2001:db8:0:1::101", "loopback", false], [6, "2001:db8:0:1::111", "management", true]]'
+    fi
+    expect "pkg GET /reports/duplicates of $previous_version lists the pair that is under one network" \
+        "$(duplicates 192.0.2.101)" '[["upgrade-mgmt", 2, 2]]'
 
-    # What the previous release counts, to compare with what the new version counts of
-    # the same items: all of them, the cluster, and the stack that is one switch.
-    counted_before=$(counted_now)
-    cluster_before=$(counted_now '?filter=group.name:eq:upgrade-cluster')
-    lone_before=$(counted_now '?filter=group.name:eq:upgrade-lone')
-    expect "pkg $previous_version counts the cluster as two managed nodes of two components, and the switch that is alone in its stack with its whole support weight of 1.25" \
-        "$cluster_before $lone_before" '[2, 2, 2, 1.0, "0.00", "1800.00"] [1, 1, 1, 1.25, "18000.00", "0.00"]'
-    api GET "/device-groups/$witness_stack"
-    stack_before=$(json '[d["serial_number"], d["serial_source"], d["master"]["serial_number"], d["observed_master"]["serial_number"], d["master_observed_at"], d["master_as_intended"], d["expected_members"], d["member_count"], d["observed_status"], d["observed_at"], d["health"]]')
+    # What the previous release counts of the cluster, and of the stack of one switch.
+    # witness_kept keeps these, and what all the items come to, for the new version to
+    # count the same.
+    if previous_at 0006; then
+        expect "pkg $previous_version counts the cluster as two managed nodes of two components, and the switch that is alone in its stack with its whole support weight of 1.25" \
+            "$(counted_now '?filter=group.name:eq:upgrade-cluster') $(counted_now '?filter=group.name:eq:upgrade-lone')" \
+            '[2, 2, 2, 1.0, "0.00", "1800.00"] [1, 1, 1, 1.25, "18000.00", "0.00"]'
+    else
+        expect "pkg $previous_version counts the cluster as one managed node of two components, with the support weight and the cost of two" \
+            "$(counted_now '?filter=group.name:eq:upgrade-cluster')" '[2, 2, 1, 1.0, "0.00", "1800.00"]'
+    fi
 }
 
-# counted_now [QUERY]: what the summary and the management report say of a view of the
-# items: items, components, managed nodes and the support weight as a number from the
-# first, the estimated value and the annual support cost from the second. QUERY is the
-# query of both requests, with its question mark.
+# counted_now [QUERY]: what a release counts of a view of the items: items, components,
+# managed nodes and the support weight as a number, the estimated value and the annual
+# support cost. The first four are in the summary. The money is in the management
+# report, and in the summary of a release from before there was one. QUERY is the query
+# of both requests, with its question mark.
 counted_now() {
     local first
     api GET "/reports/summary${1:-}"
-    first=$(json '(lambda t: [t["items"], t["component_count"], t["managed_node_count"], float(t["support_weight"])])(d["totals"])')
+    first=$(json '(lambda t: [t["items"], t["component_count"], t["managed_node_count"], float(t["support_weight"])] + [t[k] for k in ("est_value", "annual_support_cost") if k in t])(d["totals"])')
+    if [ "$(json '"est_value" in d["totals"]')" = true ]; then
+        echo "$first"
+        return 0
+    fi
     api GET "/reports/management${1:-}"
     python3 -c 'import json, sys; print(json.dumps(json.loads(sys.argv[1]) + json.loads(sys.argv[2])))' \
         "$first" "$(json '[d["totals"]["est_value"], d["totals"]["annual_support_cost"]]')"
@@ -1547,8 +1858,9 @@ every_address='/addresses?include_archived=true&include_drafts=true&limit=1000'
 
 # witness_kept: keep the inventory as the previous release gives it, to compare with
 # later: the items, the history of each, the groups with every membership they have
-# had, the networks, the addresses, the choices, and the tables of all of it as the
-# database file has them.
+# had, the first stack as it says of itself, the networks, the addresses, the choices,
+# what the items are counted as, and the tables of all of it as the database file has
+# them. It runs when everything is made, also what the file of a migration makes.
 witness_kept() {
     local hid table
     [ -n "$witness_entry" ] || return 0
@@ -1561,7 +1873,7 @@ witness_kept() {
         keep "history-$hid"
     done
     api GET /choices
-    keep choices-before
+    keep choices
     witness_tables="items vendors catalog_entries owners tags choices"
     if [ "${#witness_groups[@]}" -gt 0 ]; then
         witness_tables="$witness_tables item_replacements device_groups device_group_members networks addresses"
@@ -1573,108 +1885,213 @@ witness_kept() {
             api GET "/device-groups/$hid/members?include_past=true&limit=1000"
             keep "members-$hid"
         done
+        api GET "/device-groups/$witness_stack"
+        keep stack
         api GET '/networks?limit=1000'
         keep networks
         api GET "$every_address"
         keep addresses
-        expect "pkg and the eight addresses" "$status $(json_field total)" "200 8"
+        expect "pkg and the $addresses_made addresses" "$status $(json_field total)" "200 $addresses_made"
+        # What the previous release counts, to compare with what the new version counts
+        # of the same items: all of them, or the view that the file of a migration
+        # names, the cluster, and the stack that is one switch where there is one.
+        counted_before=$(counted_now "$counted_view")
+        cluster_before=$(counted_now '?filter=group.name:eq:upgrade-cluster')
+        if [ -n "$witness_lone" ]; then lone_before=$(counted_now '?filter=group.name:eq:upgrade-lone'); fi
+        duplicates_before=$(duplicates 192.0.2.101)
     fi
     for table in $witness_tables; do
         columns_before[$table]=$(table_read "$table" columns)
         keys_before[$table]=$(table_read "$table" keys)
         rows_before[$table]=$(table_rows "$table" "$(table_columns "$table")")
+        # Where a file says that rows of the table are meant to change, or that rows
+        # may be added to it, the others are kept by themselves as well.
+        if [ -n "${rows_apart[$table]:-}${may_add[$table]:-}$unwritten" ]; then
+            rest_of[$table]=$(table_read "$table" hids "${rows_apart[$table]:-}")
+            rest_before[$table]=$(table_rows "$table" "$(table_columns "$table")" "${rest_of[$table]}")
+        fi
     done
     check "pkg and its items table is read from the database file: $(printf '%s\n' "${columns_before[items]}" | wc -l) columns, $(printf '%s\n' "${keys_before[items]}" | wc -l) indexes and foreign keys, ${rows_before[items]%% *} rows" \
         test "${rows_before[items]%% *}" = "${#witness_items[@]}"
     if [ "${#witness_groups[@]}" -gt 0 ]; then
         expect "pkg and so are the tables of the replacements, the groups, their members, the networks and the addresses: their rows" \
             "${rows_before[item_replacements]%% *} ${rows_before[device_groups]%% *} ${rows_before[device_group_members]%% *} ${rows_before[networks]%% *} ${rows_before[addresses]%% *}" \
-            "1 ${#witness_groups[@]} 13 2 8"
+            "1 ${#witness_groups[@]} $members_made 2 $addresses_made"
     fi
 }
 
-# witness_carried HOW WHEN: the items and the history of each, and the groups, their
-# memberships, the networks and the addresses, are as witness_kept found them. HOW is
-# "fields" on the new version, which may give a record more fields, and "exact" where
-# the previous release serves again. WHEN begins the lines.
-#
-# One thing that the new version says differently of what it holds is passed over in
-# "fields" and looked at by itself. From 0.4.2 the reason for a health that is not
-# known names the condition that is there, so the health of the two items whose
-# condition is the site's own, or untested, reads otherwise than 0.4.1 gave it.
-# Nothing that is stored differs.
-witness_carried() {
-    local how=$1 when=$2 hid found differing="" but="" meant_items=""
-    [ -n "$witness_entry" ] || return 0
-    if [ "$how" = fields ] && [ -n "$witness_own" ] && [ "$previous_version" = 0.4.1 ]; then
-        but=", but for the reason that two of them give for a health that is not known"
-        meant_items="$witness_own.health $witness_untested.health"
+# meant_in HOW LIST: the fields of the records of a list that the comparison passes
+# over, because the file of a migration or of a release says that they are meant to
+# change. Only the new version changes anything: where the previous release serves
+# again, HOW is exact and nothing is passed over.
+meant_in() {
+    if [ "$1" != exact ]; then printf '%s' "${meant[$2]:-}"; fi
+}
+
+# how_of HOW LIST: how the records of a list are compared with those that were kept:
+# as HOW has it, and on the new version with records beside them let be, where a file
+# says that the new version may add some, and while a migration of the upgrade has no
+# file to say what it adds.
+how_of() {
+    if [ "$1" != exact ] && [ -n "${may_add[$2]:-}$unwritten" ]; then
+        printf '%s more' "$1"
+    else
+        printf '%s' "$1"
     fi
+}
+
+# but_for HOW LIST: the words that say either in the line of that comparison.
+but_for() {
+    if [ -n "$(meant_in "$1" "$2")" ]; then
+        printf ', but for what is meant to change, which is looked at by itself'
+    fi
+    case $(how_of "$1" "$2") in
+        *more) printf ', beside what the new version may have added' ;;
+    esac
+}
+
+# witness_carried HOW WHEN: the items and the history of each, the groups, their
+# memberships, the networks, the addresses and the choices are as witness_kept found
+# them. HOW is "fields" on the new version, which may give a record more fields, and
+# "exact" where the previous release serves again. WHEN begins the lines.
+#
+# What the new version is meant to change, or to say differently of what it holds, is
+# passed over in "fields" by name, as the file of its migration or of its release has
+# it in $meant, and that file then looks at it by itself, in its changed_ function.
+witness_carried() {
+    local how=$1 when=$2 hid found differing=""
+    [ -n "$witness_entry" ] || return 0
     api GET "$every_item"
-    expect "pkg $when every item from before is as it was, field for field and at the row_version it had (${#witness_items[@]} items)$but" \
-        "$status $(unchanged items "$how" "$meant_items")" "200 same"
+    expect "pkg $when every item from before is as it was, field for field and at the row_version it had (${#witness_items[@]} items)$(but_for "$how" items)" \
+        "$status $(unchanged items "$(how_of "$how" items)" "$(meant_in "$how" items)")" "200 same"
     for hid in "${witness_items[@]}"; do
         api GET "/items/$hid/history?limit=1000"
         found=$(unchanged "history-$hid" "$how")
         [ "$found" = same ] || differing="$differing$hid: $found. "
     done
     expect "pkg $when the history of each is as it was, event for event" "$differing" ""
-    [ "${#witness_groups[@]}" -gt 0 ] || return 0
-    api GET "$every_group"
-    expect "pkg $when every device group is as it was, field for field and at the row_version it had (${#witness_groups[@]} groups)" \
-        "$status $(unchanged device-groups "$how")" "200 same"
-    differing=""
-    for hid in "${witness_groups[@]}"; do
-        api GET "/device-groups/$hid/members?include_past=true&limit=1000"
-        found=$(unchanged "members-$hid" "$how")
-        [ "$found" = same ] || differing="$differing$hid: $found. "
-    done
-    expect "pkg $when every membership of each is as it was, those that were ended too, with the day they ended" "$differing" ""
-    api GET '/networks?limit=1000'
-    found=$(unchanged networks "$how")
-    api GET "$every_address"
-    expect "pkg $when the two networks and the eight addresses are as they were" \
-        "$found $status $(unchanged addresses "$how")" "same 200 same"
+    if [ "${#witness_groups[@]}" -gt 0 ]; then
+        api GET "$every_group"
+        expect "pkg $when every device group is as it was, field for field and at the row_version it had (${#witness_groups[@]} groups)$(but_for "$how" device-groups)" \
+            "$status $(unchanged device-groups "$(how_of "$how" device-groups)" "$(meant_in "$how" device-groups)")" "200 same"
+        differing=""
+        for hid in "${witness_groups[@]}"; do
+            api GET "/device-groups/$hid/members?include_past=true&limit=1000"
+            found=$(unchanged "members-$hid" "$(how_of "$how" members)" "$(meant_in "$how" members)")
+            [ "$found" = same ] || differing="$differing$hid: $found. "
+        done
+        expect "pkg $when every membership of each is as it was, those that were ended too, with the day they ended$(but_for "$how" members)" "$differing" ""
+        api GET "/device-groups/$witness_stack"
+        expect "pkg $when the first stack says of itself what it said: its serial number and where that is from, its master, its members, and whatever else $previous_version said of it$(but_for "$how" stack)" \
+            "$status $(unchanged stack "$how" "$(meant_in "$how" stack)")" "200 same"
+        api GET '/networks?limit=1000'
+        found=$(unchanged networks "$(how_of "$how" networks)" "$(meant_in "$how" networks)")
+        api GET "$every_address"
+        expect "pkg $when the two networks and the $addresses_made addresses are as they were$(but_for "$how" networks)$(but_for "$how" addresses)" \
+            "$found $status $(unchanged addresses "$(how_of "$how" addresses)" "$(meant_in "$how" addresses)")" "same 200 same"
+    fi
     api GET /choices
-    expect "pkg $when every choice is the record it was, the condition of the site's own and the two labels of the site's among them, and no choice is added" \
-        "$status $(unchanged choices-before "$how")" "200 same"
-    [ -n "$but" ] || return 0
-    api GET "/items/$witness_own"
-    found=$(json '[d["condition"], d["health"]]')
-    api GET "/items/$witness_untested"
-    expect "pkg $when the health of those two is not known, as it was, and the reason of each names the condition that is there" \
-        "$found $(json '[d["condition"], d["health"]]')" \
-        '["in-repair", {"reasons": ["its condition is in-repair, which says nothing of its health, and nothing is observed"], "value": "unknown"}] ["untested", {"reasons": ["its condition is untested, and nothing is observed"], "value": "unknown"}]'
+    case $(how_of "$how" choices) in
+        *more)
+            expect "pkg $when every choice from before is the record it was, those of the site's own and the labels of the site's among them$(but_for "$how" choices)" \
+                "$status $(unchanged choices "$how more" "$(meant_in "$how" choices)")" "200 same"
+            ;;
+        *)
+            expect "pkg $when every choice is the record it was, those of the site's own and the labels of the site's among them, and no choice is added$(but_for "$how" choices)" \
+                "$status $(unchanged choices "$how" "$(meant_in "$how" choices)")" "200 same"
+            ;;
+    esac
+    if [ "$how" != exact ]; then particular changed "$when"; fi
 }
 
 # columns_then TABLE: the names of the columns that the table had when witness_kept
 # read it.
 columns_then() { printf '%s\n' "${columns_before[$1]}" | cut -d' ' -f1 | xargs; }
 
-# tables_carried WHEN: every table of the inventory, read from the database file, has
-# the columns, the indexes, uniquenesses and foreign keys, and the rows that
-# witness_kept found. For an upgrade with no migration, which changes nothing that is
-# held.
+# every_line_in BEFORE NOW: whether every line of the first text is a line of the second.
+every_line_in() {
+    python3 -c '
+import sys
+sys.exit(0 if set(sys.argv[1].splitlines()) <= set(sys.argv[2].splitlines()) else 1)' "$1" "$2"
+}
+
+# tables_carried WHEN [migrated]: every table of the inventory, read from the database
+# file, is as witness_kept found it.
+#
+# With nothing more said, each has the columns, the indexes, uniquenesses and foreign
+# keys, and the rows it had: for an upgrade with no migration, which changes nothing
+# that is held, and where the previous release serves again.
+#
+# With "migrated", each has every column it had, as it was, and after them those that
+# the files of the migrations say are added, and no other; the indexes, uniquenesses and
+# foreign keys likewise; and every row holds what it held in the columns it had, but
+# for the rows that a file says are meant to change. While a migration of the upgrade
+# has no file, nobody has said what is added: what a table had must then still be
+# there, its rows too, and what is there beside it is not looked at.
 tables_carried() {
-    local when=$1 table differing=""
+    local when=$1 how=${2:-exact} table differing="" columns keys added
+
+    if [ "$how" = exact ]; then
+        for table in $witness_tables; do
+            [ "$(table_read "$table" columns)" = "${columns_before[$table]}" ] || differing="$differing$table: columns. "
+            [ "$(table_read "$table" keys)" = "${keys_before[$table]}" ] || differing="$differing$table: keys. "
+            [ "$(table_rows "$table" "$(columns_then "$table")")" = "${rows_before[$table]}" ] || differing="$differing$table: rows. "
+        done
+        expect "pkg $when every table of the inventory has the columns, the indexes, uniquenesses and foreign keys, and the rows it had, each row as it was: $(echo "$witness_tables" | wc -w) tables ($witness_tables)" \
+            "$differing" ""
+        return 0
+    fi
     for table in $witness_tables; do
-        [ "$(table_read "$table" columns)" = "${columns_before[$table]}" ] || differing="$differing$table: columns. "
-        [ "$(table_read "$table" keys)" = "${keys_before[$table]}" ] || differing="$differing$table: keys. "
-        [ "$(table_rows "$table" "$(columns_then "$table")")" = "${rows_before[$table]}" ] || differing="$differing$table: rows. "
+        differing=""
+        added=""
+        columns=$(table_read "$table" columns)
+        keys=$(table_read "$table" keys)
+        if [ -n "$unwritten" ]; then
+            every_line_in "${columns_before[$table]}" "$columns" || differing="${differing}columns. "
+            every_line_in "${keys_before[$table]}" "$keys" || differing="${differing}keys. "
+            added=", and whatever migration ${unwritten// /, }, which has no file yet, adds to them"
+        else
+            if [ -n "${new_columns[$table]:-}" ]; then
+                [ "$columns" = "${columns_before[$table]}"$'\n'"${new_columns[$table]}" ] || differing="${differing}columns. "
+                added=", and after its columns $(printf '%s\n' "${new_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g')"
+            else
+                [ "$columns" = "${columns_before[$table]}" ] || differing="${differing}columns. "
+            fi
+            if [ -n "${new_keys[$table]:-}" ]; then
+                [ "$keys" = "$(printf '%s\n' "${keys_before[$table]}" "${new_keys[$table]}" | LC_ALL=C sort)" ] || differing="${differing}keys. "
+                added="$added, and with its keys $(printf '%s\n' "${new_keys[$table]}" | wc -l) more"
+            else
+                [ "$keys" = "${keys_before[$table]}" ] || differing="${differing}keys. "
+            fi
+        fi
+        if [ -n "${rest_of[$table]+kept}" ]; then
+            [ "$(table_rows "$table" "$(columns_then "$table")" "${rest_of[$table]}")" = "${rest_before[$table]}" ] || differing="${differing}rows. "
+            if [ -n "${rows_apart[$table]:-}" ]; then
+                added="$added; the rows that are meant to change are left out, and looked at by themselves"
+            fi
+            if [ -n "${may_add[$table]:-}" ]; then
+                added="$added; the migration may add rows beside them"
+            elif [ -z "$unwritten" ] && [ "$(table_rows "$table" hid | cut -d' ' -f1)" != "${rows_before[$table]%% *}" ]; then
+                differing="${differing}rows added or gone. "
+            fi
+        else
+            [ "$(table_rows "$table" "$(columns_then "$table")")" = "${rows_before[$table]}" ] || differing="${differing}rows. "
+        fi
+        expect "pkg $when the $table table has the columns and the indexes, uniquenesses and foreign keys it had, each as it was, and every row of it holds what it held in those columns (${rows_before[$table]%% *} rows)$added" \
+            "$differing" ""
     done
-    expect "pkg $when every table of the inventory has the columns, the indexes, uniquenesses and foreign keys, and the rows it had, each row as it was: $(echo "$witness_tables" | wc -w) tables ($witness_tables)" \
-        "$differing" ""
 }
 
 # carried_inventory: what the upgrade to this version did with the inventory of the
-# previous release, by the API and by the database file. 0.4.2 has no migration: the
-# schema stays at revision 0006 and nothing that is held is changed. What changes is
-# how a moment that names no zone is read from 0.4.2 on, which leaves the moments that
-# are stored as they are.
+# previous release, by the API and by the database file. Where there is no migration,
+# the schema stays where it was and nothing that is held is changed. Where there is
+# one, what it adds and what it is meant to change is what its file says, and the rest
+# must be as it was.
 carried_inventory() {
-    local full made
+    local full how=exact
+    if migrating; then how=migrated; fi
     witness_carried fields "after the upgrade,"
-    tables_carried "after the upgrade,"
+    tables_carried "after the upgrade," "$how"
 
     # The uniquenesses are tried as well as read: a duplicate must still be refused.
     api GET "/items/$witness_full"
@@ -1685,43 +2102,26 @@ carried_inventory() {
     api POST /items '{"asset_tag": "uw-at-0003", "name": "Upgrade witness, a second draft"}'
     expect "pkg and the asset tag among all items: a second UW-AT-0003, which the draft has, is refused" \
         "$status $(json 'd["errors"][0]["field"]')" "409 asset_tag"
-    [ "${#witness_groups[@]}" -gt 0 ] || return 0
-    api POST /device-groups '{"type": "custom", "name": "UPGRADE-STACK"}'
-    expect "pkg and the name of a group: a second upgrade-stack, written in capitals, is refused" \
-        "$status $(json 'd["errors"][0]["field"]')" "409 name"
+    if [ "${#witness_groups[@]}" -gt 0 ]; then
+        api POST /device-groups '{"type": "custom", "name": "UPGRADE-STACK"}'
+        expect "pkg and the name of a group: a second upgrade-stack, written in capitals, is refused" \
+            "$status $(json 'd["errors"][0]["field"]')" "409 name"
 
-    api GET "/device-groups/$witness_stack"
-    expect "pkg the stack says of itself what it said: the serial number of the master that is seen, both masters, when the one was seen, the members it is to have and has, what is observed of it and its health" \
-        "$status $(json '[d["serial_number"], d["serial_source"], d["master"]["serial_number"], d["observed_master"]["serial_number"], d["master_observed_at"], d["master_as_intended"], d["expected_members"], d["member_count"], d["observed_status"], d["observed_at"], d["health"]]')" \
-        "200 $stack_before"
-    expect "pkg the inventory is counted as $previous_version counted it: items, components, managed nodes, support weight, value and cost ($counted_before)" \
-        "$(counted_now)" "$counted_before"
-    expect "pkg and so are the cluster that is managed by its members, as two managed nodes, and the stack that is one switch alone, with no discount" \
-        "$(counted_now '?filter=group.name:eq:upgrade-cluster') $(counted_now '?filter=group.name:eq:upgrade-lone')" \
-        "$cluster_before $lone_before"
-    expect "pkg GET /reports/duplicates lists the address that is twice under one network as it did" \
-        "$(duplicates 192.0.2.101)" "$duplicates_before"
-    [ "$previous_version" = 0.4.1 ] || return 0
-
-    # A moment that names no zone. 0.4.1 read it as UTC and stored that moment. From
-    # 0.4.2 it is read in the application's time zone, America/New_York here. What is
-    # stored is a moment, and the upgrade changes none: only what is entered from now
-    # on is read the new way.
-    api GET "/items/$witness_moment"
-    made=$(json_field observed_at)
-    api GET "/items/$witness_item"
-    api PATCH "/items/$witness_item" "{\"row_version\": $(json_field row_version), \"observed_status\": \"present\", \"observed_at\": \"2026-11-03T09:00:00\"}"
-    expect "pkg the moment that $previous_version stored for 09:00 with no zone is the moment it was, 09:00 in UTC; the same words given to $version are 09:00 in New York, 14:00 in UTC" \
-        "$made $status $(json_field observed_at)" "2026-11-03T09:00:00Z 200 2026-11-03T14:00:00Z"
-    api GET '/items?filter=observed_at:eq:2026-11-03T09:00:00&sort=serial_number'
-    made=$(json '[i["serial_number"] for i in d["items"]]')
-    api GET '/items?filter=observed_at:eq:2026-11-03T09:00:00Z&sort=serial_number'
-    expect "pkg a filter on that moment reads its value the same way: with no zone it finds the item that was told so after the upgrade, and with Z the one from before" \
-        "$made $status $(json '[i["serial_number"] for i in d["items"]]')" '["UWN0000X001"] 200 ["UWN0000F001"]'
-    api GET "/device-groups/$witness_stack"
-    api PATCH "/device-groups/$witness_stack" "{\"row_version\": $(json_field row_version), \"master_observed_at\": \"2026-11-03T09:00:00\"}"
-    expect "pkg and so it is with the moment a master was seen at: stated again with no zone, it is 14:00 in UTC where it was 09:00" \
-        "$status $(json_field master_observed_at)" "200 2026-11-03T14:00:00Z"
+        expect "pkg the inventory is counted as $previous_version counted it: items, components, managed nodes, support weight, value and cost ($counted_before)${counted_view:+, but for the items that are meant to be counted otherwise, which are looked at by themselves}" \
+            "$(counted_now "$counted_view")" "$counted_before"
+        if [ -n "$witness_lone" ]; then
+            expect "pkg and so are the cluster, by how it is managed, and the stack that is one switch alone, with no discount" \
+                "$(counted_now '?filter=group.name:eq:upgrade-cluster') $(counted_now '?filter=group.name:eq:upgrade-lone')" \
+                "$cluster_before $lone_before"
+        else
+            expect "pkg and so is the cluster, by how it is managed" \
+                "$(counted_now '?filter=group.name:eq:upgrade-cluster')" "$cluster_before"
+        fi
+        expect "pkg GET /reports/duplicates lists the address that is twice under one network as it did" \
+            "$(duplicates 192.0.2.101)" "$duplicates_before"
+    fi
+    # Last, what is new is tried on what was carried over, by the files that have it.
+    particular after
 }
 
 previous_release() {
@@ -1729,10 +2129,8 @@ previous_release() {
 
     section "the previous release, $previous_version, with accounts and a changed configuration"
     previous_package
+    pair_said
     install_previous
-    revision_before=$(revision_now)
-    check "pkg hirdir admin check of $previous_version names its schema revision ($revision_before)" \
-        test -n "$revision_before"
 
     # What an operator does to the conffiles: another prefix, which hirdir-setup writes
     # into the nginx snippet, and a value changed in the configuration file.
@@ -1779,8 +2177,10 @@ previous_release() {
     expect "pkg a service token is created for it" "$status" 201
     service_secret=$(json_field secret)
 
-    # A previous release that already keeps the inventory is given some to carry over.
+    # A previous release that already keeps the inventory is given some to carry over,
+    # and with it what the files of this pair make for their migration or release.
     witness_inventory
+    particular before
 
     sign_in upgrade-engineer not-the-access-code
     expect "pkg a wrong access code is refused" "$status" 401
@@ -1834,10 +2234,12 @@ previous_release() {
 }
 
 upgrade() {
-    local backup renewed created name
+    local backup renewed created name line put_in="" missing="" unsaid=""
 
     section "apt upgrades $previous_version to $version"
+    upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
+        upgrade_days="$upgrade_days $(date -u +%F)"
         pass "pkg apt upgrades hirdir $previous_version to $version"
     else
         fail "pkg apt upgrades hirdir $previous_version to $version"
@@ -1845,7 +2247,7 @@ upgrade() {
     fi
     cp "$work/apt.log" "$work/install.log"
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if [ "$head" = "$revision_before" ]; then
+    if ! migrating; then
         expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_then)" \
             "$(table_rows audit_events "$(table_columns audit_events)")" "$events_then"
     fi
@@ -1870,20 +2272,28 @@ upgrade() {
     # The settings file is no conffile either, and the operator edited it. Where
     # $version has a setting that $previous_version had not, dpkg would have stopped
     # this upgrade to ask: the package puts the new setting into the file, commented
-    # out at its default, and changes nothing that was there. That was so from 0.2.1 to
-    # 0.3.0, which brought max_megabytes. Where the two versions ship the same
-    # settings, as 0.3.0, 0.4.0 and 0.4.1 do, the file is left as it is.
-    if [ "$(shipped_settings "$deb" | sha256sum)" != "$(shipped_settings "$previous" | sha256sum)" ]; then
+    # out at its default, and changes nothing that was there. Which settings those are
+    # is read from the two packages. Where the new version has none that the previous
+    # one had not, the file is left as it is.
+    new_settings >"$work/new-settings.txt"
+    if [ -s "$work/new-settings.txt" ]; then
         expect "pkg the settings file holds every line the operator had, in its place, and more after them" \
             "$(settings_kept "$work/settings-before.toml")" "kept more"
-        expect "pkg the value the operator set is still set, and the new setting is there, commented out at its default" \
-            "$(inside grep -cx -e 'session_hours = 11' -e '# max_megabytes = 20' -e '\[files\]' /etc/hirdir/config.toml 2>&1)" 3
+        while IFS=$'\t' read -r name line; do
+            grep -qxF -- "$line" "$work/settings-now.toml" || missing="$missing$name "
+            case $name in "["*) continue ;; esac
+            put_in="${put_in:+$put_in, }$name"
+            grep -q "^hirdir: /etc/hirdir/config.toml has the new settings of this version.*[ ,]${name}[,.].*Nothing you set was changed" "$work/install.log" ||
+                unsaid="$unsaid$name "
+        done <"$work/new-settings.txt"
+        expect "pkg the value the operator set is still set, and every setting that $version has and $previous_version had not is there, commented out at its default, under its heading ($put_in)" \
+            "$(inside grep -cx 'session_hours = 11' /etc/hirdir/config.toml 2>&1) $missing" "1 "
         expect "pkg the file as it was is kept beside it" \
             "$(inside bash -c 'cat /etc/hirdir/config.toml.*.bak | sha256sum' 2>&1)" "$(sha256sum <"$work/settings-before.toml")"
-        check "pkg the upgrade says which settings it put in, and that nothing the operator set was changed" \
-            grep -q '^hirdir: /etc/hirdir/config.toml has the new settings of this version.*files.max_megabytes.*Nothing you set was changed' "$work/install.log"
+        expect "pkg the upgrade says which settings it put in, each by its name, and that nothing the operator set was changed" \
+            "$unsaid" ""
     else
-        expect "pkg $version ships the settings $previous_version did, and the file is as the operator left it, with no copy made beside it" \
+        expect "pkg $version has no setting that $previous_version had not, and the file is as the operator left it, with no copy made beside it" \
             "$(settings_kept "$work/settings-before.toml") $(inside bash -c 'ls /etc/hirdir | grep -c "\.bak$"' 2>&1)" "kept same 0"
         check "pkg and the upgrade says nothing of the settings file" \
             bash -c "! grep -q '/etc/hirdir/config.toml' '$work/install.log'"
@@ -1911,24 +2321,20 @@ upgrade() {
     expect "pkg hirdir-setup --renew finds nothing left to change" "$(inside hirdir-setup --renew --yes 2>&1)" \
         "Nothing to change: /etc/nginx/snippets/hirdir.conf is as this version of hirdir ships it, for $prefix/"
 
-    if [ "$head" = "$revision_before" ]; then
-        expect "pkg hirdir admin check: the schema is at revision $head, where it was, because $version has no migration" \
+    if ! migrating; then
+        expect "pkg hirdir admin check: the schema is at revision $head, where it was, because $version has no migration after it" \
             "$(inside hirdir admin check 2>&1 | sed -n 's/^schema revision: *//p')" "$head (this version expects $head)"
     else
-        expect "pkg hirdir admin check: the migration brought the schema from $revision_before to $head" \
+        expect "pkg hirdir admin check: $crossing brought the schema from $revision_before to $head" \
             "$(inside hirdir admin check 2>&1 | sed -n 's/^schema revision: *//p')" "$head (this version expects $head)"
     fi
     check "pkg hirdir admin check exits 0" inside hirdir admin check
-    if [ "$head" = "$revision_before" ]; then
+    created=$(migrations "$deb" tables "$revision_before")
+    if ! migrating; then
         expect "pkg and the schema is the same, statement for statement: every table, index and trigger" \
             "$(schema_sum /var/lib/hirdir/hirdir.db)" "$schema_then"
-    elif [ -n "$(migrations tables "$revision_before")" ]; then
-        created=""
-        for name in $(migrations tables "$revision_before"); do
-            created="${created:+$created }$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
-        done
-        expect "pkg every table that the migration creates is there ($(migrations tables "$revision_before"))" \
-            "$created" "$(migrations tables "$revision_before")"
+    elif [ -n "$created" ]; then
+        expect "pkg every table that the migration creates is there ($created)" "$(tables_there "$created")" "$created"
     else
         expect "pkg the migration creates no table: the database has the $tables_then tables it had" \
             "$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")" "$tables_then"
@@ -1959,15 +2365,14 @@ upgrade() {
         "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
 
     if [ -n "$witness_entry" ]; then
-        local weight_after=$witness_weight row_version hid retired wanted place
-        if [ "$previous_version" = 0.2.0 ]; then weight_after=0.13; fi
+        local row_version hid retired wanted place
         api GET /vendors
         expect "pkg the vendor from before is as it was" "$status $(unchanged vendors)" "200 same"
         expect "pkg and every vendor there was is marked reviewed" \
             "$(json '[len(d["items"]), sorted({v.get("review_status") for v in d["items"]})]')" '[1, ["reviewed"]]'
         api GET "/catalog-entries/$witness_entry"
         expect "pkg the catalog entry from before has its value, and its support weight to two places" \
-            "$status $(json_field est_value) $(json_field support_weight)" "200 18000.00 $weight_after"
+            "$status $(json_field est_value) $(json_field support_weight)" "200 18000.00 $witness_weight_after"
         row_version=$(json_field row_version)
         api GET "/items/$witness_item"
         expect "pkg the item from before has its own support weight and inherits the value" \
@@ -2015,7 +2420,7 @@ upgrade() {
                 wanted="${wanted}204 "
             done
             api GET "$every_address"
-            expect "pkg the ${#witness_groups[@]} groups are retired, and the eight addresses and then the two networks are removed, with $version" \
+            expect "pkg the ${#witness_groups[@]} groups are retired, and the $addresses_made addresses and then the two networks are removed, with $version" \
                 "$retired$(json_field total)" "${wanted}0"
         fi
     fi
@@ -3590,12 +3995,15 @@ purge() {
 # ---- the pass -----------------------------------------------------------------------------
 
 case $mode in
-    upgrade) title="upgrade from hirdir $previous_version to $version" ;;
-    failed-upgrade) title="an upgrade from hirdir $previous_version to $version whose migration fails" ;;
+    upgrade) title="upgrade from hirdir $previous_version to $version, with $crossing" ;;
+    failed-upgrade)
+        title="an upgrade from hirdir $previous_version to $version whose migration fails"
+        if ! migrating; then title="an upgrade from hirdir $previous_version to $version and back, with no migration that could fail"; fi
+        ;;
     *) title="fresh install of hirdir $version" ;;
 esac
 printf '\n==== package-test, the %s pass: %s\n' "$mode" "$title"
-head=$(migrations head)
+if [ "$mode" != fresh ]; then load_particulars; fi
 
 start_container
 if [ "$mode" = failed-upgrade ]; then
@@ -3617,28 +4025,32 @@ else
             skip "pkg upgrade from the previous release: --fresh asks for the fresh install alone, so no upgrade was tested by this run"
         fi
     fi
-    installed
-    setup
-    through_nginx
-    files
-    inventory
-    reinstall
-    state
-    if [ "$e2e" = 1 ]; then browser_scenarios; fi
-    another_prefix
-    own_site
+    if [ "$alone" = 1 ]; then
+        skip "pkg everything the fresh pass does, on the upgraded installation: --upgrade-alone asks for the upgrade alone, so this run stops where the upgrade pass goes on to it, and is not the release check"
+    else
+        installed
+        setup
+        through_nginx
+        files
+        inventory
+        reinstall
+        state
+        if [ "$e2e" = 1 ]; then browser_scenarios; fi
+        another_prefix
+        own_site
+    fi
     cookies=$(grep -ci '^set-cookie:' "$work/headers.all" || true)
     expect "S02 none of the $responses responses of this pass set a cookie" "$cookies" 0
-    purge
+    if [ "$alone" != 1 ]; then purge; fi
 fi
 
 # ---- summary --------------------------------------------------------------------------
 
 section "summary of the $mode pass"
-if [ "$mode" != failed-upgrade ]; then
+if [ "$mode" != failed-upgrade ] && [ "$alone" != 1 ]; then
     echo "package-test: $(basename "$deb"), web UI in the package: $web_ui"
 fi
-echo "package-test: $mode: $passes PASS, $failures FAIL, $skips SKIP ($title)"
+echo "package-test: $mode: $passes PASS, $failures FAIL, $skips SKIP, in $SECONDS s ($title)"
 if [ "$failures" -gt 0 ]; then
     echo "package-test: $failures check(s) FAILED in the $mode pass"
     echo "--- journal of hirdir.service"

@@ -68,45 +68,65 @@ A release is not done until `make package-test` has upgraded the previous releas
 it. The test installs the previous release in a container, fills it with accounts, a
 group, a role grant, a service token, an inventory and audit events, upgrades it with
 apt, and checks that all of it is still there and still works. The inventory is made
-for what a migration could harm: items with every kind of value between them, a draft
-and a retired one among them, minor items, a stack, a cluster and a controller domain
-with their members, memberships that were ended, a replacement, networks, addresses,
-and choices of the site's own. After the upgrade each item, group, membership and
-address must be as it was, field for field, at the `row_version` it had, each item
-with its history, and the tables of the inventory are read from the database file as
-well, their columns, rows, indexes and uniquenesses. What a migration is meant to
-change in what a site has is made as well, left out of that comparison by name, and
-looked at by itself: for 0.4.1 the memberships of items that had left the team's
-hands, which the upgrade ends, each with an event in the audit trail. A release with
-no migration changes nothing that is held: every table of the inventory must then have
-the rows it had, the schema must be the same statement for statement, and the audit
-trail must hold no event of the upgrade. What such a release says differently of what
-it holds is treated in the same way. For 0.4.2 that is the reason given for a health
-that is not known, and how a time with no zone is read: the test keeps a moment that
-0.4.1 stored from such a time, and sees that the upgrade leaves it the moment it was.
+for what an upgrade could harm, through the API of the previous release, of every kind
+of record that release can store: items with every kind of value between them, a draft
+and a retired one among them, minor items, stacks, clusters and a controller domain
+with their members, memberships that were ended, a replacement, conditions and
+observations, networks, addresses, and choices of the site's own. After the upgrade
+each item, group, membership, address and choice must be as it was, field for field,
+at the `row_version` it had, each item with its history, and the tables of the
+inventory are read from the database file as well, their columns, rows, indexes and
+uniquenesses.
+
+The test is written for no pair of releases. It reads from the two packages which
+versions they are and which revision the migrations of each end at, and so whether the
+upgrade runs a migration, and which. What a release has to do for it follows from
+what the release is:
+
+- **A release with no migration does nothing.** Nothing that is held may change: every
+  table of the inventory must have the columns and the rows it had, the schema must be
+  the same statement for statement, and the audit trail must hold no event of the
+  upgrade.
+- **A release with a migration adds one file**,
+  `packaging/package-test.d/migration-<revision>.sh`, and changes nothing else. The
+  file makes, with the previous release, what the migration could harm or is meant to
+  change in what a site has. It names what is meant to change, so that the comparison
+  leaves it out by name, and looks at it by itself after the upgrade. It names the
+  columns, indexes and foreign keys that the migration adds to the tables of the
+  inventory, which must then be there, and no other. `migration-0006.sh` is the one to
+  read first: for 0.4.1 it is the memberships of items that had left the team's hands,
+  which the upgrade ends, each with an event in the audit trail. Where a migration
+  provides for something the previous release could not store, the file shows that it
+  could not, writes it into the database, and says so: 0.4.0 refuses a choice in the
+  list of conditions, which migration `0006` is written to leave alone when it finds
+  one. Until the file is there the migration is given what every upgrade is given, and
+  both upgrade passes print a `SKIP` line that says its own checks are not written. A
+  release is not done with that line in its summary.
+- **A release that says or reads differently something that it holds as before**, with
+  no migration, adds `release-<version>.sh` in the same place, and it is treated in the
+  same way. Most releases have none. For 0.4.2 it is the reason given for a health
+  that is not known, and how a time with no zone is read: the test keeps a moment that
+  0.4.1 stored from such a time, and sees that the upgrade leaves it the moment it was.
+- **A release that brings a new kind of record** adds it to the inventory in
+  `packaging/package-test.sh`, to be made where the previous release is at the revision
+  that brought it. That is for the upgrades to come, which then carry it: the upgrade
+  to the release itself starts from a release that could not store it.
 
 The test also makes the new version's migration fail, to see that the upgrade stops,
 names its backup, leaves the inventory as it was and can be undone. It does that in
-the database, so that the package tested is the one that was built. Where the new
-version creates a table, the table it creates last is put in its way. Where it creates
-none, as 0.4.1 creates none, a trigger refuses the new revision when the migration
-comes to write it down, which is the last thing a migration does, so everything else
-it does has been done and must be undone. Only a release with no migration at all has
-nothing that could fail: nothing writes a revision, so the trigger would never be
-asked. The pass then says so in a `SKIP` line, which stays in the summary of such a
-release, as it does for 0.4.2, and is read as what it is. It goes on to upgrade and to
-go back by installing the previous package alone, with nothing restored, because that
-is the way back that [install.md](install.md#going-back-to-the-release-before) gives
-for a release that changed no schema. The passes are
-described under "Testing" in [architecture.md](architecture.md#testing).
-
-A release whose migration changes a table that holds a site's records adds to that
-inventory what its change could harm, and a check that it was not harmed. The
-inventory is made through the API of the previous release, so it holds what that
-release could store. Where a migration provides for something the previous release
-could not store, the test shows that it could not, writes it into the database, and
-says so: 0.4.0 refuses a choice in the list of conditions, which migration `0006` is
-written to leave alone when it finds one.
+the database, so that the package tested is the one that was built, and reads from the
+package how. Where the new version creates a table, the table it creates last is put
+in its way. Where it creates none, as 0.4.1 creates none, a trigger refuses the new
+revision when the migration comes to write it down, which is the last thing a
+migration does, so everything else it does has been done and must be undone. Only a
+release with no migration at all has nothing that could fail: nothing writes a
+revision, so the trigger would never be asked. The pass then says so in a `SKIP` line,
+which stays in the summary of such a release, as it does for 0.4.2, and is read as
+what it is. It goes on to upgrade and to go back by installing the previous package
+alone, with nothing restored, because that is the way back that
+[install.md](install.md#going-back-to-the-release-before) gives for a release that
+changed no schema. The passes, and what a file of `packaging/package-test.d/` holds,
+are described under "Testing" in [architecture.md](architecture.md#testing).
 
 The run ends with its counts and with every `FAIL` and `SKIP` line once more. Read each
 `SKIP` line before a release: it names something that this run did not test.
@@ -131,7 +151,10 @@ gh release download v<previous version> --dir dist --pattern 'hirdir_*_amd64.deb
 
 `packaging/package-test.sh --fresh` runs the fresh install alone, for work on the
 package between releases. It prints a `SKIP` line for the upgrade and is not the
-release check.
+release check. `packaging/package-test.sh --upgrade-alone` runs the upgrade pass up to
+where it goes on to what the fresh pass does, for work on the upgrade passes and for
+trying a pair of older releases named by `PREVIOUS_DEB` and `DEB`. It prints a `SKIP`
+line for what it left out and is not the release check either.
 
 ## Release notes
 
