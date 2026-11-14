@@ -391,6 +391,7 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
     "Type",
     "Function",
     "Owner",
+    "Operator",
     "Tag",
   ]);
 

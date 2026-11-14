@@ -354,6 +354,64 @@ describe("groups and addresses in the item grid", () => {
   });
 });
 
+describe("the operator in the item grid", () => {
+  const LEE = "0193a1f4-0000-7000-8000-0000000000e1";
+  const STACK = "g-1";
+  const operator = (source: InForce["source"], hid: string | null) => ({
+    value: source === "none" ? null : LEE,
+    label: source === "none" ? null : "Lee Marchetti",
+    source,
+    source_hid: hid,
+  });
+  const withOperator = (item: Item, source: InForce["source"], hid: string | null) =>
+    ({
+      ...item,
+      effective: { ...item.effective, operator_hid: operator(source, hid) },
+    }) as unknown as Item;
+  // The switch is a member of the stack g-1, which has the operator; the supply is in it.
+  const fromStack = withOperator(chassis, "device_group", STACK);
+  const fromSwitch = withOperator(supply, "parent_item", SWITCH);
+  const own = withOperator(chassis, "own", SWITCH);
+  const nobody = withOperator(chassis, "none", null);
+
+  it("shows the operator in force by name, and nothing for an item nobody is assigned to", () => {
+    expect(column("operator.name").value(fromStack)).toBe("Lee Marchetti");
+    expect(column("operator.name").value(own)).toBe("Lee Marchetti");
+    expect(column("operator.name").value(nobody)).toBe("");
+  });
+
+  it("marks it as inherited where it comes from the group or from the item above", () => {
+    expect(column("operator.name").effective?.(fromStack)?.source).toBe("device_group");
+    expect(column("operator.name").effective?.(fromSwitch)?.source).toBe("parent_item");
+    expect(column("operator.name").effective?.(own)?.source).toBe("own");
+  });
+
+  it("names the record it came from as the hint of the cell", () => {
+    expect(cellHint(column("operator.name"), fromStack)).toBe(
+      "Inherited from the stack site2-sw-stack1",
+    );
+    expect(cellHint(column("operator.name"), fromSwitch)).toBe(
+      "Inherited from the item it is in, site2-sw-access-01",
+    );
+    expect(cellHint(column("operator.name"), own)).toBe("");
+    expect(cellHint(column("operator.name"), nobody)).toBe("");
+  });
+
+  it("filters and sorts by the name of the operator in force, exports as `operator`, and is hidden at first", () => {
+    expect(asked("operator.name")).toMatchObject({
+      field: "operator.name",
+      sortField: "operator.name",
+      kind: "text",
+    });
+    expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "operator.name" }])).toEqual([
+      "hid",
+      "name",
+      "operator",
+    ]);
+    expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.name")?.hide).toBe(true);
+  });
+});
+
 describe("the location, the site and the region in the item grid", () => {
   const ROOM = "0193a1f4-0000-7000-8000-0000000000c1";
   const SITE = "0193a1f4-0000-7000-8000-0000000000c2";

@@ -251,6 +251,32 @@ describe("buildBulk", () => {
     expect(noReason.body.set).toEqual({ lifecycle_state: "Prod" });
   });
 
+  it("sets an operator by the HID of the contact that was chosen, and clears it with null", () => {
+    const fields: BulkField[] = [
+      ...FIELDS,
+      { name: "operator", label: "Operator", kind: "contact", clearable: true },
+    ];
+    const set = buildBulk(
+      fields,
+      draft({ lines: [{ name: "operator", clear: false, value: "k-lee" }] }),
+      ROWS,
+    );
+    expect(set.body.set).toEqual({ operator: "k-lee" });
+    // Cleared, each item has the operator it has from above again.
+    const cleared = buildBulk(
+      fields,
+      draft({ lines: [{ name: "operator", clear: true, value: "k-lee" }] }),
+      ROWS,
+    );
+    expect(cleared.body.set).toEqual({ operator: null });
+    const blank = buildBulk(
+      fields,
+      draft({ lines: [{ name: "operator", clear: false, value: "" }] }),
+      ROWS,
+    );
+    expect(blank.errors.operator).toBe("Give a value, or choose to clear the field.");
+  });
+
   it("sets a location by the HID of the one that was chosen, and clears it with null", () => {
     const fields: BulkField[] = [
       ...FIELDS,

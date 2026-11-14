@@ -4,8 +4,10 @@ import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Problem } from "../components/Problem";
 import { HeadlineTotals } from "../components/Totals";
+import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useSettings } from "../lib/lists";
+import { unassignedComponents, unassignedPath } from "../lib/operators";
 import { allows, roleLabel } from "../lib/roles";
 import { settingList } from "../lib/summary";
 
@@ -15,9 +17,12 @@ import { settingList } from "../lib/summary";
  * The server counts them. No money is shown here: that is in the management report.
  */
 function Headline() {
+  // By operator, so that the one answer also says what nobody is assigned to: the
+  // components of its blank row.
   const summary = useLoad("home-summary", (signal) =>
-    api.request("get", "/api/v1/reports/summary", { signal }),
+    api.request("get", "/api/v1/reports/summary", { query: { by: "operator" }, signal }),
   );
+  const unassigned = unassignedComponents(summary.data?.rows);
   const settings = useSettings();
   return (
     <section aria-labelledby="headline">
@@ -33,6 +38,20 @@ function Headline() {
           totals={summary.data.totals}
           countKinds={settingList(settings.data, "count_kinds")}
         />
+      )}
+      {summary.data && (
+        <p data-testid="unassigned" data-count={unassigned}>
+          {unassigned > 0 ? (
+            <>
+              <Link to={unassignedPath()}>
+                {plural(unassigned, "component has", "components have")} no operator
+              </Link>
+              : nobody of the team is assigned to look after {unassigned === 1 ? "it" : "them"}.
+            </>
+          ) : (
+            <span className="muted">Every component has an operator.</span>
+          )}
+        </p>
       )}
       <p>
         <Link to="/reports">The summary</Link>, by vendor, owner, state, health and more, for any

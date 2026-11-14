@@ -11,6 +11,7 @@ import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { MemberPicker } from "../components/MemberPicker";
+import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
@@ -41,6 +42,7 @@ import {
 import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
+import { contactLabel, groupOperatorSource } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import {
@@ -203,6 +205,25 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     kind: "text",
     value: (group) => group.owner?.label,
     width: 170,
+  },
+  {
+    // The group's own operator, by name: what the list of groups filters and sorts by.
+    // A group with none of its own may have one from a group it is nested in, which its
+    // page shows and the hint of the cell says.
+    id: "operator.name",
+    header: "Operator",
+    kind: "text",
+    column: "operator",
+    value: (group) => group.operator?.name,
+    hint: (group) => {
+      const inForce = group.effective.operator_hid;
+      const from = groupOperatorSource(inForce, group);
+      return from && inForce.label
+        ? `None of its own: ${inForce.label}, inherited from ${from.text}`
+        : "";
+    },
+    hide: true,
+    width: 180,
   },
   {
     // True for a group whose owner is outside the operations team. A file of groups
@@ -432,6 +453,16 @@ function groupSpecs(
           ? ownerOption({ ...owner, exception_reason: current?.owner_exception_reason ?? null })
           : null,
       ),
+    },
+    {
+      name: "operator_hid",
+      label: "Operator",
+      kind: "contact",
+      blank: "None of its own",
+      options: current?.operator
+        ? [{ value: current.operator.hid, label: contactLabel(current.operator) }]
+        : [],
+      hint: "The person of the team who looks after it. Its members have this operator unless they have their own.",
     },
     {
       name: "location_hid",
@@ -811,6 +842,20 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
             </dd>
           </>
         )}
+        <dt>Operator</dt>
+        <dd>
+          <Operator
+            effective={group.effective.operator_hid}
+            from={groupOperatorSource(group.effective.operator_hid, group)}
+            testId="group-operator"
+          />
+          {typeof group.effective.operator_hid.value === "string" && (
+            <span className="muted" data-testid="group-operator-members">
+              {" "}
+              · its members have this operator unless they have their own
+            </span>
+          )}
+        </dd>
         <dt>Location</dt>
         <dd data-testid="group-location">
           {location ? (
@@ -1551,6 +1596,19 @@ function GroupDetails({ group, onSaved, onReload }: GroupDetailsProps) {
         <EditForm<DeviceGroup, Schemas["DeviceGroupPatch"]>
           specs={specs}
           record={group}
+          {...(group.operator_hid
+            ? {}
+            : {
+                notes: {
+                  operator_hid: (
+                    <OperatorNote
+                      effective={group.effective.operator_hid}
+                      from={groupOperatorSource(group.effective.operator_hid, group)}
+                      what="group"
+                    />
+                  ),
+                },
+              })}
           save={(body) =>
             api.request("patch", "/api/v1/device-groups/{hid}", { path: { hid: group.hid }, body })
           }

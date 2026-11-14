@@ -29,6 +29,7 @@ export const SUMMARY_BY: ReadonlyArray<Option & { value: By }> = [
   { value: "type", label: "Type" },
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
+  { value: "operator", label: "Operator" },
   { value: "site", label: "Site" },
   { value: "region", label: "Region" },
   { value: "lifecycle_state", label: "Lifecycle state" },
@@ -50,6 +51,7 @@ export const MANAGEMENT_BY: ReadonlyArray<Option & { value: ManagementBy }> = [
   { value: "type", label: "Type" },
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
+  { value: "operator", label: "Operator" },
   { value: "tag", label: "Tag" },
 ];
 
@@ -60,7 +62,8 @@ const NONE: Readonly<Record<By, string>> = {
   type: "No type",
   function: "No function",
   owner: "No owner",
-  operator: "Nobody: no operator",
+  // What nobody of the team is assigned to look after.
+  operator: "Nobody is assigned",
   // The items that are nowhere: no location in force, and so no site and no region.
   site: "Nowhere: no location",
   region: "Nowhere: no location",

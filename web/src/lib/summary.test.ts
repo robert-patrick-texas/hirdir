@@ -49,13 +49,14 @@ const KINDS = [
 ];
 
 describe("what a summary is by", () => {
-  it("offers the twelve groupings the server has, the site and the region among them", () => {
+  it("offers the thirteen groupings the server has, the operator, the site and the region among them", () => {
     expect(SUMMARY_BY.map((by) => by.value)).toEqual([
       "vendor",
       "kind",
       "type",
       "function",
       "owner",
+      "operator",
       "site",
       "region",
       "lifecycle_state",
@@ -68,13 +69,15 @@ describe("what a summary is by", () => {
     expect(isBy("health")).toBe(true);
     expect(isBy("site")).toBe(true);
     expect(isBy("region")).toBe(true);
+    expect(isBy("operator")).toBe(true);
     expect(isBy("contract")).toBe(false);
     expect(byLabel("site")).toBe("Site");
+    expect(byLabel("operator")).toBe("Operator");
     expect(byLabel("lifecycle_state")).toBe("Lifecycle state");
     expect(byLabel(null)).toBe("");
   });
 
-  it("offers the management report its eight, the site first, with neither condition nor health", () => {
+  it("offers the management report its nine, the site first, with neither condition nor health", () => {
     // By site is what the report shows unless asked otherwise, so it is offered first.
     expect(MANAGEMENT_BY.map((by) => by.value)).toEqual([
       "site",
@@ -84,8 +87,10 @@ describe("what a summary is by", () => {
       "type",
       "function",
       "owner",
+      "operator",
       "tag",
     ]);
+    expect(isManagementBy("operator")).toBe(true);
     expect(isManagementBy("vendor")).toBe(true);
     expect(isManagementBy("health")).toBe(false);
     expect(isManagementBy("condition")).toBe(false);
@@ -111,6 +116,11 @@ describe("rowLabel", () => {
     );
     expect(rowLabel("site", { key: null, label: null })).toBe("Nowhere: no location");
     expect(rowLabel("region", { key: null, label: null })).toBe("Nowhere: no location");
+  });
+
+  it("labels an operator by the contact's name, and the blank row as nobody being assigned", () => {
+    expect(rowLabel("operator", { key: OWNER, label: "Lee Marchetti" })).toBe("Lee Marchetti");
+    expect(rowLabel("operator", { key: null, label: null })).toBe("Nobody is assigned");
   });
 
   it("shows a record by what people call it", () => {
