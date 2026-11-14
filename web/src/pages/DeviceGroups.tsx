@@ -5,6 +5,13 @@ import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConfirmButton } from "../components/ConfirmButton";
+import {
+  FromAbove,
+  InheritedFrom,
+  MembersOfTheirOwn,
+  OwnerNote,
+  PlaceNote,
+} from "../components/Descent";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
@@ -17,6 +24,16 @@ import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
 import { addressList, managementText, networkLabels } from "../lib/addresses";
+import {
+  aboveGroup,
+  descentHint,
+  inheritedHint,
+  isFromAbove,
+  locationHint,
+  type Named,
+  ownerSource,
+} from "../lib/descent";
+import { effectiveLabel } from "../lib/effective";
 import { itemsPath } from "../lib/filter";
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
@@ -60,7 +77,7 @@ import {
   type Option,
 } from "../lib/patch";
 import { pickLabel } from "../lib/pick";
-import { placePath, planMembersPath } from "../lib/places";
+import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 
@@ -206,10 +223,14 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 220,
   },
   {
+    // The owner in force: the group's own, or that of the group it is nested in, which
+    // shows lighter. It is what the list filters and sorts by.
     id: "owner.label",
     header: "Owner",
     kind: "text",
-    value: (group) => group.owner?.label,
+    value: (group) => effectiveLabel(group.effective.owner_hid),
+    effective: (group) => group.effective.owner_hid,
+    hint: (group) => inheritedHint(ownerSource(group.effective.owner_hid, groupAbove(group))),
     width: 170,
   },
   {
@@ -262,27 +283,32 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     width: 170,
   },
   {
-    // The location of a group that is in one place, by its name: what the list filters
-    // and sorts by. The whole path is the hint of the cell, and what an export writes.
+    // The location in force of a group that is in one place, by its name: its own, or
+    // that of the group it is nested in, which shows lighter. It is what the list
+    // filters and sorts by. The whole path is the hint of the cell, with where it came
+    // from, and an export writes the path.
     id: "location.name",
     header: "Location",
     kind: "text",
     column: "location",
-    value: (group) => group.location?.name,
-    hint: (group) => group.location?.path,
+    value: (group) => nameOf(group.effective.location_hid.label),
+    effective: (group) => group.effective.location_hid,
+    hint: (group) => locationHint(group.effective.location_hid),
     hide: true,
     width: 200,
   },
   {
-    // Where the group is going: a place that is not in use yet. The list finds it with
+    // Where the group is going: a place that is not in use yet, by its own plan or by
+    // that of the group it is nested in. The list finds it with
     // `planned_location:within:<place>` in the filter box; the column has no filter.
     id: "planned_location",
     header: "Planned location",
     kind: "text",
     field: null,
     sortField: null,
-    value: (group) => group.planned_location?.name,
-    hint: (group) => group.planned_location?.path,
+    value: (group) => nameOf(group.effective.planned_location_hid.label),
+    effective: (group) => group.effective.planned_location_hid,
+    hint: (group) => locationHint(group.effective.planned_location_hid),
     hide: true,
     width: 200,
   },
@@ -291,7 +317,8 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Site",
     kind: "text",
     column: null,
-    value: (group) => group.location?.site,
+    value: (group) => group.effective.location_hid.site,
+    effective: (group) => group.effective.location_hid,
     hide: true,
     width: 150,
   },
@@ -301,7 +328,8 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Region",
     kind: "text",
     column: null,
-    value: (group) => group.location?.region,
+    value: (group) => group.effective.location_hid.region,
+    effective: (group) => group.effective.location_hid,
     hide: true,
     width: 150,
   },
@@ -419,6 +447,7 @@ function groupSpecs(
   type: string,
 ): FieldSpec[] {
   const { owner, parent, location } = current ?? {};
+  const above = current ? aboveGroup(current) : "";
   const managed: FieldSpec[] =
     type === "cluster"
       ? [
@@ -477,7 +506,8 @@ function groupSpecs(
       name: "owner_hid",
       label: "Owner",
       kind: "choice",
-      blank: "No owner",
+      blank: above ? "None of its own" : "No owner",
+      hint: "Its members with no owner of their own have this owner.",
       options: withCurrent(
         lists.owners,
         owner
@@ -499,19 +529,19 @@ function groupSpecs(
       name: "location_hid",
       label: "Location",
       kind: "location",
-      blank: "No location",
+      blank: above ? "None of its own" : "No location",
       options: location ? [{ value: location.hid, label: location.path }] : [],
-      hint: "For a group that is in one place.",
+      hint: "For a group that is in one place. Its members with no location of their own are where it is.",
     },
     {
       name: "planned_location_hid",
       label: "Planned location",
       kind: "planned_location",
-      blank: "No plan",
+      blank: above ? "None of its own" : "No plan",
       options: current?.planned_location
         ? [{ value: current.planned_location.hid, label: current.planned_location.path }]
         : [],
-      hint: "Where the group is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Its members are items with plans of their own.",
+      hint: "Where the group is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Its members with no plan of their own go with it.",
     },
     {
       name: "record_status",
@@ -760,11 +790,19 @@ export function DeviceGroupDetail() {
   );
 }
 
+/** The group a group is nested in, which the group itself names. */
+function groupAbove(group: DeviceGroup): Named[] {
+  return group.parent ? [{ hid: group.parent.hid, name: group.parent.name }] : [];
+}
+
 function GroupFacts({ group }: { group: DeviceGroup }) {
-  const { owner, parent, location, master, observed_master: seen } = group;
-  const { user } = useAuth();
-  // Planning the members is a bulk edit of items, which needs the Inventory role.
-  const mayPlan = allows(user.role, "inventory");
+  const { parent, master, observed_master: seen } = group;
+  // The owner in force: the group's own, or that of the group it is nested in. Whether
+  // it is an exception, and the reason, go by that owner.
+  const owning = group.effective.owner_hid;
+  // Where the group is and where it is going: its own, or that of the group it is in.
+  const where = group.effective.location_hid;
+  const going = group.effective.planned_location_hid;
   const disputed = ownerDisputed(group);
   const members = itemsPath(`group.hid:eq:${group.hid}`);
   const source = serialSourceText(group.serial_source);
@@ -858,12 +896,22 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
           </>
         )}
         <dt>Owner</dt>
-        <dd data-testid="group-owner" data-disputed={disputed ? "true" : "false"}>
-          {owner ? (
-            <Link to={`/owners/${encodeURIComponent(owner.hid)}`}>{owner.label}</Link>
+        <dd
+          data-testid="group-owner"
+          data-disputed={disputed ? "true" : "false"}
+          data-source={owning.source}
+        >
+          {typeof owning.value === "string" ? (
+            <Link
+              to={`/owners/${encodeURIComponent(owning.value)}`}
+              {...(isFromAbove(owning) ? { className: "link-inherited" } : {})}
+            >
+              {effectiveLabel(owning)}
+            </Link>
           ) : (
             <Dash />
           )}
+          {isFromAbove(owning) && <InheritedFrom from={ownerSource(owning, groupAbove(group))} />}
           {group.owner_exception && (
             <span className="badge" data-testid="group-owner-exception">
               Outside the operations team
@@ -871,7 +919,7 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
           )}
           {disputed && <span className="badge">Members disagree</span>}
         </dd>
-        {group.owner_exception && owner && (
+        {group.owner_exception && typeof owning.value === "string" && (
           <>
             <dt>Reason for the exception</dt>
             <dd>
@@ -881,7 +929,9 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
               <span className="muted">
                 {" "}
                 · the owner&apos;s own reason, changed on{" "}
-                <Link to={`/owners/${encodeURIComponent(owner.hid)}`}>the page of the owner</Link>
+                <Link to={`/owners/${encodeURIComponent(owning.value)}`}>
+                  the page of the owner
+                </Link>
               </span>
             </dd>
           </>
@@ -897,44 +947,63 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
           )}
         </dd>
         <dt>Location</dt>
-        <dd data-testid="group-location">
-          {location ? (
+        <dd>
+          <span data-testid="group-location" data-source={where.source}>
+            {typeof where.value === "string" ? (
+              <>
+                <Link
+                  to={placePath("location", where.value)}
+                  {...(isFromAbove(where) ? { className: "link-inherited" } : {})}
+                >
+                  {where.label ?? where.value}
+                </Link>
+                {where.site && where.site_hid && where.region && where.region_hid && (
+                  <span className="muted">
+                    {" "}
+                    · site <Link to={placePath("site", where.site_hid)}>{where.site}</Link>
+                    {" · region "}
+                    <Link to={placePath("region", where.region_hid)}>{where.region}</Link>
+                  </span>
+                )}
+              </>
+            ) : (
+              <Dash />
+            )}
+          </span>
+          <FromAbove effective={where} />
+          {typeof where.value === "string" && group.member_count > 0 && (
             <>
-              <Link to={placePath("location", location.hid)}>{location.path}</Link>
-              <span className="muted">
+              <span className="muted" data-testid="group-location-members">
                 {" "}
-                · site <Link to={placePath("site", location.site_hid)}>{location.site}</Link>
-                {" · region "}
-                <Link to={placePath("region", location.region_hid)}>{location.region}</Link>
+                · its members with no location of their own are where it is
               </span>
+              <MembersOfTheirOwn groupHid={group.hid} kind="location" turn={group.row_version} />
             </>
-          ) : (
-            <Dash />
           )}
         </dd>
-        {group.planned_location && (
+        {typeof going.value === "string" && (
           <>
             <dt>Planned location</dt>
             <dd>
-              <span data-testid="group-planned-location">
+              <span data-testid="group-planned-location" data-source={going.source}>
                 Planned for{" "}
-                <Link to={placePath("location", group.planned_location.hid)}>
-                  {group.planned_location.path}
+                <Link
+                  to={placePath("location", going.value)}
+                  {...(isFromAbove(going) ? { className: "link-inherited" } : {})}
+                >
+                  {going.label ?? going.value}
                 </Link>
                 , when that place is made active
               </span>
-              <span className="muted">
-                {" "}
-                · the plan moves the group. Its members are items with plans of their own
-                {mayPlan && group.member_count > 0 ? ": " : "."}
-              </span>
-              {mayPlan && group.member_count > 0 && (
-                <Link
-                  to={planMembersPath(group.hid, group.planned_location.hid)}
-                  data-testid="plan-members"
-                >
-                  plan its {plural(group.member_count, "current member")} for the same place
-                </Link>
+              <FromAbove effective={going} />
+              {group.member_count > 0 && (
+                <>
+                  <span className="muted" data-testid="group-planned-members">
+                    {" "}
+                    · its members with no plan of their own go with it
+                  </span>
+                  <MembersOfTheirOwn groupHid={group.hid} kind="planned" turn={group.row_version} />
+                </>
               )}
             </dd>
           </>
@@ -959,8 +1028,9 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
       )}
       {disputed && (
         <p className="warning" data-testid="owner-disputed">
-          The owner above is the group's own. At least one current member has another owner in
-          force: see the Owner column of its members in the grid of items.
+          The owner above is the group&apos;s, its own or that of the group it is in. At least one
+          current member has another owner, of its own or from the item it is in: see the Owner
+          column of its members in the grid of items.
         </p>
       )}
     </section>
@@ -1653,6 +1723,22 @@ interface GroupDetailsProps {
 function GroupDetails({ group, onSaved, onReload }: GroupDetailsProps) {
   const { lists, error, ready } = useGroupLists();
   const specs = useMemo(() => groupSpecs(lists, group, group.type), [lists, group]);
+  // A group nested in another has the location and the plan of that group unless it has
+  // its own: the form says which it is, and how to have the one from above again.
+  const where = group.effective.location_hid;
+  const going = group.effective.planned_location_hid;
+  const owning = group.effective.owner_hid;
+  const above = aboveGroup(group);
+  const hints: Record<string, string> = {};
+  for (const [field, kind, own, inForce] of [
+    ["owner_hid", "owner", group.owner_hid, owning],
+    ["location_hid", "location", group.location_hid, where],
+    ["planned_location_hid", "planned", group.planned_location_hid, going],
+  ] as const) {
+    const said = descentHint(kind, "group", own, inForce, above);
+    const usual = specs.find((spec) => spec.name === field)?.hint ?? "";
+    if (said) hints[field] = [usual, said].filter(Boolean).join(" ");
+  }
   return (
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
@@ -1663,15 +1749,35 @@ function GroupDetails({ group, onSaved, onReload }: GroupDetailsProps) {
         <EditForm<DeviceGroup, Schemas["DeviceGroupPatch"]>
           specs={specs}
           record={group}
-          {...(group.operator_hid
-            ? {}
-            : {
-                notes: {
+          hints={hints}
+          notes={{
+            ...(group.operator_hid
+              ? {}
+              : {
                   operator_hid: (
                     <OperatorNote effective={group.effective.operator_hid} what="group" />
                   ),
-                },
-              })}
+                }),
+            ...(isFromAbove(owning)
+              ? {
+                  owner_hid: (
+                    <OwnerNote
+                      effective={owning}
+                      from={ownerSource(owning, groupAbove(group))}
+                      what="group"
+                    />
+                  ),
+                }
+              : {}),
+            ...(isFromAbove(where)
+              ? { location_hid: <PlaceNote kind="location" effective={where} what="group" /> }
+              : {}),
+            ...(isFromAbove(going)
+              ? {
+                  planned_location_hid: <PlaceNote kind="planned" effective={going} what="group" />,
+                }
+              : {}),
+          }}
           save={(body) =>
             api.request("patch", "/api/v1/device-groups/{hid}", { path: { hid: group.hid }, body })
           }

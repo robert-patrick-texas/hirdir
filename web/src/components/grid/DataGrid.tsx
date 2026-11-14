@@ -128,11 +128,6 @@ export interface DataGridProps<T> {
   entity?: Entity;
   /** Open the form that changes many rows at once. With it, Bulk edit is offered. */
   onBulkEdit?: (rows: Chosen, view: GridView) => void;
-  /**
-   * Open the bulk edit for every row the filter keeps, once, when the first rows have
-   * come: as a link does that leads to a bulk edit prepared for those rows.
-   */
-  bulkAtStart?: boolean;
   /** More to put in the toolbar, such as the button for a new record. */
   children?: ReactNode;
 }
@@ -230,15 +225,6 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     if (path !== null) navigate(path);
   });
   const go = useEffectEvent((path: string) => navigate(path));
-  // The bulk edit a link asked for is opened once, for all that the filter keeps.
-  const bulkStarted = useRef(false);
-  const startBulk = useEffectEvent((count: number) => {
-    if (!props.bulkAtStart || !onBulkEdit || !grid || bulkStarted.current || count === 0) return;
-    bulkStarted.current = true;
-    grid.deselectAll();
-    setAllMatching(true);
-    onBulkEdit({ kind: "all", count }, viewOf(grid));
-  });
   const remember = useEffectEvent((api: GridApi<T>) => {
     if (api.isDestroyed()) return;
     const state = api.getColumnState();
@@ -357,7 +343,6 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             if (controller.signal.aborted) return;
             setError(null);
             setTotal(page.total);
-            startBulk(page.total);
             params.successCallback(page.items, page.total);
           },
           (thrown: unknown) => {

@@ -169,6 +169,25 @@ describe("the standing and the owner in the item grid", () => {
     }
   });
 
+  it("says in the hint of the owner which item or group it came from", () => {
+    expect(cellHint(column("owner.label"), supply)).toBe(
+      "Inherited from the item site2-sw-access-01",
+    );
+    expect(cellHint(column("owner.label"), chassis)).toBe("");
+    // A member with no owner of its own has the owner of its group.
+    const member = {
+      ...chassis,
+      effective: {
+        ...chassis.effective,
+        owner_hid: { ...from(OWNER, "device_group", "g-1"), label: "Network Engineering" },
+      },
+    } as unknown as Item;
+    expect(column("owner.label").effective?.(member)?.source).toBe("device_group");
+    expect(cellHint(column("owner.label"), member)).toBe(
+      "Inherited from the group site2-sw-stack1",
+    );
+  });
+
   it("filters and sorts each of them by the value in force, which is what the cell shows", () => {
     expect(asked("lifecycle_state")).toMatchObject({
       field: "effective.lifecycle_state",
@@ -428,7 +447,7 @@ describe("the operator in the item grid", () => {
     expect(cellHint(column("operator.label"), nobody)).toBe("");
   });
 
-  it("filters and sorts by the label of the operator in force, exports as `operator`, and is hidden at first", () => {
+  it("filters and sorts by the label of the operator in force, exports as `operator`, and is shown from the start", () => {
     expect(asked("operator.label")).toMatchObject({
       field: "operator.label",
       sortField: "operator.label",
@@ -439,7 +458,7 @@ describe("the operator in the item grid", () => {
       "name",
       "operator",
     ]);
-    expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.label")?.hide).toBe(true);
+    expect(columnDefaults(COLUMNS).find((one) => one.id === "operator.label")?.hide).toBe(false);
   });
 });
 
@@ -472,6 +491,7 @@ describe("the location, the site and the region in the item grid", () => {
       ...supply.effective,
       location_hid: {
         ...from(ROOM, "parent_item", SWITCH),
+        source_label: "site2-sw-access-01",
         label: PATH,
         site: "Site-2",
         site_hid: SITE,
@@ -532,7 +552,22 @@ describe("the location, the site and the region in the item grid", () => {
   it("says the whole path as the hint of the cell, with where it came from", () => {
     expect(cellHint(column("location.name"), placed)).toBe(PATH);
     expect(cellHint(column("location.name"), within)).toBe(
-      `${PATH} · Inherited from the item it is in`,
+      `${PATH} · Inherited from the item site2-sw-access-01`,
+    );
+    const inGroup = {
+      ...within,
+      effective: {
+        ...within.effective,
+        location_hid: {
+          ...within.effective.location_hid,
+          source: "device_group",
+          source_hid: "g-1",
+          source_label: "Stack 4",
+        },
+      },
+    } as unknown as Item;
+    expect(cellHint(column("location.name"), inGroup)).toBe(
+      `${PATH} · Inherited from the group Stack 4`,
     );
     expect(cellHint(column("location.name"), nowhere)).toBe("");
     expect(cellHint(column("site"), within)).toBe("Inherited from the item it is in");
@@ -589,26 +624,40 @@ describe("the location, the site and the region in the item grid", () => {
 
 describe("the planned location in the item grid", () => {
   const PATH = "Americas > East > Site-9 > Room 1";
-  const planned = {
-    ...chassis,
-    planned_location: {
-      hid: "l-9",
-      name: "Room 1",
-      kind: "room",
-      path: PATH,
-      site: "Site-9",
-      site_hid: "s-9",
-      region: "East",
-      region_hid: "r-9",
-    },
-  } as unknown as Item;
-  const unplanned = { ...chassis, planned_location: null } as unknown as Item;
+  const plan = (source: string, hid: string | null, label: string | null) => ({
+    value: "l-9",
+    label: PATH,
+    site: "Site-9",
+    site_hid: "s-9",
+    region: "East",
+    region_hid: "r-9",
+    source,
+    source_hid: hid,
+    source_label: label,
+  });
+  const noPlan = { ...plan("none", null, null), value: null, label: null };
+  const withPlan = (planned: unknown) =>
+    ({
+      ...chassis,
+      effective: { ...chassis.effective, planned_location_hid: planned },
+    }) as unknown as Item;
+  const planned = withPlan(plan("own", SWITCH, null));
+  const fromGroup = withPlan(plan("device_group", "g-1", "Stack 4"));
+  const unplanned = withPlan(noPlan);
 
   it("shows where the item is going by the name of the place, with its path as the hint", () => {
     expect(column("planned_location").value(planned)).toBe("Room 1");
     expect(cellHint(column("planned_location"), planned)).toBe(PATH);
     expect(column("planned_location").value(unplanned) ?? "").toBe("");
     expect(cellHint(column("planned_location"), unplanned)).toBe("");
+  });
+
+  it("shows the plan an item has from its group, and says in the hint where it came from", () => {
+    expect(column("planned_location").value(fromGroup)).toBe("Room 1");
+    expect(column("planned_location").effective?.(fromGroup)?.source).toBe("device_group");
+    expect(cellHint(column("planned_location"), fromGroup)).toBe(
+      `${PATH} · Inherited from the group Stack 4`,
+    );
   });
 
   it("has no filter and no sort of its own: the list finds a plan with `within`, in the filter box", () => {
@@ -626,7 +675,7 @@ describe("the planned location in the item grid", () => {
 });
 
 describe("the columns a reader starts with", () => {
-  it("are the ones of 0.3.0 and the health: every other new column is shown when wanted", () => {
+  it("are the ones of 0.3.0, the health and the operator, which stands after the owner", () => {
     const shown = columnDefaults(COLUMNS)
       .filter((one) => !one.hide)
       .map((one) => one.id);
@@ -640,6 +689,7 @@ describe("the columns a reader starts with", () => {
       "expected_online",
       "health",
       "owner.label",
+      "operator.label",
       "tags",
       "effective.ldos",
     ]);

@@ -35,11 +35,6 @@ interface SearchProps extends PickFieldProps {
   how: string;
   /** Ask the server for what matches. Blank text is no search, and answers null. */
   find: (typed: string, signal: AbortSignal) => Promise<Found | null>;
-  /**
-   * What the search is kept to, in a word, when that is read from the server first: the
-   * search is made again when it changes.
-   */
-  scope?: string;
 }
 
 /**
@@ -52,7 +47,7 @@ interface SearchProps extends PickFieldProps {
  */
 export function PickField(props: SearchProps) {
   const { label, name, value, onChange, known = [], blank = "None", hint, error, disabled } = props;
-  const { noun, how, find, scope = "" } = props;
+  const { noun, how, find } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
   const [asked, setAsked] = useState("");
@@ -65,9 +60,7 @@ export function PickField(props: SearchProps) {
   }, [typed]);
 
   const searching = asked.trim() !== "";
-  const found = useLoad(`pick ${noun[0]} ${scope} ${asked.trim()}`, (signal) =>
-    find(asked, signal),
-  );
+  const found = useLoad(`pick ${noun[0]} ${asked.trim()}`, (signal) => find(asked, signal));
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;

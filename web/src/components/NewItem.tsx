@@ -82,13 +82,14 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
         label: "Location",
         kind: "location",
         blank: minor ? "Where the item it is in is" : "No location",
+        hint: "Left empty, the item is where the item it is in is, or a group it joins.",
       },
       {
         name: "planned_location_hid",
         label: "Planned location",
         kind: "planned_location",
         blank: "No plan",
-        hint: "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change.",
+        hint: "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Left empty, it has the plan of the item it is in, or of a group it joins.",
       },
       {
         name: "lifecycle_state",

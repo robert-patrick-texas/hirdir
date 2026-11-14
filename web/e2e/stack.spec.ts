@@ -646,6 +646,11 @@ test("S23: the same address under two networks, and twice under one", async ({ p
     .getByRole("group", { name: "Columns to show" })
     .getByLabel("Management address", { exact: true })
     .check();
+  // The grid draws only the columns in view: room is made for the one looked at here.
+  await page
+    .getByRole("group", { name: "Columns to show" })
+    .getByLabel("Operator", { exact: true })
+    .uncheck();
   await page.getByText("Columns", { exact: true }).click();
   await expect(
     page.getByTestId("grid-items").locator("[row-id]").first().locator('[col-id="mgmt_address"]'),

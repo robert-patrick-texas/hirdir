@@ -46,19 +46,6 @@ export function effectiveLabel(effective: EffectiveRecord | null | undefined): s
   return effective.label || String(effective.value);
 }
 
-/** The location in force of an item: the value is its HID, the label its path. */
-export type EffectiveLocation = Schemas["EffectiveLocation"];
-
-/**
- * What more there is to say of a location in force than its name: its whole path, and
- * where it came from when the item has it from the item it is in. Blank when there is
- * none.
- */
-export function locationHint(effective: EffectiveLocation | null | undefined): string {
-  if (!effective || effective.value === null) return "";
-  return [effective.label ?? "", sourceHint(effective)].filter(Boolean).join(" · ");
-}
-
 /** Where a value in force came from, as a short label for a table. */
 export function sourceLabel(effective: Effective | null | undefined): string {
   if (!effective || effective.source === "none") return "Not set";
