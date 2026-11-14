@@ -1,6 +1,8 @@
 """The migrations, the connection settings and the configuration."""
 
 import json
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,7 +17,7 @@ from sqlalchemy.exc import OperationalError
 from hirdir import config as config_module
 from hirdir.config import Config
 from hirdir.db import migrate
-from hirdir.db.engine import make_engine
+from hirdir.db.engine import make_engine, make_sessions, trial
 from hirdir.db.models import Base
 
 
@@ -368,4 +370,23 @@ def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_pa
             for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
         }
         assert "regions" not in tables
+    engine.dispose()
+
+
+def test_a_small_preview_takes_its_turn_before_it_looks(config: Config) -> None:
+    """Tried in place, work reads and then writes. Had another change been stored in
+    between, SQLite would refuse the write at once, without waiting: so the writer's
+    place is taken first, and the other change waits for the preview instead."""
+    engine = make_engine(config.database_url)
+    path = engine.url.database
+    assert path is not None
+    with make_sessions(engine)() as db, trial(db, in_place=True) as trying:
+        trying.execute(text("SELECT count(*) FROM settings")).scalar()
+        with (
+            closing(sqlite3.connect(path, timeout=0)) as other,
+            pytest.raises(sqlite3.OperationalError, match="locked"),
+        ):
+            other.execute("UPDATE settings SET row_version = row_version")
+        # And the work that was tried may write, having read.
+        trying.execute(text("UPDATE settings SET row_version = row_version"))
     engine.dispose()

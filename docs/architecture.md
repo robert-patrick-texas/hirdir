@@ -178,7 +178,11 @@ rendered as text, never as HTML.
   writer up until it ends, also when it ends by being undone. A preview of more than a
   hundred rows is therefore worked on a copy of the database, made with SQLite's
   online backup in the service's private temporary directory and thrown away
-  afterwards, so that nobody waits for a preview. An apply cannot be spared the same
+  afterwards, so that nobody waits for a preview. A smaller preview is worked in
+  place, and takes the one writer's place before it reads anything: SQLite refuses at
+  once, with no waiting, a transaction that has read and then wants to write after
+  another has written in between, and a preview that took its turn first waits for it
+  like any other change. An apply cannot be spared the same
   way: it is one transaction, and while it works, about five seconds for each thousand
   rows, another change waits. One that waits longer than `busy_timeout` is answered
   `503` with `Retry-After`, and nothing of it was done. Reading is never held up.

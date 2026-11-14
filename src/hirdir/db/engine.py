@@ -53,10 +53,16 @@ def trial(db: Session, in_place: bool = False) -> Generator[Session]:
     thrown away afterwards, and nobody waits for it. Work that is short is tried
     `in_place`, in a savepoint that is undone, which costs no copy. A database where
     writers do not hold each other up is always tried in place.
+
+    Work that is tried in place takes the one writer's place before it looks. It reads
+    and then writes, and SQLite refuses at once, without waiting, a transaction that
+    has read and wants to write after another has written in between. Having taken its
+    turn first, it waits for it like any other change and is then let through.
     """
     bind = db.get_bind()
     path = bind.engine.url.database if bind.dialect.name == "sqlite" else None
     if in_place or not path or path == ":memory:":
+        dialect.hold_other_writers(db)
         savepoint = db.begin_nested()
         try:
             yield db
