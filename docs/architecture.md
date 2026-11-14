@@ -560,40 +560,40 @@ its members and counts as two managed nodes.
 
 `migration-0007.sh` is the one that 0.5.0 brought, and what it looks for is what
 [install.md](install.md#from-042-to-050) tells an operator of that upgrade. The
-migration creates the tables of regions, sites, locations, contacts and their
-assignments, makes `items` and `device_groups` anew, each with a column that refers to
-a location, loads the lists of contact roles and of location kinds, and creates the
-table of the members of owners last. It is to change no record there is, and to write
-no audit event, which the file says. With the previous release the file makes an owner
-outside the team, an item that is with it and a minor item in that item, for which
-that release asks no reason and has nowhere to keep one; and four choices of a site's
-own in the two lists, which that release takes although it uses neither: in each list
-one that is the site's alone, and one with the value of a default under a label of the
-site's. It sees that a file of items with a `location` column is refused, and one of
-device groups, and that the management report with no `by` is by nothing. The file names the two columns, the
-index and the foreign key that `items` gains, and the column, the index and the foreign
-key of `device_groups`, and says that choices may be added. After the upgrade the six
-new tables must be empty and the new columns hold nothing; no item and no group may be
-anywhere, the tree of places must be empty, and every item counted as nowhere; the item
-with the owner outside the team, and the minor item in it, must be marked as
-exceptions, with no reason, and be the only ones that `filter=owner_exception:eq:true`
-finds; the record of an owner must list its tags and its members, of which there are
-none; each of the two lists must hold its defaults and the site's own, with the default
-that the site had relabelled there once, under the site's label; and the management
-report with no `by` must be by site, with one row, of the items that are nowhere, which
-holds what the totals hold, and totals that are as the previous release gave them.
-Last, what is new is tried on what was carried over. An export of the item with the
-owner outside the team is imported back as it is, and must find its record unchanged,
-with no reason asked for, because no item is given an owner. That item is changed in
-another field, with its owner said again as it is, and no reason is asked for, while
-an item that is given that owner is refused without a reason and marked with one. A region, a site and
-a location of the kind that the site had entered are made, and a contact is given the
-role of the site's own there. The two files that the previous release refused are
-applied and put an item and the first stack from before at that location; the tree
-counts the item at each level, the item list finds it within
-the region, and an export of the columns that can be set writes its location. All of it
-is then taken out again, and the places are retired, so that the rest of the pass
-starts from an empty tree.
+migration creates the tables of contacts, operators, regions, sites, locations and
+contact assignments, makes `items` and `device_groups` anew, each with three columns
+that refer to a location, a planned location and an operator, loads the lists of
+contact roles and of location kinds, and creates the table of the members of owners
+last. It is to change no record there is, and to write no audit event, which the file
+says. With the previous release the file makes an owner outside the team, an item that
+is with it, a minor item in that item and a device group with that owner; six items
+that have no owner of their own in a group that has one; and four choices of a site's
+own in the two lists, which that release takes although it uses neither. It sees that
+a file of items with a `location` column is refused, and one of device groups, and
+that the management report with no `by` is by nothing. The file names the three
+columns, the three indexes and the three foreign keys that each of `items` and
+`device_groups` gains, and says that choices may be added.
+
+After the upgrade the seven new tables must be empty and the new columns hold nothing;
+no item and no group may be anywhere or have an operator, the tree of places must be
+empty, and every item counted as nowhere. What is with the owner outside the team, the
+item, its minor item and the group, must be marked as an exception with the reason
+that the owner has, and an item is refused a reason of its own. The six items in a
+group that has an owner must have that owner in force, from the group, each at the
+`row_version` it had: the count by owner has moved by exactly those six, which is the
+one thing the comparison leaves out, by name, and looks at by itself. Each of the two
+lists must hold its defaults and the site's own; and the management report with no
+`by` must be by site, with one row, of the items that are nowhere, and totals as the
+previous release gave them.
+
+Last, what is new is tried on what was carried over. A region, a site and a location
+are made, and a contact is given a role of the site's own there. An operator on the
+site reaches an item there. The two files that the previous release refused are
+applied: the first stack from before is placed by its file, and its switches and
+their minor items are where it is, with nothing written to them. An item planned for
+a draft location is moved in when the location is made active, with an entry in its
+history. All of it is then taken out again, and the places are retired, so that the
+rest of the pass starts from an empty tree.
 
 `release-0.4.2.sh` is the example of the second kind. 0.4.2 has no migration. One
 thing that it says differently of what it holds is left out of the comparison by name
@@ -656,7 +656,7 @@ what the fresh pass asks of this tree's. The failed-upgrade pass does nothing of
 fresh pass and runs whole for such a pair. Neither is the release check.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
-prefix. The fifteen files of `examples/` are sent in load order to `POST /imports/preview`
+prefix. The sixteen files of `examples/` are sent in load order to `POST /imports/preview`
 and applied: every row is created, and the lists of minor items, networks, device
 groups with their members, and addresses hold what the files hold, and so do those of
 regions, sites, locations, contacts, their assignments and the members of owners,
@@ -793,15 +793,29 @@ path of its place, have the item that is nowhere in a row of its own, and count 
 once in the totals though it is in the row of each region above it. A room with an item
 in it is not retired, nor the site, nor the region above; the region that holds
 nothing now is. A building and the room in it are retired, and the room is not brought
-back while its building is retired. An item is given an owner outside the team: refused with no reason,
-accepted and marked as an exception with one, and found by
-`filter=owner_exception:eq:true`; a minor item of such an item is marked too, and an
-item given back to an owner of the team is no exception and has no reason. The first
+back while its building is retired. An owner outside the team is refused with no reason of its
+own; an item given to it is marked as an exception with the owner's reason and found
+by `filter=owner_exception:eq:true`, as is a minor item of such an item, and an item
+is refused a reason of its own. The first
 person of an owner is its primary and is refused as an alternate; another made primary
 makes the first an alternate in the same change; the primary is not removed while
 another remains. A file of the people of an owner that has none, with the row of the
 alternate before that of the primary, is applied whole, and
-`GET /owners/{hid}/members` lists the two as a page. Last, every region, site, location, contact, assignment, owner and
+`GET /owners/{hid}/members` lists the two as a page. **Operators, deliveries and plans**, in the fresh pass and so in the upgrade pass
+too. An operator is made and is had by an item of its own, from the item above, from
+its group and from its place; it is handed over and left open with no item written
+to, and released, so that the next level up decides; the two filters, the summary by
+operator and the summary with `operators=true` are read, and `hirdir operators list`,
+`assign`, `assign --open` and `release` and `hirdir report summary --operators` are
+run. The street-address tick is set on a site and had by a location in it, refused
+beside a shipping address of its own and with no street address, and shown as an
+override of a region's address. A planned location is given to an item and to a
+group; a room in use is refused as a plan; the tree counts what is planned; and a
+site made active moves in what was planned for it, with an audit entry for each
+record under the one request. A member with nothing of its own has its group's
+location, plan and owner.
+
+Last, every region, site, location, contact, operator, assignment, owner and
 member of an owner is exported and imported back unchanged, as CSV and as JSON, and an
 export of the items placed here writes the location of each as its path.
 
