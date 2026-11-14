@@ -798,6 +798,14 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
               disabled={action.busy}
             >
               <p>The item stays in the inventory and can be brought back.</p>
+              {item.groups.length > 0 && (
+                <p>
+                  Its {item.groups.length === 1 ? "membership" : "memberships"} of{" "}
+                  {item.groups.map((group) => group.name).join(", ")} end
+                  {item.groups.length === 1 ? "s" : ""} today. The master of a stack that has other
+                  members is not retired until another member is made the master.
+                </p>
+              )}
             </ConfirmButton>
           </p>
         </>
