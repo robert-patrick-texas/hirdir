@@ -1,14 +1,15 @@
 // The browser scenario of release 0.1.0: sign in, find the session in localStorage and no
 // cookie anywhere, create a user, survive a reload of a deep link, sign out.
 //
-// The environment that names the server and the Admin is described in support.ts.
+// The environment that names the server and the Admin is described in support.ts, with
+// what a spec file does to be run beside the others: this one signs in as an Admin of its
+// own, and looks for the user it creates by searching the list of users.
 //
 // Every address below is relative to the base URL, so the same test runs at the root
 // and under a prefix.
 
-import { randomBytes } from "node:crypto";
-import { expect, type Page, test } from "@playwright/test";
-import { accessCode, expectClean, username, watch } from "./support";
+import { expect, type Page } from "@playwright/test";
+import { expectClean, mark, test, watch } from "./support";
 
 function sessionOf(page: Page): Promise<{ token?: unknown; expires_at?: unknown } | null> {
   return page.evaluate(() => {
@@ -17,9 +18,8 @@ function sessionOf(page: Page): Promise<{ token?: unknown; expires_at?: unknown 
   });
 }
 
-test("sign in, create a user, reload a deep link, sign out", async ({ page, baseURL }) => {
-  expect(username, "set E2E_USERNAME to an Admin").not.toBe("");
-  expect(accessCode, "set E2E_ACCESS_CODE to that Admin's access code").not.toBe("");
+test("sign in, create a user, reload a deep link, sign out", async ({ page, baseURL, account }) => {
+  const { username, accessCode } = account;
   expect(baseURL).toBeTruthy();
   const base = new URL(baseURL ?? "");
   const seen = await watch(page.context());
@@ -54,9 +54,17 @@ test("sign in, create a user, reload a deep link, sign out", async ({ page, base
   const usersPath = `${base.pathname}admin/users`;
   expect(new URL(page.url()).pathname).toBe(usersPath);
 
-  // Create a user with a random, made-up name. The access code is shown once.
-  const suffix = randomBytes(4).toString("hex");
+  // A random, made-up name for a user. Nobody has it yet: the list is searched for it,
+  // which also keeps the user in view however many users the other files and earlier
+  // runs have made, in a list that is shown a page at a time.
+  const suffix = mark("shell");
   const newUser = `e2e-quill-${suffix}`;
+  await page.getByLabel("Search users").fill(newUser);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByText("No user matches the search.")).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(usersPath);
+
+  // Create the user. The access code is shown once.
   await page.getByRole("button", { name: "New user" }).click();
   const form = page.getByRole("region", { name: "New user" });
   await form.getByLabel("Username").fill(newUser);

@@ -30,11 +30,13 @@
 // taken out of the item it is in and put back, a membership changed, an address marked
 // as primary, changed and removed, a network renamed and removed.
 //
-// The environment that names the server and the Admin is described in support.ts. Every
-// name, serial number and address below is made up, with a random part so that the
-// scenarios can be run again on the same server. The addresses are of the ranges
-// reserved for documentation. The scenarios run in order: the later ones use what the
-// earlier ones made.
+// The environment that names the server and the Admin is described in support.ts, with
+// what a spec file does to be run beside the others: this one signs in as an Admin of its
+// own, and every summary, report and grid it counts in is filtered down to what it made.
+// Every name, serial number and address below is made up, with the mark of this file and
+// a random part, so that the scenarios can be run again on the same server. The
+// addresses are of the ranges reserved for documentation. The scenarios run in order:
+// the later ones use what the earlier ones made.
 
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -45,13 +47,14 @@ import {
   type Page,
   type Request,
   type TestInfo,
-  test,
 } from "@playwright/test";
-import { expectClean, signIn, watch } from "./support";
+import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
-const suffix = randomBytes(3).toString("hex");
+// The random part by itself is what the addresses below are made from.
+const random = randomBytes(3).toString("hex");
+const suffix = mark("structure", random);
 const upper = suffix.toUpperCase();
 const vendor = `Example Networks ${suffix}`;
 const switchPid = `EN-9300-48P-${suffix}`;
@@ -99,13 +102,13 @@ const cluster = `site2-wlc-cluster-${suffix}`;
 // and written as the server stores it: lower case, with no leading zeros in a group.
 const red = `Red ${suffix}`;
 const black = `Black ${suffix}`;
-const shared = `2001:db8:${Number.parseInt(suffix.slice(0, 4), 16).toString(16)}:${Number.parseInt(
-  suffix.slice(4),
+const shared = `2001:db8:${Number.parseInt(random.slice(0, 4), 16).toString(16)}:${Number.parseInt(
+  random.slice(4),
   16,
 ).toString(16)}::10`;
 const second = shared.replace(/::10$/, "::11");
 // An IPv4 address beside them, for the primary of the other family.
-const fourth = `192.0.2.${(Number.parseInt(suffix.slice(0, 2), 16) % 250) + 2}`;
+const fourth = `192.0.2.${(Number.parseInt(random.slice(0, 2), 16) % 250) + 2}`;
 
 function main(page: Page): Locator {
   return page.getByRole("navigation", { name: "Main" });
@@ -247,10 +250,11 @@ function memberRow(page: Page, hostname: string): Locator {
 
 test("the catalog, the owners and the items the scenarios use are loaded from files", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // The first page shows the headline of the summary: the components beside the managed
   // nodes, the support weight and the components by health. It shows no money.
@@ -332,10 +336,11 @@ test("the catalog, the owners and the items the scenarios use are loaded from fi
 
 test("S18: minor items have the owner and the standing of the item they are in", async ({
   page,
+  account,
 }) => {
   test.setTimeout(240_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const filter = `hostname:prefix:${chassisPrefix}`;
 
   // The switch, parked with the team: a major item, and so one component.
@@ -519,10 +524,11 @@ test("S18: minor items have the owner and the standing of the item they are in",
 
 test("minor items stay out of the grid of items until Include minor items is on", async ({
   page,
+  account,
 }, testInfo) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const filter = `hostname:prefix:${chassisPrefix}`;
   const typed = { field: "hostname", op: "prefix", value: chassisPrefix };
   const total = page.getByTestId("grid-total");
@@ -608,10 +614,11 @@ test("minor items stay out of the grid of items until Include minor items is on"
 
 test("a condition set on the item's page, what is seen of it, and its health in the grid", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const health = page.getByTestId("health");
   const observed = page.getByTestId("observed");
 
@@ -796,10 +803,11 @@ test("a condition set on the item's page, what is seen of it, and its health in 
 
 test("S19, S20: the two masters of a stack, its serial number, its health and its discount", async ({
   page,
+  account,
 }) => {
   test.setTimeout(300_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const filter = `group.name:eq:${stack}`;
   const [one = "", two = "", three = "", four = ""] = stackHosts;
 
@@ -1095,10 +1103,11 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
 
 test("S21: the master of the stack is replaced, and the stack stays the stack", async ({
   page,
+  account,
 }) => {
   test.setTimeout(180_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const master = stackHosts[0] ?? "";
   await openGroup(page, stack);
   const stackPath = new URL(page.url()).pathname;
@@ -1180,10 +1189,11 @@ test("S21: the master of the stack is replaced, and the stack stays the stack", 
 
 test("S22: a controller domain, a cluster of controllers and forty access points", async ({
   page,
+  account,
 }) => {
   test.setTimeout(240_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // The domain, with nobody in it yet.
   await main(page).getByRole("link", { name: "Groups" }).click();
@@ -1323,10 +1333,10 @@ test("S22: a controller domain, a cluster of controllers and forty access points
   await expectClean(page, seen);
 });
 
-test("S23: the same address under two networks, and twice under one", async ({ page }) => {
+test("S23: the same address under two networks, and twice under one", async ({ page, account }) => {
   test.setTimeout(240_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   const [first = "", other = "", third = ""] = stackHosts.slice(1);
 
   // Two networks, and one more to rename and remove.

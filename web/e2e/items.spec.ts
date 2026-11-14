@@ -3,17 +3,18 @@
 // each with its source; the grid filtered and sorted by the server; an item moved through
 // the lifecycle; a change the rules refuse; a stale edit refused; a deep link reloaded.
 //
-// The environment that names the server and the Admin is described in support.ts.
+// The environment that names the server and the Admin is described in support.ts, with
+// what a spec file does to be run beside the others: this one signs in as an Admin of its
+// own, and counts only the items it made.
 //
 // Every address below is relative to the base URL, so the same test runs at the root
-// and under a prefix. Every name in it is made up, with a random part so that the test
-// can be run again on the same server.
+// and under a prefix. Every name in it is made up, with the mark of this file and a
+// random part, so that the test can be run again on the same server.
 
-import { randomBytes } from "node:crypto";
-import { expect, type Locator, type Page, test } from "@playwright/test";
-import { expectClean, signIn, username, watch } from "./support";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { expectClean, mark, signIn, test, watch } from "./support";
 
-const suffix = randomBytes(3).toString("hex");
+const suffix = mark("items");
 const vendor = `Example Networks ${suffix}`;
 const pid = `EN-4800-48P-${suffix}`;
 const first = `site2-sw-access-${suffix}-01`;
@@ -69,12 +70,13 @@ async function move(page: Page, to: string, reason: string) {
 test("catalog values and their sources, the grid, the lifecycle, a stale edit", async ({
   page,
   baseURL,
+  account,
 }) => {
   test.setTimeout(180_000);
   expect(baseURL).toBeTruthy();
   const base = new URL(baseURL ?? "");
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
 
   // A vendor.
   await main(page).getByRole("link", { name: "Vendors" }).click();
@@ -265,7 +267,7 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
     [1, "staged", "Assigned", "Test"],
     [2, "received", "Delivered", "Assigned"],
   ] as const) {
-    await expect(moves.nth(place)).toContainText(username);
+    await expect(moves.nth(place)).toContainText(account.username);
     await expect(moves.nth(place).locator("tr", { hasText: "state_reason" })).toContainText(reason);
     const state = moves.nth(place).locator("tr", { hasText: "lifecycle_state" });
     await expect(state.locator("td").nth(-2)).toHaveText(from);
@@ -299,7 +301,7 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: first })).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(firstPath);
-  await expect(page.locator(".who-name")).toHaveText(username);
+  await expect(page.locator(".who-name")).toHaveText(account.username);
   await expect(page.getByTestId("state")).toHaveText("Prod");
   expect(new URL(await page.evaluate(() => document.baseURI)).pathname).toBe(base.pathname);
 

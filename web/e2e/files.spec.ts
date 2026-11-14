@@ -10,11 +10,13 @@
 // On the way: a file refused whole, rejected rows left out on request, a vendor that an
 // import had to create and that is then reviewed, and a clipboard that refuses.
 //
-// The environment that names the server and the Admin is described in support.ts. Every
-// name below is made up, with a random part so that the scenarios can be run again on
-// the same server. They run in order: the later ones use what the first loads.
+// The environment that names the server and the Admin is described in support.ts, with
+// what a spec file does to be run beside the others: this one signs in as an Admin of its
+// own, and among the past imports, which every file adds to, looks at those its own
+// account made. Every name below is made up, with the mark of this file and a random
+// part, so that the scenarios can be run again on the same server. They run in order:
+// the later ones use what the first loads.
 
-import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   type Download,
@@ -23,13 +25,12 @@ import {
   type Page,
   type Request,
   type TestInfo,
-  test,
 } from "@playwright/test";
-import { expectClean, signIn, watch } from "./support";
+import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
-const suffix = randomBytes(3).toString("hex");
+const suffix = mark("files");
 const vendor = `Example Networks ${suffix}`;
 const pid = `EN-4800-24T-${suffix}`;
 const prefix = `site2-sw-dist-${suffix}`;
@@ -129,6 +130,17 @@ async function openGrid(page: Page) {
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
 }
 
+/**
+ * The past previews that this file's account made, newest first. The other files import
+ * and edit in bulk meanwhile, and their previews are in the same list.
+ */
+function ownJobs(page: Page, account: Account): Locator {
+  return page
+    .getByTestId("import-jobs")
+    .locator("tbody tr")
+    .filter({ has: page.getByRole("cell", { name: account.username, exact: true }) });
+}
+
 function gridRow(page: Page, hostname: string): Locator {
   return page.getByTestId("grid-items").locator("[row-id]", { hasText: hostname });
 }
@@ -148,10 +160,11 @@ function exportsSent(page: Page): Promise<Request> {
 
 test("S15: an import is previewed, and is not applied once a record has changed", async ({
   page,
+  account,
 }) => {
   test.setTimeout(120_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   await main(page).getByRole("link", { name: "Import" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Import" })).toBeVisible();
 
@@ -190,9 +203,7 @@ test("S15: an import is previewed, and is not applied once a record has changed"
   await expect(page.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
   // The rows now lead to the records they made, and the job is among the past imports.
   await expect(previewRow(page, 1).getByRole("link")).toHaveAttribute("href", /\/items\//);
-  await expect(page.getByTestId("import-jobs").locator("tbody tr").first()).toContainText(
-    `items-${suffix}.csv`,
-  );
+  await expect(ownJobs(page, account).first()).toContainText(`items-${suffix}.csv`);
 
   // The vendor the import had to create is marked unreviewed, and is reviewed here.
   await main(page).getByRole("link", { name: "Vendors" }).click();
@@ -260,7 +271,7 @@ test("S15: an import is previewed, and is not applied once a record has changed"
   await expect(page.getByTestId("import-status")).toHaveText("Applied, without the rejected rows");
 
   // The past imports, newest first: the one applied, the one that failed, the first.
-  const jobs = page.getByTestId("import-jobs").locator("tbody tr");
+  const jobs = ownJobs(page, account);
   await expect(jobs.nth(0)).toContainText("Applied, without the rejected rows");
   await expect(jobs.nth(1)).toContainText("Failed: nothing was applied");
   await expect(jobs.nth(0)).toHaveAttribute("aria-current", "true");
@@ -275,12 +286,13 @@ test("S15: an import is previewed, and is not applied once a record has changed"
 test("S16: the clipboard and the exported files hold the same rows and columns", async ({
   page,
   browserName,
+  account,
 }, testInfo) => {
   test.skip(browserName !== "chromium", "reading the clipboard back needs Chromium's permission");
   test.setTimeout(120_000);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   await openGrid(page);
 
   // Select two rows: one, and with Ctrl another.
@@ -384,6 +396,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
 
 test("a clipboard that refuses: the rows are shown, selected, to be copied by hand", async ({
   page,
+  account,
 }) => {
   const seen = await watch(page.context());
   // A browser that does not let the page write to the clipboard, as on a page without HTTPS.
@@ -392,7 +405,7 @@ test("a clipboard that refuses: the rows are shown, selected, to be copied by ha
     Object.defineProperty(navigator.clipboard, "write", { value: refuse });
     Object.defineProperty(navigator.clipboard, "writeText", { value: refuse });
   });
-  await signIn(page);
+  await signIn(page, account);
   await openGrid(page);
   await page.getByRole("button", { name: "Select all that match" }).click();
   await page.getByRole("button", { name: "Copy", exact: true }).click();
@@ -413,10 +426,11 @@ test("a clipboard that refuses: the rows are shown, selected, to be copied by ha
 
 test("S17: a bulk edit shows before and after, and is not applied once an item has changed", async ({
   page,
+  account,
 }) => {
   test.setTimeout(120_000);
   const seen = await watch(page.context());
-  await signIn(page);
+  await signIn(page, account);
   await openGrid(page);
   const comment = `Refresh candidate ${suffix}`;
 
@@ -507,7 +521,7 @@ test("S17: a bulk edit shows before and after, and is not applied once an item h
   // The bulk edits are among the past previews, with the one that failed.
   await main(page).getByRole("link", { name: "Import" }).click();
   await page.getByRole("region", { name: "Past imports" }).getByLabel("Show").selectOption("bulk");
-  const jobs = page.getByTestId("import-jobs").locator("tbody tr");
+  const jobs = ownJobs(page, account);
   await expect(jobs.nth(0)).toContainText("Applied");
   await expect(jobs.nth(2)).toContainText("Failed: nothing was applied");
 
