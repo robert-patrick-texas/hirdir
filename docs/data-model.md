@@ -242,13 +242,15 @@ management address, and its members usually carry neither.
 | `addresses.address` | IPv4 or IPv6 | stored in canonical form, no prefix length |
 | `addresses.network_hid` | reference | blank is the unlabelled address space |
 | `addresses.role` | choice | `management`, `loopback`, `secondary`, `virtual`. Left out, `management` |
-| `addresses.is_primary` | boolean | at most one primary management address per item or group |
+| `addresses.is_primary` | boolean | at most one primary management address of each family, IPv4 and IPv6, per item or group |
 
 The same `address` twice under one network is allowed and is listed in the duplicates
 report. The same address under two networks is two different addresses.
 
-Only an address with the role `management` may be primary. Marking one as primary
-takes the mark off the one that had it, in the same change. An address is removed
+Only an address with the role `management` may be primary. A device may be managed
+over IPv4, over IPv6, over both or over neither, so there is one primary of each
+family: marking an address as primary takes the mark off the one of its own family
+that had it, in the same change. An address is removed
 outright, and so is a network that no address is under; each removal is an audit event
 that holds what was removed.
 
