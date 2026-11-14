@@ -648,10 +648,11 @@ def _items() -> list[dict[str, Any]]:
             "vendor": "Example Software",
             "pid": "NETCONFIG-MANAGER",
             "name": "NetConfig Manager",
-            "quantity": 250,
+            # One licence. For software a quantity multiplies the weight and the cost
+            # of its catalog entry, which here are those of the whole licence.
             "lifecycle_state": "Prod",
             "owner": "Network Engineering",
-            "description": "Licensed for 250 devices",
+            "description": "One licence, for 250 devices",
         },
         {
             "vendor": "Example Cloud",
