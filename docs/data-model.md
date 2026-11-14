@@ -622,7 +622,8 @@ For a set of items chosen by any filter:
 | Annual support cost | Sum of effective `annual_support_cost` × `quantity` over all items in the set. No stack discount. |
 
 A stack or a cluster is **current** for these measures when the group is `active` and
-the membership has no `left_on`. A draft stack is not yet one device on the network:
+the membership has no `left_on`. The stack discount is earned by the members of a
+stack that has two or more current members: one switch alone takes the full effort. A draft stack is not yet one device on the network:
 its members count as the items they are, and earn no discount. In a view that includes
 drafts it is counted as if active, as a draft item is.
 
