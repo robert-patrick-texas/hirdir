@@ -78,6 +78,385 @@
         "title": "AccessCodeSet",
         "type": "object"
       },
+      "AddressCreate": {
+        "additionalProperties": false,
+        "description": "A new address, of an item or of a group: exactly one of the two.",
+        "properties": {
+          "address": {
+            "description": "IPv4 or IPv6, in any common notation.",
+            "maxLength": 45,
+            "minLength": 1,
+            "title": "Address",
+            "type": "string"
+          },
+          "group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Hid"
+          },
+          "is_primary": {
+            "default": false,
+            "description": "The primary management address of the record.",
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Hid"
+          },
+          "network_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank is the unlabelled space.",
+            "title": "Network Hid"
+          },
+          "role": {
+            "default": "management",
+            "enum": [
+              "management",
+              "loopback",
+              "secondary",
+              "virtual"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "title": "AddressCreate",
+        "type": "object"
+      },
+      "AddressHolder": {
+        "additionalProperties": false,
+        "description": "An item or a group that holds an address.",
+        "properties": {
+          "address_hid": {
+            "title": "Address Hid",
+            "type": "string"
+          },
+          "group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Hid"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Hid"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address_hid",
+          "item_hid",
+          "group_hid",
+          "name",
+          "role",
+          "is_primary"
+        ],
+        "title": "AddressHolder",
+        "type": "object"
+      },
+      "AddressOut": {
+        "additionalProperties": false,
+        "description": "One address of an item or of a device group.",
+        "properties": {
+          "address": {
+            "description": "In canonical form, with no prefix length.",
+            "title": "Address",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Hid"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Hid"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "network_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Hid"
+          },
+          "role": {
+            "enum": [
+              "management",
+              "loopback",
+              "secondary",
+              "virtual"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "item_hid",
+          "item",
+          "group_hid",
+          "group",
+          "address",
+          "network_hid",
+          "network",
+          "role",
+          "is_primary",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AddressOut",
+        "type": "object"
+      },
+      "AddressPatch": {
+        "additionalProperties": false,
+        "description": "Fields of an address to change, and the version they were read at.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "maxLength": 45,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "is_primary": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Primary"
+          },
+          "network_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Hid"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "management",
+                  "loopback",
+                  "secondary",
+                  "virtual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "AddressPatch",
+        "type": "object"
+      },
+      "AddressRef": {
+        "additionalProperties": false,
+        "description": "An address, as listed on the item or the group that has it.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The label of the network, if it is under one.",
+            "title": "Network"
+          },
+          "network_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Hid"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "address",
+          "network_hid",
+          "network",
+          "role",
+          "is_primary"
+        ],
+        "title": "AddressRef",
+        "type": "object"
+      },
       "AuditEventOut": {
         "additionalProperties": false,
         "description": "One event of the audit trail.",
@@ -1218,9 +1597,546 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "DeviceGroupCreate": {
+        "additionalProperties": false,
+        "description": "A new device group, with its first members if they are known.",
+        "properties": {
+          "fqdn": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fqdn"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          },
+          "members": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MemberAdd"
+            },
+            "maxItems": 1000,
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "parent_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Group Hid"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "stack",
+              "cluster",
+              "controller_domain",
+              "custom"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ],
+        "title": "DeviceGroupCreate",
+        "type": "object"
+      },
+      "DeviceGroupOut": {
+        "additionalProperties": false,
+        "description": "A stack, a cluster, a controller domain or another labelled set of items.",
+        "properties": {
+          "addresses": {
+            "items": {
+              "$ref": "#/components/schemas/AddressRef"
+            },
+            "title": "Addresses",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fqdn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fqdn"
+          },
+          "groups": {
+            "description": "The groups nested directly in this one.",
+            "items": {
+              "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          },
+          "master": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "member_count": {
+            "description": "How many current members it has.",
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "members_disagree": {
+            "description": "The fields of the group that a current member contradicts.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Members Disagree",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Group Hid"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a stack, the serial number of its master, read as it is asked for.",
+            "title": "Serial Number"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "stack",
+              "cluster",
+              "controller_domain",
+              "custom"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "type",
+          "name",
+          "hostname",
+          "fqdn",
+          "parent_group_hid",
+          "parent",
+          "groups",
+          "owner_hid",
+          "owner",
+          "members_disagree",
+          "serial_number",
+          "master",
+          "member_count",
+          "addresses",
+          "tags",
+          "record_status",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DeviceGroupOut",
+        "type": "object"
+      },
+      "DeviceGroupPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a device group to change, and the version they were read at.",
+        "properties": {
+          "fqdn": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fqdn"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "parent_group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Group Hid"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "stack",
+                  "cluster",
+                  "controller_domain",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "DeviceGroupPatch",
+        "type": "object"
+      },
+      "DuplicateOut": {
+        "additionalProperties": false,
+        "description": "An address that is held more than once under one network.",
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "holders": {
+            "items": {
+              "$ref": "#/components/schemas/AddressHolder"
+            },
+            "title": "Holders",
+            "type": "array"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for the unlabelled address space.",
+            "title": "Network"
+          },
+          "network_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Hid"
+          }
+        },
+        "required": [
+          "address",
+          "network_hid",
+          "network",
+          "count",
+          "holders"
+        ],
+        "title": "DuplicateOut",
+        "type": "object"
+      },
+      "EffectiveReference": {
+        "additionalProperties": false,
+        "description": "A record in force, and where it came from: `value` is its HID.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call the record.",
+            "title": "Label"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "location",
+              "site",
+              "region",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "label"
+        ],
+        "title": "EffectiveReference",
+        "type": "object"
+      },
       "EffectiveValue": {
         "additionalProperties": false,
-        "description": "A value in force, and where it came from.",
+        "description": "A value in force, and where it came from.\n\nA decimal and a date are text, and a truth value is true or false.",
         "properties": {
           "source": {
             "enum": [
@@ -1251,6 +2167,9 @@
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "type": "boolean"
               },
               {
                 "type": "null"
@@ -1294,7 +2213,11 @@
               "vendors",
               "catalog_entries",
               "owners",
-              "items"
+              "networks",
+              "items",
+              "addresses",
+              "device_groups",
+              "device_group_members"
             ],
             "title": "Entity",
             "type": "string"
@@ -1648,26 +2571,6 @@
           "row_version"
         ],
         "title": "GroupPatch",
-        "type": "object"
-      },
-      "GroupRef": {
-        "additionalProperties": false,
-        "description": "A user group, as named on a user.",
-        "properties": {
-          "hid": {
-            "title": "Hid",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "hid",
-          "name"
-        ],
-        "title": "GroupRef",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2243,6 +3146,32 @@
             ],
             "title": "Owner Hid"
           },
+          "parent_item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item this one is in. Given, the item is a minor item.",
+            "title": "Parent Item Hid"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where in its parent: PS-A, Slot 3.",
+            "title": "Position"
+          },
           "procured_on": {
             "anyOf": [
               {
@@ -2350,9 +3279,12 @@
       },
       "ItemEffective": {
         "additionalProperties": false,
-        "description": "The values in force of the fields an item inherits from its catalog entry.",
+        "description": "The values in force of the fields an item inherits: the amounts and the dates\nfrom its catalog entry, and for a minor item the owner and the standing of the item\nit is in.",
         "properties": {
           "annual_support_cost": {
+            "$ref": "#/components/schemas/EffectiveValue"
+          },
+          "disposition": {
             "$ref": "#/components/schemas/EffectiveValue"
           },
           "end_of_hw_support": {
@@ -2367,14 +3299,27 @@
           "est_value": {
             "$ref": "#/components/schemas/EffectiveValue"
           },
+          "expected_online": {
+            "$ref": "#/components/schemas/EffectiveValue"
+          },
           "ldos": {
             "$ref": "#/components/schemas/EffectiveValue"
+          },
+          "lifecycle_state": {
+            "$ref": "#/components/schemas/EffectiveValue"
+          },
+          "owner_hid": {
+            "$ref": "#/components/schemas/EffectiveReference"
           },
           "support_weight": {
             "$ref": "#/components/schemas/EffectiveValue"
           }
         },
         "required": [
+          "owner_hid",
+          "lifecycle_state",
+          "disposition",
+          "expected_online",
           "est_value",
           "support_weight",
           "annual_support_cost",
@@ -2390,6 +3335,14 @@
         "additionalProperties": false,
         "description": "One tracked thing. A field that inherits holds the item's own value, and\n`effective` holds the value in force with its source.",
         "properties": {
+          "addresses": {
+            "description": "Its addresses, the primary one first.",
+            "items": {
+              "$ref": "#/components/schemas/AddressRef"
+            },
+            "title": "Addresses",
+            "type": "array"
+          },
           "annual_support_cost": {
             "anyOf": [
               {
@@ -2448,6 +3401,14 @@
             ],
             "title": "Comments"
           },
+          "controllers": {
+            "description": "For an endpoint of a controller domain: the controllers of that domain.",
+            "items": {
+              "$ref": "#/components/schemas/ItemRef"
+            },
+            "title": "Controllers",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2475,6 +3436,11 @@
               }
             ],
             "title": "Delivered On"
+          },
+          "depth": {
+            "description": "0 for a major item, 1 for a minor item of it, and so on.",
+            "title": "Depth",
+            "type": "integer"
           },
           "description": {
             "anyOf": [
@@ -2574,6 +3540,14 @@
             ],
             "title": "Fqdn"
           },
+          "groups": {
+            "description": "Its current memberships of groups.",
+            "items": {
+              "$ref": "#/components/schemas/MembershipRef"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -2600,6 +3574,11 @@
               }
             ],
             "title": "In Service On"
+          },
+          "is_major": {
+            "description": "An item with no parent. Major items are counted.",
+            "title": "Is Major",
+            "type": "boolean"
           },
           "ldos": {
             "anyOf": [
@@ -2636,6 +3615,11 @@
             "description": "Twelve lower-case hex digits.",
             "title": "Mac Address"
           },
+          "minor_items": {
+            "description": "How many minor items are directly in this one.",
+            "title": "Minor Items",
+            "type": "integer"
+          },
           "name": {
             "anyOf": [
               {
@@ -2669,6 +3653,40 @@
             ],
             "title": "Owner Hid"
           },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item a minor item is in."
+          },
+          "parent_item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Item Hid"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where in its parent a minor item is.",
+            "title": "Position"
+          },
           "procured_on": {
             "anyOf": [
               {
@@ -2693,6 +3711,28 @@
             ],
             "title": "Record Status",
             "type": "string"
+          },
+          "replaced_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplacementRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item that took its place."
+          },
+          "replaces": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplacementRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The item whose place this one took."
           },
           "row_version": {
             "title": "Row Version",
@@ -2815,6 +3855,12 @@
           "state_changed_at",
           "owner_hid",
           "owner",
+          "parent_item_hid",
+          "parent",
+          "position",
+          "is_major",
+          "depth",
+          "minor_items",
           "procured_on",
           "delivered_on",
           "in_service_on",
@@ -2828,6 +3874,11 @@
           "end_of_hw_support",
           "ldos",
           "effective",
+          "groups",
+          "controllers",
+          "addresses",
+          "replaces",
+          "replaced_by",
           "tags",
           "record_status",
           "row_version",
@@ -3076,6 +4127,31 @@
             ],
             "title": "Owner Hid"
           },
+          "parent_item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null takes a minor item out of its parent.",
+            "title": "Parent Item Hid"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
           "procured_on": {
             "anyOf": [
               {
@@ -3192,6 +4268,96 @@
           "row_version"
         ],
         "title": "ItemPatch",
+        "type": "object"
+      },
+      "ItemRef": {
+        "additionalProperties": false,
+        "description": "An item, as named on another record.",
+        "properties": {
+          "asset_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Tag"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its name, or its hostname when it has no name.",
+            "title": "Name"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "serial_number",
+          "asset_tag",
+          "pid"
+        ],
+        "title": "ItemRef",
+        "type": "object"
+      },
+      "KindCount": {
+        "additionalProperties": false,
+        "description": "The items and the components of one kind.",
+        "properties": {
+          "component_count": {
+            "description": "As the headline would count them, were the kind among `count_kinds`.",
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "items",
+          "component_count"
+        ],
+        "title": "KindCount",
         "type": "object"
       },
       "LifecycleRuleOut": {
@@ -3472,6 +4638,425 @@
         "title": "ListQuery",
         "type": "object"
       },
+      "MemberAdd": {
+        "additionalProperties": false,
+        "description": "An item to make a member of a group.",
+        "properties": {
+          "item_hid": {
+            "maxLength": 36,
+            "title": "Item Hid",
+            "type": "string"
+          },
+          "joined_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, today.",
+            "title": "Joined On"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "stack: master, member. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain.",
+            "title": "Role"
+          }
+        },
+        "required": [
+          "item_hid"
+        ],
+        "title": "MemberAdd",
+        "type": "object"
+      },
+      "MemberOut": {
+        "additionalProperties": false,
+        "description": "One item's time in one group.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group_hid": {
+            "title": "Group Hid",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ItemRef"
+          },
+          "item_hid": {
+            "title": "Item Hid",
+            "type": "string"
+          },
+          "joined_on": {
+            "format": "date",
+            "title": "Joined On",
+            "type": "string"
+          },
+          "left_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for a current member.",
+            "title": "Left On"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "group_hid",
+          "item_hid",
+          "item",
+          "role",
+          "position",
+          "joined_on",
+          "left_on",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemberOut",
+        "type": "object"
+      },
+      "MemberPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a membership to change, and the version they were read at.",
+        "properties": {
+          "joined_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined On"
+          },
+          "left_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given, the membership ends.",
+            "title": "Left On"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "MemberPatch",
+        "type": "object"
+      },
+      "MembersAdd": {
+        "additionalProperties": false,
+        "description": "Items to make members of a group together. The group is checked once all are in.",
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberAdd"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Members",
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "title": "MembersAdd",
+        "type": "object"
+      },
+      "MembershipRef": {
+        "additionalProperties": false,
+        "description": "A group an item is a current member of, and as what.",
+        "properties": {
+          "group_hid": {
+            "title": "Group Hid",
+            "type": "string"
+          },
+          "hid": {
+            "description": "The membership.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "joined_on": {
+            "format": "date",
+            "title": "Joined On",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "group_hid",
+          "name",
+          "type",
+          "role",
+          "position",
+          "joined_on"
+        ],
+        "title": "MembershipRef",
+        "type": "object"
+      },
+      "NetworkCreate": {
+        "additionalProperties": false,
+        "description": "A new network label.",
+        "properties": {
+          "kind": {
+            "default": "network",
+            "enum": [
+              "network",
+              "vrf",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "NetworkCreate",
+        "type": "object"
+      },
+      "NetworkOut": {
+        "additionalProperties": false,
+        "description": "A label for an address space, and how many addresses are under it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "network",
+              "vrf",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "uses": {
+            "title": "Uses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "kind",
+          "uses",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "NetworkOut",
+        "type": "object"
+      },
+      "NetworkPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a network to change, and the version they were read at.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "network",
+                  "vrf",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "NetworkPatch",
+        "type": "object"
+      },
+      "NetworkRef": {
+        "additionalProperties": false,
+        "description": "A network, as named on an address.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label"
+        ],
+        "title": "NetworkRef",
+        "type": "object"
+      },
       "OwnerCreate": {
         "additionalProperties": false,
         "description": "A new owner.",
@@ -3700,6 +5285,38 @@
         "title": "OwnerRef",
         "type": "object"
       },
+      "Page_AddressOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AddressOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AddressOut]",
+        "type": "object"
+      },
       "Page_AuditEventOut_": {
         "additionalProperties": false,
         "properties": {
@@ -3762,6 +5379,70 @@
           "offset"
         ],
         "title": "Page[CatalogEntryOut]",
+        "type": "object"
+      },
+      "Page_DeviceGroupOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DeviceGroupOut]",
+        "type": "object"
+      },
+      "Page_DuplicateOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DuplicateOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DuplicateOut]",
         "type": "object"
       },
       "Page_ImportJobOut_": {
@@ -3858,6 +5539,70 @@
           "offset"
         ],
         "title": "Page[ItemOut]",
+        "type": "object"
+      },
+      "Page_MemberOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[MemberOut]",
+        "type": "object"
+      },
+      "Page_NetworkOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[NetworkOut]",
         "type": "object"
       },
       "Page_OwnerOut_": {
@@ -4012,6 +5757,226 @@
           "message"
         ],
         "title": "ProblemField",
+        "type": "object"
+      },
+      "Replace": {
+        "additionalProperties": false,
+        "description": "The replacement of an item: what takes its place, why and when.",
+        "properties": {
+          "new_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCreate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Or the fields of a new item, created by this request."
+          },
+          "new_item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An item that exists and takes the place.",
+            "title": "New Item Hid"
+          },
+          "reason": {
+            "description": "A value of the replacement_reason list.",
+            "maxLength": 40,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An RMA, service request or ticket number.",
+            "title": "Reference"
+          },
+          "replaced_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, today.",
+            "title": "Replaced On"
+          },
+          "row_version": {
+            "description": "The version of the item that leaves.",
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version",
+          "reason"
+        ],
+        "title": "Replace",
+        "type": "object"
+      },
+      "ReplacementOut": {
+        "additionalProperties": false,
+        "description": "Two items linked by a replacement.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "new_item": {
+            "$ref": "#/components/schemas/ItemOut"
+          },
+          "new_item_hid": {
+            "title": "New Item Hid",
+            "type": "string"
+          },
+          "old_item": {
+            "$ref": "#/components/schemas/ItemOut"
+          },
+          "old_item_hid": {
+            "title": "Old Item Hid",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "replaced_on": {
+            "format": "date",
+            "title": "Replaced On",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "old_item_hid",
+          "old_item",
+          "new_item_hid",
+          "new_item",
+          "reason",
+          "reference",
+          "replaced_on",
+          "row_version",
+          "created_at",
+          "created_by"
+        ],
+        "title": "ReplacementOut",
+        "type": "object"
+      },
+      "ReplacementRef": {
+        "additionalProperties": false,
+        "description": "The other item of a replacement, and why and when it was made.",
+        "properties": {
+          "hid": {
+            "description": "The replacement.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "item_hid": {
+            "title": "Item Hid",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "replaced_on": {
+            "format": "date",
+            "title": "Replaced On",
+            "type": "string"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          }
+        },
+        "required": [
+          "hid",
+          "item_hid",
+          "name",
+          "serial_number",
+          "reason",
+          "reference",
+          "replaced_on"
+        ],
+        "title": "ReplacementRef",
         "type": "object"
       },
       "RowChange": {
@@ -4321,6 +6286,190 @@
         "title": "SignIn",
         "type": "object"
       },
+      "SummaryOut": {
+        "additionalProperties": false,
+        "description": "A summary of a view of the items.",
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "vendor",
+                  "kind",
+                  "type",
+                  "function",
+                  "owner",
+                  "lifecycle_state",
+                  "disposition",
+                  "tag"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/SummaryTotals"
+          }
+        },
+        "required": [
+          "by",
+          "totals",
+          "rows"
+        ],
+        "title": "SummaryOut",
+        "type": "object"
+      },
+      "SummaryRow": {
+        "additionalProperties": false,
+        "description": "The measures of the items that share one value of what the summary is by.",
+        "properties": {
+          "annual_support_cost": {
+            "examples": [
+              "18000.00"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Annual Support Cost",
+            "type": "string"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "est_value": {
+            "examples": [
+              "18000.00"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Est Value",
+            "type": "string"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The value, or the HID of the record. Null for none.",
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call it.",
+            "title": "Label"
+          },
+          "managed_node_count": {
+            "title": "Managed Node Count",
+            "type": "integer"
+          },
+          "support_weight": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Support Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "component_count",
+          "managed_node_count",
+          "support_weight",
+          "est_value",
+          "annual_support_cost",
+          "key",
+          "label"
+        ],
+        "title": "SummaryRow",
+        "type": "object"
+      },
+      "SummaryTotals": {
+        "additionalProperties": false,
+        "description": "The measures of the whole view, and its items by kind.",
+        "properties": {
+          "annual_support_cost": {
+            "examples": [
+              "18000.00"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Annual Support Cost",
+            "type": "string"
+          },
+          "by_kind": {
+            "items": {
+              "$ref": "#/components/schemas/KindCount"
+            },
+            "title": "By Kind",
+            "type": "array"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "est_value": {
+            "examples": [
+              "18000.00"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Est Value",
+            "type": "string"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "managed_node_count": {
+            "title": "Managed Node Count",
+            "type": "integer"
+          },
+          "support_weight": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Support Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "component_count",
+          "managed_node_count",
+          "support_weight",
+          "est_value",
+          "annual_support_cost",
+          "by_kind"
+        ],
+        "title": "SummaryTotals",
+        "type": "object"
+      },
       "TagCreate": {
         "additionalProperties": false,
         "description": "A new tag.",
@@ -4533,10 +6682,17 @@
             "type": "integer"
           },
           "to": {
-            "description": "The state to move to.",
-            "maxLength": 20,
-            "title": "To",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The state to move to. Null returns a minor item to the standing of the item it is in.",
+            "title": "To"
           }
         },
         "required": [
@@ -4654,7 +6810,7 @@
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/GroupRef"
+              "$ref": "#/components/schemas/hirdir__api__schemas__GroupRef"
             },
             "title": "Groups",
             "type": "array"
@@ -5005,6 +7161,51 @@
         ],
         "title": "VendorRef",
         "type": "object"
+      },
+      "hirdir__api__records__GroupRef": {
+        "additionalProperties": false,
+        "description": "A device group, as named on another record.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "type"
+        ],
+        "title": "GroupRef",
+        "type": "object"
+      },
+      "hirdir__api__schemas__GroupRef": {
+        "additionalProperties": false,
+        "description": "A user group, as named on a user.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name"
+        ],
+        "title": "GroupRef",
+        "type": "object"
       }
     }
   },
@@ -5034,6 +7235,374 @@
         "summary": "About",
         "tags": [
           "About"
+        ]
+      }
+    },
+    "/api/v1/addresses": {
+      "get": {
+        "description": "List addresses, by address unless a sort says otherwise.",
+        "operationId": "list_addresses_api_v1_addresses_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AddressOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Addresses",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "post": {
+        "description": "Give an item or a device group an address.\n\nThe same address twice under one network is accepted, and is listed in the\nduplicates report.",
+        "operationId": "create_address_api_v1_addresses_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Address",
+        "tags": [
+          "Addresses"
+        ]
+      }
+    },
+    "/api/v1/addresses/query": {
+      "post": {
+        "description": "List addresses, with the filter and sort in the body.",
+        "operationId": "query_addresses_api_v1_addresses_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AddressOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Addresses",
+        "tags": [
+          "Addresses"
+        ]
+      }
+    },
+    "/api/v1/addresses/{hid}": {
+      "delete": {
+        "description": "Remove an address. The audit event of the removal holds what it was.",
+        "operationId": "delete_address_api_v1_addresses__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Address",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "get": {
+        "description": "Return one address.",
+        "operationId": "get_address_api_v1_addresses__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Address",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "patch": {
+        "description": "Change an address. Marked as primary, it takes the mark from the one that had it.",
+        "operationId": "update_address_api_v1_addresses__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Address",
+        "tags": [
+          "Addresses"
         ]
       }
     },
@@ -5846,6 +8415,627 @@
         ]
       }
     },
+    "/api/v1/device-groups": {
+      "get": {
+        "description": "List device groups, by name unless a sort says otherwise.\n\nDrafts and retired groups are left out unless asked for.",
+        "operationId": "list_groups_api_v1_device_groups_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeviceGroupOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Groups",
+        "tags": [
+          "Groups"
+        ]
+      },
+      "post": {
+        "description": "Create a device group, with its members if they are given.\n\nA stack is checked as a whole: with members, it has at least two and one master,\nunless it is a draft.",
+        "operationId": "create_group_api_v1_device_groups_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceGroupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Group",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/query": {
+      "post": {
+        "description": "List device groups, with the filter and sort in the body.",
+        "operationId": "query_groups_api_v1_device_groups_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeviceGroupOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Groups",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/{hid}": {
+      "get": {
+        "description": "Return one device group, whatever its status.",
+        "operationId": "get_group_api_v1_device_groups__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Group",
+        "tags": [
+          "Groups"
+        ]
+      },
+      "patch": {
+        "description": "Change a device group.",
+        "operationId": "update_group_api_v1_device_groups__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceGroupPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Group",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/{hid}/members": {
+      "get": {
+        "description": "List the members of a group by position, the current ones first.",
+        "operationId": "list_members_api_v1_device_groups__hid__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Show the memberships that have ended as well.",
+            "in": "query",
+            "name": "include_past",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show the memberships that have ended as well.",
+              "title": "Include Past",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_MemberOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Members",
+        "tags": [
+          "Groups"
+        ]
+      },
+      "post": {
+        "description": "Make items members of a group, all together.\n\nThe group is checked once they are all in, so a stack is given its master and its\nother members by one request.",
+        "operationId": "add_members_api_v1_device_groups__hid__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembersAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response Add Members Api V1 Device Groups  Hid  Members Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Members",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/{hid}/members/{member_hid}": {
+      "patch": {
+        "description": "Change a membership. `left_on` ends it; it is never removed.\n\nMaking a member the master of a stack makes the former master a member.",
+        "operationId": "update_member_api_v1_device_groups__hid__members__member_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_hid",
+            "required": true,
+            "schema": {
+              "title": "Member Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Member",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
+    "/api/v1/device-groups/{hid}/retire": {
+      "post": {
+        "description": "Retire a device group. Its record is kept, and its current memberships end today.",
+        "operationId": "retire_group_api_v1_device_groups__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Group",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
     "/api/v1/exports": {
       "post": {
         "description": "Export a list as CSV or JSON, with the filter and the sort that the list takes.",
@@ -6031,7 +9221,11 @@
                     "vendors",
                     "catalog_entries",
                     "owners",
-                    "items"
+                    "networks",
+                    "items",
+                    "addresses",
+                    "device_groups",
+                    "device_group_members"
                   ],
                   "type": "string"
                 },
@@ -6115,7 +9309,11 @@
                       "vendors",
                       "catalog_entries",
                       "owners",
-                      "items"
+                      "networks",
+                      "items",
+                      "addresses",
+                      "device_groups",
+                      "device_group_members"
                     ],
                     "title": "Entity",
                     "type": "string"
@@ -6890,6 +10088,73 @@
         ]
       }
     },
+    "/api/v1/items/{hid}/children": {
+      "get": {
+        "description": "List the minor items directly in one item, by position, whatever their status.",
+        "operationId": "item_children_api_v1_items__hid__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ItemOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Children",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
     "/api/v1/items/{hid}/history": {
       "get": {
         "description": "List every change made to one item, newest first.",
@@ -6952,6 +10217,78 @@
           }
         },
         "summary": "Item History",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
+    "/api/v1/items/{hid}/replace": {
+      "post": {
+        "description": "Record that another item took the place of this one, and link the two.\n\nThe other item is one that exists, or is created here. It takes over this item's\nplace in every group it is a current member of. Neither is moved in the lifecycle.",
+        "operationId": "replace_item_api_v1_items__hid__replace_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Replace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplacementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Item",
         "tags": [
           "Items"
         ]
@@ -7031,7 +10368,7 @@
     },
     "/api/v1/items/{hid}/transition": {
       "post": {
-        "description": "Move an item to another lifecycle state, recording who, when, from, to and why.",
+        "description": "Move an item to another lifecycle state, recording who, when, from, to and why.\n\nWith `to` as null a minor item is returned to the standing of the item it is in.",
         "operationId": "transition_item_api_v1_items__hid__transition_post",
         "parameters": [
           {
@@ -7177,6 +10514,332 @@
         "summary": "Update Rule",
         "tags": [
           "Labels and lists"
+        ]
+      }
+    },
+    "/api/v1/networks": {
+      "get": {
+        "description": "List networks, by label unless a sort says otherwise.",
+        "operationId": "list_networks_api_v1_networks_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_NetworkOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Networks",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "post": {
+        "description": "Create a network label.",
+        "operationId": "create_network_api_v1_networks_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Network",
+        "tags": [
+          "Addresses"
+        ]
+      }
+    },
+    "/api/v1/networks/{hid}": {
+      "delete": {
+        "description": "Remove a network that no address is under.",
+        "operationId": "delete_network_api_v1_networks__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Network",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "get": {
+        "description": "Return one network.",
+        "operationId": "get_network_api_v1_networks__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Network",
+        "tags": [
+          "Addresses"
+        ]
+      },
+      "patch": {
+        "description": "Change a network. Its addresses are under the new label at once.",
+        "operationId": "update_network_api_v1_networks__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Network",
+        "tags": [
+          "Addresses"
         ]
       }
     },
@@ -7541,6 +11204,187 @@
         "summary": "Retire Owner",
         "tags": [
           "People"
+        ]
+      }
+    },
+    "/api/v1/reports/duplicates": {
+      "get": {
+        "description": "List each address that is held more than once under one network.\n\nThe unlabelled address space counts as one network. The same address under two\nnetworks is two addresses, and is not listed.",
+        "operationId": "duplicates_api_v1_reports_duplicates_get",
+        "parameters": [
+          {
+            "description": "Count retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Count draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DuplicateOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Duplicates",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/summary": {
+      "get": {
+        "description": "Count a view of the items: components, managed nodes, weight, value and cost.\n\nThe view is what the item list shows for the same filter. With `by`, the answer\nalso holds one row for each value.",
+        "operationId": "summary_api_v1_reports_summary_get",
+        "parameters": [
+          {
+            "description": "A filter of the item list, in the short form or as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "A filter of the item list, in the short form or as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One row for each value of this.",
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "vendor",
+                    "kind",
+                    "type",
+                    "function",
+                    "owner",
+                    "lifecycle_state",
+                    "disposition",
+                    "tag"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One row for each value of this.",
+              "title": "By"
+            }
+          },
+          {
+            "description": "Count retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Count draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "Reports"
         ]
       }
     },

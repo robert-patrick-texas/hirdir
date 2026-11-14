@@ -300,6 +300,10 @@ class Item(Bookkeeping, Base):
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
     )
+    parent_item_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("items.hid"), default=None, index=True
+    )
+    position: Mapped[str | None] = mapped_column(String(100), default=None)
     procured_on: Mapped[date | None] = mapped_column(Date, default=None)
     delivered_on: Mapped[date | None] = mapped_column(Date, default=None)
     in_service_on: Mapped[date | None] = mapped_column(Date, default=None)
@@ -313,6 +317,94 @@ class Item(Bookkeeping, Base):
     end_of_hw_support: Mapped[date | None] = mapped_column(Date, default=None, index=True)
     ldos: Mapped[date | None] = mapped_column(Date, default=None, index=True)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class ItemReplacement(Bookkeeping, Base):
+    """One item that took the place of another. Both records remain."""
+
+    __tablename__ = "item_replacements"
+    __table_args__ = (
+        UniqueConstraint("old_item_hid", name="item_replacements_old"),
+        UniqueConstraint("new_item_hid", name="item_replacements_new"),
+    )
+
+    hid: Mapped[str] = _hid()
+    old_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"))
+    new_item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"))
+    reason: Mapped[str] = mapped_column(String(40))
+    reference: Mapped[str | None] = mapped_column(String(200), default=None)
+    replaced_on: Mapped[date] = mapped_column(Date)
+
+
+class DeviceGroup(Bookkeeping, Base):
+    """A labelled set of items with roles: a stack, a cluster, a controller with its endpoints."""
+
+    __tablename__ = "device_groups"
+    __table_args__ = (UniqueConstraint("name_key", name="device_groups_name"),)
+
+    hid: Mapped[str] = _hid()
+    type: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    hostname: Mapped[str | None] = mapped_column(String(255), default=None)
+    fqdn: Mapped[str | None] = mapped_column(String(255), default=None)
+    parent_group_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("device_groups.hid"), default=None, index=True
+    )
+    owner_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("owners.hid"), default=None, index=True
+    )
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class DeviceGroupMember(Bookkeeping, Base):
+    """One item's time in one group. A blank `left_on` means it is a member now."""
+
+    __tablename__ = "device_group_members"
+
+    hid: Mapped[str] = _hid()
+    group_hid: Mapped[str] = mapped_column(ForeignKey("device_groups.hid"), index=True)
+    item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    position: Mapped[int | None] = mapped_column(Integer, default=None)
+    joined_on: Mapped[date] = mapped_column(Date)
+    left_on: Mapped[date | None] = mapped_column(Date, default=None)
+
+
+class Network(Bookkeeping, Base):
+    """A label for an address space: a VRF, a tenant, a coloured network."""
+
+    __tablename__ = "networks"
+    __table_args__ = (UniqueConstraint("label_key", name="networks_label"),)
+
+    hid: Mapped[str] = _hid()
+    label: Mapped[str] = mapped_column(String(100))
+    label_key: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(10), default="network")
+
+
+class Address(Bookkeeping, Base):
+    """One IPv4 or IPv6 address of an item or of a device group."""
+
+    __tablename__ = "addresses"
+    __table_args__ = (
+        CheckConstraint(
+            "(item_hid IS NOT NULL) + (group_hid IS NOT NULL) = 1",
+            name="addresses_one_holder",
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    item_hid: Mapped[str | None] = mapped_column(ForeignKey("items.hid"), default=None, index=True)
+    group_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("device_groups.hid"), default=None, index=True
+    )
+    address: Mapped[str] = mapped_column(String(45), index=True)
+    network_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("networks.hid"), default=None, index=True
+    )
+    role: Mapped[str] = mapped_column(String(12), default="management")
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Tag(Bookkeeping, Base):

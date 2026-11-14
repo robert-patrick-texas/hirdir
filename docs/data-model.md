@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, sites, locations, contacts, owners, contracts and catalog entries are never deleted while anything refers to them. They carry `record_status`. |
+| Removal | Items, device groups, sites, locations, contacts, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -30,7 +30,8 @@ where it came from.**
 |---|---|
 | Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | its catalog entry |
 | Catalog entry: `stack_discount_pct` | the global setting |
-| Minor item: `location_hid`, `owner_hid`, `lifecycle_state`, `disposition`, `expected_online` | its parent item, and that item's parent |
+| Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
+| Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
 
 The API returns an inheritable field as its own stored value plus an `effective` block:
@@ -48,6 +49,10 @@ The API returns an inheritable field as its own stored value plus an `effective`
 `setting` or `none`. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
+
+In `effective` a decimal and a date are text, a reference is the HID of the record, and
+`expected_online` is `true` or `false`. `source_hid` is the record the value came from:
+for `parent_item`, the item above that holds it, which need not be the direct parent.
 
 ## Records
 
@@ -99,8 +104,8 @@ lifecycle fields included.
 | `name` | text | the name the team uses. Blank shows `hostname` |
 | `hostname`, `fqdn` | text | for a stack member these are usually blank; the stack holds them |
 | `description`, `comments` | text | |
-| `parent_item_hid` | reference | set on a minor item |
-| `position` | text | where in the parent: "PS-A", "Slot 3", "Bay 7" |
+| `parent_item_hid` | reference | set on a minor item: the item it is installed in or attached to |
+| `position` | text | where in the parent: "PS-A", "Slot 3", "Bay 7". Only a minor item has one |
 | `quantity` | integer, default 1 | seats or licences for software and services |
 | `lifecycle_state` | choice | see below |
 | `disposition` | choice | see below |
@@ -116,62 +121,116 @@ lifecycle fields included.
 | `record_status` | choice | see Conventions |
 
 A **major item** is one with `parent_item_hid` blank. `is_major` is derived and is
-available as a filter and a column.
+available as a filter and a column. So is `depth`: 0 for a major item, 1 for a minor
+item of it, and so on.
 
-Release 0.3.0 has every field above except `parent_item_hid`, `position` and the
-derived `is_major`, which arrive with minor items in 0.4.0, `location_hid` in 0.5.0 and
-`purchase_line_hid` in 0.6.0.
+**Minor items.** A minor item has exactly one parent, and may have minor items of its
+own: a module in a blade in a chassis. Minor items nest at most three deep beneath a
+major item, and an item is never above itself. A minor item may have its own serial
+number, catalog entry, name and addresses. A current member of a stack or a cluster is
+a major item, so it is not given a parent, and a minor item is not made a member of
+one.
+
+A minor item whose own `owner_hid` is blank has the owner of the nearest item above it
+that has one. Its standing is taken as a whole: with a `lifecycle_state` of its own it
+has its own disposition and intent, and with none it has all three of the nearest item
+above it that has a state. A power supply is in production because its switch is, and
+the one that failed is moved to Pending-Removal by itself. It is returned to inheriting
+by a transition to no state. Nothing is copied down: moving the switch changes what
+its minor items show, and writes to none of them.
+
+Taking a minor item out of its parent, by clearing `parent_item_hid` or naming another
+parent, keeps its record and its history. With no parent it is a major item, with
+whatever is its own: what it inherited stays with the parent it left.
+
+Release 0.4.0 has every field above except `location_hid`, which arrives in 0.5.0, and
+`purchase_line_hid`, in 0.6.0.
 
 ### `item_replacements`
 
 | Field | Type | Notes |
 |---|---|---|
 | `old_item_hid`, `new_item_hid` | reference | both records remain |
-| `reason` | choice | `rma`, `refresh`, `project`, `upgrade`, `other` |
+| `reason` | choice | a value of the `replacement_reason` list: `rma`, `refresh`, `project`, `upgrade`, `other` |
 | `reference` | text | RMA, service request or ticket number |
-| `replaced_on` | date | |
+| `replaced_on` | date | left out, today in the application's time zone |
+
+A replacement is made by `POST /items/{hid}/replace` on the item that leaves. The item
+that takes its place is one that exists, or is created by the same request. An item is
+replaced once, and takes the place of one item. The new item takes over the old one's
+current memberships of groups, with the same role and position: each of the old ones
+ends on `replaced_on` and each of the new ones begins then, so a stack keeps its HID
+and its master through an RMA. The replacement moves neither item in the lifecycle;
+that is done by a transition, with its own reason.
+
+The record arrives in release 0.4.0. Reports on replacements, and replacements in
+files, arrive in 0.6.0.
 
 ### `device_groups` and `device_group_members`
 
 | Field | Type | Notes |
 |---|---|---|
-| `type` | choice | `stack`, `cluster`, `controller_domain`, `custom` |
-| `name` | text | required |
+| `type` | choice | `stack`, `cluster`, `controller_domain`, `custom`. Not changed once the group has had a member |
+| `name` | text, unique | required |
 | `hostname`, `fqdn` | text | for stacks and clusters |
-| `parent_group_hid` | reference | nesting; cycles refused |
-| `location_hid`, `owner_hid` | reference | optional; shown when members do not disagree |
+| `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
+| `location_hid`, `owner_hid` | reference | optional. `location_hid` arrives in 0.5.0 |
+| `record_status` | choice | see Conventions |
 
 | Member field | Type | Notes |
 |---|---|---|
 | `group_hid` | reference | |
 | `item_hid` | reference | |
-| `role` | choice | stack: `master`, `member`. cluster: `active`, `standby`, `member`. controller domain: `controller`, `endpoint` |
+| `role` | choice | stack: `master`, `member`. cluster: `active`, `standby`, `member`. controller domain: `controller`, `endpoint`. custom: `member` |
 | `position` | integer | stack member number |
-| `joined_on`, `left_on` | date | `left_on` blank means current |
+| `joined_on`, `left_on` | date | `joined_on` left out is today. `left_on` blank means current |
 
 Rules, checked on every write:
 
 - A `stack` has at least two current members and exactly one `master`. All are major
-  items. A stack being built may hold one member while it is `draft`.
-- An item is a current member of at most one stack and at most one cluster.
+  items. A stack being built may hold fewer, and no master yet, while it is `draft`. A
+  stack with no members at all is accepted whatever its status, as one whose members
+  are still to come; the rule holds from the first member on.
+- Members are added several at a time, by one request, and the group is checked once
+  they are all in. Making another member the `master` makes the former master a
+  `member` in the same change. The master does not leave a stack that has other
+  members.
+- An item is a current member of one group at most once, and of at most one stack and
+  at most one cluster among the groups that are not retired. The members of a stack
+  and of a cluster are major items.
 - `serial_number` of a stack is read from its current master. It is not stored, so it is
   right the moment the master changes.
-- In a `controller_domain`, a controller is an item, or a nested group of type `cluster`.
+- In a `controller_domain`, a controller is an item, or a nested group of type `cluster`:
+  one whose `parent_group_hid` is the domain. The controllers of an endpoint are the
+  members with the role `controller` and the current members of every such cluster.
+- A membership is ended by giving it `left_on`, and is never removed. An item that
+  comes back joins again, with a new membership. Retiring a group ends its current
+  memberships on that day.
+- The group's record lists in `members_disagree` each field of its own that a current
+  member contradicts: `owner_hid`, when a member has another owner in force.
+
+A group takes tags, and addresses of its own: a stack carries the hostname and the
+management address, and its members usually carry neither.
 
 ### `networks` and `addresses`
 
 | Field | Type | Notes |
 |---|---|---|
 | `networks.label` | text, unique | "Red", "Black", "Tenant1" |
-| `networks.kind` | choice | `vrf`, `network`, `other` |
-| `addresses.item_hid` or `addresses.group_hid` | reference | exactly one of the two |
+| `networks.kind` | choice | `vrf`, `network`, `other`. Left out, `network` |
+| `addresses.item_hid` or `addresses.group_hid` | reference | exactly one of the two, and not changed afterwards |
 | `addresses.address` | IPv4 or IPv6 | stored in canonical form, no prefix length |
 | `addresses.network_hid` | reference | blank is the unlabelled address space |
-| `addresses.role` | choice | `management`, `loopback`, `secondary`, `virtual` |
+| `addresses.role` | choice | `management`, `loopback`, `secondary`, `virtual`. Left out, `management` |
 | `addresses.is_primary` | boolean | at most one primary management address per item or group |
 
 The same `address` twice under one network is allowed and is listed in the duplicates
-report.
+report. The same address under two networks is two different addresses.
+
+Only an address with the role `management` may be primary. Marking one as primary
+takes the mark off the one that had it, in the same change. An address is removed
+outright, and so is a network that no address is under; each removal is an audit event
+that holds what was removed.
 
 ### `regions`, `sites`, `locations`
 
@@ -358,7 +417,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `owners`, `items`, and each further record type as its release arrives |
+| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `owners`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |
@@ -447,6 +506,12 @@ records who, when, from, to and why. The why is a value of the `state_reason` li
 is asked for on a forced move and is optional otherwise. A change of disposition or
 intent within a state is an ordinary edit, checked against the same row.
 
+A **minor item** may leave all three blank and then has those of the item above it;
+see "Minor items" under `items`. Given a state, it follows the rules of this section
+like any other item. `POST /items/{hid}/transition` with `to` as `null` returns it to
+inheriting, and is recorded as the move it is. For a major item that is refused: an
+item leaves a state by moving to another.
+
 An item **should be monitored** when it is a major item in Test or Prod and
 `expected_online` is true. That is an expectation for reports to compare against, not a
 switch that enrols anything.
@@ -477,11 +542,15 @@ For a set of items chosen by any filter:
 
 | Measure | Definition |
 |---|---|
-| Component count | Major items of `count_kinds` in the view, whose state is one of `count_states` or is blank. The view decides whether drafts and retired records are among them; unless asked, they are not. |
-| Managed-node count | Of those: each current stack or cluster counts as one, and each item in neither counts as one. |
-| Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). |
+| Component count | Major items of `count_kinds` in the view, whose state is one of `count_states` or is blank. The view decides whether drafts and retired records are among them; unless asked, they are not. An item with no catalog entry is counted as hardware. |
+| Managed-node count | Of those: each current stack or cluster counts as one, and each item in neither counts as one. An item in both is part of its cluster. |
+| Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). Summed exactly, and rounded to two places once, half up. |
 | Estimated value | Sum of effective `est_value` × `quantity` over all items in the set, major and minor. |
 | Annual support cost | Sum of effective `annual_support_cost` × `quantity` over all items in the set. No stack discount. |
+
+A stack or a cluster is **current** for these measures when the group is `active` and
+the membership has no `left_on`. A draft stack is not yet one device on the network:
+its members count as the items they are, and earn no discount.
 
 Worked example, with a global stack discount of 50 and a per-model discount of 30 on the
 second model:
@@ -530,7 +599,8 @@ thirds, is the team's own six positions.
 ## Indexes
 
 Serial number, MAC address, asset tag, name, hostname, catalog entry, parent item,
-lifecycle state, disposition, owner, location, address, contract number, each
-end-of-life date, `updated_at`, and the tag links by record. Region and location
+lifecycle state, disposition, owner, location, address, the item and the group of an
+address and of a membership, contract number, each end-of-life date, `updated_at`, and
+the tag links by record. Region and location
 ancestry is answered with recursive queries; a stored closure is added only if a
 measurement asks for it.

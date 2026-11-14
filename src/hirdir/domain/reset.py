@@ -15,14 +15,19 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import (
+    Address,
     AuditEvent,
     CatalogEntry,
     Choice,
+    DeviceGroup,
+    DeviceGroupMember,
     IdempotencyKey,
     ImportJob,
     ImportRow,
     Item,
+    ItemReplacement,
     LifecycleRule,
+    Network,
     Owner,
     RoleGrant,
     ServiceToken,
@@ -44,6 +49,11 @@ CLEARED: tuple[Any, ...] = (
     ImportRow,
     ImportJob,
     IdempotencyKey,
+    Address,
+    Network,
+    DeviceGroupMember,
+    DeviceGroup,
+    ItemReplacement,
     Item,
     CatalogEntry,
     Owner,
@@ -64,7 +74,19 @@ KEPT: tuple[Any, ...] = (
     AuditEvent,
 )
 # The `record_type` of the audit events that go with the records.
-RECORD_TYPES = ("item", "catalog_entry", "vendor", "owner", "tag", "import_job")
+RECORD_TYPES = (
+    "item",
+    "item_replacement",
+    "device_group",
+    "device_group_member",
+    "network",
+    "address",
+    "catalog_entry",
+    "vendor",
+    "owner",
+    "tag",
+    "import_job",
+)
 
 
 def counts(db: Session) -> dict[str, int]:
@@ -82,8 +104,11 @@ def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str
     audit event says what was removed and names the backup that still holds it.
     """
     removed = counts(db)
-    # A catalog entry may name another as its successor, so no order empties the table.
+    # A catalog entry may name another as its successor, an item may be in another and a
+    # group within another, so no order empties those tables.
     db.execute(update(CatalogEntry).values(successor_hid=None))
+    db.execute(update(Item).values(parent_item_hid=None))
+    db.execute(update(DeviceGroup).values(parent_group_hid=None))
     for model in CLEARED:
         db.execute(delete(model))
     removed["audit_events"] = (

@@ -10,7 +10,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
-from hirdir.domain import items
+from hirdir.domain import items, replacements
 from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports
 
@@ -121,7 +121,10 @@ def retire_item(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: 
 def transition_item(
     hid: str, body: r.Transition, principal: Inventory, context: Audit, db: Db
 ) -> r.ItemOut:
-    """Move an item to another lifecycle state, recording who, when, from, to and why."""
+    """Move an item to another lifecycle state, recording who, when, from, to and why.
+
+    With `to` as null a minor item is returned to the standing of the item it is in.
+    """
     given = body.model_fields_set
     item = items.transition(
         db,
@@ -136,6 +139,38 @@ def transition_item(
         force=body.force,
     )
     return shapes.item_out(db, item)
+
+
+@router.get("/{hid}/children")
+def item_children(
+    hid: str, _: Viewer, db: Db, limit: Limit = 100, offset: Offset = 0
+) -> Page[r.ItemOut]:
+    """List the minor items directly in one item, by position, whatever their status."""
+    page, total = items.children(db, hid, limit, offset)
+    return Page(items=shapes.items_out(db, page), total=total, limit=limit, offset=offset)
+
+
+@router.post("/{hid}/replace", status_code=201)
+def replace_item(
+    hid: str, body: r.Replace, _: Inventory, context: Audit, db: Db
+) -> r.ReplacementOut:
+    """Record that another item took the place of this one, and link the two.
+
+    The other item is one that exists, or is created here. It takes over this item's
+    place in every group it is a current member of. Neither is moved in the lifecycle.
+    """
+    replacement = replacements.replace(
+        db,
+        context,
+        hid,
+        body.row_version,
+        reason=body.reason,
+        new_item_hid=body.new_item_hid,
+        new_item=body.new_item.model_dump() if body.new_item is not None else None,
+        reference=body.reference,
+        replaced_on=body.replaced_on,
+    )
+    return shapes.replacement_out(db, replacement)
 
 
 @router.get("/{hid}/history")

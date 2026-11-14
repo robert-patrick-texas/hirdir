@@ -21,6 +21,7 @@ and CLI's types are generated from it.
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
+| Removing | `DELETE /addresses/{hid}`, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored, as it may behind a large import being applied, is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
@@ -33,7 +34,7 @@ and CLI's types are generated from it.
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
 | Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio` |
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace` |
-| Groups | `/device-groups`, `/device-groups/{hid}/members` |
+| Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
 | Addresses | `/networks`, `/addresses` |
 | Geography | `/regions`, `/sites`, `/locations`, `GET /geography/tree`, `GET /locations/{hid}/effective` |
 | People | `/contacts`, `/contact-assignments`, `/owners` |
@@ -94,7 +95,11 @@ Fields are the record's own, plus dotted fields of related records that the rout
 allows (`catalog.pid`, `catalog.vendor`, `owner.label`, `contract.number`,
 `group.name`, `address`, `network.label`) and `effective.<field>` for inherited ones.
 `mac_address` and `address` accept any common notation and are normalized before
-comparison. A field or operator the route does not allow is a `422`. Every comparison
+comparison. On the item list `is_major` and `depth` tell major items from minor ones,
+`owner.label` is the label of the owner in force, and `group.name`, `group.type`,
+`address` and `network.label` find an item by any of its current groups and any of its
+addresses: `eq` is true when one of them matches, and `ne` and `empty` when none does.
+A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
@@ -138,14 +143,15 @@ operator; the JSON form takes any value. `filter=` also takes the JSON form.
       "expected_online": true,
       "owner": "Network Engineering",
       "location": "Americas > Central > Site-2 > Building 1 > Room 102",
-      "addresses": [ { "address": "192.0.2.10", "role": "management", "network": "Red" } ],
+      "mgmt_address": "192.0.2.10",
+      "mgmt_network": "Red",
       "tags": ["refresh-2030"]
     }
   ]
 }
 ```
 
-**CSV** is the same record flattened, one header row, UTF-8. Lists are joined with `;`.
+**CSV** holds the same columns, one header row, UTF-8. Lists are joined with `;`.
 The entity and mode are given beside the file, not in it.
 
 ```csv
@@ -158,7 +164,8 @@ hid,vendor,pid,serial_number,asset_tag,name,lifecycle_state,disposition,expected
 A file names its columns as the fields are named on the [data model](data-model.md)
 page, with a reference written as people write it: `vendor` and `pid` for a catalog
 entry, `owner` for an owner's label. Release 0.3.0 carries the records that exist so
-far. A column of a later release, such as `location`, is unknown until that release.
+far, and 0.4.0 adds networks, addresses, device groups and their members. A column of
+a later release, such as `location`, is unknown until that release.
 
 | Entity | Columns that can be set | Further columns an export can write |
 |---|---|---|
@@ -166,7 +173,11 @@ far. A column of a later release, such as `location`, is unknown until that rele
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `owner`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, and a `_source` for each of the seven fields that inherit |
+| `networks` | `label`, `kind` | |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `owner`, `mgmt_address`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, and a `_source` for each of the eleven fields that inherit |
+| `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | |
+| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `mgmt_address`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members` |
+| `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on` | |
 
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
@@ -181,13 +192,16 @@ are read there too.
 | Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files |
 | Sending a file | The file is the body of `POST /imports/preview`, as `text/csv` or `application/json`, with `entity`, `mode` and `file_name` beside it in the URL. A JSON file names its entity and mode in its envelope, and the URL may leave them out; the two must not disagree |
 | Modes | `create` refuses a row that matches an existing record. `upsert` creates or updates. There is no mode that deletes |
-| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label. For items, the order on the data model page. Two rows of one file that name the same record: the second is rejected |
-| References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, contract number, geographic path, group name |
+| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, a network's label, a device group's name. For items, the order on the data model page. An address is found by its item or group, its address and its network; a membership by its group, its item and `joined_on`, or with no `joined_on` the current one. Two rows of one file that name the same record: the second is rejected |
+| References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, network label, contract number, geographic path, group name. An item is named by its HID, or by a serial number, an asset tag or a name that one item alone has; an export writes the asset tag when there is one, then the serial number, then the name |
+| Minor items | `parent` names the item a minor item is in, and `!clear` takes it out. A parent stands before its minor items in a file: an export sorted by `depth` writes them so |
+| Management address | `mgmt_address` and `mgmt_network`, on an item and on a device group, are its primary management address. A value sets it, changing the one there is or adding one; `!clear` removes it. `mgmt_network` is read with `mgmt_address` only: left out, the network stays as it is. Every address of a record, this one among them, is in the `addresses` entity, so an export writes these two columns only when they are asked for by name |
+| Groups | A group is loaded before its members. A stack is checked for its two members and one master once a file of members has been worked through, and the rows of a group that the file would leave wrong are rejected together |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, and for a row that gives an item another model while still holding the values of the old one |
-| Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner and standing of the item above it |
+| Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
 | Preview | `POST /imports/preview` stores the parsed file and returns, per row: `create`, `update` with the changed fields, `unchanged` or `rejected` with reasons. A file that cannot be read at all is refused with a `422`, and nothing is stored. The answer holds the counts and the first hundred rows; `GET /imports/{hid}/rows` pages through all of them, and `outcome=rejected` keeps to one kind |
@@ -196,7 +210,7 @@ are read there too.
 | Whose preview | A preview is applied once, by anybody who holds the Inventory role, whoever made it: one person may prepare a file and another look it over and apply it. The job says who made it and who applied it. Anybody who may read the inventory may read it |
 | Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
 | Limits | 20 MB and 100,000 rows per file. A larger file is a `413`. A site may raise the 20 MB in its configuration file and in nginx; see [install.md](install.md#uploads). Behind the packaged nginx a body of more than 20 MB is refused by nginx itself, with a `413` that is nginx's own page and not a problem document |
-| Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), addresses, device groups, members, coverage, registrations, capacity lines |
+| Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), device groups (a group before the groups within it), members, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply. The preview and the apply are events on the job |
 
 ### Export
@@ -221,6 +235,9 @@ a spreadsheet does not run it as a formula. Import removes that apostrophe again
 value that itself begins with an apostrophe before such a character is written with one
 more, so that it comes back as it was.
 
+Device groups export `serial_number`, which for a stack is its master's, and `members`,
+the number of current ones. Neither can be set.
+
 Every template in `examples/` is produced by exporting the seeded example database, so
 the templates can never drift from the importer. `make examples` writes them, and a
 test fails when they are out of date.
@@ -231,7 +248,7 @@ test fails when they are out of date.
 HIDs, and the change: `set`, which names columns of an import and their new values,
 with `null` to clear one, and `add_tags` and `remove_tags`. The fields that tell one
 item from another cannot be set on more than one item at once: `serial_number`,
-`asset_tag`, `mac_address`, `name`, `hostname` and `fqdn`. A change that names a single
+`asset_tag`, `mac_address`, `name`, `hostname`, `fqdn` and `mgmt_address`. A change that names a single
 item by its HID may set them. A filter leaves out what a list leaves out, unless
 `include_archived` or `include_drafts` says otherwise; items named by their HIDs are
 changed whatever their status. One bulk edit changes at most 100,000 items, and more is
@@ -242,6 +259,33 @@ row, and it is stored in the same way. `POST /items/bulk-update/{hid}/apply` app
 it under the same rules: in one transaction, once, by anybody who holds the Inventory
 role, and not at all when any of its records has changed since. A second person who bulk-edits rows that the
 first has just changed is told which, and none of their change is applied.
+
+## Reports
+
+`GET /reports/summary` counts a view of the items. It takes `filter`, `include_drafts`
+and `include_archived` as the item list does, and `by`, one of `vendor`, `kind`,
+`type`, `function`, `owner`, `lifecycle_state`, `disposition` and `tag`. `region`,
+`site` and `contract` join them as those records arrive. The answer holds `totals` and,
+when `by` is given, `rows`, one for each value, the blank among them:
+
+| Measure | |
+|---|---|
+| `items` | every item of the view, major and minor |
+| `component_count`, `managed_node_count` | as defined under "Counting and weight" on the [data model](data-model.md#counting-and-weight) page |
+| `support_weight`, `est_value`, `annual_support_cost` | the same; decimals, as text |
+| `by_kind` | on `totals` only: items and components of each kind, so that software and services stand beside the headline count |
+
+A minor item is in the row of the owner, state and disposition in force for it. An item
+with several tags is in the row of each, and the totals count it once. A stack whose
+members fall in two rows is a managed node in both, and one in the totals.
+
+`GET /reports/duplicates` lists each address that is held more than once under one
+network, with the unlabelled address space as one network of its own: the address, the
+network, and the items and groups that hold it. A holder that a list leaves out by
+default is not counted, unless `include_drafts` or `include_archived` asks for it. It
+pages with `limit` and `offset`.
+
+The end-of-life and coverage reports arrive in 0.6.0.
 
 ## CLI
 
@@ -271,11 +315,13 @@ hirdir report capacity --include-drafts
 |---|---|
 | Server and token | `--url` and `--token`, or `HIRDIR_URL` and `HIRDIR_TOKEN`, or `~/.config/hirdir/config.toml`, in that order |
 | Output | A table on a terminal. `--format json` or `csv` for scripts. Data on stdout, messages on stderr |
-| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners` and `tags` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
+| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners`, `tags`, `networks`, `addresses` and `groups` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
+| A group | `hirdir groups show` takes the HID or the name, and prints the group with its current members, their roles and, for a stack, the master's serial number |
+| Reports | `hirdir report summary` takes `--filter`, `--by`, `--include-drafts` and `--include-archived`, and prints the totals and one row for each value. `hirdir report duplicates` lists the addresses held more than once |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |
 
@@ -300,7 +346,8 @@ directory, so it never leaves behind a file the service cannot write.
 It is on the server and nowhere else: no page and no route of the API clears anything.
 It refuses while the service is running, says what it will remove and how many, takes a
 backup, and goes on only when the word `reset` is typed, or `--yes` is given by a
-script. It removes the items, catalog entries, vendors, owners, tags and stored imports,
+script. It removes the items with their replacements, addresses and memberships, the
+device groups, networks, catalog entries, vendors, owners, tags and stored imports,
 and the audit events of those records, and writes one audit event that says so and
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
 lifecycle rules stay. `--everything` removes those too and leaves the database as a

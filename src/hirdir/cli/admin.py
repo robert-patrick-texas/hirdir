@@ -268,9 +268,10 @@ def reset(
 ) -> None:
     """Clear the inventory, to start over after trying things out. Stop the service first.
 
-    Removes every item, catalog entry, vendor, owner and tag, the stored imports and
-    the history of those records. Accounts, roles, settings, choices and lifecycle
-    rules stay, unless --everything is given. A backup is taken first.
+    Removes every item with its addresses and memberships, every device group,
+    network, catalog entry, vendor, owner and tag, the stored imports and the history
+    of those records. Accounts, roles, settings, choices and lifecycle rules stay,
+    unless --everything is given. A backup is taken first.
     """
     config = _load()
     target = _sqlite_path(config)

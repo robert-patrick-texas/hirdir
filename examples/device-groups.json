@@ -1,0 +1,6 @@
+{"schema": "hirdir/1", "entity": "device_groups", "mode": "upsert", "records": [
+  {"name": "site2-sw-core", "type": "stack", "hostname": "site2-sw-core", "fqdn": "site2-sw-core.example.net", "parent": null, "owner": null, "record_status": "active", "tags": ["critical"]},
+  {"name": "site2-sw-floor", "type": "stack", "hostname": "site2-sw-floor", "fqdn": "site2-sw-floor.example.net", "parent": null, "owner": null, "record_status": "active", "tags": []},
+  {"name": "site2-wireless", "type": "controller_domain", "hostname": null, "fqdn": null, "parent": null, "owner": null, "record_status": "active", "tags": []},
+  {"name": "site2-wlc-ha", "type": "cluster", "hostname": "site2-wlc", "fqdn": "site2-wlc.example.net", "parent": "site2-wireless", "owner": null, "record_status": "active", "tags": []}
+]}

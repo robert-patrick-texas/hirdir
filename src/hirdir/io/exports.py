@@ -59,7 +59,7 @@ def _columns(
                 )
             chosen.append(column)
     else:
-        chosen = list(which.settable)
+        chosen = [column for column in which.settable if column.listed]
     ordered: dict[str, Column] = {"hid": which.columns[0]}
     for column in chosen:
         ordered.setdefault(column.name, column)

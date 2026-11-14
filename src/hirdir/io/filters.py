@@ -37,6 +37,7 @@ KINDS: dict[str, tuple[str, ...]] = {
     "choice": COMPARING,
     "reference": COMPARING,
     "mac": (*COMPARING, "contains", "prefix"),
+    "address": (*COMPARING, "contains", "prefix"),
     "number": (*COMPARING, *ORDERING),
     "integer": (*COMPARING, *ORDERING),
     "date": (*COMPARING, *ORDERING),
@@ -55,12 +56,18 @@ class Field:
     at all when the label is blank. `convert` turns one value of a filter into the form
     the column is compared with, when the kind alone does not say how, and raises
     ValueError for a value it cannot take.
+
+    A record may have several of some fields: an item has the names of all its groups
+    and every one of its addresses. Such a field has `among`, which turns a condition
+    on `expression` into "one of them meets it". It can be filtered by and not sorted
+    by.
     """
 
     kind: str
     expression: Any = None
     test: Callable[[str], ColumnElement[bool]] | None = None
     convert: Callable[[str], Any] | None = None
+    among: Callable[[ColumnElement[bool]], ColumnElement[bool]] | None = None
 
 
 @dataclass(frozen=True)
@@ -252,12 +259,13 @@ def _converted(field: Field, name: str, value: Any) -> Any:
             "date": "a date, as YYYY-MM-DD",
             "timestamp": "a date and time in ISO 8601",
             "mac": "a MAC address or part of one",
+            "address": "an IPv4 or IPv6 address or part of one",
         }.get(kind, "a value it can hold")
         raise refuse(f"{name} is compared with {expected}") from None
 
 
 def _is_text(field: Field) -> bool:
-    return field.kind in ("text", "choice", "reference", "mac")
+    return field.kind in ("text", "choice", "reference", "mac", "address")
 
 
 def _equal(field: Field, value: Any) -> ColumnElement[bool]:
@@ -286,6 +294,20 @@ def _condition(condition: Condition, fields: Mapping[str, Field]) -> ColumnEleme
         tagged = field.test("")
         return ~tagged if _truth(value, f"{name} empty") else tagged
 
+    if field.among is None:
+        return _test(field, name, op, value)
+    # A field the record may have several of: one of them meets the condition. The two
+    # that ask for none are turned round, so that `ne` also finds a record with none.
+    if op == "empty":
+        some = field.among(field.expression.is_not(None))
+        return ~some if _truth(value, f"{name} empty") else some
+    if op == "ne":
+        return ~field.among(_test(field, name, "eq", value))
+    return field.among(_test(field, name, op, value))
+
+
+def _test(field: Field, name: str, op: str, value: Any) -> ColumnElement[bool]:
+    """Return the condition that one value of a field meets an operator."""
     column = field.expression
     if op == "empty":
         blank = column.is_(None)
@@ -361,7 +383,7 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
             descending = name.startswith("-")
             name = name.lstrip("+-").strip()
             field = fields.get(name)
-            if field is None or field.expression is None:
+            if field is None or field.expression is None or field.among is not None:
                 raise Invalid(
                     "the sort is not acceptable",
                     {"sort": f"{name} is not a field this list can be sorted by"},

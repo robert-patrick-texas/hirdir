@@ -12,7 +12,17 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import hirdir
-from hirdir.api import catalog, files, items, labels, problems, routes
+from hirdir.api import (
+    addresses,
+    catalog,
+    files,
+    groups,
+    items,
+    labels,
+    problems,
+    reports,
+    routes,
+)
 from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
@@ -24,6 +34,9 @@ ROUTERS = (
     *routes.ROUTERS,
     *catalog.ROUTERS,
     *items.ROUTERS,
+    *groups.ROUTERS,
+    *addresses.ROUTERS,
+    *reports.ROUTERS,
     *labels.ROUTERS,
     *files.ROUTERS,
 )

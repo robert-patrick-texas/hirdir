@@ -243,7 +243,8 @@ sudo hirdir admin reset                    # says what goes, backs up, asks for 
 sudo systemctl start hirdir
 ```
 
-`reset` refuses while the service is running. It removes every item, catalog entry,
+`reset` refuses while the service is running. It removes every item with its
+replacements, addresses and memberships, every device group, network, catalog entry,
 vendor, owner and tag, the stored imports, and the history of those records. It keeps
 the accounts, groups, roles and service tokens, so people sign in as before, and the
 settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it

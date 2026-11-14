@@ -35,7 +35,9 @@ class Column:
 
     `kind` is text, integer, boolean, date, money, number, list or timestamp. `limit`
     is the longest text the column takes, or the longest entry of a list. A column that
-    is not `settable` is written by an export and passed over by an import.
+    is not `settable` is written by an export and passed over by an import. One that is
+    not `listed` is taken by an import, and written by an export only when it is asked
+    for by name: what it holds is in a file of its own already.
     """
 
     name: str
@@ -43,6 +45,7 @@ class Column:
     limit: int = 200
     settable: bool = True
     inherits: bool = False
+    listed: bool = True
 
 
 def _text(column: Column, value: str) -> str:

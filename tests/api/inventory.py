@@ -44,9 +44,81 @@ class Maker:
     def item(self, **fields: Any) -> dict[str, Any]:
         return self.post("/items", fields)
 
-    def move(self, item: dict[str, Any], to: str, expect: int = 200, **more: Any) -> dict[str, Any]:
+    def move(
+        self, item: dict[str, Any], to: str | None, expect: int = 200, **more: Any
+    ) -> dict[str, Any]:
         body = {"to": to, "row_version": item["row_version"], **more}
         return self.post(f"/items/{item['hid']}/transition", body, expect)
+
+    def delete(self, path: str, expect: int = 204) -> None:
+        response = self.client.delete(API + path, headers=self.headers)
+        assert response.status_code == expect, response.text
+
+    def switches(
+        self, entry: dict[str, Any], prefix: str, count: int, **more: Any
+    ) -> list[dict[str, Any]]:
+        """Make count items of one model, with serial numbers and hostnames from prefix."""
+        return [
+            self.item(
+                catalog_entry_hid=entry["hid"],
+                serial_number=f"{prefix.upper()}-{number:03d}",
+                hostname=f"{prefix}-{number:02d}",
+                **more,
+            )
+            for number in range(1, count + 1)
+        ]
+
+    def group(
+        self, name: str, type_: str = "stack", members: Any = (), expect: int = 201, **more: Any
+    ) -> dict[str, Any]:
+        """Make a device group. Members are (item, role) or (item, role, position)."""
+        listed = [
+            {"item_hid": member[0]["hid"], "role": member[1], "position": place}
+            for place, member in enumerate(members, start=1)
+        ]
+        body = {"type": type_, "name": name, "members": listed, **more}
+        return self.post("/device-groups", body, expect)
+
+    def stack(self, name: str, members: list[dict[str, Any]], **more: Any) -> dict[str, Any]:
+        """Make a stack whose first member is the master."""
+        roles = [
+            (member, "master" if place == 0 else "member") for place, member in enumerate(members)
+        ]
+        return self.group(name, "stack", roles, **more)
+
+    def add(self, group: dict[str, Any], members: list[dict[str, Any]], expect: int = 201) -> Any:
+        """Add members to a group together. Returns the memberships, or the problem."""
+        response = self.client.post(
+            f"{API}/device-groups/{group['hid']}/members",
+            json={"members": members},
+            headers=self.headers,
+        )
+        assert response.status_code == expect, response.text
+        return response.json()
+
+    def members(self, group: dict[str, Any], **params: Any) -> list[dict[str, Any]]:
+        return self.get(f"/device-groups/{group['hid']}/members", **params)["items"]
+
+    def network(self, label: str, kind: str = "vrf") -> dict[str, Any]:
+        return self.post("/networks", {"label": label, "kind": kind})
+
+    def address(
+        self,
+        holder: dict[str, Any],
+        address: str,
+        network: dict[str, Any] | None = None,
+        expect: int = 201,
+        **more: Any,
+    ) -> dict[str, Any]:
+        """Give an item, or a group, an address."""
+        whose = "group_hid" if "member_count" in holder else "item_hid"
+        body = {whose: holder["hid"], "address": address, **more}
+        if network is not None:
+            body["network_hid"] = network["hid"]
+        return self.post("/addresses", body, expect)
+
+    def totals(self, **params: Any) -> dict[str, Any]:
+        return self.get("/reports/summary", **params)["totals"]
 
     def found(self, path: str = "/items", **params: Any) -> list[str]:
         """Return what a list shows: the name, hostname or serial number of each row."""

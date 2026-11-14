@@ -1,36 +1,42 @@
-hid,vendor,pid,serial_number,asset_tag,name,hostname,fqdn,mac_address,description,comments,quantity,lifecycle_state,disposition,expected_online,state_reason,owner,procured_on,delivered_on,in_service_on,warranty_start,warranty_end,est_value,support_weight,annual_support_cost,end_of_sale,end_of_sw_support,end_of_hw_support,ldos,record_status,tags
-,Juniper,EX4400-48P,JN0000X001,AT-000151,,lab-sw-ex-01,lab-sw-ex-01.example.net,00005e005397,,,1,Test,Staging,true,,Network Engineering,,2026-09-21,,,,,,,,,,,active,lab
-,Juniper,EX4400-48P,JN0000X002,AT-000152,,lab-sw-ex-02,lab-sw-ex-02.example.net,00005e005398,,,1,Test,Staging,true,,Network Engineering,,2026-09-21,,,,,,,,,,,active,lab
-,Example Software,NETCONFIG-MANAGER,,,NetConfig Manager,,,,Licensed for 250 devices,,250,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
-,Canonical,UBUNTU-SERVER-VM,,,netconfig-01,netconfig-01,netconfig-01.example.net,,Runs the configuration backup,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
-,Canonical,UBUNTU-SERVER-VM,,,netmon-01,netmon-01,netmon-01.example.net,,Collects flow records,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
-,Example Cloud,SECONDARY-DNS,,,Secondary DNS,,,,,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
-,Cisco,C9200L-48P-4G,JAE0000Y001,AT-000211,,site1-sw-floor-01,site1-sw-floor-01.example.net,00005e00530b,,Traded in when Site-1 closed,1,Archived,,false,disposed,Facilities Management,,,,,,,,,,,,,active,
-,Cisco,C9130AXI-B,FJC0000X001,AT-000191,,site2-ap-01,site2-ap-01.example.net,00005e0053bf,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
-,Cisco,C9130AXI-B,FJC0000X002,AT-000192,,site2-ap-02,site2-ap-02.example.net,00005e0053c0,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
-,Cisco,C9130AXI-B,FJC0000X003,AT-000193,,site2-ap-03,site2-ap-03.example.net,00005e0053c1,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
-,Cisco,C9130AXI-B,FJC0000X004,AT-000194,,site2-ap-04,site2-ap-04.example.net,00005e0053c2,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
-,Palo Alto Networks,PA-3410,PA0000X001,AT-000161,,site2-fw-edge-01,site2-fw-edge-01.example.net,00005e0053a1,,,1,Prod,Production,true,,Security Operations,,,2025-01-13,,,36500.00,,9100.00,,,,,active,critical
-,Palo Alto Networks,PA-3410,PA0000X002,AT-000162,,site2-fw-edge-02,site2-fw-edge-02.example.net,00005e0053a2,,,1,Prod,Production,true,,Security Operations,,,2025-01-13,,,,,,,,,,active,critical
-,Juniper,SRX345,CW0000X001,AT-000171,,site2-fw-oob-01,site2-fw-oob-01.example.net,00005e0053ab,,,1,Delivered,,false,,Security Operations,2026-08-03,2026-10-12,,,,,,,,,,,active,
-,Cisco,CP-8851-K9,FCH0000X001,AT-000201,,site2-phone-01,site2-phone-01.example.net,00005e005301,,,1,Prod,Production,true,,Voice Services,,,,,,,,,,,,,active,
-,Cisco,CP-8851-K9,FCH0000X002,AT-000202,,site2-phone-02,site2-phone-02.example.net,00005e005302,,,1,Prod,Production,true,,Voice Services,,,,,,,,,,,,,active,
-,Cisco,CP-8851-K9,FCH0000X003,AT-000203,,site2-phone-03,site2-phone-03.example.net,00005e005303,,,1,Purchased,,false,,Voice Services,2026-10-05,,,,,,,,,,,,active,
-,Cisco,ISR4331/K9,FDO0000X001,AT-000141,,site2-rtr-wan-01,site2-rtr-wan-01.example.net,00005e00538d,,,1,Prod,Production,true,,Network Engineering,,,2020-02-10,,,,,,,,,,active,critical;refresh-2028
-,Cisco,ISR4331/K9,FDO0000X002,AT-000142,,site2-rtr-wan-02,site2-rtr-wan-02.example.net,00005e00538e,,,1,Down,Production,false,maintenance,Network Engineering,,,2020-02-10,,,,,,,,,,active,critical;refresh-2028
-,Cisco,C9300-48P,FCW0000X001,AT-000101,,site2-sw-access-01,site2-sw-access-01.example.net,00005e005365,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,critical
-,Cisco,C9300-48P,FCW0000X002,AT-000102,,site2-sw-access-02,site2-sw-access-02.example.net,00005e005366,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X003,AT-000103,,site2-sw-access-03,site2-sw-access-03.example.net,00005e005367,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X004,AT-000104,,site2-sw-access-04,site2-sw-access-04.example.net,00005e005368,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X005,AT-000105,,site2-sw-access-05,site2-sw-access-05.example.net,00005e005369,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X006,AT-000106,,site2-sw-access-06,site2-sw-access-06.example.net,00005e00536a,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X007,AT-000107,,site2-sw-access-07,site2-sw-access-07.example.net,00005e00536b,,Cold spare on the shelf in the site's store room,1,Prod,Spare,false,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9300-48P,FCW0000X008,AT-000108,,site2-sw-access-08,site2-sw-access-08.example.net,00005e00536c,,Parked with the team until a site asks for it,1,Assigned,Spare,false,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
-,Cisco,C9500-24Y4C,FCW0000Y001,AT-000121,,site2-sw-core-01,site2-sw-core-01.example.net,00005e005379,,,1,Prod,Production,true,,Network Engineering,,,2023-09-04,,,,,,,,,,active,critical
-,Cisco,C9500-24Y4C,FCW0000Y002,AT-000122,,site2-sw-core-02,site2-sw-core-02.example.net,00005e00537a,,,1,Prod,Production,true,,Network Engineering,,,2023-09-04,,,,,,,,,,active,critical
-,Cisco,C9200L-48P-4G,JAE0000X001,AT-000131,,site2-sw-floor-01,site2-sw-floor-01.example.net,00005e005383,,,1,Prod,Production,true,,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
-,Cisco,C9200L-48P-4G,JAE0000X002,AT-000132,,site2-sw-floor-02,site2-sw-floor-02.example.net,00005e005384,,,1,Prod,Production,true,,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
-,Cisco,C9200L-48P-4G,JAE0000X003,AT-000133,,site2-sw-floor-03,site2-sw-floor-03.example.net,00005e005385,,Replaced by site2-sw-access-06,1,Pending-Removal,Excess,false,retired,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
-,Cisco,C9800-40-K9,TTM0000X001,AT-000181,,site2-wlc-01,site2-wlc-01.example.net,00005e0053b5,,,1,Prod,Production,true,,Network Engineering,,,2024-05-06,,,,,,,,,,active,critical
-,Cisco,C9300-48P,FCW0000Z001,AT-000221,,site3-sw-access-01,site3-sw-access-01.example.net,00005e005315,,Entered ahead of the Site-3 build; not counted until made active,1,,,,,Network Engineering,,,,,,,,,,,,,draft,
-,Fluke Networks,LIQ-100,LQ0000X001,,,,,,,,1,,,,,Network Engineering,,,,,,,,,,,,,active,
+hid,vendor,pid,serial_number,asset_tag,name,hostname,fqdn,mac_address,parent,position,description,comments,quantity,lifecycle_state,disposition,expected_online,state_reason,owner,procured_on,delivered_on,in_service_on,warranty_start,warranty_end,est_value,support_weight,annual_support_cost,end_of_sale,end_of_sw_support,end_of_hw_support,ldos,record_status,tags
+,Juniper,EX4400-48P,JN0000X001,AT-000151,,lab-sw-ex-01,lab-sw-ex-01.example.net,00005e005397,,,,,1,Test,Staging,true,,Network Engineering,,2026-09-21,,,,,,,,,,,active,lab
+,Juniper,EX4400-48P,JN0000X002,AT-000152,,lab-sw-ex-02,lab-sw-ex-02.example.net,00005e005398,,,,,1,Test,Staging,true,,Network Engineering,,2026-09-21,,,,,,,,,,,active,lab
+,Example Software,NETCONFIG-MANAGER,,,NetConfig Manager,,,,,,Licensed for 250 devices,,250,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
+,Canonical,UBUNTU-SERVER-VM,,,netconfig-01,netconfig-01,netconfig-01.example.net,,,,Runs the configuration backup,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
+,Canonical,UBUNTU-SERVER-VM,,,netmon-01,netmon-01,netmon-01.example.net,,,,Collects flow records,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
+,Example Cloud,SECONDARY-DNS,,,Secondary DNS,,,,,,,,1,Prod,Production,true,,Network Engineering,,,,,,,,,,,,,active,
+,Cisco,C9200L-48P-4G,JAE0000Y001,AT-000211,,site1-sw-floor-01,site1-sw-floor-01.example.net,00005e00530b,,,,Traded in when Site-1 closed,1,Archived,,false,disposed,Facilities Management,,,,,,,,,,,,,active,
+,Cisco,C9130AXI-B,FJC0000X001,AT-000191,,site2-ap-01,site2-ap-01.example.net,00005e0053bf,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
+,Cisco,C9130AXI-B,FJC0000X002,AT-000192,,site2-ap-02,site2-ap-02.example.net,00005e0053c0,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
+,Cisco,C9130AXI-B,FJC0000X003,AT-000193,,site2-ap-03,site2-ap-03.example.net,00005e0053c1,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
+,Cisco,C9130AXI-B,FJC0000X004,AT-000194,,site2-ap-04,site2-ap-04.example.net,00005e0053c2,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-20,,,,,,,,,,active,
+,Palo Alto Networks,PA-3410,PA0000X001,AT-000161,,site2-fw-edge-01,site2-fw-edge-01.example.net,00005e0053a1,,,,,1,Prod,Production,true,,Security Operations,,,2025-01-13,,,36500.00,,9100.00,,,,,active,critical
+,Palo Alto Networks,PA-3410,PA0000X002,AT-000162,,site2-fw-edge-02,site2-fw-edge-02.example.net,00005e0053a2,,,,,1,Prod,Production,true,,Security Operations,,,2025-01-13,,,,,,,,,,active,critical
+,Juniper,SRX345,CW0000X001,AT-000171,,site2-fw-oob-01,site2-fw-oob-01.example.net,00005e0053ab,,,,,1,Delivered,,false,,Security Operations,2026-08-03,2026-10-12,,,,,,,,,,,active,
+,Cisco,CP-8851-K9,FCH0000X001,AT-000201,,site2-phone-01,site2-phone-01.example.net,00005e005301,,,,,1,Prod,Production,true,,Voice Services,,,,,,,,,,,,,active,
+,Cisco,CP-8851-K9,FCH0000X002,AT-000202,,site2-phone-02,site2-phone-02.example.net,00005e005302,,,,,1,Prod,Production,true,,Voice Services,,,,,,,,,,,,,active,
+,Cisco,CP-8851-K9,FCH0000X003,AT-000203,,site2-phone-03,site2-phone-03.example.net,00005e005303,,,,,1,Purchased,,false,,Voice Services,2026-10-05,,,,,,,,,,,,active,
+,Cisco,ISR4331/K9,FDO0000X001,AT-000141,,site2-rtr-wan-01,site2-rtr-wan-01.example.net,00005e00538d,,,,,1,Prod,Production,true,,Network Engineering,,,2020-02-10,,,,,,,,,,active,critical;refresh-2028
+,Cisco,ISR4331/K9,FDO0000X002,AT-000142,,site2-rtr-wan-02,site2-rtr-wan-02.example.net,00005e00538e,,,,,1,Down,Production,false,maintenance,Network Engineering,,,2020-02-10,,,,,,,,,,active,critical;refresh-2028
+,Cisco,C9300-48P,FCW0000X001,AT-000101,,site2-sw-access-01,site2-sw-access-01.example.net,00005e005365,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,critical
+,Cisco,C9300-48P,FCW0000X002,AT-000102,,site2-sw-access-02,site2-sw-access-02.example.net,00005e005366,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X003,AT-000103,,site2-sw-access-03,site2-sw-access-03.example.net,00005e005367,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X004,AT-000104,,site2-sw-access-04,site2-sw-access-04.example.net,00005e005368,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X005,AT-000105,,site2-sw-access-05,site2-sw-access-05.example.net,00005e005369,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X006,AT-000106,,site2-sw-access-06,site2-sw-access-06.example.net,00005e00536a,,,,,1,Prod,Production,true,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X007,AT-000107,,site2-sw-access-07,site2-sw-access-07.example.net,00005e00536b,,,,Cold spare on the shelf in the site's store room,1,Prod,Spare,false,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9300-48P,FCW0000X008,AT-000108,,site2-sw-access-08,site2-sw-access-08.example.net,00005e00536c,,,,Parked with the team until a site asks for it,1,Assigned,Spare,false,,Network Engineering,,,2024-03-18,2024-02-01,2025-01-31,,,,,,,,active,
+,Cisco,C9500-24Y4C,FCW0000Y001,AT-000121,,site2-sw-core-01,site2-sw-core-01.example.net,00005e005379,,,,,1,Prod,Production,true,,Network Engineering,,,2023-09-04,,,,,,,,,,active,critical
+,Cisco,C9500-24Y4C,FCW0000Y002,AT-000122,,site2-sw-core-02,site2-sw-core-02.example.net,00005e00537a,,,,,1,Prod,Production,true,,Network Engineering,,,2023-09-04,,,,,,,,,,active,critical
+,Cisco,C9200L-48P-4G,JAE0000X001,AT-000131,,site2-sw-floor-01,site2-sw-floor-01.example.net,00005e005383,,,,,1,Prod,Production,true,,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
+,Cisco,C9200L-48P-4G,JAE0000X002,AT-000132,,site2-sw-floor-02,site2-sw-floor-02.example.net,00005e005384,,,,,1,Prod,Production,true,,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
+,Cisco,C9200L-48P-4G,JAE0000X003,AT-000133,,site2-sw-floor-03,site2-sw-floor-03.example.net,00005e005385,,,,Replaced by site2-sw-access-06,1,Pending-Removal,Excess,false,retired,Network Engineering,,,2021-06-14,,,,,,,,,,active,refresh-2030
+,Cisco,C9800-40-K9,TTM0000X001,AT-000181,,site2-wlc-01,site2-wlc-01.example.net,00005e0053b5,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-06,,,,,,,,,,active,critical
+,Cisco,C9800-40-K9,TTM0000X002,AT-000182,,site2-wlc-02,site2-wlc-02.example.net,00005e0053b6,,,,,1,Prod,Production,true,,Network Engineering,,,2024-05-06,,,,,,,,,,active,critical
+,Cisco,C9300-48P,FCW0000Z001,AT-000221,,site3-sw-access-01,site3-sw-access-01.example.net,00005e005315,,,,Entered ahead of the Site-3 build; not counted until made active,1,,,,,Network Engineering,,,,,,,,,,,,,draft,
+,Fluke Networks,LIQ-100,LQ0000X001,,,,,,,,,,1,,,,,Network Engineering,,,,,,,,,,,,,active,
+,Cisco,PWR-C1-715WAC-P,LIT0000X001,,,,,,AT-000101,PS-A,,,1,,,,,,,,,,,,,,,,,,active,
+,Cisco,PWR-C1-715WAC-P,LIT0000X002,,,,,,AT-000101,PS-B,,,1,,,,,,,,,,,,,,,,,,active,
+,Cisco,C9300-NM-8X,FOC0000X001,,,,,,AT-000101,Slot 1,,,1,,,,,,,,,,,,,,,,,,active,
+,Cisco,PWR-C1-715WAC-P,LIT0000X003,,,,,,AT-000102,PS-A,,,1,,,,,,,,,,,,,,,,,,active,
+,Cisco,PWR-C1-715WAC-P,LIT0000X004,,,,,,AT-000102,PS-B,,Failed in service; waiting for the return label,1,Pending-Removal,,false,rma,,,,,,,,,,,,,,active,

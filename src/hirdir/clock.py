@@ -2,7 +2,7 @@
 
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 # Every time is shown in the application's time zone, so that everybody refers to the
@@ -18,6 +18,11 @@ def now() -> datetime:
 def now_ms() -> int:
     """Return the current time in milliseconds since the epoch."""
     return time.time_ns() // 1_000_000
+
+
+def today(zone: str = DEFAULT_ZONE) -> date:
+    """Return today's date in the application's time zone."""
+    return now().astimezone(ZoneInfo(zone)).date()
 
 
 def shown(moment: datetime, zone: str = DEFAULT_ZONE) -> str:

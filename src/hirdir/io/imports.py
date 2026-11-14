@@ -165,7 +165,7 @@ def _work(
                 )
             )
             continue
-        run.start_row()
+        run.start_row(number)
         result = Result(row=number, outcome="create", key=which.key(row.values, None))
         savepoint = db.begin_nested()
         try:
@@ -180,6 +180,12 @@ def _work(
         results.append(result)
         if number % LET_GO_EVERY == 0:
             run.let_go()
+    # What is right or wrong only once every row is in: the members of a stack.
+    wrong = which.finish(run)
+    for result in results:
+        if result.row in wrong and result.outcome != "rejected":
+            result.outcome, result.changes, result.notes = "rejected", [], []
+            result.reasons = wrong[result.row]
     run.let_go()
     return results
 

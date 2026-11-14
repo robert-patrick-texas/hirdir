@@ -3,10 +3,12 @@ hid,vendor,pid,model_name,kind,type,function,description,end_of_sale,end_of_sw_s
 ,Cisco,C9130AXI-B,Catalyst 9130AX access point,hardware,access-point,wireless,,,,,2032-05-31,1400.00,0.2,95.00,,,,reviewed,active,
 ,Cisco,C9200L-48P-4G,Catalyst 9200L 48-port PoE+,hardware,switch,access,,2026-10-31,,,2031-10-31,6500.00,1,520.00,,Cisco,C9300-48P,reviewed,active,refresh-2030
 ,Cisco,C9300-48P,Catalyst 9300 48-port PoE+,hardware,switch,access,,,,,2034-04-30,18000.00,1,1450.00,,,,reviewed,active,
+,Cisco,C9300-NM-8X,Catalyst 9300 8-port 10G network module,hardware,module,,,,,,,2400.00,,,,,,reviewed,active,
 ,Cisco,C9500-24Y4C,Catalyst 9500 24-port 25G,hardware,switch,core,,,,,2035-01-31,42000.00,2.5,3900.00,,,,reviewed,active,
 ,Cisco,C9800-40-K9,Catalyst 9800-40 wireless controller,hardware,wireless-controller,wireless,,,,,2033-07-31,38000.00,3,4200.00,,,,reviewed,active,
 ,Cisco,CP-8851-K9,IP Phone 8851,hardware,phone,voice,,,,,2030-06-30,420.00,0.1,,,,,reviewed,active,
 ,Cisco,ISR4331/K9,ISR 4331,hardware,router,wan,,2023-11-30,2026-11-30,2028-11-30,2028-11-30,5200.00,1.5,610.00,,,,reviewed,active,refresh-2028
+,Cisco,PWR-C1-715WAC-P,715 W AC power supply,hardware,power-supply,,,,,,,900.00,,,,,,reviewed,active,
 ,Example Cloud,SECONDARY-DNS,Hosted secondary DNS,service,service,management,,,,,,,0.5,3600.00,,,,reviewed,active,
 ,Example Software,NETCONFIG-MANAGER,Configuration backup and compliance,software,application,management,,,,,,,2,12000.00,,,,reviewed,active,
 ,Fluke Networks,LIQ-100,LinkIQ cable and network tester,hardware,test-equipment,lab,,,,,,2100.00,,,,,,reviewed,active,

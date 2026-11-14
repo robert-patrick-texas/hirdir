@@ -34,6 +34,7 @@ def test_choices_come_with_defaults_and_can_be_added_to(make: Maker) -> None:
         "catalog_type",
         "catalog_function",
         "state_reason",
+        "replacement_reason",
     }
     assert "list" in errors(make.get("/choices", 422, list="colours"))
 

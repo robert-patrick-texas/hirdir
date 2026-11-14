@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from hirdir.db.models import CatalogEntry, Choice, Item
+from hirdir.db.models import CatalogEntry, Choice, Item, ItemReplacement
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -28,6 +28,7 @@ USES = {
     "catalog_type": ((CatalogEntry, CatalogEntry.type),),
     "catalog_function": ((CatalogEntry, CatalogEntry.function),),
     "state_reason": ((Item, Item.state_reason),),
+    "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
 }
 
 

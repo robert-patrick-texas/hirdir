@@ -4,6 +4,7 @@ Nothing here writes. An inherited value is worked out each time it is read, so a
 to a catalog entry reaches every item of that model without touching one of them.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -36,8 +37,21 @@ class Effective:
 NOTHING = Effective(None, "none", None)
 
 
-def of_item(item: Item, entry: CatalogEntry | None) -> dict[str, Effective]:
-    """Return the value in force of each field an item inherits from its catalog entry."""
+STANDING = ("lifecycle_state", "disposition", "expected_online")
+PARENT_FIELDS = ("owner_hid", *STANDING)
+
+
+def of_item(
+    item: Item, entry: CatalogEntry | None, above: Sequence[Item] = ()
+) -> dict[str, Effective]:
+    """Return the value in force of each field an item inherits.
+
+    The amounts and the dates come from its catalog entry. A minor item has the owner
+    of the nearest item above it that has one, and, when it has no lifecycle state of
+    its own, the state, disposition and intent of the nearest one that has a state: the
+    three are taken together, because the lifecycle rules check them against one
+    another. `above` is the items above it, the nearest first.
+    """
     found = {}
     for name in ITEM_FIELDS:
         own = getattr(item, name)
@@ -48,6 +62,20 @@ def of_item(item: Item, entry: CatalogEntry | None) -> dict[str, Effective]:
             found[name] = Effective(inherited, "catalog", entry.hid)
         else:
             found[name] = NOTHING
+
+    def from_nearest(having: str, names: tuple[str, ...]) -> None:
+        for holder in (item, *above):
+            if getattr(holder, having) is not None:
+                source: Source = "own" if holder is item else "parent_item"
+                for name in names:
+                    value = getattr(holder, name)
+                    found[name] = NOTHING if value is None else Effective(value, source, holder.hid)
+                return
+        for name in names:
+            found[name] = NOTHING
+
+    from_nearest("owner_hid", ("owner_hid",))
+    from_nearest("lifecycle_state", STANDING)
     return found
 
 

@@ -8,23 +8,29 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from hirdir.api import records as shapes
 from hirdir.db.models import (
+    Address,
     CatalogEntry,
     Choice,
+    DeviceGroup,
+    DeviceGroupMember,
     ImportJob,
     ImportRow,
     Item,
+    ItemReplacement,
     LifecycleRule,
+    Network,
     Owner,
     Tag,
     User,
     Vendor,
 )
-from hirdir.domain import inheritance, records, settings, tags
+from hirdir.domain import addresses, groups, inheritance, records, replacements, settings, tags
+from hirdir.domain import items as item_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
 from hirdir.io import imports
@@ -41,15 +47,67 @@ def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
 
 def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
     value = effective.value
+    shown: str | bool | None
     if isinstance(value, Decimal):
-        text = records.decimal_text(name, value)
+        shown = records.decimal_text(name, value)
     elif isinstance(value, date):
-        text = value.isoformat()
+        shown = value.isoformat()
+    elif isinstance(value, str | bool):
+        shown = value
     else:
-        text = None
+        shown = None
     return shapes.EffectiveValue(
-        value=text, source=effective.source, source_hid=effective.source_hid
+        value=shown, source=effective.source, source_hid=effective.source_hid
     )
+
+
+def _count_by(db: Session, column: Any, hids: list[str]) -> dict[str, int]:
+    counts = dict.fromkeys(hids, 0)
+    if hids:
+        counted = db.execute(select(column, func.count()).where(column.in_(hids)).group_by(column))
+        for hid, count in counted:
+            counts[hid] = count
+    return counts
+
+
+def item_refs(db: Session, items: list[Item]) -> dict[str, shapes.ItemRef]:
+    """Return each of the items as another record names it."""
+    entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in items})
+    return {
+        item.hid: shapes.ItemRef(
+            hid=item.hid,
+            name=item.name or item.hostname,
+            serial_number=item.serial_number,
+            asset_tag=item.asset_tag,
+            pid=entries[item.catalog_entry_hid].pid if item.catalog_entry_hid else None,
+        )
+        for item in items
+    }
+
+
+def _group_ref(group: DeviceGroup) -> shapes.GroupRef:
+    return shapes.GroupRef(hid=group.hid, name=group.name, type=group.type)
+
+
+def _address_refs(db: Session, field: str, hids: list[str]) -> dict[str, list[shapes.AddressRef]]:
+    found = addresses.of_holders(db, field, hids)
+    networks = _by_hid(
+        db, Network, {address.network_hid for listed in found.values() for address in listed}
+    )
+    return {
+        hid: [
+            shapes.AddressRef(
+                hid=address.hid,
+                address=address.address,
+                network_hid=address.network_hid,
+                network=networks[address.network_hid].label if address.network_hid else None,
+                role=address.role,
+                is_primary=address.is_primary,
+            )
+            for address in listed
+        ]
+        for hid, listed in found.items()
+    }
 
 
 def vendor_out(vendor: Vendor) -> shapes.VendorOut:
@@ -94,23 +152,85 @@ def entry_out(db: Session, entry: CatalogEntry) -> shapes.CatalogEntryOut:
     return entries_out(db, [entry])[0]
 
 
+def _replacement_refs(
+    db: Session, hids: list[str]
+) -> tuple[dict[str, shapes.ReplacementRef], dict[str, shapes.ReplacementRef]]:
+    """Return, for each item, the item that took its place and the one whose place it took."""
+    replaced_by, replaces = replacements.of_items(db, hids)
+    others = _by_hid(
+        db,
+        Item,
+        {found.new_item_hid for found in replaced_by.values()}
+        | {found.old_item_hid for found in replaces.values()},
+    )
+
+    def ref(found: ItemReplacement, other_hid: str) -> shapes.ReplacementRef:
+        other = others[other_hid]
+        return shapes.ReplacementRef(
+            hid=found.hid,
+            item_hid=other_hid,
+            name=other.name or other.hostname,
+            serial_number=other.serial_number,
+            reason=found.reason,
+            reference=found.reference,
+            replaced_on=found.replaced_on,
+        )
+
+    return (
+        {hid: ref(found, found.new_item_hid) for hid, found in replaced_by.items()},
+        {hid: ref(found, found.old_item_hid) for hid, found in replaces.items()},
+    )
+
+
 def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     """Return items with what they refer to and the values in force of what they inherit."""
+    hids = [item.hid for item in items]
+    lines = item_rules.lines_above(db, items)
+    above = {one.hid: one for line in lines.values() for one in line}
     entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in items})
     vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
-    owners = _by_hid(db, Owner, {item.owner_hid for item in items})
-    labels = tags.labels_of(db, "item", [item.hid for item in items])
+    owners = _by_hid(
+        db,
+        Owner,
+        {item.owner_hid for item in items} | {item.owner_hid for item in above.values()},
+    )
+    labels = tags.labels_of(db, "item", hids)
+    parents = item_refs(db, [lines[item.hid][0] for item in items if lines[item.hid]])
+    minor = _count_by(db, Item.parent_item_hid, hids)
+    memberships = groups.memberships_of(db, hids)
+    domains = sorted(
+        {
+            group.hid
+            for listed in memberships.values()
+            for member, group in listed
+            if group.type == "controller_domain" and member.role == "endpoint"
+        }
+    )
+    controllers = groups.controllers(db, domains)
+    controller_refs = item_refs(
+        db, list({item.hid: item for listed in controllers.values() for item in listed}.values())
+    )
+    its_addresses = _address_refs(db, "item_hid", hids)
+    replaced_by, replaces = _replacement_refs(db, hids)
     out = []
     for item in items:
         entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
         owner = owners.get(item.owner_hid) if item.owner_hid else None
-        effective = inheritance.of_item(item, entry)
+        line = lines[item.hid]
+        effective = inheritance.of_item(item, entry, line)
+        owner_in_force = owners.get(effective["owner_hid"].value)
+        its_groups = memberships[item.hid]
+        its_controllers: dict[str, shapes.ItemRef] = {}
+        for member, group in its_groups:
+            if group.hid in controllers and member.role == "endpoint":
+                for controller in controllers[group.hid]:
+                    its_controllers[controller.hid] = controller_refs[controller.hid]
         out.append(
             shapes.ItemOut(
                 **{
                     name: getattr(item, name)
                     for name in shapes.ItemOut.model_fields
-                    if name not in ("catalog", "owner", "tags", "effective")
+                    if name not in _ITEM_SHAPED
                 },
                 catalog=None
                 if entry is None
@@ -125,18 +245,202 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     function=entry.function,
                 ),
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
+                is_major=item.parent_item_hid is None,
+                depth=len(line),
+                minor_items=minor[item.hid],
+                groups=[
+                    shapes.MembershipRef(
+                        hid=member.hid,
+                        group_hid=group.hid,
+                        name=group.name,
+                        type=group.type,
+                        role=member.role,
+                        position=member.position,
+                        joined_on=member.joined_on,
+                    )
+                    for member, group in its_groups
+                ],
+                controllers=list(its_controllers.values()),
+                addresses=its_addresses[item.hid],
+                replaces=replaces.get(item.hid),
+                replaced_by=replaced_by.get(item.hid),
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
-                    **{name: _effective(name, value) for name, value in effective.items()}
+                    owner_hid=shapes.EffectiveReference(
+                        **_effective("owner_hid", effective["owner_hid"]).model_dump(),
+                        label=owner_in_force.label if owner_in_force is not None else None,
+                    ),
+                    **{
+                        name: _effective(name, value)
+                        for name, value in effective.items()
+                        if name != "owner_hid"
+                    },
                 ),
             )
         )
     return out
 
 
+_ITEM_SHAPED = (
+    "catalog",
+    "owner",
+    "parent",
+    "is_major",
+    "depth",
+    "minor_items",
+    "groups",
+    "controllers",
+    "addresses",
+    "replaces",
+    "replaced_by",
+    "tags",
+    "effective",
+)
+
+
 def item_out(db: Session, item: Item) -> shapes.ItemOut:
     """Return one item."""
     return items_out(db, [item])[0]
+
+
+def replacement_out(db: Session, replacement: ItemReplacement) -> shapes.ReplacementOut:
+    """Return a replacement with both of its items."""
+    old, new = items_out(
+        db, [db.get_one(Item, replacement.old_item_hid), db.get_one(Item, replacement.new_item_hid)]
+    )
+    return shapes.ReplacementOut(
+        **{
+            name: getattr(replacement, name)
+            for name in shapes.ReplacementOut.model_fields
+            if name not in ("old_item", "new_item")
+        },
+        old_item=old,
+        new_item=new,
+    )
+
+
+def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroupOut]:
+    """Return device groups with their masters, their numbers of members and what they refer to."""
+    hids = [group.hid for group in found]
+    owners = _by_hid(db, Owner, {group.owner_hid for group in found})
+    parents = _by_hid(db, DeviceGroup, {group.parent_group_hid for group in found})
+    nested: dict[str, list[shapes.GroupRef]] = {hid: [] for hid in hids}
+    if hids:
+        inside = db.scalars(
+            select(DeviceGroup)
+            .where(DeviceGroup.parent_group_hid.in_(hids), DeviceGroup.record_status != "retired")
+            .order_by(DeviceGroup.name_key)
+        )
+        for group in inside:
+            if group.parent_group_hid is not None:
+                nested[group.parent_group_hid].append(_group_ref(group))
+    counts = groups.member_counts(db, hids)
+    masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
+    master_refs = item_refs(db, list(masters.values()))
+    labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
+    its_addresses = _address_refs(db, "group_hid", hids)
+    out = []
+    for group in found:
+        owner = owners.get(group.owner_hid) if group.owner_hid else None
+        parent = parents.get(group.parent_group_hid) if group.parent_group_hid else None
+        master = masters.get(group.hid)
+        out.append(
+            shapes.DeviceGroupOut(
+                **{
+                    name: getattr(group, name)
+                    for name in shapes.DeviceGroupOut.model_fields
+                    if name not in _GROUP_SHAPED
+                },
+                parent=None if parent is None else _group_ref(parent),
+                groups=nested[group.hid],
+                owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                members_disagree=groups.members_disagree(db, group),
+                # Read from the master each time it is asked for, and stored nowhere.
+                serial_number=master.serial_number if master is not None else None,
+                master=master_refs[master.hid] if master is not None else None,
+                member_count=counts[group.hid],
+                addresses=its_addresses[group.hid],
+                tags=labels[group.hid],
+            )
+        )
+    return out
+
+
+_GROUP_SHAPED = (
+    "parent",
+    "groups",
+    "owner",
+    "members_disagree",
+    "serial_number",
+    "master",
+    "member_count",
+    "addresses",
+    "tags",
+)
+
+
+def group_out(db: Session, group: DeviceGroup) -> shapes.DeviceGroupOut:
+    """Return one device group."""
+    return groups_out(db, [group])[0]
+
+
+def members_out(db: Session, members: list[DeviceGroupMember]) -> list[shapes.MemberOut]:
+    """Return memberships, each with its item."""
+    refs = item_refs(db, list(_by_hid(db, Item, {member.item_hid for member in members}).values()))
+    return [
+        shapes.MemberOut(
+            **{
+                name: getattr(member, name)
+                for name in shapes.MemberOut.model_fields
+                if name != "item"
+            },
+            item=refs[member.item_hid],
+        )
+        for member in members
+    ]
+
+
+def networks_out(db: Session, found: list[Network]) -> list[shapes.NetworkOut]:
+    """Return networks, each with the number of addresses under it."""
+    uses = addresses.uses(db, [network.hid for network in found])
+    return [
+        shapes.NetworkOut(
+            **{
+                name: getattr(network, name)
+                for name in shapes.NetworkOut.model_fields
+                if name != "uses"
+            },
+            uses=uses[network.hid],
+        )
+        for network in found
+    ]
+
+
+def addresses_out(db: Session, found: list[Address]) -> list[shapes.AddressOut]:
+    """Return addresses, each with the item or the group that has it and its network."""
+    refs = item_refs(db, list(_by_hid(db, Item, {address.item_hid for address in found}).values()))
+    its_groups = _by_hid(db, DeviceGroup, {address.group_hid for address in found})
+    networks = _by_hid(db, Network, {address.network_hid for address in found})
+    out = []
+    for address in found:
+        network = networks.get(address.network_hid) if address.network_hid else None
+        group = its_groups.get(address.group_hid) if address.group_hid else None
+        out.append(
+            shapes.AddressOut(
+                **{
+                    name: getattr(address, name)
+                    for name in shapes.AddressOut.model_fields
+                    if name not in ("item", "group", "network")
+                },
+                item=refs.get(address.item_hid) if address.item_hid else None,
+                group=None if group is None else _group_ref(group),
+                network=None
+                if network is None
+                else shapes.NetworkRef(hid=network.hid, label=network.label),
+            )
+        )
+    return out
 
 
 def tag_out(tag: Tag, uses: int) -> shapes.TagOut:

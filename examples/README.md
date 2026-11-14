@@ -16,7 +16,11 @@ Load the files in this order, because a record names the ones it refers to:
 2. `vendors.csv`
 3. `catalog-entries.csv`
 4. `owners.csv`
-5. `items.csv`
+5. `networks.csv`
+6. `items.csv`
+7. `device-groups.csv`
+8. `device-group-members.csv`
+9. `addresses.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
@@ -25,7 +29,11 @@ hirdir import examples/tags.csv --entity tags
 hirdir import examples/vendors.csv --entity vendors
 hirdir import examples/catalog-entries.csv --entity catalog_entries
 hirdir import examples/owners.csv --entity owners
+hirdir import examples/networks.csv --entity networks
 hirdir import examples/items.csv --entity items
+hirdir import examples/device-groups.csv --entity device_groups
+hirdir import examples/device-group-members.csv --entity device_group_members
+hirdir import examples/addresses.csv --entity addresses
 ```
 
 Loaded a second time, every row is `unchanged`. The `hid` column is there and blank:

@@ -1,15 +1,17 @@
 """Items: the tracked things, their identity, and their standing in the lifecycle."""
 
 import re
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from hirdir import clock
+from hirdir import clock, ids
 from hirdir.auth.roles import Role
-from hirdir.db.models import AuditEvent, CatalogEntry, Item, Owner
+from hirdir.db import dialect
+from hirdir.db.models import AuditEvent, CatalogEntry, DeviceGroup, DeviceGroupMember, Item, Owner
 from hirdir.domain import catalog, choices, lifecycle, records, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -27,6 +29,8 @@ FIELDS = (
     "quantity",
     *STANDING,
     "owner_hid",
+    "parent_item_hid",
+    "position",
     *DAYS,
     *catalog.AMOUNTS,
     *catalog.DATES,
@@ -34,6 +38,10 @@ FIELDS = (
 )
 MAC_SEPARATORS = re.compile(r"[\s:.\-]")
 HEX = re.compile(r"[0-9a-f]*")
+# How many levels of minor items there may be beneath a major item.
+MAX_DEPTH = 3
+# The types of group whose members are major items.
+MAJOR_ONLY = ("stack", "cluster")
 
 
 def mac_digits(value: str) -> str:
@@ -50,6 +58,166 @@ def get_item(db: Session, hid: str) -> Item:
     if item is None:
         raise NotFound(f"there is no item {hid}")
     return item
+
+
+def ancestors(db: Session, item: Item) -> list[Item]:
+    """Return the items above a minor item, the nearest first. A major item has none."""
+    above: list[Item] = []
+    seen = {item.hid}
+    parent_hid = item.parent_item_hid
+    while parent_hid and parent_hid not in seen:
+        parent = db.get(Item, parent_hid)
+        if parent is None:
+            break
+        above.append(parent)
+        seen.add(parent.hid)
+        parent_hid = parent.parent_item_hid
+    return above
+
+
+def lines_above(db: Session, found: Sequence[Item]) -> dict[str, list[Item]]:
+    """Return the items above each of the items, the nearest first, read a level at a time."""
+    above: dict[str, Item] = {}
+    wanted = {item.parent_item_hid for item in found}
+    for _ in range(MAX_DEPTH):
+        missing = {hid for hid in wanted if hid and hid not in above}
+        if not missing:
+            break
+        level = list(db.scalars(select(Item).where(Item.hid.in_(missing))))
+        above.update((item.hid, item) for item in level)
+        wanted = {item.parent_item_hid for item in level}
+    lines: dict[str, list[Item]] = {}
+    for item in found:
+        line: list[Item] = []
+        parent_hid = item.parent_item_hid
+        while parent_hid and parent_hid in above and len(line) < MAX_DEPTH:
+            line.append(above[parent_hid])
+            parent_hid = above[parent_hid].parent_item_hid
+        lines[item.hid] = line
+    return lines
+
+
+def children(db: Session, hid: str, limit: int, offset: int) -> tuple[list[Item], int]:
+    """Return the minor items directly in one item, by position and name, and their number."""
+    get_item(db, hid)
+    query = select(Item).where(Item.parent_item_hid == hid)
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    order = [
+        *dialect.blanks_last(dialect.folded(Item.position), False),
+        *dialect.blanks_last(dialect.folded(func.coalesce(Item.name, Item.hostname)), False),
+        Item.hid,
+    ]
+    return list(db.scalars(query.order_by(*order).limit(limit).offset(offset))), total
+
+
+def _height(db: Session, hid: str) -> int:
+    """Return how many levels of minor items there are beneath an item."""
+    height, level = 0, [hid]
+    while level and height <= MAX_DEPTH:
+        level = list(db.scalars(select(Item.hid).where(Item.parent_item_hid.in_(level))))
+        if level:
+            height += 1
+    return height
+
+
+def known_as(db: Session, text: str, limit: int = 2) -> list[Item]:
+    """Return the items known by text: an HID, a serial number, an asset tag or a name.
+
+    A name is the item's own, or its hostname when it has no name. Retired items and
+    drafts answer too, because a record is always reachable by what it is known as.
+    """
+    text = text.strip()
+    if ids.is_hid(text):
+        item = db.get(Item, text)
+        if item is not None:
+            return [item]
+    wanted = records.key(text)
+    return list(
+        db.scalars(
+            select(Item)
+            .where(
+                or_(
+                    Item.serial_key == wanted,
+                    Item.asset_tag_key == wanted,
+                    dialect.equals_text(func.coalesce(Item.name, Item.hostname), text),
+                )
+            )
+            .order_by(Item.hid)
+            .limit(limit)
+        )
+    )
+
+
+def the_one(db: Session, text: str, field: str) -> Item:
+    """Return the one item known by text, or refuse: none, or more than one, is no answer."""
+    found = known_as(db, text)
+    if not found:
+        raise Invalid("there is no such item", {field: f"there is no item {text}"})
+    if len(found) > 1:
+        raise Invalid(
+            f"more than one item answers to {text}",
+            {field: f"more than one item answers to {text}; give the HID of the one meant"},
+        )
+    return found[0]
+
+
+def shown_name(item: Item) -> str:
+    """Return what an item is called where one line must name it."""
+    return item.name or item.hostname or item.serial_number or item.asset_tag or item.hid
+
+
+def reference_text(item: Item) -> str:
+    """Return how a file names an item: the asset tag, else the serial number, else the name."""
+    return item.asset_tag or item.serial_number or item.name or item.hostname or item.hid
+
+
+def major_only_groups(db: Session, item_hid: str) -> list[DeviceGroup]:
+    """Return the stacks and clusters, not retired, that an item is a current member of."""
+    return list(
+        db.scalars(
+            select(DeviceGroup)
+            .join(DeviceGroupMember, DeviceGroupMember.group_hid == DeviceGroup.hid)
+            .where(
+                DeviceGroupMember.item_hid == item_hid,
+                DeviceGroupMember.left_on.is_(None),
+                DeviceGroup.type.in_(MAJOR_ONLY),
+                DeviceGroup.record_status != "retired",
+            )
+        )
+    )
+
+
+def _checked_parent(db: Session, value: Any, item: Item | None) -> str | None:
+    """Return the HID of the item a minor item is in, refusing a place it cannot have."""
+    hid = value or None
+    if hid is None or (item is not None and item.parent_item_hid == hid):
+        return hid
+    field = "parent_item_hid"
+    parent = db.get(Item, hid)
+    if parent is None:
+        raise Invalid("there is no such item", {field: f"there is no item {hid}"})
+    if parent.record_status == "retired":
+        raise Invalid("the parent is retired", {field: "this item is retired"})
+    above = [parent, *ancestors(db, parent)]
+    if item is not None and item.hid in {one.hid for one in above}:
+        raise Invalid(
+            "an item is never above itself",
+            {field: "this item is the item itself, or one of its own minor items"},
+        )
+    beneath = _height(db, item.hid) if item is not None else 0
+    if len(above) + beneath > MAX_DEPTH:
+        raise Invalid(
+            "minor items nest too deep",
+            {field: f"minor items nest at most {MAX_DEPTH} deep beneath a major item"},
+        )
+    if item is not None:
+        groups = major_only_groups(db, item.hid)
+        if groups:
+            raise Invalid(
+                "a member of a stack or a cluster is a major item",
+                {field: f"this item is a member of {groups[0].name}; end that membership first"},
+            )
+    return hid
 
 
 def _reference(
@@ -101,6 +269,20 @@ def _checked(db: Session, fields: dict[str, Any], item: Item | None) -> dict[str
         )
     if "owner_hid" in fields:
         values["owner_hid"] = _reference(db, Owner, "owner_hid", fields["owner_hid"], item, "owner")
+    if "parent_item_hid" in fields:
+        values["parent_item_hid"] = _checked_parent(db, fields["parent_item_hid"], item)
+        if values["parent_item_hid"] is None and "position" not in fields:
+            # Out of its parent, an item has no place in it any more.
+            values["position"] = None
+    if "position" in fields:
+        position = records.clean(fields["position"])
+        parent = values.get("parent_item_hid", item.parent_item_hid if item is not None else None)
+        if position is not None and parent is None:
+            raise Invalid(
+                "only a minor item has a position",
+                {"position": "name the item it is in, as parent_item_hid, or leave this blank"},
+            )
+        values["position"] = position
     if "quantity" in fields:
         quantity = 1 if fields["quantity"] is None else fields["quantity"]
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
@@ -299,7 +481,7 @@ def transition(
     hid: str,
     row_version: int,
     *,
-    to: str,
+    to: str | None,
     role: Role | None,
     reason: str | None = None,
     disposition: Any = UNSET,
@@ -311,8 +493,12 @@ def transition(
     The move must be one the rules allow from the item's state, unless an Admin forces
     it and gives a reason. The disposition and intent are set as the new state has
     them on entry, or as the caller names them, and must be a combination it allows.
+
+    A move to no state returns a minor item to the standing of the item above it.
     """
     item = get_item(db, hid)
+    if to is None:
+        return _inherit_standing(db, context, item, row_version, reason)
     to = lifecycle.state_name(to, "to")
     reason = _checked_reason(db, reason, "reason")
     forced = lifecycle.check_move(
@@ -336,6 +522,29 @@ def transition(
     extra = [change("state_reason", item.state_reason, reason)]
     if forced:
         extra.append(change("forced", None, True))
+    records.apply(db, context, RECORD_TYPE, item, row_version, values, extra, action="transition")
+    item.state_reason = reason
+    item.state_changed_at = clock.now()
+    return item
+
+
+def _inherit_standing(
+    db: Session, context: AuditContext, item: Item, row_version: int, reason: str | None
+) -> Item:
+    """Return a minor item to the lifecycle state, disposition and intent of the item above."""
+    if item.parent_item_hid is None:
+        raise Invalid(
+            "a lifecycle state is not cleared",
+            {"to": "an item leaves a state by moving to another; only a minor item has none"},
+        )
+    if item.lifecycle_state is None:
+        raise Invalid(
+            "the item is already there",
+            {"to": "the item already has the standing of the item above it"},
+        )
+    reason = _checked_reason(db, reason, "reason")
+    values = {"lifecycle_state": None, "disposition": None, "expected_online": None}
+    extra = [change("state_reason", item.state_reason, reason)]
     records.apply(db, context, RECORD_TYPE, item, row_version, values, extra, action="transition")
     item.state_reason = reason
     item.state_changed_at = clock.now()

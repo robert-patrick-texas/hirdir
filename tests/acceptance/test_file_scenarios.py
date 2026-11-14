@@ -19,13 +19,26 @@ from tests.acceptance.conftest import ADMIN, HIRDIR, Server
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
-LOAD_ORDER = ("tags", "vendors", "catalog_entries", "owners", "items")
+LOAD_ORDER = (
+    "tags",
+    "vendors",
+    "catalog_entries",
+    "owners",
+    "networks",
+    "items",
+    "device_groups",
+    "device_group_members",
+    "addresses",
+)
 ROUTES = {
     "tags": "/tags",
     "vendors": "/vendors",
     "catalog_entries": "/catalog-entries",
     "owners": "/owners",
+    "networks": "/networks",
     "items": "/items",
+    "device_groups": "/device-groups",
+    "addresses": "/addresses",
 }
 IVY = ("ivy", "acceptance-inventory")
 IAN = ("ian", "acceptance-second")
@@ -79,6 +92,13 @@ class Desk:
     def total(self, entity: str) -> int:
         if entity == "tags":
             return len(self.get("/tags"))
+        if entity == "device_group_members":
+            # Memberships are listed a group at a time, the ones that have ended too.
+            groups = self.get("/device-groups", include_archived=True, include_drafts=True)
+            return sum(
+                self.get(f"/device-groups/{group['hid']}/members", include_past=True)["total"]
+                for group in groups["items"]
+            )
         return self.get(ROUTES[entity], include_archived=True, include_drafts=True, limit=1)[
             "total"
         ]

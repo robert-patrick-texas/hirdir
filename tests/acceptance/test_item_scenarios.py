@@ -121,7 +121,18 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
 
     given = {"catalog_entry_hid", "serial_number", "owner_hid"}
     derived = {"hid", "catalog", "owner", "effective", "tags", "created_at", "updated_at"}
-    defaults = {"quantity": 1, "record_status": "active", "row_version": 1}
+    defaults = {
+        "quantity": 1,
+        "record_status": "active",
+        "row_version": 1,
+        # A major item, in nothing and with nothing in it, in no group and with no address.
+        "is_major": True,
+        "depth": 0,
+        "minor_items": 0,
+        "groups": [],
+        "controllers": [],
+        "addresses": [],
+    }
     for field, value in item.items():
         if field in given | derived or field in ("created_by", "updated_by"):
             continue
@@ -130,7 +141,10 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
     assert item["catalog"]["pid"] == "Versiv-2"
     assert item["owner"]["label"] == "Network Engineering"
     assert item["tags"] == []
-    assert all(value["source"] == "none" for value in item["effective"].values())
+    # The owner is the item's own, and nothing else is in force from anywhere.
+    effective = item["effective"]
+    assert effective.pop("owner_hid")["source"] == "own"
+    assert all(value["source"] == "none" for value in effective.values())
 
 
 def test_s09_same_serial_number_is_refused_and_same_mac_address_is_accepted(

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.domain import audit, catalog, items, owners, tags
+from hirdir.domain import addresses, audit, catalog, groups, items, owners, tags
 from hirdir.io import exports, files
 from hirdir.io.entities import ENTITIES, LOAD_ORDER
 
@@ -242,6 +242,128 @@ ENTRIES: tuple[tuple[Any, ...], ...] = (
         None,
         {},
     ),
+    (
+        "Cisco",
+        "PWR-C1-715WAC-P",
+        "715 W AC power supply",
+        "hardware",
+        "power-supply",
+        None,
+        "900",
+        None,
+        None,
+        None,
+        {},
+    ),
+    (
+        "Cisco",
+        "C9300-NM-8X",
+        "Catalyst 9300 8-port 10G network module",
+        "hardware",
+        "module",
+        None,
+        "2400",
+        None,
+        None,
+        None,
+        {},
+    ),
+)
+
+NETWORKS = (("Guest", "vrf"), ("Management", "network"), ("Voice", "vrf"))
+
+# item, position, PID, serial number, and what the minor item has of its own
+MINOR_ITEMS: tuple[tuple[str, str, str, str, dict[str, Any]], ...] = (
+    ("site2-sw-access-01", "PS-A", "PWR-C1-715WAC-P", "LIT0000X001", {}),
+    ("site2-sw-access-01", "PS-B", "PWR-C1-715WAC-P", "LIT0000X002", {}),
+    ("site2-sw-access-01", "Slot 1", "C9300-NM-8X", "FOC0000X001", {}),
+    ("site2-sw-access-02", "PS-A", "PWR-C1-715WAC-P", "LIT0000X003", {}),
+    (
+        "site2-sw-access-02",
+        "PS-B",
+        "PWR-C1-715WAC-P",
+        "LIT0000X004",
+        # The one that failed goes its own way; the others follow their switch.
+        {
+            "lifecycle_state": "Pending-Removal",
+            "state_reason": "rma",
+            "comments": "Failed in service; waiting for the return label",
+        },
+    ),
+)
+
+# name, type, what else the group has, and its members: item, role, position, joined, left
+GROUPS: tuple[tuple[str, str, dict[str, Any], tuple[tuple[Any, ...], ...]], ...] = (
+    (
+        "site2-sw-core",
+        "stack",
+        {"hostname": "site2-sw-core", "fqdn": f"site2-sw-core.{DOMAIN}", "tags": ["critical"]},
+        (
+            ("site2-sw-core-01", "master", 1, "2023-09-04", None),
+            ("site2-sw-core-02", "member", 2, "2023-09-04", None),
+        ),
+    ),
+    (
+        "site2-sw-floor",
+        "stack",
+        {"hostname": "site2-sw-floor", "fqdn": f"site2-sw-floor.{DOMAIN}"},
+        (
+            ("site2-sw-floor-01", "master", 1, "2021-06-14", None),
+            ("site2-sw-floor-02", "member", 2, "2021-06-14", None),
+            # Left the stack when it was replaced, and is on its way out.
+            ("site2-sw-floor-03", "member", 3, "2021-06-14", "2026-06-30"),
+        ),
+    ),
+    (
+        "site2-wireless",
+        "controller_domain",
+        {},
+        tuple(
+            (f"site2-ap-{number:02d}", "endpoint", None, "2024-05-20", None)
+            for number in (1, 2, 3, 4)
+        ),
+    ),
+    (
+        "site2-wlc-ha",
+        "cluster",
+        {"hostname": "site2-wlc", "fqdn": f"site2-wlc.{DOMAIN}", "parent": "site2-wireless"},
+        (
+            ("site2-wlc-01", "active", None, "2024-05-06", None),
+            ("site2-wlc-02", "standby", None, "2024-05-06", None),
+        ),
+    ),
+)
+
+# whose it is (an item's hostname or a group's name), address, network, role, primary
+ADDRESSES: tuple[tuple[str, str, str | None, str, bool], ...] = (
+    *(
+        (
+            f"site2-sw-access-{number:02d}",
+            f"192.0.2.{10 + number}",
+            "Management",
+            "management",
+            True,
+        )
+        for number in range(1, 7)
+    ),
+    ("site2-sw-core", "192.0.2.1", "Management", "management", True),
+    ("site2-sw-floor", "192.0.2.21", "Management", "management", True),
+    ("site2-wlc-ha", "192.0.2.30", "Management", "management", True),
+    ("site2-rtr-wan-01", "192.0.2.2", "Management", "management", True),
+    ("site2-rtr-wan-01", "2001:db8::2", None, "loopback", False),
+    ("site2-rtr-wan-02", "192.0.2.3", "Management", "management", True),
+    ("site2-rtr-wan-02", "2001:db8::3", None, "loopback", False),
+    # A gateway address that the two routers share: held twice under one network, which
+    # is accepted, and is in the duplicates report.
+    ("site2-rtr-wan-01", "192.0.2.254", "Management", "virtual", False),
+    ("site2-rtr-wan-02", "192.0.2.254", "Management", "virtual", False),
+    ("site2-fw-edge-01", "192.0.2.4", "Management", "management", True),
+    ("site2-fw-edge-02", "192.0.2.5", "Management", "management", True),
+    # The same address under two networks is two addresses.
+    ("site2-fw-edge-01", "203.0.113.1", "Guest", "secondary", False),
+    ("site2-fw-edge-01", "203.0.113.1", "Voice", "secondary", False),
+    ("netconfig-01", "198.51.100.10", None, "management", True),
+    ("netmon-01", "198.51.100.11", None, "management", True),
 )
 
 OWNERS = (
@@ -388,7 +510,7 @@ def _items() -> list[dict[str, Any]]:
         "C9800-40-K9",
         "Cisco",
         "site2-wlc",
-        1,
+        2,
         "TTM0000X",
         180,
         tags=["critical"],
@@ -545,6 +667,58 @@ def build(db: Session) -> None:
         items.create_item(db, SEED, fields)
     db.flush()
 
+    def item(hostname: str) -> Any:
+        return items.the_one(db, hostname, "item")
+
+    for parent, position, pid, serial, more in MINOR_ITEMS:
+        items.create_item(
+            db,
+            SEED,
+            {
+                "catalog_entry_hid": entries["Cisco", pid].hid,
+                "serial_number": serial,
+                "parent_item_hid": item(parent).hid,
+                "position": position,
+                **more,
+            },
+        )
+    made: dict[str, Any] = {}
+    for name, type_, more, members in GROUPS:
+        fields: dict[str, Any] = {"name": name, "type": type_, **more}
+        if "parent" in fields:
+            fields["parent_group_hid"] = made[fields.pop("parent")].hid
+        fields["members"] = [
+            {
+                "item_hid": item(hostname).hid,
+                "role": role,
+                "position": position,
+                "joined_on": date.fromisoformat(joined),
+                "left_on": date.fromisoformat(left) if left else None,
+            }
+            for hostname, role, position, joined, left in members
+        ]
+        made[name] = groups.create_group(db, SEED, fields)
+    networks = {
+        label: addresses.create_network(db, SEED, {"label": label, "kind": kind})
+        for label, kind in NETWORKS
+    }
+    for holder, address, network, role, is_primary in ADDRESSES:
+        whose = (
+            {"group_hid": made[holder].hid} if holder in made else {"item_hid": item(holder).hid}
+        )
+        addresses.create_address(
+            db,
+            SEED,
+            {
+                **whose,
+                "address": address,
+                "network_hid": networks[network].hid if network else None,
+                "role": role,
+                "is_primary": is_primary,
+            },
+        )
+    db.flush()
+
 
 @contextmanager
 def seeded() -> Generator[Session]:
@@ -635,6 +809,8 @@ def render() -> dict[str, str]:
                 export = exports.plan(
                     entity,
                     format_=format_,
+                    # By depth, an item stands before the minor items that are in it.
+                    sort=["depth", "name"] if entity == "items" else None,
                     own_values=True,
                     include_archived=True,
                     include_drafts=True,

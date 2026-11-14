@@ -15,18 +15,34 @@ from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import (
+    Address,
     AuditEvent,
     Base,
     Choice,
+    DeviceGroup,
+    DeviceGroupMember,
     ImportJob,
     Item,
+    ItemReplacement,
     LifecycleRule,
+    Network,
     Setting,
     Tag,
     User,
     Vendor,
 )
-from hirdir.domain import accounts, audit, catalog, items, reset, settings, tags
+from hirdir.domain import (
+    accounts,
+    addresses,
+    audit,
+    catalog,
+    groups,
+    items,
+    replacements,
+    reset,
+    settings,
+    tags,
+)
 from hirdir.io import imports
 
 runner = CliRunner()
@@ -104,6 +120,61 @@ def test_reset_clears_the_inventory_and_keeps_accounts_and_settings(installed: C
     with sqlite3.connect(backup) as before:
         assert before.execute("SELECT count(*) FROM items").fetchone()[0] == 2
     assert oct(backup.stat().st_mode & 0o777) == "0o600"
+
+
+STRUCTURE = (Address, Network, DeviceGroupMember, DeviceGroup, ItemReplacement)
+
+
+def _with_structure(config: Config) -> None:
+    """Add what refers to other records of its own kind: an item in an item, a group in
+    a group, a replacement, and an address under a network."""
+    with make_sessions(make_engine(config.database_url))() as db:
+        context = audit.AuditContext(actor_hid=None, via="api", request_id="r-2")
+        first, second = db.scalars(select(Item).order_by(Item.serial_key)).all()
+        items.create_item(db, context, {"name": "PS-A", "parent_item_hid": first.hid})
+        domain = groups.create_group(db, context, {"type": "custom", "name": "site2"})
+        stack = groups.create_group(
+            db,
+            context,
+            {
+                "type": "stack",
+                "name": "site2-sw-stack1",
+                "parent_group_hid": domain.hid,
+                "members": [
+                    {"item_hid": first.hid, "role": "master"},
+                    {"item_hid": second.hid, "role": "member"},
+                ],
+            },
+        )
+        red = addresses.create_network(db, context, {"label": "Red"})
+        for holder in ({"item_hid": first.hid}, {"group_hid": stack.hid}):
+            addresses.create_address(
+                db, context, {**holder, "address": "192.0.2.10", "network_hid": red.hid}
+            )
+        replacements.replace(
+            db, context, second.hid, second.row_version, reason="rma", new_item={"name": "new"}
+        )
+        db.commit()
+
+
+@pytest.mark.parametrize("arguments", [[], ["--everything"]])
+def test_reset_clears_the_records_that_refer_to_one_another(
+    installed: Config, arguments: list[str]
+) -> None:
+    _with_structure(installed)
+    assert [held(installed, model) for model in STRUCTURE] == [2, 1, 3, 2, 1]
+    assert held(installed, Item) == 4
+
+    result = runner.invoke(app, ["admin", "reset", "--yes", *arguments])
+
+    assert result.exit_code == 0, result.output
+    for name in ("addresses", "networks", "device groups", "device group members"):
+        assert name in result.output
+    for model in (*STRUCTURE, Item):
+        assert held(installed, model) == 0, model
+    with make_sessions(make_engine(installed.database_url))() as db:
+        left = set(db.scalars(select(AuditEvent.record_type)))
+    assert not left & set(reset.RECORD_TYPES)
 
 
 def test_reset_does_nothing_unless_the_word_is_typed(installed: Config) -> None:

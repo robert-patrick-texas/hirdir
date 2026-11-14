@@ -1,0 +1,5 @@
+{"schema": "hirdir/1", "entity": "networks", "mode": "upsert", "records": [
+  {"label": "Guest", "kind": "vrf"},
+  {"label": "Management", "kind": "network"},
+  {"label": "Voice", "kind": "vrf"}
+]}

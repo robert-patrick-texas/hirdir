@@ -77,11 +77,20 @@ class ListQuery(Model):
 
 
 class EffectiveValue(Model):
-    """A value in force, and where it came from."""
+    """A value in force, and where it came from.
 
-    value: str | None
+    A decimal and a date are text, and a truth value is true or false.
+    """
+
+    value: str | bool | None
     source: Source
     source_hid: str | None
+
+
+class EffectiveReference(EffectiveValue):
+    """A record in force, and where it came from: `value` is its HID."""
+
+    label: str | None = Field(description="What people call the record.")
 
 
 # --- vendors -------------------------------------------------------------------------
@@ -275,9 +284,75 @@ class CatalogRef(Model):
     function: str | None
 
 
-class ItemEffective(Model):
-    """The values in force of the fields an item inherits from its catalog entry."""
+class ItemRef(Model):
+    """An item, as named on another record."""
 
+    hid: str
+    name: str | None = Field(description="Its name, or its hostname when it has no name.")
+    serial_number: str | None
+    asset_tag: str | None
+    pid: str | None
+
+
+class GroupRef(Model):
+    """A device group, as named on another record."""
+
+    hid: str
+    name: str
+    type: str
+
+
+class NetworkRef(Model):
+    """A network, as named on an address."""
+
+    hid: str
+    label: str
+
+
+class MembershipRef(Model):
+    """A group an item is a current member of, and as what."""
+
+    hid: str = Field(description="The membership.")
+    group_hid: str
+    name: str
+    type: str
+    role: str
+    position: int | None
+    joined_on: date
+
+
+class AddressRef(Model):
+    """An address, as listed on the item or the group that has it."""
+
+    hid: str
+    address: str
+    network_hid: str | None
+    network: str | None = Field(description="The label of the network, if it is under one.")
+    role: str
+    is_primary: bool
+
+
+class ReplacementRef(Model):
+    """The other item of a replacement, and why and when it was made."""
+
+    hid: str = Field(description="The replacement.")
+    item_hid: str
+    name: str | None
+    serial_number: str | None
+    reason: str
+    reference: str | None
+    replaced_on: date
+
+
+class ItemEffective(Model):
+    """The values in force of the fields an item inherits: the amounts and the dates
+    from its catalog entry, and for a minor item the owner and the standing of the item
+    it is in."""
+
+    owner_hid: EffectiveReference
+    lifecycle_state: EffectiveValue
+    disposition: EffectiveValue
+    expected_online: EffectiveValue
     est_value: EffectiveValue
     support_weight: EffectiveValue
     annual_support_cost: EffectiveValue
@@ -310,6 +385,12 @@ class ItemOut(Model):
     state_changed_at: datetime | None
     owner_hid: str | None
     owner: OwnerRef | None
+    parent_item_hid: str | None
+    parent: ItemRef | None = Field(description="The item a minor item is in.")
+    position: str | None = Field(description="Where in its parent a minor item is.")
+    is_major: bool = Field(description="An item with no parent. Major items are counted.")
+    depth: int = Field(description="0 for a major item, 1 for a minor item of it, and so on.")
+    minor_items: int = Field(description="How many minor items are directly in this one.")
     procured_on: date | None
     delivered_on: date | None
     in_service_on: date | None
@@ -323,6 +404,13 @@ class ItemOut(Model):
     end_of_hw_support: date | None
     ldos: date | None
     effective: ItemEffective
+    groups: list[MembershipRef] = Field(description="Its current memberships of groups.")
+    controllers: list[ItemRef] = Field(
+        description="For an endpoint of a controller domain: the controllers of that domain."
+    )
+    addresses: list[AddressRef] = Field(description="Its addresses, the primary one first.")
+    replaces: ReplacementRef | None = Field(description="The item whose place this one took.")
+    replaced_by: ReplacementRef | None = Field(description="The item that took its place.")
     tags: list[str]
     record_status: RecordStatus
     row_version: int
@@ -355,6 +443,12 @@ class ItemCreate(Model):
     expected_online: bool | None = None
     state_reason: str | None = Field(default=None, max_length=40)
     owner_hid: Hid | None = None
+    parent_item_hid: Hid | None = Field(
+        default=None, description="The item this one is in. Given, the item is a minor item."
+    )
+    position: ShortText | None = Field(
+        default=None, description="Where in its parent: PS-A, Slot 3."
+    )
     procured_on: date | None = None
     delivered_on: date | None = None
     in_service_on: date | None = None
@@ -391,6 +485,10 @@ class ItemPatch(Model):
     disposition: str | None = Field(default=None, max_length=12)
     expected_online: bool | None = None
     owner_hid: Hid | None = None
+    parent_item_hid: Hid | None = Field(
+        default=None, description="Null takes a minor item out of its parent."
+    )
+    position: ShortText | None = None
     procured_on: date | None = None
     delivered_on: date | None = None
     in_service_on: date | None = None
@@ -411,7 +509,12 @@ class Transition(Model):
     """A move to another lifecycle state."""
 
     row_version: int
-    to: str = Field(max_length=20, description="The state to move to.")
+    to: str | None = Field(
+        max_length=20,
+        description=(
+            "The state to move to. Null returns a minor item to the standing of the item it is in."
+        ),
+    )
     reason: str | None = Field(
         default=None, max_length=40, description="A value of the state_reason list."
     )
@@ -424,6 +527,294 @@ class Transition(Model):
     force: bool = Field(
         default=False, description="A move the rules do not list. Admin only, with a reason."
     )
+
+
+class Replace(Model):
+    """The replacement of an item: what takes its place, why and when."""
+
+    row_version: int = Field(description="The version of the item that leaves.")
+    new_item_hid: Hid | None = Field(
+        default=None, description="An item that exists and takes the place."
+    )
+    new_item: ItemCreate | None = Field(
+        default=None, description="Or the fields of a new item, created by this request."
+    )
+    reason: str = Field(max_length=40, description="A value of the replacement_reason list.")
+    reference: Name | None = Field(
+        default=None, description="An RMA, service request or ticket number."
+    )
+    replaced_on: date | None = Field(default=None, description="Left out, today.")
+
+
+class ReplacementOut(Model):
+    """Two items linked by a replacement."""
+
+    hid: str
+    old_item_hid: str
+    old_item: ItemOut
+    new_item_hid: str
+    new_item: ItemOut
+    reason: str
+    reference: str | None
+    replaced_on: date
+    row_version: int
+    created_at: datetime
+    created_by: str | None
+
+
+# --- device groups -------------------------------------------------------------------
+
+GroupType = Literal["stack", "cluster", "controller_domain", "custom"]
+
+
+class MemberAdd(Model):
+    """An item to make a member of a group."""
+
+    item_hid: Hid
+    role: str | None = Field(
+        default=None,
+        max_length=20,
+        description=(
+            "stack: master, member. cluster: active, standby, member. controller domain: "
+            "controller, endpoint. Left out, member, or endpoint in a controller domain."
+        ),
+    )
+    position: int | None = Field(default=None, ge=0, le=10_000)
+    joined_on: date | None = Field(default=None, description="Left out, today.")
+
+
+class MembersAdd(Model):
+    """Items to make members of a group together. The group is checked once all are in."""
+
+    members: list[MemberAdd] = Field(min_length=1, max_length=1000)
+
+
+class MemberPatch(Model):
+    """Fields of a membership to change, and the version they were read at."""
+
+    row_version: int
+    role: str | None = Field(default=None, max_length=20)
+    position: int | None = Field(default=None, ge=0, le=10_000)
+    joined_on: date | None = None
+    left_on: date | None = Field(default=None, description="Given, the membership ends.")
+
+
+class MemberOut(Model):
+    """One item's time in one group."""
+
+    hid: str
+    group_hid: str
+    item_hid: str
+    item: ItemRef
+    role: str
+    position: int | None
+    joined_on: date
+    left_on: date | None = Field(description="Blank for a current member.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeviceGroupOut(Model):
+    """A stack, a cluster, a controller domain or another labelled set of items."""
+
+    hid: str
+    type: GroupType
+    name: str
+    hostname: str | None
+    fqdn: str | None
+    parent_group_hid: str | None
+    parent: GroupRef | None
+    groups: list[GroupRef] = Field(description="The groups nested directly in this one.")
+    owner_hid: str | None
+    owner: OwnerRef | None
+    members_disagree: list[str] = Field(
+        description="The fields of the group that a current member contradicts."
+    )
+    serial_number: str | None = Field(
+        description="For a stack, the serial number of its master, read as it is asked for."
+    )
+    master: ItemRef | None
+    member_count: int = Field(description="How many current members it has.")
+    addresses: list[AddressRef]
+    tags: list[str]
+    record_status: RecordStatus
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeviceGroupCreate(Model):
+    """A new device group, with its first members if they are known."""
+
+    type: GroupType
+    name: Name = Field(min_length=1)
+    hostname: HostName | None = None
+    fqdn: HostName | None = None
+    parent_group_hid: Hid | None = None
+    owner_hid: Hid | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+    members: list[MemberAdd] = Field(default=[], max_length=1000)
+
+
+class DeviceGroupPatch(Model):
+    """Fields of a device group to change, and the version they were read at."""
+
+    row_version: int
+    type: GroupType | None = None
+    name: Name | None = None
+    hostname: HostName | None = None
+    fqdn: HostName | None = None
+    parent_group_hid: Hid | None = None
+    owner_hid: Hid | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+# --- networks and addresses ----------------------------------------------------------
+
+
+class NetworkOut(Model):
+    """A label for an address space, and how many addresses are under it."""
+
+    hid: str
+    label: str
+    kind: Literal["network", "vrf", "other"]
+    uses: int
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class NetworkCreate(Model):
+    """A new network label."""
+
+    label: ShortText = Field(min_length=1)
+    kind: Literal["network", "vrf", "other"] = "network"
+
+
+class NetworkPatch(Model):
+    """Fields of a network to change, and the version they were read at."""
+
+    row_version: int
+    label: ShortText | None = None
+    kind: Literal["network", "vrf", "other"] | None = None
+
+
+AddressRole = Literal["management", "loopback", "secondary", "virtual"]
+AddressText = Annotated[str, Field(min_length=1, max_length=45)]
+
+
+class AddressOut(Model):
+    """One address of an item or of a device group."""
+
+    hid: str
+    item_hid: str | None
+    item: ItemRef | None
+    group_hid: str | None
+    group: GroupRef | None
+    address: str = Field(description="In canonical form, with no prefix length.")
+    network_hid: str | None
+    network: NetworkRef | None
+    role: AddressRole
+    is_primary: bool
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AddressCreate(Model):
+    """A new address, of an item or of a group: exactly one of the two."""
+
+    item_hid: Hid | None = None
+    group_hid: Hid | None = None
+    address: AddressText = Field(description="IPv4 or IPv6, in any common notation.")
+    network_hid: Hid | None = Field(default=None, description="Blank is the unlabelled space.")
+    role: AddressRole = "management"
+    is_primary: bool = Field(
+        default=False, description="The primary management address of the record."
+    )
+
+
+class AddressPatch(Model):
+    """Fields of an address to change, and the version they were read at."""
+
+    row_version: int
+    address: AddressText | None = None
+    network_hid: Hid | None = None
+    role: AddressRole | None = None
+    is_primary: bool | None = None
+
+
+# --- reports -------------------------------------------------------------------------
+
+SummaryBy = Literal[
+    "vendor", "kind", "type", "function", "owner", "lifecycle_state", "disposition", "tag"
+]
+
+
+class Measures(Model):
+    """The counts and sums of a set of items."""
+
+    items: int = Field(description="Every item of the set, major and minor.")
+    component_count: int
+    managed_node_count: int
+    support_weight: Weight
+    est_value: Money
+    annual_support_cost: Money
+
+
+class KindCount(Model):
+    """The items and the components of one kind."""
+
+    kind: str
+    items: int
+    component_count: int = Field(
+        description="As the headline would count them, were the kind among `count_kinds`."
+    )
+
+
+class SummaryTotals(Measures):
+    """The measures of the whole view, and its items by kind."""
+
+    by_kind: list[KindCount]
+
+
+class SummaryRow(Measures):
+    """The measures of the items that share one value of what the summary is by."""
+
+    key: str | None = Field(description="The value, or the HID of the record. Null for none.")
+    label: str | None = Field(description="What people call it.")
+
+
+class SummaryOut(Model):
+    """A summary of a view of the items."""
+
+    by: SummaryBy | None
+    totals: SummaryTotals
+    rows: list[SummaryRow]
+
+
+class AddressHolder(Model):
+    """An item or a group that holds an address."""
+
+    address_hid: str
+    item_hid: str | None
+    group_hid: str | None
+    name: str | None
+    role: str
+    is_primary: bool
+
+
+class DuplicateOut(Model):
+    """An address that is held more than once under one network."""
+
+    address: str
+    network_hid: str | None
+    network: str | None = Field(description="Null for the unlabelled address space.")
+    count: int
+    holders: list[AddressHolder]
 
 
 # --- labels and lists ----------------------------------------------------------------
@@ -550,7 +941,17 @@ class LifecycleRulePatch(Model):
 
 # --- files and bulk edits ------------------------------------------------------------
 
-EntityName = Literal["tags", "vendors", "catalog_entries", "owners", "items"]
+EntityName = Literal[
+    "tags",
+    "vendors",
+    "catalog_entries",
+    "owners",
+    "networks",
+    "items",
+    "addresses",
+    "device_groups",
+    "device_group_members",
+]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
 
 

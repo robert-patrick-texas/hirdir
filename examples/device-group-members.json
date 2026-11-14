@@ -1,0 +1,13 @@
+{"schema": "hirdir/1", "entity": "device_group_members", "mode": "upsert", "records": [
+  {"group": "site2-sw-core", "item": "AT-000121", "role": "master", "position": 1, "joined_on": "2023-09-04", "left_on": null},
+  {"group": "site2-sw-core", "item": "AT-000122", "role": "member", "position": 2, "joined_on": "2023-09-04", "left_on": null},
+  {"group": "site2-sw-floor", "item": "AT-000131", "role": "master", "position": 1, "joined_on": "2021-06-14", "left_on": null},
+  {"group": "site2-sw-floor", "item": "AT-000132", "role": "member", "position": 2, "joined_on": "2021-06-14", "left_on": null},
+  {"group": "site2-sw-floor", "item": "AT-000133", "role": "member", "position": 3, "joined_on": "2021-06-14", "left_on": "2026-06-30"},
+  {"group": "site2-wireless", "item": "AT-000191", "role": "endpoint", "position": null, "joined_on": "2024-05-20", "left_on": null},
+  {"group": "site2-wireless", "item": "AT-000192", "role": "endpoint", "position": null, "joined_on": "2024-05-20", "left_on": null},
+  {"group": "site2-wireless", "item": "AT-000193", "role": "endpoint", "position": null, "joined_on": "2024-05-20", "left_on": null},
+  {"group": "site2-wireless", "item": "AT-000194", "role": "endpoint", "position": null, "joined_on": "2024-05-20", "left_on": null},
+  {"group": "site2-wlc-ha", "item": "AT-000181", "role": "active", "position": null, "joined_on": "2024-05-06", "left_on": null},
+  {"group": "site2-wlc-ha", "item": "AT-000182", "role": "standby", "position": null, "joined_on": "2024-05-06", "left_on": null}
+]}
