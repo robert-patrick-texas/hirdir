@@ -476,8 +476,9 @@ It is on the server and nowhere else: no page and no route of the API clears any
 It refuses while the service is running, says what it will remove and how many, takes a
 backup, and goes on only when the word `reset` is typed, or `--yes` is given by a
 script. It removes the items with their replacements, addresses and memberships, the
-device groups, networks, catalog entries, vendors, owners, tags and stored imports,
-and the audit events of those records, and writes one audit event that says so and
+device groups, networks, catalog entries, vendors, owners with their people, regions,
+sites, locations, contacts with their assignments, tags and stored imports, and the
+audit events of those records, and writes one audit event that says so and
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
 lifecycle rules stay. `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
