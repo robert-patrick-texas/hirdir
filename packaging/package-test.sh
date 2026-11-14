@@ -10,16 +10,20 @@
 # run one after another and a summary of them all ends the run.
 #
 #   --upgrade          install the previous release, put accounts, a group, a role grant,
-#                      a service token, audit events, a vendor with a catalog entry and
-#                      an item, and a changed configuration into it, upgrade it with apt,
-#                      and see that all of it is still there and still works, under the
-#                      prefix it had; then everything the fresh pass does
-#   --failed-upgrade   install the previous release and make the migration of the new
-#                      one fail: the upgrade must stop and name the backup, and the way
-#                      back that its message gives must work
+#                      a service token, audit events, an inventory and a changed
+#                      configuration into it, upgrade it with apt, and see that all of
+#                      it is still there and still works, under the prefix it had; then
+#                      everything the fresh pass does. The inventory is made for what a
+#                      migration could harm: items with every kind of value between
+#                      them, and choices of the site's own
+#   --failed-upgrade   install the previous release, with the same inventory, and make
+#                      the migration of the new one fail: the upgrade must stop, name
+#                      the backup and leave the items as they were, and the way back
+#                      that its message gives must work
 #   --fresh            install on a system that never had hirdir, as a new
 #                      installation does, and exercise it: the examples imported and
-#                      exported through nginx, then the inventory made by hand
+#                      exported through nginx, minor items, a stack, a replacement and
+#                      addresses made beside them, then the inventory made by hand
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -40,11 +44,13 @@
 #
 # A check that belongs to a scenario of docs/build-plan.md carries its number, S01 or
 # S02 for the package and sign-in, S06 to S11 for the inventory, S12, S13 and S16 for
-# files. The others, marked pkg, are about the package alone.
+# files, S18 to S21 and S23 for minor items, stacks, a replacement and addresses. The
+# others, marked pkg, are about the package alone.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
 # command line (hirdir import, hirdir export, hirdir items) are then run in the
-# container, from the package, by client_commands().
+# container, from the package, by client_commands(). Those for groups and reports,
+# which 0.4.0 adds, are not tried here yet.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -261,11 +267,14 @@ authorized() {
 }
 
 # api METHOD PATH [JSON]: a request to the API under $prefix with the token in $token,
-# and a JSON body when one is given.
+# and a JSON body when one is given. The pass that installs no nginx makes the same
+# request inside the container, straight to the service: see local_api.
 api() {
     local method=$1 path=$2
     shift 2
-    if [ $# -gt 0 ]; then
+    if [ "$mode" = failed-upgrade ]; then
+        local_api "$method" "$path" "$@"
+    elif [ $# -gt 0 ]; then
         authorized "$method" "$prefix/api/v1$path" --header 'Content-Type: application/json' --data "$1"
     else
         authorized "$method" "$prefix/api/v1$path"
@@ -332,9 +341,12 @@ job_counts() {
 # keep NAME: keep the JSON of the last response for unchanged to compare with.
 keep() { cp "$work/body" "$work/kept-$1.json"; }
 
-# unchanged NAME [more]: print "same" when every record kept under NAME is in the last
-# response with the same HID and every field as it was, and no record was added. With
-# "more", records may have been added. Otherwise print what differs.
+# unchanged NAME [more | fields]: print "same" when every record kept under NAME is in
+# the last response with the same HID and every field as it was, and no record was
+# added. With "more", records may have been added. With "fields", a newer version may
+# have given a record more fields, also inside a record it holds, such as the block of
+# effective values: every field that was there must still be there as it was.
+# Otherwise print what differs.
 unchanged() {
     python3 -c '
 import json, sys
@@ -342,6 +354,11 @@ import json, sys
 def records(path):
     document = json.load(open(path, encoding="utf-8"))
     return document["items"] if isinstance(document, dict) else document
+
+def same(was, now):
+    if sys.argv[3] == "fields" and isinstance(was, dict) and isinstance(now, dict):
+        return all(key in now and same(value, now[key]) for key, value in was.items())
+    return was == now
 
 try:
     before = records(sys.argv[1])
@@ -358,7 +375,9 @@ for record in before:
     if found is None:
         problems.append(hid + " is gone")
         continue
-    changed = sorted(key for key, value in record.items() if found.get(key, "<absent>") != value)
+    changed = sorted(
+        key for key, value in record.items() if key not in found or not same(value, found[key])
+    )
     if changed:
         problems.append(hid + " changed in " + ", ".join(changed))
 print("; ".join(problems[:3]) if problems else "same")' "$work/kept-$1.json" "$work/body" "${2:-exact}"
@@ -433,6 +452,35 @@ except OSError:
     print("000")' "$@" 2>&1
 }
 
+# local_api METHOD PATH [JSON]: what api does, where there is no nginx: the request is
+# made inside the container, straight to the service on its loopback port, by the
+# Python of the package, with the token in $token. Sets $status and leaves the body in
+# $work/body.
+local_api() {
+    inside /opt/hirdir/python/bin/python3 -I -c '
+import sys, urllib.error, urllib.request
+
+headers = {"Content-Type": "application/json"}
+if sys.argv[1]:
+    headers["Authorization"] = "Bearer " + sys.argv[1]
+request = urllib.request.Request(
+    "http://127.0.0.1:8715/api/v1" + sys.argv[3],
+    data=sys.argv[4].encode() if len(sys.argv) > 4 else None,
+    method=sys.argv[2],
+    headers=headers,
+)
+try:
+    answer = urllib.request.urlopen(request, timeout=20)
+except urllib.error.HTTPError as error:
+    answer = error
+except OSError:
+    sys.exit("000")
+print(answer.code)
+sys.stdout.write(answer.read().decode())' "$token" "$@" >"$work/answer" 2>&1 || true
+    status=$(head -n 1 "$work/answer")
+    tail -n +2 "$work/answer" >"$work/body"
+}
+
 # Wait until the service answers its health probe on the loopback port.
 wait_local_ready() {
     for _ in $(seq 30); do
@@ -504,6 +552,50 @@ rows = sqlite3.connect(sys.argv[1]).execute(
 print(hashlib.sha256(repr(rows).encode()).hexdigest())' "$1" 2>&1 | tail -n 1
 }
 
+# items_table QUESTION [COLUMN...]: the items table of the installation, read from the
+# file itself. A migration that adds a column to it rebuilds the table on SQLite: a new
+# one is made, the rows are copied over and the old one is dropped.
+#   columns          each column on a line of its own: name, type, NOT NULL, primary key
+#   keys             each index and each foreign key on a line: what it is over, and
+#                    whether it is unique. The name SQLite itself gave to the index of a
+#                    uniqueness is left out, because it is numbered anew in a rebuild.
+#   rows COLUMN...   how many rows there are, and one checksum of what they hold in the
+#                    columns named, which are those the first answer listed
+items_table() {
+    inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
+import hashlib, sqlite3, sys
+
+held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
+question, names = sys.argv[1], sys.argv[2:]
+if question == "columns":
+    for _, name, kind, not_null, _, key in held.execute("PRAGMA table_info(items)"):
+        print(name, kind, "NOT NULL" if not_null else "NULL", "PRIMARY KEY" if key else "-")
+elif question == "keys":
+    lines = []
+    for _, name, unique, origin, partial in held.execute("PRAGMA index_list(items)").fetchall():
+        over = ",".join(row[2] for row in held.execute(f"PRAGMA index_info(\"{name}\")"))
+        shown = "-" if name.startswith("sqlite_autoindex_") else name
+        lines.append(f"index {shown} on {over} unique={unique} origin={origin} partial={partial}")
+    for row in held.execute("PRAGMA foreign_key_list(items)"):
+        lines.append(f"foreign key {row[3]} to {row[2]}.{row[4]}")
+    print("\n".join(sorted(lines)))
+else:
+    if not names or not all(name.replace("_", "").isalnum() for name in names):
+        sys.exit("items_table rows: name the columns")
+    rows = held.execute("SELECT " + ", ".join(names) + " FROM items ORDER BY hid").fetchall()
+    print(len(rows), "rows", hashlib.sha256(repr(rows).encode()).hexdigest())' "$@" 2>&1
+}
+
+# The names of the columns of the items table, on one line.
+items_columns() { items_table columns | cut -d' ' -f1 | xargs; }
+
+# items_rows "COLUMN ...": items_table rows, for the columns that one line names.
+items_rows() {
+    local names
+    read -ra names <<<"$1"
+    items_table rows "${names[@]}"
+}
+
 # The schema revision the installed hirdir finds in its database.
 revision_now() { inside hirdir admin check 2>/dev/null | sed -n 's/^schema revision: *\([^ ]*\) .*/\1/p'; }
 
@@ -535,6 +627,13 @@ else:
 shipped_snippet() {
     dpkg-deb --fsys-tarfile "$1" | tar --extract --to-stdout \
         ./usr/share/hirdir/nginx/snippet.conf ./etc/nginx/snippets/hirdir.conf 2>/dev/null || true
+}
+
+# shipped_settings PACKAGE: the settings file a package ships. From 0.3.0 it is the text
+# that hirdir-setup --settings works from, and before that it was a conffile.
+shipped_settings() {
+    dpkg-deb --fsys-tarfile "$1" | tar --extract --to-stdout \
+        ./usr/share/hirdir/config.toml ./etc/hirdir/config.toml 2>/dev/null || true
 }
 
 # The version of hirdir that dpkg has installed, or nothing.
@@ -665,6 +764,13 @@ failed_upgrade() {
     body=$(python3 -c 'import json, sys; print(json.dumps({"username": "upgrade-witness", "access_code": sys.argv[1]}))' "$witness_code")
     wait_local_ready || true
     expect "pkg that Admin signs in" "$(local_status POST /api/v1/auth/sign-in "$body")" 200
+    # The inventory that the upgrade pass makes, for the migration to fail over: it
+    # rebuilds the items table before it comes to the table that is in its way.
+    token=""
+    api POST /auth/sign-in "$body"
+    token=$(json_field token)
+    witness_inventory
+    witness_kept
     revision_before=$(revision_now)
     check "pkg hirdir admin check of $previous_version names its schema revision ($revision_before)" \
         test -n "$revision_before"
@@ -721,6 +827,12 @@ failed_upgrade() {
         "$(schema_sum "$database")" "$schema_before"
     expect "pkg and the account is still in it" \
         "$(sqlite_value "$database" "SELECT count(*) FROM users WHERE username = 'upgrade-witness'")" 1
+    if [ -n "$witness_entry" ]; then
+        expect "pkg the items table, which the migration had rebuilt with its new columns before it failed, has the columns it had and no other" \
+            "$(items_table columns)" "$columns_before"
+        expect "pkg and the indexes, uniquenesses and foreign keys it had" "$(items_table keys)" "$keys_before"
+        expect "pkg and its rows, each as it was ($rows_before)" "$(items_rows "$(columns_then)")" "$rows_before"
+    fi
     expect "pkg the upgrade that stopped left the nginx snippet as $previous_version had it" \
         "$(inside sha256sum /etc/nginx/snippets/hirdir.conf 2>&1)" "$snippet_before"
     expect "pkg and the settings file as it was" \
@@ -748,6 +860,7 @@ failed_upgrade() {
     fi
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
+    witness_carried exact "with $previous_version back and the backup restored,"
 
     section "the upgrade again, with its cause put right"
     check "pkg the table that was in the way is taken out" sqlite_run "DROP TABLE \"$planted\""
@@ -766,7 +879,7 @@ failed_upgrade() {
     for name in $(migrations tables "$revision_before"); do
         created="${created:+$created }$(sqlite_value "$database" "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
     done
-    expect "pkg every table that the migration creates is there now" \
+    expect "pkg every table that the migration creates is there now ($(migrations tables "$revision_before"))" \
         "$created" "$(migrations tables "$revision_before")"
     # No nginx is installed in this pass. The snippet is written all the same, for the
     # day there is one.
@@ -779,6 +892,11 @@ failed_upgrade() {
     fi
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
+    witness_carried fields "after the upgrade that went through,"
+    if [ -n "$witness_entry" ]; then
+        expect "pkg and every row of the items table holds what it held, in the columns it had ($rows_before)" \
+            "$(items_rows "$(columns_then)")" "$rows_before"
+    fi
 
     # The way docs/install.md gives under "Going back to the release before". The first
     # step is the older package meeting a database it cannot read: it must stop there.
@@ -809,6 +927,7 @@ failed_upgrade() {
     fi
     expect "pkg the Admin signs in with the access code from before" \
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
+    witness_carried exact "gone back to $previous_version from the good upgrade,"
     if apt_get purge hirdir; then
         pass "pkg the package purges"
     else
@@ -829,9 +948,211 @@ revision_before=""
 witness_entry=""
 witness_item=""
 witness_weight=""
+witness_full=""
+witness_items=()
+columns_before=""
+keys_before=""
+rows_before=""
 users_before=0
 events_before=0
 conffiles_before=""
+
+# witness_body ENTRY OWNER: the body of POST /items for an item with a value in every
+# field that a caller may set. All of it is invented.
+witness_body() {
+    python3 -c '
+import json, sys
+
+print(json.dumps({
+    "catalog_entry_hid": sys.argv[1],
+    "owner_hid": sys.argv[2],
+    "serial_number": "UWN0000X002",
+    "asset_tag": "UW-AT-0002",
+    "name": "Upgrade witness with every value",
+    "hostname": "upgrade-sw-02",
+    "fqdn": "upgrade-sw-02.example.net",
+    "mac_address": "00:00:5E:00:53:A2",
+    "description": "Made with the release before",
+    "comments": "Every field of this item has a value",
+    "quantity": 2,
+    "lifecycle_state": "Delivered",
+    "procured_on": "2026-01-12",
+    "delivered_on": "2026-02-02",
+    "in_service_on": "2026-03-02",
+    "warranty_start": "2026-02-02",
+    "warranty_end": "2029-02-01",
+    "est_value": "21500.00",
+    "support_weight": "1.75",
+    "annual_support_cost": "1600.00",
+    "end_of_sale": "2030-01-31",
+    "end_of_sw_support": "2032-01-31",
+    "end_of_hw_support": "2034-01-31",
+    "ldos": "2035-01-31",
+    "tags": ["upgrade-witness", "upgrade-spare"],
+}))' "$1" "$2"
+}
+
+# witness_inventory: with the previous release, through its API, make what the
+# migrations of the new one could harm. A migration that adds a column to the items
+# table rebuilds that table on SQLite, so the items made here have every kind of value
+# between them: serial numbers, asset tags, a MAC address, tags, overrides of what the
+# catalog gives, a state reached by moves, a draft and a retired one. A previous
+# release from before there was an inventory is given none, and $witness_entry stays
+# empty. 0.2.0 kept support weight to three places, and every release since keeps two.
+witness_inventory() {
+    local vendor second owner move made row_version=1
+
+    api GET /vendors
+    [ "$status" = 200 ] || return 0
+    witness_weight=1.25
+    if [ "$previous_version" = 0.2.0 ]; then witness_weight=0.125; fi
+    api POST /vendors '{"name": "Upgrade Witness Networks"}'
+    expect "pkg $previous_version holds a vendor" "$status" 201
+    vendor=$(json_field hid)
+    api POST /catalog-entries "{\"vendor_hid\": \"$vendor\", \"pid\": \"UW-48P\", \"est_value\": \"18000.00\", \"support_weight\": \"$witness_weight\"}"
+    expect "pkg $previous_version holds a catalog entry with a value and a support weight of $witness_weight" "$status" 201
+    witness_entry=$(json_field hid)
+    api POST /items "{\"catalog_entry_hid\": \"$witness_entry\", \"serial_number\": \"UWN0000X001\", \"support_weight\": \"1.5\"}"
+    expect "pkg and an item of it with a support weight of its own" "$status" 201
+    witness_item=$(json_field hid)
+    witness_items=("$witness_item")
+
+    api POST /catalog-entries "{\"vendor_hid\": \"$vendor\", \"pid\": \"UW-24S\"}"
+    made=$status
+    second=$(json_field hid)
+    api POST /owners '{"label": "Upgrade Witness Team", "organization": "Infrastructure Operations"}'
+    made="$made $status"
+    owner=$(json_field hid)
+    api POST /tags '{"label": "upgrade-witness", "colour": "#1f6feb"}'
+    made="$made $status"
+    api POST /tags '{"label": "upgrade-spare"}'
+    expect "pkg a second model, an owner and two tags" "$made $status" "201 201 201 201"
+    # Choices of the site's own. One is a reason for a move, and an item below is moved
+    # for it. The other two are in a list that the releases up to 0.3.0 offered and used
+    # for nothing, and that 0.4.0 loads with its defaults: rma is one of those defaults,
+    # and here it is the site's already, under a label of the site's.
+    api POST /choices '{"list": "state_reason", "value": "site-audit", "label": "Found at the site audit"}'
+    made=$status
+    api POST /choices '{"list": "replacement_reason", "value": "rma", "label": "Returned to the maker"}'
+    made="$made $status"
+    api POST /choices '{"list": "replacement_reason", "value": "site-swap", "label": "Swapped at the site"}'
+    expect "pkg three choices of the site's own: a reason for a move, and two reasons for a replacement, rma among them" \
+        "$made $status" "201 201 201"
+
+    api POST /items "$(witness_body "$witness_entry" "$owner")"
+    expect "pkg an item with a value in every field: serial number, asset tag, MAC address, names, dates, a quantity, an owner, two tags and every override" \
+        "$status" 201
+    witness_full=$(json_field hid)
+    witness_items+=("$witness_full")
+    for move in Assigned:received Test:staged Prod:site-audit; do
+        api POST "/items/$witness_full/transition" "{\"to\": \"${move%:*}\", \"reason\": \"${move#*:}\", \"row_version\": $row_version}"
+        row_version=$(json_field row_version)
+    done
+    api PATCH "/items/$witness_full" "{\"row_version\": $row_version, \"disposition\": \"Spare\", \"expected_online\": false}"
+    expect "pkg it is moved from Delivered to Prod in three moves, the last for the site's own reason, and then set aside as a spare that is offline" \
+        "$status $(json '[d["lifecycle_state"], d["state_reason"], d["disposition"], d["expected_online"], d["row_version"]]')" \
+        '200 ["Prod", "site-audit", "Spare", false, 5]'
+    api POST /items "{\"catalog_entry_hid\": \"$second\", \"serial_number\": \"UWN0000X002\", \"mac_address\": \"00-00-5e-00-53-a2\", \"lifecycle_state\": \"Purchased\"}"
+    expect "pkg the same serial number under the other model, with the same MAC address, is another item" "$status" 201
+    witness_items+=("$(json_field hid)")
+    api POST /items '{"asset_tag": "UW-AT-0003", "name": "Upgrade witness draft", "record_status": "draft", "tags": ["upgrade-spare"]}'
+    expect "pkg a draft with an asset tag, a name and a tag, and nothing else" "$status $(json_field record_status)" "201 draft"
+    witness_items+=("$(json_field hid)")
+    api POST /items '{"name": "upgrade-console-01"}'
+    expect "pkg an item that has a name and nothing else: no model and no state" "$status $(json_field lifecycle_state)" "201 null"
+    witness_items+=("$(json_field hid)")
+    api POST /items "{\"catalog_entry_hid\": \"$witness_entry\", \"serial_number\": \"UWN0000X005\", \"asset_tag\": \"UW-AT-0005\", \"lifecycle_state\": \"Prod\", \"est_value\": \"100.00\"}"
+    witness_items+=("$(json_field hid)")
+    api POST "/items/$(json_field hid)/retire" '{"row_version": 1}'
+    expect "pkg and an item that is retired" "$status $(json_field record_status)" "200 retired"
+}
+
+# The list that holds every item there is: the drafts, the archived and the retired too.
+every_item='/items?include_archived=true&include_drafts=true&limit=1000'
+
+# witness_kept: keep the inventory as the previous release gives it, to compare with
+# later: the items, the history of each, the choices, and the items table as the
+# database file has it.
+witness_kept() {
+    local hid
+    [ -n "$witness_entry" ] || return 0
+    api GET "$every_item"
+    keep items
+    expect "pkg $previous_version lists the ${#witness_items[@]} items, the draft and the retired one among them" \
+        "$status $(json_field total)" "200 ${#witness_items[@]}"
+    for hid in "${witness_items[@]}"; do
+        api GET "/items/$hid/history?limit=1000"
+        keep "history-$hid"
+    done
+    api GET /choices
+    keep choices-before
+    columns_before=$(items_table columns)
+    keys_before=$(items_table keys)
+    rows_before=$(items_rows "$(items_columns)")
+    check "pkg and its items table is read from the database file: $(printf '%s\n' "$columns_before" | wc -l) columns, $(printf '%s\n' "$keys_before" | wc -l) indexes and foreign keys, ${rows_before%% *} rows" \
+        test "${rows_before%% *}" = "${#witness_items[@]}"
+}
+
+# witness_carried HOW WHEN: the items and the history of each are as witness_kept found
+# them. HOW is "fields" on the new version, which may give a record more fields, and
+# "exact" where the previous release serves again. WHEN begins the lines.
+witness_carried() {
+    local how=$1 when=$2 hid found differing=""
+    [ -n "$witness_entry" ] || return 0
+    api GET "$every_item"
+    expect "pkg $when every item from before is as it was, field for field and at the row_version it had (${#witness_items[@]} items)" \
+        "$status $(unchanged items "$how")" "200 same"
+    for hid in "${witness_items[@]}"; do
+        api GET "/items/$hid/history?limit=1000"
+        found=$(unchanged "history-$hid" "$how")
+        [ "$found" = same ] || differing="$differing$hid: $found. "
+    done
+    expect "pkg $when the history of each is as it was, event for event" "$differing" ""
+}
+
+# The names of the columns that the items table had when witness_kept read it.
+columns_then() { printf '%s\n' "$columns_before" | cut -d' ' -f1 | xargs; }
+
+# carried_items: what the upgrade to this version did with the items of the previous
+# release, by the API and by the database file. Migration 0005 adds two columns to the
+# items table, and on SQLite that rebuilds the table.
+carried_items() {
+    local full
+    witness_carried fields "after the upgrade,"
+    api GET "$every_item"
+    expect "pkg each of them is a major item: it has no parent and no position, and its depth is 0" \
+        "$(json 'sorted({json.dumps([i["is_major"], i["depth"], i["parent_item_hid"], i["position"]]) for i in d["items"]})')" \
+        '["[true, 0, null, null]"]'
+    expect "pkg the items table has every column it had, each as it was, and after them the two of this version, parent_item_hid and position" \
+        "$(items_table columns)" "$columns_before
+parent_item_hid VARCHAR(36) NULL -
+position VARCHAR(100) NULL -"
+    expect "pkg every row of it holds in those columns what it held ($rows_before)" \
+        "$(items_rows "$(columns_then)")" "$rows_before"
+    expect "pkg and in the two new columns nothing" \
+        "$(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM items WHERE parent_item_hid IS NOT NULL OR position IS NOT NULL')" 0
+    expect "pkg every index, uniqueness and foreign key of the items table is there as before, and with them the index and the foreign key of parent_item_hid" \
+        "$(items_table keys)" \
+        "$(printf '%s\n' "$keys_before" 'foreign key parent_item_hid to items.hid' \
+            'index ix_items_parent_item_hid on parent_item_hid unique=0 origin=c partial=0' | LC_ALL=C sort)"
+
+    # The uniquenesses are tried as well as read: a duplicate must still be refused.
+    api GET "/items/$witness_full"
+    full="$(json '[d["catalog_entry_hid"], d["serial_number"], d["asset_tag"]]')"
+    api POST /items "{\"catalog_entry_hid\": \"$witness_entry\", \"serial_number\": \"uwn0000x002\"}"
+    expect "pkg the serial number is still unique within a model: a second UWN0000X002 of UW-48P, written in lower case, is refused" \
+        "$full $status $(json 'd["errors"][0]["field"]')" "[\"$witness_entry\", \"UWN0000X002\", \"UW-AT-0002\"] 409 serial_number"
+    api POST /items '{"asset_tag": "uw-at-0003", "name": "Upgrade witness, a second draft"}'
+    expect "pkg and the asset tag among all items: a second UW-AT-0003, which the draft has, is refused" \
+        "$status $(json 'd["errors"][0]["field"]')" "409 asset_tag"
+
+    api GET /choices
+    expect "pkg every choice from before is the same record, the three of the site's own among them" \
+        "$status $(unchanged choices-before more)" "200 same"
+    expect "pkg the replacement_reason list is loaded: its five defaults and the site's two, with rma there once, under the label the site gave it" \
+        "$(json '" ".join(sorted(c["value"] + "=" + c["label"].replace(" ", "_") for c in d if c["list"] == "replacement_reason"))')" \
+        "other=Other project=Project refresh=Refresh rma=Returned_to_the_maker site-swap=Swapped_at_the_site upgrade=Upgrade"
+}
 
 previous_release() {
     local engineer_hid group_hid held
@@ -889,20 +1210,7 @@ previous_release() {
     service_secret=$(json_field secret)
 
     # A previous release that already keeps the inventory is given some to carry over.
-    # 0.2.0 kept support weight to three places, and every release since keeps two.
-    api GET /vendors
-    if [ "$status" = 200 ]; then
-        witness_weight=1.25
-        if [ "$previous_version" = 0.2.0 ]; then witness_weight=0.125; fi
-        api POST /vendors '{"name": "Upgrade Witness Networks"}'
-        expect "pkg $previous_version holds a vendor" "$status" 201
-        api POST /catalog-entries "{\"vendor_hid\": \"$(json_field hid)\", \"pid\": \"UW-48P\", \"est_value\": \"18000.00\", \"support_weight\": \"$witness_weight\"}"
-        expect "pkg $previous_version holds a catalog entry with a value and a support weight of $witness_weight" "$status" 201
-        witness_entry=$(json_field hid)
-        api POST /items "{\"catalog_entry_hid\": \"$witness_entry\", \"serial_number\": \"UWN0000X001\", \"support_weight\": \"1.5\"}"
-        expect "pkg and an item of it with a support weight of its own" "$status" 201
-        witness_item=$(json_field hid)
-    fi
+    witness_inventory
 
     sign_in upgrade-engineer not-the-access-code
     expect "pkg a wrong access code is refused" "$status" 401
@@ -939,6 +1247,7 @@ previous_release() {
         api GET /vendors
         keep vendors
     fi
+    witness_kept
     # A previous release whose snippet sets no limit leaves nginx at its own, a megabyte.
     # The same file is sent again after the upgrade, when nginx must let it through.
     if ! shipped_snippet "$previous" | grep -q client_max_body_size; then
@@ -980,11 +1289,13 @@ upgrade() {
     expect "pkg the conffile of the nginx upstream is as the operator left it, and dpkg left no second copy of it, of the settings file or of the nginx snippet" \
         "$(conffiles | sha256sum)" "$(printf '%s\n' "$conffiles_before" | sha256sum)"
 
-    # The settings file is no conffile either. $version has a setting that
-    # $previous_version had not, and the operator edited the file: dpkg would have
-    # stopped this upgrade to ask. The package puts the new setting into the file,
-    # commented out at its default, and changes nothing that was there.
-    if [ "$(inside cat /usr/share/hirdir/config.toml | sha256sum)" != "$(dpkg-deb --fsys-tarfile "$previous" | tar -xO ./etc/hirdir/config.toml 2>/dev/null | sha256sum)" ]; then
+    # The settings file is no conffile either, and the operator edited it. Where
+    # $version has a setting that $previous_version had not, dpkg would have stopped
+    # this upgrade to ask: the package puts the new setting into the file, commented
+    # out at its default, and changes nothing that was there. That was so from 0.2.1 to
+    # 0.3.0, which brought max_megabytes. Where the two versions ship the same
+    # settings, as 0.3.0 and 0.4.0 do, the file is left as it is.
+    if [ "$(shipped_settings "$deb" | sha256sum)" != "$(shipped_settings "$previous" | sha256sum)" ]; then
         expect "pkg the settings file holds every line the operator had, in its place, and more after them" \
             "$(settings_kept "$work/settings-before.toml")" "kept more"
         expect "pkg the value the operator set is still set, and the new setting is there, commented out at its default" \
@@ -994,8 +1305,10 @@ upgrade() {
         check "pkg the upgrade says which settings it put in, and that nothing the operator set was changed" \
             grep -q '^hirdir: /etc/hirdir/config.toml has the new settings of this version.*files.max_megabytes.*Nothing you set was changed' "$work/install.log"
     else
-        expect "pkg $version ships the settings $previous_version did, and the file is as the operator left it" \
-            "$(settings_kept "$work/settings-before.toml")" "kept same"
+        expect "pkg $version ships the settings $previous_version did, and the file is as the operator left it, with no copy made beside it" \
+            "$(settings_kept "$work/settings-before.toml") $(inside bash -c 'ls /etc/hirdir | grep -c "\.bak$"' 2>&1)" "kept same 0"
+        check "pkg and the upgrade says nothing of the settings file" \
+            bash -c "! grep -q '/etc/hirdir/config.toml' '$work/install.log'"
     fi
     expect "pkg run again, hirdir-setup --settings finds nothing to change" \
         "$(inside hirdir-setup --settings --yes 2>&1)" \
@@ -1027,7 +1340,8 @@ upgrade() {
     for name in $(migrations tables "$revision_before"); do
         created="${created:+$created }$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '$name'")"
     done
-    expect "pkg every table that the migration creates is there" "$created" "$(migrations tables "$revision_before")"
+    expect "pkg every table that the migration creates is there ($(migrations tables "$revision_before"))" \
+        "$created" "$(migrations tables "$revision_before")"
     expect "pkg hirdir.service is running again" "$(inside systemctl is-active hirdir.service 2>&1)" active
     if wait_ready; then
         pass "pkg the readiness probe answers through nginx under $prefix/, the prefix from before"
@@ -1054,7 +1368,7 @@ upgrade() {
         "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
 
     if [ -n "$witness_entry" ]; then
-        local weight_after=$witness_weight row_version
+        local weight_after=$witness_weight row_version hid retired
         if [ "$previous_version" = 0.2.0 ]; then weight_after=0.13; fi
         api GET /vendors
         expect "pkg the vendor from before is as it was" "$status $(unchanged vendors)" "200 same"
@@ -1064,15 +1378,23 @@ upgrade() {
         expect "pkg the catalog entry from before has its value, and its support weight to two places" \
             "$status $(json_field est_value) $(json_field support_weight)" "200 18000.00 $weight_after"
         row_version=$(json_field row_version)
-        api POST "/catalog-entries/$witness_entry/retire" "{\"row_version\": $row_version}"
         api GET "/items/$witness_item"
         expect "pkg the item from before has its own support weight and inherits the value" \
             "$status $(json_field support_weight) $(json 'd["effective"]["est_value"]["value"]')" "200 1.5 18000.00"
+        carried_items
         # Retired, so that the rest of this pass starts from lists as empty as a new
         # installation's. Nothing is ever deleted.
-        row_version=$(json_field row_version)
-        api POST "/items/$witness_item/retire" "{\"row_version\": $row_version}"
-        expect "pkg and both can be retired with $version" "$status" 200
+        api POST "/catalog-entries/$witness_entry/retire" "{\"row_version\": $row_version}"
+        retired="$status:"
+        for hid in "${witness_items[@]}"; do
+            api GET "/items/$hid"
+            if [ "$(json_field record_status)" != retired ]; then
+                api POST "/items/$hid/retire" "{\"row_version\": $(json_field row_version)}"
+                retired="$retired $status"
+            fi
+        done
+        expect "pkg the catalog entry and the $((${#witness_items[@]} - 1)) items that were not retired can be retired with $version" \
+            "$retired" "200: 200 200 200 200 200"
     fi
 
     api GET '/users?limit=1000'
@@ -1250,8 +1572,10 @@ through_nginx() {
 
 # ---- files: import and export -----------------------------------------------------------
 
-# The files of examples/ in the order they load in. A record names the ones it refers to.
-load_order=(tags vendors catalog-entries owners items)
+# The files of examples/ in the order they load in, which is the order of examples/README.md
+# and of "Load order" in docs/interfaces.md. A record names the ones it refers to: an
+# item its network, a group its items, and an address either of the two.
+load_order=(tags vendors catalog-entries owners networks items device-groups device-group-members addresses)
 large_rows=150
 
 # large_file PATH VENDOR PID: write a CSV file of items of that model which is larger
@@ -1293,14 +1617,20 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
     out.writelines(b"row-%06d\n" % number for number in range(1, 100_002))' "$work"
 }
 
-# Whether the database holds items, vendors and accounts, read from the file itself with
-# the Python of the package, because the service is stopped when this is asked.
+# The tables that hirdir admin reset clears: the inventory, those of 0.4.0 among it, and
+# what was stored about it. A test in packaging/tests/ fails when a table that a reset
+# clears is not named here.
+inventory_tables="tags vendors owners catalog_entries items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links"
+
+# Which of those tables hold a row, and whether the table of accounts does. It is read
+# from the database file with the Python of the package, because the service is stopped
+# when this is asked.
 inventory_left() {
     inside /opt/hirdir/venv/bin/python -c '
-import sqlite3
+import sqlite3, sys
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
 count = lambda table: held.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-print("some" if count("items") else "none", "some" if count("vendors") else "none", count("users") > 0)'
+print(*(table for table in sys.argv[1].split() + ["users"] if count(table)))' "$inventory_tables" 2>&1
 }
 
 # export_request FORMAT FILTER [COLUMN...]: the body of POST /exports for items, sorted
@@ -1321,7 +1651,7 @@ print(json.dumps(body))' "$@"
 # an operator has for it. Nothing can be deleted from an inventory.
 files() {
     section "files: examples/ imported and exported through nginx under $prefix/"
-    local before items_before name entity rows item_rows hid filter wanted exported limit
+    local before items_before tags_before name entity rows item_rows hid filter wanted exported limit made
 
     expect "pkg the package ships the CSV and JSON files of examples/ in /usr/share/doc/hirdir/examples/, each as the repository has it" \
         "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && sha256sum -- * | LC_ALL=C sort' 2>&1)" \
@@ -1331,6 +1661,8 @@ files() {
         inside test -s "${before:-/nonexistent}"
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
     items_before=$(json_field total)
+    api GET /tags
+    tags_before=$(json 'len(d)')
 
     for name in "${load_order[@]}"; do
         entity=${name//-/_}
@@ -1347,6 +1679,19 @@ files() {
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
     expect "S12 the item list holds the $item_rows items of the examples, beside the $items_before there were" \
         "$status $(json_field total)" "200 $((items_before + item_rows))"
+    # What 0.4.0 added to the examples: minor items, networks, device groups with their
+    # members, and addresses. Each list holds what its file holds.
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=is_major:eq:false' --data-urlencode 'limit=1'
+    expect "S12 the minor items of the examples are there, each beneath the item its row names as its parent" \
+        "$status $(json_field total)" "200 $(table 'sum(1 for r in rows if r["parent"])' examples/items.csv)"
+    api GET '/networks?limit=1'
+    made="$status $(json_field total)"
+    api GET '/device-groups?limit=1000'
+    made="$made $status $(json_field total) $(json 'sum(g["member_count"] for g in d["items"])')"
+    api GET '/addresses?limit=1'
+    expect "S12 and so are the networks, the device groups with their current members, and the addresses" \
+        "$made $status $(json_field total)" \
+        "200 $(table 'len(rows)' examples/networks.csv) 200 $(table 'len(rows)' examples/device-groups.csv) $(table 'sum(1 for r in rows if not r["left_on"])' examples/device-group-members.csv) 200 $(table 'len(rows)' examples/addresses.csv)"
 
     for name in "${load_order[@]}"; do
         entity=${name//-/_}
@@ -1359,10 +1704,10 @@ files() {
         send "/imports/preview?file_name=$name.json" "examples/$name.json" application/json
         expect "S13 and examples/$name.json, the same records as JSON: unchanged as well" \
             "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+        api POST "/imports/$hid/apply"
+        expect "S13 applied, the second import of examples/$name.csv changes nothing" \
+            "$status $(job_counts)" "200 [\"applied\", $rows, 0, 0, $rows, 0]"
     done
-    api POST "/imports/$hid/apply"
-    expect "S13 applied, the second import of examples/items.csv changes nothing" \
-        "$status $(job_counts)" "200 [\"applied\", $item_rows, 0, 0, $item_rows, 0]"
 
     # A filtered export. What it must hold is read from examples/items.csv, with the
     # same filter written in Python.
@@ -1433,9 +1778,11 @@ files() {
     check "pkg with the request ID that every answer of hirdir carries" test -n "$(header x-request-id)"
 
     client_commands "$filter"
+    structure
 
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
-    # Here it clears the examples, before the backup puts back what the checks need.
+    # Here it clears the examples and what structure() made beside them, a replacement
+    # among it, before the backup puts back what the checks need.
     local code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
@@ -1443,12 +1790,12 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing" \
-        "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 some some True"
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0 too" \
+        "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg hirdir admin reset --yes clears the inventory and keeps the accounts" \
-        "$code $(inventory_left)" "0 none none True"
+    expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, and keeps the accounts" \
+        "$code $(inventory_left)" "0 users"
     expect "pkg it took a backup first and says how to put it back" \
         "$(grep -c '^backup: /var/lib/hirdir/backups/hirdir-' "$work/reset.out") $(grep -c 'hirdir admin restore /var/lib/hirdir/backups/hirdir-' "$work/reset.out")" "1 1"
     check "pkg hirdir admin restore of the backup taken before the examples were imported" \
@@ -1463,7 +1810,11 @@ files() {
     expect "pkg and the item list is as it was before the examples, for the checks that follow" \
         "$status $(json_field total)" "200 $items_before"
     api GET /tags
-    expect "pkg with no tag left of those the examples brought" "$status $(json 'len(d)')" "200 0"
+    expect "pkg with no tag left of those the examples brought" "$status $(json 'len(d)')" "200 $tags_before"
+    api GET '/device-groups?include_archived=true&include_drafts=true&limit=1'
+    made=$(json_field total)
+    api GET '/addresses?limit=1'
+    expect "pkg and no device group and no address" "$status $made $(json_field total)" "200 0 0"
 }
 
 # ---- the client commands ----------------------------------------------------------------
@@ -1551,6 +1902,186 @@ client_commands() {
     expect "pkg without a session the commands exit with 3" "$code" 3
 }
 
+# ---- minor items, groups, a replacement and addresses ---------------------------------------
+
+# summary FILTER: GET /reports/summary for the items a filter finds, under $prefix.
+summary() {
+    authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=$1"
+}
+
+# What the totals of the last summary say: items, components, managed nodes, the support
+# weight as a number, and the annual support cost.
+totals() {
+    json '(lambda t: [t["items"], t["component_count"], t["managed_node_count"], float(t["support_weight"]), t["annual_support_cost"]])(d["totals"])'
+}
+
+# duplicates ADDRESS: what GET /reports/duplicates lists for one address: for each
+# network it is held more than once under, how often, and how many holders are named.
+duplicates() {
+    api GET '/reports/duplicates?limit=1000'
+    json '[[p["network"], p["count"], len(p["holders"])] for p in d["items"] if p["address"] == "'"$1"'"]'
+}
+
+# The records that 0.4.0 added, made through nginx under the prefix: scenarios S18 to
+# S21 and S23 of docs/build-plan.md, each in small. files() runs this while the examples
+# are loaded, so everything here is told from them by its name, and the counts are
+# those of these records alone. Every name is invented, the models too, and the
+# addresses are from the ranges reserved for documentation. What is made here stays,
+# for hirdir admin reset to clear with the examples.
+structure() {
+    section "minor items, a stack, a replacement and addresses through nginx under $prefix/"
+    local vendor switch_model supply_model owner chassis supply items_then components_then
+    local number members="" switches=() stack third old new day red black entity rows made
+
+    api GET /settings
+    expect "pkg the stack discount of the installation is the default of 50" \
+        "$status $(json '[s["value"] for s in d if s["key"] == "stack_discount_pct"]')" "200 [50]"
+    api POST /vendors '{"name": "Package Test Networks"}'
+    made=$status
+    vendor=$(json_field hid)
+    api POST /catalog-entries "{\"vendor_hid\": \"$vendor\", \"pid\": \"PT-48P\", \"type\": \"switch\", \"support_weight\": \"1.0\", \"annual_support_cost\": \"1450.00\"}"
+    made="$made $status"
+    switch_model=$(json_field hid)
+    api POST /catalog-entries "{\"vendor_hid\": \"$vendor\", \"pid\": \"PT-PWR-715\", \"type\": \"power-supply\"}"
+    made="$made $status"
+    supply_model=$(json_field hid)
+    api POST /owners '{"label": "Package Test Team"}'
+    owner=$(json_field hid)
+    expect "pkg a vendor, a model of switch with a support weight of 1.0, a model of power supply and an owner are made" \
+        "$made $status" "201 201 201 201"
+
+    # S18: a minor item has the owner and the standing of the item it is in.
+    api GET /reports/summary
+    items_then=$(json 'd["totals"]["items"]')
+    components_then=$(json 'd["totals"]["component_count"]')
+    api POST /items "{\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000C001\", \"hostname\": \"pkgtest-chassis-01\", \"owner_hid\": \"$owner\", \"lifecycle_state\": \"Assigned\"}"
+    chassis=$(json_field hid)
+    api POST /items "{\"catalog_entry_hid\": \"$supply_model\", \"serial_number\": \"PKG0000P001\", \"parent_item_hid\": \"$chassis\", \"position\": \"PS-A\"}"
+    expect "S18 POST $prefix/api/v1/items with parent_item_hid makes a minor item, one level beneath its switch, with no owner and no state of its own" \
+        "$status $(json '[d["is_major"], d["depth"], d["position"], d["owner_hid"], d["lifecycle_state"]]')" \
+        '201 [false, 1, "PS-A", null, null]'
+    supply=$(json_field hid)
+    expect "S18 it shows the owner of its switch, with the source parent_item and the switch as the record it comes from" \
+        "$(json 'd["effective"]["owner_hid"]')" \
+        "{\"label\": \"Package Test Team\", \"source\": \"parent_item\", \"source_hid\": \"$chassis\", \"value\": \"$owner\"}"
+    expect "S18 and the state of its switch, Assigned, in the same way" \
+        "$(json 'd["effective"]["lifecycle_state"]')" \
+        "{\"source\": \"parent_item\", \"source_hid\": \"$chassis\", \"value\": \"Assigned\"}"
+    api GET /reports/summary
+    expect "S18 GET $prefix/api/v1/reports/summary counts two items more and one component more: a minor item is no component" \
+        "$status $(json 'd["totals"]["items"]') $(json 'd["totals"]["component_count"]')" \
+        "200 $((items_then + 2)) $((components_then + 1))"
+    api POST "/items/$chassis/transition" '{"to": "Test", "reason": "staged", "row_version": 1}'
+    made=$status
+    api GET "/items/$chassis/children"
+    expect "S18 the switch is moved to Test: GET $prefix/api/v1/items/{hid}/children shows its minor item in Test, from its parent, and nothing was written to it" \
+        "$made $status $(json '[[c["hid"], c["effective"]["lifecycle_state"]["value"], c["effective"]["lifecycle_state"]["source"], c["lifecycle_state"], c["row_version"]] for c in d["items"]]')" \
+        "200 200 [[\"$supply\", \"Test\", \"parent_item\", null, 1]]"
+
+    # S19: a stack reads its serial number from its master.
+    for number in 1 2 3 4; do
+        api POST /items "{\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000S00$number\", \"hostname\": \"pkgtest-stack-0$number\", \"lifecycle_state\": \"Prod\"}"
+        switches+=("$(json_field hid)")
+        if [ "$number" = 1 ]; then made=master; else made=member; fi
+        members="$members${members:+, }{\"item_hid\": \"$(json_field hid)\", \"role\": \"$made\", \"position\": $number}"
+    done
+    summary "hid:eq:${switches[0]}"
+    expect "S20 the summary of one of the four switches while it stands alone: one component, one managed node, a support weight of 1.0 and its annual support cost" \
+        "$status $(totals)" '200 [1, 1, 1, 1.0, "1450.00"]'
+    api POST /device-groups "{\"type\": \"stack\", \"name\": \"pkgtest-stack\", \"hostname\": \"pkgtest-stack\", \"members\": [$members]}"
+    expect "S19 POST $prefix/api/v1/device-groups makes a stack of four switches with its members, one of them the master, and shows the master's serial number" \
+        "$status $(json '[d["type"], d["member_count"], d["serial_number"]]')" '201 ["stack", 4, "PKG0000S001"]'
+    stack=$(json_field hid)
+    api GET "/device-groups/$stack/members"
+    expect "S19 GET $prefix/api/v1/device-groups/{hid}/members lists the four by position, the master first" \
+        "$status $(json '[[m["position"], m["role"]] for m in d["items"]]')" \
+        '200 [[1, "master"], [2, "member"], [3, "member"], [4, "member"]]'
+    third=$(json 'd["items"][2]["hid"]')
+    api PATCH "/device-groups/$stack/members/$third" "{\"row_version\": $(json 'd["items"][2]["row_version"]'), \"role\": \"master\"}"
+    made=$status
+    api GET "/device-groups/$stack"
+    expect "S19 the third member is made master, and the stack shows its serial number at once" \
+        "$made $status $(json_field serial_number)" "200 200 PKG0000S003"
+    api GET "/device-groups/$stack/members"
+    expect "S19 and the former master is a member, by the same change: there is one master" \
+        "$status $(json '[[m["position"], m["role"]] for m in d["items"]]')" \
+        '200 [[1, "member"], [2, "member"], [3, "master"], [4, "member"]]'
+
+    # S20: the stack discount lowers the support weight and never the cost.
+    summary 'group.name:eq:pkgtest-stack'
+    expect "S20 the summary of the stack: four components, one managed node, a support weight of 2.0 at the discount of 50, and the cost of four switches" \
+        "$status $(totals)" '200 [4, 4, 1, 2.0, "5800.00"]'
+    api GET "/catalog-entries/$switch_model"
+    api PATCH "/catalog-entries/$switch_model" "{\"row_version\": $(json_field row_version), \"stack_discount_pct\": \"30\"}"
+    made=$status
+    summary 'group.name:eq:pkgtest-stack'
+    expect "S20 with a discount of 30 set on the model the weight is 2.8, and the counts and the cost are as they were" \
+        "$made $status $(totals)" '200 200 [4, 4, 1, 2.8, "5800.00"]'
+
+    # S21: the master is replaced, and the stack is the same record.
+    old=${switches[2]}
+    api GET "/items/$old"
+    api POST "/items/$old/replace" "{\"row_version\": $(json_field row_version), \"reason\": \"rma\", \"reference\": \"RMA-0000-001\", \"new_item\": {\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000S009\"}}"
+    expect "S21 POST $prefix/api/v1/items/{hid}/replace replaces the master for an RMA, with a switch that the request creates" \
+        "$status $(json '[d["reason"], d["reference"], d["new_item"]["serial_number"]]')" '201 ["rma", "RMA-0000-001", "PKG0000S009"]'
+    new=$(json 'd["new_item"]["hid"]')
+    day=$(json_field replaced_on)
+    api GET "/items/$old"
+    made="$(json 'd["replaced_by"]["item_hid"]') $(json 'd["groups"]')"
+    api GET "/items/$new"
+    expect "S21 two item records, linked by the replacement: the old one is in no group now, and the new one is in the stack" \
+        "$made $(json 'd["replaces"]["item_hid"]') $(json '[g["group_hid"] for g in d["groups"]]')" "$new [] $old [\"$stack\"]"
+    api GET "/device-groups/$stack/members?include_past=true"
+    expect "S21 the membership of the switch that left has an end date, the day of the replacement, and the new switch has its place from that day: master, at position 3" \
+        "$status $(json '[[m["role"], m["position"], m["joined_on"], m["left_on"]] for m in d["items"] if m["item_hid"] == "'"$new"'"] + [m["left_on"] for m in d["items"] if m["item_hid"] == "'"$old"'"]')" \
+        "200 [[\"master\", 3, \"$day\", null], \"$day\"]"
+    api GET "/device-groups/$stack"
+    expect "S21 the stack is the same record, with four members, and reads its serial number from the new master" \
+        "$status $(json '[d["hid"], d["member_count"], d["serial_number"]]')" "200 [\"$stack\", 4, \"PKG0000S009\"]"
+
+    # S23: one address under two networks is two addresses; twice under one is reported.
+    api POST /networks '{"label": "pkgtest-red", "kind": "vrf"}'
+    made=$status
+    red=$(json_field hid)
+    api POST /networks '{"label": "pkgtest-black", "kind": "vrf"}'
+    made="$made $status"
+    black=$(json_field hid)
+    api POST /addresses "{\"item_hid\": \"${switches[0]}\", \"address\": \"203.0.113.210\", \"network_hid\": \"$red\"}"
+    made="$made $status"
+    api POST /addresses "{\"item_hid\": \"${switches[0]}\", \"address\": \"203.0.113.210\", \"network_hid\": \"$black\"}"
+    expect "S23 POST $prefix/api/v1/networks and $prefix/api/v1/addresses: 203.0.113.210 under two networks is accepted, and GET $prefix/api/v1/reports/duplicates does not list it" \
+        "$made $status $(duplicates 203.0.113.210)" "201 201 201 201 []"
+    api POST /addresses "{\"item_hid\": \"${switches[1]}\", \"address\": \"203.0.113.210\", \"network_hid\": \"$red\"}"
+    expect "S23 the same address a second time under one of them, on another switch, is accepted too, and the report lists that pair and no other" \
+        "$status $(duplicates 203.0.113.210)" '201 [["pkgtest-red", 2, 2]]'
+    authorized GET "$prefix/api/v1/addresses" --get --data-urlencode 'filter=address:eq:203.0.113.210'
+    expect "S23 GET $prefix/api/v1/addresses finds the three by the address" "$status $(json_field total)" "200 3"
+    api POST /addresses "{\"group_hid\": \"$stack\", \"address\": \"2001:0DB8:0000:0000:0000:0000:0000:0010\", \"is_primary\": true}"
+    expect "pkg an IPv6 address of the stack itself, written out in full, is kept in its short form, as the primary management address" \
+        "$status $(json '[d["address"], d["role"], d["is_primary"], d["network_hid"]]')" '201 ["2001:db8::10", "management", true, null]'
+
+    # Every record of the new kinds, the examples' and these, exported and imported back.
+    for entity in networks device_groups device_group_members addresses; do
+        api POST /exports "{\"entity\": \"$entity\", \"format\": \"csv\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$entity.csv"
+        rows=$(table 'len(rows)' "$work/back-$entity.csv")
+        send "/imports/preview?entity=$entity&file_name=$entity.csv" "$work/back-$entity.csv"
+        made="$status $(job_counts)"
+        api POST /exports "{\"entity\": \"$entity\", \"format\": \"json\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$entity.json"
+        send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
+        expect "pkg an export of every record of $entity ($rows rows) is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
+            "$made $status $(job_counts)" \
+            "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+    done
+    api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_archived": true, "include_drafts": true, "sort": ["depth"]}'
+    cp "$work/body" "$work/back-items.csv"
+    rows=$(table 'len(rows)' "$work/back-items.csv")
+    send "/imports/preview?entity=items&file_name=items.csv" "$work/back-items.csv"
+    expect "pkg and so is an export of every item, sorted by depth so that a parent stands before its minor items, $(table 'sum(1 for r in rows if r["parent"])' "$work/back-items.csv") of the $rows rows" \
+        "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+}
+
 # ---- the inventory ------------------------------------------------------------------------
 
 items_total=0
@@ -1563,8 +2094,10 @@ inventory() {
     local vendor c9300 c9500 owner first second filter long
 
     api GET /choices
-    expect "pkg the migration loaded the default choices of all three lists" \
-        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 catalog_function catalog_type state_reason"
+    expect "pkg the migrations loaded the default choices of all four lists, replacement_reason among them" \
+        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 catalog_function catalog_type replacement_reason state_reason"
+    expect "pkg the replacement_reason list offers at least its five defaults" \
+        "$(json 'sorted({"rma", "refresh", "project", "upgrade", "other"} - {c["value"] for c in d if c["list"] == "replacement_reason"})')" "[]"
     expect "pkg no choice is there twice ($(json 'len(d)') choices)" \
         "$(json 'len(d) - len({(c["list"], c["value"].casefold()) for c in d})')" 0
     keep choices

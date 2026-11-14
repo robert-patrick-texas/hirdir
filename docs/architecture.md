@@ -352,13 +352,34 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, a vendor with a catalog entry and an item, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there; every account, group, grant, token and audit event is as it was, and so are the vendor, the catalog entry and the item, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had and the new settings after them; the nginx snippet is the new version's under the old prefix, the upgrade said that it reloaded nginx, and a file of more than a megabyte, which nginx refused before the upgrade, is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The table is the one the migration creates last. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again, and with the table gone the upgrade must go through. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet. When no migration of the new version creates a table, the pass has nothing to put in the way and says so in a `SKIP` line |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and puts a table in the way of the new version's migration, in the database, so that the package under test is the one that was built. The table is the one the migration creates last, `addresses` for 0.4.0, so everything else the migration does is done before it fails. The upgrade must fail, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, the `items` table with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history as they were, and with the table gone the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the items must be as they were once more. When no migration of the new version creates a table, the pass has nothing to put in the way and says so in a `SKIP` line |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+
+**The inventory that is upgraded** is made for what a migration could harm. Migration
+`0005` adds two columns to `items`, and SQLite does that by making the table anew and
+copying the rows, so the two upgrade passes make items with every kind of value between
+them: one with a value in every field a caller may set, serial number, asset tag, MAC
+address, dates, quantity, owner, two tags and every override, moved from Delivered to
+Prod in three moves and set aside as a spare; the same serial number under another
+model, with the same MAC address; a draft that has an asset tag and no serial number;
+an item that has a name and nothing else; and a retired one. Three choices of the
+site's own are entered as well, one of them `rma` in the `replacement_reason` list,
+which 0.4.0 fills with its defaults. Afterwards every item must be as it was, field
+for field and at the `row_version` it had, with its history event for event, and each
+must be a major item. The `items` table is read from the database file too: it must
+have every column it had and the two new ones after them, every row as it was in the
+old columns, and every index, uniqueness and foreign key it had, with those of
+`parent_item_hid`. A second item with a serial number of the same model, and one with
+an asset tag that is taken, must still be refused. Every choice must be the record it
+was, and `replacement_reason` must hold its five defaults and the site's two, with
+`rma` once, under the site's label.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
-prefix. The files of `examples/` are sent in load order to `POST /imports/preview` and
-applied: every row is created. Sent a second time, as CSV and as JSON, every row is
+prefix. The nine files of `examples/` are sent in load order to `POST /imports/preview`
+and applied: every row is created, and the lists of minor items, networks, device
+groups with their members, and addresses hold what the files hold. Sent a second time,
+as CSV and as JSON, every row is
 unchanged. A filtered export is taken as CSV and as JSON: its rows are those the
 examples hold for the filter and those the list gives, and `hid` comes first. An export
 of stored values is imported back unchanged. A file of more than a megabyte is imported,
@@ -369,12 +390,33 @@ its own `413`; the same body sent straight to the service is refused by `hirdir`
 `413`, which nginx passes on. The package's copy of `examples/` is compared with the
 repository's.
 
+**The records of 0.4.0** are then made through nginx under the prefix, beside the
+examples, as scenarios S18 to S21 and S23 have them, each in small. A power supply
+given a switch as its parent shows the owner and the state of the switch with the
+source `parent_item`, the summary counts one component more and not two, and the
+switch moved to Test shows the power supply in Test with nothing written to it. Four
+switches are made a stack with one master: the stack shows the master's serial number,
+and another member made master changes it at once and makes the former master a member.
+`GET /reports/summary` for the stack gives four components, one managed node, a
+support weight of 2.0 at the global discount of 50 and of 2.8 at a discount of 30 set
+on the model, and the annual support cost of four switches throughout. The master is
+replaced through `POST /items/{hid}/replace`: two item records are linked, the
+membership of the one that left ends that day, and the stack is the same record with
+the new serial number. One address is put under two networks and is not in
+`GET /reports/duplicates`; put under one of them a second time, that pair is, and no
+other. An IPv6 address of the stack is kept in its short form. Last, every network,
+device group, membership and address is exported and imported back unchanged, as CSV
+and as JSON, and so is every item, sorted by `depth` so that a parent stands before its
+minor items. The client commands for groups and reports are not tried here yet.
+
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before
 the import and restores it afterwards, with `hirdir admin backup` and `hirdir admin
-restore`. In between, with the examples still loaded, `hirdir admin reset` is
-tried as an operator would use it: it must refuse while the service runs, change
-nothing without the word `reset`, and then clear the inventory and keep the accounts.
+restore`. In between, with the examples and the records above still loaded, `hirdir
+admin reset` is tried as an operator would use it: it must refuse while the service
+runs, change nothing without the word `reset`, and then clear every table of the
+inventory, those of the replacements, groups, members, networks and addresses among
+them, and keep the accounts.
 
 The client commands of the CLI are run in the container, from the package, while the
 examples are loaded: `hirdir export` and `hirdir items list` must write the very file
