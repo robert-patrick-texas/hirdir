@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { FromAbove, InheritedFrom, OwnerNote, PlaceNote } from "../components/Descent";
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
@@ -13,6 +14,7 @@ import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
+import { aboveItem, descentHint, isFromAbove, knownAbove, ownerSource } from "../lib/descent";
 import {
   effectiveLabel,
   effectiveText,
@@ -205,14 +207,21 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+// What a planned location is, beneath its field.
+const PLAN_HINT =
+  "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change.";
+
 function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | undefined }) {
   const { catalog } = item;
-  // The owner in force: a minor item with none of its own has the owner of the item it is in.
+  // The owner in force: an item with none of its own has the owner of the item it is
+  // in, or of its group.
   const owner = item.effective.owner_hid;
-  const ownerInherited = isInherited(owner);
-  // The location in force, likewise: a minor item is where the item it is in is.
+  const ownerInherited = isFromAbove(owner);
+  // The location in force, likewise: an item with none of its own is where the item
+  // it is in is, or its group. The planned location in the same way.
   const location = item.effective.location_hid;
-  const locationInherited = isInherited(location);
+  const locationInherited = isFromAbove(location);
+  const planned = item.effective.planned_location_hid;
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -250,21 +259,13 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
         <Fact label="Owner">
           {typeof owner.value === "string" && (
             <span data-testid="owner" data-source={owner.source}>
-              <Link to={`/owners/${encodeURIComponent(owner.value)}`}>{effectiveLabel(owner)}</Link>
-              {ownerInherited && (
-                <span className="inherited">
-                  {" "}
-                  · {sourceLabel(owner)}
-                  {owner.source_hid && (
-                    <>
-                      {": "}
-                      <Link to={`/items/${encodeURIComponent(owner.source_hid)}`}>
-                        the item that has it
-                      </Link>
-                    </>
-                  )}
-                </span>
-              )}
+              <Link
+                to={`/owners/${encodeURIComponent(owner.value)}`}
+                {...(ownerInherited ? { className: "link-inherited" } : {})}
+              >
+                {effectiveLabel(owner)}
+              </Link>
+              {ownerInherited && <InheritedFrom from={ownerSource(owner, knownAbove(item))} />}
               {item.owner_exception && (
                 <span className="badge" data-testid="owner-exception">
                   Outside the operations team
@@ -289,19 +290,13 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
         <Fact label="Location">
           {typeof location.value === "string" && (
             <span data-testid="location" data-source={location.source}>
-              <Link to={placePath("location", location.value)}>{effectiveLabel(location)}</Link>
-              <span className={locationInherited ? "inherited" : "muted"}>
-                {" "}
-                · {sourceLabel(location)}
-                {locationInherited && location.source_hid && (
-                  <>
-                    {": "}
-                    <Link to={`/items/${encodeURIComponent(location.source_hid)}`}>
-                      the item that has it
-                    </Link>
-                  </>
-                )}
-              </span>
+              <Link
+                to={placePath("location", location.value)}
+                {...(locationInherited ? { className: "link-inherited" } : {})}
+              >
+                {effectiveLabel(location)}
+              </Link>
+              <FromAbove effective={location} />
             </span>
           )}
         </Fact>
@@ -319,15 +314,19 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </Link>
           )}
         </Fact>
-        {item.planned_location && (
+        {typeof planned.value === "string" && (
           <Fact label="Planned location">
-            <span data-testid="planned-location">
+            <span data-testid="planned-location" data-source={planned.source}>
               Planned for{" "}
-              <Link to={placePath("location", item.planned_location.hid)}>
-                {item.planned_location.path}
+              <Link
+                to={placePath("location", planned.value)}
+                {...(isFromAbove(planned) ? { className: "link-inherited" } : {})}
+              >
+                {effectiveLabel(planned)}
               </Link>
               , when that place is made active
             </span>
+            <FromAbove effective={planned} />
           </Fact>
         )}
         <Fact label="Management address">
@@ -824,7 +823,6 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const tags = useTags();
   const specs = useMemo<FieldSpec[]>(() => {
     const { catalog, owner } = item;
-    const minor = !item.is_major;
     // The owners to choose from, the item's own among them as the item names it, also
     // when the list no longer brings it. One outside the team says so, with its reason.
     const offered = withCurrent(
@@ -866,7 +864,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         name: "owner_hid",
         label: "Owner",
         kind: "choice",
-        blank: minor ? "The owner of the item it is in" : "No owner",
+        blank: aboveItem(item) ? "None of its own" : "No owner",
         options: offered,
       },
       {
@@ -882,18 +880,18 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         name: "location_hid",
         label: "Location",
         kind: "location",
-        blank: minor ? "Where the item it is in is" : "No location",
+        blank: aboveItem(item) ? "None of its own" : "No location",
         options: item.location ? [{ value: item.location.hid, label: item.location.path }] : [],
       },
       {
         name: "planned_location_hid",
         label: "Planned location",
         kind: "planned_location",
-        blank: "No plan",
+        blank: aboveItem(item) ? "None of its own" : "No plan",
         options: item.planned_location
           ? [{ value: item.planned_location.hid, label: item.planned_location.path }]
           : [],
-        hint: "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Clear it to give the plan up.",
+        hint: PLAN_HINT,
       },
       {
         name: "record_status",
@@ -937,26 +935,34 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
 
   // Under each field that inherits: what a blank shows, or that it is set here.
   const hints: Record<string, string> = {};
-  if (!item.is_major) {
-    const inForce = item.effective.owner_hid;
-    hints.owner_hid = item.owner_hid
-      ? "Set here. Choose the blank to have the owner of the item it is in again."
-      : inForce.value === null
-        ? "Blank, and no item above it has an owner."
-        : `Blank has ${effectiveLabel(inForce)}, the owner of the item it is in.`;
-    const where = item.effective.location_hid;
-    hints.location_hid = item.location_hid
-      ? "Set here. Clear it to be where the item it is in is again."
-      : where.value === null
-        ? "None, and no item above it has a location."
-        : `None of its own: it is in ${effectiveLabel(where)}, where the item it is in is.`;
-  }
   for (const [field] of INHERITED) {
     hints[field] = inheritHint(
       item[field],
       item.effective[field].source === "own" ? null : item.effective[field],
     );
   }
+  // The location and the planned location of an item that has something above it:
+  // with one of its own the form says that it is an override and how to give it up;
+  // with none it shows the one in force from above, before one is chosen.
+  const above = aboveItem(item);
+  const ownerHint = descentHint("owner", "item", item.owner_hid, item.effective.owner_hid, above);
+  if (ownerHint) hints.owner_hid = ownerHint;
+  const whereHint = descentHint(
+    "location",
+    "item",
+    item.location_hid,
+    item.effective.location_hid,
+    above,
+  );
+  if (whereHint) hints.location_hid = whereHint;
+  const planHint = descentHint(
+    "planned",
+    "item",
+    item.planned_location_hid,
+    item.effective.planned_location_hid,
+    above,
+  );
+  hints.planned_location_hid = [PLAN_HINT, planHint].filter(Boolean).join(" ");
   // The operator: with one of its own the form says how to give it up; with none it
   // shows the one in force from above, read-only, before anybody is chosen.
   if (item.operator_hid) {
@@ -965,11 +971,36 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   } else {
     hints.operator_hid = "The label of who of the team looks after it.";
   }
-  const notes = item.operator_hid
-    ? undefined
-    : {
-        operator_hid: <OperatorNote effective={item.effective.operator_hid} what="item" />,
-      };
+  const notes = {
+    ...(item.operator_hid
+      ? {}
+      : { operator_hid: <OperatorNote effective={item.effective.operator_hid} what="item" /> }),
+    ...(isFromAbove(item.effective.owner_hid)
+      ? {
+          owner_hid: (
+            <OwnerNote
+              effective={item.effective.owner_hid}
+              from={ownerSource(item.effective.owner_hid, knownAbove(item))}
+              what="item"
+            />
+          ),
+        }
+      : {}),
+    ...(isFromAbove(item.effective.location_hid)
+      ? {
+          location_hid: (
+            <PlaceNote kind="location" effective={item.effective.location_hid} what="item" />
+          ),
+        }
+      : {}),
+    ...(isFromAbove(item.effective.planned_location_hid)
+      ? {
+          planned_location_hid: (
+            <PlaceNote kind="planned" effective={item.effective.planned_location_hid} what="item" />
+          ),
+        }
+      : {}),
+  };
   const ready = !entries.loading && !owners.loading && !tags.loading;
 
   return (
@@ -982,7 +1013,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
           specs={specs}
           record={item}
           hints={hints}
-          {...(notes ? { notes } : {})}
+          notes={notes}
           save={(body) =>
             api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
           }

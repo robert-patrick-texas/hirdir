@@ -112,7 +112,7 @@ export function usePlanned(place: Place | undefined): Loaded<Planned | null> {
       first: items.items.map((item) => ({
         hid: item.hid,
         name: itemName(item),
-        from: item.location?.path ?? "",
+        from: item.effective.location_hid.label ?? "",
       })),
       draftAbove,
     };
@@ -153,8 +153,8 @@ export function PlannedHere({ level, place, planned }: PlannedHereProps) {
           <Link to={plannedGroupsWithin(place.hid)} data-testid="planned-groups">
             {plural(data.groups, "device group")}
           </Link>{" "}
-          planned for this {level} or for a place within it. A group moves by its own plan, and its
-          members by theirs.
+          planned for this {level} or for a place within it. The members of a group that have no
+          plan of their own go with it, and are among the items below.
         </p>
       )}
       {data && data.count > 0 && (
@@ -163,8 +163,9 @@ export function PlannedHere({ level, place, planned }: PlannedHereProps) {
             <Link to={plannedWithin(place.hid)} data-testid="planned-count">
               {plural(data.count, "item")}
             </Link>{" "}
-            planned for this {level} or for a place within it. Each stays where it is, and is
-            counted there, until the place it is planned for is in use.
+            planned for this {level} or for a place within it, by their own plan or by that of the
+            item or the group they are in. Each stays where it is, and is counted there, until the
+            place it is planned for is in use.
           </p>
           <ul data-testid="planned-items">
             {data.first.map((item) => (

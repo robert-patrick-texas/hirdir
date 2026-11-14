@@ -57,6 +57,7 @@ const SHOWN = [
   "expected_online",
   "health",
   "owner",
+  "operator",
   "tags",
   "ldos",
 ];

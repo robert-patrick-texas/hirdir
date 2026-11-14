@@ -379,7 +379,7 @@ export function PlaceDetail(props: PlaceDetailProps) {
     if (!result.ok) return;
     changed(
       moving !== ""
-        ? `${record.name} is active. What was planned for it was moved in: ${moving}, each with an entry in its history.`
+        ? `${record.name} is active. What was planned for it is there now: ${moving}.`
         : `${record.name} is active.`,
     );
   }

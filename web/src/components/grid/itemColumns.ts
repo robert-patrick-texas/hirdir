@@ -3,7 +3,8 @@
 
 import type { Schemas } from "../../api/client";
 import { addressList, managementText, networkLabels } from "../../lib/addresses";
-import { effectiveLabel, effectiveText, locationHint } from "../../lib/effective";
+import { inheritedHint, knownAbove, locationHint, ownerSource } from "../../lib/descent";
+import { effectiveLabel, effectiveText } from "../../lib/effective";
 import type { FilterNode } from "../../lib/filter";
 import { formatMac, formatTime, itemName } from "../../lib/format";
 import { GROUP_TYPES, groupTypeLabel } from "../../lib/groups";
@@ -81,9 +82,9 @@ function groupTypes(item: Item): string {
  * sorts by the health the server works out. The condition and what is observed, the two
  * facts a person sets, are columns to be asked for.
  *
- * The location, the site and the region are those of the location in force: a minor
- * item with no location of its own is where the item it is in is, and shows that
- * lighter. The Location column shows the name of the location, which is what the server
+ * The location, the site and the region are those of the location in force: an item
+ * with no location of its own is where the item it is in is, or its group, and shows
+ * that lighter. The Location column shows the name of the location, which is what the server
  * filters and sorts by, with the whole path as the hint of the cell and in an export;
  * the Region column shows the name of the region the site is in. All three are hidden
  * until asked for, as every column that arrived after the first ones is.
@@ -261,12 +262,15 @@ export function itemColumns(
       hide: true,
     },
     {
-      // `owner.label` is the label of the owner in force, which is what the cell shows.
+      // `owner.label` is the label of the owner in force, which is what the cell shows:
+      // the item's own, or that of the item it is in or of its group, which shows
+      // lighter, with the record it came from in the hint.
       id: "owner.label",
       header: "Owner",
       kind: "text",
       value: (item) => effectiveLabel(item.effective.owner_hid),
       effective: (item) => item.effective.owner_hid,
+      hint: (item) => inheritedHint(ownerSource(item.effective.owner_hid, knownAbove(item))),
       width: 170,
     },
     {
@@ -275,6 +279,7 @@ export function itemColumns(
       // is. `operator.label` is what the list filters and sorts by. The cell is the mark
       // of that operator: the label, a dot in its colour, and "open" when nobody is
       // behind it; the person and where it came from are the hint.
+      // It is shown from the start, after the owner.
       id: "operator.label",
       header: "Operator",
       kind: "text",
@@ -292,7 +297,6 @@ export function itemColumns(
           }
         );
       },
-      hide: true,
       width: 180,
     },
     {
@@ -327,17 +331,20 @@ export function itemColumns(
       width: 200,
     },
     {
-      // Where the item is going: a place that is not in use yet. The cell shows the name
-      // of that location, with its path as the hint and in an export. The list finds it
-      // with `planned_location:within:<place>` in the filter box, which is no comparison
-      // of text: the column has no filter of its own, and the list is not sorted by it.
+      // Where the item is going: a place that is not in use yet, by its own plan or by
+      // that of the item or the group it is in, which shows lighter. The cell shows the
+      // name of that location, with its path and where it came from as the hint. The
+      // list finds it with `planned_location:within:<place>` in the filter box, which is
+      // no comparison of text: the column has no filter of its own, and the list is not
+      // sorted by it.
       id: "planned_location",
       header: "Planned location",
       kind: "text",
       field: null,
       sortField: null,
-      value: (item) => item.planned_location?.name,
-      hint: (item) => item.planned_location?.path,
+      value: (item) => nameOf(item.effective.planned_location_hid.label),
+      effective: (item) => item.effective.planned_location_hid,
+      hint: (item) => locationHint(item.effective.planned_location_hid),
       hide: true,
       width: 200,
     },

@@ -5,7 +5,6 @@ import {
   effectiveText,
   inheritHint,
   isInherited,
-  locationHint,
   sourceHint,
   sourceLabel,
 } from "./effective";
@@ -19,47 +18,6 @@ const own: Effective = {
 };
 const fromSetting: Effective = { value: "50", source: "setting", source_hid: null };
 const nothing: Effective = { value: null, source: "none", source_hid: null };
-
-describe("the location in force", () => {
-  const ROOM = "Americas > Central > Site-2 > Building 1 > Room 102";
-  const here = {
-    value: ENTRY,
-    label: ROOM,
-    site: "Site-2",
-    site_hid: ENTRY,
-    region: "Central",
-    region_hid: ENTRY,
-    source: "own" as const,
-    source_hid: ENTRY,
-    source_label: null,
-  };
-
-  it("says the whole path of a location the item has itself", () => {
-    expect(locationHint(here)).toBe(ROOM);
-  });
-
-  it("says where it came from when the item is where the item above it is", () => {
-    expect(locationHint({ ...here, source: "parent_item" })).toBe(
-      `${ROOM} · Inherited from the item it is in`,
-    );
-  });
-
-  it("says nothing of an item that is nowhere", () => {
-    expect(
-      locationHint({
-        ...here,
-        value: null,
-        label: null,
-        site: null,
-        region: null,
-        region_hid: null,
-        site_hid: null,
-        source: "none",
-      }),
-    ).toBe("");
-    expect(locationHint(null)).toBe("");
-  });
-});
 
 describe("values in force", () => {
   it("shows the value as the server sent it, digit for digit", () => {

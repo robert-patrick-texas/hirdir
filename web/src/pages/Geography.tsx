@@ -319,13 +319,22 @@ function PlaceRow({ node, depth, search, chosen, choices, toggle }: PlaceRowProp
         {node.record_status !== "active" && (
           <span className="badge">{optionLabel(RECORD_STATUSES, node.record_status)}</span>
         )}
-        {node.planned + node.planned_groups > 0 && (
+        {node.planned > 0 && (
           <span
             className="muted tree-planned"
             data-testid="planned"
-            title={`${plannedText({ items: node.planned, groups: node.planned_groups })} planned for this place or for a place within it: moved in when it is in use`}
+            title="Items planned for this place or for a place within it, by their own plan or by that of the item or the group they are in: they are there once it is in use"
           >
-            {node.planned + node.planned_groups} planned
+            {plannedText({ items: node.planned, groups: 0 })} planned
+          </span>
+        )}
+        {node.planned_groups > 0 && (
+          <span
+            className="muted tree-planned"
+            data-testid="planned-groups"
+            title="Device groups planned for this place or for a place within it, whatever the filter keeps. Their members are among the items planned, and are not counted twice here"
+          >
+            {plannedText({ items: 0, groups: node.planned_groups })} planned
           </span>
         )}
       </th>

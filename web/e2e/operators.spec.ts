@@ -298,16 +298,14 @@ test("labels are made; a site, a stack and a switch are given one, and what is b
   await expect(operator(page)).toHaveAttribute("data-source", "device_group");
   await expect(markIn(operator(page), core)).toBeVisible();
 
-  // The grid has an Operator column, hidden until it is asked for: the label in force
-  // as a mark, lighter where it is inherited, and found by that label.
+  // The grid has an Operator column, shown from the start: the label in force as a
+  // mark, lighter where it is inherited, and found by that label.
   await page.goto(`./items?filter=${encodeURIComponent(filter)}&minor=1`);
   await expect(page.getByTestId("grid-total")).toHaveText("6 items");
   const grid = page.getByTestId("grid-items");
-  await expect(grid.locator('[role="columnheader"][col-id="operator.label"]')).toHaveCount(0);
   await page.getByText("Columns", { exact: true }).click();
   const columns = page.getByRole("group", { name: "Columns to show" });
-  await expect(columns.getByLabel("Operator", { exact: true })).not.toBeChecked();
-  await columns.getByLabel("Operator", { exact: true }).check();
+  await expect(columns.getByLabel("Operator", { exact: true })).toBeChecked();
   // The grid draws only the columns in view: room is made for the one looked at here.
   for (const column of ["Vendor", "PID", "Serial number", "Health", "Tags", "LDoS"]) {
     await columns.getByLabel(column, { exact: true }).uncheck();

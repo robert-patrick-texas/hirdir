@@ -22,7 +22,8 @@
 // shipping address typed once on a region, inherited, taken from the street address
 // with one tick, overridden, and the override taken back (D-115, D-116); and the plan of
 // a new site: spares and a stack given a planned location in a draft site, which move
-// in by themselves when the site is made active (D-125, D-127).
+// in by themselves when the site is made active, the switches of the stack with it
+// (D-125, D-127, D-129).
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the regions, the site and its code, the
@@ -107,7 +108,8 @@ const why = `Runs the building systems ${id}`;
 const whyNow = `Runs the plant rooms ${id}`;
 
 // The plan of a new site: a store room where two spares and a stack of two switches
-// are, and a site that is still a draft, with a room that they are meant for.
+// are, and a site that is still a draft, with a room that they are meant for. One
+// switch has the store room as its own location, and one has no location of its own.
 const stagingSite = path(americas, `Staging ${id}`);
 const store = path(stagingSite, `Store ${id}`);
 const annexName = `Annex ${id}`;
@@ -366,7 +368,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   // The whole path, and where it came from, is what the cell says when it has the focus.
   await gridRow(supply).locator('[col-id="location.name"]').click();
   await expect(page.getByTestId("grid-cell-note")).toHaveText(
-    `Location: ${room} · Inherited from the item it is in`,
+    `Location: ${room} · Inherited from the item ${first}`,
   );
 
   await expectClean(page, seen, ["409 POST"]);
@@ -415,9 +417,16 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(page.getByRole("heading", { level: 1, name: supply })).toBeVisible();
   await expect(page.getByTestId("location")).toHaveAttribute("data-source", "parent_item");
   await expect(page.getByTestId("location")).toContainText(building);
-  await expect(page.getByTestId("location")).toContainText("From the item it is in");
+  await expect(page.getByTestId("location")).toContainText("Inherited from the item");
+  await expect(
+    page.getByTestId("location").getByRole("link", { name: `the item ${first}` }),
+  ).toBeVisible();
+  // Its form shows what it has from above, before a location of its own is chosen.
   await expect(region(page, "Details").getByTestId("chosen-location_hid")).toHaveText(
-    "Where the item it is in is",
+    "None of its own",
+  );
+  await expect(region(page, "Details").getByTestId("location-note")).toContainText(
+    `It is in ${building}, from the item ${first}`,
   );
 
   // The tree follows: the room has one item left, the building has four.
@@ -1200,7 +1209,9 @@ test("a new site is planned: spares and a stack are given a planned location the
   const seen = await watch(page.context());
   await signIn(page, account);
   const [spare = "", other = ""] = spares;
-  const [firstSwitch = ""] = stackSwitches;
+  // The first switch is put in the store room itself; the second has no location of
+  // its own.
+  const [placedSwitch = "", looseSwitch = ""] = stackSwitches;
   /** The Geography page counting the spares, drafts among the places, with one place chosen. */
   const planning = async (place: string) => {
     const query = new URLSearchParams({ filter: spareFilter, drafts: "1" });
@@ -1222,13 +1233,13 @@ test("a new site is planned: spares and a stack are given a planned location the
   await expect(page.getByTestId("planned-here")).toContainText("Nothing is planned for this site");
   await newPlace(page, "New location in it", "location", annexRoom, { kind: "Room" });
 
-  // Two spares and the two switches of a stack, in the store room.
+  // Two spares and one switch in the store room, and a switch that is nowhere yet.
   await importFile(
     page,
     "items",
     `items-${id}-spares.csv`,
     ["hostname", "location"],
-    [...spares, ...stackSwitches].map((host) => [host, store]),
+    [...spares.map((host) => [host, store]), [placedSwitch, store], [looseSwitch, ""]],
   );
 
   // A bulk edit gives both spares a planned location. Only a place that is not in use
@@ -1251,18 +1262,20 @@ test("a new site is planned: spares and a stack are given a planned location the
   await bulk.getByRole("button", { name: "Apply 2 items" }).click();
   await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
 
-  // The spares are where they were, and say where they are going.
+  // The spares are where they were, and say where they are going: a plan of their own.
   await openItem(page, spare);
   const itemPage = page.url();
   await expect(page.getByTestId("location")).toContainText(store);
   await expect(page.getByTestId("planned-location")).toHaveText(
     `Planned for ${annexRoom}, when that place is made active`,
   );
+  await expect(page.getByTestId("planned-location")).toHaveAttribute("data-source", "own");
   await expect(region(page, "Details").getByTestId("chosen-planned_location_hid")).toHaveText(
     annexRoom,
   );
 
-  // The stack is in the store room too, and is planned for the same room, in its form.
+  // The stack is in the store room, and is planned for the new room, in its form. Its
+  // switches are not planned one by one: a plan for the stack is a plan for them.
   await page.goto("./groups");
   await page.getByRole("button", { name: "New group" }).click();
   const newGroup = region(page, "New group");
@@ -1273,35 +1286,90 @@ test("a new site is planned: spares and a stack are given a planned location the
   }
   await chooseLocation(newGroup, `Store ${id}`, store);
   await chooseLocation(newGroup, annexRoomName, annexRoom, "Planned location");
+  // It is given an owner too, the one outside the team: its switches have none.
+  await newGroup.getByLabel("Owner").selectOption({ label: facilities });
   await newGroup.getByRole("button", { name: "Create group" }).click();
   await expect(page.getByRole("heading", { level: 1, name: plannedStack })).toBeVisible();
   await expect(page.getByTestId("group-location")).toContainText(store);
+  await expect(page.getByTestId("group-location")).toHaveAttribute("data-source", "own");
   await expect(page.getByTestId("group-planned-location")).toHaveText(
     `Planned for ${annexRoom}, when that place is made active`,
   );
-  // The plan is the group's own. Its switches are planned for the same place in one
-  // step: the bulk edit of its members, opened with the place named, ready to preview.
-  await openItem(page, firstSwitch);
-  await expect(page.getByTestId("planned-location")).toHaveCount(0);
-  await openGroup(page, plannedStack);
-  await page.getByTestId("plan-members").click();
-  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
-  await expect(bulk.getByTestId("chosen-planned_location")).toHaveText(annexRoom);
-  await bulk.getByRole("button", { name: "Preview the change" }).click();
-  await expect(count(page, "updated")).toHaveText("2");
-  await bulk.getByRole("button", { name: "Apply 2 items" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
-  await openItem(page, firstSwitch);
+  // The page says what its members have from it, and how many have their own.
+  await expect(page.getByTestId("group-location-members")).toContainText(
+    "its members with no location of their own are where it is",
+  );
+  await expect(page.getByTestId("members-own-location")).toContainText(
+    "1 of its members has a location of its own, as an override",
+  );
+  await expect(page.getByTestId("group-planned-members")).toContainText(
+    "its members with no plan of their own go with it",
+  );
+  await expect(page.getByTestId("members-own-planned")).toContainText(
+    "none of its members has a plan of its own",
+  );
+  await expect(page.getByTestId("plan-members")).toHaveCount(0);
+  await page.getByTestId("members-own-location").getByRole("link").click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await expect(
+    page.getByTestId("grid-items").getByRole("link", { name: placedSwitch, exact: true }),
+  ).toBeVisible();
+
+  // The switch with no location of its own is where the stack is, and both switches
+  // have the plan of the stack: inherited, lighter, with the stack named and linked.
+  await openItem(page, looseSwitch);
   await expect(page.getByTestId("location")).toContainText(store);
-  await expect(page.getByTestId("planned-location")).toContainText(annexRoom);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
+  await expect(page.getByTestId("location")).toContainText("Inherited");
+  await expect(
+    page.getByTestId("location").getByRole("link", { name: `the group ${plannedStack}` }),
+  ).toBeVisible();
+  // It has the owner of the stack in the same way, and is an exception by that owner.
+  await expect(page.getByTestId("owner")).toHaveAttribute("data-source", "device_group");
+  await expect(page.getByTestId("owner")).toContainText(facilities);
+  await expect(page.getByTestId("owner")).toContainText("Inherited");
+  await expect(
+    page.getByTestId("owner").getByRole("link", { name: `the group ${plannedStack}` }),
+  ).toBeVisible();
+  await expect(page.getByTestId("owner-exception")).toHaveText("Outside the operations team");
+  await expect(page.getByTestId("planned-location")).toHaveText(
+    `Planned for ${annexRoom}, when that place is made active`,
+  );
+  await expect(page.getByTestId("planned-location")).toHaveAttribute("data-source", "device_group");
+  // Its form shows what it has from the stack, and that a choice here overrides it.
+  const looseDetails = region(page, "Details");
+  await expect(looseDetails.getByTestId("chosen-location_hid")).toHaveText("None of its own");
+  await expect(looseDetails.getByTestId("location-note")).toContainText(
+    `It is in ${store}, from the group ${plannedStack}`,
+  );
+  await expect(looseDetails.getByTestId("planned-note")).toContainText(
+    `It is planned for ${annexRoom}, from the group ${plannedStack}`,
+  );
+  await expect(looseDetails.getByTestId("owner-note")).toContainText(
+    `${facilities}, from the group ${plannedStack}`,
+  );
+  // The switch in the store room has that as its own, an override, and the plan of the
+  // stack all the same.
+  await openItem(page, placedSwitch);
+  const switchPage = page.url();
+  await expect(page.getByTestId("location")).toContainText(store);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "own");
+  await expect(page.getByTestId("planned-location")).toHaveAttribute("data-source", "device_group");
+  await expect(region(page, "Details").locator('[data-field="location_hid"]')).toContainText(
+    "Clear it and save, and the item is where its group is again.",
+  );
 
   // The spares are counted in the store room. The draft site holds nothing yet, and
-  // shows what is planned for it: in the tree the spares that the filter keeps and the
-  // stack, and on its page every item, with the way to the groups.
+  // shows what is planned for it as two numbers: the items, here the spares that the
+  // filter keeps, and the groups. On its page every item planned for it is counted, the
+  // switches among them, and the stack apart.
   await planning(annex);
   await expectCounts(treeRow(page, stagingSite), 2, 2);
   await expectCounts(treeRow(page, annex), 0, 0);
-  await expect(treeRow(page, annex).getByTestId("planned")).toHaveText("3 planned");
+  await expect(treeRow(page, annex).getByTestId("planned")).toHaveText("2 items planned");
+  await expect(treeRow(page, annex).getByTestId("planned-groups")).toHaveText(
+    "1 device group planned",
+  );
   await expect(treeRow(page, stagingSite).getByTestId("planned")).toHaveCount(0);
   const here = page.getByTestId("planned-here");
   await expect(here.getByTestId("planned-count")).toHaveText("4 items");
@@ -1310,6 +1378,7 @@ test("a new site is planned: spares and a stack are given a planned location the
   await expect(listed).toHaveCount(4);
   await expect(listed.filter({ hasText: spare })).toContainText(`now in ${store}`);
   await expect(listed.filter({ hasText: other })).toBeVisible();
+  await expect(listed.filter({ hasText: looseSwitch })).toContainText(`now in ${store}`);
   // The groups planned for the place are a filter of the group grid.
   await here.getByTestId("planned-groups").click();
   await expect(page.getByTestId("grid-total")).toHaveText("1 group");
@@ -1317,22 +1386,24 @@ test("a new site is planned: spares and a stack are given a planned location the
     page.getByTestId("grid-device-groups").getByRole("link", { name: plannedStack, exact: true }),
   ).toBeVisible();
 
-  // The site is made active. The action asks first, and says what it does.
+  // The site is made active. The action asks first, and says what it does, with both
+  // numbers and that the members go with their group.
   await planning(annex);
   await region(page, "Make active").getByRole("button", { name: "Make site active" }).click();
   await expect(page.getByTestId("activation-text")).toHaveText(
-    `Making ${annexName} active moves 4 items and 1 device group that are planned for it into it. Each is recorded in its history.`,
+    `Making ${annexName} active moves 4 items and 1 device group that are planned for it into it. The members of a group go with their group: those with no plan of their own are among the items. Each record that is changed has the move in its history.`,
   );
   await page.getByRole("dialog").getByRole("button", { name: "Make site active" }).click();
   await expect(
     page.getByText(
-      `${annexName} is active. What was planned for it was moved in: 4 items and 1 device group`,
+      `${annexName} is active. What was planned for it is there now: 4 items and 1 device group.`,
     ),
   ).toBeVisible();
   // The page shows the spares as being there: nobody moved them one by one.
   await expectCounts(treeRow(page, annex), 2, 2);
   await expectCounts(treeRow(page, stagingSite), 0, 0);
   await expect(treeRow(page, annex).getByTestId("planned")).toHaveCount(0);
+  await expect(treeRow(page, annex).getByTestId("planned-groups")).toHaveCount(0);
   await expectCounts(treeRow(page, annexRoom), 2, 2);
   await expect(region(page, "Make active")).toHaveCount(0);
   await expect(page.getByTestId("planned-here")).toHaveCount(0);
@@ -1342,22 +1413,39 @@ test("a new site is planned: spares and a stack are given a planned location the
   await expect(page.getByRole("heading", { level: 1, name: spare })).toBeVisible();
   await expect(page.getByTestId("location")).toContainText(annexRoom);
   await expect(page.getByTestId("planned-location")).toHaveCount(0);
-  const history = region(page, "History");
+  // The newest entry of its history is that change: the location given, the plan cleared.
+  const moved = region(page, "History").locator("tbody").first();
+  await expect(moved.getByRole("cell", { name: "location_hid", exact: true })).toBeVisible();
   await expect(
-    history.getByRole("cell", { name: "location_hid", exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    history.getByRole("cell", { name: "planned_location_hid", exact: true }).first(),
+    moved.getByRole("cell", { name: "planned_location_hid", exact: true }),
   ).toBeVisible();
   await openItem(page, other);
   await expect(page.getByTestId("location")).toContainText(annexRoom);
 
-  // The stack is in the room, and so are its switches, each by its own plan.
+  // The stack is in the room, and so are its switches, which went with it. The one
+  // that was put in the store room gave that up in the same change, which is in its
+  // history: it is where the stack is now. The other was never written to.
   await openGroup(page, plannedStack);
   await expect(page.getByTestId("group-location")).toContainText(annexRoom);
   await expect(page.getByTestId("group-planned-location")).toHaveCount(0);
-  await openItem(page, firstSwitch);
+  await expect(page.getByTestId("members-own-location")).toContainText(
+    "none of its members has a location of its own",
+  );
+  await page.goto(switchPage);
+  await expect(page.getByRole("heading", { level: 1, name: placedSwitch })).toBeVisible();
   await expect(page.getByTestId("location")).toContainText(annexRoom);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
+  await expect(page.getByTestId("planned-location")).toHaveCount(0);
+  // The newest entry of its history is the location of its own, given up.
+  const gaveUp = region(page, "History").locator("tbody").first();
+  await expect(gaveUp.getByRole("cell", { name: "location_hid", exact: true })).toBeVisible();
+  // It had no plan of its own: none is cleared.
+  await expect(gaveUp.getByRole("cell", { name: "planned_location_hid", exact: true })).toHaveCount(
+    0,
+  );
+  await openItem(page, looseSwitch);
+  await expect(page.getByTestId("location")).toContainText(annexRoom);
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
   await expect(page.getByTestId("planned-location")).toHaveCount(0);
 
   await expectClean(page, seen);
