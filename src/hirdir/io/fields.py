@@ -466,6 +466,7 @@ def _group_in_force(field: str, live: Any = None) -> ColumnElement[Any]:
 GROUP_OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(
     DeviceGroup.owner_hid, _group_in_force("owner_hid")
 )
+GROUP_OPERATOR_IN_FORCE: ColumnElement[Any] = _group_in_force("operator_hid", operators.live)
 GROUP_LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
     DeviceGroup.location_hid, _group_in_force("location_hid")
 )
@@ -493,9 +494,7 @@ DEVICE_GROUPS = Listing(
         "region": Field("text", _GROUP_REGION.name),
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "operator_hid": Field("reference", DeviceGroup.operator_hid),
-        "effective.operator_hid": Field(
-            "reference", _group_in_force("operator_hid", operators.live)
-        ),
+        "effective.operator_hid": Field("reference", GROUP_OPERATOR_IN_FORCE),
         "operator.label": Field("text", _GROUP_OPERATOR.label),
         "planned_location_hid": Field("reference", DeviceGroup.planned_location_hid),
         "planned_location.name": Field("text", _GROUP_PLANNED.name),
@@ -542,7 +541,7 @@ DEVICE_GROUPS = Listing(
         .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == GROUP_LOCATION_IN_FORCE)
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
         .outerjoin(_GROUP_REGION, _GROUP_REGION.hid == _GROUP_SITE.region_hid)
-        .outerjoin(_GROUP_OPERATOR, _GROUP_OPERATOR.hid == DeviceGroup.operator_hid)
+        .outerjoin(_GROUP_OPERATOR, _GROUP_OPERATOR.hid == GROUP_OPERATOR_IN_FORCE)
         .outerjoin(_GROUP_PLANNED, _GROUP_PLANNED.hid == GROUP_PLANNED_IN_FORCE)
         .outerjoin(_GROUP_PLANNED_SITE, _GROUP_PLANNED_SITE.hid == _GROUP_PLANNED.site_hid)
     ),

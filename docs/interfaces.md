@@ -119,8 +119,8 @@ of locations have `location` with `within` too, and the list of sites has `regio
 device group is found and sorted by `site` and `region` as an item is, and by
 `planned_location` with `within`, each by what the group has in force, its own or
 that of the group it is nested in; `effective.operator_hid` and `effective.owner_hid`
-are the operator and the owner a group has in force, and `owner.label` and
-`owner_exception` go by that owner. The list of locations has `in_use`, true for a location that is active
+are the operator and the owner a group has in force, and `operator.label`,
+`owner.label` and `owner_exception` go by those. The list of locations has `in_use`, true for a location that is active
 with everything it is in, and false for one that can be planned for. A
 location is also found by `site.name`, `site.code` and `region.name`, the name of the
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial

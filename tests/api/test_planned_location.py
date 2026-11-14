@@ -525,6 +525,9 @@ def test_a_group_list_finds_groups_by_the_operator_in_force(make: Maker) -> None
     assert [group["name"] for group in found["items"]] == ["cluster-a", "domain"]
     nobody = make.get("/device-groups", filter="effective.operator_hid:empty:true")
     assert [group["name"] for group in nobody["items"]] == ["alone"]
+    # The label a list is found and sorted by is that of the operator in force.
+    by_label = make.get("/device-groups", filter="operator.label:eq:LM", sort="name")
+    assert [group["name"] for group in by_label["items"]] == ["cluster-a", "domain"]
 
 
 def test_a_room_is_replaced_under_a_project_name_and_takes_the_real_name_at_the_end(
