@@ -61,7 +61,7 @@ SHOWN = {
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
     "device_groups": "name,type,hostname,serial_number,members,health,owner,record_status",
-    "agreements": "name,number,vendor,starts_on,ends_on,status,contracts,record_status",
+    "agreements": "name,number,vendor,starts_on,ends_on,status,next_starts_on,record_status",
     "contracts": "number,vendor,agreement,starts_on,ends_on,status,covered_items,record_status",
     "purchase_requests": "reference,requested_on,status,notes",
     "external_systems": "name,kind,url,record_status",
@@ -1223,6 +1223,7 @@ def release_operator(
 
 Day = Annotated[str | None, typer.Option(help="A day, as YYYY-MM-DD.")]
 COVER_AT_ONCE = 10_000
+COVER_IN_ONE_REQUEST = 1000
 CONTRACT_TEXTS = (
     "number",
     "starts_on",
@@ -1238,16 +1239,22 @@ CONTRACT_TEXTS = (
 )
 
 
-def _one_named(target: Target, path: str, field: str, text: str, what: str) -> dict[str, Any]:
-    """Return the one record of a list with an HID, or with text in a field."""
+def _one_named(
+    target: Target, path: str, field: str, text: str, what: str, also: str | None = None
+) -> dict[str, Any]:
+    """Return the one record of a list with an HID, or with text in a field, or in
+    another field as well."""
     if _is_hid(text):
         return client.call(target, "GET", f"{path}/{text}")
+    named: dict[str, Any] = {"field": field, "op": "eq", "value": text}
+    if also is not None:
+        named = {"or": [named, {"field": also, "op": "eq", "value": text}]}
     found = client.call(
         target,
         "GET",
         path,
         params={
-            "filter": json.dumps({"field": field, "op": "eq", "value": text}),
+            "filter": json.dumps(named),
             "include_archived": True,
             "include_drafts": True,
             "limit": 20,
@@ -1266,8 +1273,9 @@ def _one_named(target: Target, path: str, field: str, text: str, what: str) -> d
 
 
 def find_contract(target: Target, text: str) -> dict[str, Any]:
-    """Return the contract with an HID or a number."""
-    return _one_named(target, "/contracts", "number", text, "contract")
+    """Return the contract with an HID or a number: the number it has, or the one of
+    the term that is still to begin."""
+    return _one_named(target, "/contracts", "number", text, "contract", also="next_number")
 
 
 def _period(starts_on: str | None, ends_on: str | None) -> str:
@@ -1318,8 +1326,15 @@ def show_contract(
         ("reseller", _from_agreement(found, "reseller_hid")),
         ("starts_on", _from_agreement(found, "starts_on")),
         ("ends_on", _from_agreement(found, "ends_on")),
-        ("status", found["status"]),
+        ("status", found["status"] + (", lapsed" if found["lapsed"] else "")),
         ("covers today", "yes" if found["covers_today"] else "no"),
+        (
+            "next term",
+            None
+            if found["next_term"] is None
+            else f"{found['next_term']['number'] or found['number']}, "
+            + _period(found["next_term"]["starts_on"], found["next_term"]["ends_on"]),
+        ),
         ("support_level", _from_agreement(found, "support_level")),
         ("purchase_reference", found["purchase_reference"]),
         ("account_manager", _from_agreement(found, "account_manager")),
@@ -1411,26 +1426,34 @@ def set_contract(
     )
 
 
-@contracts.command("renew")
-def renew_contract(
-    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
-    number: Annotated[str | None, typer.Option(help="The new number of the contract.")] = None,
-    from_: Annotated[
-        str | None, typer.Option("--from", help="The first day of the new period.")
-    ] = None,
-    to: Annotated[str | None, typer.Option(help="The last day of the new period.")] = None,
-    purchase_reference: Annotated[
-        str | None, typer.Option(help="The request or tracking number of the new term.")
-    ] = None,
-    annual_cost: Annotated[str | None, typer.Option(help="What the new term costs a year.")] = None,
-    url: Url = None,
-    token: Token = None,
-) -> None:
-    """Renew a contract: its new number, its new period, or both, in one change. Every
-    item in scope follows at once, and none of them is written to."""
-    target = client.load_target(url, token)
-    found = find_contract(target, contract)
-    body: dict[str, Any] = {"row_version": found["row_version"]}
+def _renewed(found: dict[str, Any], renewed: dict[str, Any], called: str, follow: str) -> None:
+    """Say what a renewal did: in force at once, kept as the next term, or withdrawn."""
+    waiting = renewed["next_term"]
+    if waiting is not None:
+        number = f" as {waiting['number']}" if waiting["number"] else ""
+        typer.echo(
+            f"{called} renews{number} on {waiting['starts_on']}, to "
+            f"{waiting['ends_on'] or 'further notice'}; until then it runs on as it is, "
+            f"and {follow}"
+        )
+    elif found["next_term"] is not None and renewed["row_version"] != found["row_version"]:
+        typer.echo(f"{called}: the term that was to begin is withdrawn")
+    else:
+        typer.echo(f"{called} is now {renewed.get('number') or called}, {follow}")
+
+
+def _renewal(
+    number: str | None,
+    from_: str | None,
+    to: str | None,
+    purchase_reference: str | None,
+    annual_cost: str | None,
+    withdraw: bool,
+    row_version: int,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"row_version": row_version}
+    if withdraw:
+        return {**body, "withdraw": True}
     for name, value in (
         ("number", number),
         ("starts_on", from_),
@@ -1440,12 +1463,71 @@ def renew_contract(
     ):
         if value is not None:
             body[name] = value
-    renewed = client.call(target, "POST", f"/contracts/{found['hid']}/renew", body)
-    typer.echo(
-        f"{found['number']} is now {renewed['number']}, "
-        f"{_in_force_period(renewed)}; "
-        f"{renewed['items_in_scope']} items follow"
+    return body
+
+
+Number = Annotated[str | None, typer.Option(help="The new number.")]
+From = Annotated[str | None, typer.Option("--from", help="The first day of the new period.")]
+To = Annotated[str | None, typer.Option(help="The last day of the new period.")]
+Reference = Annotated[
+    str | None, typer.Option(help="The request or tracking number of the new term.")
+]
+Cost = Annotated[str | None, typer.Option(help="What the new term costs a year.")]
+Withdraw = Annotated[
+    bool, typer.Option("--withdraw", help="Withdraw the term that is still to begin.")
+]
+
+
+@contracts.command("renew")
+def renew_contract(
+    contract: Annotated[str, typer.Argument(help="A number or an HID.")],
+    number: Number = None,
+    from_: From = None,
+    to: To = None,
+    purchase_reference: Reference = None,
+    annual_cost: Cost = None,
+    withdraw: Withdraw = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Renew a contract: its new number, its new period, or both, in one change. Every
+    item in scope follows, and none of them is written to. A period that begins after
+    today is kept as the next term, and the present one runs on until then."""
+    target = client.load_target(url, token)
+    found = find_contract(target, contract)
+    body = _renewal(
+        number, from_, to, purchase_reference, annual_cost, withdraw, found["row_version"]
     )
+    renewed = client.call(target, "POST", f"/contracts/{found['hid']}/renew", body)
+    follow = f"{_in_force_period(renewed)}; {renewed['items_in_scope']} items follow"
+    _renewed(found, renewed, found["number"], follow)
+
+
+@agreements.command("renew")
+def renew_agreement(
+    agreement: Annotated[str, typer.Argument(help="A name or an HID.")],
+    number: Number = None,
+    from_: From = None,
+    to: To = None,
+    purchase_reference: Reference = None,
+    annual_cost: Cost = None,
+    withdraw: Withdraw = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Renew a support agreement: its new period, in one change. The contracts that
+    are co-termed with it follow, and the items under them."""
+    target = client.load_target(url, token)
+    found = _one_named(target, "/agreements", "name", agreement, "agreement")
+    body = _renewal(
+        number, from_, to, purchase_reference, annual_cost, withdraw, found["row_version"]
+    )
+    renewed = client.call(target, "POST", f"/agreements/{found['hid']}/renew", body)
+    follow = (
+        f"{_period(renewed['starts_on'], renewed['ends_on'])}; "
+        f"{renewed['contracts']} contracts are in it"
+    )
+    _renewed(found, {**renewed, "number": renewed["name"]}, found["name"], follow)
 
 
 @contracts.command("cover")
@@ -1506,14 +1588,22 @@ def cover(
         typer.echo("nothing was changed; add --apply to cover them", err=True)
         return
     dates = {name: value for name, value in (("starts_on", from_), ("ends_on", to)) if value}
-    made = client.call(
-        target,
-        "POST",
-        f"/contracts/{found['hid']}/coverage",
-        {"items": [{"item_hid": hid, **dates} for hid in hids]},
-        timeout=SLOW,
-    )
-    typer.echo(f"{len(made)} items are covered by {found['number']}, {period}")
+    covered = 0
+    # A request covers so many at once, and each request is whole or not at all.
+    for start in range(0, len(hids), COVER_IN_ONE_REQUEST):
+        made = client.call(
+            target,
+            "POST",
+            f"/contracts/{found['hid']}/coverage",
+            {
+                "items": [
+                    {"item_hid": hid, **dates} for hid in hids[start : start + COVER_IN_ONE_REQUEST]
+                ]
+            },
+            timeout=SLOW,
+        )
+        covered += len(made)
+    typer.echo(f"{covered} items are covered by {found['number']}, {period}")
 
 
 # --- purchases -----------------------------------------------------------------------
@@ -1611,21 +1701,34 @@ def receive(
         str | None, typer.Option(help="Where they were put: the path or the HID of a location.")
     ] = None,
     on: Annotated[str | None, typer.Option(help="The day they arrived. Left out, today.")] = None,
+    count: Annotated[
+        int,
+        typer.Option(
+            help="How many more arrived that nothing is known of yet: named for the line."
+        ),
+    ] = 0,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Receive items on a purchase line: one --serial, --asset-tag or --name for each
-    item that arrived. Each is created in Delivered, of the line's model."""
+    item that arrived, and --count for those nothing is known of yet. Each is created
+    in Delivered, of the line's model."""
     arrived = [
         *({"serial_number": value} for value in serial or []),
         *({"asset_tag": value} for value in asset_tag or []),
         *({"name": value} for value in name or []),
     ]
-    if not arrived:
-        raise client.fail("say what arrived: --serial, --asset-tag or --name for each item", 2)
+    if not arrived and count <= 0:
+        raise client.fail(
+            "say what arrived: --serial, --asset-tag or --name for each item, or --count", 2
+        )
     target = client.load_target(url, token)
     found = find_line(target, line)
-    body: dict[str, Any] = {"row_version": found["row_version"], "items": arrived}
+    body: dict[str, Any] = {
+        "row_version": found["row_version"],
+        "items": arrived,
+        "quantity": count,
+    }
     if on is not None:
         body["delivered_on"] = on
     if location is not None:
@@ -1757,7 +1860,10 @@ def coverage_report(
     filter_: Filter = None,
     section: Annotated[
         str | None,
-        typer.Option(help="List the items of one: uncovered, out_of_service or expiring."),
+        typer.Option(
+            help="List the items of one: uncovered, out_of_service, expiring, overlapping or "
+            "renewal_pending."
+        ),
     ] = None,
     within_days: Annotated[
         int | None, typer.Option(help="How far ahead cover that runs out is looked for.")
@@ -1785,7 +1891,15 @@ def coverage_report(
     if section is not None:
         _rows(format_, output, _section_rows(found, "covered_until"))
         return
-    names = ("in_service", "covered", "uncovered", "out_of_service", "expiring")
+    names = (
+        "in_service",
+        "covered",
+        "uncovered",
+        "out_of_service",
+        "expiring",
+        "overlapping",
+        "renewal_pending",
+    )
     if format_ == "csv":
         _rows(format_, output, [list(names), [str(found["totals"][name]) for name in names]])
         return
@@ -1793,6 +1907,7 @@ def coverage_report(
     for name in names:
         note = f" (within {found['within_days']} days)" if name == "expiring" else ""
         typer.echo(f"{name + ':':<21}{found['totals'][name]}{note}")
+    typer.echo(f"{'lapsed contracts:':<21}{found['lapsed_contracts']['count']}")
 
 
 @report.command("end-of-life")
@@ -1906,7 +2021,8 @@ def replacements_report(
     _rows(format_, output, rows)
     if format_ == "table":
         counted = ", ".join(f"{one['label']} {one['count']}" for one in found["by_reason"])
-        typer.echo(f"\n{found['total']} replacements: {counted}")
+        noun = "replacement" if found["total"] == 1 else "replacements"
+        typer.echo(f"\n{found['total']} {noun}: {counted}")
 
 
 BALANCE = (

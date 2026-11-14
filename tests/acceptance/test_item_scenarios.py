@@ -140,8 +140,10 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
         "addresses": [],
         # Under no contract, and registered nowhere.
         "covered": False,
+        "contract_count": 0,
         "coverage": [],
         "registrations": [],
+        "group_registrations": [],
     }
     for field, value in item.items():
         if field in given | derived or field in ("created_by", "updated_by"):

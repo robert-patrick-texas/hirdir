@@ -189,7 +189,8 @@ rendered as text, never as HTML.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
-  the values of a list that is kept as JSON, and upsert. The test suite runs against
+  the values of a list that is kept as JSON, today's date in the application's time
+  zone, and upsert. The test suite runs against
   SQLite; a PostgreSQL run is added with that option, and until then the PostgreSQL
   form of each is written and not run.
 - **Regular expressions.** SQLite gets a matching function from the application. It
@@ -214,6 +215,12 @@ rendered as text, never as HTML.
   tables that are paged and are no list are in `io/tables.py`, and each keeps its own
   order after what is asked for. An address is sorted as its number: SQLite gets a
   function from the application for that, and PostgreSQL casts to `inet`.
+- **Today.** What a contract covers today, and which capacity line is in date, is a
+  comparison with the application's day: the day in the `time_zone` setting, not the
+  day of the host or of UTC. A statement that filters or sorts by it works the day out
+  itself, once, from that setting, so a list needs nothing handed to it and two
+  requests in one minute agree. SQLite gets a function from the application for that,
+  and PostgreSQL uses `now()` in the zone.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent. Every update of a row names the `row_version` it was read at.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into

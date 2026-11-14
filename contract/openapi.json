@@ -597,6 +597,7 @@
             "default": "active",
             "enum": [
               "active",
+              "renewal_pending",
               "expired",
               "pending",
               "cancelled"
@@ -721,9 +722,25 @@
             "title": "Hid",
             "type": "string"
           },
+          "lapsed": {
+            "description": "Its period has ended, and it still says it is active.",
+            "title": "Lapsed",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "next_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextTerm"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The term that begins on a day to come. Until then the present one runs on."
           },
           "notes": {
             "anyOf": [
@@ -808,6 +825,7 @@
           "status": {
             "enum": [
               "active",
+              "renewal_pending",
               "expired",
               "pending",
               "cancelled"
@@ -889,6 +907,8 @@
           "notes",
           "record_status",
           "tags",
+          "lapsed",
+          "next_term",
           "contracts",
           "row_version",
           "created_at",
@@ -1036,6 +1056,7 @@
               {
                 "enum": [
                   "active",
+                  "renewal_pending",
                   "expired",
                   "pending",
                   "cancelled"
@@ -3910,6 +3931,7 @@
             "default": "active",
             "enum": [
               "active",
+              "renewal_pending",
               "expired",
               "pending",
               "cancelled"
@@ -4081,7 +4103,7 @@
             "type": "integer"
           },
           "covers_today": {
-            "description": "Active in both senses, and today is within its dates.",
+            "description": "Active and today is within its period, or past it with its renewal pending.",
             "title": "Covers Today",
             "type": "boolean"
           },
@@ -4113,6 +4135,22 @@
             "description": "How many items have a coverage under it that has not been ended.",
             "title": "Items In Scope",
             "type": "integer"
+          },
+          "lapsed": {
+            "description": "Its period has ended, and it still says it is active.",
+            "title": "Lapsed",
+            "type": "boolean"
+          },
+          "next_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextTerm"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The term that begins on a day to come. Until then the present one runs on."
           },
           "notes": {
             "anyOf": [
@@ -4192,6 +4230,7 @@
             "description": "What a person says of it. Never set by the clock.",
             "enum": [
               "active",
+              "renewal_pending",
               "expired",
               "pending",
               "cancelled"
@@ -4278,6 +4317,8 @@
           "record_status",
           "tags",
           "covers_today",
+          "lapsed",
+          "next_term",
           "covered_items",
           "items_in_scope",
           "row_version",
@@ -4427,6 +4468,7 @@
               {
                 "enum": [
                   "active",
+                  "renewal_pending",
                   "expired",
                   "pending",
                   "cancelled"
@@ -4534,6 +4576,7 @@
           "status": {
             "enum": [
               "active",
+              "renewal_pending",
               "expired",
               "pending",
               "cancelled"
@@ -4657,6 +4700,7 @@
               {
                 "enum": [
                   "active",
+                  "renewal_pending",
                   "expired",
                   "pending",
                   "cancelled"
@@ -4667,7 +4711,7 @@
                 "type": "null"
               }
             ],
-            "description": "Left out, `active`.",
+            "description": "Left out, `active` for a renewal in force at once, and as it is otherwise.",
             "title": "Status"
           },
           "support_level": {
@@ -4681,6 +4725,12 @@
               }
             ],
             "title": "Support Level"
+          },
+          "withdraw": {
+            "default": false,
+            "description": "Withdraw the term that is still to begin. Nothing else is sent with it.",
+            "title": "Withdraw",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4931,7 +4981,7 @@
             "items": {
               "$ref": "#/components/schemas/CoverageEntry"
             },
-            "maxItems": 10000,
+            "maxItems": 1000,
             "minItems": 1,
             "title": "Items",
             "type": "array"
@@ -5077,6 +5127,11 @@
             "title": "Item Record Status",
             "type": "string"
           },
+          "left_service": {
+            "description": "Ended because the item left service; cleared once the vendor is told.",
+            "title": "Left Service",
+            "type": "boolean"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
@@ -5113,6 +5168,7 @@
           "effective_starts_on",
           "effective_ends_on",
           "in_force",
+          "left_service",
           "row_version",
           "created_at",
           "updated_at"
@@ -5135,6 +5191,18 @@
               }
             ],
             "title": "Ends On"
+          },
+          "left_service": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "False says that the vendor has been told the item left.",
+            "title": "Left Service"
           },
           "row_version": {
             "title": "Row Version",
@@ -5193,6 +5261,11 @@
             "title": "In Force",
             "type": "boolean"
           },
+          "left_service": {
+            "description": "Ended because the item left service; the vendor may still count it.",
+            "title": "Left Service",
+            "type": "boolean"
+          },
           "starts_on": {
             "anyOf": [
               {
@@ -5213,7 +5286,8 @@
           "contract",
           "starts_on",
           "ends_on",
-          "in_force"
+          "in_force",
+          "left_service"
         ],
         "title": "CoverageRef",
         "type": "object"
@@ -5234,6 +5308,9 @@
             "title": "Items",
             "type": "array"
           },
+          "lapsed_contracts": {
+            "$ref": "#/components/schemas/LapsedContracts"
+          },
           "limit": {
             "title": "Limit",
             "type": "integer"
@@ -5248,7 +5325,9 @@
                 "enum": [
                   "uncovered",
                   "out_of_service",
-                  "expiring"
+                  "expiring",
+                  "overlapping",
+                  "renewal_pending"
                 ],
                 "type": "string"
               },
@@ -5290,6 +5369,7 @@
           "service_states",
           "totals",
           "sections",
+          "lapsed_contracts",
           "section",
           "items",
           "total",
@@ -5318,8 +5398,18 @@
             "type": "integer"
           },
           "out_of_service": {
-            "description": "Items covered today though out of service.",
+            "description": "Out of service, and a contract still counts it: the list for the vendor.",
             "title": "Out Of Service",
+            "type": "integer"
+          },
+          "overlapping": {
+            "description": "Items that more than one contract covers today.",
+            "title": "Overlapping",
+            "type": "integer"
+          },
+          "renewal_pending": {
+            "description": "Items covered by a contract whose renewal is pending.",
+            "title": "Renewal Pending",
             "type": "integer"
           },
           "uncovered": {
@@ -5332,7 +5422,9 @@
           "covered",
           "uncovered",
           "out_of_service",
-          "expiring"
+          "expiring",
+          "overlapping",
+          "renewal_pending"
         ],
         "title": "CoverageTotals",
         "type": "object"
@@ -7977,6 +8069,70 @@
         "title": "GroupRef",
         "type": "object"
       },
+      "GroupRegistrationRef": {
+        "additionalProperties": false,
+        "description": "What a stack or a cluster an item is a member of is registered with.",
+        "properties": {
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "group": {
+            "$ref": "#/components/schemas/DeviceGroupRef"
+          },
+          "hid": {
+            "description": "The registration.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "registered",
+              "pending",
+              "removed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "system": {
+            "$ref": "#/components/schemas/SystemRef"
+          },
+          "system_hid": {
+            "title": "System Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "system_hid",
+          "system",
+          "external_id",
+          "status",
+          "confirmed_at",
+          "group"
+        ],
+        "title": "GroupRegistrationRef",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -8984,6 +9140,11 @@
             "description": "The state of the hardware, as a person knows it.",
             "title": "Condition"
           },
+          "contract_count": {
+            "description": "How many contracts cover it today. More than one is worth a look.",
+            "title": "Contract Count",
+            "type": "integer"
+          },
           "controllers": {
             "description": "For an endpoint of a controller domain: the controllers of that domain.",
             "items": {
@@ -9148,6 +9309,14 @@
               }
             ],
             "title": "Fqdn"
+          },
+          "group_registrations": {
+            "description": "What a stack or a cluster it is a current member of is registered with: to be read, and changed on the group.",
+            "items": {
+              "$ref": "#/components/schemas/GroupRegistrationRef"
+            },
+            "title": "Group Registrations",
+            "type": "array"
           },
           "groups": {
             "description": "Its current memberships of groups.",
@@ -9649,9 +9818,11 @@
           "replaces",
           "replaced_by",
           "covered",
+          "contract_count",
           "covered_until",
           "coverage",
           "registrations",
+          "group_registrations",
           "tags",
           "record_status",
           "row_version",
@@ -10218,6 +10389,28 @@
           "component_count"
         ],
         "title": "ItemsCounted",
+        "type": "object"
+      },
+      "LapsedContracts": {
+        "additionalProperties": false,
+        "description": "The contracts whose period has ended while they still say they are active.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "filter": {
+            "additionalProperties": true,
+            "description": "The filter of `GET /contracts` for them.",
+            "title": "Filter",
+            "type": "object"
+          }
+        },
+        "required": [
+          "count",
+          "filter"
+        ],
+        "title": "LapsedContracts",
         "type": "object"
       },
       "LifecycleRuleOut": {
@@ -12110,6 +12303,76 @@
           "label"
         ],
         "title": "NetworkRef",
+        "type": "object"
+      },
+      "NextTerm": {
+        "additionalProperties": false,
+        "description": "A term that is still to begin: a renewal that was entered ahead of its period.",
+        "properties": {
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annual Cost"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its number, where the renewal gives another.",
+            "title": "Number"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Reference"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "starts_on",
+          "ends_on",
+          "annual_cost",
+          "purchase_reference"
+        ],
+        "title": "NextTerm",
         "type": "object"
       },
       "OpeningOut": {
@@ -15002,11 +15265,11 @@
             "title": "Delivered On"
           },
           "items": {
+            "default": [],
             "items": {
               "$ref": "#/components/schemas/Arrived"
             },
             "maxItems": 1000,
-            "minItems": 1,
             "title": "Items",
             "type": "array"
           },
@@ -15023,14 +15286,21 @@
             "description": "Where they were put.",
             "title": "Location Hid"
           },
+          "quantity": {
+            "default": 0,
+            "description": "How many more arrived that nothing is known of yet, each named for its line.",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
           "row_version": {
             "title": "Row Version",
             "type": "integer"
           }
         },
         "required": [
-          "row_version",
-          "items"
+          "row_version"
         ],
         "title": "Receive",
         "type": "object"
@@ -19507,6 +19777,78 @@
         ]
       }
     },
+    "/api/v1/agreements/{hid}/renew": {
+      "post": {
+        "description": "Renew an agreement: its new period, and its new number where it has one.\n\nThe contracts that are co-termed with it follow, and the items under them. A\nperiod that begins after today is kept as the next term, and the present one runs\non until then. `withdraw` withdraws a term that is still to begin.",
+        "operationId": "renew_agreement_api_v1_agreements__hid__renew_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractRenew"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgreementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renew Agreement",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
     "/api/v1/agreements/{hid}/retire": {
       "post": {
         "description": "Retire an agreement, once no contract that is not retired is in it.",
@@ -22113,8 +22455,51 @@
       }
     },
     "/api/v1/contracts/{hid}/coverage/{coverage_hid}": {
+      "delete": {
+        "description": "Remove a coverage that was a mistake: an item put under the wrong contract. The\naudit event of the removal holds what it was. A coverage that was true for a time\nis ended with a date instead.",
+        "operationId": "remove_coverage_api_v1_contracts__hid__coverage__coverage_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "coverage_hid",
+            "required": true,
+            "schema": {
+              "title": "Coverage Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Coverage",
+        "tags": [
+          "Contracts"
+        ]
+      },
       "patch": {
-        "description": "Change the days of a coverage. It is ended by giving it `ends_on`, and is never\nremoved.",
+        "description": "Change the days of a coverage. It is ended by giving it `ends_on`. Clearing\n`left_service` says that the vendor has been told the item has left.",
         "operationId": "update_coverage_api_v1_contracts__hid__coverage__coverage_hid__patch",
         "parameters": [
           {
@@ -22176,7 +22561,7 @@
     },
     "/api/v1/contracts/{hid}/renew": {
       "post": {
-        "description": "Renew a contract: give it its new number, its new period, or both.\n\nIt is one change of the one record. Every item in scope has the new number and the\nnew period at once. The term it had is kept in the audit trail, and is listed by\n`GET /contracts/{hid}/terms`.",
+        "description": "Renew a contract: give it its new number, its new period, or both.\n\nIt is one change of the one record, and nothing is written to any item. A period\nthat begins today or earlier is in force at once. One that begins after today is\nkept as the next term: the present number and period stay in force until that\nday, so the items are covered throughout, and from that day the contract has the\nnew ones. `withdraw` withdraws a term that is still to begin. The terms it had\nare kept in the audit trail, and are listed by `GET /contracts/{hid}/terms`.",
         "operationId": "renew_contract_api_v1_contracts__hid__renew_post",
         "parameters": [
           {
@@ -27091,7 +27476,7 @@
     },
     "/api/v1/purchase-lines/{hid}/receive": {
       "post": {
-        "description": "Receive items on a line: each is created in Delivered, of the line's model, and\nnames the line. Either all of them are created or none is.",
+        "description": "Receive items on a line: each is created in Delivered, of the line's model, and\nnames the line. Either all of them are created or none is.\n\n`items` is what arrived that is known by a serial number, an asset tag or a name,\nand `quantity` how many more arrived that nothing is known of yet: each of those is\nnamed for its line, `RITM0012345/2-003`. A request that is pending or ordered\nbecomes received by the same change, once every line of it has arrived in full.",
         "operationId": "receive_line_api_v1_purchase_lines__hid__receive_post",
         "parameters": [
           {
@@ -28318,6 +28703,40 @@
       }
     },
     "/api/v1/registrations/{hid}": {
+      "delete": {
+        "description": "Remove a registration that was a mistake. The audit event of the removal holds\nwhat it was. One that was true for a time is given the status `removed` instead.",
+        "operationId": "remove_registration_api_v1_registrations__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Registration",
+        "tags": [
+          "External systems"
+        ]
+      },
       "get": {
         "description": "Return one registration.",
         "operationId": "get_registration_api_v1_registrations__hid__get",
@@ -28360,7 +28779,7 @@
         ]
       },
       "patch": {
-        "description": "Change a registration. One that ends is given the status `removed`, and is\nnever deleted.",
+        "description": "Change a registration. One that ends is given the status `removed`.",
         "operationId": "update_registration_api_v1_registrations__hid__patch",
         "parameters": [
           {
@@ -28476,7 +28895,9 @@
                   "enum": [
                     "uncovered",
                     "out_of_service",
-                    "expiring"
+                    "expiring",
+                    "overlapping",
+                    "renewal_pending"
                   ],
                   "type": "string"
                 },

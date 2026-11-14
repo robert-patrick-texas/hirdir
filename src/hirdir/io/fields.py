@@ -433,12 +433,25 @@ MINOR_ITEMS: ColumnElement[Any] = func.nullif(
 # day its cover runs to, as `hirdir.domain.contracts` works them out.
 _COVER: Any = aliased(ContractCoverage, name="item_coverage")
 _COVERING: Any = aliased(Contract, name="item_contract")
-_COVER_START = contracts.starts(_COVER, _COVERING)
-_COVER_END = contracts.ends(_COVER, _COVERING)
 _ITS_COVER = select(_COVER.hid).join(_COVERING, _COVERING.hid == _COVER.contract_hid)
 _COVERS_TODAY = (_COVER.item_hid == Item.hid, contracts.coverage_in_force(_COVER, _COVERING))
 _ITEM_CONTRACTS = _one_of(_ITS_COVER, *_COVERS_TODAY)
 COVERED: ColumnElement[Any] = _ITS_COVER.where(*_COVERS_TODAY).correlate(Item).exists()
+# How many contracts cover it today: more than one is worth a look before a renewal.
+CONTRACT_COUNT: ColumnElement[Any] = (
+    select(func.count(func.distinct(_COVERING.hid)))
+    .select_from(_COVER)
+    .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+    .where(*_COVERS_TODAY)
+    .correlate(Item)
+    .scalar_subquery()
+)
+# The last day a coverage runs to: its own, or the end of the last term of its contract
+# that is known. Under a contract whose renewal is pending no day is known to end it.
+_COVER_END = case(
+    (_COVERING.status == contracts.RENEWAL_PENDING, _COVER.ends_on),
+    else_=contracts._least(_COVER.ends_on, contracts.last_end_of(_COVERING)),
+)
 COVERED_UNTIL: ColumnElement[Any] = type_coerce(
     select(
         case((func.count(case((_COVER_END.is_(None), 1))) > 0, None), else_=func.max(_COVER_END))
@@ -448,25 +461,64 @@ COVERED_UNTIL: ColumnElement[Any] = type_coerce(
     .where(
         _COVER.item_hid == Item.hid,
         _COVERING.record_status == "active",
-        _COVERING.status == contracts.ACTIVE,
+        _COVERING.status.in_(contracts.COVERING),
         or_(_COVER_END.is_(None), dialect.today() <= _COVER_END),
-        or_(_COVER_START.is_(None), _COVER_END.is_(None), _COVER_START <= _COVER_END),
     )
     .correlate(Item)
     .scalar_subquery(),
     Date,
 )
+# Out of service, and a contract still counts it: its cover goes on, or its coverage was
+# ended because it left while the term of its contract still runs.
+_OUT_OF_SERVICE = ("Pending-Removal", "Released", "Archived")
+# A coverage that ends today asks for nothing more: the cover that goes on is what counts.
+_COVER_GOES_ON = (
+    _ITS_COVER.where(
+        *_COVERS_TODAY, or_(_COVER.ends_on.is_(None), dialect.today() < _COVER.ends_on)
+    )
+    .correlate(Item)
+    .exists()
+)
+OUT_OF_SERVICE_COVER: ColumnElement[Any] = or_(
+    and_(
+        _COVER_GOES_ON,
+        or_(Item.record_status == "retired", STATE_IN_FORCE.in_(_OUT_OF_SERVICE)),
+    ),
+    _ITS_COVER.where(_COVER.item_hid == Item.hid, contracts.left_while_running(_COVER, _COVERING))
+    .correlate(Item)
+    .exists(),
+)
+# What a list leaves out unless asked, of items: drafts, retired ones and the archived.
+_ITEM_IN_VIEW = (
+    Item.record_status == "active",
+    or_(STATE_IN_FORCE.is_(None), STATE_IN_FORCE != lifecycle.ARCHIVED),
+)
+# The stacks and the clusters an item is a current member of: each is one device, and
+# what knows the group knows its members.
+_ONE_DEVICE = (
+    select(DeviceGroupMember.group_hid)
+    .join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid)
+    .where(
+        DeviceGroupMember.item_hid == Item.hid,
+        DeviceGroupMember.left_on.is_(None),
+        DeviceGroup.record_status != "retired",
+        DeviceGroup.type.in_(systems.ONE_DEVICE),
+    )
+    # It stands two statements deep, and is still of the item of the outermost.
+    .correlate(Item)
+)
 
 
-def _registered(holder: Any, hid: Any) -> dict[str, Field]:
-    """Return the field that finds a record by an external system it is registered
-    with, a registration that is removed not counting, sorted by the first name."""
-    its = (holder == hid, Registration.status != systems.REMOVED)
+def _registered(held: ColumnElement[bool], model: Any) -> dict[str, Field]:
+    """Return the field that finds a record by an external system that knows it, a
+    registration that is removed not counting, sorted by the first name."""
+    its = (held, Registration.status != systems.REMOVED)
     first = (
         select(func.min(ExternalSystem.name_key))
         .select_from(Registration)
         .join(ExternalSystem, ExternalSystem.hid == Registration.system_hid)
         .where(*its)
+        .correlate(model)
         .scalar_subquery()
     )
     return {
@@ -617,19 +669,34 @@ ITEMS = Listing(
         # Under a contract today, and the last day its cover runs to.
         "covered": Field("boolean", COVERED),
         "covered_until": Field("date", COVERED_UNTIL),
+        "contract_count": Field("integer", CONTRACT_COUNT),
+        "out_of_service_cover": Field("boolean", OUT_OF_SERVICE_COVER),
         "contract.hid": Field("reference", _COVERING.hid, among=_ITEM_CONTRACTS),
-        "contract.number": Field(
-            "text",
-            _COVERING.number,
+        "contract.status": Field(
+            "choice",
+            contracts.status_value(_COVERING),
             among=_ITEM_CONTRACTS,
-            ordered_by=select(func.min(_COVERING.number_key))
+            ordered_by=select(func.min(contracts.status_value(_COVERING)))
             .select_from(_COVER)
             .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
             .where(*_COVERS_TODAY)
             .correlate(Item)
             .scalar_subquery(),
         ),
-        **_registered(Registration.item_hid, Item.hid),
+        "contract.number": Field(
+            "text",
+            contracts.term_value(_COVERING, "number"),
+            among=_ITEM_CONTRACTS,
+            ordered_by=select(func.min(dialect.folded(contracts.term_value(_COVERING, "number"))))
+            .select_from(_COVER)
+            .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+            .where(*_COVERS_TODAY)
+            .correlate(Item)
+            .scalar_subquery(),
+        ),
+        **_registered(
+            or_(Registration.item_hid == Item.hid, Registration.group_hid.in_(_ONE_DEVICE)), Item
+        ),
     },
     joined=lambda query: (
         _with_items_above(query)
@@ -856,7 +923,7 @@ DEVICE_GROUPS = Listing(
         "owner.label": Field("text", Owner.label),
         "parent.name": Field("text", _PARENT_GROUP.name),
         "tags": _tags("device_group", DeviceGroup),
-        **_registered(Registration.group_hid, DeviceGroup.hid),
+        **_registered(Registration.group_hid == DeviceGroup.hid, DeviceGroup),
         "member.item_hid": Field(
             "reference",
             DeviceGroupMember.item_hid,
@@ -1168,6 +1235,54 @@ _OF_CONTRACT: Any = aliased(ContractCoverage, name="coverage_of_contract")
 _RESELLER: Any = aliased(Vendor, name="reseller")
 
 _CONTRACT_OF_AGREEMENT: Any = aliased(Contract, name="contract_of_agreement")
+# How many items a contract covers today, of those a list shows unless asked otherwise:
+# the number of rows of the item list for that contract.
+COVERED_ITEMS: ColumnElement[Any] = (
+    _with_items_above(
+        select(func.count(func.distinct(Item.hid)))
+        .select_from(_OF_CONTRACT)
+        .join(Item, Item.hid == _OF_CONTRACT.item_hid)
+    )
+    .where(
+        _OF_CONTRACT.contract_hid == Contract.hid,
+        contracts.coverage_in_force(_OF_CONTRACT, Contract),
+        *_ITEM_IN_VIEW,
+    )
+    .correlate(Contract)
+    .scalar_subquery()
+)
+
+
+def covered_items(db: Session, contract_hids: list[str]) -> dict[str, int]:
+    """Return how many items each contract covers today."""
+    counts = dict.fromkeys(contract_hids, 0)
+    if contract_hids:
+        found = db.execute(
+            select(Contract.hid, COVERED_ITEMS).where(Contract.hid.in_(contract_hids))
+        )
+        counts.update({hid: count or 0 for hid, count in found})
+    return counts
+
+
+def _term_fields(model: Any) -> dict[str, Field]:
+    """Return the fields of the term of an agreement or a contract, as it is in force
+    today: the next term, from the day it begins."""
+    return {
+        "number": Field("text", contracts.term_value(model, "number")),
+        "purchase_reference": Field("text", contracts.term_value(model, "purchase_reference")),
+        "starts_on": Field("date", type_coerce(contracts.term_value(model, "starts_on"), Date)),
+        "ends_on": Field("date", type_coerce(contracts.term_value(model, "ends_on"), Date)),
+        "annual_cost": Field(
+            "number",
+            type_coerce(contracts.term_value(model, "annual_cost"), model.annual_cost.type),
+        ),
+        "status": Field("choice", contracts.status_value(model)),
+        "record_status": Field("choice", model.record_status),
+        # The term that is still to begin: blank where no renewal waits.
+        "next_starts_on": Field("date", model.next_starts_on),
+        "next_number": Field("text", model.next_number),
+    }
+
 
 AGREEMENTS = Listing(
     model=Agreement,
@@ -1177,10 +1292,12 @@ AGREEMENTS = Listing(
         "vendor": Field("text", Vendor.name),
         "reseller_hid": Field("reference", Agreement.reseller_hid),
         "reseller": Field("text", _RESELLER.name),
-        **_columns(Agreement, "text", "name", "number", *contracts.TEXTS, "support_url"),
-        **_columns(Agreement, "date", "starts_on", "ends_on"),
-        **_columns(Agreement, "choice", "status", "record_status"),
-        "annual_cost": Field("number", Agreement.annual_cost),
+        **_columns(Agreement, "text", "name", "support_level", "account_manager"),
+        **_columns(Agreement, "text", "support_contact", "notes", "support_url"),
+        **_term_fields(Agreement),
+        "lapsed": Field(
+            "boolean", contracts.lapsed_test(Agreement, contracts.term_value(Agreement, "ends_on"))
+        ),
         "tags": _tags("agreement", Agreement),
         # How many contracts that are not retired it groups, as its record counts them.
         "contracts": Field(
@@ -1213,8 +1330,12 @@ CONTRACTS = Listing(
         "agreement.name": Field("text", _ITS_AGREEMENT.name),
         "reseller_hid": Field("reference", Contract.reseller_hid),
         "reseller": Field("text", _RESELLER.name),
-        **_columns(Contract, "text", "number", *contracts.TEXTS, "support_url"),
-        **_columns(Contract, "date", "starts_on", "ends_on"),
+        **_columns(Contract, "text", "support_level", "account_manager"),
+        **_columns(Contract, "text", "support_contact", "notes", "support_url"),
+        **_term_fields(Contract),
+        "lapsed": Field(
+            "boolean", contracts.lapsed_test(Contract, contracts.in_force_of(Contract, "ends_on"))
+        ),
         # What is in force: the contract's own, or its agreement's where that is blank.
         **{
             f"effective.{name}": Field(
@@ -1227,8 +1348,6 @@ CONTRACTS = Listing(
             )
             for name in contracts.INHERITED
         },
-        **_columns(Contract, "choice", "status", "record_status"),
-        "annual_cost": Field("number", Contract.annual_cost),
         # It covers today: active in both senses, and in date.
         "covers_today": Field("boolean", contracts.contract_covers()),
         "tags": _tags("contract", Contract),
@@ -1239,16 +1358,7 @@ CONTRACTS = Listing(
             among=_one_of(select(_OF_CONTRACT.hid), _OF_CONTRACT.contract_hid == Contract.hid),
         ),
         # How many items it covers today, as its record counts them.
-        "covered_items": Field(
-            "integer",
-            ordered_by=select(func.count(func.distinct(_OF_CONTRACT.item_hid)))
-            .where(
-                _OF_CONTRACT.contract_hid == Contract.hid,
-                contracts.coverage_in_force(_OF_CONTRACT, Contract),
-            )
-            .correlate(Contract)
-            .scalar_subquery(),
-        ),
+        "covered_items": Field("integer", ordered_by=COVERED_ITEMS),
     },
     joined=lambda query: (
         query.join(Vendor, Vendor.hid == Contract.vendor_hid)
@@ -1268,8 +1378,9 @@ COVERAGE = Listing(
         "effective.starts_on": Field("date", type_coerce(contracts.starts(), Date)),
         "effective.ends_on": Field("date", type_coerce(contracts.ends(), Date)),
         "in_force": Field("boolean", contracts.coverage_in_force()),
-        "contract.number": Field("text", Contract.number),
-        "contract.status": Field("choice", Contract.status),
+        "contract.number": Field("text", contracts.term_value(Contract, "number")),
+        "contract.status": Field("choice", contracts.status_value(Contract)),
+        "left_service": Field("boolean", ContractCoverage.left_service),
         "vendor": Field("text", Vendor.name),
         "item.name": Field("text", func.coalesce(_COVERED_ITEM.name, _COVERED_ITEM.hostname)),
         "item.serial_number": Field("text", _COVERED_ITEM.serial_number),
@@ -1373,6 +1484,43 @@ PURCHASE_LINES = Listing(
 _REGISTERED_ITEM: Any = aliased(Item, name="registered_item")
 _REGISTERED_GROUP: Any = aliased(DeviceGroup, name="registered_group")
 _OF_SYSTEM: Any = aliased(Registration, name="registration_of_system")
+# How many records are registered with a system: the items and the groups that a list
+# shows unless asked otherwise, a registration that is removed not counting.
+REGISTERED: ColumnElement[Any] = (
+    _with_items_above(
+        select(func.count()).select_from(_OF_SYSTEM).join(Item, Item.hid == _OF_SYSTEM.item_hid)
+    )
+    .where(
+        _OF_SYSTEM.system_hid == ExternalSystem.hid,
+        _OF_SYSTEM.status != systems.REMOVED,
+        *_ITEM_IN_VIEW,
+    )
+    .correlate(ExternalSystem)
+    .scalar_subquery()
+) + (
+    select(func.count())
+    .select_from(_OF_SYSTEM)
+    .join(_REGISTERED_GROUP, _REGISTERED_GROUP.hid == _OF_SYSTEM.group_hid)
+    .where(
+        _OF_SYSTEM.system_hid == ExternalSystem.hid,
+        _OF_SYSTEM.status != systems.REMOVED,
+        _REGISTERED_GROUP.record_status == "active",
+    )
+    .correlate(ExternalSystem)
+    .scalar_subquery()
+)
+
+
+def registered(db: Session, system_hids: list[str]) -> dict[str, int]:
+    """Return how many records are registered with each external system."""
+    counts = dict.fromkeys(system_hids, 0)
+    if system_hids:
+        found = db.execute(
+            select(ExternalSystem.hid, REGISTERED).where(ExternalSystem.hid.in_(system_hids))
+        )
+        counts.update({hid: count or 0 for hid, count in found})
+    return counts
+
 
 EXTERNAL_SYSTEMS = Listing(
     model=ExternalSystem,
@@ -1381,15 +1529,7 @@ EXTERNAL_SYSTEMS = Listing(
         **_columns(ExternalSystem, "text", "name", "url", "notes"),
         **_columns(ExternalSystem, "choice", "kind", "record_status"),
         # How many records are registered with it, those removed not counted.
-        "registrations": Field(
-            "integer",
-            ordered_by=select(func.count())
-            .where(
-                _OF_SYSTEM.system_hid == ExternalSystem.hid, _OF_SYSTEM.status != systems.REMOVED
-            )
-            .correlate(ExternalSystem)
-            .scalar_subquery(),
-        ),
+        "registrations": Field("integer", ordered_by=REGISTERED),
     },
     joined=lambda query: query,
     default_sort=("name",),

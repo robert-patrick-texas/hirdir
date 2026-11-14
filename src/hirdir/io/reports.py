@@ -332,7 +332,9 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
             select(
                 cover.item_hid.label("item_hid"),
                 contract.hid.label("contract_hid"),
-                (contract.number + " (" + provider.name + ")").label("label"),
+                (contracts.term_value(contract, "number") + " (" + provider.name + ")").label(
+                    "label"
+                ),
             )
             .join(contract, contract.hid == cover.contract_hid)
             .join(provider, provider.hid == contract.vendor_hid)

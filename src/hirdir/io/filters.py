@@ -206,8 +206,16 @@ def to_tree(node: Node | None) -> dict[str, Any] | None:
 
 
 def both(*trees: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return the filter that keeps what every one of several filters keeps."""
-    parts = [tree for tree in trees if tree is not None]
+    """Return the filter that keeps what every one of several filters keeps.
+
+    A filter that is itself an AND gives its parts, so that joining filters makes the
+    result no deeper than the deepest of them.
+    """
+    parts: list[Any] = []
+    for tree in trees:
+        if tree is None:
+            continue
+        parts += tree["and"] if set(tree) == {"and"} else [tree]
     if not parts:
         return None
     return parts[0] if len(parts) == 1 else {"and": parts}

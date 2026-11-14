@@ -88,11 +88,11 @@ written as a failing test at the start of its release.
 | S26 | Override the technical contact on Building 1, then change the one on Americas | Room 102 keeps Building 1's; a room in another building shows the new one |
 | S27 | Move Site-2 to another region | Paths, inherited contacts and roll-ups change; item HIDs do not; the move is one audit event |
 | S28 | Make an owner outside the team with no reason, then with one, and give it an item | Refused, then accepted, and the item is marked as an exception with the owner's reason |
-| S29 | One contract covering items in two regions, one of them archived | The coverage report lists the archived item as covered but out of service |
+| S29 | One contract covering items in two regions, one of them archived | The archived item's coverage ended on the day it was archived, and the coverage report lists it as out of service under a contract that still runs |
 | S30 | An item in Prod with no coverage; an item whose model's LDoS is next year | Each is on its report |
 | S31 | A vendor with switches, a virtual machine template, a software application and a service | The portfolio lists all four kinds with cost and weight totals, and exports |
-| S32 | A purchase request with a line of ten switches | Not in the component count; receiving six creates six Delivered items linked to the line, four still pending |
-| S33 | Register a stack with a monitoring system and an SDN controller | Both registrations are on the stack, not on its members |
+| S32 | A purchase request with a line of ten switches | Not in the component count; receiving six creates six Delivered items linked to the line, four still pending; the other four, received as a count, are named for the line, and the request is then received |
+| S33 | Register a stack with a monitoring system and an SDN controller | Both registrations are on the stack, not on its members, each of which says what its stack is registered with |
 | S34 | Create a draft site with draft items | Left out of every count until made active |
 | S35 | Archive an item | Hidden by default, greyed when included, still reachable by HID, history intact |
 | S36 | `make fixture`, then page, sort and filter the item grid | Each request is within the response target in [requirements.md](requirements.md) |
