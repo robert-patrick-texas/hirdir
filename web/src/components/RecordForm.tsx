@@ -39,6 +39,8 @@ interface EditFormProps<R, B> {
   /** The record as it was read. Its `row_version` goes with the change. */
   record: R;
   hints?: Readonly<Record<string, string>>;
+  /** Something to read above a field, by its name: what applies before anything is typed. */
+  notes?: Readonly<Record<string, ReactNode>>;
   /** Send the change: the version and the fields that differ, and nothing else. */
   save: (body: B) => Promise<unknown>;
   /** The change was taken. */
@@ -55,7 +57,7 @@ interface EditFormProps<R, B> {
 export function EditForm<R extends { row_version: number }, B extends { row_version: number }>(
   props: EditFormProps<R, B>,
 ) {
-  const { specs, record, hints, save, onSaved, onReload, submitLabel = "Save" } = props;
+  const { specs, record, hints, notes, save, onSaved, onReload, submitLabel = "Save" } = props;
   const stored = record as R & Readonly<Record<string, unknown>>;
   const [values, setValues] = useState<FormValues>(() => formOf(specs, stored));
   const [found, setFound] = useState<Record<string, string>>({});
@@ -95,6 +97,7 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
         onChange={change}
         errors={{ ...refused, ...found }}
         {...(hints ? { hints } : {})}
+        {...(notes ? { notes } : {})}
         disabled={action.busy}
       />
       <p className="actions">
@@ -133,6 +136,8 @@ interface CreateFormProps<B, R> {
   submitLabel: string;
   /** What to call a field of the request that the form has no input for, in a refusal. */
   labels?: Readonly<Record<string, string>>;
+  /** Something to read above a field, by its name: what applies before anything is typed. */
+  notes?: Readonly<Record<string, ReactNode>>;
   children?: ReactNode;
 }
 
@@ -180,6 +185,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
           values={values}
           onChange={change}
           errors={{ ...refused, ...found }}
+          {...(props.notes ? { notes: props.notes } : {})}
           disabled={action.busy}
         />
         <p className="actions">

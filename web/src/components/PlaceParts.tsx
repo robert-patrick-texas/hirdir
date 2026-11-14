@@ -33,26 +33,24 @@ import {
   addressLines,
   addressOf,
   CONTACT_ROLE_LIST,
-  contactLine,
-  fromAbove,
   itemsWithin,
   type Level,
   LOCATION_KIND_LIST,
   type Location,
   levelLabel,
   locationsToMoveTo,
-  noContactText,
   ownRoles,
   type Place,
-  type PlaceEffective,
   placePath,
   type Region,
   regionsToMoveTo,
   type Site,
+  shippingNoteField,
 } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
+import { InForce, InstructionsNote, readEffective, ShippingNote, type To } from "./PlaceInForce";
 import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
 import { Time } from "./Time";
@@ -79,13 +77,6 @@ function readPlace(level: Level, hid: string, signal: AbortSignal): Promise<Plac
   if (level === "region") return api.request("get", "/api/v1/regions/{hid}", options);
   if (level === "site") return api.request("get", "/api/v1/sites/{hid}", options);
   return api.request("get", "/api/v1/locations/{hid}", options);
-}
-
-function readEffective(level: Level, hid: string, signal: AbortSignal): Promise<PlaceEffective> {
-  const options = { path: { hid }, signal };
-  if (level === "region") return api.request("get", "/api/v1/regions/{hid}/effective", options);
-  if (level === "site") return api.request("get", "/api/v1/sites/{hid}/effective", options);
-  return api.request("get", "/api/v1/locations/{hid}/effective", options);
 }
 
 function patchPlace(level: Level, hid: string, body: PlacePatch): Promise<Place> {
@@ -151,6 +142,9 @@ export function placeSpecs(
 ): FieldSpec[] {
   const shipFrom =
     level === "region" ? "the nearest region above that has one" : "the nearest place above it";
+  // Deliveries go to the street address: then no shipping address is asked for, and one
+  // the record holds is cleared with the tick, in the same change.
+  const typed = (values: Readonly<Record<string, unknown>>) => values.ship_same_as_address !== true;
   const street: FieldSpec[] =
     level === "region"
       ? []
@@ -223,15 +217,27 @@ export function placeSpecs(
       hint: "A tag is made under Admin, then used here",
     },
     ...street,
+    ...(level === "region"
+      ? []
+      : [
+          {
+            name: "ship_same_as_address",
+            label: "Deliveries go to the street address",
+            kind: "boolean",
+            heading: "Shipping address",
+            hint: "Ticked, the shipping address is the street address above, for this place and every place beneath it: nothing is typed a second time. It needs a street address.",
+          } satisfies FieldSpec,
+        ]),
     ...STREET.map(
       ([name, label], place): FieldSpec => ({
         name: `ship_${name}`,
         label: `Shipping ${label.toLowerCase()}`,
         kind: "text",
         maxLength: 200,
+        ...(level === "region" ? {} : { when: typed, clearedWhenNotAsked: true }),
         ...(place === 0
           ? {
-              heading: "Shipping address",
+              ...(level === "region" ? { heading: "Shipping address" } : {}),
               hint: `Where deliveries go. Left blank in all six fields, the address is that of ${shipFrom}, taken whole.`,
             }
           : {}),
@@ -292,7 +298,14 @@ export function PlaceDetail(props: PlaceDetailProps) {
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState<Level | null>(null);
   const specs = useMemo(() => placeSpecs(level, lists, record ?? null), [level, lists, record]);
-  const to = (toLevel: string, toHid: string) => ({ pathname: placePath(toLevel, toHid), search });
+  const to: To = (toLevel, toHid) => ({ pathname: placePath(toLevel, toHid), search });
+  // What the place has in force: shown on the page, and said in the form above the
+  // inputs it bears on. Read again after every change made here.
+  const effective = useLoad(`effective ${level} ${hid}`, (signal) =>
+    readEffective(level, hid, signal),
+  );
+  useReloadOn(turn, effective.reload);
+  const again = useAction();
 
   const showSite = useEffectEvent(props.onSite);
   const siteHid = record
@@ -313,7 +326,39 @@ export function PlaceDetail(props: PlaceDetailProps) {
     if (tree) onTreeChanged();
   }
 
+  /** Give up something of the place's own, so that what the level above has is in force again. */
+  async function inheritAgain(body: Record<string, unknown>, text: string) {
+    if (!record) return;
+    const result = await again.run(() =>
+      patchPlace(level, record.hid, { row_version: record.row_version, ...body }),
+    );
+    if (result.ok) changed(text);
+  }
+
   const editable = mayEdit && record !== undefined && record.record_status !== "retired";
+  const sitePath = record && isLocation(record) ? record.site.path : null;
+  const inForce = effective.data;
+  const notes = inForce
+    ? {
+        [shippingNoteField(level)]: (
+          <ShippingNote
+            address={inForce.ship_address}
+            of={level}
+            level={level}
+            sitePath={sitePath}
+            to={to}
+          />
+        ),
+        ship_instructions: (
+          <InstructionsNote
+            instructions={inForce.ship_instructions}
+            level={level}
+            sitePath={sitePath}
+            to={to}
+          />
+        ),
+      }
+    : undefined;
   const within: Level[] = level === "region" ? ["region", "site"] : ["location"];
 
   return (
@@ -322,6 +367,7 @@ export function PlaceDetail(props: PlaceDetailProps) {
         <NewPlace
           level={adding}
           within={{ level, place: record }}
+          search={search}
           onCancel={() => setAdding(null)}
           onCreated={(made) => {
             setAdding(null);
@@ -368,7 +414,16 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 ))}
             </p>
             <PlaceFacts place={record} choices={choices} to={to} />
-            <InForce level={level} place={record} turn={turn} to={to} />
+            <InForce
+              level={level}
+              place={record}
+              effective={effective}
+              mayEdit={editable}
+              to={to}
+              onInheritAgain={inheritAgain}
+              action={again}
+              onReload={place.reload}
+            />
             <AssignedHere
               level={level}
               place={record}
@@ -384,6 +439,7 @@ export function PlaceDetail(props: PlaceDetailProps) {
                   key={`${record.hid} ${record.row_version}`}
                   specs={specs}
                   record={record}
+                  {...(notes ? { notes } : {})}
                   save={(body) => patchPlace(level, record.hid, body)}
                   onSaved={() => changed(`The ${level} was saved.`)}
                   onReload={place.reload}
@@ -414,8 +470,6 @@ export function PlaceDetail(props: PlaceDetailProps) {
     </>
   );
 }
-
-type To = (level: string, hid: string) => { pathname: string; search: string };
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -480,6 +534,13 @@ function PlaceFacts(props: { place: Place; choices: readonly Choice[] | undefine
             `${plural(place.locations, "location")} directly in it, and ${plural(place.items, "item")} placed here itself`}
         </span>
       </Fact>
+      {!isRegion(place) && (
+        <Fact label="Deliveries">
+          {place.ship_same_as_address && (
+            <span data-testid="ship-same-as-address">Go to the street address</span>
+          )}
+        </Fact>
+      )}
       <Fact label="Notes">{place.notes}</Fact>
       <Fact label="Tags">
         <span data-testid="place-tags">{place.tags.join(", ")}</span>
@@ -491,163 +552,6 @@ function PlaceFacts(props: { place: Place; choices: readonly Choice[] | undefine
         <span className="mono">{place.hid}</span>
       </Fact>
     </dl>
-  );
-}
-
-/** Where something in force came from: the place itself, or a level above it, by its path. */
-function From(props: {
-  source: PlaceEffective["ship_address"]["source"];
-  hid: string | null;
-  path: string | null;
-  to: To;
-}) {
-  const { source, hid, path, to } = props;
-  if (source === "own") return "Set here";
-  if (source === "none") return "Not set";
-  return (
-    <>
-      From the {source} {hid ? <Link to={to(source, hid)}>{path ?? hid}</Link> : (path ?? "")}
-    </>
-  );
-}
-
-/**
- * What the place has in force: the contacts of each role, and the shipping address and
- * instructions, each with the level it came from. What came from a level above is shown
- * lighter, as an inherited value is in the grid.
- */
-function InForce(props: { level: Level; place: Place; turn: number; to: To }) {
-  const { level, place, turn, to } = props;
-  const effective = useLoad(`effective ${level} ${place.hid}`, (signal) =>
-    readEffective(level, place.hid, signal),
-  );
-  // Read again after every change made here, and stays on show meanwhile.
-  useReloadOn(turn, effective.reload);
-  const data = effective.data;
-  return (
-    <section aria-labelledby="in-force">
-      <h3 id="in-force">In force</h3>
-      <p className="hint">
-        What holds for this {level}: its own where it has any, and otherwise what the nearest level
-        above it has. Nothing is copied down, so a change above shows here at once.
-      </p>
-      <Problem error={effective.error} />
-      {effective.loading && !data && (
-        <p role="status" className="muted loading-late">
-          Loading…
-        </p>
-      )}
-      {data && (
-        <>
-          <div className="scroll">
-            <table data-testid="in-force-contacts">
-              <caption className="visually-hidden">
-                The contacts in force for {place.path}, by role, each with the level it came from
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Role</th>
-                  <th scope="col">Contacts</th>
-                  <th scope="col">From</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.contacts.map((role) => {
-                  const lighter = fromAbove(role.source) ? "inherited" : undefined;
-                  return (
-                    <tr
-                      key={role.role}
-                      data-role={role.role}
-                      data-source={role.source}
-                      data-stopped={role.stopped ? "true" : "false"}
-                    >
-                      <th scope="row">{role.label}</th>
-                      <td className={lighter}>
-                        {role.contacts.length > 0 ? (
-                          <ul className="plain-list">
-                            {role.contacts.map((contact) => (
-                              <li key={contact.assignment_hid}>
-                                <Link
-                                  to={`/contacts/${encodeURIComponent(contact.contact_hid)}`}
-                                  {...(lighter ? { className: "link-inherited" } : {})}
-                                >
-                                  {contact.name}
-                                </Link>
-                                {contactLine({ ...contact, name: "" }) && (
-                                  <span> · {contactLine({ ...contact, name: "" })}</span>
-                                )}
-                                {contact.record_status !== "active" && (
-                                  <span className="badge">
-                                    {optionLabel(RECORD_STATUSES, contact.record_status)}
-                                  </span>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <span className="muted">{noContactText(role)}</span>
-                        )}
-                      </td>
-                      <td className={lighter}>
-                        <From
-                          source={role.source}
-                          hid={role.source_hid}
-                          path={role.source_path}
-                          to={to}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-                {data.contacts.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="muted">
-                      The list of contact roles is empty.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <dl className="facts" data-testid="in-force-shipping">
-            <dt>Shipping address</dt>
-            <dd
-              data-testid="ship-address"
-              data-source={data.ship_address.source}
-              className={fromAbove(data.ship_address.source) ? "inherited" : undefined}
-            >
-              {addressLines(data.ship_address.value).join(", ") || <Dash />}
-              <span>
-                {" · "}
-                <From
-                  source={data.ship_address.source}
-                  hid={data.ship_address.source_hid}
-                  path={data.ship_address.source_path}
-                  to={to}
-                />
-              </span>
-            </dd>
-            <dt>Shipping instructions</dt>
-            <dd
-              data-testid="ship-instructions"
-              data-source={data.ship_instructions.source}
-              className={fromAbove(data.ship_instructions.source) ? "inherited" : undefined}
-            >
-              {data.ship_instructions.value || <Dash />}
-              <span>
-                {" · "}
-                <From
-                  source={data.ship_instructions.source}
-                  hid={data.ship_instructions.source_hid}
-                  path={data.ship_instructions.source_path}
-                  to={to}
-                />
-              </span>
-            </dd>
-          </dl>
-        </>
-      )}
-    </section>
   );
 }
 
@@ -1164,14 +1068,22 @@ interface NewPlaceProps {
   level: Level;
   /** What the new place is in. Left out, a region at the top. */
   within?: { level: Level; place: Place };
+  /** The view of the tree, as the query of the page: kept in the links of the form. */
+  search?: string;
   onCancel: () => void;
   onCreated: (place: Place) => void;
 }
 
 /** The form for a new region, site or location, within the place it is made in. */
-export function NewPlace({ level, within, onCancel, onCreated }: NewPlaceProps) {
+export function NewPlace({ level, within, search = "", onCancel, onCreated }: NewPlaceProps) {
   const { lists, error } = usePlaceLists();
   const specs = useMemo(() => placeSpecs(level, lists), [level, lists]);
+  // What the place it is made in has in force is what the new one would inherit.
+  const above = useLoad(
+    `above ${within?.level ?? ""} ${within?.place.hid ?? ""}`,
+    async (signal) => (within ? readEffective(within.level, within.place.hid, signal) : null),
+  );
+  const to: To = (toLevel, toHid) => ({ pathname: placePath(toLevel, toHid), search });
   const what = levelLabel(level).toLowerCase();
   const parent: PlaceCreate = !within
     ? {}
@@ -1192,8 +1104,25 @@ export function NewPlace({ level, within, onCancel, onCreated }: NewPlaceProps) 
       onCancel={onCancel}
       submitLabel={`Create ${what}`}
       labels={WITHIN_LABELS}
+      {...(within && above.data
+        ? {
+            notes: {
+              [shippingNoteField(level)]: (
+                <ShippingNote
+                  address={above.data.ship_address}
+                  of={within.level}
+                  level={level}
+                  sitePath={null}
+                  to={to}
+                  beforeItExists
+                />
+              ),
+            },
+          }
+        : {})}
     >
       <Problem error={error} />
+      <Problem error={above.error} />
       <p className="hint" data-testid="new-place-within">
         {within ? `In ${within.place.path}.` : "A region at the top, in no other region."} Its path
         is worked out from where it is, and follows when anything above it moves or is renamed.

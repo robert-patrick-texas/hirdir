@@ -61,6 +61,13 @@ export interface FieldSpec {
    * is not asked for is not shown, and nothing of it is sent.
    */
   when?: (values: FormValues) => boolean;
+  /**
+   * For a field with `when`: while the form does not ask for it, a value the record
+   * holds is cleared with the change, in the same request. So a shipping address is
+   * cleared as "deliveries go to the street address" is ticked, which the server would
+   * refuse beside one.
+   */
+  clearedWhenNotAsked?: boolean;
 }
 
 export type FormValue = string | boolean | string[];
@@ -202,7 +209,14 @@ export function buildPatch<T extends { row_version: number }>(
   const changed: string[] = [];
   const errors: Record<string, string> = {};
   for (const spec of specs) {
-    if (!asked(spec, values)) continue;
+    if (!asked(spec, values)) {
+      const held = record[spec.name];
+      if (spec.clearedWhenNotAsked && held !== null && held !== undefined && held !== "") {
+        body[spec.name] = null;
+        changed.push(spec.name);
+      }
+      continue;
+    }
     const result = read(spec, values[spec.name]);
     if ("error" in result) {
       // What was typed cannot be sent. If it is what the form started with, it is no change.

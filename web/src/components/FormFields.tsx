@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { asked, type FieldSpec, type FormValue, type FormValues, type Option } from "../lib/patch";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
@@ -11,6 +11,11 @@ interface FormFieldsProps {
   errors?: Readonly<Record<string, string>>;
   /** A hint for a field that depends on the record, in place of the field's own. */
   hints?: Readonly<Record<string, string>>;
+  /**
+   * Something to read above a field, by its name: what applies before anything is
+   * typed, such as the address a place inherits. It is shown while the field is.
+   */
+  notes?: Readonly<Record<string, ReactNode>>;
   disabled?: boolean;
 }
 
@@ -54,7 +59,16 @@ export function FormFields(props: FormFieldsProps) {
   return groups.map((group) => (
     <div className="field-group" key={group.specs[0]?.name ?? group.heading}>
       {group.heading && <h3>{group.heading}</h3>}
-      <div className="fields">{inputs({ ...props, specs: group.specs })}</div>
+      <div className="fields">
+        {group.specs.map((spec) => (
+          <Fragment key={spec.name}>
+            {props.notes?.[spec.name] !== undefined && (
+              <div className="field-note">{props.notes[spec.name]}</div>
+            )}
+            {inputs({ ...props, specs: [spec] })}
+          </Fragment>
+        ))}
+      </div>
     </div>
   ));
 }
