@@ -418,7 +418,8 @@ upgrade passes make, with 0.4.0:
   ended and a replacement;
 - a cluster of two; a controller domain with a controller, a cluster of two more
   within it and two endpoints, one of them moved to Released, which 0.4.0 leaves a
-  member; and a group that is a draft;
+  member; a second stack, of two, whose second switch is moved to Released as well;
+  and a group that is a draft;
 - two networks and seven addresses, of items and of groups, of both families, three
   of them primary, one address under two networks and twice under one of them;
 - choices of the site's own: a reason for a move, a reason for a replacement, and a
@@ -432,22 +433,31 @@ inventory that is not made through the API.
 
 Afterwards every item, group, membership, network and address must be as it was,
 field for field and at the `row_version` it had, and every item with its history event
-for event. Each item must have no condition, nothing observed and a health of
-`unknown`. The tables are read from the database file too. `items` must have every
+for event, but for what the migration is meant to change: the two memberships of the
+items that are Released, the groups those two items say they are in, and the number of
+members of their two groups. Those are left out of the comparison by name and looked
+at by themselves, below. Each item must have no condition, nothing observed and a
+health of `unknown`. The tables are read from the database file too. `items` must have every
 column it had and the three new ones after them, with nothing in those, every row as
 it was in the old columns, and every index, uniqueness and foreign key it had, with the
 indexes of `condition` and `observed_status`. `device_groups` must have its columns and
 the six new ones, its rows as they were, `managed_as` of `one` on each cluster and on
 no other group, nothing in the other five, and its keys with the foreign key of
-`observed_master_hid`. The tables of replacements, members, networks and addresses,
-which the migration leaves alone, must be as they were in every column, key and row. A
-second item with a serial number of the same model, one with an asset tag that is
+`observed_master_hid`. The tables of replacements, networks and addresses, which the
+migration leaves alone, must be as they were in every column, key and row, and the
+table of members in its columns, its keys and every row but the two that are meant to
+change. A second item with a serial number of the same model, one with an asset tag that is
 taken, and a second group of a name that is taken must still be refused. The stack
 must still show the serial number of its master, as the one intended, with nothing
-seen. The cluster must be counted as it was, and so must the whole inventory: items,
-components, managed nodes and support weight from the summary, value and cost from the
-management report, against what the summary of 0.4.0 said. The endpoint that was
-Released must be a member still, because the upgrade ends no membership. Every choice
+seen. The cluster must be counted as it was, and so must the inventory but for the
+second stack: items, components, managed nodes and support weight from the summary,
+value and cost from the management report, against what the summary of 0.4.0 said.
+The two memberships that 0.4.0 let stand must be ended: each on the day of the
+upgrade, at its next `row_version`, with one event in the audit trail that the system
+made, of `left_on` from nothing to that day, and with its item in no group. The domain
+must have two current members where it had three. The second stack must be one switch
+alone and say that it is `degraded` for it, and its switch must have its whole support
+weight where it had half, with the same component, value and cost. Every choice
 must be the record it was, and `item_condition` must hold its six defaults and the
 site's two, with `good` once, under the site's label. Last, an item from before is
 given the site's own condition and an observation, and the cluster is said to be
@@ -459,8 +469,10 @@ there beforehand, as `addresses` was for 0.4.0, so that everything else the migr
 does is done before it fails. 0.4.1 creates no table. For such a release a trigger is
 put on `alembic_version` that refuses any change to it. Writing the new revision into
 that table is the last thing a migration does, so the failure comes when the columns
-are added, the `device_groups` table is made anew, the clusters are marked and the
-conditions are loaded, and all of that has to be undone. The trigger disturbs nothing
+are added, the `device_groups` table is made anew, the clusters are marked, the
+conditions are loaded and the memberships of the items that are Released are ended,
+each with its audit event, and all of that has to be undone: the pass looks for the
+rows of the members as they were, and for an audit trail with no event more. The trigger disturbs nothing
 else: the previous release serves with it in place, and the backup that the upgrade
 takes holds it. A column of a name the migration adds, put there beforehand, was tried
 and does not serve. Where the column is added to the table as it stands, as on `items`,
@@ -503,16 +515,20 @@ A member that is seen to be master, which is not the one intended, gives the sta
 serial number, and the stack says that it shows the observed one and that the two
 differ; a switch that is no member is refused; with the observation taken back the
 intended master's serial number is shown again. The stack is found by the serial
-number of a member that is neither.
+number of a member that is neither. A file of members that names two intended masters
+of the stack, or two observed ones, is previewed with its second row rejected.
 `GET /reports/summary` for the stack gives four components, one managed node, a
 support weight of 2.0 at the global discount of 50 and of 2.8 at a discount of 30 set
 on the model, and `GET /reports/management` the annual support cost of four switches
 throughout. The master is
 replaced through `POST /items/{hid}/replace`: two item records are linked, the
 membership of the one that left ends that day, and the stack is the same record with
-the new serial number. One address is put under two networks and is not in
+the new serial number: the new switch has the role of the one that left, the
+intended master, and not what was seen of it, so the stack shows no observed master
+afterwards. One address is put under two networks and is not in
 `GET /reports/duplicates`; put under one of them a second time, that pair is, and no
-other. An IPv6 address of the stack is kept in its short form. Last, every network,
+other. An IPv6 address of the stack is kept in its short form, and the list and the
+export of addresses filter and sort by `family`. Last, every network,
 device group, membership and address is exported and imported back unchanged, as CSV
 and as JSON, and so is every item, sorted by `depth` so that a parent stands before its
 minor items.
@@ -521,21 +537,30 @@ minor items.
 observation, then both: its health is `unknown`, `good`, `failed` when it is expected
 online and observed unreachable, and `degraded`, each time with its reason; a
 condition that the list does not offer is refused; the item is found by its health,
-and each change is in its history. A stack of one switch with no master is `degraded`
+and each change is in its history. An observation that is stated again as it is, with
+no moment, has its moment set to now, at the next `row_version`; the moment is not
+cleared by itself, one that is three days ahead is refused, and one with no zone is
+taken as UTC. A stack of one switch with no master is `degraded`
 for being alone, has no serial number until its switch is seen to be master, and has
 the whole support weight of its switch; told to expect one member it is no longer
 degraded; with a second switch it earns the discount, and its value and cost in the
 management report are those of two; with that switch in Pending-Removal it is degraded
 again. A cluster of two is one managed node, then two when it is managed by its
 members, then three when it is managed as a cluster as well, with two components and
-the same support weight each time, and `managed_as` is refused on a stack. A member
-moved to Pending-Removal stays a member; moved on to Released it is in no group; the
-other, moved straight to Archived, leaves too, and both memberships stay on record
-with the day they ended. Last, a file of `hostname` and `IP_address` columns is sent as
-it is: its three rows are created, each address is the primary management address of
-its family, and the same file a second time changes nothing; a second file with `ipv4`,
-`ipv6` and `observed_status` columns gives two of the items an address of the other
-family and a health of `good`.
+the same support weight each time, and `managed_as` is refused on a stack. Four
+items that are failed, degraded, unknown and good are listed in that order when the
+item list is sorted by health. A member
+moved to Pending-Removal stays a member; moved on to Released it is in no group, and
+is refused when it is to join the cluster again or to take a member's place in a
+replacement; the other, moved straight to Archived, leaves too, and both memberships
+stay on record with the day they ended. Last, a file of `hostname` and `IP_address`
+columns is sent as it is: its three rows are created, each address is the primary
+management address of its family, and the same file a second time changes nothing; a
+second file with `ipv4`, `ipv6` and `observed_status` columns gives two of the items an
+address of the other family and a health of `good`, and sent again, stating what was
+observed with no moment, it changes nothing. A third file, of `hostname` and
+`observed_status` alone, names two switches that have serial numbers: each row finds
+its switch by the host name and updates it, and no second item is made.
 
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before
