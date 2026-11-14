@@ -118,9 +118,12 @@ later, for example a Last Day of Support date on its model.
 
 ### R3 Device groups
 
-- **R3.1** A **stack** has two or more major items, exactly one of which is the master.
-  The stack carries the hostname and management addresses. The serial number shown for
-  the stack is the master's, read through, not stored.
+- **R3.1** A **stack** has one or more major items. One of them MAY be marked as the
+  master that is intended. Which member is master at a given time is decided by the
+  stack and may change, so the master that is seen is recorded apart from the one
+  intended. The stack carries the hostname and management addresses. The serial number
+  shown for the stack is that of the master seen, or else of the one intended, read
+  through, not stored, and a stack is found by the serial number of any member.
 - **R3.2** Each stack member keeps its own serial number, catalog entry, contract
   coverage and lifecycle. Support contract cost for a stack is the sum of its members,
   with no discount.

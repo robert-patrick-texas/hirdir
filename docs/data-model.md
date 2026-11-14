@@ -180,6 +180,7 @@ files, arrive in 0.6.0.
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. `location_hid` arrives in 0.5.0 |
 | `expected_members` | integer | optional: how many members the group is meant to have |
+| `observed_master_hid` | reference | a stack only: the current member that is seen to be master now. Set with `observed_at` of its own, `master_observed_at` |
 | `observed_status`, `observed_at` | choice, timestamp | what is seen of the group as one device, as on an item |
 | `record_status` | choice | see Conventions |
 
@@ -193,29 +194,34 @@ files, arrive in 0.6.0.
 
 Rules, checked on every write:
 
-- A `stack` has exactly one `master` among its current members, and all are major
-  items. It may be the master alone: a stack waits for its second switch in staging,
-  and is left with one in production when a member fails and is taken out. A stack
-  being built may have no master yet while it is `draft`. A stack with no members at
-  all is accepted whatever its status, as one whose members are still to come; the
-  rule holds from the first member on.
-- Members are added several at a time, by one request, and the group is checked once
-  they are all in. Making another member the `master` makes the former master a
-  `member` in the same change. The master does not leave a stack that has other
-  members.
+- The members of a `stack` are major items. A stack may be one switch alone: it waits
+  for its second in staging, and is left with one in production when a member fails
+  and is taken out. A stack with no members at all is accepted, as one whose members
+  are still to come.
+- **The master of a stack is two facts.** The role `master` marks the master that is
+  *intended*: the member given the priority in its configuration. It is optional. A
+  stack has at most one, and marking another member unmarks the one that had it, in
+  the same change. `observed_master_hid` is the master that is *seen*: which member
+  the stack made master when it last booted. That is decided by the stack and may move
+  over time, so it is an observation, set by hand or by an import and LATER by a
+  monitoring tool. No rule depends on either, and neither stops a member leaving. The
+  record says when the two differ, which is not a fault.
+- Members may be added several at a time, by one request.
 - An item is a current member of one group at most once, and of at most one stack and
   at most one cluster among the groups that are not retired. The members of a stack
   and of a cluster are major items.
-- `serial_number` of a stack is read from its current master. It is not stored, so it is
-  right the moment the master changes.
+- `serial_number` of a stack is read from the master that is seen, and when none is
+  recorded from the one intended; `serial_source` says which, `observed` or
+  `intended`. It is not stored, so it is right the moment either changes. A stack
+  answers to the serial number of any of its current members: on the list of groups,
+  `member.serial_number` finds it.
 - In a `controller_domain`, a controller is an item, or a nested group of type `cluster`:
   one whose `parent_group_hid` is the domain. The controllers of an endpoint are the
   members with the role `controller` and the current members of every such cluster.
 - A membership is ended by giving it `left_on`, and is never removed. An item that
   comes back joins again, with a new membership. Retiring a group ends its current
-  memberships on that day. Retiring an item ends its memberships too, under the rules
-  of leaving: the master of a stack with other members is not retired until another is
-  made master. A move in the lifecycle leaves memberships as they are.
+  memberships on that day. Retiring an item ends its memberships too. A move in the
+  lifecycle leaves memberships as they are.
 - A change to these records is checked with no other change under way: of two requests
   that would put one item into two stacks at the same moment, the second waits, sees
   the first, and is refused.

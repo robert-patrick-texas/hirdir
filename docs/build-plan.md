@@ -75,7 +75,7 @@ written as a failing test at the start of its release.
 | S16 | Filter the grid, select rows, copy, and export CSV and JSON from the UI and the CLI with the same filter | Clipboard, both exports and the CLI output hold the same rows and columns, each with `hid` |
 | S17 | Two people bulk-edit overlapping rows | The second is shown the conflict and nothing of theirs overwrites the first |
 | S18 | Add two power supplies and a module to a switch; give the switch another owner and move it to Prod. From 0.5.0, also move it to another location | The minor items show the new owner and the new state with source `parent_item`, and from 0.5.0 the new location; the component count rose by one, not four |
-| S19 | Build a stack of four switches with one master | The stack shows the master's serial number; making another member master changes it at once |
+| S19 | Build a stack of four switches with one marked as the intended master; then record another member as the master that is seen | The stack shows the intended master's serial number, then the observed one's, at once; it is found by the serial number of any member |
 | S20 | Take the same stack with a global discount of 50, then set 30 on its model | Weight is 2.0, then 2.8; component count 4 and managed-node count 1 throughout; annual support cost is four times one switch |
 | S21 | Replace the stack's master for an RMA | Two item records linked by a replacement; the departed switch's membership has an end date; the stack's HID is unchanged |
 | S22 | A controller domain: a cluster of two controllers and forty access points | Forty-two components; the cluster is one managed node; each access point lists its controllers |
