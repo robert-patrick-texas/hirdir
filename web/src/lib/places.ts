@@ -396,3 +396,107 @@ export function contactLine(contact: {
     .filter(Boolean)
     .join(" · ");
 }
+
+/** A place that is a draft, as the picker of a planned location needs to know it. */
+export interface DraftPlace {
+  level: Level;
+  hid: string;
+  path: string;
+}
+
+// How many places one filter names at the most: a filter holds a hundred conditions.
+const MOST_IN_SCOPE = 60;
+
+/**
+ * The filter that keeps the locations that are not in use: those at or beneath a place
+ * that is a draft. A place is in use when it and everything it is in is active, so what
+ * is beneath any draft region, site or location is not. A draft place within another
+ * draft place says nothing more, and is left out. With no draft place there is nothing
+ * to plan for, and null is answered.
+ */
+export function planScope(drafts: readonly DraftPlace[], most = MOST_IN_SCOPE): FilterNode | null {
+  const outermost = drafts.filter(
+    (place) =>
+      !drafts.some(
+        (other) => other.hid !== place.hid && place.path.startsWith(other.path + PATH_SEPARATOR),
+      ),
+  );
+  // Regions first, then sites: each covers the most.
+  const order = (place: DraftPlace) => LEVELS.indexOf(place.level);
+  const named = [...outermost]
+    .sort((one, other) => order(one) - order(other) || one.path.localeCompare(other.path))
+    .slice(0, most);
+  return any(
+    ...named.map((place) => ({ field: "location", op: "within" as const, value: place.hid })),
+  );
+}
+
+/**
+ * The filter that finds a location to plan for, by what was typed, among those that are
+ * not in use. Blank text is no search, and so is a scope of nothing.
+ */
+export function planSearch(typed: string, scope: FilterNode | null): FilterNode | null {
+  const words = locationSearch(typed);
+  if (words === null || scope === null) return null;
+  return all(words, scope);
+}
+
+/** The grid of the items planned for a place or for a place beneath it. */
+export function plannedWithin(hid: string): string {
+  return itemsPath(`planned_location:within:${hid}`);
+}
+
+/** The grid of the device groups planned for a place or for a place beneath it. */
+export function plannedGroupsWithin(hid: string): string {
+  return `/groups?filter=${encodeURIComponent(`planned_location:within:${hid}`)}`;
+}
+
+/**
+ * The bulk edit that plans the current members of a group for the place the group is
+ * planned for: the grid of items filtered to the members, with the planned location
+ * named, which the page of items opens ready to preview.
+ */
+export function planMembersPath(groupHid: string, locationHid: string): string {
+  return `${itemsPath(`group.hid:eq:${groupHid}`)}&plan=${encodeURIComponent(locationHid)}`;
+}
+
+/** How many items and device groups are planned for a place or beneath it. */
+export interface PlannedCount {
+  items: number;
+  groups: number;
+}
+
+/** What is planned, in words: `2 items and 1 device group`. Blank for nothing. */
+export function plannedText(planned: PlannedCount): string {
+  const parts = [
+    planned.items > 0 ? `${planned.items} ${planned.items === 1 ? "item" : "items"}` : "",
+    planned.groups > 0
+      ? `${planned.groups} ${planned.groups === 1 ? "device group" : "device groups"}`
+      : "",
+  ].filter(Boolean);
+  return parts.join(" and ");
+}
+
+/**
+ * What making a draft place active does to the items and the device groups that are
+ * planned for it, as the sentences of the question that is asked first. While a level
+ * above is still a draft the place is not in use yet, and they move in once that level
+ * is active too.
+ */
+export function activationText(
+  name: string,
+  planned: PlannedCount,
+  draftAbove: { level: Level; name: string } | null,
+): string {
+  const what = plannedText(planned);
+  const one = planned.items + planned.groups === 1;
+  if (what === "") {
+    return draftAbove
+      ? `Nothing is planned for ${name}. It is in use once the ${draftAbove.level} ${draftAbove.name}, which it is in, is active too.`
+      : `Nothing is planned for ${name}, so nothing is moved.`;
+  }
+  if (draftAbove) {
+    return `${what} ${one ? "is" : "are"} planned for ${name}. ${one ? "It moves" : "They move"} in once the ${draftAbove.level} ${draftAbove.name}, which it is in, is active too.`;
+  }
+  return `Making ${name} active moves ${what} that ${one ? "is" : "are"} planned for it into it. Each is recorded in its history.`;
+}

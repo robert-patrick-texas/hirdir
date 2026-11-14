@@ -20,7 +20,9 @@
 // region; the people of an owner; the six new kinds of record on the Import page; and,
 // a place and an item that are not brought back into what is retired; and, last, a
 // shipping address typed once on a region, inherited, taken from the street address
-// with one tick, overridden, and the override taken back (D-115, D-116).
+// with one tick, overridden, and the override taken back (D-115, D-116); and the plan of
+// a new site: spares and a stack given a planned location in a draft site, which move
+// in by themselves when the site is made active (D-125, D-127).
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the regions, the site and its code, the
@@ -34,7 +36,7 @@
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { count, importFile, main, openItem, region } from "./structure";
+import { count, importFile, main, openGroup, openItem, pick, region } from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -104,6 +106,21 @@ const facilities = `Campus Facilities ${id}`;
 const why = `Runs the building systems ${id}`;
 const whyNow = `Runs the plant rooms ${id}`;
 
+// The plan of a new site: a store room where two spares and a stack of two switches
+// are, and a site that is still a draft, with a room that they are meant for.
+const stagingSite = path(americas, `Staging ${id}`);
+const store = path(stagingSite, `Store ${id}`);
+const annexName = `Annex ${id}`;
+const annex = path(americas, annexName);
+const annexRoomName = `Comms room ${id}`;
+const annexRoom = path(annex, annexRoomName);
+const sparePrefix = `spare-${id}-`;
+const spareFilter = `hostname:prefix:${sparePrefix}`;
+const spares = [`${sparePrefix}01`, `${sparePrefix}02`];
+const plannedStack = `Stack ${id} annex`;
+const stackPrefix = `stk-${id}-`;
+const stackSwitches = [`${stackPrefix}1`, `${stackPrefix}2`];
+
 // The places as they are made: the address of the page of each, by its path.
 const pages = new Map<string, string>();
 
@@ -151,13 +168,14 @@ async function newPlace(
   button: string,
   what: "region" | "site" | "location",
   place: string,
-  more: { code?: string; kind?: string } = {},
+  more: { code?: string; kind?: string; status?: string } = {},
 ) {
   await page.getByRole("button", { name: button, exact: true }).click();
   const form = region(page, `New ${what}`);
   await form.getByLabel("Name (required)").fill(place.split(" > ").at(-1) ?? "");
   if (more.code) await form.getByLabel("Code", { exact: true }).fill(more.code);
   if (more.kind) await form.getByLabel("Kind").selectOption({ label: more.kind });
+  if (more.status) await form.getByLabel("Record status").selectOption({ label: more.status });
   await form.getByRole("button", { name: `Create ${what}` }).click();
   // The page goes to the new place, which shows the path the server worked out.
   await expect(page.getByTestId("place-path")).toHaveText(place);
@@ -1172,4 +1190,175 @@ test("a shipping address is typed once: inherited, the street address by a tick,
   await expect(inForce(page, "federal")).toHaveAttribute("data-standing", "none");
 
   await expectClean(page, seen, ["422 PATCH"]);
+});
+
+test("a new site is planned: spares and a stack are given a planned location there, and move in when it is made active", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(240_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const [spare = "", other = ""] = spares;
+  const [firstSwitch = ""] = stackSwitches;
+  /** The Geography page counting the spares, drafts among the places, with one place chosen. */
+  const planning = async (place: string) => {
+    const query = new URLSearchParams({ filter: spareFilter, drafts: "1" });
+    await page.goto(`${pages.get(place)}?${query.toString()}`);
+    await expect(page.getByTestId("place-path")).toHaveText(place);
+  };
+
+  // A store room in a site that is in use, and a site that is still a draft, with the
+  // room the equipment is meant for.
+  await geography(page, americas);
+  await newPlace(page, "New site in it", "site", stagingSite);
+  await newPlace(page, "New location in it", "location", store, { kind: "Room" });
+  await geography(page, americas);
+  await newPlace(page, "New site in it", "site", annex, { status: "Draft" });
+  // A draft place is made active by an action of its own, which asks first: its form
+  // does not offer the status.
+  await expect(region(page, "Make active")).toBeVisible();
+  await expect(region(page, "Details").getByLabel("Record status")).toHaveCount(0);
+  await expect(page.getByTestId("planned-here")).toContainText("Nothing is planned for this site");
+  await newPlace(page, "New location in it", "location", annexRoom, { kind: "Room" });
+
+  // Two spares and the two switches of a stack, in the store room.
+  await importFile(
+    page,
+    "items",
+    `items-${id}-spares.csv`,
+    ["hostname", "location"],
+    [...spares, ...stackSwitches].map((host) => [host, store]),
+  );
+
+  // A bulk edit gives both spares a planned location. Only a place that is not in use
+  // yet is offered: the room of the draft site is, the store room is not.
+  await page.goto(`./items?filter=${encodeURIComponent(spareFilter)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  await page.getByRole("button", { name: "Select all that match" }).click();
+  await page.getByRole("button", { name: "Bulk edit" }).click();
+  const bulk = page.getByTestId("bulk-edit");
+  await bulk.getByLabel("Field to change").selectOption({ label: "Planned location" });
+  await bulk.getByRole("button", { name: "Add", exact: true }).click();
+  const line = bulk.getByRole("group", { name: "Planned location" });
+  await expect(line).toContainText("Only a place that is not in use yet is offered");
+  await line.getByLabel("Set to", { exact: true }).fill(`Store ${id}`);
+  await expect(line.getByText("No location matches.")).toBeVisible();
+  await chooseLocation(line, annexRoomName, annexRoom, "Set to");
+  await expect(line.getByTestId("chosen-planned_location")).toHaveText(annexRoom);
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  await expect(count(page, "updated")).toHaveText("2");
+  await bulk.getByRole("button", { name: "Apply 2 items" }).click();
+  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+
+  // The spares are where they were, and say where they are going.
+  await openItem(page, spare);
+  const itemPage = page.url();
+  await expect(page.getByTestId("location")).toContainText(store);
+  await expect(page.getByTestId("planned-location")).toHaveText(
+    `Planned for ${annexRoom}, when that place is made active`,
+  );
+  await expect(region(page, "Details").getByTestId("chosen-planned_location_hid")).toHaveText(
+    annexRoom,
+  );
+
+  // The stack is in the store room too, and is planned for the same room, in its form.
+  await page.goto("./groups");
+  await page.getByRole("button", { name: "New group" }).click();
+  const newGroup = region(page, "New group");
+  await newGroup.getByLabel("Name (required)").fill(plannedStack);
+  await newGroup.getByLabel("Type").selectOption("stack");
+  for (const host of stackSwitches) {
+    await pick(newGroup, "Find an item to add", stackPrefix, host);
+  }
+  await chooseLocation(newGroup, `Store ${id}`, store);
+  await chooseLocation(newGroup, annexRoomName, annexRoom, "Planned location");
+  await newGroup.getByRole("button", { name: "Create group" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: plannedStack })).toBeVisible();
+  await expect(page.getByTestId("group-location")).toContainText(store);
+  await expect(page.getByTestId("group-planned-location")).toHaveText(
+    `Planned for ${annexRoom}, when that place is made active`,
+  );
+  // The plan is the group's own. Its switches are planned for the same place in one
+  // step: the bulk edit of its members, opened with the place named, ready to preview.
+  await openItem(page, firstSwitch);
+  await expect(page.getByTestId("planned-location")).toHaveCount(0);
+  await openGroup(page, plannedStack);
+  await page.getByTestId("plan-members").click();
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  await expect(bulk.getByTestId("chosen-planned_location")).toHaveText(annexRoom);
+  await bulk.getByRole("button", { name: "Preview the change" }).click();
+  await expect(count(page, "updated")).toHaveText("2");
+  await bulk.getByRole("button", { name: "Apply 2 items" }).click();
+  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+  await openItem(page, firstSwitch);
+  await expect(page.getByTestId("location")).toContainText(store);
+  await expect(page.getByTestId("planned-location")).toContainText(annexRoom);
+
+  // The spares are counted in the store room. The draft site holds nothing yet, and
+  // shows what is planned for it: in the tree the spares that the filter keeps and the
+  // stack, and on its page every item, with the way to the groups.
+  await planning(annex);
+  await expectCounts(treeRow(page, stagingSite), 2, 2);
+  await expectCounts(treeRow(page, annex), 0, 0);
+  await expect(treeRow(page, annex).getByTestId("planned")).toHaveText("3 planned");
+  await expect(treeRow(page, stagingSite).getByTestId("planned")).toHaveCount(0);
+  const here = page.getByTestId("planned-here");
+  await expect(here.getByTestId("planned-count")).toHaveText("4 items");
+  await expect(here.getByTestId("planned-groups")).toHaveText("1 device group");
+  const listed = here.getByTestId("planned-items").locator("li");
+  await expect(listed).toHaveCount(4);
+  await expect(listed.filter({ hasText: spare })).toContainText(`now in ${store}`);
+  await expect(listed.filter({ hasText: other })).toBeVisible();
+  // The groups planned for the place are a filter of the group grid.
+  await here.getByTestId("planned-groups").click();
+  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+  await expect(
+    page.getByTestId("grid-device-groups").getByRole("link", { name: plannedStack, exact: true }),
+  ).toBeVisible();
+
+  // The site is made active. The action asks first, and says what it does.
+  await planning(annex);
+  await region(page, "Make active").getByRole("button", { name: "Make site active" }).click();
+  await expect(page.getByTestId("activation-text")).toHaveText(
+    `Making ${annexName} active moves 4 items and 1 device group that are planned for it into it. Each is recorded in its history.`,
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Make site active" }).click();
+  await expect(
+    page.getByText(
+      `${annexName} is active. What was planned for it was moved in: 4 items and 1 device group`,
+    ),
+  ).toBeVisible();
+  // The page shows the spares as being there: nobody moved them one by one.
+  await expectCounts(treeRow(page, annex), 2, 2);
+  await expectCounts(treeRow(page, stagingSite), 0, 0);
+  await expect(treeRow(page, annex).getByTestId("planned")).toHaveCount(0);
+  await expectCounts(treeRow(page, annexRoom), 2, 2);
+  await expect(region(page, "Make active")).toHaveCount(0);
+  await expect(page.getByTestId("planned-here")).toHaveCount(0);
+
+  // Each spare is in the new room, with the plan gone and the move in its history.
+  await page.goto(itemPage);
+  await expect(page.getByRole("heading", { level: 1, name: spare })).toBeVisible();
+  await expect(page.getByTestId("location")).toContainText(annexRoom);
+  await expect(page.getByTestId("planned-location")).toHaveCount(0);
+  const history = region(page, "History");
+  await expect(
+    history.getByRole("cell", { name: "location_hid", exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    history.getByRole("cell", { name: "planned_location_hid", exact: true }).first(),
+  ).toBeVisible();
+  await openItem(page, other);
+  await expect(page.getByTestId("location")).toContainText(annexRoom);
+
+  // The stack is in the room, and so are its switches, each by its own plan.
+  await openGroup(page, plannedStack);
+  await expect(page.getByTestId("group-location")).toContainText(annexRoom);
+  await expect(page.getByTestId("group-planned-location")).toHaveCount(0);
+  await openItem(page, firstSwitch);
+  await expect(page.getByTestId("location")).toContainText(annexRoom);
+  await expect(page.getByTestId("planned-location")).toHaveCount(0);
+
+  await expectClean(page, seen);
 });

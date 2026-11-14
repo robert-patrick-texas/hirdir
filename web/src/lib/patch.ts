@@ -26,6 +26,8 @@ export type FieldKind =
   | "set"
   /** A location, found by searching for it. What the form holds is its HID. */
   | "location"
+  /** A location that is not in use yet, for a plan, found by searching among those. */
+  | "planned_location"
   /** A contact, found by searching for it by name or email. What the form holds is its HID. */
   | "contact"
   /** An operator, found by its label or by the person behind it. What the form holds is its HID. */

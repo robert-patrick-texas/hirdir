@@ -66,6 +66,7 @@ function bulkFields(
   owners: readonly Option[],
   entries: readonly Option[],
   conditions: readonly Option[],
+  known: Readonly<Record<string, readonly Option[]>> = {},
 ): BulkField[] {
   return [
     {
@@ -98,6 +99,15 @@ function bulkFields(
       blank: "None chosen",
       clearable: true,
       hint: "Cleared, a minor item is where the item it is in is, and a major item is nowhere.",
+    },
+    {
+      name: "planned_location",
+      label: "Planned location",
+      kind: "planned_location",
+      blank: "None chosen",
+      options: known.planned_location ?? [],
+      clearable: true,
+      hint: "Where the items are going, when that place is not in use yet. They stay where they are until the place is made active, and are then moved there by that change. Cleared, the plan is given up.",
     },
     {
       name: LIFECYCLE_STATE,
@@ -196,6 +206,9 @@ function useEntries() {
   });
 }
 
+// A bulk edit that starts with no field named.
+const NO_START: NonNullable<BulkEditProps["start"]> = [];
+
 interface BulkEditProps {
   /** The rows to change: the ones selected, or all that the filter keeps. */
   rows: Chosen;
@@ -206,9 +219,15 @@ interface BulkEditProps {
   /** The change was applied: the grid is out of date. */
   onApplied: () => void;
   onClose: () => void;
+  /**
+   * Fields the form starts with, each with its value and what that value is called: as
+   * when a group's page asks to plan its members for the place the group is planned for.
+   */
+  start?: ReadonlyArray<{ name: string; value: string; label: string }>;
 }
 
-export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: BulkEditProps) {
+export function BulkEdit(props: BulkEditProps) {
+  const { rows, view, states, choices, onApplied, onClose, start = NO_START } = props;
   const owners = useOwnerOptions();
   const entries = useEntries();
   const tags = useTags();
@@ -220,13 +239,18 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
         owners.data ?? [],
         entries.data?.options ?? [],
         choiceOptions(choices, CONDITION_LIST),
+        Object.fromEntries(
+          start.map(({ name, value, label }) => [name, [{ value, label }]] as const),
+        ),
       ),
-    [states, owners.data, entries.data, choices],
+    [states, owners.data, entries.data, choices, start],
   );
   const labels = (tags.data ?? []).map((tag) => ({ value: tag.label, label: tag.label }));
   const reasons = choiceOptions(choices, "state_reason");
 
-  const [lines, setLines] = useState<BulkLine[]>([]);
+  const [lines, setLines] = useState<BulkLine[]>(() =>
+    start.map(({ name, value }) => ({ name, clear: false, value })),
+  );
   const [adding, setAdding] = useState("");
   const [reason, setReason] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);

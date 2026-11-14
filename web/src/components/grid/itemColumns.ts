@@ -327,6 +327,21 @@ export function itemColumns(
       width: 200,
     },
     {
+      // Where the item is going: a place that is not in use yet. The cell shows the name
+      // of that location, with its path as the hint and in an export. The list finds it
+      // with `planned_location:within:<place>` in the filter box, which is no comparison
+      // of text: the column has no filter of its own, and the list is not sorted by it.
+      id: "planned_location",
+      header: "Planned location",
+      kind: "text",
+      field: null,
+      sortField: null,
+      value: (item) => item.planned_location?.name,
+      hint: (item) => item.planned_location?.path,
+      hide: true,
+      width: 200,
+    },
+    {
       // The site of the location in force.
       id: "site",
       header: "Site",

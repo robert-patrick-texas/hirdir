@@ -1,11 +1,12 @@
 import { type FormEvent, useState } from "react";
-import { Link, NavLink, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { api } from "../api";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
+import { ReportsNav } from "../components/ReportsNav";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { itemsPath, parseShort } from "../lib/filter";
@@ -62,27 +63,6 @@ function RowName(props: {
     return <Link to={operatorPath(row.key)}>{row.label ?? row.key}</Link>;
   }
   return rowLabel(by, row, choices);
-}
-
-/** The second row of navigation on the report pages. */
-function ReportsNav() {
-  return (
-    <nav className="sub" aria-label="Reports">
-      <ul>
-        <li>
-          <NavLink to="/reports" end>
-            Summary
-          </NavLink>
-        </li>
-        <li>
-          <NavLink to="/reports/management">Management</NavLink>
-        </li>
-        <li>
-          <NavLink to="/reports/duplicates">Addresses held more than once</NavLink>
-        </li>
-      </ul>
-    </nav>
-  );
 }
 
 /** What the address of the page asks a report for. `known` says what that report can be by. */

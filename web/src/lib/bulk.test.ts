@@ -277,6 +277,30 @@ describe("buildBulk", () => {
     expect(blank.errors.operator).toBe("Give a value, or choose to clear the field.");
   });
 
+  it("sets a planned location by the HID of the place, and gives the plan up with null", () => {
+    const fields: BulkField[] = [
+      ...FIELDS,
+      {
+        name: "planned_location",
+        label: "Planned location",
+        kind: "planned_location",
+        clearable: true,
+      },
+    ];
+    const set = buildBulk(
+      fields,
+      draft({ lines: [{ name: "planned_location", clear: false, value: "l-9" }] }),
+      ROWS,
+    );
+    expect(set.body.set).toEqual({ planned_location: "l-9" });
+    const cleared = buildBulk(
+      fields,
+      draft({ lines: [{ name: "planned_location", clear: true, value: "l-9" }] }),
+      ROWS,
+    );
+    expect(cleared.body.set).toEqual({ planned_location: null });
+  });
+
   it("sets a location by the HID of the one that was chosen, and clears it with null", () => {
     const fields: BulkField[] = [
       ...FIELDS,

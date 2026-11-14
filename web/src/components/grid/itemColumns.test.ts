@@ -587,6 +587,44 @@ describe("the location, the site and the region in the item grid", () => {
   });
 });
 
+describe("the planned location in the item grid", () => {
+  const PATH = "Americas > East > Site-9 > Room 1";
+  const planned = {
+    ...chassis,
+    planned_location: {
+      hid: "l-9",
+      name: "Room 1",
+      kind: "room",
+      path: PATH,
+      site: "Site-9",
+      site_hid: "s-9",
+      region: "East",
+      region_hid: "r-9",
+    },
+  } as unknown as Item;
+  const unplanned = { ...chassis, planned_location: null } as unknown as Item;
+
+  it("shows where the item is going by the name of the place, with its path as the hint", () => {
+    expect(column("planned_location").value(planned)).toBe("Room 1");
+    expect(cellHint(column("planned_location"), planned)).toBe(PATH);
+    expect(column("planned_location").value(unplanned) ?? "").toBe("");
+    expect(cellHint(column("planned_location"), unplanned)).toBe("");
+  });
+
+  it("has no filter and no sort of its own: the list finds a plan with `within`, in the filter box", () => {
+    expect(asked("planned_location")).toMatchObject({ field: null, sortField: null });
+  });
+
+  it("exports as `planned_location`, and is hidden until it is asked for", () => {
+    expect(exportColumns(COLUMNS, [{ colId: "name" }, { colId: "planned_location" }])).toEqual([
+      "hid",
+      "name",
+      "planned_location",
+    ]);
+    expect(columnDefaults(COLUMNS).find((one) => one.id === "planned_location")?.hide).toBe(true);
+  });
+});
+
 describe("the columns a reader starts with", () => {
   it("are the ones of 0.3.0 and the health: every other new column is shown when wanted", () => {
     const shown = columnDefaults(COLUMNS)

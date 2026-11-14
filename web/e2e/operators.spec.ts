@@ -16,6 +16,10 @@
 //   from the first page. A bulk edit assigns the rest. A contact says which labels it
 //   stands behind.
 //
+//   The scoreboard, on a view of this file's items: two operators with different loads,
+//   the heavier first, with their shares; what nobody is assigned to; what is under an
+//   open label; and the operators involved at the site.
+//
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the labels, the hostnames, the stack, the
 // places, the contacts and the files it loads. Every count is read through a filter that
@@ -24,6 +28,7 @@
 // file reads. The addresses are of example.net. The scenarios run in order: the later
 // ones use what the earlier ones made.
 
+import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { count, importFile, main, openItem, pick, region, summary } from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
@@ -57,6 +62,13 @@ const mioMail = `mio.tanaka.${id}@example.net`;
 const core = `NE1-${id}`;
 const edge = `NE2-${id}`;
 const local = `SITE-${id}`;
+
+// The scoreboard: a model with a support weight, and items of it in production, three
+// under one label, one under another and one that nobody is assigned to.
+const scoreVendor = `Example Networks ${id}`;
+const scorePid = `EN-SCORE-${id}`;
+const scorePrefix = `${prefix}score-`;
+const scoreFilter = `hostname:prefix:${scorePrefix}`;
 
 // The pages of what is made, as they are made.
 const pages = new Map<string, string>();
@@ -509,6 +521,129 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   await expect(
     page.getByTestId("grid-device-groups").locator("[row-id]").locator('[col-id="operator.label"]'),
   ).toContainText(core);
+
+  await expectClean(page, seen);
+});
+
+test("the scoreboard: who looks after how much, and where", async ({ page, account }, testInfo) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // A model with a support weight of 1.50, and five items of it in production: three
+  // under the label that Ana is behind, one under the label that is open, and one that
+  // nobody is assigned to and that is nowhere.
+  await importFile(
+    page,
+    "catalog_entries",
+    `catalog-entries-${id}.csv`,
+    ["vendor", "pid", "support_weight"],
+    [[scoreVendor, scorePid, "1.50"]],
+  );
+  const item = (place: number, label: string, location: string) => [
+    scoreVendor,
+    scorePid,
+    `SC${id.toUpperCase()}0${place}`,
+    `${scorePrefix}0${place}`,
+    "Prod",
+    label,
+    location,
+  ];
+  await importFile(
+    page,
+    "items",
+    `items-${id}-score.csv`,
+    ["vendor", "pid", "serial_number", "hostname", "lifecycle_state", "operator", "location"],
+    [
+      item(1, edge, roomPath),
+      item(2, edge, roomPath),
+      item(3, edge, roomPath),
+      item(4, core, roomPath),
+      item(5, "", ""),
+    ],
+  );
+
+  // The scoreboard is a tab of the reports, and the first page is a way to it.
+  await page.goto("./");
+  await page.getByTestId("scoreboard-link").click();
+  await expect(page.getByRole("heading", { level: 1, name: "Scoreboard" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Reports" }).getByRole("link", { name: "Scoreboard" }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.goto(
+    `./reports/scoreboard?${new URLSearchParams({ filter: scoreFilter }).toString()}`,
+  );
+
+  // The operators, the most support weight first: 4.50 before 1.50, each with its share
+  // of the 7.50 in view. A weight is written with or without the zero that says nothing.
+  const operators = page.getByTestId("score-operators");
+  const ranked = operators.locator("tbody tr");
+  await expect(ranked).toHaveCount(2);
+  await expect(ranked.nth(0)).toHaveAttribute("data-label", edge);
+  await expect(ranked.nth(1)).toHaveAttribute("data-label", core);
+  const heavier = ranked.nth(0);
+  await expect(markIn(heavier, edge)).toBeVisible();
+  await expect(heavier).toContainText(ana);
+  await expect(heavier.locator('[data-measure="components"]')).toHaveText("3");
+  await expect(heavier.locator('[data-measure="nodes"]')).toHaveText("3");
+  await expect(heavier.locator('[data-measure="items"]')).toHaveText("3");
+  await expect(heavier.locator('[data-measure="weight"]')).toHaveText(/^4\.50?$/);
+  await expect(heavier.locator('[data-measure="share"] .share-text')).toHaveText("60%");
+  await expect(heavier.getByRole("meter")).toHaveAttribute("value", "60");
+  const lighter = ranked.nth(1);
+  await expect(markIn(lighter, core)).toHaveAttribute("data-open", "true");
+  await expect(lighter.locator('[data-measure="components"]')).toHaveText("1");
+  await expect(lighter.locator('[data-measure="share"] .share-text')).toHaveText("20%");
+  // What nobody is assigned to is set apart beneath, and what is under an open label is said.
+  const nobody = page.getByTestId("score-nobody");
+  await expect(nobody).toContainText("Nobody is assigned");
+  await expect(nobody.locator('[data-measure="components"]')).toHaveText("1");
+  await expect(nobody.locator('[data-measure="weight"]')).toHaveText(/^1\.50?$/);
+  await expect(page.getByTestId("score-open")).toContainText(
+    "Under 1 label that nobody is behind for now: 1 component, 1 item",
+  );
+
+  // The sites: the one site, with the operators involved there and how much each has,
+  // the heavier first; and the item that is nowhere beneath, which is nobody's.
+  const sites = page.getByTestId("score-sites");
+  const site = sites.locator("tbody tr");
+  await expect(site).toHaveCount(1);
+  await expect(site).toHaveAttribute("data-path", sitePath);
+  await expect(site.locator('[data-measure="components"]')).toHaveText("4");
+  await expect(site.locator('[data-measure="weight"]')).toHaveText(/^6(\.00?)?$/);
+  const there = site.getByTestId("involved").locator("li");
+  await expect(there).toHaveCount(2);
+  await expect(markIn(there.nth(0), edge)).toBeVisible();
+  await expect(there.nth(0)).toContainText("3 components");
+  await expect(markIn(there.nth(1), core)).toBeVisible();
+  await expect(there.nth(1)).toContainText("1 component");
+  const nowhereRow = page.getByTestId("score-nowhere");
+  await expect(nowhereRow.locator('[data-measure="components"]')).toHaveText("1");
+  await expect(nowhereRow.getByTestId("involved")).toHaveText(/Nobody is assigned · 1 component/);
+
+  // A table is saved as a file, from what the page holds, in the order it is shown.
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV of the operators" }).click();
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe("hirdir-scoreboard-operators.csv");
+  const path = testInfo.outputPath(download.suggestedFilename());
+  await download.saveAs(path);
+  const lines = (await readFile(path, "utf8")).trimEnd().split("\r\n");
+  expect(lines).toHaveLength(4);
+  expect(lines[0]).toContain("operator,person,open,components");
+  expect(lines[1]).toContain(`,${edge},${ana},false,3,3,3,`);
+  expect(lines[2]).toContain(`,${core},,true,1,1,1,`);
+  expect(lines[3]).toMatch(/^,,,,1,1,1,/);
+
+  // Each row is the way to its items, and a site to its place.
+  await heavier.getByRole("link", { name: "items" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await expect(page.getByTestId("grid-total")).toHaveText("3 items");
+  await page.goto(
+    `./reports/scoreboard?${new URLSearchParams({ filter: scoreFilter }).toString()}`,
+  );
+  await page.getByTestId("score-sites").getByRole("link", { name: sitePath, exact: true }).click();
+  await expect(page.getByTestId("place-path")).toHaveText(sitePath);
 
   await expectClean(page, seen);
 });

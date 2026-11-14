@@ -1,11 +1,11 @@
-import { type FormEvent, Fragment, useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { CheckField, TextField } from "../components/Field";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
-import { itemsPath, parseShort } from "../lib/filter";
+import { ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
+import { itemsPath } from "../lib/filter";
 import { useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { useChoices } from "../lib/lists";
 import { choiceLabel, optionLabel, RECORD_STATUSES } from "../lib/options";
@@ -16,6 +16,7 @@ import {
   LOCATION_KIND_LIST,
   levelLabel,
   placePath,
+  plannedText,
   type TreeNode,
   type TreeView,
   treeQuery,
@@ -25,22 +26,6 @@ import { allows } from "../lib/roles";
 import { countText } from "../lib/summary";
 
 type Choice = Schemas["ChoiceOut"];
-
-function viewOf(params: URLSearchParams): TreeView {
-  return {
-    filter: params.get("filter") ?? "",
-    includeArchived: params.get("archived") === "1",
-    includeDrafts: params.get("drafts") === "1",
-  };
-}
-
-function paramsOf(view: TreeView): Record<string, string> {
-  return {
-    ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
-    ...(view.includeArchived ? { archived: "1" } : {}),
-    ...(view.includeDrafts ? { drafts: "1" } : {}),
-  };
-}
 
 /**
  * Geography: the regions, the sites in them and the locations within each site, as one
@@ -57,7 +42,7 @@ export function Geography() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const view = viewOf(params);
+  const view: TreeView = viewOfParams(params);
   const search = params.toString() ? `?${params.toString()}` : "";
   const mayEdit = allows(user.role, "inventory");
   // Counts the changes that the tree shows, so that it is read again after each.
@@ -85,7 +70,15 @@ export function Geography() {
         shows the items and the components at or beneath it, and a place that is chosen shows what
         it has in force: its contacts and where deliveries go, each with the level it came from.
       </p>
-      <ViewForm key={view.filter} view={view} onShow={(next) => setParams(paramsOf(next))} />
+      <ItemViewForm
+        key={view.filter}
+        view={view}
+        onShow={(next) => setParams(paramsOfView(next))}
+        label="Count the items that match"
+        hint="A filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
+        archivedHint="Retired places, and retired and archived items"
+        draftsHint="Draft places and draft items"
+      />
       {adding && (
         <NewPlace
           level="region"
@@ -138,71 +131,6 @@ export function Geography() {
         </div>
       </div>
     </div>
-  );
-}
-
-/** The view the counts of the tree are of: a filter of the item list, and its switches. */
-function ViewForm({ view, onShow }: { view: TreeView; onShow: (view: TreeView) => void }) {
-  const [draft, setDraft] = useState(view.filter);
-  const [filterError, setFilterError] = useState("");
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const typed = draft.trim();
-    // The short form is read here as the server reads it. A filter tree as JSON is the
-    // server's to judge.
-    const parsed = typed.startsWith("{") ? null : parseShort(typed);
-    if (parsed && !parsed.ok) {
-      setFilterError(parsed.error);
-      return;
-    }
-    setFilterError("");
-    onShow({ ...view, filter: typed });
-  }
-
-  return (
-    <form onSubmit={submit} className="stack" noValidate>
-      <div className="inline">
-        <TextField
-          label="Count the items that match"
-          name="filter"
-          type="search"
-          value={draft}
-          onChange={setDraft}
-          autoComplete="off"
-          hint="A filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
-          error={filterError || undefined}
-        />
-        <button type="submit">Apply</button>
-        <button
-          type="button"
-          disabled={!view.filter && !draft}
-          onClick={() => {
-            setDraft("");
-            setFilterError("");
-            onShow({ ...view, filter: "" });
-          }}
-        >
-          Clear
-        </button>
-      </div>
-      <div className="inline">
-        <CheckField
-          label="Include archived"
-          name="include_archived"
-          checked={view.includeArchived}
-          onChange={(on) => onShow({ ...view, includeArchived: on })}
-          hint="Retired places, and retired and archived items"
-        />
-        <CheckField
-          label="Include drafts"
-          name="include_drafts"
-          checked={view.includeDrafts}
-          onChange={(on) => onShow({ ...view, includeDrafts: on })}
-          hint="Draft places and draft items"
-        />
-      </div>
-    </form>
   );
 }
 
@@ -390,6 +318,15 @@ function PlaceRow({ node, depth, search, chosen, choices, toggle }: PlaceRowProp
         {node.code && <span className="muted"> {node.code}</span>}
         {node.record_status !== "active" && (
           <span className="badge">{optionLabel(RECORD_STATUSES, node.record_status)}</span>
+        )}
+        {node.planned + node.planned_groups > 0 && (
+          <span
+            className="muted tree-planned"
+            data-testid="planned"
+            title={`${plannedText({ items: node.planned, groups: node.planned_groups })} planned for this place or for a place within it: moved in when it is in use`}
+          >
+            {node.planned + node.planned_groups} planned
+          </span>
         )}
       </th>
       <td>{kind}</td>

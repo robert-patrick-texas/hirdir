@@ -60,7 +60,7 @@ import {
   type Option,
 } from "../lib/patch";
 import { pickLabel } from "../lib/pick";
-import { placePath } from "../lib/places";
+import { placePath, planMembersPath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 
@@ -270,6 +270,19 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     column: "location",
     value: (group) => group.location?.name,
     hint: (group) => group.location?.path,
+    hide: true,
+    width: 200,
+  },
+  {
+    // Where the group is going: a place that is not in use yet. The list finds it with
+    // `planned_location:within:<place>` in the filter box; the column has no filter.
+    id: "planned_location",
+    header: "Planned location",
+    kind: "text",
+    field: null,
+    sortField: null,
+    value: (group) => group.planned_location?.name,
+    hint: (group) => group.planned_location?.path,
     hide: true,
     width: 200,
   },
@@ -489,6 +502,16 @@ function groupSpecs(
       blank: "No location",
       options: location ? [{ value: location.hid, label: location.path }] : [],
       hint: "For a group that is in one place.",
+    },
+    {
+      name: "planned_location_hid",
+      label: "Planned location",
+      kind: "planned_location",
+      blank: "No plan",
+      options: current?.planned_location
+        ? [{ value: current.planned_location.hid, label: current.planned_location.path }]
+        : [],
+      hint: "Where the group is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change. Its members are items with plans of their own.",
     },
     {
       name: "record_status",
@@ -739,6 +762,9 @@ export function DeviceGroupDetail() {
 
 function GroupFacts({ group }: { group: DeviceGroup }) {
   const { owner, parent, location, master, observed_master: seen } = group;
+  const { user } = useAuth();
+  // Planning the members is a bulk edit of items, which needs the Inventory role.
+  const mayPlan = allows(user.role, "inventory");
   const disputed = ownerDisputed(group);
   const members = itemsPath(`group.hid:eq:${group.hid}`);
   const source = serialSourceText(group.serial_source);
@@ -886,6 +912,33 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
             <Dash />
           )}
         </dd>
+        {group.planned_location && (
+          <>
+            <dt>Planned location</dt>
+            <dd>
+              <span data-testid="group-planned-location">
+                Planned for{" "}
+                <Link to={placePath("location", group.planned_location.hid)}>
+                  {group.planned_location.path}
+                </Link>
+                , when that place is made active
+              </span>
+              <span className="muted">
+                {" "}
+                · the plan moves the group. Its members are items with plans of their own
+                {mayPlan && group.member_count > 0 ? ": " : "."}
+              </span>
+              {mayPlan && group.member_count > 0 && (
+                <Link
+                  to={planMembersPath(group.hid, group.planned_location.hid)}
+                  data-testid="plan-members"
+                >
+                  plan its {plural(group.member_count, "current member")} for the same place
+                </Link>
+              )}
+            </dd>
+          </>
+        )}
         <dt>In group</dt>
         <dd>{parent ? <Link to={groupPath(parent.hid)}>{parent.name}</Link> : <Dash />}</dd>
         <dt>Tags</dt>

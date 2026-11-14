@@ -407,6 +407,26 @@ describe("an operator and a contact in a form", () => {
   });
 });
 
+describe("a planned location in a form", () => {
+  const specs: FieldSpec[] = [
+    { name: "planned_location_hid", label: "Planned location", kind: "planned_location" },
+  ];
+  const item = { row_version: 3, planned_location_hid: "l-9" };
+
+  it("is held and sent as the HID of the place, and given up with null", () => {
+    expect(formOf(specs, item)).toEqual({ planned_location_hid: "l-9" });
+    expect(buildPatch(specs, item, { planned_location_hid: "l-10" }).body).toEqual({
+      row_version: 3,
+      planned_location_hid: "l-10",
+    });
+    expect(buildPatch(specs, item, { planned_location_hid: "" }).body).toEqual({
+      row_version: 3,
+      planned_location_hid: null,
+    });
+    expect(buildCreate(specs, { planned_location_hid: "" }).body).toEqual({});
+  });
+});
+
 describe("a location in a form", () => {
   const specs: FieldSpec[] = [{ name: "location_hid", label: "Location", kind: "location" }];
 
