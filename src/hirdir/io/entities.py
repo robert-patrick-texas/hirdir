@@ -661,6 +661,12 @@ class Owners(Entity):
         ]
 
 
+def _region_named(atlas: geography.Atlas, hid: str | None) -> str | None:
+    """Return how a file names a region: by its path, unless the path has the form of
+    an HID and would be read as one. Only a region at the top can be named so."""
+    return items.name_or_hid(atlas.region_path(hid), hid) if hid else None
+
+
 def _in_force_parts(text: Any) -> int:
     """Return how many names a path holds, for working a place before what is in it."""
     return len(text.split(geography.SEPARATOR)) if isinstance(text, str) and text.strip() else 0
@@ -760,7 +766,7 @@ class Regions(_Places):
         return [
             {
                 **self._row(region, labels, atlas.region_path(region.hid)),
-                "parent": atlas.region_path(region.parent_region_hid) or None,
+                "parent": _region_named(atlas, region.parent_region_hid),
             }
             for region in found
         ]
@@ -824,7 +830,7 @@ class Sites(_Places):
         return [
             {
                 **self._row(site, labels, atlas.site_path(site.hid)),
-                "region": atlas.region_path(site.region_hid),
+                "region": _region_named(atlas, site.region_hid),
             }
             for site in found
         ]
@@ -890,7 +896,11 @@ class Locations(_Places):
             site = geography.get_place(run.db, geography.SITE, record.site_hid)
         parent = None
         if parent_text:
-            parent = geography.find_place(run.db, parent_text, site)
+            parent = geography.find_place(run.db, parent_text)
+            if (parent is None or parent.level != geography.LOCATION) and site is not None:
+                # Named from the site down. A region or a site that answers to the
+                # same words from the top is not what is in this site.
+                parent = geography.find_within(run.db, site, parent_text)
             if parent is None or parent.level != geography.LOCATION:
                 raise Invalid(
                     "there is no such location", {"parent": f"there is no location {parent_text}"}
@@ -915,16 +925,17 @@ class Locations(_Places):
     def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
         """Work a location before the locations of the same file that are within it."""
 
+        to_site: dict[str, int] = {}
+
         def depth(row: Mapping[str, Any]) -> int:
-            parts = _in_force_parts(row.get("parent"))
-            site, parent = row.get("site"), row.get("parent")
-            if (
-                isinstance(site, str)
-                and isinstance(parent, str)
-                and records.key(parent).startswith(records.key(site))
-            ):
-                parts -= _in_force_parts(site)
-            return parts
+            """Return how deep within its site the row's location is: the names of
+            its parent, without those that lead to the site when it is named whole."""
+            parent = row.get("parent")
+            if not isinstance(parent, str) or ids.is_hid(parent.strip()):
+                return 0
+            if parent not in to_site:
+                to_site[parent] = geography.names_to_site(run.db, parent)
+            return _in_force_parts(parent) - to_site[parent]
 
         return sorted(range(1, len(rows) + 1), key=lambda number: (depth(rows[number - 1]), number))
 
@@ -983,18 +994,18 @@ class Contacts(Entity):
         if not name:
             return None
         named = list(
-            run.db.scalars(
-                select(Contact)
-                .where(Contact.name_key == records.key(name), Contact.record_status != "retired")
-                .limit(2)
-            )
+            run.db.scalars(select(Contact).where(Contact.name_key == records.key(name)).limit(50))
         )
-        if len(named) > 1:
+        if len(named) <= 1:
+            return named[0] if named else None
+        # Of several of one name, a row with no email address is the one that has none.
+        bare = [contact for contact in named if contact.email is None]
+        if len(bare) != 1:
             raise Invalid(
                 f"more than one contact is called {name}",
                 {"name": "more than one contact answers to this; give its email address or HID"},
             )
-        return named[0] if named else None
+        return bare[0]
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return (
@@ -1114,7 +1125,7 @@ class ContactAssignments(Entity):
         return [
             {
                 **_kept(assignment),
-                "region": atlas.region_path(assignment.region_hid) or None,
+                "region": _region_named(atlas, assignment.region_hid),
                 "site": atlas.site_path(assignment.site_hid) or None,
                 "location": atlas.location_path(assignment.location_hid) or None,
                 "role": assignment.role,
@@ -1148,6 +1159,20 @@ class OwnerMembers(Entity):
         "contact.name": "contact",
     }
     renamed: ClassVar[Mapping[str, str]] = {"owner_hid": "owner", "contact_hid": "contact"}
+
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work the rows that name a primary before the others, wherever they stand.
+
+        An owner that has people has exactly one primary: its first member is it, and
+        the one that had the role gives it up to the one a row names. Both come out
+        right when the primary of each owner is settled first.
+        """
+
+        def later(number: int) -> bool:
+            role = rows[number - 1].get("role")
+            return not (isinstance(role, str) and records.key(role) == owners.PRIMARY)
+
+        return sorted(range(1, len(rows) + 1), key=lambda number: (later(number), number))
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         owner, contact = values.get("owner"), values.get("contact")
@@ -1401,7 +1426,7 @@ class Items(Entity):
         Column("depth", "integer", settable=False),
         Column("health", limit=12, settable=False),
         Column("site", settable=False),
-        Column("region", limit=LONG, settable=False),
+        Column("region", settable=False),
         Column("owner_exception", "boolean", settable=False),
         *_sources((_OWNER, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
@@ -1780,7 +1805,7 @@ class Items(Entity):
                     item.condition, item.observed_status, in_force["expected_online"].value
                 ).value,
                 "site": site.name if site is not None else None,
-                "region": atlas.region_path(site.region_hid) if site is not None else None,
+                "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": owner_in_force is not None and owner_in_force.is_external,
             }
             for name, effective in in_force.items():

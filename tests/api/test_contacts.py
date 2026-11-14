@@ -271,7 +271,7 @@ def test_an_owner_has_one_primary_among_its_people(make: Maker) -> None:
         ("Dana Whitfield", "alternate"),
         ("Robin Achterberg", "alternate"),
     ]
-    assert make.get(path) == people
+    assert make.get(path)["items"] == people
     # There is exactly one: it is not made an alternate, nor removed while others remain.
     refused = make.patch(
         f"{path}/{third['hid']}", {"row_version": promoted["row_version"], "role": "alternate"}, 422
@@ -283,7 +283,7 @@ def test_an_owner_has_one_primary_among_its_people(make: Maker) -> None:
     make.delete(f"{path}/{second['hid']}")
     make.delete(f"{path}/{first['hid']}")
     make.delete(f"{path}/{third['hid']}")
-    assert make.get(path) == []
+    assert make.get(path)["items"] == []
     removed = make.audit(record_type="owner_member", action="delete")
     assert len(removed) == 3
     assert removed[0]["changes"][2] == {
@@ -370,14 +370,18 @@ def test_people_travel_in_files(make: Maker, files: Files) -> None:
         again = files.preview(entity, files.export(entity, own_values=True))
         assert again["job"]["unchanged"] == again["job"]["row_count"], (entity, again["rows"])
     # A row is matched by its email address: one that nobody has yet is a new contact,
-    # also where somebody of that name is there. A row with none is matched by a name
-    # that one contact alone has, and two of a name are no answer.
+    # also where somebody of that name is there. A row with none is matched by name.
     renamed = files.preview("contacts", "name,email\nD. Whitfield,dana.whitfield@example.net\n")
     assert renamed["rows"][0]["outcome"] == "update"
     by_name = files.preview("contacts", "name,phone\nSam Okafor,+1 555 0110\n")
     assert by_name["rows"][0]["outcome"] == "update"
     files.load("contacts", "name,email\nSam Okafor,sam.okafor@example.net\n")
     assert make.get("/contacts", filter="name:eq:Sam Okafor")["total"] == 2
+    # Of two of one name, a row with no email address is the one that has none; of
+    # two with none, it is no answer.
+    bare = files.preview("contacts", "name,phone\nSam Okafor,+1 555 0199\n")
+    assert bare["rows"][0]["outcome"] == "update"
+    make.post("/contacts", {"name": "Sam Okafor"})
     twins = files.preview("contacts", "name,phone\nSam Okafor,+1 555 0199\n")
     assert twins["rows"][0]["reasons"][0]["field"] == "name"
     # An item that a file gives to an owner outside the team carries the reason.

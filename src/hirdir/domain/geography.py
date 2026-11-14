@@ -44,6 +44,9 @@ JOINED = " > "
 # How deep locations nest within a site: a building, a floor, a room, a rack, and room
 # to spare.
 MAX_LOCATION_DEPTH = 8
+# How deep regions nest. Far more than a map of the world needs, and few enough that a
+# line of them is always walked, shown and answered whole.
+MAX_REGION_DEPTH = 16
 KIND_LIST = "location_kind"
 ROLE_LIST = "contact_role"
 SHIPPING = (*SHIP_FIELDS, "ship_instructions")
@@ -291,10 +294,25 @@ def find_place(db: Session, text: str, within: Place | None = None) -> Place | N
     return found
 
 
-def find_within(db: Session, within: Place | None, name: str) -> Place | None:
-    """Return what is directly in a place under a name: a region or a site of a region,
-    a location of a site or of a location. With no place, a region at the top."""
-    return _walk(db, [name.strip()], within)
+def find_within(db: Session, within: Place | None, text: str) -> Place | None:
+    """Return what a name, or a path of names, leads to from a place down: a region or
+    a site of a region, a location of a site or of a location. With no place, from the
+    top. Nothing that stands elsewhere under the same name answers."""
+    parts = _parts(text)
+    return _walk(db, parts, within) if text.strip() and all(parts) else None
+
+
+def names_to_site(db: Session, text: str) -> int:
+    """Return how many names of a path lead from the top to a site, the site among
+    them, or 0 when the path does not begin with the path of a site."""
+    at: Place | None = None
+    for count, name in enumerate(_parts(text), start=1):
+        at = _walk(db, [name], at)
+        if at is None or at.level == LOCATION:
+            return 0
+        if at.level == SITE:
+            return count
+    return 0
 
 
 def _walk(db: Session, parts: list[str], start: Place | None) -> Place | None:
@@ -497,6 +515,27 @@ def _status(fields: dict[str, Any], values: dict[str, Any]) -> None:
         values["record_status"] = records.checked_status(fields["record_status"])
 
 
+def _brought_back(
+    db: Session, record: Any | None, values: dict[str, Any], within: Sequence[tuple[Any, str]]
+) -> None:
+    """Refuse to bring a place back while what it is in is retired.
+
+    A place is retired only when nothing that is not retired is in it, and that would
+    not hold for long if a room could be brought back in a building that stays retired.
+    `within` is the fields of the place that name what it is in, each with its table.
+    """
+    if record is None or record.record_status != "retired" or "record_status" not in values:
+        return
+    for model, name in within:
+        hid = values.get(name, getattr(record, name))
+        holder = db.get(model, hid) if hid else None
+        if holder is not None and holder.record_status == "retired":
+            raise Invalid(
+                f"{holder.name}, which it is in, is retired",
+                {"record_status": f"bring {holder.name} back first: it is retired"},
+            )
+
+
 def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) -> dict[str, Any]:
     values: dict[str, Any] = {}
     # Checked against the regions and sites beside it, so nobody else may be changing them.
@@ -516,7 +555,14 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
                         "a region is never within itself",
                         {"parent_region_hid": ("this is the region itself, or a region within it")},
                     )
+            beneath = _region_height(db, region.hid) if region is not None else 0
+            if len(Atlas(db).region_line(parent_hid)) + 1 + beneath > MAX_REGION_DEPTH:
+                raise Invalid(
+                    "regions nest too deep",
+                    {"parent_region_hid": f"regions nest at most {MAX_REGION_DEPTH} deep"},
+                )
         values["parent_region_hid"] = parent_hid
+    _brought_back(db, region, values, ((Region, "parent_region_hid"),))
     parent = values.get(
         "parent_region_hid", region.parent_region_hid if region is not None else None
     )
@@ -541,6 +587,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     if "region_hid" in fields:
         _linked(db, Region, "region_hid", fields["region_hid"], site, "region")
         values["region_hid"] = fields["region_hid"]
+    _brought_back(db, site, values, ((Region, "region_hid"),))
     region_hid = values.get("region_hid", site.region_hid if site is not None else None)
     key = values.get("name_key", site.name_key if site is not None else None)
     own = site.hid if site is not None else None
@@ -549,6 +596,16 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
         _sibling_regions(db, region_hid, key, None)
     _check_code(db, Site, values, site)
     return values
+
+
+def _region_height(db: Session, hid: str) -> int:
+    """Return how many levels of regions there are beneath a region."""
+    height, level = 0, [hid]
+    while level and height <= MAX_REGION_DEPTH:
+        level = list(db.scalars(select(Region.hid).where(Region.parent_region_hid.in_(level))))
+        if level:
+            height += 1
+    return height
 
 
 def _height(db: Session, hid: str) -> int:
@@ -613,6 +670,7 @@ def _checked_location(
         values["parent_location_hid"] = parent_hid
     if site_hid is None:
         raise Invalid("a location is in a site", {"site_hid": "name the site it is in"})
+    _brought_back(db, location, values, ((Location, "parent_location_hid"), (Site, "site_hid")))
     parent_hid = values.get(
         "parent_location_hid", location.parent_location_hid if location is not None else None
     )

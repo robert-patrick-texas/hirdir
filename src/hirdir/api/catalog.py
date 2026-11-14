@@ -166,10 +166,13 @@ def retire_owner(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db:
 
 
 @owner_routes.get("/{hid}/members")
-def list_owner_members(hid: str, _: Viewer, db: Db) -> list[r.OwnerMemberOut]:
+def list_owner_members(
+    hid: str, _: Viewer, db: Db, limit: lists.Limit = 100, offset: lists.Offset = 0
+) -> Page[r.OwnerMemberOut]:
     """List the people of an owner: its primary first, then the alternates."""
     owners.get_owner(db, hid)
-    return shapes.owner_members_out(db, hid)
+    found = shapes.owner_members_out(db, hid)
+    return Page(items=found[offset : offset + limit], total=len(found), limit=limit, offset=offset)
 
 
 @owner_routes.post("/{hid}/members", status_code=201)

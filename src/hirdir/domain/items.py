@@ -335,6 +335,10 @@ def _checked(
         values["owner_hid"] = _reference(db, Owner, "owner_hid", fields["owner_hid"], item, "owner")
     values.update(_owner_exception(db, fields, values, item))
     if "location_hid" in fields:
+        if fields["location_hid"] and (item is None or item.location_hid != fields["location_hid"]):
+            # Checked against the location, which may be retired only while nothing is
+            # in it: nobody may be retiring it between the look and the write.
+            dialect.hold_other_writers(db)
         values["location_hid"] = _reference(
             db, Location, "location_hid", fields["location_hid"], item, "location"
         )
@@ -378,6 +382,9 @@ def _checked(
     def final(name: str) -> Any:
         return values.get(name, getattr(item, name) if item is not None else None)
 
+    if item is not None and item.record_status == "retired" and "record_status" in values:
+        _check_still_there(db, final("location_hid"))
+
     start, end = final("warranty_start"), final("warranty_end")
     if start is not None and end is not None and end < start:
         raise Invalid(
@@ -420,11 +427,26 @@ def _owner_exception(
             )
         return {field: reason}
     if field in fields and reason is not None:
+        if reason == had and item is not None and owner_hid == item.owner_hid:
+            # Said again as it is, of an owner that was outside the team when the
+            # reason was given and is not any more: nothing is changed by saying so.
+            return {}
         raise Invalid(
             "only an item with an owner outside the operations team has such a reason",
             {field: "the owner of this item is not outside the team; leave this blank"},
         )
     return {field: None}
+
+
+def _check_still_there(db: Session, location_hid: str | None) -> None:
+    """Refuse to bring an item back into a location that was retired after it."""
+    dialect.hold_other_writers(db)
+    location = db.get(Location, location_hid) if location_hid else None
+    if location is not None and location.record_status == "retired":
+        raise Invalid(
+            f"{location.name}, where the item was, is retired",
+            {"record_status": "give the item another location, or none, with the change"},
+        )
 
 
 def _check_unique(

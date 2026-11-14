@@ -295,6 +295,32 @@ def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_pa
                 " '2026-01-01', '2026-01-01', 4)"
             )
         )
+        # What refers to the two tables that the upgrade makes anew.
+        connection.execute(
+            text(
+                "INSERT INTO device_group_members (hid, group_hid, item_hid, role, joined_on,"
+                " created_at, updated_at, row_version) VALUES ('m-1', 'g-1', 'i-1', 'master',"
+                " '2024-01-01', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO addresses (hid, item_hid, group_hid, address, role, is_primary,"
+                " created_at, updated_at, row_version) VALUES (:hid, :item, :group_hid,"
+                " :address, 'management', 1, '2026-01-01', '2026-01-01', 1)"
+            ),
+            [
+                {"hid": "a-1", "item": "i-1", "group_hid": None, "address": "192.0.2.10"},
+                {"hid": "a-2", "item": None, "group_hid": "g-1", "address": "192.0.2.1"},
+            ],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO item_replacements (hid, old_item_hid, new_item_hid, reason,"
+                " replaced_on, created_at, updated_at, row_version) VALUES ('r-1', 'i-2',"
+                " 'i-1', 'rma', '2026-01-01', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
         # A role of the site's own, entered before the list had its defaults.
         connection.execute(
             text(
@@ -330,6 +356,16 @@ def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_pa
             )
         ).all()
         assert [tuple(row) for row in groups] == [("g-1", "stack", "o-out", "i-1", 4, None)]
+        # What refers to them still does: the member, the addresses and the replacement.
+        held = connection.execute(
+            text(
+                "SELECT (SELECT item_hid FROM device_group_members WHERE hid = 'm-1'),"
+                " (SELECT item_hid FROM addresses WHERE hid = 'a-1'),"
+                " (SELECT group_hid FROM addresses WHERE hid = 'a-2'),"
+                " (SELECT new_item_hid FROM item_replacements WHERE hid = 'r-1')"
+            )
+        ).one()
+        assert tuple(held) == ("i-1", "i-1", "g-1", "i-1")
         # The six tables are there, and empty; the upgrade wrote no event.
         for table in (
             "regions",

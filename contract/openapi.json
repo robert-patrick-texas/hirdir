@@ -8877,6 +8877,38 @@
         "title": "Page[NetworkOut]",
         "type": "object"
       },
+      "Page_OwnerMemberOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OwnerMemberOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[OwnerMemberOut]",
+        "type": "object"
+      },
       "Page_OwnerOut_": {
         "additionalProperties": false,
         "properties": {
@@ -17280,6 +17312,30 @@
               "title": "Hid",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -17287,11 +17343,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/OwnerMemberOut"
-                  },
-                  "title": "Response List Owner Members Api V1 Owners  Hid  Members Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/Page_OwnerMemberOut_"
                 }
               }
             },

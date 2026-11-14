@@ -182,7 +182,7 @@ later, for example a Last Day of Support date on its model.
 
 ### R7 Geography, contacts and owners
 
-- **R7.1** Regions nest to any depth. A site belongs to one region. A location belongs
+- **R7.1** Regions nest, up to sixteen deep. A site belongs to one region. A location belongs
   to one site and MAY nest within the site (building, floor, room, rack).
 - **R7.2** An item is placed at a location. Its site and region path are derived.
 - **R7.3** Contacts are reusable records attached to a region, site or location in a

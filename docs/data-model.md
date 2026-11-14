@@ -273,7 +273,7 @@ that holds what was removed.
 
 | Record | Fields | Rules |
 |---|---|---|
-| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `notes`, `record_status` | Any depth, no cycles. `name` unique among siblings. |
+| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
 | `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
 | `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
 
@@ -294,7 +294,7 @@ three holds its `path`. It is worked out when it is read and stored nowhere, so 
 a site to another region changes the path of the site and of everything in it, and
 writes to none of them.
 
-**Nesting.** Regions nest to any depth. Locations nest at most eight deep within a
+**Nesting.** Regions nest at most sixteen deep. Locations nest at most eight deep within a
 site: a building, a floor, a room, a rack. A location stays in the site it was made
 in: `site_hid` is not changed, and a location is moved within its site by giving it
 another parent. A site is moved by giving it another region, and a region with
@@ -307,7 +307,13 @@ location that is retired is given to no further item.
 
 **Retiring.** A region, a site or a location is retired only when nothing that is not
 retired is in it: no region, site or location beneath it, and no item or device group
-placed there. A site or a location may be a draft, and so may a region.
+placed there. An item that has left the team's hands, in Released or in Archived,
+holds no location open. A place is not brought back while what it is in is retired:
+the building first, then the room. Nor is an item or a device group brought back
+into a location that was retired after it: it is given another location, or none,
+with the same change. A site or a location may be a draft, and so may a region. A
+draft place may hold records that are not drafts: the tree of places leaves it out
+and counts them as hidden, and a report, which is of items, gives the place its row.
 
 **The shipping address** of a place is taken whole, all six fields together, from the
 nearest record that has any of them: the location itself, the locations above it, its
@@ -335,7 +341,9 @@ Resolution for a location and a role: take the assignments on the location. If t
 none, take the parent location's, then the site's, then each region's outward. The first
 level that has any supplies all of them, in the order of their priority. A level whose
 only assignment for the role is the one that stops inheritance supplies none, and
-nothing above it is looked at.
+nothing above it is looked at. A contact that is retired still stands where it is
+assigned, marked as retired, and its level still supplies the role: an assignment is
+taken away by removing it.
 
 A contact is assigned once to one place in one role. The assignment that stops
 inheritance stands alone for its place and role: it is refused where contacts are
@@ -372,6 +380,12 @@ after by somebody else. It is cleared when the item is given an owner that is no
 external, or none. `owner_exception` is derived and is true when the owner in force
 is external, so the minor items of such an item are marked with it. It is a field to
 filter by. A device group may have an external owner and gives no reason.
+
+Whether an owner is external may change after items were given to it. One that is
+made external has items that are exceptions with no reason, until somebody gives
+one. One that is no longer external leaves the reasons of its items where they are:
+they say nothing while that is so, may be sent back as they are, and are cleared the
+next time the item is given an owner.
 
 The owner itself is in release 0.2.0, because an item needs one to point to. Its
 members arrive with contacts in 0.5.0, and so does the marked exception on an item that

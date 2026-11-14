@@ -82,12 +82,25 @@ def reference_texts(db: Session, found: list[Contact]) -> dict[str, str]:
     The email address when there is one, and otherwise the name, unless another
     contact answers to it or it has the form of an HID: then the contact's HID.
     """
-    texts: dict[str, str] = {}
-    for contact in found:
-        text = contact.email or contact.name
-        alone = contact.email is not None or len(known_as(db, text)) == 1
-        texts[contact.hid] = text if alone and not ids.is_hid(text) else contact.hid
-    return texts
+    texts = {contact.hid: contact.email or contact.name for contact in found}
+    # Who answers to each text, as `known_as` finds them: by email address or by name.
+    answering: dict[str, set[str]] = {records.key(text): set() for text in texts.values()}
+    wanted = sorted(answering)
+    for start in range(0, len(wanted), 500):
+        piece = wanted[start : start + 500]
+        rows = db.execute(
+            select(Contact.hid, Contact.email_key, Contact.name_key).where(
+                or_(Contact.email_key.in_(piece), Contact.name_key.in_(piece))
+            )
+        )
+        for hid, email, name in rows:
+            for known in (email, name):
+                if known in answering:
+                    answering[known].add(hid)
+    return {
+        hid: text if answering[records.key(text)] == {hid} and not ids.is_hid(text) else hid
+        for hid, text in texts.items()
+    }
 
 
 def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> dict[str, Any]:

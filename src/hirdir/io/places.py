@@ -68,7 +68,9 @@ def tree(
 
     A place that is a draft or retired is in the tree only when the view asks for such
     records, and what is in a place the view leaves out is counted as hidden. `root`
-    names one place to start from, and without `locations` the tree stops at the sites.
+    names one place to start from, which is shown whatever the view says, and without
+    `locations` the tree stops at the sites. The counts beside the tree are those of
+    the whole view, whatever place it starts from.
     """
     start = None
     if root is not None and root.strip():
@@ -80,64 +82,72 @@ def tree(
             )
     nodes: dict[str, Node] = {}
     above: dict[str, str | None] = {}
-    for region in db.scalars(select(Region)):
-        nodes[region.hid] = Node(
-            level=geography.REGION,
-            hid=region.hid,
-            name=region.name,
-            code=region.code,
-            record_status=region.record_status,
+    # Only what the tree shows of each place is read: a site may have thousands of
+    # locations, and a whole record of each would be most of the work.
+    for hid, name, code, status, parent in db.execute(
+        select(Region.hid, Region.name, Region.code, Region.record_status, Region.parent_region_hid)
+    ):
+        nodes[hid] = Node(
+            level=geography.REGION, hid=hid, name=name, code=code, record_status=status
         )
-        above[region.hid] = region.parent_region_hid
-    for site in db.scalars(select(Site)):
-        nodes[site.hid] = Node(
-            level=geography.SITE,
-            hid=site.hid,
-            name=site.name,
-            code=site.code,
-            record_status=site.record_status,
+        above[hid] = parent
+    for hid, name, code, status, region_hid in db.execute(
+        select(Site.hid, Site.name, Site.code, Site.record_status, Site.region_hid)
+    ):
+        nodes[hid] = Node(level=geography.SITE, hid=hid, name=name, code=code, record_status=status)
+        above[hid] = region_hid
+    for hid, name, code, kind, status, parent, site_hid in db.execute(
+        select(
+            Location.hid,
+            Location.name,
+            Location.code,
+            Location.kind,
+            Location.record_status,
+            Location.parent_location_hid,
+            Location.site_hid,
         )
-        above[site.hid] = site.region_hid
-    for location in db.scalars(select(Location)):
-        nodes[location.hid] = Node(
+    ):
+        nodes[hid] = Node(
             level=geography.LOCATION,
-            hid=location.hid,
-            name=location.name,
-            code=location.code,
-            kind=location.kind,
-            record_status=location.record_status,
+            hid=hid,
+            name=name,
+            code=code,
+            kind=kind,
+            record_status=status,
         )
-        above[location.hid] = location.parent_location_hid or location.site_hid
+        above[hid] = parent or site_hid
 
     def in_view(node: Node) -> bool:
         if node.record_status == "draft":
             return include_drafts
         return node.record_status != "retired" or include_archived
 
-    shown: dict[str, bool] = {}
-
-    def visible(hid: str) -> bool:
-        """Say whether a place is in the tree: in the view, with everything above it.
-
-        The place the tree starts from is always shown: it was asked for by name.
-        """
-        line: list[str] = []
-        at: str | None = hid
-        while at is not None and at not in shown and at not in line:
-            line.append(at)
-            if start is not None and at == start.hid:
-                shown[at] = True
-                break
-            at = above.get(at)
-        for one in reversed(line):
-            if one not in shown:
+    def reckon(asked_for: str | None) -> dict[str, bool]:
+        """Return, for each place, whether it is shown: in the view, with everything
+        above it. A place that is asked for by name is shown whatever the view says."""
+        shown: dict[str, bool] = {}
+        for hid in nodes:
+            line: list[str] = []
+            at: str | None = hid
+            while at is not None and at not in shown and at not in line:
+                line.append(at)
+                at = above.get(at)
+            for one in reversed(line):
                 parent = above.get(one)
-                shown[one] = (
+                shown[one] = one == asked_for or (
                     one in nodes
                     and in_view(nodes[one])
                     and (parent is None or shown.get(parent, False))
                 )
-        return shown[hid]
+        return shown
+
+    # What the view shows, by which `hidden` is counted, whatever place is asked for;
+    # and what the tree shows, in which the place that was asked for always is.
+    in_the_view = reckon(None)
+    in_the_tree = reckon(start.hid) if start is not None else in_the_view
+
+    def visible(hid: str) -> bool:
+        return in_the_tree.get(hid, False)
 
     totals, unplaced, hidden = Count(), Count(), Count()
     counted = reports.by_location(
@@ -147,9 +157,10 @@ def tree(
         totals.add(items, components)
         if hid is None:
             unplaced.add(items, components)
-        elif hid not in nodes or not visible(hid):
+            continue
+        if not in_the_view.get(hid, False):
             hidden.add(items, components)
-        else:
+        if visible(hid):
             at: str | None = hid
             seen: set[str] = set()
             while at is not None and at in nodes and at not in seen:

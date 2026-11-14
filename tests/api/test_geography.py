@@ -512,7 +512,7 @@ def test_places_and_where_things_are_travel_in_files(make: Maker, files: Files) 
     exported = files.export("items", columns=["hostname", "location", "site", "region"])
     assert [line.split(",", 1)[1] for line in exported.splitlines()[1:]] == [
         "site2-sw-access-01,,,",
-        f"site2-sw-core-01,{rack},Site-2,Americas > Central",
+        f"site2-sw-core-01,{rack},Site-2,Central",
     ]
     # A place that is not there, or of another level, rejects the row, and so does a
     # row that would move a location to another site.

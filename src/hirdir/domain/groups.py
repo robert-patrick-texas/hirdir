@@ -428,6 +428,16 @@ def _checked(
         values["location_hid"] = hid
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
+        hid = values.get("location_hid", group.location_hid if group is not None else None)
+        if group is not None and group.record_status == "retired" and hid:
+            # Brought back: not into a location that was retired after the group.
+            dialect.hold_other_writers(db)
+            location = db.get(Location, hid)
+            if location is not None and location.record_status == "retired":
+                raise Invalid(
+                    f"{location.name}, where the group was, is retired",
+                    {"record_status": "give the group another location, or none, with the change"},
+                )
     kind = values.get("type", group.type if group is not None else None)
     if "managed_as" in fields or "type" in values:
         given = fields.get("managed_as", group.managed_as if group is not None else None)

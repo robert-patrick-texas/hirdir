@@ -2483,7 +2483,10 @@ export interface paths {
     /** List the people of an owner: its primary first, then the alternates. */
     get: {
       parameters: {
-        query?: never;
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
         path: {
           hid: string;
         };
@@ -2494,7 +2497,7 @@ export interface paths {
         /** Successful Response */
         200: {
           content: {
-            "application/json": components["schemas"]["OwnerMemberOut"][];
+            "application/json": components["schemas"]["Page_OwnerMemberOut_"];
           };
         };
         /** Validation Error */
@@ -5159,6 +5162,12 @@ export interface components {
     };
     Page_NetworkOut_: {
       items: components["schemas"]["NetworkOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_OwnerMemberOut_: {
+      items: components["schemas"]["OwnerMemberOut"][];
       limit: number;
       offset: number;
       total: number;
