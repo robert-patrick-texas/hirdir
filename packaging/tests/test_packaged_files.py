@@ -8,7 +8,7 @@ import hirdir_setup as setup
 
 from hirdir import config
 from hirdir.domain import reset
-from hirdir.io import files
+from hirdir.io import entities, files
 
 PACKAGING = Path(__file__).resolve().parents[1]
 ROOT = PACKAGING.parent
@@ -106,6 +106,8 @@ def test_the_examples_load_in_one_order_wherever_it_is_written() -> None:
     script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")
     (tested,) = re.findall(r"^load_order=\((.+)\)$", script, re.M)
     assert tested.split() == LOAD_ORDER
+    # And it is the order the server itself gives its entities.
+    assert [name.replace("_", "-") for name in entities.LOAD_ORDER] == LOAD_ORDER
     # The install page loads each with the entity that the file holds.
     commands = re.findall(
         r"^hirdir import examples/(.+)\.csv --entity (\w+) --apply$", INSTALL, re.M

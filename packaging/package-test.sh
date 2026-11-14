@@ -40,8 +40,10 @@
 #                      addresses made beside them, condition, observation and health,
 #                      a cluster counted in its three ways, regions, sites, locations
 #                      and contacts with what a place has in force, a site moved, an
-#                      item with an owner outside the team, then the inventory made
-#                      by hand
+#                      item with an owner outside the team, operators, deliveries to
+#                      a street address, planned locations and a site made active,
+#                      what a group gives its members, then the inventory made by
+#                      hand
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -78,8 +80,8 @@
 #
 # The files are sent with curl, as the API takes them. The client commands of the
 # command line (hirdir import, hirdir export, hirdir items, hirdir groups, hirdir
-# report, hirdir geography, hirdir locations, hirdir regions and hirdir sites) are then
-# run in the container, from the package, by client_commands().
+# report, hirdir geography, hirdir locations, hirdir regions, hirdir sites and hirdir
+# operators) are then run in the container, from the package, by client_commands().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -491,8 +493,10 @@ keep() { cp "$work/body" "$work/kept-$1.json"; }
 # addresses: every field that was there must still be there as it was. Both may be
 # said, with a space between them. A third word names what is
 # meant to have changed and is looked at by itself, each as HID.field, with a space
-# between them: those fields are passed over. Otherwise print what differs. What was
-# kept may be a list of records, a page of them, or one record by itself.
+# between them: those fields are passed over. With "fields", one field of a block that
+# the record holds is named as HID.field.field, as HID.effective.owner_hid is, and the
+# rest of that block is compared. Otherwise print what differs. What was kept may be a
+# list of records, a page of them, or one record by itself.
 unchanged() {
     python3 -c '
 import json, sys
@@ -505,11 +509,14 @@ def records(path):
 
 how = sys.argv[3].split()
 
-def same(was, now):
+def same(was, now, path):
     if "fields" in how and isinstance(was, dict) and isinstance(now, dict):
-        return all(key in now and same(value, now[key]) for key, value in was.items())
+        return all(
+            f"{path}.{key}" in meant or (key in now and same(value, now[key], f"{path}.{key}"))
+            for key, value in was.items()
+        )
     if "fields" in how and isinstance(was, list) and isinstance(now, list):
-        return len(was) == len(now) and all(same(*pair) for pair in zip(was, now))
+        return len(was) == len(now) and all(same(*pair, path) for pair in zip(was, now))
     return was == now
 
 try:
@@ -531,7 +538,7 @@ for record in before:
     changed = sorted(
         key
         for key, value in record.items()
-        if f"{hid}.{key}" not in meant and (key not in found or not same(value, found[key]))
+        if f"{hid}.{key}" not in meant and (key not in found or not same(value, found[key], f"{hid}.{key}"))
     )
     if changed:
         problems.append(hid + " changed in " + ", ".join(changed))
@@ -962,10 +969,11 @@ install_previous() {
 #
 # What a file says is meant to change, so that the comparison passes over it by name:
 #
-#   meant[LIST]          fields of records, each as HID.field, with a space before each.
-#                        LIST is items, device-groups, members, networks, addresses,
-#                        owners, choices or stack, which is the first stack read by
-#                        itself
+#   meant[LIST]          fields of records, each as HID.field, with a space before each,
+#                        or as HID.field.field for one field of a block that the
+#                        record holds. LIST is items, device-groups, members,
+#                        networks, addresses, owners, choices or stack, which is the
+#                        first stack read by itself
 #   may_add[NAME]        set when the new version may add records to that list, or
 #                        rows to the table of that name: choices is both
 #   rows_apart[TABLE]    the HIDs of the rows of a table that are meant to change, with
@@ -2890,11 +2898,13 @@ files() {
     structure
     health_and_counting
     geography
+    operators_and_plans
     first_file
 
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
-    # Here it clears the examples and what structure() and geography() made beside them,
-    # a replacement among it, before the backup puts back what the checks need.
+    # Here it clears the examples and what structure(), geography() and
+    # operators_and_plans() made beside them, a replacement among it, before the backup
+    # puts back what the checks need.
     local code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
@@ -2902,7 +2912,7 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0 and the regions, sites, locations, contacts, assignments and members of owners of 0.5.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0 and the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
@@ -2951,7 +2961,7 @@ cli_run() {
 }
 
 client_commands() {
-    section "the client commands of the package: hirdir import, export, items, groups, report, geography, locations, regions and sites"
+    section "the client commands of the package: hirdir import, export, items, groups, report, geography, locations, regions, sites and operators"
     local filter=$1 code=0 hid serial
     if ! inside hirdir import --help >/dev/null 2>&1; then
         fail "S16 the hirdir of this package has no import command"
@@ -3591,11 +3601,11 @@ location_at() {
     json '[l["hid"] for l in d["items"] if l["path"] == "'"$1"'"][0]'
 }
 
-# How many regions, sites, locations, contacts, contact assignments and members of
-# owners there are, the drafts and the retired among them, on one line.
+# How many regions, sites, locations, contacts, operators, contact assignments and
+# members of owners there are, the drafts and the retired among them, on one line.
 people_and_places() {
     local name counted=""
-    for name in regions sites locations contacts contact-assignments; do
+    for name in regions sites locations contacts operators contact-assignments; do
         api GET "/$name?include_drafts=true&include_archived=true&limit=1000"
         counted="$counted$(json 'd["total"] if isinstance(d, dict) else len(d)') "
     done
@@ -3616,10 +3626,10 @@ examples_places() {
     store='Americas > Central > Site-2 > Store Room'
     office='Americas > East > Site-1 > Comms Room'
 
-    for name in regions sites locations contacts contact-assignments owner-members; do
+    for name in regions sites locations contacts operators contact-assignments owner-members; do
         wanted="$wanted$(table 'len(rows)' "examples/$name.csv") "
     done
-    expect "S12 the regions, the sites, the locations, the contacts, their assignments and the members of the owners of the examples are there, the draft site and its room among them: each list holds what its file holds ($wanted), beside what there was ($1)" \
+    expect "S12 the regions, the sites, the locations, the contacts, the operators, the assignments and the members of the owners of the examples are there, the draft site and its room among them: each list holds what its file holds ($wanted), beside what there was ($1)" \
         "$(people_and_places)" \
         "$(python3 -c 'import sys; print(*(int(a) + int(b) for a, b in zip(sys.argv[1].split(), sys.argv[2].split())))' "$1" "$wanted")"
 
@@ -3644,22 +3654,52 @@ examples_places() {
     expect "S25 GET $prefix/api/v1/locations/{hid}/effective for Room 102 of the examples: the shipping contact of its site, the technical contact of its building and not the two of the region, the operational and the escalation contact of Americas, and nobody for the federal role" \
         "$status $(in_force shipping) $(in_force technical) $(in_force operational) $(in_force escalation) $(in_force federal)" \
         '200 ["site", "Americas > Central > Site-2", false, ["Sam Okafor"]] ["location", "Americas > Central > Site-2 > Building 1", false, ["Lee Marchetti"]] ["region", "Americas", false, ["Network Operations Desk"]] ["region", "Americas", false, ["Robin Achterberg"]] ["none", null, false, []]'
-    expect "S25 its shipping address is that of its site, taken whole, and the instructions are those of the region, by themselves" \
-        "$(json '[d["ship_address"]["source"], d["ship_address"]["value"]["address2"], d["ship_address"]["value"]["city"], d["ship_instructions"]["source"], d["ship_instructions"]["source_path"]]')" \
-        '["site", "Dock B", "Springfield", "region", "Americas"]'
+    expect "S25 its shipping address is the street address of its site, which says that deliveries go there and has no other entered, in place of the address of the region above; the instructions are those of the site, in place of the region's" \
+        "$(json '[d["ship_address"]["source"], d["ship_address"]["same_as_address"], d["ship_address"]["value"]["address1"], d["ship_address"]["value"]["city"], d["ship_address"]["overrides_path"], d["ship_instructions"]["source"], d["ship_instructions"]["value"], d["ship_instructions"]["overrides_path"]]')" \
+        '["site", true, "100 Example Way", "Springfield", "Americas > Central", "site", "Dock B, weekdays 08:00 to 15:00", "Americas"]'
+    api GET "/locations/$(location_at 'Americas > Central > Site-3 > Suite 300')/effective"
+    expect "S25 the room of the site that is a draft, which has no address at all, has the shipping address that its region has, taken whole, and the instructions of the region above that, by themselves" \
+        "$status $(json '[d["ship_address"]["source"], d["ship_address"]["source_path"], d["ship_address"]["same_as_address"], d["ship_address"]["value"]["address1"], d["ship_instructions"]["source"], d["ship_instructions"]["source_path"]]')" \
+        '200 ["region", "Americas > Central", false, "500 Depot Road", "region", "Americas"]'
     api GET "/locations/$(location_at "$store")/effective"
     expect "S26 the store room, which is in no building, has the two technical contacts of the region, in their order, and instructions of its own" \
         "$status $(in_force technical) $(json '[d["ship_instructions"]["source"], d["ship_instructions"]["value"]]')" \
         '200 ["region", "Americas", false, ["Dana Whitfield", "Robin Achterberg"]] ["own", "Leave with the store keeper; a signature is needed"]'
     api GET "/locations/$(location_at "$office")/effective"
-    expect "S26 the small office says that nobody takes shipments there: its room has no shipping contact, the search stopped at its site, and it has no shipping address" \
-        "$status $(in_force shipping) $(json '[d["ship_address"]["source"], d["ship_address"]["value"]]')" \
-        '200 ["site", "Americas > East > Site-1", true, []] ["none", null]'
+    expect "S26 the small office says that nobody takes shipments there: its room has no shipping contact, and the search stopped at its site; its shipping address is the one its site has entered, which is not its street address" \
+        "$status $(in_force shipping) $(json '[d["ship_address"]["source"], d["ship_address"]["same_as_address"], d["ship_address"]["value"]["address1"], d["ship_address"]["value"]["address2"]]')" \
+        '200 ["site", "Americas > East > Site-1", true, []] ["site", false, "210 Sample Street", "Mail room"]'
 
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=owner_exception:eq:true hostname:glob:site?-*' --data-urlencode 'include_archived=true'
-    expect "S28 one item of the examples is with an owner outside the team, and says why: it is marked as an exception, with the reason that examples/items.csv gives" \
-        "$status $(json '[[i["hostname"], i["owner"]["label"], i["owner_exception"], i["owner_exception_reason"]] for i in d["items"]]')" \
-        "200 $(table '[[r["hostname"], r["owner"], True, r["owner_exception_reason"]] for r in rows if r["owner_exception_reason"]]' examples/items.csv)"
+    made=$(table '[[r["label"], r["exception_reason"]] for r in rows if r["is_external"] == "true"][0]' examples/owners.csv)
+    expect "S28 one item of the examples is with an owner outside the team: it is marked as an exception, with the reason that examples/owners.csv gives for that owner, and has none of its own" \
+        "$status $(json '[[i["hostname"], [i["owner"]["label"], i["owner_exception_reason"]], i["owner_exception"]] for i in d["items"]]')" \
+        "200 $(table '[[r["hostname"], '"$made"', True] for r in rows if r["owner"] == '"$made"'[0]]' examples/items.csv)"
+
+    # The operators of the examples: one label is open, a stack gives its switches its
+    # operator, a controller domain the controllers of the cluster within it, a room
+    # what is in it, and a site what is there.
+    api GET '/operators?limit=1000'
+    made="$status $(json 'sorted([o["label"], o["is_open"]] for o in d["items"] if o["is_open"])')"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:in:site2-sw-core-01,site2-wlc-01,site2-fw-oob-01,site1-sw-floor-01' --data-urlencode 'include_archived=true' --data-urlencode 'sort=hostname'
+    expect "pkg the one operator of the examples that has nobody behind it is open; a switch of the core stack has the operator of its stack, a controller that of the domain its cluster is in, a firewall its own, and the switch of the small office that of its site, which is the open one" \
+        "$made $status $(json '[[i["hostname"], i["effective"]["operator_hid"]["label"], i["effective"]["operator_hid"]["source"], i["effective"]["operator_hid"]["source_label"], i["effective"]["operator_hid"]["is_open"]] for i in d["items"]]')" \
+        '200 [["OP6", true]] 200 [["site1-sw-floor-01", "OP6", "site", "Americas > East > Site-1", true], ["site2-fw-oob-01", "PR", "own", null, false], ["site2-sw-core-01", "LM", "device_group", "site2-sw-core", false], ["site2-wlc-01", "TL", "device_group", "site2-wireless", false]]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=location:within:Americas > Central > Site-2 > Building 1 > Lab'
+    made=$(json 'sorted({(i["effective"]["operator_hid"]["label"], i["effective"]["operator_hid"]["source"]) for i in d["items"]})')
+    api GET '/reports/summary?by=operator&operators=true'
+    expect "pkg what is in the lab has the operator of that room; the summary by operator has a row for each label that is in force for something and one for what nobody is assigned to, each item in one row, and with operators=true each row names its own operator" \
+        "$made $status $(json '[sorted(r["label"] or "" for r in d["rows"]), sum(r["items"] for r in d["rows"]) == d["totals"]["items"], all([o["label"] for o in r["operators"]] == [r["label"]] for r in d["rows"])]')" \
+        '[["RA", "location"]] 200 [["", "DW", "LM", "PR", "RA", "TL"], true, true]'
+
+    # What is planned: a spare that is in the store room is meant for the site that is
+    # a draft, and stays where it is until that site is in use.
+    api GET '/items?filter=hostname:eq:site2-sw-access-08'
+    made=$(json '[[i["location"]["name"], i["planned_location"]["path"], i["effective"]["planned_location_hid"]["source"]] for i in d["items"]]')
+    api GET '/geography/tree?include_drafts=true&locations=false'
+    expect "pkg a spare of the examples is in the store room and planned for the room of the draft site; the tree, asked for with the drafts, says that one item is planned for that site, and counts it where it is" \
+        "$made $status $(json '(lambda walk: [n for r in d["roots"] for n in walk(walk, r)])(lambda walk, n: ([[n["name"], n["planned"], n["planned_groups"]]] if n["planned"] else []) + [m for c in n["children"] for m in walk(walk, c)])')" \
+        '[["Store Room", "Americas > Central > Site-3 > Suite 300", "own"]] 200 [["Americas", 1, 0], ["Central", 1, 0], ["Site-3", 1, 0]]'
     api GET '/reports/management'
     made=$(json '[d["by"], sorted(r["label"] or "" for r in d["rows"]), sum(r["items"] for r in d["rows"]) == d["totals"]["items"]]')
     api GET '/reports/management?by=region'
@@ -3916,34 +3956,45 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
     expect "pkg a building and the room in it are retired, the room first: the room is not brought back while its building is retired, and is once the building is" \
         "$made $status $(json_field record_status)" "201 201 200 200 422 record_status 200 200 active"
 
-    # S28: an item is given to an owner outside the team.
+    # S28: an owner outside the team says why it is an exception, once, and what is
+    # given to it is marked by that alone.
     authorized GET "$prefix/api/v1/owners" --get --data-urlencode 'filter=label:eq:Package Test Team'
     team=$(json 'd["items"][0]["hid"]')
+    api POST /owners '{"label": "Package Test Facilities", "organization": "Building Services", "is_external": true}'
+    made="$status $(json '[e["field"] for e in d["errors"]]')"
     api POST /owners '{"label": "Package Test Facilities", "organization": "Building Services", "is_external": true, "exception_reason": "Looks after the door controllers"}'
+    expect "S28 POST $prefix/api/v1/owners refuses an owner outside the team that gives no reason, and takes it with one" \
+        "$made $status $(json_field exception_reason)" '422 ["exception_reason"] 201 Looks after the door controllers'
     outside=$(json_field hid)
     nowhere=${switches[3]}
     api PATCH "/items/$nowhere" "{\"row_version\": 1, \"owner_hid\": \"$team\"}"
     made="$status $(json_field owner_exception)"
-    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\"}"
+    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\", \"owner_exception_reason\": \"A reason of the item's own\"}"
     made="$made $status $(json '[e["field"] for e in d["errors"]]')"
-    api GET "/items/$nowhere"
-    expect "S28 an item with an owner of the team is no exception; given an owner outside the team with no reason, it is refused, and has the owner it had" \
-        "$made $(json 'd["owner"]["label"]')" '200 false 422 ["owner_exception_reason"] Package Test Team'
-    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\", \"owner_exception_reason\": \"Mounted behind their badge readers\"}"
-    made="$status $(json '[d["owner"]["label"], d["owner_exception"], d["owner_exception_reason"]]')"
+    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\"}"
+    expect "S28 an item with an owner of the team is no exception; given the owner outside the team, it has no reason of its own to give, and with nothing more said it is marked as an exception, with the reason of that owner" \
+        "$made $status $(json '[d["owner"]["label"], d["owner_exception"], d["owner_exception_reason"]]')" \
+        '200 false 422 ["owner_exception_reason"] 200 ["Package Test Facilities", true, "Looks after the door controllers"]'
     authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view owner_exception:eq:true"
-    expect "S28 with a reason it is accepted and marked as an exception, and GET $prefix/api/v1/items?filter=owner_exception:eq:true finds it" \
-        "$made $status $(json '[i["serial_number"] for i in d["items"]]')" \
-        '200 ["Package Test Facilities", true, "Mounted behind their badge readers"] 200 ["PKG0000G004"]'
+    made="$status $(json '[i["serial_number"] for i in d["items"]]')"
     api GET "/items/${switches[0]}"
-    api PATCH "/items/${switches[0]}" "{\"row_version\": $(json_field row_version), \"owner_hid\": \"$outside\", \"owner_exception_reason\": \"Feeds their door controllers\"}"
-    made=$status
+    api PATCH "/items/${switches[0]}" "{\"row_version\": $(json_field row_version), \"owner_hid\": \"$outside\"}"
+    made="$made $status"
     api GET "/items/$supply"
-    made="$made $(json '[d["owner_exception"], d["owner_exception_reason"], d["effective"]["owner_hid"]["source"]]')"
+    expect "S28 GET $prefix/api/v1/items?filter=owner_exception:eq:true finds it; a minor item of an item that is with such an owner is marked too, with the same reason, and has its owner from the item it is in" \
+        "$made $(json '[d["owner_exception"], d["owner_exception_reason"], d["effective"]["owner_hid"]["source"]]')" \
+        '200 ["PKG0000G004"] 200 [true, "Looks after the door controllers", "parent_item"]'
+    api POST /device-groups "{\"type\": \"custom\", \"name\": \"pkgtest-doors\", \"owner_hid\": \"$outside\"}"
+    made="$status $(json '[d["owner_exception"], d["owner_exception_reason"]]')"
+    api GET "/owners/$outside"
+    api PATCH "/owners/$outside" "{\"row_version\": $(json_field row_version), \"exception_reason\": \"Runs the door controllers\"}"
+    made="$made $status"
+    api GET "/items/${switches[0]}"
+    made="$made $(json '[d["owner_exception_reason"], d["row_version"]]')"
     api PATCH "/items/$nowhere" "{\"row_version\": 3, \"owner_hid\": \"$team\"}"
-    expect "S28 a minor item of an item that is with such an owner is marked too, with no reason of its own; and an item given back to an owner of the team is no exception, and its reason is gone" \
+    expect "S28 a device group that is given that owner is marked likewise; the reason is changed on the owner, and the item shows the new one with nothing written to it; an item given back to an owner of the team is no exception and shows no reason" \
         "$made $status $(json '[d["owner_exception"], d["owner_exception_reason"]]')" \
-        '200 [true, null, "parent_item"] 200 [false, null]'
+        '201 [true, "Looks after the door controllers"] 200 ["Runs the door controllers", 3] 200 [false, null]'
 
     # The people of an owner: one primary where there are any.
     api POST "/owners/$team/members" "{\"contact_hid\": \"$pat\", \"role\": \"alternate\"}"
@@ -3987,7 +4038,7 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
         '201 ["previewed", 2, 2, 0, 0, 0] 200 ["applied", 2, 2, 0, 0, 0] 200 [2, [["Package Test Desk", "primary"], ["Robin Okafor", "alternate"]]]'
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
-    for number in regions sites locations contacts contact_assignments owners owner_members; do
+    for number in contacts operators regions sites locations contact_assignments owners owner_members; do
         api POST /exports "{\"entity\": \"$number\", \"format\": \"csv\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
         cp "$work/body" "$work/back-$number.csv"
         staged=$(table 'len(rows)' "$work/back-$number.csv")
@@ -4003,16 +4054,18 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
     api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_drafts": true, "filter": "serial_number:glob:PKG0000G*", "sort": ["serial_number"]}'
     cp "$work/body" "$work/back-placed.csv"
     send "/imports/preview?entity=items&file_name=placed.csv" "$work/back-placed.csv"
-    expect "pkg and an export of these items with their own values has the location of each as its path and the reason for the owner outside the team, and nothing for the minor item, which has both from its switch; it is imported back unchanged" \
-        "$(table '[[r["serial_number"], r["location"].rsplit(" > ", 1)[-1], r["owner_exception_reason"]] for r in rows]' "$work/back-placed.csv") $status $(job_counts)" \
-        '[["PKG0000G001", "Room 801", "Feeds their door controllers"], ["PKG0000G002", "Room 902", ""], ["PKG0000G003", "Building 9", ""], ["PKG0000G004", "", ""], ["PKG0000G005", "Staging", ""], ["PKG0000G0P1", "", ""]] 201 ["previewed", 6, 0, 0, 6, 0]'
+    expect "pkg and an export of these items with their own values has the location of each as its path and its owner, no column for a reason of the item's own, and nothing for the minor item, which has both from its switch; it is imported back unchanged" \
+        "$(table '["owner_exception_reason" in head, [[r["serial_number"], r["location"].rsplit(" > ", 1)[-1], r["owner"]] for r in rows]]' "$work/back-placed.csv") $status $(job_counts)" \
+        '[false, [["PKG0000G001", "Room 801", "Package Test Facilities"], ["PKG0000G002", "Room 902", ""], ["PKG0000G003", "Building 9", ""], ["PKG0000G004", "", "Package Test Team"], ["PKG0000G005", "Staging", ""], ["PKG0000G0P1", "", ""]]] 201 ["previewed", 6, 0, 0, 6, 0]'
 }
 
 # What 0.5.0 added to the command line, on the examples: the tree of places, a location
-# with what it has in force, the regions, a site that is moved and moved back, and the
-# management report by site. client_commands runs this, while the examples are loaded.
+# with what it has in force, the regions, a site that is moved and moved back, the
+# management report by site, and the operators: listed, one handed over and left open
+# again, one released, and the summary with the operators of each row. client_commands
+# runs this, while the examples are loaded.
 client_places() {
-    local code=0 wanted site room='Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102'
+    local code=0 wanted site made room='Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102'
 
     api GET '/geography/tree'
     wanted="$(json '[d["totals"]["items"], d["totals"]["component_count"]]' | tr -d '[],') | $(json '[d["unplaced"]["items"], d["unplaced"]["component_count"]]' | tr -d '[],') | $(places "$room > Rack A1" | tr -d '[],')"
@@ -4026,9 +4079,9 @@ client_places() {
     expect "S24 hirdir geography tree --root --no-locations --include-drafts starts from one region and stops at its sites, the draft among them" \
         "$code $(sed -n '2,4p' "$work/cli.tree" | awk '{print $1 ":" $2}' | xargs)" "0 Central:region Site-2:site Site-3:site"
     cli_run "$work/cli.place" locations show "$room"
-    expect "S25 hirdir locations show takes a location by its path and prints what it has in force, each with the level it came from: the technical contact of the building, the shipping contact and the shipping address of the site, and the instructions of the region" \
-        "$code | $(sed -n 's/^technical: *//p' "$work/cli.place") | $(sed -n 's/^shipping: *//p' "$work/cli.place") | $(sed -n 's/^ship_address: *//p' "$work/cli.place") | $(sed -n 's/^ship_instructions: *//p' "$work/cli.place" | grep -c '(from Americas)$')" \
-        "0 | Lee Marchetti lee.marchetti@example.net +1 555 0102 (from Americas > Central > Site-2 > Building 1) | Sam Okafor sam.okafor@example.net +1 555 0110 (from Americas > Central > Site-2) | 100 Example Way, Dock B, Springfield, IL, 00000, US (from Americas > Central > Site-2) | 1"
+    expect "S25 hirdir locations show takes a location by its path and prints what it has in force, each with the level it came from: the technical contact of the building, the shipping contact of the site, the shipping address, which is the street address of the site, and the instructions of the site" \
+        "$code | $(sed -n 's/^technical: *//p' "$work/cli.place") | $(sed -n 's/^shipping: *//p' "$work/cli.place") | $(sed -n 's/^ship_address: *//p' "$work/cli.place") | $(sed -n 's/^ship_instructions: *//p' "$work/cli.place")" \
+        "0 | Lee Marchetti lee.marchetti@example.net +1 555 0102 (from Americas > Central > Site-2 > Building 1) | Sam Okafor sam.okafor@example.net +1 555 0110 (from Americas > Central > Site-2) | 100 Example Way, Springfield, IL, 00000, US, its street address (from Americas > Central > Site-2) | Dock B, weekdays 08:00 to 15:00 (from Americas > Central > Site-2)"
     cli_run "$work/cli.regions" regions list --sort name
     expect "pkg hirdir regions list is a table of the three regions of the examples, each with its path" \
         "$code $(head -n 1 "$work/cli.regions" | xargs) | $(tail -n +2 "$work/cli.regions" | sed -E 's/^[0-9a-f-]{36} +//; s/  +.*//' | paste -sd ';')" \
@@ -4064,6 +4117,289 @@ client_places() {
     expect "pkg and on a terminal it is a table with a line for the one site that has items, by its path, one for the items that are nowhere, and one for all" \
         "$code $(head -n 1 "$work/cli.management" | xargs) $(grep -c '^Americas > Central > Site-2 ' "$work/cli.management") $(grep -c '^(none) ' "$work/cli.management") $(grep -c '^(all) ' "$work/cli.management")" \
         "0 SITE ITEMS COMPONENT_COUNT EST_VALUE ANNUAL_SUPPORT_COST 1 1 1"
+
+    # The operators: the labels of the examples, one handed over and left open again,
+    # one of the test's own released, and the summary with the operators of each row.
+    cli_run "$work/cli.operators" operators list
+    expect "pkg hirdir operators list is a table of the six labels of the examples, each with the person behind it, and says which is open" \
+        "$code $(head -n 1 "$work/cli.operators" | xargs) | $(tail -n +2 "$work/cli.operators" | awk '{print $2 ":" $(NF - 1)}' | xargs)" \
+        "0 HID LABEL DESCRIPTION CONTACT IS_OPEN RECORD_STATUS | DW:false LM:false OP6:true PR:false RA:false TL:false"
+    cli_run "$work/cli-operators.csv" operators list --format csv
+    api POST /exports '{"entity": "operators", "format": "csv"}'
+    expect "pkg and as csv it is the file that POST /exports gives for operators" \
+        "$code $(sha256sum <"$work/cli-operators.csv")" "0 $(sha256sum <"$work/body")"
+    cli_run "$work/cli.assign" operators assign OP6 facilities@example.net
+    api GET '/operators?filter=label:eq:OP6'
+    wanted="$code $(json '[[o["contact"]["name"], o["is_open"]] for o in d["items"]]')"
+    api GET '/items?filter=hostname:eq:site1-sw-floor-01&include_archived=true'
+    wanted="$wanted $(json '[[i["effective"]["operator_hid"]["contact"], i["effective"]["operator_hid"]["is_open"], i["row_version"]] for i in d["items"]]')"
+    cli_run "$work/cli.assign" operators assign OP6 --open
+    api GET '/operators?filter=label:eq:OP6'
+    expect "pkg hirdir operators assign puts a person behind the open label, by an email address, and what the label is on shows that person with nothing written to it; with --open the label is left open again, as the examples have it" \
+        "$wanted $code $(json '[[o["contact"], o["is_open"]] for o in d["items"]]')" \
+        '0 [["Facilities Help Desk", false]] [["Facilities Help Desk", false, 1]] 0 [[null, true]]'
+    api POST /operators '{"label": "CLI1"}'
+    made=$(json_field hid)
+    cli_run "$work/cli.release" operators release CLI1
+    api GET "/operators/$made"
+    wanted="$code $(json_field record_status)"
+    cli_run "$work/cli.release" operators release NO-SUCH-LABEL
+    expect "pkg hirdir operators release retires a label, which then stands for nothing; a label that there is not exits with 4" \
+        "$wanted $code" "0 retired 4"
+    api GET '/reports/summary?by=site&operators=true'
+    wanted=$(json 'd')
+    cli_run "$work/cli-summary.json" report summary --by site --operators --format json
+    cp "$work/cli-summary.json" "$work/body"
+    expect "pkg hirdir report summary --by site --operators, as json, is what GET /reports/summary gives with operators=true: each site with the operators in force among its items" \
+        "$code $(json 'd')" "0 $wanted"
+    cli_run "$work/cli.summary" report summary --by site --operators
+    expect "pkg and on a terminal the table has a column of them at its end, each label with the support weight it carries, the most first" \
+        "$code $(head -n 1 "$work/cli.summary" | awk '{print $NF}') $(grep -c '^Americas > Central > Site-2 .* TL [0-9.]*, PR ' "$work/cli.summary")" \
+        "0 OPERATORS 1"
+}
+
+# ---- operators, deliveries to the street address, planned locations, and what a group gives ----
+
+# hid_of LIST FILTER: the HID of the one record of a list that a filter finds, a draft
+# or a retired one too.
+hid_of() {
+    authorized GET "$prefix/api/v1/$1" --get --data-urlencode "filter=$2" \
+        --data-urlencode 'include_drafts=true' --data-urlencode 'include_archived=true'
+    json 'd["items"][0]["hid"]'
+}
+
+# What the items of a view have as their operator in force, by serial number: the
+# label, where it came from, the person behind it, and whether it is open.
+operators_of() {
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$1" --data-urlencode 'sort=serial_number'
+    json '[[i["serial_number"][-4:]] + [i["effective"]["operator_hid"][k] for k in ("label", "source", "contact", "is_open")] for i in d["items"]]'
+}
+
+# What the items of a view have as their location and their planned location, by serial
+# number: the last name of each path, where it came from, and the item's own HIDs.
+whereabouts() {
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$1" --data-urlencode 'sort=serial_number'
+    json '[[i["serial_number"][-4:]] + [x for k in ("location_hid", "planned_location_hid") for x in ((i["effective"][k]["label"] or "").rsplit(" > ", 1)[-1], i["effective"][k]["source"], i[k] is not None)] for i in d["items"]]'
+}
+
+# What the final decisions of 0.5.0 added, made through nginx under the prefix, each in
+# small: an operator is a label with a person behind it, on an item, a group and a
+# place (D-122, D-124, D-128); a site or a location says with one flag that deliveries
+# go to its street address (D-115); an item and a group have a planned location, and
+# are moved in when the place is made active (D-125, D-127); and a member with nothing
+# of its own has the location, the plan and the operator of its group (D-129). files()
+# runs this after geography(), in the places that made, while the examples are loaded:
+# everything here has a name of its own, and what is counted is asked for with a filter
+# that finds these items alone. What is made here stays, for hirdir admin reset to
+# clear.
+operators_and_plans() {
+    section "operators, deliveries to the street address, planned locations and what a group gives its members, through nginx under $prefix/"
+    local view='serial_number:glob:PKG0000N*'
+    local here='Package Test Land > East > Package Test Site > Building 9 > Room 902'
+    local land east site room switch_model supply_model pat lee made number entity rows
+    local first second third switches=() stack depot yard bay new hall plan events request before
+
+    east=$(hid_of regions 'name:eq:East parent.name:eq:Package Test Land')
+    site=$(hid_of sites 'name:eq:Package Test Site')
+    room=$(location_at "$here")
+    pat=$(hid_of contacts 'name:eq:Pat Whitfield')
+    lee=$(hid_of contacts 'name:eq:Lee Raman')
+    switch_model=$(hid_of catalog-entries 'pid:eq:PT-48P')
+    supply_model=$(hid_of catalog-entries 'pid:eq:PT-PWR-715')
+
+    # An operator is a label, with a person behind it or nobody.
+    api POST /operators "{\"label\": \"PT1\", \"description\": \"Package test, the first\", \"colour\": \"#1f6feb\", \"contact_hid\": \"$pat\"}"
+    made="$status $(json '[d["label"], d["contact"]["name"], d["is_open"]]')"
+    first=$(json_field hid)
+    api POST /operators "{\"label\": \"PT2\", \"contact_hid\": \"$lee\"}"
+    made="$made $status"
+    second=$(json_field hid)
+    api POST /operators '{"label": "PT3"}'
+    made="$made $status $(json_field is_open)"
+    third=$(json_field hid)
+    api POST /operators '{"label": "pt1"}'
+    expect "pkg POST $prefix/api/v1/operators makes three labels, two with a person behind them and one with nobody, which is open; a second label that differs only in its capitals is refused" \
+        "$made $status $(json 'd["errors"][0]["field"]')" \
+        '201 ["PT1", "Pat Whitfield", false] 201 201 true 409 label'
+
+    # Five switches and a power supply. The first has an operator of its own, and the
+    # power supply in it has that. The second and the third are a stack, which has an
+    # operator and is in a room, and they have neither of their own. The fourth is in
+    # that room and in no group, and the site it is in has an operator. The fifth is
+    # nowhere and nobody's.
+    made=""
+    for number in "1:\"operator_hid\": \"$first\"" '2:"hostname": "pkgtest-ops-02"' '3:"hostname": "pkgtest-ops-03"' "4:\"location_hid\": \"$room\"" '5:"hostname": "pkgtest-ops-05"'; do
+        api POST /items "{\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000N00${number%%:*}\", \"lifecycle_state\": \"Prod\", ${number#*:}}"
+        made="$made$status "
+        switches+=("$(json_field hid)")
+    done
+    api POST /items "{\"catalog_entry_hid\": \"$supply_model\", \"serial_number\": \"PKG0000N0P1\", \"parent_item_hid\": \"${switches[0]}\", \"position\": \"PS-A\"}"
+    made="$made$status"
+    api POST /device-groups "{\"type\": \"stack\", \"name\": \"pkgtest-ops\", \"operator_hid\": \"$second\", \"location_hid\": \"$room\", \"members\": [{\"item_hid\": \"${switches[1]}\", \"role\": \"master\", \"position\": 1}, {\"item_hid\": \"${switches[2]}\", \"role\": \"member\", \"position\": 2}]}"
+    made="$made $status $(json '[d["operator"]["label"], d["location"]["name"]]')"
+    stack=$(json_field hid)
+    api GET "/sites/$site"
+    api PATCH "/sites/$site" "{\"row_version\": $(json_field row_version), \"operator_hid\": \"$third\"}"
+    expect "pkg five switches and a power supply are made, two of the switches as a stack that is given an operator and a room, and the site is given the label that is open" \
+        "$made $status $(json 'd["operator"]["label"]')" '201 201 201 201 201 201 201 ["PT2", "Room 902"] 200 PT3'
+    expect "pkg the operator in force is the item's own; for a minor item, that of the item it is in; for a member of a group, the group's; for an item in no group, that of the place it is at, here its site, which is open; and nobody for the item that is nowhere" \
+        "$(operators_of "$view")" \
+        '[["N001", "PT1", "own", "Pat Whitfield", false], ["N002", "PT2", "device_group", "Lee Raman", false], ["N003", "PT2", "device_group", "Lee Raman", false], ["N004", "PT3", "site", null, true], ["N005", null, "none", null, false], ["N0P1", "PT1", "parent_item", "Pat Whitfield", false]]'
+    expect "pkg and the two switches of the stack are where the stack is, having no location of their own, and say that they have it from the group; the fourth has its own" \
+        "$(whereabouts "$view" | python3 -c 'import json, sys; print(json.dumps([row[:4] for row in json.load(sys.stdin)]))')" \
+        '[["N001", "", "none", false], ["N002", "Room 902", "device_group", false], ["N003", "Room 902", "device_group", false], ["N004", "Room 902", "own", true], ["N005", "", "none", false], ["N0P1", "", "none", false]]'
+    made=""
+    for number in 'effective.operator_hid:empty:true' 'operator.is_open:eq:true' "location:within:$here"; do
+        authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view $number" --data-urlencode 'sort=serial_number'
+        made="$made$status $(json '[i["serial_number"][-4:] for i in d["items"]]') "
+    done
+    expect "pkg the item list finds what nobody is assigned to, what is under a label with nobody behind it, and, within the room, the members of the stack with the switch that is there itself" \
+        "$made" '200 ["N005"] 200 ["N004"] 200 ["N002", "N003", "N004"] '
+    authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=$view" --data-urlencode 'by=operator'
+    made="$status $(json 'sorted([r["label"] or "", r["items"], r["component_count"]] for r in d["rows"])')"
+    authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=$view" --data-urlencode 'by=site' --data-urlencode 'operators=true'
+    expect "pkg GET $prefix/api/v1/reports/summary by operator has a row for each label and one for what nobody is assigned to; by site with operators=true, each row names the operators in force among its items, with the items of each, nobody last" \
+        "$made | $status $(json 'sorted([(r["label"] or "").rsplit(" > ", 1)[-1], [[o["label"], o["items"]] for o in r["operators"]]] for r in d["rows"])')" \
+        '200 [["", 1, 1], ["PT1", 2, 1], ["PT2", 2, 2], ["PT3", 1, 1]] | 200 [["", [["PT1", 2], [null, 1]]], ["Package Test Site", [["PT2", 2], ["PT3", 1]]]]'
+
+    # The person behind a label is changed in one place, and nothing else is written.
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view" --data-urlencode 'sort=serial_number'
+    before=$(json '[[i["row_version"], i["updated_at"]] for i in d["items"]]')
+    api PATCH "/operators/$first" "{\"row_version\": 1, \"contact_hid\": \"$lee\"}"
+    made=$status
+    api PATCH "/operators/$second" '{"row_version": 1, "contact_hid": null}'
+    made="$made $status $(json_field is_open)"
+    expect "pkg the first label is handed to another person and the second is left open: what each is on follows at once" \
+        "$made $(operators_of "$view")" \
+        '200 200 true [["N001", "PT1", "own", "Lee Raman", false], ["N002", "PT2", "device_group", null, true], ["N003", "PT2", "device_group", null, true], ["N004", "PT3", "site", null, true], ["N005", null, "none", null, false], ["N0P1", "PT1", "parent_item", "Lee Raman", false]]'
+    expect "pkg and none of the items was written to: each is at the row_version it had, changed when it was" \
+        "$(json '[[i["row_version"], i["updated_at"]] for i in d["items"]]')" "$before"
+    # A label that is released stands for nothing: the next level up, or nobody.
+    api POST "/operators/$second/retire" '{"row_version": 2}'
+    made="$status $(json_field record_status)"
+    expect "pkg the second label is released: the members of the stack have the operator of the next level up, which is that of the site their stack is at" \
+        "$made $(operators_of "serial_number:in:PKG0000N002,PKG0000N003")" \
+        '200 retired [["N002", "PT3", "site", null, true], ["N003", "PT3", "site", null, true]]'
+    api POST "/operators/$third/retire" '{"row_version": 1}'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view effective.operator_hid:empty:true" --data-urlencode 'sort=serial_number'
+    expect "pkg and with the label of the site released too, nobody is assigned to them or to the fourth switch, and the item list says so" \
+        "$status $(json '[i["serial_number"][-4:] for i in d["items"]]')" '200 ["N002", "N003", "N004", "N005"]'
+
+    # Deliveries go to the street address: one flag, and nothing is typed twice.
+    api POST /sites "{\"name\": \"Package Test Depot\", \"region_hid\": \"$east\", \"address1\": \"7 Sample Yard\", \"city\": \"Riverton\", \"state\": \"NY\", \"postal_code\": \"00000\", \"country\": \"US\", \"ship_same_as_address\": true}"
+    made="$status $(json '[d["ship_same_as_address"], d["ship_address1"]]')"
+    depot=$(json_field hid)
+    api POST /locations "{\"name\": \"Bay 1\", \"site_hid\": \"$depot\", \"kind\": \"warehouse\"}"
+    bay=$(json_field hid)
+    api GET "/locations/$bay/effective"
+    expect "pkg a site with a street address says that deliveries go there: nothing is stored as its shipping address, and a location in it has the street address of the site as its shipping address, whole, and is told that this is the street address" \
+        "$made $status $(json '[d["ship_address"]["source"], d["ship_address"]["same_as_address"], d["ship_address"]["value"]]')" \
+        '201 [true, null] 200 ["site", true, {"address1": "7 Sample Yard", "address2": null, "city": "Riverton", "country": "US", "postal_code": "00000", "state": "NY"}]'
+    api POST /sites "{\"name\": \"Package Test Yard\", \"region_hid\": \"$east\", \"address1\": \"8 Sample Yard\", \"city\": \"Riverton\"}"
+    made=$status
+    yard=$(json_field hid)
+    api GET "/sites/$yard/effective"
+    made="$made $(json '[d["ship_address"]["source"], d["ship_address"]["value"]]')"
+    api GET "/sites/$depot"
+    api PATCH "/sites/$depot" "{\"row_version\": $(json_field row_version), \"ship_address1\": \"9 Other Road\"}"
+    made="$made $status"
+    api POST /sites "{\"name\": \"Package Test Plot\", \"region_hid\": \"$east\", \"ship_same_as_address\": true}"
+    expect "pkg a site that has a street address and does not say so has no shipping address: a street address is never taken for one; the flag and a shipping address of the site's own are not both taken, and the flag needs a street address" \
+        "$made $status" '201 ["none", null] 422 422'
+    api GET "/regions/$east"
+    api PATCH "/regions/$east" "{\"row_version\": $(json_field row_version), \"ship_address1\": \"5 Depot Road\", \"ship_city\": \"Riverton\"}"
+    made=$status
+    api GET "/sites/$yard/effective"
+    made="$made $(json '[d["ship_address"]["source"], d["ship_address"]["value"]["address1"]]')"
+    api GET "/sites/$depot/effective"
+    expect "pkg the region is given a shipping address: the site that said nothing has it, from the region, and the site whose deliveries go to its street address keeps that, and says that it overrides the region's" \
+        "$made $status $(json '[d["ship_address"]["source"], d["ship_address"]["value"]["address1"], d["ship_address"]["overrides_path"]]')" \
+        '200 ["region", "5 Depot Road"] 200 ["own", "7 Sample Yard", "Package Test Land > East"]'
+
+    # A new site is planned: a draft, with a room, and what is meant for it.
+    api POST /sites "{\"name\": \"Package Test New Site\", \"region_hid\": \"$east\", \"record_status\": \"draft\"}"
+    made=$status
+    new=$(json_field hid)
+    api POST /locations "{\"name\": \"Hall\", \"site_hid\": \"$new\", \"kind\": \"room\"}"
+    made="$made $status"
+    hall=$(json_field hid)
+    api POST /device-groups "{\"type\": \"custom\", \"name\": \"pkgtest-plan\", \"members\": [{\"item_hid\": \"${switches[0]}\"}, {\"item_hid\": \"${switches[3]}\"}]}"
+    made="$made $status"
+    plan=$(json_field hid)
+    api PATCH "/items/${switches[4]}" "{\"row_version\": 1, \"planned_location_hid\": \"$room\"}"
+    made="$made $status $(json '[e["field"] for e in d["errors"]]')"
+    api PATCH "/items/${switches[4]}" "{\"row_version\": 1, \"planned_location_hid\": \"$hall\"}"
+    made="$made $status $(json '[d["location_hid"], d["planned_location"]["name"]]')"
+    api PATCH "/device-groups/$plan" "{\"row_version\": 1, \"planned_location_hid\": \"$hall\"}"
+    expect "pkg a site is made as a draft, with a room in it, and a group of the first switch, which is nowhere, and the fourth, which is in a room of its own; the fifth switch is not planned for a room that is in use, and is planned for the room of the draft site, and so is the group" \
+        "$made $status $(json '[d["location_hid"], d["planned_location"]["name"]]')" \
+        '201 201 201 422 ["planned_location_hid"] 200 [null, "Hall"] 200 [null, "Hall"]'
+    expect "pkg nothing has moved: each is where it was, and the members of the group and the power supply in one of them are planned for where their group is planned for, the fifth switch by a plan of its own" \
+        "$(whereabouts "$view")" \
+        '[["N001", "", "none", false, "Hall", "device_group", false], ["N002", "Room 902", "device_group", false, "", "none", false], ["N003", "Room 902", "device_group", false, "", "none", false], ["N004", "Room 902", "own", true, "Hall", "device_group", false], ["N005", "", "none", false, "Hall", "own", true], ["N0P1", "", "none", false, "Hall", "device_group", false]]'
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view" --data-urlencode 'include_drafts=true' --data-urlencode "root=$new"
+    made="$status $(json '[[r["name"], r["record_status"], r["items"], r["planned"], r["planned_groups"]] + [[c["name"], c["planned"], c["planned_groups"]] for c in r["children"]] for r in d["roots"]]')"
+    api POST "/locations/$hall/retire" '{"row_version": 1}'
+    made="$made $status"
+    authorized GET "$prefix/api/v1/locations" --get --data-urlencode "filter=location:within:$hall in_use:eq:false" --data-urlencode 'include_drafts=true'
+    expect "pkg the tree, asked for with the drafts, shows the draft site with nothing in it, four items and one group planned for it, in its room; the room is not retired while something is planned for it, and the list of locations finds it among those that are not in use" \
+        "$made $status $(json '[l["name"] for l in d["items"]]')" '200 [["Package Test New Site", "draft", 0, 4, 1, ["Hall", 4, 1]]] 409 200 ["Hall"]'
+
+    # The site is made active, and what is planned for it is moved in by that change.
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    api PATCH "/sites/$new" '{"row_version": 1, "record_status": "active"}'
+    expect "pkg PATCH $prefix/api/v1/sites/{hid} makes the site active" "$status $(json_field record_status)" "200 active"
+    expect "pkg and what was planned for its room is there: the fifth switch and the group, each with its plan cleared; the first switch and its power supply, which are where their group is; and the fourth switch, which gave up the location of its own to go with its group" \
+        "$(whereabouts "$view")" \
+        '[["N001", "Hall", "device_group", false, "", "none", false], ["N002", "Room 902", "device_group", false, "", "none", false], ["N003", "Room 902", "device_group", false, "", "none", false], ["N004", "Hall", "device_group", false, "", "none", false], ["N005", "Hall", "own", true, "", "none", false], ["N0P1", "Hall", "device_group", false, "", "none", false]]'
+    api GET "/device-groups/$plan"
+    made=$(json '[d["location"]["name"], d["planned_location_hid"], d["row_version"]]')
+    api GET '/audit-events?limit=20'
+    request=$(json '[e["request_id"] for e in d["items"] if e["record_hid"] == "'"$new"'"][0]')
+    expect "pkg each record that changed has an audit entry of its own, all under the request that made the site active and no other entry with them: the site, the group, the switch that had the plan, and the switch that gave up its own location" \
+        "$made $(($(json_field total) - events)) $(json 'sorted([e["record_type"], e["action"], sorted(c["field"] for c in e["changes"])] for e in d["items"] if e["request_id"] == "'"$request"'")')" \
+        '["Hall", null, 3] 4 [["device_group", "update", ["location_hid", "planned_location_hid"]], ["item", "update", ["location_hid"]], ["item", "update", ["location_hid", "planned_location_hid"]], ["site", "update", ["record_status"]]]'
+    api GET "/items/${switches[4]}/history?limit=1"
+    made=$(json '[[e["action"], sorted(c["field"] for c in e["changes"])] for e in d["items"]]')
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view" --data-urlencode "root=$new"
+    expect "pkg the move is in the history of the switch, and the tree, with no drafts asked for, has the site with the four items in its room and nothing planned" \
+        "$made $status $(json '[[r["name"], r["items"], r["planned"], r["planned_groups"]] + [[c["name"], c["items"]] for c in r["children"]] for r in d["roots"]]')" \
+        '[["update", ["location_hid", "planned_location_hid"]]] 200 [["Package Test New Site", 4, 0, 0, ["Hall", 4]]]'
+    authorized GET "$prefix/api/v1/locations" --get --data-urlencode "filter=location:within:$hall in_use:eq:true"
+    expect "pkg and the list of locations finds the room among those that are in use now, with the one item that is put there itself" \
+        "$status $(json '[[l["name"], l["items"]] for l in d["items"]]')" '200 [["Hall", 1]]'
+
+    # A member with no owner of its own has the owner of its group (D-130), and where
+    # that owner is outside the team it is marked as an exception.
+    made=$(hid_of owners 'label:eq:Package Test Facilities')
+    api PATCH "/device-groups/$plan" "{\"row_version\": 3, \"owner_hid\": \"$made\"}"
+    made=$status
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view owner_hid:empty:true effective.owner_hid:empty:false" --data-urlencode 'sort=serial_number'
+    expect "pkg the group is given an owner, one outside the team: its two members and the power supply in one of them, which have no owner of their own, have that owner from the group and are marked as exceptions, with nothing written to them, and filter=owner_hid:empty:true effective.owner_hid:empty:false lists them" \
+        "$made $status $(json '[[i["serial_number"][-4:], i["effective"]["owner_hid"]["label"], i["effective"]["owner_hid"]["source"], i["owner_exception"], i["row_version"]] for i in d["items"]]')" \
+        '200 200 [["N001", "Package Test Facilities", "device_group", true, 1], ["N004", "Package Test Facilities", "device_group", true, 2], ["N0P1", "Package Test Facilities", "device_group", true, 1]]'
+
+    # What was made here, and the examples' with it, exported and imported back.
+    for entity in operators sites locations device_groups; do
+        api POST /exports "{\"entity\": \"$entity\", \"format\": \"csv\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$entity.csv"
+        rows=$(table 'len(rows)' "$work/back-$entity.csv")
+        send "/imports/preview?entity=$entity&file_name=$entity.csv" "$work/back-$entity.csv"
+        made="$status $(job_counts)"
+        api POST /exports "{\"entity\": \"$entity\", \"format\": \"json\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$entity.json"
+        send "/imports/preview?file_name=$entity.json" "$work/back-$entity.json" application/json
+        expect "pkg an export of every record of $entity ($rows rows), with the operators, the flag for deliveries and what was planned and moved, is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
+            "$made $status $(job_counts)" \
+            "201 [\"previewed\", $rows, 0, 0, $rows, 0] 201 [\"previewed\", $rows, 0, 0, $rows, 0]"
+    done
+    api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "filter": "serial_number:glob:PKG0000N*", "sort": ["depth", "serial_number"]}'
+    cp "$work/body" "$work/back-operated.csv"
+    send "/imports/preview?entity=items&file_name=operated.csv" "$work/back-operated.csv"
+    expect "pkg and an export of these items with their own values holds only what each has itself: the operator of the first and the location of the fifth, and nothing that comes from a group; it is imported back unchanged" \
+        "$(table '[[r["serial_number"][-4:], r["operator"], r["location"].rsplit(" > ", 1)[-1], r["planned_location"]] for r in rows]' "$work/back-operated.csv") $status $(job_counts)" \
+        '[["N001", "PT1", "", ""], ["N002", "", "", ""], ["N003", "", "", ""], ["N004", "", "", ""], ["N005", "", "Hall", ""], ["N0P1", "", "", ""]] 201 ["previewed", 6, 0, 0, 6, 0]'
 }
 
 # ---- a first file ---------------------------------------------------------------------------
