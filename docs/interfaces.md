@@ -103,7 +103,8 @@ and `condition`, `observed_status`, `observed_at` and the derived `health` say h
 is doing. `location` is where the item is, by the location in force, its own, that of
 the item above it or that of its group, and takes
 `within` with a region, a site or a location, and `empty`; `planned_location` is
-where it is planned to go, in force in the same way, and takes the same two;
+where it is planned to go, in force in the same way, and takes the same two, and
+`planned_location.name` is the name of that location, to sort and to find by;
 `effective.location_hid` and `effective.planned_location_hid` are those two as
 references, `effective.owner_hid` is the owner in force, the item's own, that of the
 item above it or that of its group, and `location_hid` and `planned_location_hid` the item's own; `site` and `region` are the
@@ -562,6 +563,11 @@ One grid component is used on every list page.
 
 - Sort by one or more columns, filter per column, resize, reorder, show and hide
   columns. Sorting, filtering and paging are done by the server.
+- Every column of every grid is sorted by its header, by the server and over the
+  whole list. Every other table a page shows, the scoreboard, the people of an owner,
+  the contacts of a place, a history, is sorted by its headers too, in the browser,
+  since it holds all of its rows: text without regard to case, numbers as numbers,
+  dates as dates, and blanks last.
 - Select whole rows: one, a range with Shift, several with Ctrl, or "all that match the
   filter", which is shown as a count and sent to the server as the filter, not as a list
   of rows.

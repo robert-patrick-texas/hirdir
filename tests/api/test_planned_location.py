@@ -268,6 +268,11 @@ def test_a_device_group_is_planned_for_and_its_members_go_with_it(
     )
     names = make.get("/device-groups", filter="planned_location:within:Americas > Central > Site-3")
     assert [group["name"] for group in names["items"]] == ["site3-sw-stack1"]
+    # The column of the grid is sorted and found by the name of the place.
+    by_plan = make.get("/items", sort="-planned_location.name,name", limit=2)["items"]
+    assert [item["hostname"] or item["name"] for item in by_plan] == ["PS-A", "spare-01"]
+    named = make.get("/device-groups", filter="planned_location.name:contains:suite")
+    assert named["total"] == 1
     # Its members are planned for with it, and nothing was written to them.
     assert make.found(filter="planned_location:within:Americas > Central > Site-3") == [
         "PS-A",

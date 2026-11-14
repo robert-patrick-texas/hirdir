@@ -390,6 +390,8 @@ ITEMS = Listing(
         "location.kind": Field("choice", ITEM_LOCATION.kind),
         # Where the item is going, when that place is not in use yet.
         "planned_location_hid": Field("reference", Item.planned_location_hid),
+        # The name of the place it is going to, for a column to be sorted and found by.
+        "planned_location.name": Field("text", PLANNED_LOCATION.name),
         "effective.planned_location_hid": Field("reference", PLANNED_IN_FORCE),
         "planned_location": Field(
             "place",
@@ -496,6 +498,7 @@ DEVICE_GROUPS = Listing(
         ),
         "operator.label": Field("text", _GROUP_OPERATOR.label),
         "planned_location_hid": Field("reference", DeviceGroup.planned_location_hid),
+        "planned_location.name": Field("text", _GROUP_PLANNED.name),
         "planned_location": Field(
             "place",
             GROUP_PLANNED_IN_FORCE,
