@@ -11,6 +11,7 @@ import {
   ADDRESS_ROLES,
   type Address,
   addressRoleLabel,
+  FAMILIES,
   familyLabel,
   holderPath,
   NETWORK_KINDS,
@@ -86,14 +87,12 @@ const COLUMNS: GridColumn<Address>[] = [
     width: 140,
   },
   {
-    // The server neither filters nor sorts by the family, and no file of addresses has it.
+    // Read from the address by the server: it filters, sorts and exports by it.
     id: "family",
     header: "Family",
     kind: "choice",
-    field: null,
-    sortField: null,
-    column: null,
     value: (address) => familyLabel(address.family),
+    choices: FAMILIES.map((family) => ({ value: String(family), label: familyLabel(family) })),
     width: 100,
   },
   {
