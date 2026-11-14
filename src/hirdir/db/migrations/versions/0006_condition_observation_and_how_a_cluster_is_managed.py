@@ -16,7 +16,8 @@ event for each membership: from this release such an item is in no group.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import sqlalchemy as sa
 from alembic import op
@@ -25,6 +26,9 @@ revision = "0006"
 down_revision = "0005"
 branch_labels = None
 depends_on = None
+
+# The time zone of an installation that has not set one, as it was at this release.
+DEFAULT_ZONE = "America/New_York"
 
 CONDITIONS = [
     ("untested", "Untested"),
@@ -105,6 +109,18 @@ def upgrade() -> None:
     _end_memberships_out_of_hands()
 
 
+def _today(connection: sa.Connection, moment: datetime) -> date:
+    """Return the day it is in the application's time zone, as every other date is told."""
+    settings = sa.table("settings", sa.column("key", sa.String), sa.column("value", sa.JSON))
+    zone = connection.execute(
+        sa.select(settings.c.value).where(settings.c.key == "time_zone")
+    ).scalar()
+    try:
+        return moment.astimezone(ZoneInfo(zone if isinstance(zone, str) else DEFAULT_ZONE)).date()
+    except ZoneInfoNotFoundError, ValueError:
+        return moment.astimezone(ZoneInfo(DEFAULT_ZONE)).date()
+
+
 def _end_memberships_out_of_hands() -> None:
     """End the memberships of the items that left the team's hands before this release."""
     members = sa.table(
@@ -130,7 +146,9 @@ def _end_memberships_out_of_hands() -> None:
         sa.column("changes", sa.JSON),
     )
     connection = op.get_bind()
-    now = datetime.now(UTC).replace(tzinfo=None)
+    moment = datetime.now(UTC)
+    now = moment.replace(tzinfo=None)
+    today = _today(connection, moment)
     gone = connection.execute(
         sa.select(members.c.hid, members.c.joined_on, members.c.row_version)
         .join(items, items.c.hid == members.c.item_hid)
@@ -138,7 +156,7 @@ def _end_memberships_out_of_hands() -> None:
     ).all()
     for hid, joined_on, row_version in gone:
         # A membership that began on a later day than this one ends on the day it began.
-        left = max(now.date(), joined_on)
+        left = max(today, joined_on)
         connection.execute(
             members.update()
             .where(members.c.hid == hid)

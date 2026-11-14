@@ -70,6 +70,14 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
         # The role is handed over, the mark of the intended master with it. The master
         # that was seen is not: nobody has seen the new item as master yet, and the old
         # one's leaving clears it.
+        if new.lifecycle_state in items.OUT_OF_HANDS:
+            raise Invalid(
+                f"{items.shown_name(new)} has left the team's hands",
+                {
+                    "new_item_hid": f"an item in {new.lifecycle_state} is in no group, and "
+                    f"the item it would replace is a member of {group.name}"
+                },
+            )
         groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
         groups.add_members(
             db,

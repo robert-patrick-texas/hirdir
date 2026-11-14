@@ -1,6 +1,9 @@
 """The migrations, the connection settings and the configuration."""
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic import command
@@ -203,3 +206,55 @@ def test_a_database_copied_for_a_test_is_one_that_was_migrated(config: Config) -
             assert connection.execute(text("SELECT count(*) FROM users")).scalar() == 0
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("zone", ["Pacific/Kiritimati", "Etc/GMT+12"])
+def test_the_upgrade_to_0006_ends_a_membership_on_the_applications_day(
+    tmp_path: Path, zone: str
+) -> None:
+    # The two zones are 26 hours apart, so at any moment the day of at least one of them
+    # is not the day in UTC.
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0005")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO settings (hid, key, value, created_at, updated_at, row_version)"
+                " VALUES ('s-1', 'time_zone', :zone, '2026-01-01', '2026-01-01', 1)"
+            ),
+            {"zone": json.dumps(zone)},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO items (hid, name, quantity, lifecycle_state, record_status,"
+                " created_at, updated_at, row_version)"
+                " VALUES ('i-1', 'i-1', 1, 'Released', 'active', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_groups (hid, type, name, name_key, record_status,"
+                " created_at, updated_at, row_version)"
+                " VALUES ('g-1', 'stack', 'g-1', 'g-1', 'active', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_group_members (hid, group_hid, item_hid, role, joined_on,"
+                " created_at, updated_at, row_version)"
+                " VALUES ('m-1', 'g-1', 'i-1', 'member', '2024-01-01',"
+                " '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+    engine.dispose()
+
+    before = datetime.now(UTC).astimezone(ZoneInfo(zone)).date()
+    migrate.upgrade(url)
+    after = datetime.now(UTC).astimezone(ZoneInfo(zone)).date()
+
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        left = connection.execute(text("SELECT left_on FROM device_group_members")).scalar()
+    engine.dispose()
+    assert str(left) in {before.isoformat(), after.isoformat()}

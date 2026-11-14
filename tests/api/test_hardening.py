@@ -904,7 +904,8 @@ def test_an_item_that_has_left_the_teams_hands_joins_no_group(make: Maker, admin
     # Nor does it take the place of a member.
     current = make.get(f"/items/{staying['hid']}")
     body = {"row_version": current["row_version"], "reason": "rma", "new_item_hid": gone["hid"]}
-    assert make.post(f"/items/{staying['hid']}/replace", body, 422)["status"] == 422
+    problem = make.post(f"/items/{staying['hid']}/replace", body, 422)
+    assert "is in no group" in errors(problem)["new_item_hid"]
     assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
     # A membership that has ended is still entered, for the record, as a file may.
     past = "group,item,joined_on,left_on\nsite2-sw-stack1,SITE2-SW-001,2024-01-01,2025-01-01\n"

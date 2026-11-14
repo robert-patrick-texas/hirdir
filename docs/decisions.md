@@ -143,9 +143,6 @@ the group and controllers found through nested clusters, with P-73. P-79 holds w
 the review of 0.4.1 then found unsaid. The answer brought D-92 with it, the condition
 of an item and the health of a stack, and P-78 is the detail of that, for 0.4.1.
 
-P-79 is a choice of release 0.4.1, made by its package test where D-103 is silent: what
-the upgrade does with a membership that 0.4.0 let stand.
-
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
 | P-05 | nginx strips the prefix and names it in `X-Forwarded-Prefix`; the server writes it into the page. | Deep links and API documentation need the prefix. This is the `texas2step` way. `sunstone` and `segl` leave the server unaware. | 0.1.0 |
