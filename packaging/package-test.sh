@@ -38,8 +38,10 @@
 #                      installation does, and exercise it: the examples imported and
 #                      exported through nginx, minor items, a stack, a replacement and
 #                      addresses made beside them, condition, observation and health,
-#                      a cluster counted in its three ways, then the inventory made by
-#                      hand
+#                      a cluster counted in its three ways, regions, sites, locations
+#                      and contacts with what a place has in force, a site moved, an
+#                      item with an owner outside the team, then the inventory made
+#                      by hand
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -69,13 +71,15 @@
 #
 # A check that belongs to a scenario of docs/build-plan.md carries its number, S01 or
 # S02 for the package and sign-in, S06 to S11 for the inventory, S12, S13 and S16 for
-# files, S18 to S21 and S23 for minor items, stacks, a replacement and addresses. The
+# files, S18 to S21 and S23 for minor items, stacks, a replacement and addresses, S24 to
+# S28 for places, contacts, a site that is moved and an owner outside the team. The
 # others, marked pkg, are about the package alone, or about a record that has no
 # scenario of its own yet, such as the condition of an item and the health of a stack.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
-# command line (hirdir import, hirdir export, hirdir items, hirdir groups and hirdir
-# report) are then run in the container, from the package, by client_commands().
+# command line (hirdir import, hirdir export, hirdir items, hirdir groups, hirdir
+# report, hirdir geography, hirdir locations, hirdir regions and hirdir sites) are then
+# run in the container, from the package, by client_commands().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -960,7 +964,8 @@ install_previous() {
 #
 #   meant[LIST]          fields of records, each as HID.field, with a space before each.
 #                        LIST is items, device-groups, members, networks, addresses,
-#                        choices or stack, which is the first stack read by itself
+#                        owners, choices or stack, which is the first stack read by
+#                        itself
 #   may_add[NAME]        set when the new version may add records to that list, or
 #                        rows to the table of that name: choices is both
 #   rows_apart[TABLE]    the HIDs of the rows of a table that are meant to change, with
@@ -972,6 +977,9 @@ install_previous() {
 #   counted_view         the view of the items that must be counted as before, as a
 #                        query with its question mark, where the migration is meant to
 #                        change how some are counted. Empty, it is all of them
+#   writes_no_event=yes  the migration writes no audit event: the audit trail must
+#                        then hold the events it held and no other when the upgrade
+#                        is done, as after an upgrade with no migration
 #   fail_by=trigger      make the migration fail by the trigger on alembic_version
 #                        though it creates a table: for a migration that creates its
 #                        tables before it changes those that hold a site's records
@@ -992,6 +1000,7 @@ particular_files=()
 unwritten=""
 declare -A meant=() may_add=() rows_apart=() new_columns=() new_keys=() rest_of=() rest_before=()
 counted_view=""
+writes_no_event=""
 fail_by=""
 # The days, in UTC, that the upgrade which went through began and ended on.
 upgrade_days=""
@@ -1217,6 +1226,7 @@ failed_upgrade() {
 
     section "the upgrade again, with its cause put right"
     check "pkg $cure" sqlite_run "$cure_sql"
+    events_then=$(table_rows audit_events "$(table_columns audit_events)")
     upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
         upgrade_days="$upgrade_days $(date -u +%F)"
@@ -1224,6 +1234,11 @@ failed_upgrade() {
     else
         fail "pkg apt upgrades hirdir $previous_version to $version"
         tail -n 30 "$work/apt.log"
+    fi
+    # Read before anything is asked of the new version: a sign-in is an event too.
+    if [ -n "$writes_no_event" ]; then
+        expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_then)" \
+            "$(table_rows audit_events "$(table_columns audit_events)")" "$events_then"
     fi
     good_backup=$(sed -n 's/^hirdir: the database as it was before this upgrade is kept at //p' "$work/apt.log")
     expect "pkg dpkg holds hirdir $version as installed" \
@@ -1858,7 +1873,8 @@ every_address='/addresses?include_archived=true&include_drafts=true&limit=1000'
 
 # witness_kept: keep the inventory as the previous release gives it, to compare with
 # later: the items, the history of each, the groups with every membership they have
-# had, the first stack as it says of itself, the networks, the addresses, the choices,
+# had, the first stack as it says of itself, the networks, the addresses, the owners,
+# the choices,
 # what the items are counted as, and the tables of all of it as the database file has
 # them. It runs when everything is made, also what the file of a migration makes.
 witness_kept() {
@@ -1874,6 +1890,8 @@ witness_kept() {
     done
     api GET /choices
     keep choices
+    api GET '/owners?limit=1000'
+    keep owners
     witness_tables="items vendors catalog_entries owners tags choices"
     if [ "${#witness_groups[@]}" -gt 0 ]; then
         witness_tables="$witness_tables item_replacements device_groups device_group_members networks addresses"
@@ -1951,7 +1969,7 @@ but_for() {
 }
 
 # witness_carried HOW WHEN: the items and the history of each, the groups, their
-# memberships, the networks, the addresses and the choices are as witness_kept found
+# memberships, the networks, the addresses, the owners and the choices are as witness_kept found
 # them. HOW is "fields" on the new version, which may give a record more fields, and
 # "exact" where the previous release serves again. WHEN begins the lines.
 #
@@ -1990,6 +2008,9 @@ witness_carried() {
         expect "pkg $when the two networks and the $addresses_made addresses are as they were$(but_for "$how" networks)$(but_for "$how" addresses)" \
             "$found $status $(unchanged addresses "$(how_of "$how" addresses)" "$(meant_in "$how" addresses)")" "same 200 same"
     fi
+    api GET '/owners?limit=1000'
+    expect "pkg $when every owner is the record it was$(but_for "$how" owners)" \
+        "$status $(unchanged owners "$(how_of "$how" owners)" "$(meant_in "$how" owners)")" "200 same"
     api GET /choices
     case $(how_of "$how" choices) in
         *more)
@@ -2247,7 +2268,7 @@ upgrade() {
     fi
     cp "$work/apt.log" "$work/install.log"
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if ! migrating; then
+    if ! migrating || [ -n "$writes_no_event" ]; then
         expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_then)" \
             "$(table_rows audit_events "$(table_columns audit_events)")" "$events_then"
     fi
@@ -2645,8 +2666,8 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
     out.writelines(b"row-%06d\n" % number for number in range(1, 100_002))' "$work"
 }
 
-# The tables that hirdir admin reset clears: the inventory, those of 0.4.0 among it, and
-# what was stored about it. A test in packaging/tests/ fails when a table that a reset
+# The tables that hirdir admin reset clears: the inventory, those of 0.4.0 and of 0.5.0
+# among it, and what was stored about it. A test in packaging/tests/ fails when a table that a reset
 # clears is not named here.
 inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links"
 
@@ -2679,7 +2700,7 @@ print(json.dumps(body))' "$@"
 # an operator has for it. Nothing can be deleted from an inventory.
 files() {
     section "files: examples/ imported and exported through nginx under $prefix/"
-    local before items_before tags_before groups_before name entity rows item_rows hid filter wanted exported limit made
+    local before items_before tags_before groups_before places_before name entity rows item_rows hid filter wanted exported limit made
 
     expect "pkg the package ships the CSV and JSON files of examples/ in /usr/share/doc/hirdir/examples/, each as the repository has it" \
         "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && sha256sum -- * | LC_ALL=C sort' 2>&1)" \
@@ -2694,6 +2715,7 @@ files() {
     # After an upgrade, the groups of the release before are there, retired.
     api GET "${every_group/limit=1000/limit=1}"
     groups_before=$(json_field total)
+    places_before=$(people_and_places)
 
     for name in "${load_order[@]}"; do
         entity=${name//-/_}
@@ -2723,6 +2745,9 @@ files() {
     expect "S12 and so are the networks, the device groups with their current members, and the addresses" \
         "$made $status $(json_field total)" \
         "200 $(table 'len(rows)' examples/networks.csv) 200 $(table 'len(rows)' examples/device-groups.csv) $(table 'sum(1 for r in rows if not r["left_on"])' examples/device-group-members.csv) 200 $(table 'len(rows)' examples/addresses.csv)"
+    # What 0.5.0 added to them: regions, sites and locations, contacts and their
+    # assignments, and the members of owners, with the items and the groups placed.
+    examples_places "$places_before"
 
     # What the examples show of 0.4.1: a stack whose master is not the one intended, an
     # address that two routers share, a duplicate that is a mistake, and items with a
@@ -2864,11 +2889,12 @@ files() {
     client_commands "$filter"
     structure
     health_and_counting
+    geography
     first_file
 
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
-    # Here it clears the examples and what structure() made beside them, a replacement
-    # among it, before the backup puts back what the checks need.
+    # Here it clears the examples and what structure() and geography() made beside them,
+    # a replacement among it, before the backup puts back what the checks need.
     local code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
@@ -2876,7 +2902,7 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0 and the regions, sites, locations, contacts, assignments and members of owners of 0.5.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
@@ -2925,7 +2951,7 @@ cli_run() {
 }
 
 client_commands() {
-    section "the client commands of the package: hirdir import, export, items, groups and report"
+    section "the client commands of the package: hirdir import, export, items, groups, report, geography, locations, regions and sites"
     local filter=$1 code=0 hid serial
     if ! inside hirdir import --help >/dev/null 2>&1; then
         fail "S16 the hirdir of this package has no import command"
@@ -3037,6 +3063,8 @@ client_commands() {
     cli_run "$work/cli.duplicates" report duplicates
     expect "S23 hirdir report duplicates lists the address that two virtual machines of the examples hold by mistake, once for each, and not the one that two routers share through their cluster" \
         "$code $(grep -c '^198\.51\.100\.10 ' "$work/cli.duplicates") $(grep -c '^192\.0\.2\.254 ' "$work/cli.duplicates")" "0 2 0"
+
+    client_places
 }
 
 # ---- minor items, groups, a replacement and addresses ---------------------------------------
@@ -3495,6 +3523,518 @@ health_and_counting() {
         "$status $(json '[d["hid"], d["member_count"]]')" "200 [\"$cluster\", 0]"
 }
 
+# ---- regions, sites, locations, contacts and the people of an owner --------------------------
+
+# places PATH...: for each path, the items and the components that the tree of the last
+# answer has at or beneath that place, or null where the tree has no such place.
+places() {
+    python3 -c '
+import json, sys
+
+found = {}
+
+def walk(node):
+    found[node["path"]] = [node["items"], node["component_count"]]
+    for child in node["children"]:
+        walk(child)
+
+for root in json.load(open(sys.argv[1], encoding="utf-8"))["roots"]:
+    walk(root)
+print(json.dumps([found.get(path) for path in sys.argv[2:]]))' "$work/body" "$@"
+}
+
+# What the three counts beside the tree of the last answer say, each as items and
+# components: totals, unplaced and hidden.
+beside() {
+    json '[[d[k]["items"], d[k]["component_count"]] for k in ("totals", "unplaced", "hidden")]'
+}
+
+# Whether the roots of the last tree, what is nowhere and what is hidden add up to the
+# totals, in items and in components.
+adds_up() {
+    json 'all(sum(r[k] for r in d["roots"]) + d["unplaced"][k] + d["hidden"][k] == d["totals"][k] for k in ("items", "component_count"))'
+}
+
+# in_force ROLE: what the last answer of .../effective has for one role: the level it
+# is from, the path of that level, whether a level stopped the search, and the names.
+in_force() {
+    json '[[c["source"], c["source_path"], c["stopped"], [p["name"] for p in c["contacts"]]] for c in d["contacts"] if c["role"] == "'"$1"'"][0]'
+}
+
+# examples_within PATH: how many items examples/items.csv has at or beneath a place, in
+# the view a list shows by default: its own location, or that of the item it is in, and
+# neither a draft nor an archived one. With no path, those that are nowhere.
+examples_within() {
+    python3 -c '
+import csv, sys
+
+rows = list(csv.DictReader(open("examples/items.csv", encoding="utf-8", newline="")))
+known = {r[key]: r for r in rows for key in ("serial_number", "hostname", "asset_tag", "name") if r[key]}
+
+def own(r, field):
+    while not r[field] and r["parent"]:
+        r = known[r["parent"]]
+    return r[field]
+
+def within(r, path):
+    where = own(r, "location")
+    return (where == path or where.startswith(path + " > ")) if path else not where
+
+view = [r for r in rows if r["record_status"] == "active" and own(r, "lifecycle_state") != "Archived"]
+print(sum(1 for r in view if within(r, sys.argv[1])))' "${1:-}"
+}
+
+# location_at PATH: the HID of the location that has that path.
+location_at() {
+    authorized GET "$prefix/api/v1/locations" --get --data-urlencode "filter=location:within:$1" \
+        --data-urlencode 'include_drafts=true'
+    json '[l["hid"] for l in d["items"] if l["path"] == "'"$1"'"][0]'
+}
+
+# How many regions, sites, locations, contacts, contact assignments and members of
+# owners there are, the drafts and the retired among them, on one line.
+people_and_places() {
+    local name counted=""
+    for name in regions sites locations contacts contact-assignments; do
+        api GET "/$name?include_drafts=true&include_archived=true&limit=1000"
+        counted="$counted$(json 'd["total"] if isinstance(d, dict) else len(d)') "
+    done
+    api GET '/owners?include_archived=true&limit=1000'
+    echo "$counted$(json 'sum(len(o["members"]) for o in d["items"])')"
+}
+
+# examples_places BEFORE: what the examples show of 0.5.0, looked for while they are
+# loaded: the tree of places with what the files put in each, a draft site that the
+# default view leaves out, the contacts of a room with the level each came from, an
+# office that takes no shipments, and the one item that is with an owner outside the
+# team. BEFORE is what people_and_places said before the files were loaded: after an
+# upgrade, the places that the upgrade pass made are there, retired.
+examples_places() {
+    local name made room rack store office wanted=""
+    room='Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102'
+    rack="$room > Rack A1"
+    store='Americas > Central > Site-2 > Store Room'
+    office='Americas > East > Site-1 > Comms Room'
+
+    for name in regions sites locations contacts contact-assignments owner-members; do
+        wanted="$wanted$(table 'len(rows)' "examples/$name.csv") "
+    done
+    expect "S12 the regions, the sites, the locations, the contacts, their assignments and the members of the owners of the examples are there, the draft site and its room among them: each list holds what its file holds ($wanted), beside what there was ($1)" \
+        "$(people_and_places)" \
+        "$(python3 -c 'import sys; print(*(int(a) + int(b) for a, b in zip(sys.argv[1].split(), sys.argv[2].split())))' "$1" "$wanted")"
+
+    api GET '/geography/tree?locations=false'
+    expect "S24 GET $prefix/api/v1/geography/tree?locations=false shows the regions and sites of the examples: Americas with its two regions, Central with Site-2 and East with Site-1, and not Site-3, which is a draft" \
+        "$status $(json '(lambda walk: [walk(walk, r) for r in d["roots"]])(lambda walk, n: [n["level"], n["name"]] + [walk(walk, c) for c in n["children"]])')" \
+        '200 [["region", "Americas", ["region", "Central", ["site", "Site-2"]], ["region", "East", ["site", "Site-1"]]]]'
+    api GET '/geography/tree'
+    expect "S24 with its locations, the tree counts at each place the items that examples/items.csv puts at or beneath it, a minor item where the item it is in is: Americas, Site-2, Room 102 and the rack within it, and those that are nowhere" \
+        "$status $(places Americas 'Americas > Central > Site-2' "$room" "$rack" | python3 -c 'import json, sys; print(json.dumps([place[0] for place in json.load(sys.stdin)]))') $(json 'd["unplaced"]["items"]')" \
+        "200 [$(examples_within Americas), $(examples_within 'Americas > Central > Site-2'), $(examples_within "$room"), $(examples_within "$rack")] $(examples_within)"
+    expect "S24 and what is in the tree, what is nowhere and what is hidden add up to the totals" "$(adds_up)" true
+    made=$(places "$rack")
+    authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=location:within:$rack"
+    expect "S24 the rack holds the components that the summary counts for the items within it, and the item list finds as many items there" \
+        "$made" "[[$(json 'd["totals"]["items"]'), $(json 'd["totals"]["component_count"]')]]"
+    api GET '/geography/tree?include_drafts=true&locations=false'
+    expect "S24 asked for with the drafts, the tree has Site-3 too, with the one item that is there" \
+        "$status $(places 'Americas > Central > Site-3')" "200 [[1, 1]]"
+
+    api GET "/locations/$(location_at "$room")/effective"
+    expect "S25 GET $prefix/api/v1/locations/{hid}/effective for Room 102 of the examples: the shipping contact of its site, the technical contact of its building and not the two of the region, the operational and the escalation contact of Americas, and nobody for the federal role" \
+        "$status $(in_force shipping) $(in_force technical) $(in_force operational) $(in_force escalation) $(in_force federal)" \
+        '200 ["site", "Americas > Central > Site-2", false, ["Sam Okafor"]] ["location", "Americas > Central > Site-2 > Building 1", false, ["Lee Marchetti"]] ["region", "Americas", false, ["Network Operations Desk"]] ["region", "Americas", false, ["Robin Achterberg"]] ["none", null, false, []]'
+    expect "S25 its shipping address is that of its site, taken whole, and the instructions are those of the region, by themselves" \
+        "$(json '[d["ship_address"]["source"], d["ship_address"]["value"]["address2"], d["ship_address"]["value"]["city"], d["ship_instructions"]["source"], d["ship_instructions"]["source_path"]]')" \
+        '["site", "Dock B", "Springfield", "region", "Americas"]'
+    api GET "/locations/$(location_at "$store")/effective"
+    expect "S26 the store room, which is in no building, has the two technical contacts of the region, in their order, and instructions of its own" \
+        "$status $(in_force technical) $(json '[d["ship_instructions"]["source"], d["ship_instructions"]["value"]]')" \
+        '200 ["region", "Americas", false, ["Dana Whitfield", "Robin Achterberg"]] ["own", "Leave with the store keeper; a signature is needed"]'
+    api GET "/locations/$(location_at "$office")/effective"
+    expect "S26 the small office says that nobody takes shipments there: its room has no shipping contact, the search stopped at its site, and it has no shipping address" \
+        "$status $(in_force shipping) $(json '[d["ship_address"]["source"], d["ship_address"]["value"]]')" \
+        '200 ["site", "Americas > East > Site-1", true, []] ["none", null]'
+
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=owner_exception:eq:true hostname:glob:site?-*' --data-urlencode 'include_archived=true'
+    expect "S28 one item of the examples is with an owner outside the team, and says why: it is marked as an exception, with the reason that examples/items.csv gives" \
+        "$status $(json '[[i["hostname"], i["owner"]["label"], i["owner_exception"], i["owner_exception_reason"]] for i in d["items"]]')" \
+        "200 $(table '[[r["hostname"], r["owner"], True, r["owner_exception_reason"]] for r in rows if r["owner_exception_reason"]]' examples/items.csv)"
+    api GET '/reports/management'
+    made=$(json '[d["by"], sorted(r["label"] or "" for r in d["rows"]), sum(r["items"] for r in d["rows"]) == d["totals"]["items"]]')
+    api GET '/reports/management?by=region'
+    expect "pkg GET $prefix/api/v1/reports/management with no by is by site: a row for Site-2 and one for the items that are nowhere, which add up to the totals; by region, Americas and Central hold the same items, each of them once in the totals" \
+        "$made $status $(json '[sorted([r["label"] or "", r["items"] == d["totals"]["items"] - [n["items"] for n in d["rows"] if n["key"] is None][0]] for r in d["rows"] if r["key"])]')" \
+        '["site", ["", "Americas > Central > Site-2"], true] 200 [[["Americas", true], ["Americas > Central", true]]]'
+}
+
+# The records that 0.5.0 added, made through nginx under the prefix: scenarios S24 to
+# S28 of docs/build-plan.md, each in small, and the location half of S18. files() runs
+# this while the examples are loaded, so everything here has a name of its own, and the
+# tree is asked for with a filter that finds these items alone. Every name is invented.
+# What is made here stays, for hirdir admin reset to clear with the examples.
+geography() {
+    section "regions, sites, locations, contacts and the people of an owner through nginx under $prefix/"
+    local land central east site building room other elsewhere staging made number
+    local switch_model supply_model switches=() supply nowhere staged placed=""
+    local pat sam lee robin desk assigned events team outside member second
+    local view='serial_number:glob:PKG0000G*'
+    local here='Package Test Land > Central > Package Test Site'
+
+    # S24: paths, and roll-up counts at every level.
+    api POST /regions '{"name": "Package Test Land", "code": "PTL", "ship_instructions": "Ring the package test desk a day ahead"}'
+    made="$status $(json_field path)"
+    land=$(json_field hid)
+    api POST /regions "{\"name\": \"Central\", \"parent_region_hid\": \"$land\"}"
+    made="$made $status $(json_field path)"
+    central=$(json_field hid)
+    api POST /regions "{\"name\": \"East\", \"parent_region_hid\": \"$land\"}"
+    east=$(json_field hid)
+    expect "S24 POST $prefix/api/v1/regions makes a region and two regions beneath it, whose names the examples have beneath a region of their own: each has its path" \
+        "$made $status $(json_field path)" \
+        "201 Package Test Land 201 Package Test Land > Central 201 Package Test Land > East"
+    api POST /sites "{\"name\": \"Package Test Site\", \"region_hid\": \"$central\", \"code\": \"PTS\", \"address1\": \"1 Sample Square\", \"city\": \"Riverton\", \"ship_address1\": \"1 Sample Square\", \"ship_address2\": \"Rear gate\", \"ship_city\": \"Riverton\", \"ship_state\": \"NY\", \"ship_postal_code\": \"00000\", \"ship_country\": \"US\"}"
+    made="$status $(json_field path)"
+    site=$(json_field hid)
+    api POST /locations "{\"name\": \"Building 9\", \"site_hid\": \"$site\", \"kind\": \"building\"}"
+    made="$made | $status $(json_field path)"
+    building=$(json_field hid)
+    api POST /locations "{\"name\": \"Room 902\", \"site_hid\": \"$site\", \"parent_location_hid\": \"$building\", \"kind\": \"room\"}"
+    room=$(json_field hid)
+    expect "S24 POST $prefix/api/v1/sites and $prefix/api/v1/locations: a site in the region beneath, a building in it and a room in the building, each with its path" \
+        "$made | $status $(json '[d["path"], d["depth"], d["kind"]]')" \
+        "201 $here | 201 $here > Building 9 | 201 [\"$here > Building 9 > Room 902\", 1, \"room\"]"
+    api POST /locations "{\"name\": \"Building 8\", \"site_hid\": \"$site\", \"kind\": \"building\"}"
+    other=$(json_field hid)
+    api POST /locations "{\"name\": \"Room 801\", \"site_hid\": \"$site\", \"parent_location_hid\": \"$other\", \"kind\": \"room\"}"
+    elsewhere=$(json_field hid)
+    api POST /locations "{\"name\": \"Staging\", \"site_hid\": \"$site\", \"record_status\": \"draft\"}"
+    staging=$(json_field hid)
+    api POST /locations "{\"name\": \"Room 902\", \"site_hid\": \"$site\", \"parent_location_hid\": \"$building\"}"
+    made="$status $(json 'd["errors"][0]["field"]')"
+    api POST /locations "{\"name\": \"Hall > Annex\", \"site_hid\": \"$site\"}"
+    expect "pkg a second building with a room, and a location that is a draft; a second Room 902 in the same building is refused, and so is a name that holds the mark between the names of a path" \
+        "$made $status $(json 'd["errors"][0]["field"]')" "409 name 422 name"
+
+    api GET '/catalog-entries?filter=pid:eq:PT-48P'
+    switch_model=$(json 'd["items"][0]["hid"]')
+    api GET '/catalog-entries?filter=pid:eq:PT-PWR-715'
+    supply_model=$(json 'd["items"][0]["hid"]')
+    # Two switches in the room, one in the building, one that is nowhere, one in the
+    # location that is a draft, and a power supply in the first switch of the room.
+    made=""
+    for number in "1:$room" "2:$room" "3:$building" "4:" "5:$staging"; do
+        made=${number#*:}
+        api POST /items "{\"catalog_entry_hid\": \"$switch_model\", \"serial_number\": \"PKG0000G00${number%%:*}\", \"hostname\": \"pkgtest-geo-0${number%%:*}\", \"lifecycle_state\": \"Prod\"${made:+, \"location_hid\": \"$made\"}}"
+        placed="$placed$status "
+        switches+=("$(json_field hid)")
+    done
+    api POST /items "{\"catalog_entry_hid\": \"$supply_model\", \"serial_number\": \"PKG0000G0P1\", \"parent_item_hid\": \"${switches[0]}\", \"position\": \"PS-A\"}"
+    supply=$(json_field hid)
+    expect "S24 five switches are made, two in the room, one in the building, one nowhere and one in the location that is a draft, and a power supply in the first: it is where its switch is, with the source parent_item" \
+        "$placed$status $(json '[d["location_hid"], d["effective"]["location_hid"]["label"], d["effective"]["location_hid"]["source"], d["effective"]["location_hid"]["site"]]')" \
+        "201 201 201 201 201 201 [null, \"$here > Building 9 > Room 902\", \"parent_item\", \"Package Test Site\"]"
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view"
+    expect "S24 GET $prefix/api/v1/geography/tree for these items alone: three items and two components in the room, four and three in the building, the site and both regions above it, none in the other region" \
+        "$status $(places "$here > Building 9 > Room 902" "$here > Building 9" "$here" 'Package Test Land > Central' 'Package Test Land' 'Package Test Land > East' "$here > Staging")" \
+        '200 [[3, 2], [4, 3], [4, 3], [4, 3], [4, 3], [0, 0], null]'
+    expect "S24 beside the tree: six items and five components in all, one of each nowhere, and one of each hidden, in the location that is a draft, which the tree leaves out; the three add up to the totals" \
+        "$(beside) $(adds_up)" '[[6, 5], [1, 1], [1, 1]] true'
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view" --data-urlencode 'include_drafts=true' --data-urlencode "root=$here"
+    expect "S24 asked for with the drafts and from the site alone, the tree is the site with the draft location in it and nothing hidden, beside the counts of the whole view" \
+        "$status $(json '[[r["level"], r["name"], r["items"]] for r in d["roots"]]') $(places "$here > Staging") $(beside)" \
+        '200 [["site", "Package Test Site", 5]] [[1, 1]] [[6, 5], [1, 1], [0, 0]]'
+    api GET '/geography/tree'
+    expect "S24 and over everything there is, the examples too, what is in the tree, what is nowhere and what is hidden add up to the totals" \
+        "$status $(adds_up)" "200 true"
+    made=""
+    for number in "location:within:$here > Building 9 > Room 902" 'location:within:Package Test Land' "location:within:$site" 'location:empty:true' 'site:eq:Package Test Site' 'region:eq:East'; do
+        authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view $number" --data-urlencode 'limit=1'
+        made="$made$status $(json_field total) "
+    done
+    expect "S24 the item list finds by the same paths: three within the room, five within the region, the one in the draft location among them, five within the site by its HID, one that is nowhere, five by the name of the site and none by the name of the other region" \
+        "$made" "200 3 200 5 200 5 200 1 200 5 200 0 "
+
+    # S18, the half that came with 0.5.0: a switch is moved, and its minor item with it.
+    api GET "/items/${switches[0]}"
+    api PATCH "/items/${switches[0]}" "{\"row_version\": $(json_field row_version), \"location_hid\": \"$elsewhere\"}"
+    made="$status $(json 'd["location"]["path"]')"
+    api GET "/items/$supply"
+    expect "S18 the first switch is moved to a room of the other building: its power supply is there too, from its parent, and nothing was written to it" \
+        "$made | $status $(json '[d["effective"]["location_hid"]["label"], d["effective"]["location_hid"]["source"], d["location_hid"], d["row_version"]]')" \
+        "200 $here > Building 8 > Room 801 | 200 [\"$here > Building 8 > Room 801\", \"parent_item\", null, 1]"
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view"
+    expect "S18 and the tree follows: two items less in the room, two more in the other, and as many in the site" \
+        "$status $(places "$here > Building 9 > Room 902" "$here > Building 8 > Room 801" "$here")" '200 [[1, 1], [2, 1], [4, 3]]'
+
+    # S25: contacts are shown with the level they came from.
+    made=""
+    for number in 'Pat Whitfield:pat.whitfield' 'Sam Lindqvist:sam.lindqvist' 'Lee Raman:lee.raman' 'Robin Okafor:robin.okafor' 'Package Test Desk:pkgtest.desk'; do
+        api POST /contacts "{\"name\": \"${number%%:*}\", \"email\": \"${number#*:}@example.net\", \"organization\": \"Package Test Team\"}"
+        made="$made$status "
+        case ${number%% *} in
+            Pat) pat=$(json_field hid) ;;
+            Sam) sam=$(json_field hid) ;;
+            Lee) lee=$(json_field hid) ;;
+            Robin) robin=$(json_field hid) ;;
+            *) desk=$(json_field hid) ;;
+        esac
+    done
+    api POST /contacts '{"name": "Somebody Else", "email": "PAT.WHITFIELD@example.net"}'
+    expect "S25 POST $prefix/api/v1/contacts makes five contacts; a sixth with the email address of the first, written in capitals, is refused" \
+        "$made$status $(json 'd["errors"][0]["field"]')" "201 201 201 201 201 409 email"
+    api POST /contact-assignments "{\"contact_hid\": \"$pat\", \"role\": \"technical\", \"region_hid\": \"$land\"}"
+    made=$status
+    assigned=$(json_field hid)
+    api POST /contact-assignments "{\"contact_hid\": \"$sam\", \"role\": \"shipping\", \"site_hid\": \"$site\"}"
+    made="$made $status"
+    api GET "/locations/$room/effective"
+    expect "S25 a technical contact on the region and a shipping contact on the site: GET $prefix/api/v1/locations/{hid}/effective shows the room both, each with the level it came from, and an entry with nobody for a role that no level has" \
+        "$made $status $(in_force technical) $(in_force shipping) $(in_force escalation)" \
+        "201 201 200 [\"region\", \"Package Test Land\", false, [\"Pat Whitfield\"]] [\"site\", \"$here\", false, [\"Sam Lindqvist\"]] [\"none\", null, false, []]"
+    api GET "/sites/$site/effective"
+    made="$status $(json_field level) $(in_force shipping)"
+    api GET "/regions/$central/effective"
+    expect "pkg GET $prefix/api/v1/sites/{hid}/effective and $prefix/api/v1/regions/{hid}/effective answer the same for a site and a region: the site has the shipping contact as its own, and the region beneath has the technical contact of the one above and no shipping contact" \
+        "$made | $status $(json_field level) $(in_force technical) $(in_force shipping)" \
+        "200 site [\"own\", \"$here\", false, [\"Sam Lindqvist\"]] | 200 region [\"region\", \"Package Test Land\", false, [\"Pat Whitfield\"]] [\"none\", null, false, []]"
+
+    # S26: an override on a building holds when the contact of the region changes.
+    api POST /contact-assignments "{\"contact_hid\": \"$lee\", \"role\": \"technical\", \"location_hid\": \"$building\"}"
+    made=$status
+    api PATCH "/contact-assignments/$assigned" "{\"row_version\": 1, \"contact_hid\": \"$robin\"}"
+    made="$made $status"
+    api GET "/locations/$room/effective"
+    made="$made $status $(in_force technical)"
+    api GET "/locations/$elsewhere/effective"
+    expect "S26 the building is given a technical contact of its own, and the one of the region is changed: the room keeps the building's, and the room of the other building shows the new one of the region" \
+        "$made | $status $(in_force technical)" \
+        "201 200 200 [\"location\", \"$here > Building 9\", false, [\"Lee Raman\"]] | 200 [\"region\", \"Package Test Land\", false, [\"Robin Okafor\"]]"
+    # None here, and do not look further up: an assignment with no contact.
+    api POST /contact-assignments "{\"role\": \"shipping\", \"location_hid\": \"$other\", \"stop_inheritance\": true}"
+    made=$status
+    api POST /contact-assignments "{\"contact_hid\": \"$desk\", \"role\": \"shipping\", \"location_hid\": \"$other\"}"
+    made="$made $status"
+    api GET "/locations/$elsewhere/effective"
+    made="$made $status $(in_force shipping)"
+    api GET "/locations/$room/effective"
+    expect "S26 the other building says that nobody takes shipments there, and takes no shipping contact beside that: its room has none, the search stopped at the building, and the room of the first building has the site's still" \
+        "$made | $status $(in_force shipping)" \
+        "201 409 200 [\"location\", \"$here > Building 8\", true, []] | 200 [\"site\", \"$here\", false, [\"Sam Lindqvist\"]]"
+    # The shipping address is taken whole, and the instructions by themselves.
+    expect "S26 the room has the shipping address of its site and the instructions of the region above" \
+        "$(json '[d["ship_address"]["source"], d["ship_address"]["value"]["address2"], d["ship_address"]["value"]["state"], d["ship_instructions"]["source"], d["ship_instructions"]["value"]]')" \
+        '["site", "Rear gate", "NY", "region", "Ring the package test desk a day ahead"]'
+    api GET "/locations/$building"
+    api PATCH "/locations/$building" "{\"row_version\": $(json_field row_version), \"ship_address1\": \"9 Sample Square\", \"ship_city\": \"Riverton\"}"
+    made=$status
+    api GET "/locations/$room"
+    api PATCH "/locations/$room" "{\"row_version\": $(json_field row_version), \"ship_instructions\": \"Hand to the room keeper\"}"
+    made="$made $status"
+    api GET "/locations/$room/effective"
+    expect "S26 the building is given two lines of a shipping address, and the room instructions of its own: the room has the address of the building whole, with nothing of the site's in the lines the building left out, and its own instructions" \
+        "$made $status $(json '[d["ship_address"]["source"], d["ship_address"]["source_path"], d["ship_address"]["value"], d["ship_instructions"]["source"], d["ship_instructions"]["value"]]')" \
+        "200 200 200 [\"location\", \"$here > Building 9\", {\"address1\": \"9 Sample Square\", \"address2\": null, \"city\": \"Riverton\", \"country\": null, \"postal_code\": null, \"state\": null}, \"own\", \"Hand to the room keeper\"]"
+
+    # S27: a site is moved to another region.
+    api POST /contact-assignments "{\"contact_hid\": \"$desk\", \"role\": \"operational\", \"region_hid\": \"$central\"}"
+    made=$status
+    api POST /contact-assignments "{\"contact_hid\": \"$pat\", \"role\": \"operational\", \"region_hid\": \"$east\"}"
+    made="$made $status"
+    api GET "/locations/$room/effective"
+    expect "S27 an operational contact on each of the two regions beneath: the room shows the one of the region its site is in" \
+        "$made $status $(in_force operational)" \
+        '201 201 200 ["region", "Package Test Land > Central", false, ["Package Test Desk"]]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view" --data-urlencode 'include_drafts=true' --data-urlencode 'sort=serial_number'
+    keep placed
+    api GET '/audit-events?limit=1'
+    events=$(json_field total)
+    api GET "/sites/$site"
+    api PATCH "/sites/$site" "{\"row_version\": $(json_field row_version), \"region_hid\": \"$east\"}"
+    made="$status $(json_field path)"
+    api GET "/locations/$room"
+    expect "S27 PATCH $prefix/api/v1/sites/{hid} gives the site the other region: its path and the path of the room follow, and the room was not written to" \
+        "$made | $status $(json '[d["path"], d["row_version"]]')" \
+        "200 Package Test Land > East > Package Test Site | 200 [\"Package Test Land > East > Package Test Site > Building 9 > Room 902\", 2]"
+    api GET "/locations/$room/effective"
+    made="$status $(in_force operational)"
+    authorized GET "$prefix/api/v1/geography/tree" --get --data-urlencode "filter=$view"
+    expect "S27 the room shows the operational contact of the region its site is in now, and the tree has the items beneath that region and none beneath the other" \
+        "$made | $status $(places 'Package Test Land > East' 'Package Test Land > Central' 'Package Test Land' 'Package Test Land > East > Package Test Site')" \
+        '200 ["region", "Package Test Land > East", false, ["Pat Whitfield"]] | 200 [[4, 3], [0, 0], [4, 3], [4, 3]]'
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view" --data-urlencode 'include_drafts=true' --data-urlencode 'sort=serial_number'
+    made=$(python3 -c '
+import json, sys
+
+was, now = (json.load(open(path, encoding="utf-8"))["items"] for path in sys.argv[1:3])
+same = [(i["hid"], i["row_version"], i["updated_at"]) for i in was] == [(i["hid"], i["row_version"], i["updated_at"]) for i in now]
+regions = sorted({i["effective"]["location_hid"]["label"].split(" > ")[1] for i in now if i["effective"]["location_hid"]["label"]})
+print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/body")
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view location:within:Package Test Land > East" --data-urlencode 'limit=1'
+    expect "S27 no item was written to: each of the six is the record it was, at the row_version it had, and those that are somewhere show the new path; the item list finds five within the region the site is in now" \
+        "$made $status $(json_field total)" '[6, true, ["East"]] 200 5'
+    api GET '/audit-events?limit=1'
+    expect "S27 and the move is one audit event, an update of the site that changed its region and nothing else" \
+        "$status $(($(json_field total) - events)) $(json '[[e["record_type"], e["record_hid"], e["action"], e["changes"]] for e in d["items"]]')" \
+        "200 1 [[\"site\", \"$site\", \"update\", [{\"field\": \"region_hid\", \"new\": \"$east\", \"old\": \"$central\"}]]]"
+
+    # The reports, by site and by region.
+    authorized GET "$prefix/api/v1/reports/summary" --get --data-urlencode "filter=$view" --data-urlencode 'by=site'
+    made="$status $(json 'sorted([r["label"] or "", r["items"], r["component_count"]] for r in d["rows"])') $(json '[d["totals"]["items"], d["totals"]["component_count"]]')"
+    authorized GET "$prefix/api/v1/reports/management" --get --data-urlencode "filter=$view" --data-urlencode 'by=region'
+    expect "S27 the summary by site has a row for the site, labelled with its path, and one for the item that is nowhere; the management report by region has the items in the row of each region above them, and counts each once in its totals" \
+        "$made | $status $(json 'sorted([r["label"] or "", r["items"]] for r in d["rows"])') $(json 'd["totals"]["items"]')" \
+        '200 [["", 1, 1], ["Package Test Land > East > Package Test Site", 5, 4]] [6, 5] | 200 [["", 1], ["Package Test Land", 5], ["Package Test Land > East", 5]] 6'
+
+    # A place is not retired while something is in it.
+    api POST "/locations/$room/retire" '{"row_version": 2}'
+    made="$status $(grep -c 'still holds 1 item' "$work/body")"
+    api POST "/sites/$site/retire" '{"row_version": 2}'
+    made="$made $status"
+    api POST "/regions/$east/retire" '{"row_version": 1}'
+    made="$made $status"
+    api POST "/regions/$central/retire" '{"row_version": 1}'
+    expect "pkg a room with an item in it is not retired, and the answer says what it still holds; nor is the site with its locations, nor the region with the site; the region that holds nothing now is" \
+        "$made $status $(json_field record_status)" "409 1 409 409 200 retired"
+
+    # S28: an item is given to an owner outside the team.
+    authorized GET "$prefix/api/v1/owners" --get --data-urlencode 'filter=label:eq:Package Test Team'
+    team=$(json 'd["items"][0]["hid"]')
+    api POST /owners '{"label": "Package Test Facilities", "organization": "Building Services", "is_external": true, "exception_reason": "Looks after the door controllers"}'
+    outside=$(json_field hid)
+    nowhere=${switches[3]}
+    api PATCH "/items/$nowhere" "{\"row_version\": 1, \"owner_hid\": \"$team\"}"
+    made="$status $(json_field owner_exception)"
+    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\"}"
+    made="$made $status $(json '[e["field"] for e in d["errors"]]')"
+    api GET "/items/$nowhere"
+    expect "S28 an item with an owner of the team is no exception; given an owner outside the team with no reason, it is refused, and has the owner it had" \
+        "$made $(json 'd["owner"]["label"]')" '200 false 422 ["owner_exception_reason"] Package Test Team'
+    api PATCH "/items/$nowhere" "{\"row_version\": 2, \"owner_hid\": \"$outside\", \"owner_exception_reason\": \"Mounted behind their badge readers\"}"
+    made="$status $(json '[d["owner"]["label"], d["owner_exception"], d["owner_exception_reason"]]')"
+    authorized GET "$prefix/api/v1/items" --get --data-urlencode "filter=$view owner_exception:eq:true"
+    expect "S28 with a reason it is accepted and marked as an exception, and GET $prefix/api/v1/items?filter=owner_exception:eq:true finds it" \
+        "$made $status $(json '[i["serial_number"] for i in d["items"]]')" \
+        '200 ["Package Test Facilities", true, "Mounted behind their badge readers"] 200 ["PKG0000G004"]'
+    api GET "/items/${switches[0]}"
+    api PATCH "/items/${switches[0]}" "{\"row_version\": $(json_field row_version), \"owner_hid\": \"$outside\", \"owner_exception_reason\": \"Feeds their door controllers\"}"
+    made=$status
+    api GET "/items/$supply"
+    made="$made $(json '[d["owner_exception"], d["owner_exception_reason"], d["effective"]["owner_hid"]["source"]]')"
+    api PATCH "/items/$nowhere" "{\"row_version\": 3, \"owner_hid\": \"$team\"}"
+    expect "S28 a minor item of an item that is with such an owner is marked too, with no reason of its own; and an item given back to an owner of the team is no exception, and its reason is gone" \
+        "$made $status $(json '[d["owner_exception"], d["owner_exception_reason"]]')" \
+        '200 [true, null, "parent_item"] 200 [false, null]'
+
+    # The people of an owner: one primary where there are any.
+    api POST "/owners/$team/members" "{\"contact_hid\": \"$pat\", \"role\": \"alternate\"}"
+    made="$status $(json 'd["errors"][0]["field"]')"
+    api POST "/owners/$team/members" "{\"contact_hid\": \"$pat\"}"
+    made="$made $status $(json_field role)"
+    member=$(json_field hid)
+    api POST "/owners/$team/members" "{\"contact_hid\": \"$lee\"}"
+    made="$made $status $(json_field role)"
+    second=$(json_field hid)
+    api POST "/owners/$team/members" "{\"contact_hid\": \"$lee\"}"
+    expect "pkg POST $prefix/api/v1/owners/{hid}/members: the first person of an owner is its primary, and is refused as an alternate; the second is an alternate; the same person a second time is refused" \
+        "$made $status" "422 role 201 primary 201 alternate 409"
+    api PATCH "/owners/$team/members/$second" '{"row_version": 1, "role": "primary"}'
+    made=$status
+    api GET "/owners/$team"
+    made="$made $(json 'sorted([m["contact"]["name"], m["role"]] for m in d["members"])')"
+    api DELETE "/owners/$team/members/$second"
+    made="$made $status"
+    api DELETE "/owners/$team/members/$member"
+    made="$made $status"
+    api DELETE "/owners/$team/members/$second"
+    made="$made $status"
+    api GET "/owners/$team"
+    expect "pkg the second is made primary, and the first is an alternate by the same change; the primary is not removed while another remains, the alternate is, and then the primary, which leaves the owner with nobody" \
+        "$made $(json 'd["members"]')" \
+        '200 [["Lee Raman", "primary"], ["Pat Whitfield", "alternate"]] 409 204 204 []'
+    api POST "/owners/$team/members" "{\"contact_hid\": \"$sam\"}"
+    expect "pkg and it is given a person again, who is its primary" "$status $(json_field role)" "201 primary"
+
+    # Every record of the new kinds, the examples' and these, exported and imported back.
+    for number in regions sites locations contacts contact_assignments owners owner_members; do
+        api POST /exports "{\"entity\": \"$number\", \"format\": \"csv\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$number.csv"
+        staged=$(table 'len(rows)' "$work/back-$number.csv")
+        send "/imports/preview?entity=$number&file_name=$number.csv" "$work/back-$number.csv"
+        made="$status $(job_counts)"
+        api POST /exports "{\"entity\": \"$number\", \"format\": \"json\", \"own_values\": true, \"include_archived\": true, \"include_drafts\": true}"
+        cp "$work/body" "$work/back-$number.json"
+        send "/imports/preview?file_name=$number.json" "$work/back-$number.json" application/json
+        expect "pkg an export of every record of $number ($staged rows) is imported back as it is, as CSV and as JSON: every row finds its record by HID, unchanged" \
+            "$made $status $(job_counts)" \
+            "201 [\"previewed\", $staged, 0, 0, $staged, 0] 201 [\"previewed\", $staged, 0, 0, $staged, 0]"
+    done
+    api POST /exports '{"entity": "items", "format": "csv", "own_values": true, "include_drafts": true, "filter": "serial_number:glob:PKG0000G*", "sort": ["serial_number"]}'
+    cp "$work/body" "$work/back-placed.csv"
+    send "/imports/preview?entity=items&file_name=placed.csv" "$work/back-placed.csv"
+    expect "pkg and an export of these items with their own values has the location of each as its path and the reason for the owner outside the team, and nothing for the minor item, which has both from its switch; it is imported back unchanged" \
+        "$(table '[[r["serial_number"], r["location"].rsplit(" > ", 1)[-1], r["owner_exception_reason"]] for r in rows]' "$work/back-placed.csv") $status $(job_counts)" \
+        '[["PKG0000G001", "Room 801", "Feeds their door controllers"], ["PKG0000G002", "Room 902", ""], ["PKG0000G003", "Building 9", ""], ["PKG0000G004", "", ""], ["PKG0000G005", "Staging", ""], ["PKG0000G0P1", "", ""]] 201 ["previewed", 6, 0, 0, 6, 0]'
+}
+
+# What 0.5.0 added to the command line, on the examples: the tree of places, a location
+# with what it has in force, the regions, a site that is moved and moved back, and the
+# management report by site. client_commands runs this, while the examples are loaded.
+client_places() {
+    local code=0 wanted site room='Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102'
+
+    api GET '/geography/tree'
+    wanted="$(json '[d["totals"]["items"], d["totals"]["component_count"]]' | tr -d '[],') | $(json '[d["unplaced"]["items"], d["unplaced"]["component_count"]]' | tr -d '[],') | $(places "$room > Rack A1" | tr -d '[],')"
+    cli_run "$work/cli.tree" geography tree
+    expect "S24 hirdir geography tree prints the regions, the sites and the locations of the examples with the items and the components that GET /geography/tree counts: all of them, those that are nowhere, and those of the rack" \
+        "$code $(head -n 1 "$work/cli.tree" | xargs) | $(sed -n 's/^(all) *//p' "$work/cli.tree" | xargs) | $(sed -n 's/^(nowhere) *//p' "$work/cli.tree" | xargs) | $(sed -n 's/^ *Rack A1 *location *//p' "$work/cli.tree" | xargs)" \
+        "0 PLACE LEVEL ITEMS COMPONENT_COUNT | $wanted"
+    expect "S24 each place is beneath what it is in, and indented by how deep that is: Americas at the edge, and the rack six steps in" \
+        "$(grep -c '^Americas ' "$work/cli.tree") $(grep -c '^            Rack A1 ' "$work/cli.tree")" "1 1"
+    cli_run "$work/cli.tree" geography tree --root 'Americas > Central' --no-locations --include-drafts
+    expect "S24 hirdir geography tree --root --no-locations --include-drafts starts from one region and stops at its sites, the draft among them" \
+        "$code $(sed -n '2,4p' "$work/cli.tree" | awk '{print $1 ":" $2}' | xargs)" "0 Central:region Site-2:site Site-3:site"
+    cli_run "$work/cli.place" locations show "$room"
+    expect "S25 hirdir locations show takes a location by its path and prints what it has in force, each with the level it came from: the technical contact of the building, the shipping contact and the shipping address of the site, and the instructions of the region" \
+        "$code | $(sed -n 's/^technical: *//p' "$work/cli.place") | $(sed -n 's/^shipping: *//p' "$work/cli.place") | $(sed -n 's/^ship_address: *//p' "$work/cli.place") | $(sed -n 's/^ship_instructions: *//p' "$work/cli.place" | grep -c '(from Americas)$')" \
+        "0 | Lee Marchetti lee.marchetti@example.net +1 555 0102 (from Americas > Central > Site-2 > Building 1) | Sam Okafor sam.okafor@example.net +1 555 0110 (from Americas > Central > Site-2) | 100 Example Way, Dock B, Springfield, IL, 00000, US (from Americas > Central > Site-2) | 1"
+    cli_run "$work/cli.regions" regions list --sort name
+    expect "pkg hirdir regions list is a table of the three regions of the examples, each with its path" \
+        "$code $(head -n 1 "$work/cli.regions" | xargs) | $(tail -n +2 "$work/cli.regions" | sed -E 's/^[0-9a-f-]{36} +//; s/  +.*//' | paste -sd ';')" \
+        "0 HID PATH CODE RECORD_STATUS | Americas;Americas > Central;Americas > East"
+    cli_run "$work/cli-regions.csv" regions list --format csv
+    api POST /exports '{"entity": "regions", "format": "csv"}'
+    expect "pkg and as csv it is the file that POST /exports gives for regions" \
+        "$code $(sha256sum <"$work/cli-regions.csv")" "0 $(sha256sum <"$work/body")"
+
+    api GET '/sites?filter=code:eq:S1'
+    site=$(json 'd["items"][0]["hid"]')
+    cli_run "$work/cli.move" sites move 'Americas > East > Site-1' 'Americas > Central'
+    api GET "/sites/$site"
+    expect "S27 hirdir sites move gives a site another region, and says what its path is now" \
+        "$code $(cat "$work/cli.move" "$work/cli.err" | grep -c 'Americas > East > Site-1 is now Americas > Central > Site-1') $(json_field path)" \
+        "0 1 Americas > Central > Site-1"
+    api GET "/audit-events?record_hid=$site&limit=1"
+    wanted=$(json '[[e["via"], e["action"], [c["field"] for c in e["changes"]]] for e in d["items"]]')
+    cli_run "$work/cli.move" sites move "$site" 'Americas > East'
+    api GET "/sites/$site"
+    expect "S27 the move is one change of the site, made through the command line; moved back, by its HID, the site is where the examples have it" \
+        "$wanted $code $(json_field path)" '[["cli", "update", ["region_hid"]]] 0 Americas > East > Site-1'
+    cli_run "$work/cli.move" sites move 'Americas > East > Site-9' 'Americas > Central'
+    expect "pkg a site that there is not exits with 4, and nothing is moved" "$code" 4
+
+    api GET /reports/management
+    wanted=$(json 'd')
+    cli_run "$work/cli-management.json" report management --format json
+    cp "$work/cli-management.json" "$work/body"
+    expect "pkg hirdir report management with no --by, as json, is what GET /reports/management gives, which is by site" \
+        "$code $(json_field by) $(json 'd')" "0 site $wanted"
+    cli_run "$work/cli.management" report management
+    expect "pkg and on a terminal it is a table with a line for the one site that has items, by its path, one for the items that are nowhere, and one for all" \
+        "$code $(head -n 1 "$work/cli.management" | xargs) $(grep -c '^Americas > Central > Site-2 ' "$work/cli.management") $(grep -c '^(none) ' "$work/cli.management") $(grep -c '^(all) ' "$work/cli.management")" \
+        "0 SITE ITEMS COMPONENT_COUNT EST_VALUE ANNUAL_SUPPORT_COST 1 1 1"
+}
+
 # ---- a first file ---------------------------------------------------------------------------
 
 # The file a site is likely to have before anything else: host names and addresses, under
@@ -3568,12 +4108,14 @@ inventory() {
     local vendor c9300 c9500 owner first second filter long
 
     api GET /choices
-    expect "pkg the migrations loaded the default choices of all five lists, item_condition among them" \
-        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 catalog_function catalog_type item_condition replacement_reason state_reason"
+    expect "pkg the migrations loaded the default choices of all seven lists, contact_role and location_kind among them" \
+        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 catalog_function catalog_type contact_role item_condition location_kind replacement_reason state_reason"
     expect "pkg the replacement_reason list offers at least its five defaults" \
         "$(json 'sorted({"rma", "refresh", "project", "upgrade", "other"} - {c["value"] for c in d if c["list"] == "replacement_reason"})')" "[]"
     expect "pkg and the item_condition list at least its six, from untested to dead" \
         "$(json 'sorted({"untested", "good", "degraded", "suspect", "failed", "dead"} - {c["value"] for c in d if c["list"] == "item_condition"})')" "[]"
+    expect "pkg the contact_role list at least its five, and the location_kind list its six" \
+        "$(json 'sorted({"shipping", "technical", "federal", "operational", "escalation"} - {c["value"] for c in d if c["list"] == "contact_role"}) + sorted({"building", "floor", "room", "rack", "warehouse", "other"} - {c["value"] for c in d if c["list"] == "location_kind"})')" "[]"
     expect "pkg no choice is there twice ($(json 'len(d)') choices)" \
         "$(json 'len(d) - len({(c["list"], c["value"].casefold()) for c in d})')" 0
     keep choices

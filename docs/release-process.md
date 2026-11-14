@@ -95,7 +95,11 @@ what the release is:
   columns, indexes and foreign keys that the migration adds to the tables of the
   inventory, which must then be there, and no other. `migration-0006.sh` is the one to
   read first: for 0.4.1 it is the memberships of items that had left the team's hands,
-  which the upgrade ends, each with an event in the audit trail. Where a migration
+  which the upgrade ends, each with an event in the audit trail. For 0.5.0 it is
+  `migration-0007.sh`: the migration is to change no record and to write no event, so
+  the file makes what it could harm, an item that is with an owner outside the team
+  and choices of a site's own in the two lists that the migration loads, and then
+  holds the upgrade to what [install.md](install.md#from-042-to-050) says of it. Where a migration
   provides for something the previous release could not store, the file shows that it
   could not, writes it into the database, and says so: 0.4.0 refuses a choice in the
   list of conditions, which migration `0006` is written to leave alone when it finds
@@ -116,7 +120,8 @@ The test also makes the new version's migration fail, to see that the upgrade st
 names its backup, leaves the inventory as it was and can be undone. It does that in
 the database, so that the package tested is the one that was built, and reads from the
 package how. Where the new version creates a table, the table it creates last is put
-in its way. Where it creates none, as 0.4.1 creates none, a trigger refuses the new
+in its way, as `owner_members` is for 0.5.0. Where it creates none, as 0.4.1 creates
+none, a trigger refuses the new
 revision when the migration comes to write it down, which is the last thing a
 migration does, so everything else it does has been done and must be undone. Only a
 release with no migration at all has nothing that could fail: nothing writes a
