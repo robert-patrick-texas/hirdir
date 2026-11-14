@@ -17,7 +17,11 @@ describe("entities", () => {
       "vendors",
       "catalog_entries",
       "owners",
+      "networks",
       "items",
+      "device_groups",
+      "device_group_members",
+      "addresses",
     ]);
   });
 
@@ -26,6 +30,9 @@ describe("entities", () => {
     expect(isEntity("contracts")).toBe(false);
     expect(entityLabel("catalog_entries")).toBe("Catalog entries");
     expect(entityLabel("contracts")).toBe("contracts");
+    expect(isEntity("device_group_members")).toBe(true);
+    expect(entityLabel("device_group_members")).toBe("Members of device groups");
+    expect(entityLabel("addresses")).toBe("Addresses");
   });
 });
 
@@ -61,6 +68,14 @@ describe("guessEntity", () => {
     expect(guessEntity("catalog-entries.csv")).toBe("catalog_entries");
     expect(guessEntity("Catalog Entries (2).json")).toBe("catalog_entries");
     expect(guessEntity("hirdir-vendors-20261113T163125-0500.csv")).toBe("vendors");
+    expect(guessEntity("networks.csv")).toBe("networks");
+    expect(guessEntity("addresses.json")).toBe("addresses");
+  });
+
+  it("tells a file of groups from a file of their members", () => {
+    expect(guessEntity("device_groups.csv")).toBe("device_groups");
+    expect(guessEntity("device-group-members.csv")).toBe("device_group_members");
+    expect(guessEntity("hirdir-device_group_members.json")).toBe("device_group_members");
   });
 
   it("guesses nothing from a name that says nothing", () => {

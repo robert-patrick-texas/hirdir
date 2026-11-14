@@ -166,6 +166,7 @@ const PAGE_OF: Readonly<Record<string, string>> = {
   catalog_entries: "/catalog/",
   vendors: "/vendors/",
   owners: "/owners/",
+  device_groups: "/groups/",
 };
 
 /** The page of the record a row names, as a path of the app, where its kind has one. */

@@ -25,7 +25,10 @@ export interface GridColumn<T> {
   effective?: (row: T) => Effective | null | undefined;
   /** Show the cell as the link to its record. */
   link?: boolean;
-  /** For a choice: the values to offer in the filter. */
+  /**
+   * For a choice: the values to offer in the filter. For a boolean: what to call `true`
+   * and `false` there, when Yes and No would not say it.
+   */
   choices?: readonly Option[];
   width?: number;
   hide?: boolean;
@@ -91,6 +94,7 @@ function filterOf<T>(column: GridColumn<T>): Pick<ColDef<T>, "filter" | "filterP
         ...BLANKS,
       ]);
     case "mac":
+    case "address":
       return text(["contains", "equals", "notEqual", "startsWith", ...BLANKS]);
     case "number":
     case "integer":
@@ -121,10 +125,13 @@ function filterOf<T>(column: GridColumn<T>): Pick<ColDef<T>, "filter" | "filterP
         filter: { component: ChoiceFilter },
         filterParams: {
           ...BUTTONS,
-          options: [
-            { value: "true", label: "Yes" },
-            { value: "false", label: "No" },
-          ] satisfies Option[],
+          // Yes and No, unless the column has its own words for true and for false.
+          options:
+            column.choices ??
+            ([
+              { value: "true", label: "Yes" },
+              { value: "false", label: "No" },
+            ] satisfies Option[]),
         },
       };
     default:

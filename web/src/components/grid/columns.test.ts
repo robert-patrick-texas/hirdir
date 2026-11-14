@@ -34,6 +34,17 @@ const COLUMNS: GridColumn<Row>[] = [
   { id: "online", header: "Online", kind: "boolean", field: "expected_online", value: () => null },
   { id: "tags", header: "Tags", kind: "tags", value: () => null },
   { id: "aliases", header: "Also known as", kind: "text", field: null, value: () => null },
+  {
+    id: "is_major",
+    header: "Major or minor",
+    kind: "boolean",
+    value: () => null,
+    choices: [
+      { value: "true", label: "Major" },
+      { value: "false", label: "Minor" },
+    ],
+  },
+  { id: "address", header: "Addresses", kind: "address", sortField: null, value: () => null },
 ];
 
 const CONTEXT = { href: () => "/items/x", open: () => {} };
@@ -128,6 +139,31 @@ describe("columnDefs", () => {
     expect(optionKeys("kind")).toEqual(["equals", "notEqual", "blank", "notBlank"]);
   });
 
+  it("calls true and false by the column's own words, when it has them", () => {
+    expect((def("is_major").filterParams as { options: unknown }).options).toEqual([
+      { value: "true", label: "Major" },
+      { value: "false", label: "Minor" },
+    ]);
+    expect((def("online").filterParams as { options: unknown }).options).toEqual([
+      { value: "true", label: "Yes" },
+      { value: "false", label: "No" },
+    ]);
+  });
+
+  it("matches an address whole or in part, and never by a pattern", () => {
+    expect(def("address").filter).toBe("agTextColumnFilter");
+    expect(optionKeys("address")).toEqual([
+      "contains",
+      "equals",
+      "notEqual",
+      "startsWith",
+      "blank",
+      "notBlank",
+    ]);
+    // An item may have several: the server filters by them and does not sort by them.
+    expect(def("address").sortable).toBe(false);
+  });
+
   it("has every filter applied with a button, never on each key", () => {
     for (const column of defs()) {
       if (column.filter === false) continue;
@@ -192,6 +228,8 @@ describe("columnDefs", () => {
     expect(laid.map((column) => column.colId)).toEqual([
       "tags",
       "aliases",
+      "is_major",
+      "address",
       "name",
       "effective.est_value",
       "ldos",
@@ -200,7 +238,7 @@ describe("columnDefs", () => {
       "online",
     ]);
     expect(laid[0]).toMatchObject({ initialWidth: 90, initialHide: false });
-    expect(laid[2]).toMatchObject({ initialHide: true, initialSort: "asc", initialSortIndex: 1 });
+    expect(laid[4]).toMatchObject({ initialHide: true, initialSort: "asc", initialSortIndex: 1 });
     expect(laid.find((column) => column.colId === "ldos")).toMatchObject({
       initialSort: "desc",
       initialSortIndex: 0,

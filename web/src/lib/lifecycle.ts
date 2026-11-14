@@ -65,3 +65,48 @@ export function onlineText(expected: boolean | null | undefined): string {
   if (expected === false) return "Expected offline";
   return "";
 }
+
+/** The standing of an item: its state, disposition and intent in force, and whose they are. */
+export interface Standing {
+  state: string | null;
+  disposition: string | null;
+  online: boolean | null;
+  /** True when the three are those of an item above it, and not its own. */
+  inherited: boolean;
+  /** The item the three came from, when they are inherited. */
+  sourceHid: string | null;
+}
+
+type InForce = Pick<
+  Schemas["ItemEffective"],
+  "lifecycle_state" | "disposition" | "expected_online"
+>;
+
+/**
+ * The standing in force for an item, as the server resolved it. A minor item with no
+ * state of its own has the three of the nearest item above it that has a state, taken
+ * together; nothing is worked out here.
+ */
+export function standingOf(item: { effective: InForce }): Standing {
+  const { lifecycle_state: state, disposition, expected_online: online } = item.effective;
+  const inherited = state.source === "parent_item";
+  return {
+    state: typeof state.value === "string" ? state.value : null,
+    disposition: typeof disposition.value === "string" ? disposition.value : null,
+    online: typeof online.value === "boolean" ? online.value : null,
+    inherited,
+    sourceHid: inherited ? state.source_hid : null,
+  };
+}
+
+/**
+ * True for a minor item that has a state of its own: it can be returned to the standing
+ * of the item it is in, by a transition to no state. The state of a major item is never
+ * cleared.
+ */
+export function mayInheritAgain(item: {
+  is_major: boolean;
+  lifecycle_state: string | null;
+}): boolean {
+  return !item.is_major && item.lifecycle_state !== null;
+}

@@ -39,6 +39,12 @@ export function Shell() {
                   <NavLink to="/items">Items</NavLink>
                 </li>
                 <li>
+                  <NavLink to="/groups">Groups</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/addresses">Addresses</NavLink>
+                </li>
+                <li>
                   <NavLink to="/catalog">Catalog</NavLink>
                 </li>
                 <li>
@@ -46,6 +52,9 @@ export function Shell() {
                 </li>
                 <li>
                   <NavLink to="/owners">Owners</NavLink>
+                </li>
+                <li>
+                  <NavLink to="/reports">Reports</NavLink>
                 </li>
                 <li>
                   <NavLink to="/import">Import</NavLink>

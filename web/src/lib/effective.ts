@@ -6,11 +6,13 @@ import type { Schemas } from "../api/client";
 
 export type Effective = Schemas["EffectiveValue"];
 export type Source = Effective["source"];
+/** A record in force: the value is its HID, and `label` is what people call it. */
+export type EffectiveRecord = Schemas["EffectiveReference"];
 
 const FROM: Readonly<Record<Source, string>> = {
   own: "",
   catalog: "the catalog entry",
-  parent_item: "the parent item",
+  parent_item: "the item it is in",
   location: "the location",
   site: "the site",
   region: "the region",
@@ -23,9 +25,24 @@ export function isInherited(effective: Effective | null | undefined): boolean {
   return Boolean(effective) && effective?.source !== "own" && effective?.source !== "none";
 }
 
-/** The value in force as text. Blank when there is none. */
+/**
+ * The value in force as text. Blank when there is none. A decimal and a date are shown
+ * as the server sent them, and a truth value, such as the intent, as Yes or No.
+ */
 export function effectiveText(effective: Effective | null | undefined): string {
-  return effective?.value ?? "";
+  const value = effective?.value ?? null;
+  if (value === null) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return value;
+}
+
+/**
+ * A record in force as text: what people call it, and its HID only when the server sent
+ * no name for it. Blank when there is none.
+ */
+export function effectiveLabel(effective: EffectiveRecord | null | undefined): string {
+  if (!effective || effective.value === null) return "";
+  return effective.label || String(effective.value);
 }
 
 /** Where a value in force came from, as a short label for a table. */
@@ -54,5 +71,6 @@ export function inheritHint(
   if (!inherited || inherited.source === "none" || inherited.value === null) {
     return "Blank, and nothing to inherit.";
   }
-  return `Blank inherits ${inherited.value} from ${FROM[inherited.source] || inherited.source}.`;
+  const from = FROM[inherited.source] || inherited.source;
+  return `Blank inherits ${effectiveText(inherited)} from ${from}.`;
 }

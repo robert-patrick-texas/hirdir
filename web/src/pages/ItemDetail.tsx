@@ -2,22 +2,34 @@ import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { Addresses } from "../components/Addresses";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField } from "../components/Field";
+import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
-import { effectiveText, inheritHint, isInherited, sourceHint, sourceLabel } from "../lib/effective";
+import {
+  effectiveLabel,
+  effectiveText,
+  inheritHint,
+  isInherited,
+  sourceHint,
+  sourceLabel,
+} from "../lib/effective";
 import { formatMac, formatValue, itemName } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   DISPOSITIONS,
   dispositionsIn,
   mayBeOnline,
+  mayInheritAgain,
   nextStates,
   onlineText,
   type Rule,
+  standingOf,
+  stateNames,
 } from "../lib/lifecycle";
 import {
   useChoices,
@@ -41,11 +53,19 @@ import { allows } from "../lib/roles";
 
 type Item = Schemas["ItemOut"];
 type Choice = Schemas["ChoiceOut"];
-type Inherited = keyof Item["effective"];
+/** The fields an item inherits from its catalog entry. */
+type Inherited =
+  | "est_value"
+  | "support_weight"
+  | "annual_support_cost"
+  | "end_of_sale"
+  | "end_of_sw_support"
+  | "end_of_hw_support"
+  | "ldos";
 
 const HISTORY_PAGE = 50;
 
-/** The fields an item inherits from its catalog entry, as people read them. */
+/** Those fields as people read them. */
 const INHERITED: ReadonlyArray<[field: Inherited, label: string]> = [
   ["est_value", "Estimated value"],
   ["support_weight", "Support weight"],
@@ -71,6 +91,7 @@ export function ItemDetail() {
   const choices = useChoices();
   const rules = useRules();
   const [done, setDone] = useState("");
+  const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   useTitle(item.data ? itemName(item.data) : "Item");
 
   function changed(text: string) {
@@ -97,6 +118,26 @@ export function ItemDetail() {
       {record && (
         <>
           <Facts item={record} choices={choices.data} />
+          <Place
+            key={`place ${record.hid} ${record.row_version}`}
+            item={record}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+            onReload={item.reload}
+          />
+          <MinorItems
+            item={record}
+            states={states}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+          />
+          <Memberships item={record} />
+          <Addresses
+            key={`addresses ${record.hid}`}
+            holder={{ item_hid: record.hid }}
+            whose={itemName(record)}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+          />
           <ValuesInForce item={record} />
           <Lifecycle
             key={`standing ${record.hid} ${record.row_version}`}
@@ -116,6 +157,14 @@ export function ItemDetail() {
               onReload={item.reload}
             />
           )}
+          <Replacement
+            key={`replacement ${record.hid} ${record.row_version}`}
+            item={record}
+            choices={choices.data}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            onChanged={changed}
+            onReload={item.reload}
+          />
           {mayEdit && (
             <RecordStatus
               key={`status ${record.hid} ${record.row_version}`}
@@ -141,7 +190,10 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | undefined }) {
-  const { catalog, owner } = item;
+  const { catalog } = item;
+  // The owner in force: a minor item with none of its own has the owner of the item it is in.
+  const owner = item.effective.owner_hid;
+  const ownerInherited = isInherited(owner);
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -177,7 +229,25 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
               .join(" · ")}
         </Fact>
         <Fact label="Owner">
-          {owner && <Link to={`/owners/${encodeURIComponent(owner.hid)}`}>{owner.label}</Link>}
+          {typeof owner.value === "string" && (
+            <span data-testid="owner" data-source={owner.source}>
+              <Link to={`/owners/${encodeURIComponent(owner.value)}`}>{effectiveLabel(owner)}</Link>
+              {ownerInherited && (
+                <span className="inherited">
+                  {" "}
+                  · {sourceLabel(owner)}
+                  {owner.source_hid && (
+                    <>
+                      {": "}
+                      <Link to={`/items/${encodeURIComponent(owner.source_hid)}`}>
+                        the item that has it
+                      </Link>
+                    </>
+                  )}
+                </span>
+              )}
+            </span>
+          )}
         </Fact>
         <Fact label="Quantity">{String(item.quantity)}</Fact>
         <Fact label="Tags">{item.tags.join(", ")}</Fact>
@@ -262,8 +332,10 @@ interface LifecycleProps {
 /** The item's standing, and the two ways to change it: a move, and an edit within a state. */
 function Lifecycle(props: LifecycleProps) {
   const { item, rules, choices, mayEdit } = props;
+  const standing = standingOf(item);
+  const lighter = standing.inherited ? "inherited" : undefined;
   const allowed = dispositionsIn(rules, item.lifecycle_state, item.disposition);
-  const standing = useMemo<FieldSpec[]>(
+  const withinState = useMemo<FieldSpec[]>(
     () => [
       {
         name: "disposition",
@@ -285,13 +357,25 @@ function Lifecycle(props: LifecycleProps) {
   return (
     <section aria-labelledby="lifecycle">
       <h2 id="lifecycle">Lifecycle</h2>
-      <dl className="facts" data-testid="standing">
+      {/* The standing in force. For a minor item with no state of its own it is that of
+          the item above it, shown lighter, and the page says whose it is. */}
+      <dl
+        className="facts"
+        data-testid="standing"
+        data-source={item.effective.lifecycle_state.source}
+      >
         <dt>State</dt>
-        <dd data-testid="state">{item.lifecycle_state ?? <Dash />}</dd>
+        <dd data-testid="state" className={lighter}>
+          {standing.state ?? <Dash />}
+        </dd>
         <dt>Disposition</dt>
-        <dd data-testid="disposition">{item.disposition ?? <Dash />}</dd>
+        <dd data-testid="disposition" className={lighter}>
+          {standing.disposition ?? <Dash />}
+        </dd>
         <dt>Intent</dt>
-        <dd data-testid="intent">{onlineText(item.expected_online) || <Dash />}</dd>
+        <dd data-testid="intent" className={lighter}>
+          {onlineText(standing.online) || <Dash />}
+        </dd>
         <dt>Reason</dt>
         <dd>{choiceLabel(choices, "state_reason", item.state_reason) || <Dash />}</dd>
         <dt>Since</dt>
@@ -299,6 +383,27 @@ function Lifecycle(props: LifecycleProps) {
           <Time at={item.state_changed_at} />
         </dd>
       </dl>
+      {!item.is_major && !item.lifecycle_state && (
+        <p data-testid="standing-inherited">
+          {standing.inherited && standing.sourceHid ? (
+            <>
+              This minor item has no state of its own. Its state, disposition and intent are those
+              of{" "}
+              <Link to={`/items/${encodeURIComponent(standing.sourceHid)}`}>
+                {standing.sourceHid === item.parent?.hid
+                  ? itemName(item.parent)
+                  : "the nearest item above it that has a state"}
+              </Link>
+              , taken together, and follow it. Moving it to a state gives it a standing of its own.
+            </>
+          ) : (
+            "This minor item has no state of its own, and no item above it has one either."
+          )}
+        </p>
+      )}
+      {mayEdit && mayInheritAgain(item) && (
+        <InheritAgain item={item} onChanged={props.onChanged} onReload={props.onReload} />
+      )}
       {mayEdit && <Transition {...props} />}
       {mayEdit && item.lifecycle_state && (
         <section aria-labelledby="standing-form" className="panel">
@@ -307,7 +412,7 @@ function Lifecycle(props: LifecycleProps) {
             Within a state this is an ordinary change. {hint} The state itself is changed by a move.
           </p>
           <EditForm<Item, Schemas["ItemPatch"]>
-            specs={standing}
+            specs={withinState}
             record={item}
             save={(body) =>
               api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
@@ -318,6 +423,46 @@ function Lifecycle(props: LifecycleProps) {
           />
         </section>
       )}
+    </section>
+  );
+}
+
+/**
+ * Return a minor item that has a state of its own to the standing of the item it is in.
+ * It is a move to no state, recorded like any other.
+ */
+function InheritAgain({
+  item,
+  onChanged,
+  onReload,
+}: Pick<LifecycleProps, "item" | "onChanged" | "onReload">) {
+  const action = useAction();
+  const above = item.parent ? itemName(item.parent) : "the item it is in";
+
+  async function inherit() {
+    const result = await action.run(() =>
+      api.request("post", "/api/v1/items/{hid}/transition", {
+        path: { hid: item.hid },
+        body: { row_version: item.row_version, to: null },
+      }),
+    );
+    if (result.ok) onChanged(`The item has the standing of ${above} again.`);
+  }
+
+  return (
+    <section aria-labelledby="inherit-again" className="panel">
+      <h3 id="inherit-again">A state of its own</h3>
+      <Problem error={action.error} onReload={onReload} />
+      <p>
+        This minor item has a state of its own, so it no longer follows {above}. Returning it gives
+        up its own state, disposition and intent together. The move is in the history like any
+        other.
+      </p>
+      <p className="actions">
+        <button type="button" onClick={inherit} disabled={action.busy}>
+          Return to the standing of {above}
+        </button>
+      </p>
     </section>
   );
 }
@@ -360,7 +505,13 @@ function Transition({ item, rules, choices, mayForce, onChanged, onReload }: Lif
           {mayForce ? " An Admin may force a move." : ""}
         </p>
       ) : (
-        !item.lifecycle_state && <p className="hint">An item with no state may be given any.</p>
+        !item.lifecycle_state && (
+          <p className="hint">
+            {item.is_major
+              ? "An item with no state may be given any."
+              : "A minor item with no state of its own may be given any."}
+          </p>
+        )
       )}
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={known} onReload={onReload} />
@@ -467,6 +618,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const tags = useTags();
   const specs = useMemo<FieldSpec[]>(() => {
     const { catalog, owner } = item;
+    const minor = !item.is_major;
     return [
       {
         name: "catalog_entry_hid",
@@ -502,7 +654,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         name: "owner_hid",
         label: "Owner",
         kind: "choice",
-        blank: "No owner",
+        blank: minor ? "The owner of the item it is in" : "No owner",
         options: withCurrent(owners.data, owner && { value: owner.hid, label: owner.label }),
       },
       {
@@ -547,6 +699,14 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
 
   // Under each field that inherits: what a blank shows, or that it is set here.
   const hints: Record<string, string> = {};
+  if (!item.is_major) {
+    const inForce = item.effective.owner_hid;
+    hints.owner_hid = item.owner_hid
+      ? "Set here. Choose the blank to have the owner of the item it is in again."
+      : inForce.value === null
+        ? "Blank, and no item above it has an owner."
+        : `Blank has ${effectiveLabel(inForce)}, the owner of the item it is in.`;
+  }
   for (const [field] of INHERITED) {
     hints[field] = inheritHint(
       item[field],

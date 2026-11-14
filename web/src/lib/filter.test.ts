@@ -175,4 +175,10 @@ describe("KINDS", () => {
     expect(KINDS.text).toContain("regex");
     expect(KINDS.number).not.toContain("regex");
   });
+
+  it("matches an address as it matches a MAC address: whole, or a part of it", () => {
+    expect([...KINDS.address]).toEqual([...KINDS.mac]);
+    expect(KINDS.address).toContain("prefix");
+    expect(KINDS.address).not.toContain("glob");
+  });
 });

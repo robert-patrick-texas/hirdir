@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   dispositionsIn,
   mayBeOnline,
+  mayInheritAgain,
   nextStates,
   onlineText,
   type Rule,
   ruleOf,
+  standingOf,
   stateNames,
 } from "./lifecycle";
 
@@ -136,5 +138,54 @@ describe("intent", () => {
     expect(onlineText(true)).toBe("Expected online");
     expect(onlineText(false)).toBe("Expected offline");
     expect(onlineText(null)).toBe("");
+  });
+});
+
+describe("the standing of a minor item", () => {
+  const SWITCH = "0193a1f4-0000-7000-8000-0000000000a1";
+  const SUPPLY = "0193a1f4-0000-7000-8000-0000000000a2";
+
+  it("is that of the item above it when it has no state of its own, taken together", () => {
+    const standing = standingOf({
+      effective: {
+        lifecycle_state: { value: "Prod", source: "parent_item", source_hid: SWITCH },
+        disposition: { value: "Production", source: "parent_item", source_hid: SWITCH },
+        expected_online: { value: true, source: "parent_item", source_hid: SWITCH },
+      },
+    });
+    expect(standing).toEqual({
+      state: "Prod",
+      disposition: "Production",
+      online: true,
+      inherited: true,
+      sourceHid: SWITCH,
+    });
+  });
+
+  it("is its own once it has a state, as for the power supply that failed", () => {
+    const standing = standingOf({
+      effective: {
+        lifecycle_state: { value: "Pending-Removal", source: "own", source_hid: SUPPLY },
+        disposition: { value: "Production", source: "own", source_hid: SUPPLY },
+        expected_online: { value: false, source: "own", source_hid: SUPPLY },
+      },
+    });
+    expect(standing).toMatchObject({ state: "Pending-Removal", online: false, inherited: false });
+    expect(standing.sourceHid).toBeNull();
+  });
+
+  it("is blank throughout when nothing above has a state either", () => {
+    const none = { value: null, source: "none" as const, source_hid: null };
+    expect(
+      standingOf({
+        effective: { lifecycle_state: none, disposition: none, expected_online: none },
+      }),
+    ).toEqual({ state: null, disposition: null, online: null, inherited: false, sourceHid: null });
+  });
+
+  it("can be returned to inheriting only by a minor item with a state of its own", () => {
+    expect(mayInheritAgain({ is_major: false, lifecycle_state: "Down" })).toBe(true);
+    expect(mayInheritAgain({ is_major: false, lifecycle_state: null })).toBe(false);
+    expect(mayInheritAgain({ is_major: true, lifecycle_state: "Prod" })).toBe(false);
   });
 });

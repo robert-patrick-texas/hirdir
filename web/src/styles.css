@@ -992,3 +992,97 @@ input[type="file"] {
     visibility: visible;
   }
 }
+
+/* --- structure: groups, addresses, reports ---------------------------------------- */
+
+/* The headline totals: a row of numbers, each under its name. */
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.totals > div {
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.totals dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.totals dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+caption {
+  padding: 0.3rem 0;
+  color: var(--muted);
+  text-align: left;
+}
+
+/* Something the reader should know before going on, which is not a refusal. */
+.warning {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.8rem;
+  background: var(--warn-surface);
+  border: 1px solid var(--warn);
+  border-left-width: 4px;
+  border-radius: 4px;
+}
+
+/* A badge that only names something, and warns of nothing. */
+.badge-plain {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+/* The items a search found, each a button to choose it. */
+.pick-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pick-results button {
+  text-align: left;
+}
+
+fieldset.plain {
+  max-width: none;
+  margin: 0;
+  padding: 0.6rem 0.9rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+fieldset.plain legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+input[type="text"].short {
+  width: 6rem;
+}
+
+td select {
+  width: auto;
+}
+
+.plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

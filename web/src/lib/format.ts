@@ -144,6 +144,16 @@ export function momentIn(
   return new Date(at);
 }
 
+/**
+ * Today's date in the application's time zone, as `2026-01-31`: the day a membership
+ * ends or a replacement is made when nobody says otherwise, as the server has it.
+ */
+export function today(zone: string = appZone(), now: Date = new Date()): string {
+  const part: Record<string, string> = {};
+  for (const { type, value } of formatter(zone, SHORT).formatToParts(now)) part[type] = value;
+  return `${part.year}-${part.month}-${part.day}`;
+}
+
 /** "1 second", "2 seconds". */
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;

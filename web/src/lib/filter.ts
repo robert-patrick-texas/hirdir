@@ -40,6 +40,7 @@ export type Kind =
   | "choice"
   | "reference"
   | "mac"
+  | "address"
   | "number"
   | "integer"
   | "date"
@@ -57,6 +58,7 @@ export const KINDS: Readonly<Record<Kind, readonly Operator[]>> = {
   choice: COMPARING,
   reference: COMPARING,
   mac: [...COMPARING, "contains", "prefix"],
+  address: [...COMPARING, "contains", "prefix"],
   number: [...COMPARING, ...ORDERING],
   integer: [...COMPARING, ...ORDERING],
   date: [...COMPARING, ...ORDERING],

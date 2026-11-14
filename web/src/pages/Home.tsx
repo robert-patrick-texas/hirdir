@@ -1,11 +1,49 @@
 import { Link } from "react-router";
+import { api } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Problem } from "../components/Problem";
-import { useAction, useTitle } from "../lib/hooks";
+import { HeadlineTotals } from "../components/Totals";
+import { useAction, useLoad, useTitle } from "../lib/hooks";
+import { useSettings } from "../lib/lists";
 import { allows, roleLabel } from "../lib/roles";
+import { settingText } from "../lib/settings";
+import { settingList } from "../lib/summary";
 
-/** The first page: where everything is, and the reader's own account. */
+/**
+ * The headline totals of the inventory as a list shows it by default: the components
+ * beside the managed nodes, the weight, the value and the cost. The server counts them.
+ */
+function Headline() {
+  const summary = useLoad("home-summary", (signal) =>
+    api.request("get", "/api/v1/reports/summary", { signal }),
+  );
+  const settings = useSettings();
+  return (
+    <section aria-labelledby="headline">
+      <h2 id="headline">The inventory in numbers</h2>
+      <Problem error={summary.error} />
+      {summary.loading && !summary.data && (
+        <p role="status" className="muted loading-late">
+          Counting…
+        </p>
+      )}
+      {summary.data && (
+        <HeadlineTotals
+          totals={summary.data.totals}
+          countKinds={settingList(settings.data, "count_kinds")}
+          currency={settingText(settings.data?.find((one) => one.key === "currency")?.value)}
+        />
+      )}
+      <p>
+        <Link to="/reports">The summary</Link>, by vendor, owner, state and more, for any filter of
+        the items. Drafts, retired records and archived items are left out here.
+      </p>
+    </section>
+  );
+}
+
+/** The first page: the headline totals, where everything is, and the reader's own account. */
 export function Home() {
   useTitle("Home");
   const { user, signOut, signOutEverywhere } = useAuth();
@@ -25,39 +63,54 @@ export function Home() {
           <p>Ask an administrator of hirdir to grant you a role, then reload this page.</p>
         </section>
       ) : (
-        <section aria-labelledby="inventory">
-          <h2 id="inventory">Inventory</h2>
-          <ul>
-            <li>
-              <Link to="/items">Items</Link>: everything that is tracked, in one grid
-            </li>
-            <li>
-              <Link to="/catalog">Catalog</Link>: what is true of every item of one model
-            </li>
-            <li>
-              <Link to="/vendors">Vendors</Link> and <Link to="/owners">owners</Link>
-            </li>
-            <li>
-              <Link to="/admin/tags">Tags</Link>, <Link to="/admin/choices">choices</Link> and the{" "}
-              <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
-            </li>
-            <li>
-              <Link to="/import">Import</Link>: load a CSV or JSON file, with a preview first
-            </li>
-            <li>
-              <Link to="/audit">The audit trail</Link>
-            </li>
-            {allows(user.role, "admin") && (
+        <>
+          <Headline />
+          <section aria-labelledby="inventory">
+            <h2 id="inventory">Inventory</h2>
+            <ul>
               <li>
-                <Link to="/admin/users">Users, groups and roles</Link>, and the{" "}
-                <Link to="/admin/settings">settings</Link>
+                <Link to="/items">Items</Link>: everything that is tracked, in one grid
               </li>
-            )}
-            <li>
-              <Link to="/about">What is running</Link>
-            </li>
-          </ul>
-        </section>
+              <li>
+                <Link to="/groups">Groups</Link>: stacks, clusters and controller domains, with
+                their members
+              </li>
+              <li>
+                <Link to="/addresses">Addresses</Link> and the <Link to="/networks">networks</Link>{" "}
+                they are under
+              </li>
+              <li>
+                <Link to="/catalog">Catalog</Link>: what is true of every item of one model
+              </li>
+              <li>
+                <Link to="/vendors">Vendors</Link> and <Link to="/owners">owners</Link>
+              </li>
+              <li>
+                <Link to="/reports">Reports</Link>: the summary, and the{" "}
+                <Link to="/reports/duplicates">addresses held more than once</Link>
+              </li>
+              <li>
+                <Link to="/admin/tags">Tags</Link>, <Link to="/admin/choices">choices</Link> and the{" "}
+                <Link to="/admin/lifecycle-rules">lifecycle rules</Link>
+              </li>
+              <li>
+                <Link to="/import">Import</Link>: load a CSV or JSON file, with a preview first
+              </li>
+              <li>
+                <Link to="/audit">The audit trail</Link>
+              </li>
+              {allows(user.role, "admin") && (
+                <li>
+                  <Link to="/admin/users">Users, groups and roles</Link>, and the{" "}
+                  <Link to="/admin/settings">settings</Link>
+                </li>
+              )}
+              <li>
+                <Link to="/about">What is running</Link>
+              </li>
+            </ul>
+          </section>
+        </>
       )}
 
       <section aria-labelledby="account">

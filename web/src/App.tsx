@@ -13,12 +13,15 @@ const pages = {
   audit: () => import("./pages/Audit"),
   catalog: () => import("./pages/Catalog"),
   choices: () => import("./pages/Choices"),
+  deviceGroups: () => import("./pages/DeviceGroups"),
   groups: () => import("./pages/Groups"),
   import: () => import("./pages/Import"),
   itemDetail: () => import("./pages/ItemDetail"),
   items: () => import("./pages/Items"),
   lifecycleRules: () => import("./pages/LifecycleRules"),
+  networks: () => import("./pages/Networks"),
   owners: () => import("./pages/Owners"),
+  reports: () => import("./pages/Reports"),
   roles: () => import("./pages/Roles"),
   settings: () => import("./pages/Settings"),
   tags: () => import("./pages/Tags"),
@@ -27,12 +30,20 @@ const pages = {
   vendors: () => import("./pages/Vendors"),
 };
 
+const AllAddresses = lazy(() => pages.networks().then((page) => ({ default: page.AllAddresses })));
 const Audit = lazy(() => pages.audit().then((page) => ({ default: page.Audit })));
 const Catalog = lazy(() => pages.catalog().then((page) => ({ default: page.Catalog })));
 const CatalogEntryDetail = lazy(() =>
   pages.catalog().then((page) => ({ default: page.CatalogEntryDetail })),
 );
 const Choices = lazy(() => pages.choices().then((page) => ({ default: page.Choices })));
+const DeviceGroupDetail = lazy(() =>
+  pages.deviceGroups().then((page) => ({ default: page.DeviceGroupDetail })),
+);
+const DeviceGroups = lazy(() =>
+  pages.deviceGroups().then((page) => ({ default: page.DeviceGroups })),
+);
+const Duplicates = lazy(() => pages.reports().then((page) => ({ default: page.Duplicates })));
 const GroupDetail = lazy(() => pages.groups().then((page) => ({ default: page.GroupDetail })));
 const Groups = lazy(() => pages.groups().then((page) => ({ default: page.Groups })));
 const Import = lazy(() => pages.import().then((page) => ({ default: page.Import })));
@@ -41,9 +52,11 @@ const Items = lazy(() => pages.items().then((page) => ({ default: page.Items }))
 const LifecycleRules = lazy(() =>
   pages.lifecycleRules().then((page) => ({ default: page.LifecycleRules })),
 );
+const Networks = lazy(() => pages.networks().then((page) => ({ default: page.Networks })));
 const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
 const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
 const Roles = lazy(() => pages.roles().then((page) => ({ default: page.Roles })));
+const Summary = lazy(() => pages.reports().then((page) => ({ default: page.Summary })));
 const Settings = lazy(() => pages.settings().then((page) => ({ default: page.Settings })));
 const Tags = lazy(() => pages.tags().then((page) => ({ default: page.Tags })));
 const UserDetail = lazy(() => pages.userDetail().then((page) => ({ default: page.UserDetail })));
@@ -102,6 +115,54 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <ItemDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="groups"
+              element={
+                <RequireRole needs="viewer">
+                  <DeviceGroups />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="groups/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <DeviceGroupDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="addresses"
+              element={
+                <RequireRole needs="viewer">
+                  <AllAddresses />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="networks"
+              element={
+                <RequireRole needs="viewer">
+                  <Networks />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <RequireRole needs="viewer">
+                  <Summary />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/duplicates"
+              element={
+                <RequireRole needs="viewer">
+                  <Duplicates />
                 </RequireRole>
               }
             />

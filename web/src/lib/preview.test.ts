@@ -226,10 +226,13 @@ describe("recordPath", () => {
     expect(recordPath("catalog_entries", "c-1")).toBe("/catalog/c-1");
     expect(recordPath("vendors", "v 1")).toBe("/vendors/v%201");
     expect(recordPath("owners", "o-1")).toBe("/owners/o-1");
+    expect(recordPath("device_groups", "g-1")).toBe("/groups/g-1");
   });
 
   it("is nothing for a tag, and for a row that has no record yet", () => {
     expect(recordPath("tags", "t-1")).toBeNull();
+    expect(recordPath("addresses", "a-1")).toBeNull();
+    expect(recordPath("device_group_members", "m-1")).toBeNull();
     expect(recordPath("items", null)).toBeNull();
   });
 });

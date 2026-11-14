@@ -1,0 +1,384 @@
+// The columns of the item grid, and which field of the server each one filters and
+// sorts by. They are kept apart from the page so that those choices can be tested.
+
+import type { Schemas } from "../../api/client";
+import { addressList, networkLabels, primaryAddress } from "../../lib/addresses";
+import { effectiveLabel, effectiveText } from "../../lib/effective";
+import { formatMac, formatTime, itemName } from "../../lib/format";
+import { GROUP_TYPES, groupTypeLabel } from "../../lib/groups";
+import { DISPOSITIONS } from "../../lib/lifecycle";
+import {
+  CATALOG_KINDS,
+  choiceFilterOptions,
+  choiceLabel,
+  RECORD_STATUSES,
+} from "../../lib/options";
+import type { Option } from "../../lib/patch";
+import type { GridColumn } from "./columns";
+
+type Item = Schemas["ItemOut"];
+type Choice = Schemas["ChoiceOut"];
+
+type FromCatalog =
+  | "est_value"
+  | "support_weight"
+  | "annual_support_cost"
+  | "end_of_sale"
+  | "end_of_sw_support"
+  | "end_of_hw_support"
+  | "ldos";
+
+const INHERITED: ReadonlyArray<[field: FromCatalog, header: string, shown: boolean]> = [
+  ["est_value", "Estimated value", true],
+  ["support_weight", "Support weight", false],
+  ["annual_support_cost", "Annual support cost", false],
+  ["end_of_sale", "End of sale", false],
+  ["end_of_sw_support", "End of software support", false],
+  ["end_of_hw_support", "End of hardware support", false],
+  ["ldos", "LDoS", true],
+];
+const AMOUNTS = ["est_value", "support_weight", "annual_support_cost"];
+const DAYS: ReadonlyArray<[field: keyof Item, header: string]> = [
+  ["procured_on", "Procured"],
+  ["delivered_on", "Delivered"],
+  ["in_service_on", "In service"],
+  ["warranty_start", "Warranty start"],
+  ["warranty_end", "Warranty end"],
+];
+
+const MAJOR_OR_MINOR: readonly Option[] = [
+  { value: "true", label: "Major" },
+  { value: "false", label: "Minor" },
+];
+
+/** The types of the groups an item is a current member of, each once. */
+function groupTypes(item: Item): string {
+  return [...new Set(item.groups.map((group) => groupTypeLabel(group.type)))].join(", ");
+}
+
+/**
+ * The columns of the item grid. Most are there to be shown when wanted.
+ *
+ * The state, the disposition, the intent and the owner are the ones in force: a minor
+ * item with none of its own shows those of the item it is in, in the lighter style of an
+ * inherited value, and each of these columns filters and sorts by the value in force
+ * too, so that a filter keeps the rows whose cell shows what was asked for. The item's
+ * own state is `lifecycle_state` in the filter box.
+ *
+ * An item may be in several groups and have several addresses. The columns that show
+ * them are filtered by any of them, and the server does not sort by them.
+ */
+export function itemColumns(
+  choices: readonly Choice[] | undefined,
+  states: readonly string[],
+): GridColumn<Item>[] {
+  const named = (list: readonly string[]): Option[] =>
+    list.map((value) => ({ value, label: value }));
+  return [
+    { id: "name", header: "Name", kind: "text", value: itemName, link: true, width: 220 },
+    {
+      id: "hostname",
+      header: "Hostname",
+      kind: "text",
+      value: (item) => item.hostname,
+      hide: true,
+    },
+    {
+      id: "catalog.vendor",
+      header: "Vendor",
+      kind: "text",
+      value: (item) => item.catalog?.vendor,
+      width: 130,
+    },
+    {
+      id: "catalog.pid",
+      header: "PID",
+      kind: "text",
+      value: (item) => item.catalog?.pid,
+      width: 150,
+    },
+    {
+      id: "catalog.model_name",
+      header: "Model",
+      kind: "text",
+      value: (item) => item.catalog?.model_name,
+      hide: true,
+    },
+    {
+      id: "serial_number",
+      header: "Serial number",
+      kind: "text",
+      value: (item) => item.serial_number,
+      mono: true,
+      width: 150,
+    },
+    {
+      id: "asset_tag",
+      header: "Asset tag",
+      kind: "text",
+      value: (item) => item.asset_tag,
+      hide: true,
+    },
+    {
+      id: "is_major",
+      header: "Major or minor",
+      kind: "boolean",
+      value: (item) => (item.is_major ? "Major" : "Minor"),
+      choices: MAJOR_OR_MINOR,
+      hide: true,
+      width: 140,
+    },
+    {
+      id: "parent",
+      header: "In item",
+      kind: "text",
+      // The list is filtered by the HID of the item above, not by its name: see the
+      // link from an item's page to its minor items.
+      field: null,
+      sortField: null,
+      value: (item) => (item.parent ? itemName(item.parent) : ""),
+      hide: true,
+      width: 200,
+    },
+    {
+      id: "position",
+      header: "Position",
+      kind: "text",
+      value: (item) => item.position,
+      hide: true,
+      width: 110,
+    },
+    {
+      id: "depth",
+      header: "Depth",
+      kind: "integer",
+      value: (item) => String(item.depth),
+      numeric: true,
+      hide: true,
+      width: 90,
+    },
+    {
+      id: "lifecycle_state",
+      header: "State",
+      kind: "choice",
+      field: "effective.lifecycle_state",
+      value: (item) => effectiveText(item.effective.lifecycle_state),
+      effective: (item) => item.effective.lifecycle_state,
+      choices: named(states),
+      width: 140,
+    },
+    {
+      id: "disposition",
+      header: "Disposition",
+      kind: "choice",
+      field: "effective.disposition",
+      value: (item) => effectiveText(item.effective.disposition),
+      effective: (item) => item.effective.disposition,
+      choices: named(DISPOSITIONS),
+      width: 130,
+    },
+    {
+      id: "expected_online",
+      header: "Expected online",
+      kind: "boolean",
+      field: "effective.expected_online",
+      value: (item) => effectiveText(item.effective.expected_online),
+      effective: (item) => item.effective.expected_online,
+      width: 140,
+    },
+    {
+      id: "state_reason",
+      header: "State reason",
+      kind: "choice",
+      value: (item) => choiceLabel(choices, "state_reason", item.state_reason),
+      choices: choiceFilterOptions(choices, "state_reason"),
+      hide: true,
+    },
+    {
+      id: "state_changed_at",
+      header: "State changed",
+      kind: "timestamp",
+      value: (item) => formatTime(item.state_changed_at),
+      hide: true,
+    },
+    {
+      // `owner.label` is the label of the owner in force, which is what the cell shows.
+      id: "owner.label",
+      header: "Owner",
+      kind: "text",
+      value: (item) => effectiveLabel(item.effective.owner_hid),
+      effective: (item) => item.effective.owner_hid,
+      width: 170,
+    },
+    {
+      id: "group.name",
+      header: "Groups",
+      kind: "text",
+      sortField: null,
+      column: null,
+      value: (item) => item.groups.map((group) => group.name).join(", "),
+      hide: true,
+      width: 200,
+    },
+    {
+      id: "group.type",
+      header: "Group types",
+      kind: "choice",
+      sortField: null,
+      column: null,
+      value: groupTypes,
+      choices: GROUP_TYPES,
+      hide: true,
+      width: 150,
+    },
+    {
+      // The primary one. It is found through the Addresses column, which filters by
+      // every address an item has: a filter here would keep rows that show another.
+      id: "mgmt_address",
+      header: "Management address",
+      kind: "address",
+      field: null,
+      sortField: null,
+      value: (item) => primaryAddress(item.addresses)?.address,
+      mono: true,
+      hide: true,
+      width: 170,
+    },
+    {
+      id: "address",
+      header: "Addresses",
+      kind: "address",
+      sortField: null,
+      column: null,
+      value: (item) => addressList(item.addresses),
+      mono: true,
+      hide: true,
+      width: 240,
+    },
+    {
+      id: "network.label",
+      header: "Networks",
+      kind: "text",
+      sortField: null,
+      column: null,
+      value: (item) => networkLabels(item.addresses).join(", "),
+      hide: true,
+      width: 140,
+    },
+    { id: "tags", header: "Tags", kind: "tags", value: (item) => item.tags.join(", "), width: 160 },
+    ...INHERITED.map(
+      ([field, header, shown]): GridColumn<Item> => ({
+        id: `effective.${field}`,
+        header,
+        kind: AMOUNTS.includes(field) ? "number" : "date",
+        value: (item) => effectiveText(item.effective[field]),
+        effective: (item) => item.effective[field],
+        numeric: AMOUNTS.includes(field),
+        hide: !shown,
+        width: 150,
+      }),
+    ),
+    {
+      id: "catalog.kind",
+      header: "Kind",
+      kind: "choice",
+      value: (item) => CATALOG_KINDS.find((kind) => kind.value === item.catalog?.kind)?.label,
+      choices: CATALOG_KINDS,
+      hide: true,
+    },
+    {
+      id: "catalog.type",
+      header: "Type",
+      kind: "choice",
+      value: (item) => choiceLabel(choices, "catalog_type", item.catalog?.type),
+      choices: choiceFilterOptions(choices, "catalog_type"),
+      hide: true,
+    },
+    {
+      id: "catalog.function",
+      header: "Function",
+      kind: "choice",
+      value: (item) => choiceLabel(choices, "catalog_function", item.catalog?.function),
+      choices: choiceFilterOptions(choices, "catalog_function"),
+      hide: true,
+    },
+    {
+      id: "mac_address",
+      header: "MAC address",
+      kind: "mac",
+      value: (item) => formatMac(item.mac_address),
+      mono: true,
+      hide: true,
+    },
+    { id: "fqdn", header: "FQDN", kind: "text", value: (item) => item.fqdn, hide: true },
+    {
+      id: "quantity",
+      header: "Quantity",
+      kind: "integer",
+      value: (item) => String(item.quantity),
+      numeric: true,
+      hide: true,
+    },
+    ...DAYS.map(
+      ([field, header]): GridColumn<Item> => ({
+        id: field,
+        header,
+        kind: "date",
+        value: (item) => item[field] as string | null,
+        hide: true,
+      }),
+    ),
+    {
+      id: "description",
+      header: "Description",
+      kind: "text",
+      value: (item) => item.description,
+      hide: true,
+    },
+    {
+      id: "comments",
+      header: "Comments",
+      kind: "text",
+      value: (item) => item.comments,
+      hide: true,
+    },
+    {
+      id: "record_status",
+      header: "Record status",
+      kind: "choice",
+      value: (item) => RECORD_STATUSES.find((status) => status.value === item.record_status)?.label,
+      choices: RECORD_STATUSES,
+      hide: true,
+    },
+    {
+      id: "updated_at",
+      header: "Changed",
+      kind: "timestamp",
+      value: (item) => formatTime(item.updated_at),
+      hide: true,
+    },
+    {
+      id: "created_at",
+      header: "Created",
+      kind: "timestamp",
+      value: (item) => formatTime(item.created_at),
+      hide: true,
+    },
+    {
+      id: "hid",
+      header: "HID",
+      kind: "reference",
+      value: (item) => item.hid,
+      mono: true,
+      hide: true,
+    },
+  ];
+}
+
+/**
+ * An item that a list shows greyed: a draft, a retired record, or one in Archived. The
+ * state is the one in force: a module of an archived chassis is archived with it.
+ */
+export function itemIsDimmed(item: Item): boolean {
+  return item.record_status !== "active" || item.effective.lifecycle_state.value === "Archived";
+}

@@ -1,6 +1,7 @@
 // The small lists that forms and filters offer, read from the server.
 
 import { api } from "../api";
+import { groupTypeLabel } from "./groups";
 import { type Loaded, useLoad } from "./hooks";
 import type { Option } from "./patch";
 
@@ -21,6 +22,11 @@ export function useRules() {
 
 export function useTags() {
   return useLoad("tags", (signal) => api.request("get", "/api/v1/tags", { signal }));
+}
+
+/** Every setting with the value in force. Any role that reads the inventory may read them. */
+export function useSettings() {
+  return useLoad("settings", (signal) => api.request("get", "/api/v1/settings", { signal }));
 }
 
 /** The vendors a form may choose from, by name. */
@@ -50,6 +56,29 @@ export function useEntryOptions(): Loaded<Option[]> {
       value: entry.hid,
       label: entry.model_name ? `${entry.pid} (${entry.model_name})` : entry.pid,
       group: entry.vendor.name,
+    }));
+  });
+}
+
+/** The networks an address may be under, by label. */
+export function useNetworkOptions(turn = 0): Loaded<Option[]> {
+  return useLoad(`network-options ${turn}`, async (signal) => {
+    const page = await api.request("get", "/api/v1/networks", { query: { limit: EVERY }, signal });
+    return page.items.map((network) => ({ value: network.hid, label: network.label }));
+  });
+}
+
+/** The device groups another group may be nested in, by name, with the type of each. */
+export function useGroupOptions(): Loaded<Option[]> {
+  return useLoad("group-options", async (signal) => {
+    const page = await api.request("get", "/api/v1/device-groups", {
+      query: { limit: EVERY, include_drafts: true },
+      signal,
+    });
+    return page.items.map((group) => ({
+      value: group.hid,
+      label: group.name,
+      group: groupTypeLabel(group.type),
     }));
   });
 }

@@ -14,7 +14,11 @@ export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
   { value: "vendors", label: "Vendors" },
   { value: "catalog_entries", label: "Catalog entries" },
   { value: "owners", label: "Owners" },
+  { value: "networks", label: "Networks" },
   { value: "items", label: "Items" },
+  { value: "device_groups", label: "Device groups" },
+  { value: "device_group_members", label: "Members of device groups" },
+  { value: "addresses", label: "Addresses" },
 ];
 
 export function isEntity(value: string): value is Entity {

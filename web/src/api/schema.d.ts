@@ -22,6 +22,187 @@ export interface paths {
       };
     };
   };
+  "/api/v1/addresses": {
+    /** List addresses, by address unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_AddressOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Give an item or a device group an address.
+     *
+     * The same address twice under one network is accepted, and is listed in the
+     * duplicates report.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AddressCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["AddressOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/addresses/query": {
+    /** List addresses, with the filter and sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_AddressOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/addresses/{hid}": {
+    /** Return one address. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AddressOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Remove an address. The audit event of the removal holds what it was. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change an address. Marked as primary, it takes the mark from the one that had it. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AddressPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AddressOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/audit-events": {
     /** List audit events, newest first. */
     get: {
@@ -433,6 +614,307 @@ export interface paths {
       };
     };
   };
+  "/api/v1/device-groups": {
+    /**
+     * List device groups, by name unless a sort says otherwise.
+     *
+     * Drafts and retired groups are left out unless asked for.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_DeviceGroupOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a device group, with its members if they are given.
+     *
+     * A stack is checked as a whole: with members, it has at least two and one master,
+     * unless it is a draft.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DeviceGroupCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/query": {
+    /** List device groups, with the filter and sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_DeviceGroupOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/{hid}": {
+    /** Return one device group, whatever its status. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a device group. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DeviceGroupPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/{hid}/members": {
+    /** List the members of a group by position, the current ones first. */
+    get: {
+      parameters: {
+        query?: {
+          /** Show the memberships that have ended as well. */
+          include_past?: boolean;
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_MemberOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Make items members of a group, all together.
+     *
+     * The group is checked once they are all in, so a stack is given its master and its
+     * other members by one request.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MembersAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["MemberOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/{hid}/members/{member_hid}": {
+    /**
+     * Change a membership. `left_on` ends it; it is never removed.
+     *
+     * Making a member the master of a stack makes the former master a member.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          member_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MemberPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["MemberOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/device-groups/{hid}/retire": {
+    /** Retire a device group. Its record is kept, and its current memberships end today. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/exports": {
     /** Export a list as CSV or JSON, with the filter and the sort that the list takes. */
     post: {
@@ -548,7 +1030,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "owners" | "items" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -562,7 +1044,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "owners" | "items";
+            entity: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -929,6 +1411,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/items/{hid}/children": {
+    /** List the minor items directly in one item, by position, whatever their status. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ItemOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items/{hid}/history": {
     /** List every change made to one item, newest first. */
     get: {
@@ -948,6 +1460,45 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["Page_AuditEventOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/replace": {
+    /**
+     * Record that another item took the place of this one, and link the two.
+     *
+     * The other item is one that exists, or is created here. It takes over this item's
+     * place in every group it is a current member of. Neither is moved in the lifecycle.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["Replace"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ReplacementOut"];
           };
         };
         /** Validation Error */
@@ -994,7 +1545,11 @@ export interface paths {
     };
   };
   "/api/v1/items/{hid}/transition": {
-    /** Move an item to another lifecycle state, recording who, when, from, to and why. */
+    /**
+     * Move an item to another lifecycle state, recording who, when, from, to and why.
+     *
+     * With `to` as null a minor item is returned to the standing of the item it is in.
+     */
     post: {
       parameters: {
         query?: never;
@@ -1066,6 +1621,153 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["LifecycleRuleOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/networks": {
+    /** List networks, by label unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_NetworkOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a network label. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["NetworkCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["NetworkOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/networks/{hid}": {
+    /** Return one network. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["NetworkOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Remove a network that no address is under. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a network. Its addresses are under the new label at once. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["NetworkPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["NetworkOut"];
           };
         };
         /** Validation Error */
@@ -1224,6 +1926,82 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/duplicates": {
+    /**
+     * List each address that is held more than once under one network.
+     *
+     * The unlabelled address space counts as one network. The same address under two
+     * networks is two addresses, and is not listed.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_DuplicateOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/summary": {
+    /**
+     * Count a view of the items: components, managed nodes, weight, value and cost.
+     *
+     * The view is what the item list shows for the same filter. With `by`, the answer
+     * also holds one row for each value.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the item list, in the short form or as JSON. */
+          filter?: string;
+          /** One row for each value of this. */
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "tag" | null;
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SummaryOut"];
           };
         };
         /** Validation Error */
@@ -2030,6 +2808,62 @@ export interface components {
     AccessCodeSet: {
       access_code?: string | null;
     };
+    /** A new address, of an item or of a group: exactly one of the two. */
+    AddressCreate: {
+      /** IPv4 or IPv6, in any common notation. */
+      address: string;
+      group_hid?: string | null;
+      /** The primary management address of the record. */
+      is_primary?: boolean;
+      item_hid?: string | null;
+      /** Blank is the unlabelled space. */
+      network_hid?: string | null;
+      role?: "management" | "loopback" | "secondary" | "virtual";
+    };
+    /** An item or a group that holds an address. */
+    AddressHolder: {
+      address_hid: string;
+      group_hid: string | null;
+      is_primary: boolean;
+      item_hid: string | null;
+      name: string | null;
+      role: string;
+    };
+    /** One address of an item or of a device group. */
+    AddressOut: {
+      /** In canonical form, with no prefix length. */
+      address: string;
+      created_at: string;
+      group: components["schemas"]["hirdir__api__records__GroupRef"] | null;
+      group_hid: string | null;
+      hid: string;
+      is_primary: boolean;
+      item: components["schemas"]["ItemRef"] | null;
+      item_hid: string | null;
+      network: components["schemas"]["NetworkRef"] | null;
+      network_hid: string | null;
+      role: "management" | "loopback" | "secondary" | "virtual";
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of an address to change, and the version they were read at. */
+    AddressPatch: {
+      address?: string | null;
+      is_primary?: boolean | null;
+      network_hid?: string | null;
+      role?: "management" | "loopback" | "secondary" | "virtual" | null;
+      row_version: number;
+    };
+    /** An address, as listed on the item or the group that has it. */
+    AddressRef: {
+      address: string;
+      hid: string;
+      is_primary: boolean;
+      /** The label of the network, if it is under one. */
+      network: string | null;
+      network_hid: string | null;
+      role: string;
+    };
     /** One event of the audit trail. */
     AuditEventOut: {
       action: string;
@@ -2178,17 +3012,89 @@ export interface components {
       row_version: number;
       sort?: number | null;
     };
-    /** A value in force, and where it came from. */
+    /** A new device group, with its first members if they are known. */
+    DeviceGroupCreate: {
+      fqdn?: string | null;
+      hostname?: string | null;
+      members?: components["schemas"]["MemberAdd"][];
+      name: string;
+      owner_hid?: string | null;
+      parent_group_hid?: string | null;
+      record_status?: "draft" | "active";
+      tags?: string[];
+      type: "stack" | "cluster" | "controller_domain" | "custom";
+    };
+    /** A stack, a cluster, a controller domain or another labelled set of items. */
+    DeviceGroupOut: {
+      addresses: components["schemas"]["AddressRef"][];
+      created_at: string;
+      fqdn: string | null;
+      /** The groups nested directly in this one. */
+      groups: components["schemas"]["hirdir__api__records__GroupRef"][];
+      hid: string;
+      hostname: string | null;
+      master: components["schemas"]["ItemRef"] | null;
+      /** How many current members it has. */
+      member_count: number;
+      /** The fields of the group that a current member contradicts. */
+      members_disagree: string[];
+      name: string;
+      owner: components["schemas"]["OwnerRef"] | null;
+      owner_hid: string | null;
+      parent: components["schemas"]["hirdir__api__records__GroupRef"] | null;
+      parent_group_hid: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      /** For a stack, the serial number of its master, read as it is asked for. */
+      serial_number: string | null;
+      tags: string[];
+      type: "stack" | "cluster" | "controller_domain" | "custom";
+      updated_at: string;
+    };
+    /** Fields of a device group to change, and the version they were read at. */
+    DeviceGroupPatch: {
+      fqdn?: string | null;
+      hostname?: string | null;
+      name?: string | null;
+      owner_hid?: string | null;
+      parent_group_hid?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      tags?: string[] | null;
+      type?: "stack" | "cluster" | "controller_domain" | "custom" | null;
+    };
+    /** An address that is held more than once under one network. */
+    DuplicateOut: {
+      address: string;
+      count: number;
+      holders: components["schemas"]["AddressHolder"][];
+      /** Null for the unlabelled address space. */
+      network: string | null;
+      network_hid: string | null;
+    };
+    /** A record in force, and where it came from: `value` is its HID. */
+    EffectiveReference: {
+      /** What people call the record. */
+      label: string | null;
+      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source_hid: string | null;
+      value: string | boolean | null;
+    };
+    /**
+     * A value in force, and where it came from.
+     *
+     * A decimal and a date are text, and a truth value is true or false.
+     */
     EffectiveValue: {
       source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
-      value: string | null;
+      value: string | boolean | null;
     };
     /** What to export. The filter and the sort are those of a list. */
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "owners" | "items";
+      entity: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -2252,11 +3158,6 @@ export interface components {
       description?: string | null;
       name?: string | null;
       row_version: number;
-    };
-    /** A user group, as named on a user. */
-    GroupRef: {
-      hid: string;
-      name: string;
     };
     HTTPValidationError: {
       detail?: components["schemas"]["ValidationError"][];
@@ -2342,6 +3243,10 @@ export interface components {
       mac_address?: string | null;
       name?: string | null;
       owner_hid?: string | null;
+      /** The item this one is in. Given, the item is a minor item. */
+      parent_item_hid?: string | null;
+      /** Where in its parent: PS-A, Slot 3. */
+      position?: string | null;
       procured_on?: string | null;
       quantity?: number;
       record_status?: "draft" | "active";
@@ -2352,14 +3257,22 @@ export interface components {
       warranty_end?: string | null;
       warranty_start?: string | null;
     };
-    /** The values in force of the fields an item inherits from its catalog entry. */
+    /**
+     * The values in force of the fields an item inherits: the amounts and the dates
+     * from its catalog entry, and for a minor item the owner and the standing of the item
+     * it is in.
+     */
     ItemEffective: {
       annual_support_cost: components["schemas"]["EffectiveValue"];
+      disposition: components["schemas"]["EffectiveValue"];
       end_of_hw_support: components["schemas"]["EffectiveValue"];
       end_of_sale: components["schemas"]["EffectiveValue"];
       end_of_sw_support: components["schemas"]["EffectiveValue"];
       est_value: components["schemas"]["EffectiveValue"];
+      expected_online: components["schemas"]["EffectiveValue"];
       ldos: components["schemas"]["EffectiveValue"];
+      lifecycle_state: components["schemas"]["EffectiveValue"];
+      owner_hid: components["schemas"]["EffectiveReference"];
       support_weight: components["schemas"]["EffectiveValue"];
     };
     /**
@@ -2367,14 +3280,20 @@ export interface components {
      * `effective` holds the value in force with its source.
      */
     ItemOut: {
+      /** Its addresses, the primary one first. */
+      addresses: components["schemas"]["AddressRef"][];
       annual_support_cost: string | null;
       asset_tag: string | null;
       catalog: components["schemas"]["CatalogRef"] | null;
       catalog_entry_hid: string | null;
       comments: string | null;
+      /** For an endpoint of a controller domain: the controllers of that domain. */
+      controllers: components["schemas"]["ItemRef"][];
       created_at: string;
       created_by: string | null;
       delivered_on: string | null;
+      /** 0 for a major item, 1 for a minor item of it, and so on. */
+      depth: number;
       description: string | null;
       disposition: string | null;
       effective: components["schemas"]["ItemEffective"];
@@ -2384,20 +3303,35 @@ export interface components {
       est_value: string | null;
       expected_online: boolean | null;
       fqdn: string | null;
+      /** Its current memberships of groups. */
+      groups: components["schemas"]["MembershipRef"][];
       hid: string;
       hostname: string | null;
       in_service_on: string | null;
+      /** An item with no parent. Major items are counted. */
+      is_major: boolean;
       ldos: string | null;
       lifecycle_state: string | null;
       /** Twelve lower-case hex digits. */
       mac_address: string | null;
+      /** How many minor items are directly in this one. */
+      minor_items: number;
       /** Blank shows the hostname. */
       name: string | null;
       owner: components["schemas"]["OwnerRef"] | null;
       owner_hid: string | null;
+      /** The item a minor item is in. */
+      parent: components["schemas"]["ItemRef"] | null;
+      parent_item_hid: string | null;
+      /** Where in its parent a minor item is. */
+      position: string | null;
       procured_on: string | null;
       quantity: number;
       record_status: "draft" | "active" | "retired";
+      /** The item that took its place. */
+      replaced_by: components["schemas"]["ReplacementRef"] | null;
+      /** The item whose place this one took. */
+      replaces: components["schemas"]["ReplacementRef"] | null;
       row_version: number;
       serial_number: string | null;
       state_changed_at: string | null;
@@ -2434,6 +3368,9 @@ export interface components {
       mac_address?: string | null;
       name?: string | null;
       owner_hid?: string | null;
+      /** Null takes a minor item out of its parent. */
+      parent_item_hid?: string | null;
+      position?: string | null;
       procured_on?: string | null;
       quantity?: number | null;
       record_status?: "draft" | "active" | null;
@@ -2443,6 +3380,22 @@ export interface components {
       tags?: string[] | null;
       warranty_end?: string | null;
       warranty_start?: string | null;
+    };
+    /** An item, as named on another record. */
+    ItemRef: {
+      asset_tag: string | null;
+      hid: string;
+      /** Its name, or its hostname when it has no name. */
+      name: string | null;
+      pid: string | null;
+      serial_number: string | null;
+    };
+    /** The items and the components of one kind. */
+    KindCount: {
+      /** As the headline would count them, were the kind among `count_kinds`. */
+      component_count: number;
+      items: number;
+      kind: string;
     };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
@@ -2492,6 +3445,80 @@ export interface components {
       /** Field names, `-` in front for descending. */
       sort?: string[];
     };
+    /** An item to make a member of a group. */
+    MemberAdd: {
+      item_hid: string;
+      /** Left out, today. */
+      joined_on?: string | null;
+      position?: number | null;
+      /** stack: master, member. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain. */
+      role?: string | null;
+    };
+    /** One item's time in one group. */
+    MemberOut: {
+      created_at: string;
+      group_hid: string;
+      hid: string;
+      item: components["schemas"]["ItemRef"];
+      item_hid: string;
+      joined_on: string;
+      /** Blank for a current member. */
+      left_on: string | null;
+      position: number | null;
+      role: string;
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of a membership to change, and the version they were read at. */
+    MemberPatch: {
+      joined_on?: string | null;
+      /** Given, the membership ends. */
+      left_on?: string | null;
+      position?: number | null;
+      role?: string | null;
+      row_version: number;
+    };
+    /** Items to make members of a group together. The group is checked once all are in. */
+    MembersAdd: {
+      members: components["schemas"]["MemberAdd"][];
+    };
+    /** A group an item is a current member of, and as what. */
+    MembershipRef: {
+      group_hid: string;
+      /** The membership. */
+      hid: string;
+      joined_on: string;
+      name: string;
+      position: number | null;
+      role: string;
+      type: string;
+    };
+    /** A new network label. */
+    NetworkCreate: {
+      kind?: "network" | "vrf" | "other";
+      label: string;
+    };
+    /** A label for an address space, and how many addresses are under it. */
+    NetworkOut: {
+      created_at: string;
+      hid: string;
+      kind: "network" | "vrf" | "other";
+      label: string;
+      row_version: number;
+      updated_at: string;
+      uses: number;
+    };
+    /** Fields of a network to change, and the version they were read at. */
+    NetworkPatch: {
+      kind?: "network" | "vrf" | "other" | null;
+      label?: string | null;
+      row_version: number;
+    };
+    /** A network, as named on an address. */
+    NetworkRef: {
+      hid: string;
+      label: string;
+    };
     /** A new owner. */
     OwnerCreate: {
       exception_reason?: string | null;
@@ -2526,6 +3553,12 @@ export interface components {
       hid: string;
       label: string;
     };
+    Page_AddressOut_: {
+      items: components["schemas"]["AddressOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_AuditEventOut_: {
       items: components["schemas"]["AuditEventOut"][];
       limit: number;
@@ -2534,6 +3567,18 @@ export interface components {
     };
     Page_CatalogEntryOut_: {
       items: components["schemas"]["CatalogEntryOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_DeviceGroupOut_: {
+      items: components["schemas"]["DeviceGroupOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_DuplicateOut_: {
+      items: components["schemas"]["DuplicateOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -2552,6 +3597,18 @@ export interface components {
     };
     Page_ItemOut_: {
       items: components["schemas"]["ItemOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_MemberOut_: {
+      items: components["schemas"]["MemberOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_NetworkOut_: {
+      items: components["schemas"]["NetworkOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -2586,6 +3643,46 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** The replacement of an item: what takes its place, why and when. */
+    Replace: {
+      /** Or the fields of a new item, created by this request. */
+      new_item?: components["schemas"]["ItemCreate"] | null;
+      /** An item that exists and takes the place. */
+      new_item_hid?: string | null;
+      /** A value of the replacement_reason list. */
+      reason: string;
+      /** An RMA, service request or ticket number. */
+      reference?: string | null;
+      /** Left out, today. */
+      replaced_on?: string | null;
+      /** The version of the item that leaves. */
+      row_version: number;
+    };
+    /** Two items linked by a replacement. */
+    ReplacementOut: {
+      created_at: string;
+      created_by: string | null;
+      hid: string;
+      new_item: components["schemas"]["ItemOut"];
+      new_item_hid: string;
+      old_item: components["schemas"]["ItemOut"];
+      old_item_hid: string;
+      reason: string;
+      reference: string | null;
+      replaced_on: string;
+      row_version: number;
+    };
+    /** The other item of a replacement, and why and when it was made. */
+    ReplacementRef: {
+      /** The replacement. */
+      hid: string;
+      item_hid: string;
+      name: string | null;
+      reason: string;
+      reference: string | null;
+      replaced_on: string;
+      serial_number: string | null;
     };
     /** One field a row changes, in the columns of the file. */
     RowChange: {
@@ -2650,6 +3747,37 @@ export interface components {
       access_code: string;
       username: string;
     };
+    /** A summary of a view of the items. */
+    SummaryOut: {
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "tag" | null;
+      rows: components["schemas"]["SummaryRow"][];
+      totals: components["schemas"]["SummaryTotals"];
+    };
+    /** The measures of the items that share one value of what the summary is by. */
+    SummaryRow: {
+      annual_support_cost: string;
+      component_count: number;
+      est_value: string;
+      /** Every item of the set, major and minor. */
+      items: number;
+      /** The value, or the HID of the record. Null for none. */
+      key: string | null;
+      /** What people call it. */
+      label: string | null;
+      managed_node_count: number;
+      support_weight: string;
+    };
+    /** The measures of the whole view, and its items by kind. */
+    SummaryTotals: {
+      annual_support_cost: string;
+      by_kind: components["schemas"]["KindCount"][];
+      component_count: number;
+      est_value: string;
+      /** Every item of the set, major and minor. */
+      items: number;
+      managed_node_count: number;
+      support_weight: string;
+    };
     /** A new tag. */
     TagCreate: {
       /** In the form #1f6feb. */
@@ -2686,8 +3814,8 @@ export interface components {
       /** A value of the state_reason list. */
       reason?: string | null;
       row_version: number;
-      /** The state to move to. */
-      to: string;
+      /** The state to move to. Null returns a minor item to the standing of the item it is in. */
+      to: string | null;
     };
     /** A new user. */
     UserCreate: {
@@ -2711,7 +3839,7 @@ export interface components {
       disabled: boolean;
       display_name: string;
       email: string;
-      groups: components["schemas"]["GroupRef"][];
+      groups: components["schemas"]["hirdir__api__schemas__GroupRef"][];
       hid: string;
       is_service_account: boolean;
       last_sign_in_at: string | null;
@@ -2765,6 +3893,17 @@ export interface components {
     };
     /** A vendor, as named on another record. */
     VendorRef: {
+      hid: string;
+      name: string;
+    };
+    /** A device group, as named on another record. */
+    hirdir__api__records__GroupRef: {
+      hid: string;
+      name: string;
+      type: string;
+    };
+    /** A user group, as named on a user. */
+    hirdir__api__schemas__GroupRef: {
       hid: string;
       name: string;
     };

@@ -12,6 +12,7 @@ import {
   momentIn,
   plural,
   setZone,
+  today,
 } from "./format";
 
 describe("formatChange", () => {
@@ -193,5 +194,19 @@ describe("itemName", () => {
     expect(itemName({ name: "", serial_number: "FCW0000X001" })).toBe("FCW0000X001");
     expect(itemName({ asset_tag: "AT-000900" })).toBe("AT-000900");
     expect(itemName({})).toBe("(no name)");
+  });
+});
+
+describe("today", () => {
+  it("is the day in the application's zone, which may not be the day in UTC", () => {
+    // 03:30 UTC on the 14th is still the evening of the 13th in New York.
+    const late = new Date("2026-11-14T03:30:00Z");
+    expect(today("America/New_York", late)).toBe("2026-11-13");
+    expect(today("UTC", late)).toBe("2026-11-14");
+    expect(today("Asia/Tokyo", late)).toBe("2026-11-14");
+  });
+
+  it("is written as a date travels, with both digits of the month and the day", () => {
+    expect(today("UTC", new Date("2026-03-05T12:00:00Z"))).toBe("2026-03-05");
   });
 });
