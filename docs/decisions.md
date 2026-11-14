@@ -89,6 +89,13 @@ marked as replaced, not removed.
 | D-76 | The package that is published is built after its release notes are written, and `make package-test` is run on that package. `make deb` builds the documentation as well as the web UI. (Was P-56.) |
 | D-77 | The setup tool is part of the package, never a second file to fetch. A site downloads the one `.deb`, installs it, and from then on may let `hirdir-setup` do its upgrades: `--check` asks GitHub whether a newer release is published, `--upgrade` fetches it, compares it with the checksum published beside it and installs it, and `--proxy URL` sends both requests through an enterprise proxy. An upgrade is begun by the tool that is installed and finished by the tool the new package brings, which the old one runs once apt is done, so what a later version needs done at an upgrade is in that version. A package that is already on the host is installed with `--upgrade PACKAGE.deb`, for a host with no way out. |
 | D-78 | The package ships `hirdir-upgrade.timer`, which is off unless a site turns it on. Turned on, it runs `hirdir-setup --upgrade --yes` each night at a time of its own between 21:00 and 03:00, in the host's local time, and installs a newer release from GitHub when one is published. A night that was missed is not made up for by day. The proxy it goes through is `proxy` under `[upgrades]` in the configuration file. |
+| D-79 | Tags are imported and exported like any other record, and come first in the load order. Choices, settings, lifecycle rules and the access records are not carried by files. (Was P-41.) |
+| D-80 | A file is sent as the body of `POST /imports/preview`, with its entity, mode and name beside it in the URL, and not as a form upload. A file over the limit is a `413`. (Was P-42.) |
+| D-81 | A column that an export writes and nobody can set, such as a `_source`, a detail of the catalog entry or `updated_at`, is accepted by an import and passed over. Only a column the entity does not know rejects the file. (Was P-44.) |
+| D-82 | A bulk edit is a preview of the same kind as an import's: `POST /items/bulk-update` previews and stores it, `POST /items/bulk-update/{hid}/apply` applies it. It sets what an import may set, except, on more than one item at once, the fields that tell one item from another, and may add and remove tags. (Was P-47.) |
+| D-83 | `fields` on a list names the fields of the record to return, as the route names them, with a dot for one field of a record within it. `hid` and `row_version` always come. (Was P-49.) |
+| D-84 | A vendor carries `review_status`, as a catalog entry does. (Was P-50.) |
+| D-85 | `make package-test` takes a backup before it imports `examples/` and restores it afterwards, with `hirdir admin backup` and `hirdir admin restore`. (Was P-57.) |
 
 ## Proposed
 
@@ -96,8 +103,11 @@ Each of these is the working answer. P-01 to P-04,
 P-20, P-22, P-23 and P-24 were confirmed and are now D-33 to D-36 and D-40 to D-43. P-25 to P-27,
 P-29 to P-31, P-33 to P-35 and P-37 to P-40 were answered on 2026-11-13 and are now
 D-49 to D-61, three of them changed by the answer. P-28, P-32 and P-36 followed the same
-day as D-62 to D-64. P-43, P-45, P-51 and P-53, of release 0.3.0, were confirmed on that
-day too and are D-65 to D-68, and P-46 was answered with a change and is D-69. D-70 followed from D-68.
+day as D-62 to D-64. The proposals of release 0.3.0, P-41 to P-59, were answered on that day
+too, but for two, and are D-65 to D-85: P-46 and P-59 were changed by the answer, and
+D-70, D-74, D-75, D-77 and D-78 are decisions that the answers brought with them, the
+reset, the setup tool that upgrades and the nightly timer among them. P-48 is left as
+it is to be looked at again, and P-58 stands unanswered.
 
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
@@ -116,14 +126,7 @@ day too and are D-65 to D-68, and P-46 was answered with a change and is D-69. D
 | P-17 | The scale target is 50,000 items. | Phones and access points are counted. | 1.0.0 |
 | P-18 | Test equipment has an owner and nothing more: no check-out, no calibration dates. | Stood unanswered at its default. | — |
 | P-21 | A capacity line may be a draft, may carry an annual cost, a vendor, dates and a region or site. The report shows the balance with and without drafts. | Drafts already exist for items and sites and give what-if comparisons for free. | 0.6.0 |
-| P-41 | Tags are imported and exported like any other record, and come first in the load order. Choices, settings, lifecycle rules and the access records are not carried by files. | An item names its tags, and a tag is made before it is used, so `examples/` could not otherwise be loaded into an empty database. | 0.3.0 |
-| P-42 | A file is sent as the body of `POST /imports/preview`, with its entity, mode and name beside it in the URL, and not as a form upload. A file over the limit is a `413`. | The package needs nothing more for it, and the command line and a browser send a file the same way. | 0.3.0 |
-| P-44 | A column that an export writes and nobody can set, such as a `_source`, a detail of the catalog entry or `updated_at`, is accepted by an import and passed over. Only a column the entity does not know rejects the file. | Any export can then be edited and imported back. | 0.3.0 |
-| P-47 | A bulk edit is a preview of the same kind as an import's: `POST /items/bulk-update` previews and stores it, `POST /items/bulk-update/{hid}/apply` applies it. It sets what an import may set, except, on more than one item at once, the fields that tell one item from another, and may add and remove tags. | One mechanism and one check for a stale copy, whichever way many records are changed. | 0.3.0 |
 | P-48 | `Idempotency-Key` is kept for 24 hours for each caller. The same request with the same key is answered with the first answer and not carried out again; the same key on another request is a `422`. It is taken by a `POST` on an inventory record, an import or a bulk edit, and refused on the routes of accounts. | A retry after a lost answer must not create a second record. An account route's answer may hold an access code or a token, which is kept nowhere, so it cannot be kept to be replayed. | 0.3.0 |
-| P-49 | `fields` on a list names the fields of the record to return, as the route names them, with a dot for one field of a record within it. `hid` and `row_version` always come. | The command line and scripts ask for little, and a change still needs the version. | 0.3.0 |
-| P-50 | A vendor carries `review_status`, as a catalog entry does. | P-14 marks a vendor that an import created as unreviewed, and there was nowhere to keep the mark. | 0.3.0 |
-| P-57 | `make package-test` takes a backup before it imports `examples/` and restores it afterwards, with `hirdir admin backup` and `hirdir admin restore`. | S12 imports into an inventory that does not hold the examples, the checks that follow make records of the same names by hand, and nothing can be deleted. | 0.3.0 |
 | P-58 | `/var/lib/hirdir/backups` is made with mode 0750, by postinst at install and at each upgrade and by `hirdir admin backup` when it is not there. | Its mode otherwise depended on the umask of whoever took the first backup. | 0.3.0 |
 | P-19 | Regular expressions use a linear-time engine when its binding has a production release for the Python in use, otherwise a time-limited one. | Which one is available changes with the Python version, and the dependency rule decides. | 0.2.0, with the time-limited `regex` package: RE2's own binding, `google-re2`, has no release for Python 3.15 |
 
