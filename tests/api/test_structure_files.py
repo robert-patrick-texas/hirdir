@@ -403,9 +403,9 @@ def test_a_stack_is_checked_when_the_whole_file_of_members_is_worked(
     domain = make.get("/device-groups", filter="name:eq:site2-wireless")["items"][0]
     assert domain["member_count"] == 1
 
+    # The master alone is a stack, and a file may make one so.
     one = "group,item,role\nsite2-sw-stack1,AT-000101,master\n"
-    preview = files.preview("device_group_members", one)
-    assert "at least two members" in reasons(preview["rows"][0])[""]
+    assert counts(files.preview("device_group_members", one)["job"]) == (1, 0, 0, 0)
 
 
 def test_a_file_changes_the_master_and_ends_a_membership(make: Maker, files: Files) -> None:
@@ -537,37 +537,32 @@ def test_groups_of_one_file_are_worked_a_group_before_the_groups_within_it(
 
 def test_a_row_that_leans_on_a_rejected_row_is_rejected_with_it(make: Maker, files: Files) -> None:
     _inventory(make)
-    files.load("device_groups", GROUPS + "site2-sw-stack2,stack,,,,active,\n")
+    files.load("device_groups", GROUPS)
     files.load("device_group_members", MEMBERS)
-    make.item(name="site2-sw-07", asset_tag="AT-000107")
     make.item(name="site2-sw-08", asset_tag="AT-000108")
     text = (
-        "group,item,role,left_on\n"
-        # The second switch leaves the first stack, which would then have one member,
-        "site2-sw-stack1,AT-000102,,2026-11-01\n"
-        # and joins the second, which only works if it has left the first.
-        "site2-sw-stack2,AT-000102,master,\n"
-        "site2-sw-stack2,AT-000107,member,\n"
-        # A row about another group and other items stands by itself.
-        "site2-wireless,AT-000108,endpoint,\n"
+        "group,item,role\n"
+        # The master is made a plain member, which leaves the stack with no master.
+        "site2-sw-stack1,AT-000101,member\n"
+        # A row about the same item was worked with that row in place, and goes with it.
+        "site2-wireless,AT-000101,endpoint\n"
+        # A row about another group and another item stands by itself.
+        "site2-wlc-ha,AT-000108,member\n"
     )
 
     preview = files.preview("device_group_members", text)
 
-    assert [row["outcome"] for row in preview["rows"]] == [
-        "rejected",
-        "rejected",
-        "rejected",
-        "create",
-    ]
-    assert "would have one member" in reasons(preview["rows"][0])[""]
+    assert [row["outcome"] for row in preview["rows"]] == ["rejected", "rejected", "create"]
+    assert "would have no master" in reasons(preview["rows"][0])[""]
     assert "preview the file again without them" in reasons(preview["rows"][1])[""]
     # What is left is what an apply does.
     assert files.apply(preview, skip_rejected="true")["status"] == "applied"
     stack = make.get("/device-groups", filter="name:eq:site2-sw-stack1")["items"][0]
-    assert stack["member_count"] == 2
+    assert (stack["member_count"], stack["serial_number"]) == (2, "FCW0000X001")
+    cluster = make.get("/device-groups", filter="name:eq:site2-wlc-ha")["items"][0]
+    assert cluster["member_count"] == 2
     domain = make.get("/device-groups", filter="name:eq:site2-wireless")["items"][0]
-    assert domain["member_count"] == 2
+    assert domain["member_count"] == 1
 
 
 def test_a_file_that_changes_an_item_and_its_minor_items_copies_nothing_down(

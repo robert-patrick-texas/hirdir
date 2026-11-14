@@ -62,11 +62,14 @@ def test_a_stack_is_made_with_its_members_and_reads_its_serial_from_the_master(
     assert make.audit(record_hid=stack["hid"])[0]["action"] == "create"
 
 
-def test_an_active_stack_has_two_members_and_one_master(make: Maker) -> None:
+def test_an_active_stack_has_one_master_and_may_be_its_master_alone(make: Maker) -> None:
     switches = _switches(make)
 
-    problem = make.group("one", "stack", [(switches[0], "master")], expect=422)
-    assert "at least two members" in errors(problem)["members"]
+    # The master alone is a stack: one that waits for a member, or has lost one.
+    alone = make.group("alone", "stack", [(switches[3], "master")])
+    assert (alone["member_count"], alone["serial_number"]) == (1, switches[3]["serial_number"])
+    problem = make.group("no-master", "stack", [(switches[2], "member")], expect=422)
+    assert errors(problem) == {"members": "a stack has exactly one master"}
     problem = make.group(
         "none", "stack", [(switches[0], "member"), (switches[1], "member")], expect=422
     )
@@ -76,8 +79,8 @@ def test_an_active_stack_has_two_members_and_one_master(make: Maker) -> None:
     )
     assert "2 masters" in problem["detail"]
     # Nothing of a refused stack is kept.
-    assert make.get("/device-groups", include_drafts="true")["total"] == 0
-    assert make.audit(record_type="device_group_member") == []
+    assert make.get("/device-groups", include_drafts="true")["total"] == 1
+    assert len(make.audit(record_type="device_group_member")) == 1
 
 
 def test_a_stack_with_no_members_yet_is_accepted_and_filled_in_one_request(make: Maker) -> None:
@@ -85,9 +88,9 @@ def test_a_stack_with_no_members_yet_is_accepted_and_filled_in_one_request(make:
     stack = make.group("site2-sw-stack1", "stack")
     assert (stack["member_count"], stack["serial_number"], stack["master"]) == (0, None, None)
 
-    # One member at a time would leave an active stack with one member.
-    problem = make.add(stack, [{"item_hid": switches[0]["hid"], "role": "master"}], expect=422)
-    assert "at least two members" in errors(problem)["members"]
+    # A first member that is not the master would leave an active stack with none.
+    problem = make.add(stack, [{"item_hid": switches[0]["hid"]}], expect=422)
+    assert errors(problem) == {"members": "a stack has exactly one master"}
     assert make.members(stack) == []
 
     made = make.add(
@@ -172,9 +175,17 @@ def test_the_master_does_not_leave_a_stack_that_has_other_members(make: Maker) -
     assert [member["hid"] for member in every] == [master["hid"], second["hid"], third["hid"]]
     assert make.get(f"/items/{switches[2]['hid']}")["groups"] == []
 
-    # The last but one cannot go: an active stack has two members.
-    problem = _leave(make, stack, second, "2026-11-13", expect=422)
-    assert "at least two members" in errors(problem)["members"]
+    # The last member beside the master may go too: the master alone is still the stack,
+    # and when the master goes as well the stack is a shell again.
+    _leave(make, stack, second, "2026-11-13")
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
+    _leave(make, stack, make.members(stack)[0], "2026-11-13")
+    again = make.get(f"/device-groups/{stack['hid']}")
+    assert (again["member_count"], again["serial_number"], again["record_status"]) == (
+        0,
+        None,
+        "active",
+    )
 
 
 def test_a_membership_that_has_ended_is_corrected_in_its_dates_only(make: Maker) -> None:

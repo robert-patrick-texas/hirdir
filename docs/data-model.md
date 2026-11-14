@@ -188,10 +188,12 @@ files, arrive in 0.6.0.
 
 Rules, checked on every write:
 
-- A `stack` has at least two current members and exactly one `master`. All are major
-  items. A stack being built may hold fewer, and no master yet, while it is `draft`. A
-  stack with no members at all is accepted whatever its status, as one whose members
-  are still to come; the rule holds from the first member on.
+- A `stack` has exactly one `master` among its current members, and all are major
+  items. It may be the master alone: a stack waits for its second switch in staging,
+  and is left with one in production when a member fails and is taken out. A stack
+  being built may have no master yet while it is `draft`. A stack with no members at
+  all is accepted whatever its status, as one whose members are still to come; the
+  rule holds from the first member on.
 - Members are added several at a time, by one request, and the group is checked once
   they are all in. Making another member the `master` makes the former master a
   `member` in the same change. The master does not leave a stack that has other

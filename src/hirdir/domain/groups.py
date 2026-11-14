@@ -229,11 +229,13 @@ def members_disagree(db: Session, found: Sequence[DeviceGroup]) -> dict[str, lis
 
 
 def check_group(db: Session, group: DeviceGroup) -> None:
-    """Refuse a stack that is not one: too few members, no master, or more than one.
+    """Refuse a stack that has no master, or more than one.
 
     A stack with no members at all is one whose members are still to come. From its
-    first member on, an active stack has at least two and exactly one master. A draft
-    is being built, and may have fewer and no master yet. A retired one has none.
+    first member on, an active stack has exactly one master. It may be the master
+    alone: a stack waits for a member in staging, and loses one in production when a
+    switch fails and is taken out. A draft is being built, and may have no master yet.
+    A retired one has no members.
     """
     if group.type != "stack" or group.record_status == "retired":
         return
@@ -248,14 +250,6 @@ def check_group(db: Session, group: DeviceGroup) -> None:
         )
     if group.record_status != "active":
         return
-    if len(members) < 2:
-        raise Invalid(
-            f"the stack {group.name} would have one member",
-            {
-                "members": "a stack has at least two members; one being built is a draft, "
-                "or is given its members together"
-            },
-        )
     if count == 0:
         raise Invalid(
             f"the stack {group.name} would have no master",

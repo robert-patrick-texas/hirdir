@@ -599,12 +599,13 @@ def test_the_master_of_a_stack_is_not_retired_until_another_is_master(make: Make
     assert (again["member_count"], again["serial_number"]) == (2, switches[0]["serial_number"])
     past = make.members(stack, include_past="true")
     assert past[2]["left_on"] is not None
-    # One of the last two cannot go: the stack would not be one.
-    problem = retire(switches[1], 422)
-    assert "at least two members" in errors(problem)["record_status"]
-    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 2
-    # The discount is earned by the two that are a stack, and by nobody else.
+    # The other member may be retired as well: the master alone is still the stack.
+    retire(switches[1])
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
     assert make.totals()["managed_node_count"] == 1
+    # And the master, once it is alone, leaves a shell behind.
+    retire(switches[0])
+    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 0
 
 
 def test_a_bulk_edit_of_an_item_and_its_minor_items_copies_nothing_down(make: Maker) -> None:

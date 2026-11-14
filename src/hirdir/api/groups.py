@@ -51,8 +51,8 @@ def create_group(
 ) -> r.DeviceGroupOut:
     """Create a device group, with its members if they are given.
 
-    A stack is checked as a whole: with members, it has at least two and one master,
-    unless it is a draft.
+    A stack is checked as a whole: with members, it has exactly one master, unless it
+    is a draft.
     """
     return shapes.group_out(db, groups.create_group(db, context, body.model_dump()))
 

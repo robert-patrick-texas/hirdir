@@ -8550,7 +8550,7 @@
         ]
       },
       "post": {
-        "description": "Create a device group, with its members if they are given.\n\nA stack is checked as a whole: with members, it has at least two and one master,\nunless it is a draft.",
+        "description": "Create a device group, with its members if they are given.\n\nA stack is checked as a whole: with members, it has exactly one master, unless it\nis a draft.",
         "operationId": "create_group_api_v1_device_groups_post",
         "parameters": [
           {

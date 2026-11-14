@@ -107,13 +107,14 @@ describe("stackProblem", () => {
     expect(stackProblem("stack", "active", [])).toBe("");
   });
 
-  it("lets an active stack stand with two members and one master", () => {
+  it("lets an active stack stand with one master, alone or with members", () => {
+    expect(stackProblem("stack", "active", ["master"])).toBe("");
     expect(stackProblem("stack", "active", ["master", "member"])).toBe("");
     expect(stackProblem("stack", "active", ["member", "member", "master", "member"])).toBe("");
   });
 
   it("says what an active stack lacks", () => {
-    expect(stackProblem("stack", "active", ["master"])).toMatch(/at least two members/);
+    expect(stackProblem("stack", "active", ["member"])).toMatch(/exactly one master/);
     expect(stackProblem("stack", "active", ["member", "member"])).toMatch(/exactly one master/);
   });
 

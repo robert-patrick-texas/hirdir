@@ -1,6 +1,6 @@
 // Device groups as words, and what a form of members sends. The types of group and the
 // roles of each are fixed by the data model. The server checks every group as a whole,
-// a stack for its two members and its one master, and its refusal is what counts: what
+// a stack for its one master, and its refusal is what counts: what
 // is here only offers what the rules allow and says early what they will say.
 
 import type { Schemas } from "../api/client";
@@ -138,15 +138,14 @@ export function buildMembers(
 /**
  * What the rules will say of a stack with these members, before it is sent: nothing
  * when it would stand. A stack with no member at all is a shell and stands. From its
- * first member on, an active stack has at least two and exactly one master; a draft may
- * have fewer, and no master yet, and never two masters.
+ * first member on, an active stack has exactly one master, which may be its only member;
+ * a draft may have no master yet, and never two masters.
  */
 export function stackProblem(type: string, recordStatus: string, roles: readonly string[]): string {
   if (type !== "stack" || roles.length === 0) return "";
   const masters = roles.filter((role) => role === MASTER).length;
   if (masters > 1) return "A stack has exactly one master: this one would have more.";
   if (recordStatus === "draft") return "";
-  if (roles.length < 2) return "An active stack has at least two members. A draft may have fewer.";
   if (masters === 0) return "A stack has exactly one master: choose which member it is.";
   return "";
 }
