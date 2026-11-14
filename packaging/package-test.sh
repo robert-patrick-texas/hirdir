@@ -1177,10 +1177,11 @@ held.commit()' "$1" "$2"
 # witness_structure: the records that 0.4.0 brought, made through its API for a later
 # migration to carry: minor items two deep, a stack with a master, a cluster, a
 # controller domain with a cluster within it, a group that is a draft, a replacement,
-# a membership that was ended, networks, and addresses of items and of groups. Migration 0006 adds columns
-# to items and rebuilds device_groups. A previous release from before there were groups
-# is given none of this, and $witness_groups stays empty. Every name is invented, and
-# the addresses are from the ranges reserved for documentation.
+# a membership that was ended, networks, and addresses of items and of groups.
+# Migration 0006 adds columns to items and rebuilds device_groups. A previous release
+# from before there were groups is given none of this, and $witness_groups stays empty.
+# Every name is invented, and the addresses are from the ranges reserved for
+# documentation.
 witness_structure() {
     local s1 s2 s3 s4 s9 module f1 f2 w1 w2 w3 a1 a2 domain wlc member mgmt dmz made day row_version
     local items_then=${#witness_items[@]}
