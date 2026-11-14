@@ -6,6 +6,7 @@ import {
   memberRoleLabel,
   membersInOrder,
   type OwnerMember,
+  ownerOption,
   ownerOptions,
 } from "./owners";
 
@@ -59,9 +60,16 @@ describe("owners in a form", () => {
     expect(outside.has("")).toBe(false);
   });
 
-  it("counts an owner the list no longer offers, when it is known to be outside", () => {
-    const outside = externalOwners(ownerOptions(OWNERS), [RETIRED, null, undefined]);
+  it("offers an owner as another record names it, which says whether it is outside", () => {
+    // The owner an item has is offered also when the list no longer brings it, as a
+    // retired one: the item names it with `is_external`.
+    const retired = ownerOption({ hid: RETIRED, label: "Old Facilities", is_external: true });
+    expect(retired).toEqual({ value: RETIRED, label: "Old Facilities", group: EXTERNAL_GROUP });
+    const outside = externalOwners([...ownerOptions(OWNERS), retired]);
     expect([...outside].sort()).toEqual([FACILITIES, RETIRED]);
+    expect(
+      ownerOption({ hid: ENGINEERING, label: "Network Engineering", is_external: false }),
+    ).toEqual({ value: ENGINEERING, label: "Network Engineering" });
     expect(externalOwners(undefined).size).toBe(0);
   });
 });

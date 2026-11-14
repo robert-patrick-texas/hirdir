@@ -1,6 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import { fieldErrors, refusalOf } from "./problems";
+import { fieldErrors, fieldLine, refusalOf, sentence } from "./problems";
+
+describe("what a refusal says of a field that has no input", () => {
+  it("names the field as the page calls it", () => {
+    expect(
+      fieldLine("parent_region_hid", "regions nest at most 16 deep", {
+        parent_region_hid: "The region it is in",
+      }),
+    ).toBe("The region it is in: regions nest at most 16 deep");
+  });
+
+  it("lets the message stand alone, as a sentence, for a field the page does not name", () => {
+    expect(
+      fieldLine("record_status", "bring Central back first: it is retired", { record_status: "" }),
+    ).toBe("Bring Central back first: it is retired.");
+    expect(
+      fieldLine("record_status", "give the item another location, or none, with the change", {
+        record_status: "",
+      }),
+    ).toBe("Give the item another location, or none, with the change.");
+  });
+
+  it("names a field the page has no word for as the server names it", () => {
+    expect(fieldLine("tags.0", "there is no tag core")).toBe("tags.0: there is no tag core");
+  });
+
+  it("writes a sentence with a capital and a full stop, once", () => {
+    expect(sentence(" the label is taken ")).toBe("The label is taken.");
+    expect(sentence("Reload it.")).toBe("Reload it.");
+    expect(sentence("")).toBe("");
+  });
+});
 
 const stale = new ApiError({
   status: 409,

@@ -119,8 +119,8 @@ export function LocationField(props: LocationFieldProps) {
       />
       <p className="hint" id={`${id}-hint`}>
         {hint ? `${hint} ` : ""}
-        To choose one, type a part of its name or code, or of those of its site or of the location
-        it is in.
+        To choose one, type a part of its name or code, or of the name of its site, of the region of
+        that site or of the location it is in.
       </p>
       {error && (
         <p className="field-error" id={`${id}-error`}>

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
+import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { FormFields } from "../components/FormFields";
@@ -41,6 +42,7 @@ import { healthLabel, OBSERVED, observedLabel, reasonsText } from "../lib/health
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useGroupOptions, useOwnerOptions, useTags, withCurrent } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
+import { ownerOption } from "../lib/owners";
 import {
   buildCreate,
   type FieldSpec,
@@ -230,6 +232,19 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     hide: true,
     width: 150,
   },
+  {
+    // The region the site is in. The list of groups is neither filtered nor sorted by
+    // it, and a file of groups has no such column.
+    id: "region",
+    header: "Region",
+    kind: "text",
+    field: null,
+    sortField: null,
+    column: null,
+    value: (group) => group.location?.region,
+    hide: true,
+    width: 150,
+  },
   { id: "tags", header: "Tags", kind: "tags", value: (group) => group.tags.join(", "), width: 160 },
   {
     // The primary one of each family. An export writes a column for each.
@@ -403,7 +418,7 @@ function groupSpecs(
       label: "Owner",
       kind: "choice",
       blank: "No owner",
-      options: withCurrent(lists.owners, owner ? { value: owner.hid, label: owner.label } : null),
+      options: withCurrent(lists.owners, owner ? ownerOption(owner) : null),
     },
     {
       name: "location_hid",
@@ -771,6 +786,8 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
               <span className="muted">
                 {" "}
                 · site <Link to={placePath("site", location.site_hid)}>{location.site}</Link>
+                {" · region "}
+                <Link to={placePath("region", location.region_hid)}>{location.region}</Link>
               </span>
             </>
           ) : (
@@ -1532,11 +1549,16 @@ function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
     if (result.ok) onChanged("The group was retired, and its memberships ended today.");
   }
 
-  async function bringBack() {
+  /** Bring the group back: as it was, or with another location, or none, in the same change. */
+  async function bringBack(location?: string | null) {
     const result = await action.run(() =>
       api.request("patch", "/api/v1/device-groups/{hid}", {
         path: { hid: group.hid },
-        body: { row_version: group.row_version, record_status: "active" },
+        body: {
+          row_version: group.row_version,
+          record_status: "active",
+          ...(location === undefined ? {} : { location_hid: location }),
+        },
       }),
     );
     if (result.ok) onChanged("The group is active again.");
@@ -1545,7 +1567,7 @@ function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
   return (
     <section aria-labelledby="retire">
       <h2 id="retire">{group.record_status === "retired" ? "Retired" : "Retire"}</h2>
-      <Problem error={action.error} onReload={onReload} />
+      <Problem error={action.error} onReload={onReload} labels={{ record_status: "" }} />
       {group.record_status === "retired" ? (
         <>
           <p>
@@ -1553,10 +1575,18 @@ function GroupStatus({ group, onChanged, onReload }: GroupStatusProps) {
             has no current member until members are added again.
           </p>
           <p className="actions">
-            <button type="button" onClick={bringBack} disabled={action.busy}>
+            <button type="button" onClick={() => bringBack()} disabled={action.busy}>
               Bring back as active
             </button>
           </p>
+          {refusedForItsPlace(action.error) && (
+            <BringBackElsewhere
+              what="group"
+              blank="No location"
+              busy={action.busy}
+              onBringBack={bringBack}
+            />
+          )}
         </>
       ) : (
         <>

@@ -1109,7 +1109,9 @@ function PlaceStatus({ level, place, onChanged, onReload }: PlaceStatusProps) {
   return (
     <section aria-labelledby="retire-place">
       <h3 id="retire-place">{place.record_status === "retired" ? "Retired" : "Retire"}</h3>
-      <Problem error={action.error} onReload={onReload} />
+      {/* A place is not brought back while what it is in is retired: the server says which
+          to bring back first, as a sentence of its own. */}
+      <Problem error={action.error} onReload={onReload} labels={{ record_status: "" }} />
       {place.record_status === "retired" ? (
         <>
           <p>This {what} is retired. Its record is kept, and it can be brought back.</p>
@@ -1150,6 +1152,14 @@ function PlaceStatus({ level, place, onChanged, onReload }: PlaceStatusProps) {
   );
 }
 
+// What a refusal calls the place a new one is made in: the form has no input for it.
+const WITHIN_LABELS = {
+  parent_region_hid: "The region it is in",
+  region_hid: "The region it is in",
+  site_hid: "The site it is in",
+  parent_location_hid: "The location it is in",
+} as const;
+
 interface NewPlaceProps {
   level: Level;
   /** What the new place is in. Left out, a region at the top. */
@@ -1181,6 +1191,7 @@ export function NewPlace({ level, within, onCancel, onCreated }: NewPlaceProps) 
       onCreated={onCreated}
       onCancel={onCancel}
       submitLabel={`Create ${what}`}
+      labels={WITHIN_LABELS}
     >
       <Problem error={error} />
       <p className="hint" data-testid="new-place-within">

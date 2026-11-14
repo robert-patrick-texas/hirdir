@@ -30,13 +30,18 @@ const ACTIONS = [
   "update",
 ];
 const RECORD_TYPES = [
+  "address",
   "catalog_entry",
   "choice",
   "contact",
   "contact_assignment",
+  "device_group",
+  "device_group_member",
   "item",
+  "item_replacement",
   "lifecycle_rule",
   "location",
+  "network",
   "owner",
   "owner_member",
   "region",

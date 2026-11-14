@@ -80,11 +80,12 @@ function groupTypes(item: Item): string {
  * sorts by the health the server works out. The condition and what is observed, the two
  * facts a person sets, are columns to be asked for.
  *
- * The location and the site are those of the location in force: a minor item with no
- * location of its own is where the item it is in is, and shows that lighter. The
- * Location column shows the name of the location, which is what the server filters and
- * sorts by, with the whole path as the hint of the cell and in an export. Both are
- * hidden until asked for, as every column that arrived after the first ones is.
+ * The location, the site and the region are those of the location in force: a minor
+ * item with no location of its own is where the item it is in is, and shows that
+ * lighter. The Location column shows the name of the location, which is what the server
+ * filters and sorts by, with the whole path as the hint of the cell and in an export;
+ * the Region column shows the name of the region the site is in. All three are hidden
+ * until asked for, as every column that arrived after the first ones is.
  *
  * An item may be in several groups and have several addresses. The columns that show
  * them are filtered by any of them, and the server does not sort by them.
@@ -303,6 +304,16 @@ export function itemColumns(
       header: "Site",
       kind: "text",
       value: (item) => item.effective.location_hid.site,
+      effective: (item) => item.effective.location_hid,
+      hide: true,
+      width: 150,
+    },
+    {
+      // The region that site is in, by its name: what `region` filters, sorts and exports.
+      id: "region",
+      header: "Region",
+      kind: "text",
+      value: (item) => item.effective.location_hid.region,
       effective: (item) => item.effective.location_hid,
       hide: true,
       width: 150,

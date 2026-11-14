@@ -90,7 +90,9 @@ describe("levels and paths", () => {
 });
 
 describe("locationSearch", () => {
-  const fields = ["name", "parent.name", "site.name", "code", "site.code"];
+  // The name of the region the site is in is among them, so that a path that is
+  // pasted, from that region down, finds its location.
+  const fields = ["name", "parent.name", "site.name", "code", "site.code", "region.name"];
 
   it("asks for nothing when nothing is typed", () => {
     expect(locationSearch("")).toBeNull();
