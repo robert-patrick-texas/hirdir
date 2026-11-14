@@ -24,6 +24,8 @@ hirdir = "hirdir.cli.main:app"
 [dependency-groups]
 dev = [
     "pytest",
+    "pytest-testmon>=2.3.0",
+    "pytest-xdist>=3.8.0",
     "ruff",
     "ty",
 ]

@@ -147,6 +147,22 @@ def _install_web_ui(app: FastAPI) -> None:
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
+def bind(app: FastAPI, config: Config) -> None:
+    """Give the application everything it holds of one installation.
+
+    That is its settings, its database, the key that signs sessions and the count of
+    failed sign-ins: all of it is here, and none in the routes. The tests rely on that.
+    They build the routes once and bind them to the state of each test in turn, which
+    `create_app` does once, for the server.
+    """
+    engine = make_engine(config.database_url)
+    app.state.config = config
+    app.state.engine = engine
+    app.state.sessions = make_sessions(engine)
+    app.state.signing_key = tokens.load_or_create_key(config.secret_key_path)
+    app.state.throttle = Throttle(config.sign_in_failures_before_delay)
+
+
 def create_app(config: Config) -> FastAPI:
     """Build the application for one configuration."""
     app = FastAPI(
@@ -157,12 +173,7 @@ def create_app(config: Config) -> FastAPI:
         docs_url=None,
         redoc_url=None,
     )
-    engine = make_engine(config.database_url)
-    app.state.config = config
-    app.state.engine = engine
-    app.state.sessions = make_sessions(engine)
-    app.state.signing_key = tokens.load_or_create_key(config.secret_key_path)
-    app.state.throttle = Throttle(config.sign_in_failures_before_delay)
+    bind(app, config)
 
     api = APIRouter(prefix=API_PREFIX)
     for router in ROUTERS:

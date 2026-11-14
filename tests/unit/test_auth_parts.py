@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from argon2 import PasswordHasher, extract_parameters
 
 from hirdir import clock
 from hirdir.auth import codes, tokens
@@ -40,6 +41,22 @@ def test_code_verifies_only_against_its_own_hash() -> None:
     assert not codes.verify(stored, "river-stonE")
     assert not codes.verify(None, "river-stone")
     assert not codes.verify("not a hash", "river-stone")
+
+
+def test_a_code_is_hashed_at_the_cost_the_library_recommends(full_cost: PasswordHasher) -> None:
+    # The other tests hash cheaply, to save time. What is released does not.
+    stored = codes.hash_code("river-stone")
+
+    assert stored.startswith("$argon2id$")
+    told = extract_parameters(stored)
+    assert (told.time_cost, told.memory_cost, told.parallelism) == (
+        full_cost.time_cost,
+        full_cost.memory_cost,
+        full_cost.parallelism,
+    )
+    assert told.memory_cost >= 19 * 1024
+    assert codes.verify(stored, "river-stone")
+    assert not codes.verify(None, "river-stone")
 
 
 def test_signing_key_is_created_once_and_private(tmp_path: Path) -> None:

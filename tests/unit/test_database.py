@@ -190,3 +190,16 @@ def test_the_upgrade_to_0006_keeps_what_is_held_and_ends_what_d103_ends(tmp_path
         assert "condition" not in columns
         assert connection.execute(text("SELECT count(*) FROM items")).scalar() == 3
     engine.dispose()
+
+
+def test_a_database_copied_for_a_test_is_one_that_was_migrated(config: Config) -> None:
+    # The fixtures copy one database that was migrated once: it is whole, and at the head.
+    engine = make_engine(config.database_url)
+    try:
+        assert migrate.current(engine) == migrate.head(config.database_url)
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA integrity_check")).scalar() == "ok"
+            assert connection.execute(text("SELECT count(*) FROM choices")).scalar() != 0
+            assert connection.execute(text("SELECT count(*) FROM users")).scalar() == 0
+    finally:
+        engine.dispose()
