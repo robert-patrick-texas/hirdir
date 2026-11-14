@@ -1702,6 +1702,20 @@ reinstall() {
     fi
     expect "pkg and the hirdir-setup of the package that was installed finishes it: it reports the version and that the service runs" \
         "$(grep -c "^hirdir $version is installed, and is running\.\$" "$work/setup-upgrade.log") $(grep -c '^hirdir.service: active$' "$work/setup-upgrade.log")" "1 1"
+    # The nightly upgrade is shipped switched off, and runs late at night when on.
+    expect "pkg hirdir-upgrade.timer is installed and is not enabled: a site turns it on" \
+        "$(inside systemctl is-enabled hirdir-upgrade.timer 2>&1) $(inside systemctl is-active hirdir-upgrade.timer 2>&1)" \
+        "disabled inactive"
+    inside systemctl enable --now hirdir-upgrade.timer >/dev/null 2>&1 || true
+    expect "pkg turned on, it waits for a time between 21:00 and 03:00 in the host's local time" \
+        "$(inside bash -c 'next=$(systemctl show hirdir-upgrade.timer --property=NextElapseUSecRealtime --value)
+            hour=$(date --date="$next" +%-H); if [ "$hour" -ge 21 ] || [ "$hour" -lt 3 ]; then echo late at night; else echo "at $next"; fi' 2>&1)" \
+        "late at night"
+    expect "pkg and what it will run is hirdir-setup --upgrade --yes" \
+        "$(inside systemctl show hirdir-upgrade.service --property=ExecStart --value 2>&1 | grep -c 'argv\[\]=/usr/sbin/hirdir-setup --upgrade --yes ')" 1
+    inside systemctl disable --now hirdir-upgrade.timer >/dev/null 2>&1 || true
+    expect "pkg turned off again, it is off" "$(inside systemctl is-enabled hirdir-upgrade.timer 2>&1)" disabled
+
     # Asking GitHub is not done here: a test must not hang on the network. What is shown
     # is that a proxy named with --proxy is the way the request goes, and that a proxy
     # which does not answer is said plainly, with nothing changed.

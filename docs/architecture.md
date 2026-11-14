@@ -233,6 +233,7 @@ rendered as text, never as HTML.
 | `/etc/nginx/snippets/hirdir.conf` | that snippet under the prefix of this host. Written at install and at each upgrade, never shipped, and not a conffile |
 | `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
+| `/usr/lib/systemd/system/hirdir-upgrade.{service,timer}` | the nightly upgrade from GitHub. Shipped, and not enabled: a site turns it on |
 | `/var/lib/hirdir/` | database, signing key, backups (created at install, never shipped) |
 | `/usr/share/doc/hirdir/` | this documentation as HTML, and the release notes |
 | `/usr/share/doc/hirdir/examples/` | the CSV and JSON files of `examples/`, to try an import with and to start a file from |
@@ -281,7 +282,15 @@ the old one does one thing more when apt is done: it runs the new
 `hirdir-setup --after-upgrade <the version that was installed>`. That is where a
 version puts what it wants done once at an upgrade, beyond what every upgrade does in
 the package's own scripts, and it reports how the upgrade went. A tool of an earlier
-version therefore never needs to know what a later one requires. Installing the same version again takes
+version therefore never needs to know what a later one requires.
+
+**The nightly upgrade** is `hirdir-upgrade.timer`, which the package ships and does not
+enable. A site that turns it on gets `hirdir-setup --upgrade --yes` each night at a
+time of its own between 21:00 and 03:00 in the host's local time: `OnCalendar` at
+21:00 with a random delay of up to six hours, and not `Persistent`, so a night the host
+was off is not made up for in the middle of a working day. It runs as root, because it
+installs a package, and goes through the proxy that `[upgrades]` in the configuration
+file names. With nothing newer published it changes nothing. Installing the same version again takes
 the same steps and changes nothing in the database.
 
 **The nginx snippet** holds the `location` block shown under "URL prefix" and one line
@@ -409,6 +418,9 @@ keep = 14
 
 [files]
 max_megabytes = 20                   # the largest file an import takes; nginx must allow as much
+
+[upgrades]
+proxy = ""                           # the proxy through which hirdir-setup reaches GitHub, if any
 ```
 
 Installation-wide values that people change in the course of work, such as the stack

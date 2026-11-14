@@ -555,13 +555,13 @@ EDITED = SETTINGS_OF_0_2_1.replace("# session_hours = 12", "session_hours = 11")
 
 def test_a_settings_file_nobody_edited_becomes_the_one_this_version_ships() -> None:
     merged, added = setup.with_new_settings(SETTINGS_OF_0_2_1, SETTINGS_NOW)
-    assert added == ["files.max_megabytes"]
+    assert added == ["files.max_megabytes", "upgrades.proxy"]
     assert merged == SETTINGS_NOW
 
 
 def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:
     merged, added = setup.with_new_settings(EDITED, SETTINGS_NOW)
-    assert added == ["files.max_megabytes"]
+    assert added == ["files.max_megabytes", "upgrades.proxy"]
     # Every line of the site's file is still there, in its place, and the rest follows.
     assert merged.startswith(EDITED.rstrip("\n") + "\n")
     assert "# Our own note: the off-site copy is taken at 03:00." in merged
@@ -571,8 +571,10 @@ def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:
         "access": {"session_hours": 11},
         "backup": {},
         "files": {},
+        "upgrades": {},
     }
-    assert merged.endswith("# max_megabytes = 20\n")
+    assert "\n[files]\n" in merged
+    assert merged.endswith('# proxy = ""\n')
     # Brought up to date once, it is up to date.
     assert setup.with_new_settings(merged, SETTINGS_NOW) == (merged, [])
 
@@ -744,6 +746,28 @@ def test_upgrade_fetches_the_latest_release_checks_it_and_installs_it(
     # Once apt is done, the hirdir-setup of the new package finishes the upgrade.
     assert upgrading.handed_over == [[setup.SELF, "--after-upgrade", "0.3.0"]]
     assert "0.3.0 -> 0.4.0" in capsys.readouterr().out
+
+
+def test_the_proxy_of_the_settings_file_is_used_when_none_is_given(
+    upgrading: Upgrade, etc: Path, capsys
+) -> None:
+    upgrading.publish("0.4.0")
+    etc.mkdir()
+    settings = etc / "config.toml"
+    settings.write_text('[upgrades]\nproxy = "http://proxy.example.com:2025/"\n', encoding="utf-8")
+    assert setup.main(["--check"]) == 0
+    assert setup.main(["--check", "--proxy", "http://other.example.com:3128"]) == 0
+    assert [proxy for _, proxy in upgrading.fetched] == [
+        "http://proxy.example.com:2025",
+        "http://other.example.com:3128",
+    ]
+    # No proxy named, an empty one, or a file that cannot be read: straight to GitHub.
+    for text in ("[upgrades]\n", '[upgrades]\nproxy = ""\n', "[upgrades\n"):
+        settings.write_text(text, encoding="utf-8")
+        assert setup.configured_proxy() is None
+    settings.write_text('[upgrades]\nproxy = "not a proxy"\n', encoding="utf-8")
+    assert setup.main(["--check"]) == 1
+    assert "--proxy takes the address" in capsys.readouterr().err
 
 
 def test_upgrade_does_nothing_when_the_latest_release_is_installed(

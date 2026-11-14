@@ -39,3 +39,12 @@
 # The largest file an import takes, in megabytes. nginx has to let as much through:
 # client_max_body_size in /etc/nginx/snippets/hirdir.conf, to the same figure.
 # max_megabytes = 20
+
+[upgrades]
+# "hirdir-setup --check" and "hirdir-setup --upgrade" ask GitHub for the latest release,
+# and so does hirdir-upgrade.timer each night where a site has turned it on. Where the
+# way out is through a proxy, name it here, as in "http://proxy.example.com:2025/". It
+# is used whenever --proxy is not given. Every user of the host can read this file: for
+# a proxy that takes a password, first make the file readable by root and the hirdir
+# group alone (chgrp hirdir and chmod 640).
+# proxy = ""

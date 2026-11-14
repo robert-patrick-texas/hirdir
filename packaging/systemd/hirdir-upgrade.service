@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for a newer release of hirdir and install it
+Documentation=file:///usr/share/doc/hirdir/docs/install.html
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# It installs a package, so it runs as root and is not confined as hirdir.service is.
+# With nothing newer published it says so and changes nothing. A proxy is taken from
+# [upgrades] in /etc/hirdir/config.toml.
+ExecStart=/usr/sbin/hirdir-setup --upgrade --yes

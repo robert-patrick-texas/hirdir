@@ -986,6 +986,18 @@ def checked_proxy(value: str | None) -> str | None:
     return f"{parts.scheme}://{parts.netloc}"
 
 
+def configured_proxy() -> str | None:
+    """Return the proxy the settings file names under [upgrades], when it names one.
+
+    It is what the nightly timer goes through, which has nobody to give it --proxy.
+    """
+    try:
+        named = tomllib.loads(SETTINGS.read_text(encoding="utf-8")).get("upgrades", {}).get("proxy")
+    except OSError, tomllib.TOMLDecodeError, AttributeError:
+        return None
+    return named if isinstance(named, str) and named.strip() else None
+
+
 def shown_proxy(proxy: str) -> str:
     """Return a proxy for a message: without the name and password it may carry."""
     parts = urllib.parse.urlsplit(proxy)
@@ -1113,7 +1125,7 @@ def _download(release: Release, proxy: str | None) -> Path:
 
 def _check(args: argparse.Namespace) -> int:
     """Say which version is installed and which is the latest release."""
-    release = latest_release(checked_proxy(args.proxy))
+    release = latest_release(checked_proxy(args.proxy or configured_proxy()))
     installed = _installed()
     if not installed:
         print(f"hirdir is not installed. The latest release is {release.version}.")
@@ -1136,7 +1148,7 @@ def _upgrade(args: argparse.Namespace) -> int:
     """
     installed = _installed()
     if args.upgrade == LATEST:
-        proxy = checked_proxy(args.proxy)
+        proxy = checked_proxy(args.proxy or configured_proxy())
         release = latest_release(proxy)
         if installed and not _older(installed, release.version):
             print(f"hirdir {installed} is installed, and no newer release has been published.")
@@ -1187,6 +1199,9 @@ def _upgrade(args: argparse.Namespace) -> int:
         "Dpkg::Options::=--force-confdef",
         "-o",
         "Dpkg::Options::=--force-confold",
+        # Another apt may be at work, at night above all: wait for it, up to ten minutes.
+        "-o",
+        "DPkg::Lock::Timeout=600",
         str(package),
     ]
     done = subprocess.run(  # noqa: S603 - a fixed program and a package checked above
@@ -1313,7 +1328,7 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "--proxy",
         metavar="URL",
         help="with --check and --upgrade: reach GitHub through this proxy, such as "
-        "http://proxy.example.com:2025/",
+        f"http://proxy.example.com:2025/; left out, the one {SETTINGS} names under [upgrades]",
     )
     parser.add_argument("--after-upgrade", metavar="VERSION", help=argparse.SUPPRESS)
     parser.add_argument(

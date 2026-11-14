@@ -1,0 +1,16 @@
+[Unit]
+Description=Nightly upgrade of hirdir from GitHub, for a site that turns it on
+
+# Not enabled by the package. A site turns it on with
+#     sudo systemctl enable --now hirdir-upgrade.timer
+[Timer]
+# Each night at a time of its own between 21:00 and 03:00, in the host's local time.
+OnCalendar=*-*-* 21:00:00
+RandomizedDelaySec=6h
+AccuracySec=1min
+# A night that was missed, because the host was off, is not made up for at the next
+# start: that would be an upgrade in the middle of a working day.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

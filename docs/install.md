@@ -318,6 +318,42 @@ went: the schema revision, whether the service is running, and where the release
 notes are. So a later version can add a step to an upgrade without a new tool having to
 be fetched first.
 
+### Upgrades by themselves
+
+The package ships a timer that does `hirdir-setup --upgrade --yes` each night. It is
+off until a site turns it on:
+
+```bash
+sudo systemctl enable --now hirdir-upgrade.timer     # on
+sudo systemctl disable --now hirdir-upgrade.timer    # off again
+systemctl list-timers hirdir-upgrade.timer           # when it runs next
+journalctl -u hirdir-upgrade.service                 # what it did
+```
+
+Turned on, it asks GitHub once a night, at a time of its own between 21:00 and 03:00 in
+the host's local time, and installs a newer release when one has been published. Most
+nights there is none, and it changes nothing. A night the host was off is skipped, not
+made up for by day.
+
+Where GitHub is reached through a proxy, name the proxy in `/etc/hirdir/config.toml`,
+because the timer has nobody to give it `--proxy`:
+
+```toml
+[upgrades]
+proxy = "http://proxy.example.com:2025/"
+```
+
+`hirdir-setup --check` and `--upgrade` use it too whenever `--proxy` is left out. The
+file can be read by every user of the host. For a proxy that takes a name and a
+password, make it readable by root and the `hirdir` group alone first:
+`sudo chgrp hirdir /etc/hirdir/config.toml && sudo chmod 640 /etc/hirdir/config.toml`.
+
+Think before turning it on. An upgrade stops the service for as long as the database
+takes to back up and migrate, and people who are at work at that hour wait. If a
+migration fails, the upgrade stops with the service down and the backup named, as
+under [If the upgrade stops](#if-the-upgrade-stops), and it stays down until somebody
+looks. `systemctl --failed` shows a night that went wrong.
+
 The checksum shows that the package arrived as it was published. It does not show who
 published it: that rests on GitHub and on HTTPS. A site that needs more verifies the
 package by its own means before `--upgrade PACKAGE.deb`.

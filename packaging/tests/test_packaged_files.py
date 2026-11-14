@@ -117,7 +117,7 @@ def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path
     documented = re.search(r"## Configuration.*?```toml\n(.*?)```", ARCHITECTURE, re.DOTALL)
     assert documented is not None
     assert tomllib.loads(uncommented) == tomllib.loads(documented.group(1))
-    assert len(keys) == 8
+    assert len(keys) == 9
 
     as_shipped = tmp_path / "shipped.toml"
     as_shipped.write_text(shipped, encoding="utf-8")
@@ -205,3 +205,26 @@ def test_an_upgrade_backs_up_before_it_migrates_and_restarts_after() -> None:
     ]
     places = [postinst.index(step) for step in steps]
     assert places == sorted(places)
+
+
+def test_the_nightly_upgrade_is_shipped_and_is_for_a_site_to_turn_on() -> None:
+    service = (PACKAGING / "systemd" / "hirdir-upgrade.service").read_text(encoding="utf-8")
+    assert "\nExecStart=/usr/sbin/hirdir-setup --upgrade --yes\n" in service
+    assert "\nType=oneshot\n" in service
+    timer = (PACKAGING / "systemd" / "hirdir-upgrade.timer").read_text(encoding="utf-8")
+    # Between 21:00 and 03:00, at a time of its own, and never made up for by day.
+    assert "\nOnCalendar=*-*-* 21:00:00\n" in timer
+    assert "\nRandomizedDelaySec=6h\n" in timer
+    assert "\nPersistent=false\n" in timer
+    build = (PACKAGING / "container" / "build.sh").read_text(encoding="utf-8")
+    assert (
+        "packaging/systemd/hirdir-upgrade.service packaging/systemd/hirdir-upgrade.timer" in build
+    )
+    # The package enables and starts the service and the backup, and not this.
+    for script in ("postinst", "postrm"):
+        text = (PACKAGING / "debian" / script).read_text(encoding="utf-8")
+        assert '\nUNITS="hirdir.service hirdir-backup.timer"\n' in text
+        assert "hirdir-upgrade" not in text
+    prerm = (PACKAGING / "debian" / "prerm").read_text(encoding="utf-8")
+    assert "systemctl disable --now hirdir-upgrade.timer" in prerm
+    assert "sudo systemctl enable --now hirdir-upgrade.timer" in INSTALL

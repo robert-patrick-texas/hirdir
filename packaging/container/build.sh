@@ -196,7 +196,8 @@ stage_files() {
     install -d "$STAGE/etc/nginx/snippets"
     local units=$STAGE/usr/lib/systemd/system
     install -Dm644 -t "$units" packaging/systemd/hirdir.service \
-        packaging/systemd/hirdir-backup.service packaging/systemd/hirdir-backup.timer
+        packaging/systemd/hirdir-backup.service packaging/systemd/hirdir-backup.timer \
+        packaging/systemd/hirdir-upgrade.service packaging/systemd/hirdir-upgrade.timer
 
     local doc=$STAGE/usr/share/doc/hirdir
     install -Dm644 packaging/debian/copyright "$doc/copyright"
@@ -257,7 +258,9 @@ verify_units() {
     out=$(systemd-analyze verify --man=no --recursive-errors=no \
         "$STAGE"/usr/lib/systemd/system/hirdir.service \
         "$STAGE"/usr/lib/systemd/system/hirdir-backup.service \
-        "$STAGE"/usr/lib/systemd/system/hirdir-backup.timer 2>&1) ||
+        "$STAGE"/usr/lib/systemd/system/hirdir-backup.timer \
+        "$STAGE"/usr/lib/systemd/system/hirdir-upgrade.service \
+        "$STAGE"/usr/lib/systemd/system/hirdir-upgrade.timer 2>&1) ||
         die "systemd-analyze verify failed: $out"
     [ -z "$out" ] || die "systemd-analyze verify reported: $out"
 }
