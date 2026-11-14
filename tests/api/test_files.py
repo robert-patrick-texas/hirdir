@@ -894,3 +894,54 @@ def test_a_site_may_raise_or_lower_the_largest_file_in_its_configuration(
             f"{API}/imports/preview?entity=tags", content=b"label\nlab\n", headers=headers
         )
         assert fits.status_code == 201
+
+
+def test_stored_previews_and_their_rows_are_sorted_by_the_columns_of_their_tables(
+    files: Files, make: Maker, client: TestClient, admin: dict
+) -> None:
+    make.tag("mid")
+    tags = files.preview("tags", "label\nzeta\nAlpha\nmid\n", file_name="B.csv")
+    vendors = Files(client, admin).preview("vendors", "name\nCisco\n", file_name="a.csv")
+    plain = files.preview("tags", "label\none\ntwo\n")
+    files.apply(vendors)
+    by_hid = {
+        job["job"]["hid"]: name for job, name in ((tags, "B"), (vendors, "a"), (plain, "none"))
+    }
+
+    def jobs(**params) -> list[str]:
+        return [by_hid[job["hid"]] for job in make.get("/imports", **params)["items"]]
+
+    # Newest first, as it was, and that is what settles the previews a sort leaves tied.
+    assert jobs() == ["none", "a", "B"]
+    assert jobs(sort="created_at") == ["B", "a", "none"]
+    # The name of the file without regard to case, and a preview of none last either way.
+    assert jobs(sort="file_name") == ["a", "B", "none"]
+    assert jobs(sort="-file_name") == ["B", "a", "none"]
+    assert jobs(sort="entity") == ["none", "B", "a"]
+    assert jobs(sort="-entity") == ["a", "none", "B"]
+    assert jobs(sort="status") == ["a", "none", "B"]
+    assert jobs(sort="created_by_name") == ["a", "none", "B"]
+    # Numbers as numbers: the rows of each, and how many of them would create a record.
+    assert jobs(sort="row_count") == ["a", "none", "B"]
+    assert jobs(sort="-row_count", limit=2) == ["B", "none"]
+    assert jobs(sort="-unchanged")[0] == "B"
+    assert jobs(sort="created,updated,rejected,mode") == ["a", "none", "B"]
+    assert "sort" in errors(make.get("/imports", 422, sort="failure"))
+
+    path = f"/imports/{tags['job']['hid']}/rows"
+
+    def rows(**params) -> list[int]:
+        return [row["row"] for row in make.get(path, **params)["items"]]
+
+    keys = {row["row"]: row["key"] for row in make.get(path)["items"]}
+    # In the order of the file, as it was.
+    assert rows() == [1, 2, 3]
+    assert rows(sort="-row") == [3, 2, 1]
+    # By how each row names its record, without regard to case.
+    assert [keys[row].lower() for row in rows(sort="key")] == ["alpha", "mid", "zeta"]
+    assert [keys[row].lower() for row in rows(sort="-key")] == ["zeta", "mid", "alpha"]
+    # By what the row would do, and within one outcome in the order of the file.
+    assert rows(sort="-outcome") == [3, 1, 2]
+    assert rows(sort="-key", outcome="create") == [1, 2]
+    assert rows(sort="outcome", limit=1, offset=2) == [3]
+    assert "changes is not a field" in errors(make.get(path, 422, sort="changes"))["sort"]

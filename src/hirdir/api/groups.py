@@ -11,7 +11,7 @@ from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Limit, Listed, Offset
 from hirdir.api.schemas import Page
 from hirdir.domain import groups
-from hirdir.io import fields
+from hirdir.io import fields, tables
 
 router = APIRouter(prefix="/device-groups", tags=["Groups"], route_class=IdempotentRoute)
 
@@ -88,11 +88,14 @@ def list_members(
     include_past: Annotated[
         bool, Query(description="Show the memberships that have ended as well.")
     ] = False,
+    sort: Annotated[list[str] | None, lists.sort_of(tables.GROUP_MEMBERS)] = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> Page[r.MemberOut]:
-    """List the members of a group by position, the current ones first."""
-    page, total = groups.list_members(db, hid, include_past, limit, offset)
+    """List the members of a group by position, the current ones first, unless a sort
+    says otherwise."""
+    arrange = tables.arrange(tables.GROUP_MEMBERS, sort)
+    page, total = groups.list_members(db, hid, include_past, limit, offset, arrange)
     return Page(items=shapes.members_out(db, page), total=total, limit=limit, offset=offset)
 
 

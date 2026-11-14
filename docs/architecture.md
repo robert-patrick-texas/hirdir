@@ -188,8 +188,10 @@ rendered as text, never as HTML.
   `503` with `Retry-After`, and nothing of it was done. Reading is never held up.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
-  case-insensitive comparison, regular expression matching, and upsert. The test suite
-  runs against SQLite; a PostgreSQL run is added with that option.
+  case-insensitive comparison, regular expression matching, the order of addresses,
+  the values of a list that is kept as JSON, and upsert. The test suite runs against
+  SQLite; a PostgreSQL run is added with that option, and until then the PostgreSQL
+  form of each is written and not run.
 - **Regular expressions.** SQLite gets a matching function from the application. It
   uses a linear-time engine (RE2) when a production release of its Python binding
   exists for the Python in use, and otherwise the `regex` package with a per-match
@@ -205,6 +207,13 @@ rendered as text, never as HTML.
   SQLite's own `lower()` knows the letters A to Z only, so the application gives SQLite
   one that knows every alphabet, and every comparison and sort of text goes through
   it. PostgreSQL uses its `lower()`.
+- **Sorting.** A sort is a statement's ORDER BY and nothing else. What a column of
+  several values, a count or a derived value is sorted by is a subquery of its own,
+  written beside the field in `io/fields.py`, and it is in the statement only when
+  that sort is asked for: a list that is not sorted by its tags reads no tag. The
+  tables that are paged and are no list are in `io/tables.py`, and each keeps its own
+  order after what is asked for. An address is sorted as its number: SQLite gets a
+  function from the application for that, and PostgreSQL casts to `inet`.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent. Every update of a row names the `row_version` it was read at.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into

@@ -12,11 +12,16 @@ from sqlalchemy.orm import Session
 from hirdir.api import records as shapes
 from hirdir.api.schemas import Page
 from hirdir.domain.errors import Invalid
-from hirdir.io import listing
+from hirdir.io import listing, tables
 from hirdir.io.fields import Listing
 
 Limit = Annotated[int, Query(ge=1, le=listing.MAX_LIMIT)]
 Offset = Annotated[int, Query(ge=0, le=listing.MAX_OFFSET)]
+
+
+def sort_of(table: tables.Table) -> Any:
+    """Return the `sort` of a route that pages a table: what it is, and what it takes."""
+    return Query(description=table.help)
 
 
 @dataclass(frozen=True)

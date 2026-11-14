@@ -15,6 +15,7 @@ from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
 from hirdir.domain import accounts
+from hirdir.io import tables
 
 Limit = Annotated[int, Query(ge=1, le=1000)]
 Offset = Annotated[int, Query(ge=0, le=10_000_000)]
@@ -100,10 +101,16 @@ def sign_out_everywhere(principal: SignedIn, context: Audit, db: Db) -> None:
 
 @users.get("/users")
 def list_users(
-    _: Admin, db: Db, q: str = "", limit: Limit = 100, offset: Offset = 0
+    _: Admin,
+    db: Db,
+    q: str = "",
+    sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
-    """List users by username. `q` matches part of a username or display name."""
-    page, total = accounts.list_users(db, q, limit, offset)
+    """List users, by username unless a sort says otherwise. `q` matches part of a
+    username or display name."""
+    page, total = accounts.list_users(db, q, limit, offset, tables.arrange(tables.USERS, sort))
     return schemas.Page(
         items=[views.user_out(db, user) for user in page], total=total, limit=limit, offset=offset
     )
@@ -270,10 +277,12 @@ def list_audit_events(
     action: str = "",
     actor_hid: str = "",
     request: str = Query(default="", alias="request_id"),
+    sort: Annotated[list[str] | None, Query(description=tables.AUDIT_EVENTS.help)] = None,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.AuditEventOut]:
-    """List audit events, newest first."""
+    """List audit events, newest first unless a sort says otherwise."""
+    arrange = tables.arrange(tables.AUDIT_EVENTS, sort)
     query = select(AuditEvent)
     for column, value in (
         (AuditEvent.record_type, record_type),
@@ -285,6 +294,8 @@ def list_audit_events(
         if value:
             query = query.where(column == value)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     page = db.scalars(
         query.order_by(AuditEvent.at.desc(), AuditEvent.hid.desc()).limit(limit).offset(offset)
     )

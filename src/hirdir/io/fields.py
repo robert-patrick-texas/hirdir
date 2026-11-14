@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, Integer, Select, and_, case, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from hirdir.db import dialect
 from hirdir.db.models import (
     ADDRESS_FIELDS,
     Address,
@@ -33,12 +34,15 @@ from hirdir.db.models import (
     Vendor,
 )
 from hirdir.domain import (
+    contacts,
     descent,
     geography,
+    groups,
     health,
     inheritance,
     lifecycle,
     operators,
+    owners,
     records,
 )
 from hirdir.domain.addresses import comparable
@@ -71,6 +75,31 @@ def _tagged(record_type: str, hid: Any) -> Callable[[str], ColumnElement[bool]]:
         return linked.exists()
 
     return test
+
+
+def _tags(record_type: str, model: Any) -> Field:
+    """Return the field of a record's tags: found by any one of them, and sorted by the
+    first as they are listed, which is the least label without regard to case."""
+    first = (
+        select(func.min(Tag.label_key))
+        .join(TagLink, TagLink.tag_hid == Tag.hid)
+        .where(TagLink.record_type == record_type, TagLink.record_hid == model.hid)
+        .correlate(model)
+        .scalar_subquery()
+    )
+    return Field("tags", test=_tagged(record_type, model.hid), ordered_by=first)
+
+
+def _counted(model: Any, *named: Any) -> ColumnElement[Any]:
+    """Return how many records name a record of model in one of the columns."""
+    counts = [
+        select(func.count()).where(column == model.hid).correlate(model).scalar_subquery()
+        for column in named
+    ]
+    total = counts[0]
+    for count in counts[1:]:
+        total = total + count
+    return total
 
 
 def _columns(model: Any, kind: str, *names: str) -> dict[str, Field]:
@@ -233,37 +262,51 @@ def standing(name: str) -> ColumnElement[Any]:
 
 STATE_IN_FORCE = standing("lifecycle_state")
 
-# The health of an item: the cascade of `hirdir.domain.health.of_item`, for the database
-# to filter and sort by. A test holds the two together.
-HEALTH: ColumnElement[Any] = case(
-    (
-        or_(
-            Item.condition.in_(health.FAILED_CONDITIONS),
-            and_(
-                standing("expected_online").is_(True),
-                Item.observed_status == health.UNREACHABLE,
+
+def _health_of(item: Any, expected_online: Any) -> ColumnElement[Any]:
+    """Return the health of an item, held against an intent: the cascade of
+    `hirdir.domain.health.of_item`."""
+    return case(
+        (
+            or_(
+                item.condition.in_(health.FAILED_CONDITIONS),
+                and_(expected_online.is_(True), item.observed_status == health.UNREACHABLE),
             ),
+            health.FAILED,
         ),
-        health.FAILED,
-    ),
-    (
-        or_(
-            Item.condition.in_(health.POOR_CONDITIONS),
-            Item.observed_status.in_((health.OBSERVED_DEGRADED, health.UNREACHABLE)),
+        (
+            or_(
+                item.condition.in_(health.POOR_CONDITIONS),
+                item.observed_status.in_((health.OBSERVED_DEGRADED, health.UNREACHABLE)),
+            ),
+            health.DEGRADED,
         ),
-        health.DEGRADED,
-    ),
-    (
-        or_(Item.condition == health.GOOD_CONDITION, Item.observed_status.in_(health.SEEN_WELL)),
-        health.GOOD,
-    ),
-    else_=health.UNKNOWN,
-)
+        (
+            or_(
+                item.condition == health.GOOD_CONDITION,
+                item.observed_status.in_(health.SEEN_WELL),
+            ),
+            health.GOOD,
+        ),
+        else_=health.UNKNOWN,
+    )
+
+
+# The health of an item, for the database to filter and sort by. A test holds it and
+# `hirdir.domain.health.of_item` together.
+HEALTH: ColumnElement[Any] = _health_of(Item, standing("expected_online"))
+# How bad each health is: the worst first, and what is not known before the good.
+HEALTH_RANKS: Mapping[str, int] = {
+    health.FAILED: 0,
+    health.DEGRADED: 1,
+    health.UNKNOWN: 2,
+    health.GOOD: 3,
+}
 HEALTH_RANK: ColumnElement[Any] = case(
-    (HEALTH == health.FAILED, 0),
-    (HEALTH == health.DEGRADED, 1),
-    (HEALTH == health.UNKNOWN, 2),
-    else_=3,
+    (HEALTH == health.FAILED, HEALTH_RANKS[health.FAILED]),
+    (HEALTH == health.DEGRADED, HEALTH_RANKS[health.DEGRADED]),
+    (HEALTH == health.UNKNOWN, HEALTH_RANKS[health.UNKNOWN]),
+    else_=HEALTH_RANKS[health.GOOD],
 )
 
 
@@ -287,27 +330,78 @@ def _one_of(
     return among
 
 
-_ITEM_GROUPS = _one_of(
-    select(DeviceGroupMember.hid).join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid),
+# The groups an item is in: the ones it is a current member of, that are not retired.
+_ITS_GROUPS = (
     DeviceGroupMember.item_hid == Item.hid,
     DeviceGroupMember.left_on.is_(None),
     DeviceGroup.record_status != "retired",
 )
-_ITEM_ADDRESSES = _one_of(
-    select(Address.hid).outerjoin(Network, Network.hid == Address.network_hid),
-    Address.item_hid == Item.hid,
-)
-_GROUP_ADDRESSES = _one_of(
-    select(Address.hid).outerjoin(Network, Network.hid == Address.network_hid),
-    Address.group_hid == DeviceGroup.hid,
+_ITEM_GROUPS = _one_of(
+    select(DeviceGroupMember.hid).join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid),
+    *_ITS_GROUPS,
 )
 
 
-def _address_fields(among: Any) -> dict[str, Field]:
+def _first_group(value: Any) -> ColumnElement[Any]:
+    """Return the least of what the groups of an item have in a column: what a list of
+    them, in order, begins with."""
+    return (
+        select(func.min(value))
+        .select_from(DeviceGroupMember)
+        .join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid)
+        .where(*_ITS_GROUPS)
+        .correlate(Item)
+        .scalar_subquery()
+    )
+
+
+def _address_fields(model: Any, held: ColumnElement[bool]) -> dict[str, Field]:
+    """Return the fields of the addresses of a record: of an item, or of a device group.
+
+    `held` says that an address is the record's. The record is found by any one of its
+    addresses and of their networks, and is sorted by the lowest address, as an address
+    and not as text, and by the first label of its networks. `mgmt_address` is the
+    primary management address, the IPv4 one before the IPv6 one, to sort by.
+    """
+    among = _one_of(
+        select(Address.hid).outerjoin(Network, Network.hid == Address.network_hid), held
+    )
+
+    def lowest(*where: ColumnElement[bool]) -> ColumnElement[Any]:
+        return (
+            select(func.min(dialect.as_address(Address.address)))
+            .where(held, *where)
+            .correlate(model)
+            .scalar_subquery()
+        )
+
+    first_network = (
+        select(func.min(Network.label_key))
+        .select_from(Address)
+        .join(Network, Network.hid == Address.network_hid)
+        .where(held)
+        .correlate(model)
+        .scalar_subquery()
+    )
     return {
-        "address": Field("address", Address.address, convert=comparable, among=among),
-        "network.label": Field("text", Network.label, among=among),
+        "address": Field(
+            "address", Address.address, convert=comparable, among=among, ordered_by=lowest()
+        ),
+        "network.label": Field("text", Network.label, among=among, ordered_by=first_network),
+        "mgmt_address": Field("address", ordered_by=lowest(Address.is_primary.is_(True))),
     }
+
+
+# How many minor items are directly in an item. An item with none has no number, as its
+# cell has none, and so comes last.
+_MINOR: Any = aliased(Item, name="minor_item")
+MINOR_ITEMS: ColumnElement[Any] = func.nullif(
+    select(func.count())
+    .where(_MINOR.parent_item_hid == Item.hid)
+    .correlate(Item)
+    .scalar_subquery(),
+    0,
+)
 
 
 ITEMS = Listing(
@@ -420,11 +514,23 @@ ITEMS = Listing(
         "catalog.function": Field("choice", CatalogEntry.function),
         # The owner in force: a minor item has the owner of the item it is in.
         "owner.label": Field("text", Owner.label),
-        "tags": Field("tags", test=_tagged("item", Item.hid)),
+        "tags": _tags("item", Item),
         "group.hid": Field("reference", DeviceGroup.hid, among=_ITEM_GROUPS),
-        "group.name": Field("text", DeviceGroup.name, among=_ITEM_GROUPS),
-        "group.type": Field("choice", DeviceGroup.type, among=_ITEM_GROUPS),
-        **_address_fields(_ITEM_ADDRESSES),
+        # Sorted by the first of them, as the record lists its groups: by name.
+        "group.name": Field(
+            "text",
+            DeviceGroup.name,
+            among=_ITEM_GROUPS,
+            ordered_by=_first_group(DeviceGroup.name_key),
+        ),
+        "group.type": Field(
+            "choice",
+            DeviceGroup.type,
+            among=_ITEM_GROUPS,
+            ordered_by=_first_group(DeviceGroup.type),
+        ),
+        **_address_fields(Item, Address.item_hid == Item.hid),
+        "minor_items": Field("integer", ordered_by=MINOR_ITEMS),
     },
     joined=lambda query: (
         _with_items_above(query)
@@ -474,6 +580,123 @@ GROUP_PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(
     DeviceGroup.planned_location_hid, _group_in_force("planned_location_hid")
 )
 
+# How many current members a group has, as `hirdir.domain.groups.member_counts` counts.
+MEMBER_COUNT: ColumnElement[Any] = (
+    select(func.count())
+    .select_from(DeviceGroupMember)
+    .where(DeviceGroupMember.group_hid == DeviceGroup.hid, DeviceGroupMember.left_on.is_(None))
+    .correlate(DeviceGroup)
+    .scalar_subquery()
+)
+
+_MASTER: Any = aliased(Item, name="master")
+_SEEN_MASTER: Any = aliased(Item, name="observed_master")
+
+
+def shown_name(item: Any) -> ColumnElement[Any]:
+    """Return the name an item is shown by where another record names it: its name,
+    or else its hostname, its serial number or its asset tag."""
+    return func.coalesce(item.name, item.hostname, item.serial_number, item.asset_tag)
+
+
+def _of_master(value: Any) -> ColumnElement[Any]:
+    """Return what the master that is intended has in a column: the current member of a
+    stack with that role, as `hirdir.domain.groups.masters` finds it."""
+    return (
+        select(func.min(value))
+        .select_from(DeviceGroupMember)
+        .join(_MASTER, _MASTER.hid == DeviceGroupMember.item_hid)
+        .where(
+            DeviceGroupMember.group_hid == DeviceGroup.hid,
+            DeviceGroupMember.left_on.is_(None),
+            DeviceGroupMember.role == groups.MASTER,
+            DeviceGroup.type == "stack",
+        )
+        .correlate(DeviceGroup)
+        .scalar_subquery()
+    )
+
+
+def _of_seen_master(value: Any) -> ColumnElement[Any]:
+    """Return what the master that is seen has in a column."""
+    return (
+        select(value)
+        .where(_SEEN_MASTER.hid == DeviceGroup.observed_master_hid)
+        .correlate(DeviceGroup)
+        .scalar_subquery()
+    )
+
+
+# The serial number a group reports: that of the master that is seen, when there is
+# one, and else that of the one intended.
+GROUP_SERIAL: ColumnElement[Any] = case(
+    (_of_seen_master(_SEEN_MASTER.hid).is_not(None), _of_seen_master(_SEEN_MASTER.serial_number)),
+    else_=_of_master(_MASTER.serial_number),
+)
+
+
+def _group_health(said: Mapping[str, Any]) -> ColumnElement[Any]:
+    """Return the health of a stack or a cluster, from its current members and what is
+    seen of it: the cascade of `hirdir.domain.health.of_group`, with the members as
+    `hirdir.domain.groups.health_of` reads them. `said` is what to answer for each
+    health. A group of another type has none. A test holds the two together.
+    """
+    member: Any = aliased(Item, name="health_member")
+    its = _health_of(member, member.expected_online)
+    members = func.count()
+
+    def those(condition: ColumnElement[bool]) -> ColumnElement[Any]:
+        return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
+
+    worked_out = case(
+        (members == 0, said[health.UNKNOWN]),
+        (
+            or_(
+                DeviceGroup.observed_status == health.UNREACHABLE,
+                those(its == health.FAILED) == members,
+            ),
+            said[health.FAILED],
+        ),
+        (
+            or_(
+                DeviceGroup.observed_status == health.OBSERVED_DEGRADED,
+                those(its.in_((health.FAILED, health.DEGRADED))) > 0,
+                those(member.lifecycle_state.in_(health.OUT_OF_SERVICE)) > 0,
+                and_(
+                    DeviceGroup.expected_members.is_not(None),
+                    members < DeviceGroup.expected_members,
+                ),
+                and_(
+                    DeviceGroup.expected_members.is_(None),
+                    DeviceGroup.type == "stack",
+                    members == 1,
+                ),
+            ),
+            said[health.DEGRADED],
+        ),
+        (
+            or_(
+                DeviceGroup.observed_status.in_(health.SEEN_WELL),
+                those(its == health.GOOD) == members,
+            ),
+            said[health.GOOD],
+        ),
+        else_=said[health.UNKNOWN],
+    )
+    of_members = (
+        select(worked_out)
+        .select_from(DeviceGroupMember)
+        .join(member, member.hid == DeviceGroupMember.item_hid)
+        .where(DeviceGroupMember.group_hid == DeviceGroup.hid, DeviceGroupMember.left_on.is_(None))
+        .correlate(DeviceGroup)
+        .scalar_subquery()
+    )
+    return case((DeviceGroup.type.in_(health.HAS_HEALTH), of_members), else_=None)
+
+
+GROUP_HEALTH: ColumnElement[Any] = _group_health({value: value for value in health.HEALTHS})
+GROUP_HEALTH_RANK: ColumnElement[Any] = _group_health(HEALTH_RANKS)
+
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
     fields={
@@ -521,9 +744,19 @@ DEVICE_GROUPS = Listing(
                 DeviceGroupMember.left_on.is_(None),
             ),
         ),
+        # What the columns of the grid that are worked out are sorted by. The serial
+        # number is the one the group reports, where the filter finds a stack by any.
+        "serial_number": Field("text", ordered_by=dialect.folded(GROUP_SERIAL)),
+        "master.name": Field("text", ordered_by=dialect.folded(_of_master(shown_name(_MASTER)))),
+        "observed_master.name": Field(
+            "text", ordered_by=dialect.folded(_of_seen_master(shown_name(_SEEN_MASTER)))
+        ),
+        "member_count": Field("integer", ordered_by=MEMBER_COUNT),
+        # The worst first, as an item's is, and a group that has no health last.
+        "health": Field("choice", ordered_by=GROUP_HEALTH_RANK),
         "owner.label": Field("text", Owner.label),
         "parent.name": Field("text", _PARENT_GROUP.name),
-        "tags": Field("tags", test=_tagged("device_group", DeviceGroup.hid)),
+        "tags": _tags("device_group", DeviceGroup),
         "member.item_hid": Field(
             "reference",
             DeviceGroupMember.item_hid,
@@ -533,7 +766,7 @@ DEVICE_GROUPS = Listing(
                 DeviceGroupMember.left_on.is_(None),
             ),
         ),
-        **_address_fields(_GROUP_ADDRESSES),
+        **_address_fields(DeviceGroup, Address.group_hid == DeviceGroup.hid),
     },
     joined=lambda query: (
         query.outerjoin(Owner, Owner.hid == GROUP_OWNER_IN_FORCE)
@@ -614,7 +847,7 @@ CATALOG_ENTRIES = Listing(
         ),
         **_columns(CatalogEntry, "date", *_INHERITED_DATES),
         **_columns(CatalogEntry, "number", *_INHERITED_AMOUNTS, "stack_discount_pct"),
-        "tags": Field("tags", test=_tagged("catalog_entry", CatalogEntry.hid)),
+        "tags": _tags("catalog_entry", CatalogEntry),
     },
     joined=lambda query: query.join(Vendor, Vendor.hid == CatalogEntry.vendor_hid),
     default_sort=("vendor", "pid"),
@@ -625,6 +858,8 @@ VENDORS = Listing(
     fields={
         **_bookkeeping(Vendor),
         **_columns(Vendor, "text", "name", "notes"),
+        # The other spellings of the name: sorted by the least of them.
+        "aliases": Field("text", ordered_by=dialect.least_of_list(Vendor.aliases)),
         "review_status": Field("choice", Vendor.review_status),
     },
     joined=lambda query: query,
@@ -632,14 +867,26 @@ VENDORS = Listing(
     has_status=False,
 )
 
+_PRIMARY: Any = aliased(Contact, name="primary_contact")
+
 OWNERS = Listing(
     model=Owner,
     fields={
         **_bookkeeping(Owner),
         **_columns(Owner, "text", "label", "organization", "exception_reason"),
+        # The primary of its people, by name.
+        "primary.name": Field(
+            "text",
+            ordered_by=select(func.min(_PRIMARY.name_key))
+            .select_from(OwnerMember)
+            .join(_PRIMARY, _PRIMARY.hid == OwnerMember.contact_hid)
+            .where(OwnerMember.owner_hid == Owner.hid, OwnerMember.role == owners.PRIMARY)
+            .correlate(Owner)
+            .scalar_subquery(),
+        ),
         "is_external": Field("boolean", Owner.is_external),
         "record_status": Field("choice", Owner.record_status),
-        "tags": Field("tags", test=_tagged("owner", Owner.hid)),
+        "tags": _tags("owner", Owner),
         "member.contact_hid": Field(
             "reference",
             OwnerMember.contact_hid,
@@ -686,7 +933,7 @@ REGIONS = Listing(
         "operator_hid": Field("reference", Region.operator_hid),
         **_columns(Region, "text", "name", "code", "notes", *_SHIPPING),
         "record_status": Field("choice", Region.record_status),
-        "tags": Field("tags", test=_tagged("region", Region.hid)),
+        "tags": _tags("region", Region),
     },
     joined=lambda query: query.outerjoin(
         _PARENT_REGION, _PARENT_REGION.hid == Region.parent_region_hid
@@ -708,7 +955,7 @@ SITES = Listing(
         **_columns(Site, "number", "latitude", "longitude"),
         "ship_same_as_address": Field("boolean", Site.ship_same_as_address),
         "record_status": Field("choice", Site.record_status),
-        "tags": Field("tags", test=_tagged("site", Site.hid)),
+        "tags": _tags("site", Site),
     },
     joined=lambda query: query.join(Region, Region.hid == Site.region_hid),
     default_sort=("name",),
@@ -738,7 +985,7 @@ LOCATIONS = Listing(
         **_columns(Location, "number", "latitude", "longitude"),
         "ship_same_as_address": Field("boolean", Location.ship_same_as_address),
         "record_status": Field("choice", Location.record_status),
-        "tags": Field("tags", test=_tagged("location", Location.hid)),
+        "tags": _tags("location", Location),
     },
     joined=lambda query: (
         query.join(Site, Site.hid == Location.site_hid)
@@ -754,7 +1001,9 @@ CONTACTS = Listing(
         **_bookkeeping(Contact),
         **_columns(Contact, "text", "name", "organization", "email", "phone", "notes"),
         "record_status": Field("choice", Contact.record_status),
-        "tags": Field("tags", test=_tagged("contact", Contact.hid)),
+        "tags": _tags("contact", Contact),
+        # How many places, owners and operators name it, as its record counts them.
+        "uses": Field("integer", ordered_by=_counted(Contact, *contacts.USED_BY)),
     },
     joined=lambda query: query,
     default_sort=("name",),
@@ -775,6 +1024,11 @@ OPERATORS = Listing(
             or_(_OPERATOR_CONTACT.hid.is_(None), _OPERATOR_CONTACT.record_status == "retired"),
         ),
         "record_status": Field("choice", Operator.record_status),
+        # How many items, groups and places are given it, as its record counts them.
+        "uses": Field(
+            "integer",
+            ordered_by=_counted(Operator, *(holder.operator_hid for holder in operators.HOLDERS)),
+        ),
     },
     joined=lambda query: query.outerjoin(
         _OPERATOR_CONTACT, _OPERATOR_CONTACT.hid == Operator.contact_hid
@@ -859,7 +1113,12 @@ def warm() -> int:
     """
     built = 0
     for listing in LISTINGS:
-        columns = [one.expression for one in listing.fields.values() if one.expression is not None]
+        columns = [
+            term
+            for one in listing.fields.values()
+            for term in (one.expression, one.ordered_by)
+            if term is not None
+        ]
         # Joined from the record alone, as a list is, and the fields added after.
         base = select(listing.model).select_from(listing.model)
         str(listing.joined(base).add_columns(*columns).compile())

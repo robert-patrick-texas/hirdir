@@ -1,8 +1,9 @@
 """Everything that differs between SQLite and PostgreSQL lives in this module.
 
-Comparison without regard to case, wildcard and regular expression matching, and where
-blank values fall in a sorted list. The rest of the code builds its SQL from these and
-never asks which database it is talking to.
+Comparison without regard to case, wildcard and regular expression matching, where
+blank values fall in a sorted list, the order of addresses and the least text of a list
+that is kept as JSON. The rest of the code builds its SQL from these and never asks
+which database it is talking to.
 
 Regular expressions are bounded. A pattern has a longest length and a limit on how far
 its counted repeats multiply, each match has a time limit, and one request has a budget
@@ -13,6 +14,7 @@ limit. See P-19 in docs/decisions.md for when RE2 takes its place.
 """
 
 import re
+import socket
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -22,7 +24,7 @@ from functools import lru_cache
 from typing import Any
 
 import regex
-from sqlalchemy import Boolean, ColumnElement, String, literal, text
+from sqlalchemy import Boolean, ColumnElement, String, func, literal, select, text
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
 
@@ -128,6 +130,25 @@ def _sqlite_fold(value: Any) -> str | None:
     return None if value is None else str(value).lower()
 
 
+def _sqlite_address_key(value: Any) -> str | None:
+    """Return text that sorts as the address does: IPv4 before IPv6, each by its number.
+
+    It is the family and the bytes of the address in hexadecimal, which are as many
+    for every address of one family. It is called for every address a sort looks at,
+    so it reads the stored form with the socket library and not with `ipaddress`,
+    which takes ten times as long.
+    """
+    if value is None:
+        return None
+    text = str(value)
+    family, version = (socket.AF_INET6, "6") if ":" in text else (socket.AF_INET, "4")
+    try:
+        return version + socket.inet_pton(family, text).hex()
+    except OSError:
+        # Nothing but an address is stored. What is none sorts after every one that is.
+        return f"9{text}"
+
+
 def is_busy(error: Exception) -> bool:
     """Say whether a statement failed because another writer held the database too long.
 
@@ -164,6 +185,9 @@ def prepare_sqlite(dbapi_connection: Any) -> None:
     """Give a new SQLite connection the functions this module's SQL calls."""
     dbapi_connection.create_function("hirdir_regexp", 2, _sqlite_regexp)
     dbapi_connection.create_function("hirdir_fold", 1, _sqlite_fold, deterministic=True)
+    dbapi_connection.create_function(
+        "hirdir_address_key", 1, _sqlite_address_key, deterministic=True
+    )
 
 
 class regex_match(FunctionElement):
@@ -193,7 +217,12 @@ def matches_regex(column: ColumnElement[Any], pattern: str) -> ColumnElement[boo
 
 
 class fold(FunctionElement):
-    """A text value as it is compared when case does not count."""
+    """A text value as it is compared when case does not count.
+
+    Like the other functions of this module that a sort may use, it is written as
+    PostgreSQL writes it unless the database is SQLite, so that a statement can be
+    built before it is known which of the two will run it.
+    """
 
     type = String()
     name = "fold"
@@ -206,6 +235,7 @@ def _fold_sqlite(element: fold, compiler: Any, **kw: Any) -> str:
     return f"hirdir_fold({compiler.process(element.clauses, **kw)})"
 
 
+@compiles(fold)
 @compiles(fold, "postgresql")
 def _fold_postgresql(element: fold, compiler: Any, **kw: Any) -> str:
     return f"lower({compiler.process(element.clauses, **kw)})"
@@ -218,6 +248,59 @@ def folded(expression: Any) -> ColumnElement[str]:
     other, in whatever alphabet.
     """
     return fold(expression)
+
+
+class address_key(FunctionElement):
+    """An address as it is sorted: as the number it is, and not as the text it is kept as."""
+
+    type = String()
+    name = "address_key"
+    inherit_cache = True
+
+
+@compiles(address_key, "sqlite")
+def _address_key_sqlite(element: address_key, compiler: Any, **kw: Any) -> str:
+    return f"hirdir_address_key({compiler.process(element.clauses, **kw)})"
+
+
+@compiles(address_key)
+@compiles(address_key, "postgresql")
+def _address_key_postgresql(element: address_key, compiler: Any, **kw: Any) -> str:
+    return f"CAST({compiler.process(element.clauses, **kw)} AS inet)"
+
+
+def as_address(expression: Any) -> ColumnElement[Any]:
+    """Return what an address is sorted by, so that 192.0.2.9 comes before 192.0.2.10.
+
+    An IPv4 address comes before an IPv6 one, and each family is in the order of its
+    numbers. The least and the greatest of several are taken of this, not of the text.
+    """
+    return address_key(expression)
+
+
+class list_values(FunctionElement):
+    """The values of a list that is kept as JSON, one to a row, in a column `value`."""
+
+    name = "list_values"
+    inherit_cache = True
+
+
+@compiles(list_values, "sqlite")
+def _list_values_sqlite(element: list_values, compiler: Any, **kw: Any) -> str:
+    return f"json_each({compiler.process(element.clauses, **kw)})"
+
+
+@compiles(list_values)
+@compiles(list_values, "postgresql")
+def _list_values_postgresql(element: list_values, compiler: Any, **kw: Any) -> str:
+    return f"json_array_elements_text({compiler.process(element.clauses, **kw)})"
+
+
+def least_of_list(column: Any) -> ColumnElement[Any]:
+    """Return the least text of a column that holds a list, as it is compared when case
+    does not count. A list that holds nothing has none, and is blank."""
+    values = list_values(column).table_valued("value")
+    return select(func.min(folded(values.c.value))).scalar_subquery()
 
 
 def equals_text(column: ColumnElement[Any], value: str) -> ColumnElement[bool]:

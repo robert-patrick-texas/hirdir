@@ -35,6 +35,13 @@ PLACES = {
     "location_hid": geography.LOCATION,
 }
 MAX_PRIORITY = 1000
+# What names a contact, for counting what it is assigned to: a place, an owner, and an
+# operator it stands behind. `hirdir.io.fields` counts by the same, to sort by.
+USED_BY: tuple[Any, ...] = (
+    ContactAssignment.contact_hid,
+    OwnerMember.contact_hid,
+    Operator.contact_hid,
+)
 
 
 def get_contact(db: Session, hid: str) -> Contact:
@@ -181,11 +188,7 @@ def uses(db: Session, hids: list[str]) -> dict[str, int]:
     many operators it stands behind."""
     counts = dict.fromkeys(hids, 0)
     if hids:
-        for column in (
-            ContactAssignment.contact_hid,
-            OwnerMember.contact_hid,
-            Operator.contact_hid,
-        ):
+        for column in USED_BY:
             counted = db.execute(
                 select(column, func.count()).where(column.in_(hids)).group_by(column)
             )

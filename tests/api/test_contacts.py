@@ -512,3 +512,45 @@ def test_people_travel_in_files(make: Maker, files: Files) -> None:
     rows = files.preview("items", "hostname,owner\nbms-sw-01,Facilities\n")["rows"]
     assert [row["outcome"] for row in rows] == ["create"]
     assert outside["is_external"] is True
+
+
+def test_contacts_and_owners_are_sorted_by_what_their_columns_show(make: Maker) -> None:
+    places = make.layout()
+    for label in ("Zulu", "beta", "alpha"):
+        make.tag(label)
+    dana = make.contact("dana Whitfield", tags=["Zulu", "beta"])
+    robin = make.contact("Robin Achterberg", tags=["alpha"])
+    make.contact("Lee Marchetti")
+    ours = make.owner("Network Engineering", tags=["beta"])
+    theirs = make.owner("Voice Services", tags=["Zulu", "alpha"])
+    make.owner("Lab Team")
+    # Robin is the primary of the first owner, where Dana is an alternate.
+    for owner, contact in ((ours, robin), (ours, dana), (theirs, dana)):
+        make.post(f"/owners/{owner['hid']}/members", {"contact_hid": contact["hid"]})
+    # Dana is named by two places, two owners and an operator: five in all.
+    make.assign(dana, "technical", region_hid=places["americas"]["hid"])
+    make.assign(dana, "shipping", site_hid=places["site"]["hid"])
+    make.post("/operators", {"label": "DW", "contact_hid": dana["hid"]})
+
+    def contacts(sort: str) -> list[tuple[str, int]]:
+        found = make.get("/contacts", sort=sort)["items"]
+        return [(row["name"].split()[0], row["uses"]) for row in found]
+
+    # The number is the one the record shows, and is sorted as a number.
+    assert contacts("uses") == [("Lee", 0), ("Robin", 1), ("dana", 5)]
+    assert contacts("-uses") == [("dana", 5), ("Robin", 1), ("Lee", 0)]
+    # The first tag without regard to case, and a contact with none last either way.
+    assert [name for name, _ in contacts("tags")] == ["Robin", "dana", "Lee"]
+    assert [name for name, _ in contacts("-tags")] == ["dana", "Robin", "Lee"]
+
+    def owners(sort: str) -> list[str]:
+        return [row["label"] for row in make.get("/owners", sort=sort)["items"]]
+
+    # The primary of its people by name, and never an alternate.
+    assert owners("primary.name") == ["Voice Services", "Network Engineering", "Lab Team"]
+    assert owners("-primary.name") == ["Network Engineering", "Voice Services", "Lab Team"]
+    assert owners("tags") == ["Voice Services", "Network Engineering", "Lab Team"]
+    assert owners("-tags") == ["Network Engineering", "Voice Services", "Lab Team"]
+    for path, field in (("/contacts", "uses"), ("/owners", "primary.name")):
+        problem = make.get(path, 422, filter=f"{field}:empty:true")
+        assert f"{field} is not a field" in errors(problem)["filter"]

@@ -1,6 +1,7 @@
 """Items through the API: identity, inheritance, the lifecycle, history and stale edits."""
 
 import pytest
+from fastapi.testclient import TestClient
 
 from tests.api.inventory import Maker, errors
 
@@ -325,3 +326,31 @@ def test_retired_draft_and_archived_items_are_left_out_unless_asked_for(make: Ma
 def test_history_of_an_unknown_item_is_not_found(make: Maker) -> None:
     make.get("/items/0193a1f4-6c2e-7b41-9d0a-5e3f8c1a7b22/history", 404)
     make.get("/items/0193a1f4-6c2e-7b41-9d0a-5e3f8c1a7b22", 404)
+
+
+def test_the_history_of_an_item_is_sorted_by_its_events(
+    make: Maker, client: TestClient, admin: dict
+) -> None:
+    item = make.item(name="site2-sw-access-01", lifecycle_state="Delivered")
+    item = make.move(item, "Assigned", reason="received")
+    as_admin = Maker(client, admin)
+    as_admin.patch(f"/items/{item['hid']}", {"row_version": item["row_version"], "comments": "x"})
+    path = f"/items/{item['hid']}/history"
+
+    def history(**params) -> list[tuple[str, str]]:
+        return [
+            (event["action"], event["actor_name"]) for event in make.get(path, **params)["items"]
+        ]
+
+    made, moved, changed = ("create", "ivy"), ("transition", "ivy"), ("update", "ada")
+    assert history() == [changed, moved, made]
+    assert history(sort="at") == [made, moved, changed]
+    assert history(sort="action") == [made, moved, changed]
+    assert history(sort="-action", limit=2) == [changed, moved]
+    # Those of one person stay newest first.
+    assert history(sort="actor_name") == [changed, moved, made]
+    assert history(sort="-actor_name") == [moved, made, changed]
+    # An event's changes stay together: the events are what is sorted.
+    newest = make.get(path, sort="-action")["items"][0]
+    assert [change["field"] for change in newest["changes"]] == ["comments"]
+    assert "via is not a field" in errors(make.get(path, 422, sort="via"))["sort"]

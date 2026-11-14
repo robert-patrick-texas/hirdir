@@ -114,11 +114,18 @@ def lines_above(db: Session, found: Sequence[Item]) -> dict[str, list[Item]]:
     return lines
 
 
-def children(db: Session, hid: str, limit: int, offset: int) -> tuple[list[Item], int]:
-    """Return the minor items directly in one item, by position and name, and their number."""
+def children(
+    db: Session, hid: str, limit: int, offset: int, arrange: records.Arrange | None = None
+) -> tuple[list[Item], int]:
+    """Return the minor items directly in one item, by position and name, and their number.
+
+    `arrange` sorts them as was asked for, and that order settles what it leaves tied.
+    """
     get_item(db, hid)
     query = select(Item).where(Item.parent_item_hid == hid)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     order = [
         *dialect.blanks_last(dialect.folded(Item.position), False),
         *dialect.blanks_last(dialect.folded(func.coalesce(Item.name, Item.hostname)), False),
@@ -691,13 +698,21 @@ def _inherit_standing(
     return item
 
 
-def history(db: Session, hid: str, limit: int, offset: int) -> tuple[list[AuditEvent], int]:
-    """Return the audit events of one item, newest first, and how many there are."""
+def history(
+    db: Session, hid: str, limit: int, offset: int, arrange: records.Arrange | None = None
+) -> tuple[list[AuditEvent], int]:
+    """Return the audit events of one item, newest first, and how many there are.
+
+    `arrange` sorts them as was asked for, and the newest first settles what that
+    leaves tied.
+    """
     get_item(db, hid)
     query = select(AuditEvent).where(
         AuditEvent.record_type == RECORD_TYPE, AuditEvent.record_hid == hid
     )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    if arrange is not None:
+        query = arrange(query)
     page = db.scalars(
         query.order_by(AuditEvent.at.desc(), AuditEvent.hid.desc()).limit(limit).offset(offset)
     )

@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+from tests.api.inventory import Maker, errors
 from tests.conftest import ADMIN_CODE, VIEWER_CODE, sign_in
 
 API = "/api/v1"
@@ -236,3 +237,84 @@ def test_every_change_is_audited_with_the_request_id(client: TestClient, admin: 
     assert {event["action"] for event in events["items"]} == {"create", "grant_role"}
     assert {event["via"] for event in events["items"]} == {"web"}
     assert {event["actor_name"] for event in events["items"]} == {"ada"}
+
+
+def test_the_users_are_sorted_by_the_columns_of_their_table(
+    client: TestClient, admin: dict
+) -> None:
+    make = Maker(client, admin)
+    zed = make.post("/users", {"username": "Zed", "display_name": "alpha Person"})["user"]
+    nia = make.post("/users", {"username": "nia", "display_name": "Beta Person"})["user"]
+    make.post("/users", {"username": "bot", "is_service_account": True})
+    readers, auditors = (
+        make.post("/user-groups", {"name": name}) for name in ("Readers", "auditors")
+    )
+    # Zed is a viewer through a group, and Nia has Inventory of her own besides.
+    make.post("/role-grants", {"role": "viewer", "group_hid": readers["hid"]})
+    make.post("/role-grants", {"role": "inventory", "user_hid": nia["hid"]})
+    for group, user in ((readers, zed), (auditors, zed), (readers, nia)):
+        added = client.put(f"{API}/user-groups/{group['hid']}/members/{user['hid']}", headers=admin)
+        assert added.status_code == 204
+    version = make.get(f"/users/{nia['hid']}")["row_version"]
+    make.patch(f"/users/{nia['hid']}", {"row_version": version, "disabled": True})
+
+    def users(**params) -> list[str]:
+        return [user["username"] for user in make.get("/users", **params)["items"]]
+
+    assert users() == ["ada", "bot", "ivy", "nia", "vic", "Zed"]
+    # The role in force, the lowest first, and a user with none last either way.
+    assert users(sort="role") == ["vic", "Zed", "ivy", "nia", "ada", "bot"]
+    assert users(sort="-role") == ["ada", "ivy", "nia", "vic", "Zed", "bot"]
+    assert users(sort="role", limit=2, offset=2) == ["ivy", "nia"]
+    # Text without regard to case, and a user with no display name last either way.
+    assert users(sort="display_name") == ["Zed", "nia", "ada", "bot", "ivy", "vic"]
+    assert users(sort="-display_name") == ["nia", "Zed", "ada", "bot", "ivy", "vic"]
+    # The first of a user's groups by name: auditors before Readers.
+    assert users(sort="groups") == ["Zed", "nia", "ada", "bot", "ivy", "vic"]
+    assert users(sort="-groups") == ["nia", "Zed", "ada", "bot", "ivy", "vic"]
+    assert users(sort="-is_service_account")[0] == "bot"
+    assert users(sort="is_service_account")[-1] == "bot"
+    assert users(sort="-disabled")[0] == "nia"
+    assert users(sort="-username") == ["Zed", "vic", "nia", "ivy", "bot", "ada"]
+    # Only Ada has signed in.
+    assert users(sort="last_sign_in_at")[0] == users(sort="-last_sign_in_at")[0] == "ada"
+    assert users(q="person", sort="-display_name") == ["nia", "Zed"]
+    assert "email is not a field" in errors(make.get("/users", 422, sort="email"))["sort"]
+
+
+def test_the_audit_trail_is_sorted_by_the_columns_of_its_table(
+    client: TestClient, admin: dict, inventory: dict
+) -> None:
+    ivy, ada = Maker(client, inventory), Maker(client, {**admin, "X-Hirdir-Client": "web"})
+    first = ivy.tag("refresh-2030")
+    second = ada.tag("core")
+    ivy.patch(f"/tags/{first['hid']}", {"row_version": first["row_version"], "description": "x"})
+    made, added, changed = (
+        ("create", "ivy", "api"),
+        ("create", "ada", "web"),
+        ("update", "ivy", "api"),
+    )
+
+    def trail(**params) -> list[tuple[str, str, str]]:
+        events = ada.audit(record_type="tag", **params)
+        return [(event["action"], event["actor_name"], event["via"]) for event in events]
+
+    # Newest first, as it was: and what a sort leaves tied is still newest first.
+    assert trail() == [changed, added, made]
+    assert trail(sort="at") == [made, added, changed]
+    assert trail(sort="actor_name") == [added, changed, made]
+    assert trail(sort="-actor_name") == [changed, made, added]
+    assert trail(sort="action") == [added, made, changed]
+    assert trail(sort="-action") == [changed, added, made]
+    assert trail(sort="via") == [changed, made, added]
+    assert trail(sort="-via,at") == [added, made, changed]
+    by_record = ada.audit(record_type="tag", sort="-record_hid,at")
+    assert [event["record_hid"] for event in by_record] == sorted(
+        [first["hid"], first["hid"], second["hid"]], reverse=True
+    )
+    # Over the whole trail: by the type of record, and what names none last.
+    types = [event["record_type"] for event in ada.audit(sort="record_type", limit=1000)]
+    assert types == sorted(types, key=lambda name: (name == "", name))
+    assert {"tag", "user"} <= set(types)
+    problem = ada.get("/audit-events", 422, sort="changes")
+    assert "changes is not a field" in errors(problem)["sort"]

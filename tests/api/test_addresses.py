@@ -293,3 +293,41 @@ def test_addresses_are_read_by_all_and_changed_by_the_inventory_role(
         client.delete(f"{API}/addresses/{held['hid']}", headers=viewer),
     )
     assert [response.status_code for response in refusals] == [403] * 6
+
+
+def test_the_duplicates_report_is_sorted_by_its_columns(make: Maker) -> None:
+    red, blue = make.network("Red"), make.network("blue")
+    delta, alpha, charlie, bravo, echo = (
+        _switch(make, name) for name in ("Delta", "alpha", "Charlie", "bravo", "echo")
+    )
+    for holder in (delta, charlie, echo):
+        make.address(holder, "192.0.2.9", red)
+    for holder in (alpha, bravo):
+        make.address(holder, "192.0.2.10", blue)
+    for holder in (delta, bravo):
+        make.address(holder, "192.0.2.100")
+
+    def report(**params) -> list[str]:
+        found = make.get("/reports/duplicates", **params)
+        assert found["total"] == 3
+        return [row["address"].rpartition(".")[2] for row in found["items"]]
+
+    # As it was, by the address as text. Asked for, by the address as an address.
+    assert report() == ["10", "100", "9"]
+    assert report(sort="address") == ["9", "10", "100"]
+    assert report(sort="-address") == ["100", "10", "9"]
+    # By the label of the network, and the unlabelled address space last either way.
+    assert report(sort="network") == ["10", "9", "100"]
+    assert report(sort="-network") == ["9", "10", "100"]
+    # By how many hold it, and what that leaves tied is in the order it always had.
+    assert report(sort="count") == ["10", "100", "9"]
+    assert report(sort="-count") == ["9", "10", "100"]
+    # By the first of its holders by name: alpha, bravo, Charlie.
+    assert report(sort="holders") == ["10", "100", "9"]
+    assert report(sort="-holders") == ["9", "100", "10"]
+    # A page of a sorted report holds the holders of its own rows.
+    second = make.get("/reports/duplicates", sort="-holders", limit=1, offset=1)["items"]
+    assert [row["address"] for row in second] == ["192.0.2.100"]
+    assert sorted(holder["name"] for holder in second[0]["holders"]) == ["Delta", "bravo"]
+    problem = make.get("/reports/duplicates", 422, sort="role")
+    assert "role is not a field" in errors(problem)["sort"]

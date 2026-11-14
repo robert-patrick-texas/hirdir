@@ -12,7 +12,7 @@ from hirdir.api.lists import Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
 from hirdir.domain import items, replacements
 from hirdir.domain.lifecycle import UNSET
-from hirdir.io import bulk, fields, imports
+from hirdir.io import bulk, fields, imports, tables
 
 router = APIRouter(prefix="/items", tags=["Items"], route_class=IdempotentRoute)
 
@@ -143,10 +143,16 @@ def transition_item(
 
 @router.get("/{hid}/children")
 def item_children(
-    hid: str, _: Viewer, db: Db, limit: Limit = 100, offset: Offset = 0
+    hid: str,
+    _: Viewer,
+    db: Db,
+    sort: Annotated[list[str] | None, lists.sort_of(tables.CHILDREN)] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
 ) -> Page[r.ItemOut]:
-    """List the minor items directly in one item, by position, whatever their status."""
-    page, total = items.children(db, hid, limit, offset)
+    """List the minor items directly in one item, whatever their status: by position
+    unless a sort says otherwise."""
+    page, total = items.children(db, hid, limit, offset, tables.arrange(tables.CHILDREN, sort))
     return Page(items=shapes.items_out(db, page), total=total, limit=limit, offset=offset)
 
 
@@ -175,10 +181,18 @@ def replace_item(
 
 @router.get("/{hid}/history")
 def item_history(
-    hid: str, _: Viewer, db: Db, limit: Limit = 100, offset: Offset = 0
+    hid: str,
+    _: Viewer,
+    db: Db,
+    sort: Annotated[list[str] | None, lists.sort_of(tables.HISTORY)] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
 ) -> Page[AuditEventOut]:
-    """List every change made to one item, newest first."""
-    page, total = items.history(db, hid, limit, offset)
+    """List every change made to one item, newest first unless a sort says otherwise.
+
+    The events are sorted, and the changes of one event stay together.
+    """
+    page, total = items.history(db, hid, limit, offset, tables.arrange(tables.HISTORY, sort))
     return Page(
         items=[views.audit_out(db, event) for event in page],
         total=total,

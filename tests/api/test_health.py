@@ -9,8 +9,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from hirdir.domain import health
+from hirdir.db.models import DeviceGroup
+from hirdir.domain import groups, health
+from hirdir.io import fields
 from tests.api.inventory import API, Maker, errors
 from tests.api.test_files import Files, changes, counts, table
 
@@ -247,6 +251,112 @@ def test_a_cluster_has_a_health_and_untested_members_are_not_known_good(make: Ma
     # Seen by a person, the cluster is good, whatever is not yet said of a member.
     seen = _patch(make, f"/device-groups/{cluster['hid']}", observed_status="present")
     assert seen["health"] == {"value": "good", "reasons": ["it is observed present"]}
+
+
+# What a member of the groups below says of itself: good, failed, degraded, unknown,
+# unreachable while expected online, unreachable otherwise, and good but in Down.
+MEMBERS: dict[str, dict[str, Any]] = {
+    "G": {"condition": "good"},
+    "F": {"condition": "failed"},
+    "D": {"condition": "suspect"},
+    "U": {},
+    "X": {
+        "lifecycle_state": "Prod",
+        "disposition": "Spare",
+        "expected_online": True,
+        "observed_status": "unreachable",
+        "observed_at": SEEN,
+    },
+    "R": {"condition": "good", "observed_status": "unreachable", "observed_at": SEEN},
+    "W": {"condition": "good", "lifecycle_state": "Prod"},
+}
+# Groups of every kind: the type, the members, what is observed of the group, how many
+# members it is to have, and the health that follows.
+GROUPS: tuple[tuple[str, str, str | None, int | None, str | None], ...] = (
+    ("stack", "GG", None, None, "good"),
+    ("stack", "G", None, None, "degraded"),
+    ("stack", "G", None, 1, "good"),
+    ("stack", "GG", None, 3, "degraded"),
+    ("stack", "FF", None, None, "failed"),
+    ("stack", "FF", "online", None, "failed"),
+    ("stack", "FG", None, None, "degraded"),
+    ("stack", "XX", None, None, "failed"),
+    ("stack", "XG", None, None, "degraded"),
+    ("stack", "RG", None, None, "degraded"),
+    ("stack", "DG", None, None, "degraded"),
+    ("stack", "UG", None, None, "unknown"),
+    ("stack", "UG", "online", None, "good"),
+    ("stack", "GG", "unreachable", None, "failed"),
+    ("stack", "GG", "degraded", None, "degraded"),
+    ("stack", "WG", None, None, "degraded"),
+    ("stack", "WG", "present", None, "degraded"),
+    ("stack", "U", None, 1, "unknown"),
+    ("stack", "", None, None, "unknown"),
+    ("stack", "", "unreachable", None, "unknown"),
+    ("cluster", "G", None, None, "good"),
+    ("cluster", "U", None, None, "unknown"),
+    ("cluster", "G", None, 2, "degraded"),
+    ("cluster", "F", None, None, "failed"),
+    ("cluster", "GU", "present", None, "good"),
+    ("cluster", "", None, None, "unknown"),
+    ("controller_domain", "G", None, None, None),
+    ("custom", "F", None, None, None),
+)
+
+
+def test_the_list_sorts_groups_by_the_health_that_the_record_shows(
+    make: Maker, db: Session
+) -> None:
+    numbers = itertools.count(1)
+
+    def member(kind: str) -> dict:
+        item = make.item(name=f"member-{next(numbers):03d}", **MEMBERS[kind])
+        return make.move(item, "Down", reason="maintenance") if kind == "W" else item
+
+    wanted: dict[str, str | None] = {}
+    for number, (type_, kinds, observed, expected, its_health) in enumerate(GROUPS, start=1):
+        more: dict[str, Any] = {}
+        if observed:
+            more["observed_status"] = observed
+        if expected:
+            more["expected_members"] = expected
+        role = groups.ROLES[type_][0]
+        made = make.group(
+            f"group-{number:02d}", type_, [(member(kind), role) for kind in kinds], **more
+        )
+        wanted[made["name"]] = its_health
+    # A member that has left says nothing of the group any more.
+    first = make.get("/device-groups", filter="name:eq:group-01")["items"][0]
+    left = make.add(first, [{"item_hid": member("F")["hid"]}])[0]
+    make.patch(
+        f"/device-groups/{first['hid']}/members/{left['hid']}",
+        {"row_version": left["row_version"], "left_on": "2099-01-01"},
+    )
+
+    listed = make.get("/device-groups", limit=1000)["items"]
+    shown = {row["name"]: (row["health"] or {}).get("value") for row in listed}
+    assert shown == wanted
+    assert set(shown.values()) == {*health.HEALTHS, None}
+    # The database works out the very health that the record shows, for every group.
+    in_sql = db.execute(select(DeviceGroup.name, fields.GROUP_HEALTH)).all()
+    assert {row.name: row[1] for row in in_sql} == shown
+
+    def in_order(descending: bool) -> list[str]:
+        def place(name: str) -> tuple[bool, int, str]:
+            rank = fields.HEALTH_RANKS.get(shown[name] or "", 0)
+            return shown[name] is None, -rank if descending else rank, name
+
+        return sorted(shown, key=place)
+
+    # The worst first, as an item's is, and a group that has no health last either way.
+    worst_first = make.found("/device-groups", sort="health,name", limit=1000)
+    assert worst_first == in_order(descending=False)
+    assert shown[worst_first[0]] == "failed"
+    assert [shown[name] for name in worst_first[-2:]] == [None, None]
+    best_first = make.found("/device-groups", sort="-health,name", limit=1000)
+    assert best_first == in_order(descending=True)
+    assert shown[best_first[0]] == "good"
+    assert [shown[name] for name in best_first[-2:]] == [None, None]
 
 
 # --- the master that is intended, and the master that is seen ---------------------------
