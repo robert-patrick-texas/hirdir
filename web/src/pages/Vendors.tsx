@@ -31,7 +31,7 @@ const COLUMNS: GridColumn<Vendor>[] = [
     kind: "text",
     // The server does not filter or sort by an alias.
     field: null,
-    sortField: null,
+    sortField: "aliases",
     value: (vendor) => vendor.aliases.join(", "),
     width: 280,
   },

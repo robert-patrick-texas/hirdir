@@ -30,7 +30,8 @@ import {
 } from "../lib/preview";
 import { allows } from "../lib/roles";
 import type { SortColumns } from "../lib/sort";
-import { useSorting } from "../lib/useSorting";
+import { PREVIEW_ROWS_SORT } from "../lib/tableSorts";
+import { useServerSort } from "../lib/useServerSort";
 import { SelectField } from "./Field";
 import { Pager } from "./Pager";
 import { Problem } from "./Problem";
@@ -67,12 +68,10 @@ export function JobCounts({ job }: { job: Job }) {
   );
 }
 
-// What the rows of a preview are sorted by, each column by what its cell shows: the
-// lines of a cell as one text.
-const ROW_COLUMNS: SortColumns<PreviewRow> = {
-  row: (row) => row.row,
-  record: (row) => row.key || row.record_hid,
-  outcome: (row) => outcomeLabel(row.outcome),
+// The columns of a preview's rows that the server does not sort by: their cells are
+// composed here from lists. Each is sorted in the browser by what its cell shows, the
+// lines of the cell as one text, and only while the table holds every row.
+const LOCAL_COLUMNS: SortColumns<PreviewRow> = {
   changes: (row) => row.changes.map(changeText).join("; "),
   reasons: (row) => [...row.reasons.map(reasonText), ...row.notes].join("; "),
 };
@@ -91,21 +90,32 @@ interface PreviewRowsProps {
 export function PreviewRows({ job, preview, stale = [], turn = 0 }: PreviewRowsProps) {
   const [outcome, setOutcome] = useState<Outcome | "">("");
   const [offset, setOffset] = useState(0);
-  const rows = useLoad(`rows ${job.hid} ${outcome} ${offset} ${turn}`, async (signal) => {
-    const held = turn === 0 ? firstPage(preview, outcome, offset) : null;
-    if (held) return held;
-    return api.request("get", "/api/v1/imports/{hid}/rows", {
-      path: { hid: job.hid },
-      query: rowsQuery(outcome, offset),
-      signal,
-    });
+  // The server pages the rows and sorts them, over every row and not the page on show: a
+  // header asks for the rows in its order, from the first page.
+  const sort = useServerSort<PreviewRow>({
+    fields: PREVIEW_ROWS_SORT,
+    local: LOCAL_COLUMNS,
+    onChange: () => setOffset(0),
   });
+  const rows = sort.held(
+    useLoad(`rows ${job.hid} ${outcome} ${offset} ${turn} ${sort.param ?? ""}`, async (signal) => {
+      // The rows that the preview's own answer holds are in the order of the file: they
+      // serve only while the server is asked for no other order.
+      const held =
+        turn === 0 && sort.param === undefined ? firstPage(preview, outcome, offset) : null;
+      if (held) return held;
+      return api.request("get", "/api/v1/imports/{hid}/rows", {
+        path: { hid: job.hid },
+        query: {
+          ...rowsQuery(outcome, offset),
+          ...sort.query,
+        },
+        signal,
+      });
+    }),
+  );
   const inTheWay = new Map(stale.map((entry) => [entry.row, entry.message]));
-  // The server pages the rows and does not sort them: they are sorted here only when the
-  // page holds every one of them. A page of more stays in the order of the file.
-  const sorting = useSorting(rows.data?.items, ROW_COLUMNS, {
-    enabled: rows.data !== undefined && rows.data.items.length === rows.data.total,
-  });
+  const holdsAll = rows.data !== undefined && rows.data.items.length === rows.data.total;
 
   return (
     <section aria-labelledby={`rows-${job.hid}`}>
@@ -138,29 +148,29 @@ export function PreviewRows({ job, preview, stale = [], turn = 0 }: PreviewRowsP
           <div className="scroll">
             <table className="preview-rows" data-testid="preview-rows">
               <caption className="visually-hidden">
-                What each row would do, in the order of the file
+                What each row would do, in the order of the file until a header is clicked
               </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="row">
+                  <SortTh sort={sort.header("row", holdsAll)} column="row">
                     Row
                   </SortTh>
-                  <SortTh sort={sorting} column="record">
+                  <SortTh sort={sort.header("record", holdsAll)} column="record">
                     Record
                   </SortTh>
-                  <SortTh sort={sorting} column="outcome">
+                  <SortTh sort={sort.header("outcome", holdsAll)} column="outcome">
                     Outcome
                   </SortTh>
-                  <SortTh sort={sorting} column="changes">
+                  <SortTh sort={sort.header("changes", holdsAll)} column="changes">
                     Before → after
                   </SortTh>
-                  <SortTh sort={sorting} column="reasons">
+                  <SortTh sort={sort.header("reasons", holdsAll)} column="reasons">
                     Reasons and notes
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((row) => (
+                {sort.arrange(rows.data.items, holdsAll).map((row) => (
                   <Row key={row.row} row={row} entity={job.entity} stale={inTheWay.get(row.row)} />
                 ))}
                 {rows.data.items.length === 0 && (

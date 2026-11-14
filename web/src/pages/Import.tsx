@@ -25,9 +25,9 @@ import {
 import { countsText, type Job, type Preview, type StaleRow, statusLabel } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
-import { dateValue } from "../lib/sort";
+import { IMPORTS_SORT } from "../lib/tableSorts";
 import type { Entity } from "../lib/transfer";
-import { useSorting } from "../lib/useSorting";
+import { useServerSort } from "../lib/useServerSort";
 
 const JOBS_PAGE = 20;
 
@@ -303,32 +303,28 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
   );
 }
 
-/** The previews that were made, newest first: files, or bulk edits. */
+/** The previews that were made, newest first until a header is clicked: files, or bulk edits. */
 function PastJobs({ turn, current }: { turn: number; current: string }) {
   const [source, setSource] = useState<Job["source"]>("file");
   const [offset, setOffset] = useState(0);
-  const jobs = useLoad(`imports ${source} ${offset} ${turn}`, (signal) =>
-    api.request("get", "/api/v1/imports", {
-      query: { source, limit: JOBS_PAGE, offset },
-      signal,
-    }),
+  // The server pages this list and sorts it, over every job and not the page on show: a
+  // header asks for the list in its order, from the first page.
+  const sort = useServerSort<Job>({ fields: IMPORTS_SORT, onChange: () => setOffset(0) });
+  const jobs = sort.held(
+    useLoad(`imports ${source} ${offset} ${turn} ${sort.param ?? ""}`, (signal) =>
+      api.request("get", "/api/v1/imports", {
+        query: {
+          source,
+          ...sort.query,
+          limit: JOBS_PAGE,
+          offset,
+        },
+        signal,
+      }),
+    ),
   );
   const items = jobs.data?.items ?? [];
-  // The server pages this list, newest first, and does not sort it by a column: the
-  // headers sort only when the page on show holds every job there is.
-  const sorting = useSorting(
-    items,
-    {
-      made: (job) => dateValue(job.created_at),
-      file: (job) => job.file_name || (source === "bulk" ? "Bulk edit" : "A file with no name"),
-      records: (job) => entityLabel(job.entity),
-      mode: (job) => modeLabel(job.mode),
-      status: (job) => statusLabel(job),
-      rows: (job) => countsText(job),
-      by: (job) => job.created_by_name,
-    },
-    { enabled: jobs.data ? jobs.data.total === items.length : false },
-  );
+  const holdsAll = jobs.data ? jobs.data.total === items.length : false;
 
   return (
     <section aria-labelledby="import-jobs">
@@ -358,35 +354,36 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
           <div className="scroll">
             <table data-testid="import-jobs">
               <caption className="visually-hidden">
-                {source === "bulk" ? "Bulk edits" : "Imports of files"}, newest first
+                {source === "bulk" ? "Bulk edits" : "Imports of files"}, newest first until a header
+                is clicked
               </caption>
               <thead>
                 <tr>
-                  <SortTh sort={sorting} column="made">
+                  <SortTh sort={sort.header("made", holdsAll)} column="made">
                     Made
                   </SortTh>
-                  <SortTh sort={sorting} column="file">
+                  <SortTh sort={sort.header("file", holdsAll)} column="file">
                     {source === "bulk" ? "Preview" : "File"}
                   </SortTh>
-                  <SortTh sort={sorting} column="records">
+                  <SortTh sort={sort.header("records", holdsAll)} column="records">
                     Records
                   </SortTh>
-                  <SortTh sort={sorting} column="mode">
+                  <SortTh sort={sort.header("mode", holdsAll)} column="mode">
                     Mode
                   </SortTh>
-                  <SortTh sort={sorting} column="status">
+                  <SortTh sort={sort.header("status", holdsAll)} column="status">
                     Status
                   </SortTh>
-                  <SortTh sort={sorting} column="rows">
+                  <SortTh sort={sort.header("rows", holdsAll)} column="rows">
                     Rows
                   </SortTh>
-                  <SortTh sort={sorting} column="by">
+                  <SortTh sort={sort.header("by", holdsAll)} column="by">
                     By
                   </SortTh>
                 </tr>
               </thead>
               <tbody>
-                {sorting.rows.map((job) => (
+                {sort.arrange(items, holdsAll).map((job) => (
                   <tr key={job.hid} aria-current={job.hid === current ? "true" : undefined}>
                     <td className="nowrap">
                       <Time at={job.created_at} />

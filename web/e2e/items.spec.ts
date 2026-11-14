@@ -308,3 +308,56 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   // The three refusals above are the only requests that failed.
   await expectClean(page, seen, ["422 POST", "422 PATCH", "409 PATCH"]);
 });
+
+test("the item grid is sorted by the server by any column, also by its tags and its addresses", async ({
+  page,
+  account,
+}) => {
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto(
+    `./items?filter=${encodeURIComponent(`hostname:prefix:site2-sw-access-${suffix}-`)}`,
+  );
+  const grid = page.getByTestId("grid-items");
+  await expect(grid.locator("[row-id]").first()).toBeVisible();
+
+  /** The answer to the request that asks for the rows in the order of a field. */
+  const sortedBy = (field: string) =>
+    page.waitForResponse((response) => {
+      if (!response.url().includes("/api/v1/items/query")) return false;
+      const body = response.request().postDataJSON() as { sort?: string[] } | null;
+      return (body?.sort ?? []).includes(field);
+    });
+
+  // Room is made for the columns looked at here: the grid draws only those in view.
+  await page.getByText("Columns", { exact: true }).click();
+  const columns = page.getByRole("group", { name: "Columns to show" });
+  for (const column of ["Vendor", "PID", "Serial number", "Health", "LDoS"]) {
+    await columns.getByLabel(column, { exact: true }).uncheck();
+  }
+  await columns.getByLabel("Addresses", { exact: true }).check();
+  await page.getByText("Columns", { exact: true }).click();
+
+  // By the tags: what an item may have several of is sorted by the first of them, by
+  // the server, and another click turns the order round.
+  const tagsHeader = grid.locator('[role="columnheader"][col-id="tags"]');
+  let answer = sortedBy("tags");
+  await tagsHeader.click();
+  expect((await answer).status()).toBe(200);
+  await expect(tagsHeader).toHaveAttribute("aria-sort", "ascending");
+  answer = sortedBy("-tags");
+  await tagsHeader.click();
+  expect((await answer).status()).toBe(200);
+  await expect(tagsHeader).toHaveAttribute("aria-sort", "descending");
+
+  // By the addresses: by the lowest of them, as an address.
+  const addressHeader = grid.locator('[role="columnheader"][col-id="address"]');
+  answer = sortedBy("address");
+  await addressHeader.click();
+  expect((await answer).status()).toBe(200);
+  await expect(addressHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(tagsHeader).toHaveAttribute("aria-sort", "none");
+  await expect(grid.locator("[row-id]").first()).toBeVisible();
+
+  await expectClean(page, seen);
+});

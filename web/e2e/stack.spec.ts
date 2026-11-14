@@ -333,6 +333,20 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   await page.getByText("Columns", { exact: true }).click();
   await expect(groupRow.locator('[col-id="expected_members"]')).toHaveText("4");
   await expect(groupRow.locator('[col-id="observed_status"]')).toHaveText("Online");
+  // The grid of groups is sorted by the server by any column: here by how many members
+  // each has, which is worked out and not stored.
+  const byMembers = page.waitForResponse((response) => {
+    if (!response.url().includes("/api/v1/device-groups/query")) return false;
+    const body = response.request().postDataJSON() as { sort?: string[] } | null;
+    return (body?.sort ?? []).includes("member_count");
+  });
+  const membersHeader = page
+    .getByTestId("grid-device-groups")
+    .locator('[role="columnheader"][col-id="member_count"]');
+  await membersHeader.click();
+  expect((await byMembers).status()).toBe(200);
+  await expect(membersHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(groupRow.locator('[col-id="member_count"]')).toHaveText("4");
   await page.getByText("Columns", { exact: true }).click();
   await page.getByRole("button", { name: "Reset layout and filters" }).click();
   await page.getByText("Columns", { exact: true }).click();

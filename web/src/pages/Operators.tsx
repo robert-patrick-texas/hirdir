@@ -75,7 +75,7 @@ const COLUMNS: GridColumn<Operator>[] = [
     header: "Given to",
     kind: "integer",
     field: null,
-    sortField: null,
+    sortField: "uses",
     column: null,
     value: (operator) => String(operator.uses),
     numeric: true,

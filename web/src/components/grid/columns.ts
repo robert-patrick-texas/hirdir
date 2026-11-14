@@ -63,7 +63,7 @@ export function queryColumns<T>(columns: readonly GridColumn<T>[]): QueryColumn[
     return {
       id: column.id,
       field,
-      sortField: column.kind === "tags" ? null : sortField,
+      sortField,
       kind: column.kind,
     };
   });

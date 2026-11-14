@@ -48,7 +48,7 @@ const COLUMNS: GridColumn<Contact>[] = [
     header: "Assigned",
     kind: "integer",
     field: null,
-    sortField: null,
+    sortField: "uses",
     column: null,
     value: (contact) => String(contact.uses),
     numeric: true,

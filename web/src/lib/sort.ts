@@ -108,3 +108,37 @@ export function sortMark(state: SortState | null, column: string): string {
   if (state?.column !== column) return "";
   return state.descending ? "▼" : "▲";
 }
+
+/** For a table that the server sorts: the field of its `sort` behind each column. */
+export type SortFields = Readonly<Record<string, string>>;
+
+/**
+ * What a table asks the server to sort by, for the state of its headers: the field of
+ * the column, with `-` before it when the order is turned round. Nothing when no header
+ * was clicked, or when the column is one the server does not sort by: the table is then
+ * in the order the server gives it.
+ */
+export function sortParam(state: SortState | null, fields: SortFields): string | undefined {
+  const field = state ? fields[state.column] : undefined;
+  if (!state || field === undefined) return undefined;
+  // A column may be sorted by several fields, as a record by its type and then its HID.
+  return field
+    .split(",")
+    .map((name) => `${state.descending ? "-" : ""}${name}`)
+    .join(",");
+}
+
+/**
+ * Whether the header of a column sorts its table. A column the server sorts by always
+ * does, over the whole list. A column it does not sort by, which the page composes
+ * itself, sorts in the browser, and only while the table holds every row: sorting one
+ * page of more would sort the page on show alone.
+ */
+export function columnSorts(
+  column: string,
+  fields: SortFields,
+  local: Readonly<Record<string, unknown>>,
+  holdsAll: boolean,
+): boolean {
+  return fields[column] !== undefined || (holdsAll && local[column] !== undefined);
+}
