@@ -9,14 +9,14 @@ that is registered as one device is registered as the stack, and not as its memb
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir import ids
 from hirdir.db import dialect
-from hirdir.db.models import DeviceGroup, ExternalSystem, Item, Registration
-from hirdir.domain import health, records, settings
-from hirdir.domain.audit import AuditContext
+from hirdir.db.models import DeviceGroup, DeviceGroupMember, ExternalSystem, Item, Registration
+from hirdir.domain import audit, health, records, settings
+from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
 RECORD_TYPE = "external_system"
@@ -44,6 +44,8 @@ REGISTRATION_FIELDS = (
     "confirmed_at",
 )
 HOLDERS = {"item_hid": (Item, "item"), "group_hid": (DeviceGroup, "device group")}
+# The types of group that are one device on the network.
+ONE_DEVICE = ("stack", "cluster")
 
 
 # --- systems -------------------------------------------------------------------------
@@ -129,20 +131,6 @@ def retire_system(db: Session, context: AuditContext, hid: str, row_version: int
         db, context, RECORD_TYPE, system, row_version, {"record_status": "retired"}, action="retire"
     )
     return system
-
-
-def registered(db: Session, system_hids: Sequence[str]) -> dict[str, int]:
-    """Return how many records are registered with each system, those removed not counted."""
-    counts = dict.fromkeys(system_hids, 0)
-    if system_hids:
-        counted = db.execute(
-            select(Registration.system_hid, func.count())
-            .where(Registration.system_hid.in_(system_hids), Registration.status != REMOVED)
-            .group_by(Registration.system_hid)
-        )
-        for hid, count in counted:
-            counts[hid] = count
-    return counts
 
 
 # --- registrations -------------------------------------------------------------------
@@ -237,6 +225,14 @@ def update_registration(
                 "a registration stays with its system and its record",
                 {name: "give this one the status removed, and register the other"},
             )
+    begins_again = (
+        registration.status == REMOVED
+        and "status" in fields
+        and records.key(str(fields["status"] or REGISTERED)) != REMOVED
+    )
+    if begins_again and get_system(db, registration.system_hid).record_status == "retired":
+        # A retired system takes no new registration, and none that begins again.
+        raise Invalid("the system is retired", {"status": "this external system is retired"})
     records.apply(
         db,
         context,
@@ -265,4 +261,52 @@ def of_holders(
     )
     for registration, system in rows:
         found[getattr(registration, field)].append((registration, system))
+    return found
+
+
+def remove_registration(db: Session, context: AuditContext, hid: str) -> None:
+    """Remove a registration that was a mistake. The audit event of the removal holds
+    what it was. One that was true for a time is given the status `removed` instead."""
+    registration = get_registration(db, hid)
+    audit.record(
+        db,
+        context,
+        "delete",
+        REGISTRATION_TYPE,
+        registration.hid,
+        [
+            change(name, records.jsonable(getattr(registration, name)), None)
+            for name in REGISTRATION_FIELDS
+            if getattr(registration, name) is not None
+        ],
+    )
+    db.delete(registration)
+    db.flush()
+
+
+def of_groups_of_items(
+    db: Session, item_hids: Sequence[str]
+) -> dict[str, list[tuple[Registration, ExternalSystem, DeviceGroup]]]:
+    """Return, for each item, what the stacks and the clusters it is a current member
+    of are registered with: each is one device, and what knows it knows its members."""
+    found: dict[str, list[tuple[Registration, ExternalSystem, DeviceGroup]]] = {
+        hid: [] for hid in item_hids
+    }
+    if not item_hids:
+        return found
+    rows = db.execute(
+        select(DeviceGroupMember.item_hid, Registration, ExternalSystem, DeviceGroup)
+        .join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid)
+        .join(Registration, Registration.group_hid == DeviceGroup.hid)
+        .join(ExternalSystem, ExternalSystem.hid == Registration.system_hid)
+        .where(
+            DeviceGroupMember.item_hid.in_(item_hids),
+            DeviceGroupMember.left_on.is_(None),
+            DeviceGroup.record_status != "retired",
+            DeviceGroup.type.in_(ONE_DEVICE),
+        )
+        .order_by(ExternalSystem.name_key, DeviceGroup.name_key, Registration.hid)
+    )
+    for item_hid, registration, system, group in rows:
+        found[item_hid].append((registration, system, group))
     return found

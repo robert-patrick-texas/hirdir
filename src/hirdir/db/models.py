@@ -647,7 +647,7 @@ class Agreement(Bookkeeping, Base):
     )
     starts_on: Mapped[date | None] = mapped_column(Date, default=None)
     ends_on: Mapped[date | None] = mapped_column(Date, default=None)
-    status: Mapped[str] = mapped_column(String(10), default="active")
+    status: Mapped[str] = mapped_column(String(20), default="active")
     support_level: Mapped[str | None] = mapped_column(String(200), default=None)
     purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
     account_manager: Mapped[str | None] = mapped_column(Text, default=None)
@@ -655,6 +655,13 @@ class Agreement(Bookkeeping, Base):
     support_url: Mapped[str | None] = mapped_column(String(2000), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    # The term that follows, where a renewal was entered before its period began. From
+    # the day it starts it is the term in force, worked out when the record is read.
+    next_number: Mapped[str | None] = mapped_column(String(100), default=None)
+    next_starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    next_ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    next_annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    next_purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
@@ -679,7 +686,7 @@ class Contract(Bookkeeping, Base):
     starts_on: Mapped[date | None] = mapped_column(Date, default=None)
     ends_on: Mapped[date | None] = mapped_column(Date, default=None)
     # What a person says of the contract. The clock never changes it.
-    status: Mapped[str] = mapped_column(String(10), default="active")
+    status: Mapped[str] = mapped_column(String(20), default="active")
     support_level: Mapped[str | None] = mapped_column(String(200), default=None)
     # The request or the tracking number this term was bought under.
     purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
@@ -689,6 +696,13 @@ class Contract(Bookkeeping, Base):
     support_url: Mapped[str | None] = mapped_column(String(2000), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    # The term that follows, where a renewal was entered before its period began. From
+    # the day it starts it is the term in force, worked out when the record is read.
+    next_number: Mapped[str | None] = mapped_column(String(100), default=None)
+    next_starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    next_ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    next_annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    next_purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
@@ -702,6 +716,9 @@ class ContractCoverage(Bookkeeping, Base):
     item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"), index=True)
     starts_on: Mapped[date | None] = mapped_column(Date, default=None)
     ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    # Ended by hirdir on the day its item left service. The vendor still counts the
+    # item until somebody says so, and a person clears this once the vendor is told.
+    left_service: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class PurchaseRequest(Bookkeeping, Base):

@@ -108,10 +108,16 @@ def get_registration(hid: str, _: Viewer, db: Db) -> r.RegistrationOut:
 def update_registration(
     hid: str, body: r.RegistrationPatch, _: Inventory, context: Audit, db: Db
 ) -> r.RegistrationOut:
-    """Change a registration. One that ends is given the status `removed`, and is
-    never deleted."""
+    """Change a registration. One that ends is given the status `removed`."""
     changed = systems.update_registration(db, context, hid, body.row_version, _changes(body))
     return shapes.registrations_out(db, [changed])[0]
+
+
+@registrations.delete("/{hid}", status_code=204)
+def remove_registration(hid: str, _: Inventory, context: Audit, db: Db) -> None:
+    """Remove a registration that was a mistake. The audit event of the removal holds
+    what it was. One that was true for a time is given the status `removed` instead."""
+    systems.remove_registration(db, context, hid)
 
 
 # --- capacity lines ------------------------------------------------------------------

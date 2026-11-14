@@ -989,7 +989,7 @@ class ItemRef(Model):
     pid: str | None
 
 
-ContractStatus = Literal["active", "expired", "pending", "cancelled"]
+ContractStatus = Literal["active", "renewal_pending", "expired", "pending", "cancelled"]
 RegistrationStatus = Literal["registered", "pending", "removed"]
 
 
@@ -1012,6 +1012,9 @@ class CoverageRef(Model):
     starts_on: date | None = Field(description="The day it starts in force. Blank is open.")
     ends_on: date | None = Field(description="The day it ends in force. Blank is open.")
     in_force: bool = Field(description="It covers the item today.")
+    left_service: bool = Field(
+        description="Ended because the item left service; the vendor may still count it."
+    )
 
 
 class SystemRef(Model):
@@ -1031,6 +1034,12 @@ class RegistrationRef(Model):
     external_id: str | None
     status: RegistrationStatus
     confirmed_at: datetime | None
+
+
+class GroupRegistrationRef(RegistrationRef):
+    """What a stack or a cluster an item is a member of is registered with."""
+
+    group: DeviceGroupRef
 
 
 class PurchaseLineRef(Model):
@@ -1227,6 +1236,9 @@ class ItemOut(Model):
     replaces: ReplacementRef | None = Field(description="The item whose place this one took.")
     replaced_by: ReplacementRef | None = Field(description="The item that took its place.")
     covered: bool = Field(description="A contract covers it today.")
+    contract_count: int = Field(
+        description="How many contracts cover it today. More than one is worth a look."
+    )
     covered_until: date | None = Field(
         description=(
             "The last day its cover runs to. Blank when a coverage names no end, and when "
@@ -1236,6 +1248,12 @@ class ItemOut(Model):
     coverage: list[CoverageRef] = Field(description="Its coverages under contracts.")
     registrations: list[RegistrationRef] = Field(
         description="The external systems it is registered with."
+    )
+    group_registrations: list[GroupRegistrationRef] = Field(
+        description=(
+            "What a stack or a cluster it is a current member of is registered with: to be "
+            "read, and changed on the group."
+        )
     )
     tags: list[str]
     record_status: RecordStatus
@@ -1681,6 +1699,16 @@ class AddressPatch(Model):
 Url = Annotated[str, Field(max_length=2000)]
 
 
+class NextTerm(Model):
+    """A term that is still to begin: a renewal that was entered ahead of its period."""
+
+    number: str | None = Field(description="Its number, where the renewal gives another.")
+    starts_on: date
+    ends_on: date | None
+    annual_cost: Money | None
+    purchase_reference: str | None
+
+
 class AgreementRef(Model):
     """A support agreement, as named on a contract that is in it."""
 
@@ -1712,6 +1740,10 @@ class AgreementOut(Model):
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
+    lapsed: bool = Field(description="Its period has ended, and it still says it is active.")
+    next_term: NextTerm | None = Field(
+        description="The term that begins on a day to come. Until then the present one runs on."
+    )
     contracts: int = Field(description="How many contracts that are not retired are in it.")
     row_version: int
     created_at: datetime
@@ -1804,7 +1836,13 @@ class ContractOut(Model):
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
-    covers_today: bool = Field(description="Active in both senses, and today is within its dates.")
+    covers_today: bool = Field(
+        description="Active and today is within its period, or past it with its renewal pending."
+    )
+    lapsed: bool = Field(description="Its period has ended, and it still says it is active.")
+    next_term: NextTerm | None = Field(
+        description="The term that begins on a day to come. Until then the present one runs on."
+    )
     covered_items: int = Field(description="How many items it covers today.")
     items_in_scope: int = Field(
         description="How many items have a coverage under it that has not been ended."
@@ -1876,7 +1914,14 @@ class ContractRenew(Model):
     reseller_hid: Hid | None = None
     support_level: Name | None = None
     notes: LongText | None = None
-    status: ContractStatus | None = Field(default=None, description="Left out, `active`.")
+    status: ContractStatus | None = Field(
+        default=None,
+        description="Left out, `active` for a renewal in force at once, and as it is otherwise.",
+    )
+    withdraw: bool = Field(
+        default=False,
+        description="Withdraw the term that is still to begin. Nothing else is sent with it.",
+    )
 
 
 class ContractTerm(Model):
@@ -1907,6 +1952,9 @@ class CoverageOut(Model):
     effective_starts_on: date | None = Field(description="The day it starts in force.")
     effective_ends_on: date | None = Field(description="The day it ends in force.")
     in_force: bool = Field(description="It covers the item today.")
+    left_service: bool = Field(
+        description="Ended because the item left service; cleared once the vendor is told."
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -1923,7 +1971,7 @@ class CoverageEntry(Model):
 class CoverageAdd(Model):
     """Items to put under a contract together: all of them, or none."""
 
-    items: list[CoverageEntry] = Field(min_length=1, max_length=10_000)
+    items: list[CoverageEntry] = Field(min_length=1, max_length=1000)
 
 
 class CoveragePatch(Model):
@@ -1933,6 +1981,9 @@ class CoveragePatch(Model):
     row_version: int
     starts_on: date | None = None
     ends_on: date | None = None
+    left_service: bool | None = Field(
+        default=None, description="False says that the vendor has been told the item left."
+    )
 
 
 # --- purchases -----------------------------------------------------------------------
@@ -2046,7 +2097,13 @@ class Receive(Model):
     """The items that arrived on a line, and when and where."""
 
     row_version: int
-    items: list[Arrived] = Field(min_length=1, max_length=1000)
+    items: list[Arrived] = Field(default=[], max_length=1000)
+    quantity: int = Field(
+        default=0,
+        ge=0,
+        le=1000,
+        description="How many more arrived that nothing is known of yet, each named for its line.",
+    )
     delivered_on: date | None = Field(default=None, description="Left out, today.")
     location_hid: Hid | None = Field(default=None, description="Where they were put.")
 
@@ -2259,7 +2316,9 @@ class CapacityOut(Model):
 
 # --- the reports that look ahead -----------------------------------------------------
 
-CoverageSection = Literal["uncovered", "out_of_service", "expiring"]
+CoverageSection = Literal[
+    "uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending"
+]
 EndOfLifeSection = Literal["past", "approaching"]
 EndOfLifeDate = Literal["end_of_sale", "end_of_sw_support", "end_of_hw_support", "ldos"]
 
@@ -2279,8 +2338,21 @@ class CoverageTotals(Model):
     in_service: int = Field(description="Major items whose state in force is a service state.")
     covered: int
     uncovered: int
-    out_of_service: int = Field(description="Items covered today though out of service.")
+    out_of_service: int = Field(
+        description="Out of service, and a contract still counts it: the list for the vendor."
+    )
     expiring: int = Field(description="In service, and the cover runs out within the days.")
+    overlapping: int = Field(description="Items that more than one contract covers today.")
+    renewal_pending: int = Field(
+        description="Items covered by a contract whose renewal is pending."
+    )
+
+
+class LapsedContracts(Model):
+    """The contracts whose period has ended while they still say they are active."""
+
+    count: int
+    filter: dict[str, Any] = Field(description="The filter of `GET /contracts` for them.")
 
 
 class CoverageReport(Model):
@@ -2291,6 +2363,7 @@ class CoverageReport(Model):
     service_states: list[str]
     totals: CoverageTotals
     sections: dict[str, ReportSection]
+    lapsed_contracts: LapsedContracts
     section: CoverageSection | None
     items: list[ItemOut]
     total: int

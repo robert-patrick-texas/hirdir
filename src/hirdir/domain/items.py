@@ -21,8 +21,19 @@ from hirdir.db.models import (
     Operator,
     Owner,
     PurchaseLine,
+    PurchaseRequest,
 )
-from hirdir.domain import catalog, choices, geography, health, lifecycle, records, settings, tags
+from hirdir.domain import (
+    catalog,
+    choices,
+    contracts,
+    geography,
+    health,
+    lifecycle,
+    records,
+    settings,
+    tags,
+)
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.lifecycle import UNSET
@@ -428,14 +439,27 @@ def _checked(
     return values
 
 
+# A request in one of these receives nothing: it is not one yet, or no longer.
+NOT_RECEIVING = ("draft", "cancelled")
+# What a request that is under way becomes by itself, once all of it has arrived.
+UNDER_WAY, RECEIVED = ("pending", "ordered"), "received"
+
+
 def _check_line(db: Session, line_hid: str) -> None:
-    """Refuse a purchase line that there is not, or that has nothing still to come."""
+    """Refuse a purchase line that there is not, that has nothing still to come, or
+    whose request receives nothing."""
     dialect.hold_other_writers(db)
     line = db.get(PurchaseLine, line_hid) if isinstance(line_hid, str) else None
     if line is None:
         raise Invalid(
             "there is no such purchase line",
             {"purchase_line_hid": f"there is no purchase line {line_hid}"},
+        )
+    request = db.get_one(PurchaseRequest, line.request_hid)
+    if request.status in NOT_RECEIVING:
+        raise Invalid(
+            f"the request is {request.status}",
+            {"purchase_line_hid": f"a request that is {request.status} receives nothing"},
         )
     arrived = (
         db.scalar(select(func.count()).select_from(Item).where(Item.purchase_line_hid == line.hid))
@@ -449,6 +473,35 @@ def _check_line(db: Session, line_hid: str) -> None:
                 "raise its quantity first"
             },
         )
+
+
+def settle_request(db: Session, context: AuditContext, request_hid: str) -> None:
+    """Say that a purchase request has been received, once every line of it has
+    arrived in full. Only a request that is under way is changed: what a person said
+    of one that is a draft, cancelled or received already stands."""
+    request = db.get_one(PurchaseRequest, request_hid)
+    if request.status not in UNDER_WAY:
+        return
+    lines = list(db.scalars(select(PurchaseLine).where(PurchaseLine.request_hid == request.hid)))
+    if not lines:
+        return
+    arrived = dict(
+        db.execute(
+            select(Item.purchase_line_hid, func.count())
+            .where(Item.purchase_line_hid.in_([line.hid for line in lines]))
+            .group_by(Item.purchase_line_hid)
+        ).all()
+    )
+    if all(arrived.get(line.hid, 0) >= line.quantity for line in lines):
+        records.apply(db, context, "purchase_request", request, None, {"status": RECEIVED})
+
+
+def _settle_line(db: Session, context: AuditContext, line_hid: str | None) -> None:
+    """After an item was put on a line: its request may have arrived in full."""
+    line = db.get(PurchaseLine, line_hid) if line_hid else None
+    if line is not None:
+        db.flush()
+        settle_request(db, context, line.request_hid)
 
 
 def _checked_plan(db: Session, value: Any, item: Item | None) -> str | None:
@@ -591,6 +644,7 @@ def create_item(db: Session, context: AuditContext, fields: dict[str, Any]) -> I
         FIELDS,
         then=lambda: tags.set_labels(db, RECORD_TYPE, item.hid, labels),
     )
+    _settle_line(db, context, item.purchase_line_hid)
     return item
 
 
@@ -618,7 +672,10 @@ def update_item(
         **_standing_on_update(db, fields, item),
     }
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
+    on_line = item.purchase_line_hid
     records.apply(db, context, RECORD_TYPE, item, row_version, values, tag_change)
+    if item.purchase_line_hid != on_line:
+        _settle_line(db, context, item.purchase_line_hid)
     return item
 
 
@@ -634,6 +691,8 @@ def retire_item(db: Session, context: AuditContext, hid: str, row_version: int) 
         if item.row_version != row_version:
             records.touch(item, context, row_version)
         _leave_groups(db, context, hid)
+        # A retired item is under no contract any more: its coverage ends today.
+        contracts.end_for_item(db, context, hid)
     records.apply(
         db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
     )
@@ -695,6 +754,8 @@ def transition(
     item.state_changed_at = clock.now()
     if to in OUT_OF_HANDS:
         _leave_groups(db, context, item.hid)
+        # It has left the team's hands: its coverage ends today, and says why.
+        contracts.end_for_item(db, context, item.hid)
     return item
 
 

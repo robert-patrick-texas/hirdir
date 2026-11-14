@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a coverage or a registration that was a mistake, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -559,7 +559,7 @@ contracts. It groups those contracts, and says once what they share.
 | `vendor_hid` | reference | required: the vendor it is with |
 | `reseller_hid` | reference | optional: the vendor it was bought through |
 | `starts_on`, `ends_on` | date | its period. Either may be blank |
-| `status` | choice | `active`, `expired`, `pending`, `cancelled`. What a person says of it |
+| `status` | choice | `active`, `renewal_pending`, `expired`, `pending`, `cancelled`. What a person says of it |
 | `support_level`, `purchase_reference` | text | |
 | `account_manager`, `support_contact` | text | whom to ask, and whom to call for support: free text |
 | `support_url` | text | where support is reached online |
@@ -602,16 +602,22 @@ contract that is not retired is in it.
 | `contracts.account_manager`, `support_contact` | text | whom to ask about the contract, and whom to call for support: free text, a name with a number or an address |
 | `contracts.support_url` | text | where support is reached online: begins with `https://` or `http://` |
 | `contracts.starts_on`, `ends_on` | date | blank takes the agreement's, for a contract in one. Otherwise a blank is open: no start is from the beginning, no end until further notice |
-| `contracts.status` | choice | `active`, `expired`, `pending`, `cancelled`. Left out, `active`. What a person says of the contract; the clock never changes it |
+| `contracts.status` | choice | `active`, `renewal_pending`, `expired`, `pending`, `cancelled`. Left out, `active`. What a person says of the contract; the clock never changes it |
 | `contracts.support_level`, `notes` | text | |
 | `contracts.annual_cost` | money | the contract total, when that is all that is known |
 | `contracts.record_status` | choice | see Conventions. A contract takes tags |
 | `contract_coverage.contract_hid`, `item_hid` | reference | neither is changed afterwards |
 | `contract_coverage.starts_on`, `ends_on` | date | blank takes the contract's dates |
+| `contract_coverage.left_service` | boolean | `hirdir` ended it on the day its item left service. Cleared by a person once the vendor has been told |
 
 A contract **covers** on a day when it is `active` in both senses, its `record_status`
 and its `status`, and the day is within its period in force: its own dates, or its
-agreement's where its own are blank. A **coverage** is one item under
+agreement's where its own are blank. It also covers past the end of its period while
+its status is `renewal_pending`: see "A renewal that is late" below. A contract whose
+period has ended while its status still says `active` has **lapsed**: `lapsed` on its
+record is true, worked out when it is read, it covers nothing, and the Contracts page
+and the coverage report flag it, so that somebody renews it or says that it has
+expired. An agreement lapses in the same way. A **coverage** is one item under
 one contract for a range of days: its own `starts_on` and `ends_on`, each of which is
 the contract's where it is blank, and neither of which reaches beyond the contract's.
 The record answers both, the dates of its own and the dates in force. A coverage is in force on a day when its contract covers on that
@@ -628,10 +634,32 @@ becomes.
 **Renewing.** A contract that is renewed is usually given a new number and a new
 period of performance. That is one change of the one record, `POST
 /contracts/{hid}/renew`, and every item in scope has the new number and the new
-period at once: nothing is written to any item or to any coverage. The items in scope
-are those whose coverage under the contract has not been ended. A coverage that was
-ended on a day of its own stays ended. The status is `active` after a renewal unless
-it is told another. The terms a contract had before, each with its number, its period,
+period: nothing is written to any item or to any coverage. The items in scope are
+those whose coverage under the contract has not been ended. A coverage that was ended
+on a day of its own stays ended. The status is `active` after a renewal that is in
+force at once, unless it is told another.
+
+**A renewal that is early.** A renewal is often entered before the old term ends.
+One whose period begins after today is kept as the **next term** of the contract:
+`next_term` on its record, with the number, the period, the cost and the purchase
+reference to come. The present number and period stay in force until the day the
+next term begins, and from that day the contract has the new ones. That is worked
+out when the record is read: no clock writes anything, and the first change that is
+made after that day writes the term down, as a renewal, before it is made itself.
+The items are covered throughout, `covered_until` runs to the end of the term to
+come, and a contract answers to both of its numbers. A next term is withdrawn by a
+renewal that says `withdraw` and nothing else. An agreement is renewed in the same
+way, `POST /agreements/{hid}/renew`, and the contracts that are co-termed with it
+follow.
+
+**A renewal that is late.** Procurement may take thirty to ninety days after a term
+has ended. In that time the vendor still gives support, by escalation: the account
+manager is asked before the support line is called. A person says so by giving the
+contract the status `renewal_pending`. While it holds, the contract covers past the
+end of its period, its items stay off the list of what no contract covers, each
+says that the renewal is pending, and `covered_until` is blank, since no day is
+known to end it. The coverage report counts the items in that state. When the
+renewal is entered at last, the contract is `active` again in its new period. The terms a contract had before, each with its number, its period,
 its cost, the purchase reference it was bought under and the moment it was renewed,
 are answered by `GET /contracts/{hid}/terms` from the audit trail, and are stored
 nowhere else. They are the purchase history of the contract: a renewal gives the new
@@ -642,14 +670,19 @@ Rules, checked on every write:
 - An item is covered by any number of contracts, at once and over time. Under one
   contract it has no two coverages whose days overlap: a coverage that ended is
   followed by a new one, as a membership is.
-- A coverage is ended by giving it `ends_on`, and is never removed. Last year's answer
-  stays on record.
+- A coverage is ended by giving it `ends_on`, and stays on record: last year's answer
+  is still there. One that was a mistake, an item put under the wrong contract, is
+  removed outright by `DELETE`, with an audit event that holds what it was.
 - Coverage is added several items at a time, by one request, and each is checked.
 - A minor item may be covered by itself: a supervisor module under its own contract.
 - A retired item, and a retired contract, are given no further coverage.
-- Nothing ends a coverage but a person. Retiring an item, or moving it to Released or
-  to Archived, leaves its coverage standing, and the coverage report then lists the
-  item as covered though out of service.
+- Retiring an item, or moving it to Released or to Archived, ends its coverage that
+  day, with an audit event of its own, and marks it `left_service`: the item has
+  left, and the vendor still counts it until somebody says so. The coverage report
+  lists such an item as out of service for as long as the term of its contract runs,
+  and a person clears `left_service` once the vendor has been told. A move to
+  Pending-Removal ends nothing: the item is still covered, and is on the same list.
+- A coverage under a retired contract is not changed.
 
 `annual_cost` is the total of the contract as the vendor bills it. It is shown on the
 contract and in the vendor's portfolio, and is added to nothing: the annual support
@@ -660,17 +693,23 @@ On an item, derived when it is read and stored nowhere:
 | Field | Meaning |
 |---|---|
 | `covered` | a coverage of the item is in force today, in the application's time zone |
-| `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract has the status `active`. Blank when one of them names no end, and when there is none. A gap between two of them is not looked for |
-| `coverage` | its coverages, each with the contract, the dates in force and whether it is in force today |
+| `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract covers or is to cover, to the end of the last term that is known. Blank when one of them names no end, or is under a contract whose renewal is pending, and when there is none. A gap between two of them is not looked for |
+| `contract_count` | how many contracts cover it today. More than one is worth a look before a renewal: two contracts for one device are usually one too many |
+| `coverage` | its coverages, each with the contract, the dates in force, whether it is in force today and whether it was ended because the item left |
 
-`covered`, `covered_until` and `contract.number`, the number of a contract that
-covers it today, are fields of the item list.
+`covered`, `covered_until`, `contract_count`, and `contract.number` and
+`contract.status`, those of a contract that covers it today, are fields of the item
+list. How many items a contract covers, `covered_items`, is a count like every
+other: drafts, retired items and items in Archived are left out, so the number on a
+contract is the number of rows of the item list for it.
 
 **In service.** An item is in service when the lifecycle state in force for it is one
-of the `service_states` setting: Test, Prod and Down unless changed. It is out of
-service when it is retired, or its state in force is Pending-Removal, Released or
-Archived. An item with no state, and one that is Purchased, Delivered or Assigned, is
-neither: it has not been in service yet. The coverage report is built on the two.
+of the `service_states` setting: Assigned, Test, Prod and Down unless changed. Gear
+that has been handed to the team and is parked, a spare or staging stock, is in
+service: an uncovered spare is a gap. An item is out of service when it is retired,
+or its state in force is Pending-Removal, Released or Archived. An item with no
+state, and one that is Purchased or Delivered, is neither: it has not been in service
+yet. The coverage report is built on the two.
 
 ### `purchase_requests` and `purchase_lines`
 
@@ -678,10 +717,10 @@ neither: it has not been in service yet. The coverage report is built on the two
 |---|---|---|
 | `purchase_requests.reference` | text, unique | required: the RITM or other request number. Holds no `/`, which separates it from the number of a line |
 | `purchase_requests.requested_on`, `notes` | date, text | |
-| `purchase_requests.status` | choice | `draft`, `pending`, `ordered`, `received`, `cancelled`. Left out, `pending`. Set by people |
+| `purchase_requests.status` | choice | `draft`, `pending`, `ordered`, `received`, `cancelled`. Left out, `pending`. Set by people, and to `received` by the delivery that completes it |
 | `purchase_lines.request_hid` | reference | not changed afterwards |
 | `purchase_lines.line` | integer | the number of the line within its request, from 1. Left out, the next |
-| `purchase_lines.catalog_entry_hid`, `quantity` | reference, integer | model and how many. At least 1, and never below what was received |
+| `purchase_lines.catalog_entry_hid`, `quantity` | reference, integer | model and how many. At least 1 when the line is entered, and never below what was received |
 | `purchase_lines.destination_site_hid`, `expected_on` | reference, date | optional |
 | `purchase_lines.notes` | text | |
 | `purchase_lines.received_quantity` | integer | derived: the number of items that name this line |
@@ -691,17 +730,25 @@ A line is named by the reference of its request and its number: `RITM0012345/2`.
 
 A request and its lines are not inventory. Nothing of them is in any count, and no
 serial number is known yet. **Receiving** a line, `POST /purchase-lines/{hid}/receive`,
-says which items arrived: each with a serial number, an asset tag or a name, as every
-item needs, and together with the day and, when it is known, the location they were
-put in. It creates those items in the state Delivered, of the line's model, each with
-`purchase_line_hid` naming the line and `delivered_on` set, in one change, with an
-audit event for each. The items are then inventory: Delivered is not among the states
+says which items arrived: each with a serial number, an asset tag or a name, and with
+them or instead of them a `quantity`, how many more arrived that nothing is known of
+yet, together with the day and, when it is known, the location they were put in.
+Each of those that nothing is known of is given a name made from its line and its
+place on it, `RITM0012345/2-003`, to be known by until it has a serial number, which
+is given to it by hand or by a file that names it so. Receiving creates the items in
+the state Delivered, of the line's model, each with `purchase_line_hid` naming the
+line and `delivered_on` set, in one change, with an audit event for each. The items are then inventory: Delivered is not among the states
 that count, so they are in no component count until they are handed to the team.
 
 `received_quantity` is the number of items that name the line, counted as it is read
 and stored nowhere. Receiving more than is left is refused: the line is given a higher
-quantity first. A request that is a `draft` or `cancelled` receives nothing. The
-status of a request is not changed by a delivery: it is what a person says of it.
+quantity first. A request that is a `draft` or `cancelled` receives nothing, by a
+receipt or by an item that is put on one of its lines by hand. The status of a
+request is what a person says of it, with one exception: once every line of a request
+that is `pending` or `ordered` has arrived in full, the request is `received` by that
+same change, with an audit event. A person may say `received` earlier, since a
+request may hold lines that this inventory does not follow. A request has at most a
+thousand lines.
 
 A line is not removed. One that was entered by mistake, or is no longer wanted, is
 taken back by lowering its quantity to what was received.
@@ -722,13 +769,21 @@ taken back by lowering its quantity to what was received.
 
 An item or a group is registered with one system once. A registration that ends is
 given the status `removed` and stays on record; when it begins again it is the same
-record, registered once more. A retired system takes no new registration.
+record, registered once more. One that was a mistake is removed outright by `DELETE`,
+with an audit event that holds what it was. A retired system takes no new
+registration, and none that begins again.
 
 A registration is on the record it was made for. A stack that a monitoring system
 knows as one device is registered as the stack: the registration is listed on the
-stack, and not on its members. `registration.system` on the lists of items and of
-device groups finds a record by the name of a system it is registered with, a
-registration that is `removed` not counting.
+stack, and is not one of the registrations of its members. So that nobody takes a
+member for a device no tool knows, the record of an item also lists, in
+`group_registrations` and to be read only, what a stack or a cluster it is a current
+member of is registered with, each with the group. `registration.system` on the list
+of items finds an item by the name of a system that knows it, by a registration of
+its own or of such a group, and on the list of device groups a group by its own; a
+registration that is `removed` does not count. How many records are registered with
+a system, `registrations`, leaves out drafts and retired records, as every count
+does.
 
 `confirmed_at` is a moment as `observed_at` of an item is: one that names no zone is
 in the application's time zone, and one more than a day ahead is refused.
@@ -754,7 +809,8 @@ A source of resource units, or a call on them other than the infrastructure.
 The resource units of a line are `quantity` × `units_each`, a fixed amount, worked out
 exactly. `category` is a value of the `capacity_category` list: a demand line has
 `other_work`, and a supply line any other value of the list. `name` is required, and
-unique on its side. A line is **in date** on a day that is not before `starts_on` and
+unique on its side, a retired line's among them: a line that comes back is brought
+back, and not entered a second time. A line is **in date** on a day that is not before `starts_on` and
 not after `ends_on`, by the application's day; a blank is open. A line is never
 deleted: it is retired, or given an end date.
 
@@ -804,7 +860,7 @@ and is refused, not rounded, when it has more.
 | `fiscal_year_start_month` | 1 | for reports grouped by fiscal year |
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |
-| `service_states` | Test, Prod, Down | states in which an item is in service, for the coverage report |
+| `service_states` | Assigned, Test, Prod, Down | states in which an item is in service, for the coverage report |
 | `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
 | `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
 

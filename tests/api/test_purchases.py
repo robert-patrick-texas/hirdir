@@ -140,8 +140,62 @@ def test_receiving_creates_the_items_that_arrived_and_never_more_than_the_line(
     assert "catalog_entry_hid" in errors(
         _change(make, f"/purchase-lines/{line['hid']}", 422, catalog_entry_hid=other["hid"])
     )
-    # The status of a request is what a person says: a delivery does not change it.
+    # Every line has arrived in full: the request says so by itself, and it is on record.
+    assert make.get(f"/purchase-requests/{request['hid']}")["status"] == "received"
+    said = make.audit(record_type="purchase_request", record_hid=request["hid"])[0]
+    assert said["changes"] == [{"field": "status", "old": "pending", "new": "received"}]
+
+
+def test_a_delivery_is_received_as_a_count_and_named_for_its_line(make: Maker, entry: dict) -> None:
+    request = _request(make, entry, quantity=5)
+    (line,) = request["lines"]
+    now = make.get(f"/purchase-lines/{line['hid']}")
+    received = make.post(
+        f"/purchase-lines/{line['hid']}/receive",
+        {"row_version": now["row_version"], "items": [{"serial_number": "FCW-1"}], "quantity": 2},
+    )
+    assert [item["name"] for item in received["items"]] == [
+        None,
+        "RITM0012345/1-002",
+        "RITM0012345/1-003",
+    ]
+    assert (received["received_quantity"], received["pending_quantity"]) == (3, 2)
+    # Nothing arrived: neither an item nor a count.
+    empty = {"row_version": received["row_version"]}
+    assert "items" in errors(make.post(f"/purchase-lines/{line['hid']}/receive", empty, 422))
+    # Not all has arrived: the request is still what a person said of it.
     assert make.get(f"/purchase-requests/{request['hid']}")["status"] == "pending"
+    # A person may say received early: a request may hold lines that are not followed here.
+    early = _change(make, f"/purchase-requests/{request['hid']}", status="received")
+    assert early["status"] == "received"
+    _change(make, f"/purchase-requests/{request['hid']}", status="ordered")
+    # The serial number is given later, to the item that is known by its name.
+    named = make.get("/items", filter="name:eq:RITM0012345/1-002")["items"][0]
+    make.patch(
+        f"/items/{named['hid']}", {"row_version": named["row_version"], "serial_number": "FCW-2"}
+    )
+    more = make.post(
+        f"/purchase-lines/{line['hid']}/receive",
+        {"row_version": received["row_version"], "quantity": 2},
+    )
+    assert [item["name"] for item in more["items"]] == ["RITM0012345/1-004", "RITM0012345/1-005"]
+    assert make.get(f"/purchase-requests/{request['hid']}")["status"] == "received"
+    too_many = {"row_version": more["row_version"], "quantity": 1}
+    assert "items" in errors(make.post(f"/purchase-lines/{line['hid']}/receive", too_many, 422))
+    # A line that is lowered to what has arrived has arrived in full.
+    second = _request_two(make, entry)
+    assert second["status"] == "received"
+
+
+def _request_two(make: Maker, entry: dict[str, Any]) -> dict[str, Any]:
+    request = make.post(
+        "/purchase-requests",
+        {"reference": "RITM0012400", "lines": [{"catalog_entry_hid": entry["hid"], "quantity": 4}]},
+    )
+    (line,) = request["lines"]
+    _receive(make, line, "FCW-91")
+    _change(make, f"/purchase-lines/{line['hid']}", quantity=1)
+    return make.get(f"/purchase-requests/{request['hid']}")
 
 
 def test_a_request_that_is_a_draft_or_cancelled_receives_nothing(make: Maker, entry: dict) -> None:
@@ -152,6 +206,9 @@ def test_a_request_that_is_a_draft_or_cancelled_receives_nothing(make: Maker, en
     _receive(make, line, "FCW-1")
     _change(make, f"/purchase-requests/{request['hid']}", status="cancelled")
     assert "status" in errors(_receive(make, line, "FCW-2", expect=422))
+    # Nor is an item put on a line of it by hand.
+    by_hand = {"name": "by hand", "purchase_line_hid": line["hid"]}
+    assert "purchase_line_hid" in errors(make.post("/items", by_hand, 422))
     assert "status" in errors(
         _change(make, f"/purchase-requests/{request['hid']}", 422, status="lost")
     )
@@ -199,8 +256,8 @@ def test_a_registration_is_of_one_record_with_one_system_once(make: Maker, entry
     assert "name" in errors(make.post("/external-systems", {"name": "netwatch"}, 409))
     assert "url" in errors(make.post("/external-systems", {"name": "X", "url": "netwatch"}, 422))
     make.post("/external-systems", {"name": "Y", "kind": "telepathy"}, 422)
-    switches = make.switches(entry, "sw", 2)
-    stack = make.stack("site2-sw-stack1", switches)
+    switches = make.switches(entry, "sw", 4)
+    stack = make.stack("site2-sw-stack1", switches[:2])
     of_stack = make.post(
         "/registrations",
         {"system_hid": watch["hid"], "group_hid": stack["hid"], "external_id": "node-1"},
@@ -215,16 +272,22 @@ def test_a_registration_is_of_one_record_with_one_system_once(make: Maker, entry
     both = {"system_hid": watch["hid"], "group_hid": stack["hid"], "item_hid": switches[0]["hid"]}
     assert "item_hid" in errors(make.post("/registrations", both, 422))
     assert "item_hid" in errors(make.post("/registrations", {"system_hid": watch["hid"]}, 422))
-    # On the stack, and not on its members.
+    # On the stack, and not one of the registrations of its members: but a member says
+    # what its stack is registered with, so that nobody takes it for unknown.
+    of_group = make.get(f"/device-groups/{stack['hid']}")["registrations"]
+    assert [one["system"]["name"] for one in of_group] == ["NetWatch"]
+    member = make.get(f"/items/{switches[0]['hid']}")
+    assert member["registrations"] == []
     assert [
-        one["system"]["name"] for one in make.get(f"/device-groups/{stack['hid']}")["registrations"]
-    ] == ["NetWatch"]
-    assert make.get(f"/items/{switches[0]['hid']}")["registrations"] == []
+        (one["system"]["name"], one["group"]["name"], one["external_id"])
+        for one in member["group_registrations"]
+    ] == [("NetWatch", "site2-sw-stack1", "node-1")]
+    assert make.get(f"/items/{switches[2]['hid']}")["group_registrations"] == []
     of_item = make.post(
         "/registrations",
         {
             "system_hid": watch["hid"],
-            "item_hid": switches[1]["hid"],
+            "item_hid": switches[2]["hid"],
             "confirmed_at": "2026-11-02T10:00:00",
         },
     )
@@ -232,40 +295,55 @@ def test_a_registration_is_of_one_record_with_one_system_once(make: Maker, entry
     assert of_item["confirmed_at"] == "2026-11-02T15:00:00Z"
     ahead = {"row_version": of_item["row_version"], "confirmed_at": day(3) + "T00:00:00Z"}
     assert "confirmed_at" in errors(make.patch(f"/registrations/{of_item['hid']}", ahead, 422))
-    assert make.found(filter="registration.system:eq:netwatch") == ["sw-02"]
-    assert make.found(filter="registration.system:ne:NetWatch") == ["sw-01"]
+    # What a system knows: by a registration of its own, or of the stack it is in.
+    assert make.found(filter="registration.system:eq:netwatch") == ["sw-01", "sw-02", "sw-03"]
+    assert make.found(filter="registration.system:ne:NetWatch") == ["sw-04"]
+    assert make.found(filter="registration.system:empty:true") == ["sw-04"]
     assert make.get("/device-groups", filter="registration.system:eq:NetWatch")["total"] == 1
     make.get("/items", sort="registration.system")
     assert make.get(f"/external-systems/{watch['hid']}")["registrations"] == 2
     # One that ends is given the status removed, and is the same record when it begins again.
     removed = _change(make, f"/registrations/{of_item['hid']}", status="removed")
     assert removed["status"] == "removed"
-    assert make.found(filter="registration.system:eq:NetWatch") == []
+    assert make.found(filter="registration.system:eq:NetWatch") == ["sw-01", "sw-02"]
     assert make.get(f"/external-systems/{watch['hid']}")["registrations"] == 1
     assert make.get("/registrations", filter="status:eq:removed")["total"] == 1
-    assert (
-        make.client.delete(
-            f"{API}/registrations/{of_item['hid']}", headers=make.headers
-        ).status_code
-        == 405
-    )
     back = _change(make, f"/registrations/{of_item['hid']}", status="registered")
     assert back["hid"] == of_item["hid"]
-    # A retired system takes no new registration, and keeps the ones it has.
+    # A draft or retired record is not counted, as in every other count.
+    draft = make.item(name="draft", record_status="draft")
+    make.post("/registrations", {"system_hid": watch["hid"], "item_hid": draft["hid"]})
+    assert make.get(f"/external-systems/{watch['hid']}")["registrations"] == 2
+    # One that was a mistake is removed outright, and the audit trail holds what it was.
+    mistake = make.post(
+        "/registrations",
+        {"system_hid": watch["hid"], "item_hid": switches[3]["hid"], "external_id": "wrong"},
+    )
+    make.delete(f"/registrations/{mistake['hid']}")
+    make.get(f"/registrations/{mistake['hid']}", 404)
+    gone = make.audit(record_type="registration", record_hid=mistake["hid"])[0]
+    assert gone["action"] == "delete"
+    assert {change["field"]: change["old"] for change in gone["changes"]}["external_id"] == "wrong"
+    # A retired system takes no new registration, and none that begins again.
+    _change(make, f"/registrations/{of_item['hid']}", status="removed")
+    system = make.get(f"/external-systems/{watch['hid']}")
     make.post(
-        f"/external-systems/{watch['hid']}/retire",
-        {"row_version": make.get(f"/external-systems/{watch['hid']}")["row_version"]},
-        200,
+        f"/external-systems/{watch['hid']}/retire", {"row_version": system["row_version"]}, 200
     )
-    third = make.item(name="third")
     assert "system_hid" in errors(
-        make.post("/registrations", {"system_hid": watch["hid"], "item_hid": third["hid"]}, 422)
+        make.post(
+            "/registrations", {"system_hid": watch["hid"], "item_hid": switches[3]["hid"]}, 422
+        )
     )
-    assert make.get("/registrations", sort="holder,-system.name")["total"] == 2
-    assert [
+    assert "status" in errors(
+        _change(make, f"/registrations/{of_item['hid']}", 422, status="registered")
+    )
+    assert make.get("/registrations", sort="holder,-system.name")["total"] == 3
+    actions = [
         event["action"]
         for event in make.audit(record_type="registration", record_hid=of_item["hid"])
-    ] == ["update", "update", "create"]
+    ]
+    assert actions == ["update", "update", "update", "create"]
 
 
 # --- capacity ------------------------------------------------------------------------
@@ -418,6 +496,7 @@ WRITES = (
     ("post", "/external-systems/x/retire"),
     ("post", "/registrations"),
     ("patch", "/registrations/x"),
+    ("delete", "/registrations/x"),
     ("post", "/capacity-lines"),
     ("patch", "/capacity-lines/x"),
     ("post", "/capacity-lines/x/retire"),
