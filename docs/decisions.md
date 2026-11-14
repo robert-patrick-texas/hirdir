@@ -141,6 +141,9 @@ management address of each family, and the money has a report of its own. D-96, 
 the group and controllers found through nested clusters, with P-73. The answer brought D-92 with it, the condition
 of an item and the health of a stack, and P-78 is the detail of that, for 0.4.1.
 
+P-79 is a choice of release 0.4.1, made by its package test where D-103 is silent: what
+the upgrade does with a membership that 0.4.0 let stand.
+
 | ID | Proposal | Why | Built in |
 |---|---|---|---|
 | P-05 | nginx strips the prefix and names it in `X-Forwarded-Prefix`; the server writes it into the page. | Deep links and API documentation need the prefix. This is the `texas2step` way. `sunstone` and `segl` leave the server unaware. | 0.1.0 |
@@ -160,6 +163,7 @@ of an item and the health of a stack, and P-78 is the detail of that, for 0.4.1.
 | P-21 | A capacity line may be a draft, may carry an annual cost, a vendor, dates and a region or site. The report shows the balance with and without drafts. | Drafts already exist for items and sites and give what-if comparisons for free. | 0.6.0 |
 | P-48 | `Idempotency-Key` is kept for 24 hours for each caller. The same request with the same key is answered with the first answer and not carried out again; the same key on another request is a `422`. It is taken by a `POST` on an inventory record, an import or a bulk edit, and refused on the routes of accounts. | A retry after a lost answer must not create a second record. An account route's answer may hold an access code or a token, which is kept nowhere, so it cannot be kept to be replayed. | 0.3.0 |
 | P-58 | `/var/lib/hirdir/backups` is made with mode 0750, by postinst at install and at each upgrade and by `hirdir admin backup` when it is not there. | Its mode otherwise depended on the umask of whoever took the first backup. | 0.3.0 |
+| P-79 | The upgrade to 0.4.1 ends no membership. An item that 0.4.0 left in its stack, cluster or domain when it was moved to Released or to Archived is a member still after the upgrade, until its membership is given an end date. `install.md` says so. The other answer is for migration `0006` to end those memberships, on the day of the upgrade. | D-103 says what a move does from 0.4.1 on, and nothing of the moves that 0.4.0 made. An upgrade that changes nothing a site has is the safest reading, and is what the migration does. But such an item is then counted as a member, in the size of its stack among other things, against the rule that an item which has left the team's hands is in no group. | 0.4.1, in the package test, which shows it |
 | P-19 | Regular expressions use a linear-time engine when its binding has a production release for the Python in use, otherwise a time-limited one. | Which one is available changes with the Python version, and the dependency rule decides. | 0.2.0, with the time-limited `regex` package: RE2's own binding, `google-re2`, has no release for Python 3.15 |
 
 ## Open
