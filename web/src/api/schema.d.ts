@@ -4646,6 +4646,8 @@ export interface components {
       level: "region" | "site" | "location";
       name: string;
       path: string;
+      /** The items planned for it or for a place beneath it. */
+      planned: number;
       record_status: "draft" | "active" | "retired";
     };
     /** The regions, their sites and the locations within them, with the counts of a view. */
@@ -4822,6 +4824,8 @@ export interface components {
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
       parent_item_hid?: string | null;
+      /** Where it is going: a location not in use yet. It moves in when that opens. */
+      planned_location_hid?: string | null;
       /** Where in its parent: PS-A, Slot 3. */
       position?: string | null;
       procured_on?: string | null;
@@ -4919,6 +4923,9 @@ export interface components {
       /** The item a minor item is in. */
       parent: components["schemas"]["ItemRef"] | null;
       parent_item_hid: string | null;
+      /** Where it is going: a location that is not in use yet. */
+      planned_location: components["schemas"]["LocationRef"] | null;
+      planned_location_hid: string | null;
       /** Where in its parent a minor item is. */
       position: string | null;
       procured_on: string | null;
@@ -4974,6 +4981,8 @@ export interface components {
       owner_hid?: string | null;
       /** Null takes a minor item out of its parent. */
       parent_item_hid?: string | null;
+      /** Null gives the plan up. */
+      planned_location_hid?: string | null;
       position?: string | null;
       procured_on?: string | null;
       quantity?: number | null;
@@ -5098,6 +5107,8 @@ export interface components {
       parent: components["schemas"]["PlaceRef"] | null;
       parent_location_hid: string | null;
       path: string;
+      /** How many items are planned for it, and not there yet. */
+      planned_items: number;
       postal_code: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;

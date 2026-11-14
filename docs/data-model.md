@@ -118,6 +118,7 @@ lifecycle fields included.
 | `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
+| `planned_location_hid` | reference | where the item is going: a location that is not in use yet. See "A planned location" |
 | `operator_hid` | reference | an operator: the label of the person of the team who looks after the item. Blank inherits; see "The operator" |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
@@ -151,6 +152,27 @@ parent, keeps its record and its history. With no parent it is a major item, wit
 whatever is its own: what it inherited stays with the parent it left.
 
 Release 0.5.0 has every field above except `purchase_line_hid`, which arrives in 0.6.0.
+
+**A planned location.** `location_hid` is where an item is. `planned_location_hid` is
+where it is going, when that place is not in use yet. A team that plans a new site
+makes the site as a draft, with its buildings and rooms, and gives the spares that are
+meant for it their planned locations there. Until the site opens the spares are where
+they are, in staging, counted there and found there, and the draft site shows what is
+planned for it. When the site is made active, every item that is planned for a
+location thereby in use is moved in by the same change: its location becomes the
+planned one and the plan is cleared. Each item has an entry of its own for it in its
+history, with the request ID of the change that opened the site, and nobody moves
+anything device by device.
+
+A place is in use when it and everything it is in is active: the locations above it,
+its site and the regions above that. Only a location that is not in use is taken as a
+plan. One that is in use is refused, since the item can be moved there now, and so is
+one that is retired. A plan is given up by clearing it, and is cleared when the item
+is given the planned location as its location. Giving the item another location in
+the meantime, another shelf in staging, leaves the plan standing. A retired item is
+not moved. A location is not retired while items are planned for it. A minor item
+with no plan of its own goes where the item above it goes, as it is where that item
+is. A device group has no planned location.
 
 **The operator.** The owner of an item is the part of the organization that answers
 for it. Its operator is one person: the member of the team who looks after it, and
@@ -347,7 +369,7 @@ location that is retired is given to no further item.
 
 **Retiring.** A region, a site or a location is retired only when nothing that is not
 retired is in it: no region, site or location beneath it, and no item or device group
-placed there. An item that has left the team's hands, in Released or in Archived,
+placed there, and no item planned for it. An item that has left the team's hands, in Released or in Archived,
 holds no location open. A place is not brought back while what it is in is retired:
 the building first, then the room. Nor is an item or a device group brought back
 into a location that was retired after it: it is given another location, or none,

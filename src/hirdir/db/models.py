@@ -491,6 +491,10 @@ class Item(Bookkeeping, Base):
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )
+    # Where it is going, when that place is not in use yet.
+    planned_location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
     # The label of the person of the team who looks after it.
     operator_hid: Mapped[str | None] = mapped_column(
         ForeignKey("operators.hid"), default=None, index=True

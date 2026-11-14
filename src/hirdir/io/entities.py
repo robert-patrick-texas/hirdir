@@ -1513,6 +1513,7 @@ class Items(Entity):
         _OWNER,
         _OPERATOR,
         _LOCATION,
+        Column("planned_location", limit=LONG),
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
         *AMOUNTS,
@@ -1549,6 +1550,7 @@ class Items(Entity):
         "location_hid": "location",
         "effective.location_hid": "location",
         "location.name": "location",
+        "planned_location_hid": "planned_location",
         "operator_hid": "operator",
         "effective.operator_hid": "operator",
         "operator.label": "operator",
@@ -1564,6 +1566,7 @@ class Items(Entity):
         "owner_hid": "owner",
         "operator_hid": "operator",
         "location_hid": "location",
+        "planned_location_hid": "planned_location",
         "parent_item_hid": "parent",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
@@ -1853,6 +1856,13 @@ class Items(Entity):
             if location_hid is None or own is not None or location_hid != inherited:
                 # Otherwise the row says where the item is anyway, with the item above.
                 given["location_hid"] = location_hid
+        if "planned_location" in values:
+            named = values["planned_location"]
+            given["planned_location_hid"] = (
+                run.place(named, "planned_location", geography.LOCATION).hid
+                if named is not None
+                else None
+            )
         given.update(self._overrides(record, before, entry, values))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
@@ -1919,6 +1929,7 @@ class Items(Entity):
         atlas = geography.Atlas(db)
         atlas.read_locations(
             {item.location_hid for item in found}
+            | {item.planned_location_hid for item in found}
             | {one.location_hid for line in lines.values() for one in line}
         )
         looked_after = operators.of_items(db, found, lines)
@@ -1957,6 +1968,7 @@ class Items(Entity):
                 "health": health.of_item(
                     item.condition, item.observed_status, in_force["expected_online"].value
                 ).value,
+                "planned_location": atlas.location_path(item.planned_location_hid) or None,
                 "site": site.name if site is not None else None,
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": outside,

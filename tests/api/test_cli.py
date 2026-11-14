@@ -544,6 +544,18 @@ def test_a_site_is_moved_and_an_item_is_put_somewhere_from_the_command_line(
     run("regions", "move", "Americas", "East > Site-2", expect=4)
     run("sites", "move", "Nowhere", "East", expect=4)
 
+    # A spare is planned for a site that is still a draft, and says so.
+    plan = make.site("Site-3", make.get("/regions", filter="name:eq:East")["items"][0])
+    make.patch(
+        f"/sites/{plan['hid']}", {"row_version": plan["row_version"], "record_status": "draft"}
+    )
+    make.location("Suite 300", plan)
+    make.item(hostname="spare-01")
+    run("items", "set", "spare-01", "planned_location=East > Site-3 > Suite 300")
+    assert (
+        f"{'planned_location:':<21}East > Site-3 > Suite 300"
+        in run("items", "show", "spare-01").stdout
+    )
     # An item given to an owner outside the team is marked, with that owner's reason.
     run("items", "set", "site2-sw-1", f"owner={outside['label']}")
     assert (

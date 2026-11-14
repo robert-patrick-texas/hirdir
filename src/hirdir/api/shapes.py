@@ -431,6 +431,7 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
     labels = tags.labels_of(db, geography.LOCATION, hids)
     within = _live_counts(db, Location, Location.parent_location_hid, hids)
     placed = _live_counts(db, Item, Item.location_hid, hids)
+    planned = _live_counts(db, Item, Item.planned_location_hid, hids)
     marks = _Labels(db, {location.operator_hid for location in found})
     out = []
     for location in found:
@@ -443,8 +444,19 @@ def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut
                 **_own(
                     location,
                     shapes.LocationOut,
-                    ("site", "parent", "path", "depth", "tags", "locations", "items", "operator"),
+                    (
+                        "site",
+                        "parent",
+                        "path",
+                        "depth",
+                        "tags",
+                        "locations",
+                        "items",
+                        "planned_items",
+                        "operator",
+                    ),
                 ),
+                planned_items=planned[location.hid],
                 operator=marks.ref(location.operator_hid),
                 site=shapes.PlaceRef(
                     hid=location.site_hid,
@@ -648,7 +660,10 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     )
     holders = _holders(db, looked_after, above)
     places = location_refs(
-        db, {item.location_hid for item in items} | {one.location_hid for one in above.values()}
+        db,
+        {item.location_hid for item in items}
+        | {item.planned_location_hid for item in items}
+        | {one.location_hid for one in above.values()},
     )
     parents = item_refs(db, [lines[item.hid][0] for item in items if lines[item.hid]])
     minor = _count_by(db, Item.parent_item_hid, hids)
@@ -708,6 +723,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner_in_force),
                 location=places.get(item.location_hid) if item.location_hid else None,
+                planned_location=places.get(item.planned_location_hid or ""),
                 operator=marks.ref(item.operator_hid),
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
@@ -771,6 +787,7 @@ _ITEM_SHAPED = (
     "owner_exception",
     "owner_exception_reason",
     "location",
+    "planned_location",
     "operator",
     "parent",
     "is_major",

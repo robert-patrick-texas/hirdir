@@ -640,8 +640,8 @@ The schema goes from revision `0006` to `0007`. Seven tables are added: `contact
 `operators`, `regions`, `sites`, `locations`, `contact_assignments` and `owner_members`. All of
 them are empty after the upgrade.
 
-The `items` table gains two columns, `location_hid` and `operator_hid`, and the
-`device_groups` table the same two. To add a column that refers to another
+The `items` table gains three columns, `location_hid`, `planned_location_hid` and
+`operator_hid`, and the `device_groups` table `location_hid` and `operator_hid`. To add a column that refers to another
 table, SQLite makes each of the two tables anew and copies every row across, inside
 the one transaction that the whole upgrade runs in. Nothing you have is changed by it.
 Every item, device group, membership, network, address, owner and choice is as it was,

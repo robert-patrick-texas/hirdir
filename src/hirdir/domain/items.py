@@ -21,7 +21,7 @@ from hirdir.db.models import (
     Operator,
     Owner,
 )
-from hirdir.domain import catalog, choices, health, lifecycle, records, settings, tags
+from hirdir.domain import catalog, choices, geography, health, lifecycle, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.lifecycle import UNSET
@@ -42,6 +42,7 @@ FIELDS = (
     "observed_at",
     "owner_hid",
     "location_hid",
+    "planned_location_hid",
     "operator_hid",
     "parent_item_hid",
     "position",
@@ -346,6 +347,8 @@ def _checked(
         values["location_hid"] = _reference(
             db, Location, "location_hid", fields["location_hid"], item, "location"
         )
+    if "planned_location_hid" in fields:
+        values["planned_location_hid"] = _checked_plan(db, fields["planned_location_hid"], item)
     if "parent_item_hid" in fields:
         values["parent_item_hid"] = _checked_parent(db, fields["parent_item_hid"], item)
         if values["parent_item_hid"] is None and "position" not in fields:
@@ -388,6 +391,9 @@ def _checked(
 
     if item is not None and item.record_status == "retired" and "record_status" in values:
         _check_still_there(db, final("location_hid"))
+    if final("planned_location_hid") and final("planned_location_hid") == final("location_hid"):
+        # It is where it was going: there is nothing planned any more.
+        values["planned_location_hid"] = None
 
     start, end = final("warranty_start"), final("warranty_end")
     if start is not None and end is not None and end < start:
@@ -405,6 +411,25 @@ def _checked(
         )
     _check_unique(db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item)
     return values
+
+
+def _checked_plan(db: Session, value: Any, item: Item | None) -> str | None:
+    """Return the location an item is planned to go to: one that is not in use yet."""
+    hid = value or None
+    if hid is None or (item is not None and item.planned_location_hid == hid):
+        return hid
+    field = "planned_location_hid"
+    # Checked against the place, which nobody may be opening or retiring meanwhile.
+    dialect.hold_other_writers(db)
+    _reference(db, Location, field, hid, item, "location")
+    atlas = geography.Atlas(db)
+    location = atlas.location(hid)
+    if location is not None and geography.in_use(atlas, location):
+        raise Invalid(
+            "the location is in use already",
+            {field: "this place is active: give it as the item's location, and it is there"},
+        )
+    return hid
 
 
 def _check_still_there(db: Session, location_hid: str | None) -> None:

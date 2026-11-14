@@ -599,6 +599,23 @@ def by_location(
     return {hid: (items, components) for hid, items, components in found}
 
 
+def by_planned_location(
+    db: Session,
+    *,
+    filter_: Any = None,
+    include_archived: bool = False,
+    include_drafts: bool = False,
+) -> dict[str, int]:
+    """Return how many items of a view are planned for each location, and not there yet."""
+    terms = _terms(db, filter_, include_archived, include_drafts)
+    where = Item.planned_location_hid
+    found = _run(
+        db,
+        terms.source(select(where, terms.items)).where(where.is_not(None)).group_by(where),
+    )
+    return dict(found)
+
+
 # --- addresses held more than once ---------------------------------------------------
 
 

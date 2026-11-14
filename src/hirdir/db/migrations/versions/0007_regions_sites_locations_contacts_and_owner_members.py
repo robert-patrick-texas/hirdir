@@ -6,7 +6,7 @@ Revises: 0006
 Creates the contacts, the operators, which are labels with a contact behind them, the
 regions, the sites and the locations within them, the assignments of contacts to those
 places, and the members of owners. An item and a device group gain `location_hid` and
-`operator_hid`. Loads the `contact_role` and `location_kind`
+`operator_hid`, and an item `planned_location_hid`. Loads the `contact_role` and `location_kind`
 lists with their defaults, written out here so that this migration does the same thing
 whatever a later release changes.
 
@@ -220,10 +220,15 @@ def upgrade() -> None:
         op.create_index(f"ix_contact_assignments_{column}", "contact_assignments", [column])
     with op.batch_alter_table("items") as items:
         items.add_column(sa.Column("location_hid", sa.String(36)))
+        items.add_column(sa.Column("planned_location_hid", sa.String(36)))
         items.add_column(sa.Column("operator_hid", sa.String(36)))
         items.create_foreign_key("fk_items_location_hid", "locations", ["location_hid"], ["hid"])
+        items.create_foreign_key(
+            "fk_items_planned_location_hid", "locations", ["planned_location_hid"], ["hid"]
+        )
         items.create_foreign_key("fk_items_operator_hid", "operators", ["operator_hid"], ["hid"])
         items.create_index("ix_items_location_hid", ["location_hid"])
+        items.create_index("ix_items_planned_location_hid", ["planned_location_hid"])
         items.create_index("ix_items_operator_hid", ["operator_hid"])
     with op.batch_alter_table("device_groups") as groups:
         groups.add_column(sa.Column("location_hid", sa.String(36)))
@@ -265,10 +270,13 @@ def downgrade() -> None:
         groups.drop_column("location_hid")
     with op.batch_alter_table("items") as items:
         items.drop_index("ix_items_operator_hid")
+        items.drop_index("ix_items_planned_location_hid")
         items.drop_index("ix_items_location_hid")
         items.drop_constraint("fk_items_operator_hid", type_="foreignkey")
+        items.drop_constraint("fk_items_planned_location_hid", type_="foreignkey")
         items.drop_constraint("fk_items_location_hid", type_="foreignkey")
         items.drop_column("operator_hid")
+        items.drop_column("planned_location_hid")
         items.drop_column("location_hid")
     op.drop_table("contact_assignments")
     op.drop_table("locations")

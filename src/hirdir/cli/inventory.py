@@ -328,6 +328,10 @@ def show(
         ("owner_exception", found["owner_exception_reason"] or found["owner_exception"] or None),
         ("operator", _operator(found["effective"]["operator_hid"])),
         ("location", _in_force(found, "location_hid")),
+        (
+            "planned_location",
+            found["planned_location"]["path"] if found["planned_location"] else None,
+        ),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
         ("record_status", found["record_status"]),
