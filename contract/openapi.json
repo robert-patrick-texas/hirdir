@@ -10991,6 +10991,90 @@
         "title": "RowChange",
         "type": "object"
       },
+      "RowOperator": {
+        "additionalProperties": false,
+        "description": "An operator in force among the items of one row, and how much of the row it has.",
+        "properties": {
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the person behind the label.",
+            "title": "Contact"
+          },
+          "hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for what nobody is assigned to.",
+            "title": "Hid"
+          },
+          "is_open": {
+            "title": "Is Open",
+            "type": "boolean"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "support_weight": {
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Support Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "label",
+          "colour",
+          "contact",
+          "is_open",
+          "items",
+          "component_count",
+          "support_weight"
+        ],
+        "title": "RowOperator",
+        "type": "object"
+      },
       "RowReason": {
         "additionalProperties": false,
         "description": "Why a row is rejected.",
@@ -12340,6 +12424,21 @@
             "title": "Managed Node Count",
             "type": "integer"
           },
+          "operators": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RowOperator"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null.",
+            "title": "Operators"
+          },
           "support_weight": {
             "examples": [
               "2.8"
@@ -12356,7 +12455,8 @@
           "support_weight",
           "by_health",
           "key",
-          "label"
+          "label",
+          "operators"
         ],
         "title": "SummaryRow",
         "type": "object"
@@ -19607,6 +19707,18 @@
               ],
               "description": "One row for each value of this.",
               "title": "By"
+            }
+          },
+          {
+            "description": "With `by`: list in each row the operators in force among its items.",
+            "in": "query",
+            "name": "operators",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "With `by`: list in each row the operators in force among its items.",
+              "title": "Operators",
+              "type": "boolean"
             }
           },
           {

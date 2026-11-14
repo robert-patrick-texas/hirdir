@@ -316,7 +316,11 @@ holds no money.
 `by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `operator`, `site`,
 `region`, `lifecycle_state`, `disposition`, `condition`, `health` and `tag`. By
 `operator` it is by the operator in force, each row with the label, and the blank row
-is what nobody is assigned to.
+is what nobody is assigned to. With `operators=true` each row also lists, in
+`operators`, the operators in force among its items: the label with who is behind
+it, and the items, components and support weight it has in that row, the one with
+the most first and what nobody is assigned to last. So a summary by `site` says who
+is involved at each site, and with how much.
 
 **The management report**, `GET /reports/management`, is for the people who pay for
 the network. It holds `items`, `component_count`, `est_value` and
@@ -454,7 +458,8 @@ hirdir operators assign LM --open                # nobody behind it for now
 hirdir operators release LM                      # the label stands for nothing: the next level up decides
 hirdir items set --filter 'group.name:eq:site2-sw-core' operator=LM --apply
 hirdir items list --filter 'effective.operator_hid:empty:true'    # what nobody is assigned to
-hirdir report summary --by operator
+hirdir report summary --by operator              # who looks after how much
+hirdir report summary --by site --operators      # and who is involved at each site
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
 hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
@@ -532,7 +537,7 @@ fresh installation has it, with no account and an empty audit trail.
 | Purchases | Requests and lines; receive a line |
 | Import | Upload, preview, apply, past jobs |
 | Capacity | Demand beside supply by category, the balance and coverage, with and without drafts; the lines, editable |
-| Reports | Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. End of life and coverage from 0.6.0 |
+| Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. End of life and coverage from 0.6.0 |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 

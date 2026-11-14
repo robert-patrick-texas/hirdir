@@ -585,6 +585,10 @@ def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
     table = run("report", "summary", "--by", "operator").stdout.splitlines()
     assert [line.split("  ")[0] for line in table[1:]] == ["LM", "Op2", "(all)"]
 
+    board = run("report", "summary", "--by", "lifecycle_state", "--operators").stdout
+    assert board.splitlines()[0].split()[-1] == "OPERATORS"
+    assert board.splitlines()[1].rstrip().endswith("LM 0, Op2 0")
+
     # The label is handed over, left open and released, each in one command.
     handed = run("operators", "assign", "LM", "robin.achterberg@example.net").stdout
     assert handed.strip() == "LM is Robin Achterberg; it is on 1 records of its own"

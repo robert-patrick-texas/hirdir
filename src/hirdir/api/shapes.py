@@ -223,6 +223,35 @@ def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -
     return named
 
 
+def summary_out(db: Session, found: Any) -> shapes.SummaryOut:
+    """Return a summary, each operator of a row with its label and who is behind it."""
+    marks = _Labels(db, {one.hid for row in found.rows for one in row.operators or ()})
+    rows = []
+    for row in found.rows:
+        involved = None
+        if row.operators is not None:
+            involved = []
+            for one in row.operators:
+                ref = marks.ref(one.hid)
+                involved.append(
+                    shapes.RowOperator(
+                        hid=one.hid,
+                        label=ref.label if ref is not None else None,
+                        colour=ref.colour if ref is not None else None,
+                        contact=ref.contact if ref is not None else None,
+                        is_open=ref.is_open if ref is not None else False,
+                        items=one.items,
+                        component_count=one.component_count,
+                        support_weight=one.support_weight,
+                    )
+                )
+        measures = shapes.Measures.model_validate(row).model_dump()
+        rows.append(shapes.SummaryRow(**measures, key=row.key, label=row.label, operators=involved))
+    return shapes.SummaryOut(
+        by=found.by, totals=shapes.SummaryTotals.model_validate(found.totals), rows=rows
+    )
+
+
 def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut]:
     """Return operators, each with who is behind it and how much it is given to."""
     people = _by_hid(db, Contact, {operator.contact_hid for operator in found})

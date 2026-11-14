@@ -391,6 +391,14 @@ def test_what_nobody_looks_after_is_a_row_of_the_report(make: Maker) -> None:
         (None, 1),
     ]
     assert summary["rows"][1]["key"] == marks["LM"]["hid"]
+    # Each operator is one row of a scoreboard: what it looks after, and its weight.
+    assert [
+        (row["label"], row["support_weight"], row["managed_node_count"]) for row in summary["rows"]
+    ] == [
+        ("DW", "1", 1),
+        ("LM", "1", 1),
+        (None, "1", 1),
+    ]
     money = make.get("/reports/management", by="operator")
     assert [(row["label"], row["est_value"]) for row in money["rows"]] == [
         ("DW", "1000.00"),
@@ -467,3 +475,44 @@ def test_operators_travel_in_files_and_are_set_on_many_at_once(make: Maker, file
     make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
     assert _in_force(make, more[2])[:2] == ("Op2", "own")
     assert make.get("/operators", filter="label:eq:Op2")["items"][0]["uses"] == 3
+
+
+def test_a_row_of_the_summary_says_who_is_involved_and_with_how_much(make: Maker) -> None:
+    marks = _team(make)
+    places = make.layout()
+    far = make.location("Dock", make.site("Site-9", make.region("East", places["americas"])))
+    entry = make.entry(make.vendor(), support_weight="2")
+    switches = make.switches(entry, "sw", 6, lifecycle_state="Prod")
+    for switch in switches[:5]:
+        _patch(make, f"/items/{switch['hid']}", location_hid=places["room"]["hid"])
+    _patch(make, f"/items/{switches[5]['hid']}", location_hid=far["hid"])
+    make.stack("stack-a", switches[:2], operator_hid=marks["LM"]["hid"])
+    _patch(make, f"/items/{switches[2]['hid']}", operator_hid=marks["DW"]["hid"])
+    _patch(make, f"/items/{switches[3]['hid']}", operator_hid=marks["DW"]["hid"])
+    _patch(make, f"/operators/{marks['DW']['hid']}", contact_hid=None, colour="#bf8700")
+    _patch(make, f"/sites/{far['site_hid']}", operator_hid=marks["PR"]["hid"])
+
+    by_site = make.get("/reports/summary", by="site", operators="true")["rows"]
+    assert [row["label"] for row in by_site] == [
+        "Americas > Central > Site-2",
+        "Americas > East > Site-9",
+    ]
+    # At Site-2: DW has two switches at their whole weight, LM a stack of two at half,
+    # and one switch is nobody's, which stands last.
+    assert [
+        (one["label"], one["component_count"], one["support_weight"], one["is_open"])
+        for one in by_site[0]["operators"]
+    ] == [("DW", 2, "4", True), ("LM", 2, "2", False), (None, 1, "2", False)]
+    assert by_site[0]["operators"][0]["colour"] == "#bf8700"
+    assert by_site[0]["operators"][1]["contact"] == "Lee Marchetti"
+    # What the operators of a row have adds up to the row.
+    assert (
+        sum(one["component_count"] for one in by_site[0]["operators"])
+        == by_site[0]["component_count"]
+    )
+    assert [(one["label"], one["items"]) for one in by_site[1]["operators"]] == [("PR", 1)]
+    # Asked for by nothing, or not asked for, a row lists none.
+    assert make.get("/reports/summary", by="site")["rows"][0]["operators"] is None
+    assert make.get("/reports/summary", operators="true")["rows"] == []
+    by_region = make.get("/reports/summary", by="region", operators="true")["rows"]
+    assert [one["label"] for one in by_region[0]["operators"]] == ["DW", "LM", "PR", None]

@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from hirdir.api import records as r
+from hirdir.api import shapes
 from hirdir.api.deps import Db, Viewer
 from hirdir.api.lists import Limit, Offset
 from hirdir.api.schemas import Page
@@ -31,6 +32,10 @@ def summary(
         ),
     ] = "",
     by: Annotated[r.SummaryBy | None, Query(description="One row for each value of this.")] = None,
+    operators: Annotated[
+        bool,
+        Query(description="With `by`: list in each row the operators in force among its items."),
+    ] = False,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
 ) -> r.SummaryOut:
@@ -45,8 +50,9 @@ def summary(
         by=by,
         include_archived=include_archived,
         include_drafts=include_drafts,
+        operators=operators,
     )
-    return r.SummaryOut.model_validate(found)
+    return shapes.summary_out(db, found)
 
 
 @router.get("/management")

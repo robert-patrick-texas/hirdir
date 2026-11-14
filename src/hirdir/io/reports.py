@@ -99,11 +99,23 @@ class Totals(Measures):
 
 
 @dataclass(frozen=True)
+class Involved:
+    """An operator in force among the items of one row, and how much of the row it has."""
+
+    hid: str | None
+    items: int
+    component_count: int
+    support_weight: Decimal
+
+
+@dataclass(frozen=True)
 class Row(Measures):
     """The measures of the items that share one value."""
 
     key: str | None = None
     label: str | None = None
+    # Who looks after the items of the row, the one with the most first, nobody last.
+    operators: tuple[Involved, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -439,11 +451,13 @@ def summary(
     by: str | None = None,
     include_archived: bool = False,
     include_drafts: bool = False,
+    operators: bool = False,
 ) -> Summary:
     """Count a view of the items, as a whole and by one of the things items share.
 
     Components, managed nodes, support weight and health: what the people who run the
-    network ask. The money is in `management`.
+    network ask. The money is in `management`. With `operators`, each row also says
+    which operators are in force among its items, and how much each has.
     """
     _checked_by(by, SUMMARY_BY)
     terms = _terms(db, filter_, include_archived, include_drafts)
@@ -478,15 +492,58 @@ def summary(
     sums = _sums(db, terms, terms.weight, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
+    involved = _involved(db, terms, key, join) if operators else None
     rows = [
         Row(
             key=row[0],
             label=called.get(row[1], row[1]),
             **_measures(row[2:], sums.get(row[0], [0, 0])),
+            operators=None if involved is None else tuple(involved.get(row[0], ())),
         )
         for row in found
     ]
     return Summary(by, totals, _in_order(rows))
+
+
+def _involved(db: Session, terms: _Terms, key: Any, join: Any) -> dict[Any, list[Involved]]:
+    """Return, for each value of a key, the operators in force among its items, each
+    with its items, its components and its support weight: the one with the most
+    first, and what nobody is assigned to last."""
+    operator = fields.ITEM_OPERATOR.hid
+    counting = terms.source(select(key, operator, terms.items, terms.components))
+    weighing = terms.source(select(key, operator, *terms.weight, func.sum(Item.quantity)))
+    if join is not None:
+        counting, weighing = join(counting), join(weighing)
+    weights: dict[tuple[Any, Any], int] = {}
+    for value, hid, weight, share, quantity in _run(
+        db, weighing.group_by(key, operator, *terms.weight)
+    ):
+        weights[value, hid] = weights.get((value, hid), 0) + (
+            int(weight or 0) * int(share or 0) * int(quantity or 0)
+        )
+    found: dict[Any, list[Involved]] = {}
+    for value, hid, items, components in _run(db, counting.group_by(key, operator)):
+        found.setdefault(value, []).append(
+            Involved(
+                hid=hid,
+                items=items,
+                component_count=components,
+                support_weight=(Decimal(weights.get((value, hid), 0)) / WEIGHT_STEPS).quantize(
+                    HUNDREDTH, rounding=ROUND_HALF_UP
+                ),
+            )
+        )
+    for listed in found.values():
+        listed.sort(
+            key=lambda one: (
+                one.hid is None,
+                -one.support_weight,
+                -one.component_count,
+                -one.items,
+                one.hid or "",
+            )
+        )
+    return found
 
 
 def management(

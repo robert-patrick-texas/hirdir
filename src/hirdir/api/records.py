@@ -1608,11 +1608,30 @@ class SummaryTotals(Measures):
     by_kind: list[Counted]
 
 
+class RowOperator(Model):
+    """An operator in force among the items of one row, and how much of the row it has."""
+
+    hid: str | None = Field(description="Null for what nobody is assigned to.")
+    label: str | None
+    colour: str | None
+    contact: str | None = Field(description="The name of the person behind the label.")
+    is_open: bool
+    items: int
+    component_count: int
+    support_weight: WeightSum
+
+
 class SummaryRow(Measures):
     """The measures of the items that share one value of what the summary is by."""
 
     key: str | None = Field(description="The value, or the HID of the record. Null for none.")
     label: str | None = Field(description="What people call it.")
+    operators: list[RowOperator] | None = Field(
+        description=(
+            "With `operators=true`: who looks after the items of the row, the one with "
+            "the most first and nobody last. Otherwise null."
+        )
+    )
 
 
 class SummaryOut(Model):

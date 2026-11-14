@@ -548,10 +548,16 @@ def summary(
     by: Annotated[
         str | None,
         typer.Option(
-            help="One row for each: vendor, kind, type, function, owner, lifecycle_state, "
-            "disposition, condition, health or tag."
+            help="One row for each: vendor, kind, type, function, owner, operator, site, "
+            "region, lifecycle_state, disposition, condition, health or tag."
         ),
     ] = None,
+    operators_: Annotated[
+        bool,
+        typer.Option(
+            "--operators", help="With --by: who looks after the items of each row, and how much."
+        ),
+    ] = False,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
     format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
@@ -569,6 +575,7 @@ def summary(
         params={
             "filter": filter_,
             "by": by,
+            "operators": operators_ and by is not None,
             "include_archived": include_archived,
             "include_drafts": include_drafts,
         },
@@ -577,14 +584,24 @@ def summary(
         typer.echo(json.dumps(found, indent=2))
         return
     totals = found["totals"]
+    involved = operators_ and by is not None
 
     def cells(row: dict[str, Any]) -> list[str]:
-        return [
+        shown = [
             *(str(row[name]) for name in MEASURES),
             *(str(row["by_health"][name]) for name in HEALTHS),
         ]
+        if involved:
+            # Who looks after it, each with its support weight: the most first.
+            shown.append(
+                ", ".join(
+                    f"{one['label'] or '(nobody)'} {one['support_weight']}"
+                    for one in row.get("operators") or []
+                )
+            )
+        return shown
 
-    head = [*MEASURES, *HEALTHS]
+    head = [*MEASURES, *HEALTHS, *(("operators",) if involved else ())]
     if by is None:
         if format_ == "csv":
             _rows(format_, output, [head, cells(totals)])

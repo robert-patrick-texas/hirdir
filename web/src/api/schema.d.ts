@@ -3081,6 +3081,8 @@ export interface paths {
           filter?: string;
           /** One row for each value of this. */
           by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+          /** With `by`: list in each row the operators in force among its items. */
+          operators?: boolean;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -5653,6 +5655,19 @@ export interface components {
       new: unknown;
       old: unknown;
     };
+    /** An operator in force among the items of one row, and how much of the row it has. */
+    RowOperator: {
+      colour: string | null;
+      component_count: number;
+      /** The name of the person behind the label. */
+      contact: string | null;
+      /** Null for what nobody is assigned to. */
+      hid: string | null;
+      is_open: boolean;
+      items: number;
+      label: string | null;
+      support_weight: string;
+    };
     /** Why a row is rejected. */
     RowReason: {
       field: string;
@@ -5827,6 +5842,8 @@ export interface components {
       /** What people call it. */
       label: string | null;
       managed_node_count: number;
+      /** With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null. */
+      operators: components["schemas"]["RowOperator"][] | null;
       support_weight: string;
     };
     /** The measures of the whole view, and its items by condition and by kind. */
