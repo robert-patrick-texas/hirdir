@@ -89,19 +89,17 @@ export interface ObservationPatch {
 /**
  * What a change of the observation sends.
  *
- * Setting a status leaves the moment to the server, which takes the present one. "Seen
- * now" states again what is already seen and names the moment itself, so that the
- * moment is the present one whatever the server makes of a status stated as it is.
- * Clearing the status clears the moment with it.
+ * The moment is left to the server, which takes the present one by its own clock: when a
+ * status is set, and when "Seen now" states again what is already seen, since a person
+ * who states it again has looked again. A browser whose clock is wrong then puts no
+ * wrong moment on record. Clearing the status clears the moment with it.
  */
 export function observationPatch(
   what: "set" | "again" | "clear",
   status: string | null | undefined,
-  now: Date = new Date(),
 ): ObservationPatch | null {
   if (what === "clear") return { observed_status: null };
   if (!isObserved(status)) return null;
-  if (what === "again") return { observed_status: status, observed_at: now.toISOString() };
   return { observed_status: status };
 }
 

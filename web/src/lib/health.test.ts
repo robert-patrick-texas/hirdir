@@ -88,27 +88,22 @@ describe("what is observed", () => {
 });
 
 describe("observationPatch", () => {
-  const now = new Date("2026-11-14T15:04:05.000Z");
-
   it("sets a status and leaves the moment to the server", () => {
-    expect(observationPatch("set", "online", now)).toEqual({ observed_status: "online" });
+    expect(observationPatch("set", "online")).toEqual({ observed_status: "online" });
   });
 
-  it("states a status again with the present moment", () => {
-    expect(observationPatch("again", "present", now)).toEqual({
-      observed_status: "present",
-      observed_at: "2026-11-14T15:04:05.000Z",
-    });
+  it("states a status again and leaves the moment to the server's clock", () => {
+    expect(observationPatch("again", "present")).toEqual({ observed_status: "present" });
   });
 
   it("clears the status, and sends no moment with that", () => {
-    expect(observationPatch("clear", "online", now)).toEqual({ observed_status: null });
-    expect(observationPatch("clear", null, now)).toEqual({ observed_status: null });
+    expect(observationPatch("clear", "online")).toEqual({ observed_status: null });
+    expect(observationPatch("clear", null)).toEqual({ observed_status: null });
   });
 
   it("sends nothing for a status that is none of the four", () => {
-    expect(observationPatch("set", "", now)).toBeNull();
-    expect(observationPatch("again", null, now)).toBeNull();
-    expect(observationPatch("set", "sleeping", now)).toBeNull();
+    expect(observationPatch("set", "")).toBeNull();
+    expect(observationPatch("again", null)).toBeNull();
+    expect(observationPatch("set", "sleeping")).toBeNull();
   });
 });
