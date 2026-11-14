@@ -369,6 +369,30 @@ describe("a field that is cleared while it is not asked for", () => {
   });
 });
 
+describe("a contact in a form", () => {
+  // The operator of an item: a contact, found by searching, held as its HID.
+  const specs: FieldSpec[] = [{ name: "operator_hid", label: "Operator", kind: "contact" }];
+  const item = { row_version: 5, operator_hid: "k-lee" };
+
+  it("is held as the HID of the contact, and blank as none", () => {
+    expect(formOf(specs, item)).toEqual({ operator_hid: "k-lee" });
+    expect(formOf(specs, { operator_hid: null })).toEqual({ operator_hid: "" });
+  });
+
+  it("is sent as that HID, and cleared with null, so that the one from above is in force again", () => {
+    expect(buildPatch(specs, item, { operator_hid: "k-priya" }).body).toEqual({
+      row_version: 5,
+      operator_hid: "k-priya",
+    });
+    expect(buildPatch(specs, item, { operator_hid: "" }).body).toEqual({
+      row_version: 5,
+      operator_hid: null,
+    });
+    expect(buildPatch(specs, item, { operator_hid: "k-lee" }).changed).toEqual([]);
+    expect(buildCreate(specs, { operator_hid: "" }).body).toEqual({});
+  });
+});
+
 describe("a location in a form", () => {
   const specs: FieldSpec[] = [{ name: "location_hid", label: "Location", kind: "location" }];
 

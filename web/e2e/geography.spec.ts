@@ -425,6 +425,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Type",
     "Function",
     "Owner",
+    "Operator",
     "Tag",
   ]);
   await expect(page.getByRole("heading", { level: 2, name: "By site" })).toBeVisible();

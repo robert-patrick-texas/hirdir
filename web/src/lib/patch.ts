@@ -25,7 +25,9 @@ export type FieldKind =
   /** A set of labels, in no order. */
   | "set"
   /** A location, found by searching for it. What the form holds is its HID. */
-  | "location";
+  | "location"
+  /** A contact, found by searching for it by name or email. What the form holds is its HID. */
+  | "contact";
 
 export interface Option {
   value: string;

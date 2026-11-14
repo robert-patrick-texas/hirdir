@@ -16,6 +16,7 @@ import {
   reasonsText,
 } from "../../lib/health";
 import { DISPOSITIONS } from "../../lib/lifecycle";
+import { operatorHint } from "../../lib/operators";
 import {
   CATALOG_KINDS,
   choiceFilterOptions,
@@ -267,6 +268,20 @@ export function itemColumns(
       value: (item) => effectiveLabel(item.effective.owner_hid),
       effective: (item) => item.effective.owner_hid,
       width: 170,
+    },
+    {
+      // The operator in force: the person of the team who looks after the item, its own
+      // or the one it has from the item it is in or from its group. `operator.name` is
+      // the name of that one, which is what the list filters and sorts by.
+      id: "operator.name",
+      header: "Operator",
+      kind: "text",
+      column: "operator",
+      value: (item) => effectiveLabel(item.effective.operator_hid),
+      effective: (item) => item.effective.operator_hid,
+      hint: (item) => operatorHint(item.effective.operator_hid, item),
+      hide: true,
+      width: 180,
     },
     {
       // True for an item whose owner in force is outside the operations team.

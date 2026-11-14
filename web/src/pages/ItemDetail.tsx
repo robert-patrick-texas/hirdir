@@ -8,6 +8,7 @@ import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
+import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
@@ -42,6 +43,7 @@ import {
   useTags,
   withCurrent,
 } from "../lib/lists";
+import { contactLabel, itemOperatorSource } from "../lib/operators";
 import {
   CATALOG_KINDS,
   choiceLabel,
@@ -281,6 +283,13 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </span>
           </Fact>
         )}
+        <Fact label="Operator">
+          <Operator
+            effective={item.effective.operator_hid}
+            from={itemOperatorSource(item.effective.operator_hid, item)}
+            testId="operator"
+          />
+        </Fact>
         <Fact label="Location">
           {typeof location.value === "string" && (
             <span data-testid="location" data-source={location.source}>
@@ -854,6 +863,15 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         options: offered,
       },
       {
+        name: "operator_hid",
+        label: "Operator",
+        kind: "contact",
+        blank: "None of its own",
+        options: item.operator
+          ? [{ value: item.operator.hid, label: contactLabel(item.operator) }]
+          : [],
+      },
+      {
         name: "location_hid",
         label: "Location",
         kind: "location",
@@ -922,6 +940,25 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       item.effective[field].source === "own" ? null : item.effective[field],
     );
   }
+  // The operator: with one of its own the form says how to give it up; with none it
+  // shows the one in force from above, read-only, before anybody is chosen.
+  if (item.operator_hid) {
+    hints.operator_hid =
+      "The person of the team who looks after it. Set here: clear it to have the operator from above again, if there is one.";
+  } else {
+    hints.operator_hid = "The person of the team who looks after it.";
+  }
+  const notes = item.operator_hid
+    ? undefined
+    : {
+        operator_hid: (
+          <OperatorNote
+            effective={item.effective.operator_hid}
+            from={itemOperatorSource(item.effective.operator_hid, item)}
+            what="item"
+          />
+        ),
+      };
   const ready = !entries.loading && !owners.loading && !tags.loading;
 
   return (
@@ -934,6 +971,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
           specs={specs}
           record={item}
           hints={hints}
+          {...(notes ? { notes } : {})}
           save={(body) =>
             api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
           }

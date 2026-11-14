@@ -7,6 +7,7 @@ import {
   hintOf,
   type Option,
 } from "../lib/patch";
+import { ContactField } from "./ContactField";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
 import { LocationField } from "./LocationField";
 
@@ -143,6 +144,17 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             options={spec.options ?? []}
             value={Array.isArray(value) ? value : []}
             onChange={(next) => onChange(name, next)}
+          />
+        );
+      case "contact":
+        return (
+          <ContactField
+            key={name}
+            {...shared}
+            value={text}
+            onChange={(next) => onChange(name, next)}
+            known={spec.options ?? []}
+            {...(spec.blank === undefined ? {} : { blank: spec.blank })}
           />
         );
       case "location":
