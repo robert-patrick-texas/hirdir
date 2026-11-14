@@ -266,7 +266,8 @@ sudo systemctl start hirdir
 
 `reset` refuses while the service is running. It removes every item with its
 replacements, addresses and memberships, every device group, network, catalog entry,
-vendor, owner and tag, the stored imports, and the history of those records. It keeps
+vendor, owner with its people, region, site, location and contact with its
+assignments, and tag, the stored imports, and the history of those records. It keeps
 the accounts, groups, roles and service tokens, so people sign in as before, and the
 settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it
 takes first is one of the 14 that are kept, and its path is printed: `hirdir admin
