@@ -18,7 +18,9 @@
 // the Location and Site columns of the item grid; a location chosen by searching, in the
 // form of an item, of a device group and of a bulk edit; the reports by site and by
 // region; the people of an owner; the six new kinds of record on the Import page; and,
-// last, a place and an item that are not brought back into what is retired.
+// a place and an item that are not brought back into what is retired; and, last, a
+// shipping address typed once on a region, inherited, taken from the street address
+// with one tick, overridden, and the override taken back (D-115, D-116).
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the regions, the site and its code, the
@@ -80,6 +82,13 @@ const west = path(americas, `West ${id}`);
 const coast = path(west, `Coast ${id}`);
 const closetName = `Closet ${id}`;
 const closet = path(movedSite, closetName);
+
+// The shipping address that is typed once: a region that has one, a site that inherits
+// it, a site whose deliveries go to its own door, and a site with another destination.
+const north = path(americas, `North ${id}`);
+const sharing = path(north, `Depot A ${id}`);
+const ownDoor = path(north, `Depot B ${id}`);
+const elsewhere = path(north, `Depot C ${id}`);
 
 // The people.
 const dana = `Dana Whitfield ${id}`;
@@ -581,12 +590,12 @@ test("S25: a contact on the region and one on the site are both shown on the roo
   await expect(technical).toHaveAttribute("data-source", "region");
   await expect(technical).toContainText(dana);
   await expect(technical).toContainText(danaMail);
-  await expect(technical.locator("td").nth(1)).toHaveText(`From the region ${americas}`);
+  await expect(technical.locator("td").nth(1)).toHaveText(`Inherited from the region ${americas}`);
   await expect(technical.locator("td").nth(0)).toHaveClass(/inherited/);
   const shipping = inForce(page, "shipping");
   await expect(shipping).toHaveAttribute("data-source", "site");
   await expect(shipping).toContainText(receiving);
-  await expect(shipping.locator("td").nth(1)).toHaveText(`From the site ${site}`);
+  await expect(shipping.locator("td").nth(1)).toHaveText(`Inherited from the site ${site}`);
   // A role nobody is in says so.
   await expect(inForce(page, "federal")).toHaveAttribute("data-source", "none");
   await expect(inForce(page, "federal")).toContainText("Nobody");
@@ -637,7 +646,7 @@ test("S26: an override on the building holds when the contact on the region is c
   await expect(inForce(page, "technical")).toContainText(lee);
   await expect(inForce(page, "technical")).not.toContainText(dana);
   await expect(inForce(page, "technical").locator("td").nth(1)).toHaveText(
-    `From the location ${building}`,
+    `Inherited from the location ${building}`,
   );
 
   // The one on the region is changed: another contact is added after the first, put
@@ -755,7 +764,7 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   await expect(page.getByTestId("place-path")).toHaveText(movedOtherRoom);
   await expect(inForce(page, "technical")).toContainText(dana);
   await expect(inForce(page, "technical").locator("td").nth(1)).toHaveText(
-    `From the region ${east}`,
+    `Inherited from the region ${east}`,
   );
   await expect(inForce(page, "shipping")).toContainText(receiving);
 
@@ -935,4 +944,156 @@ test("what is retired is not brought back into what is retired", async ({ page, 
   await expect(page.getByTestId("region")).toHaveText(eastName);
 
   await expectClean(page, seen, ["422 PATCH", "422 PATCH"]);
+});
+
+test("a shipping address is typed once: inherited, the street address by a tick, or an override", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  const address = () => page.getByTestId("ship-address");
+
+  // A region with a shipping address. A region has no street address, and so no tick.
+  await geography(page, americas);
+  await page.getByRole("button", { name: "New region in it", exact: true }).click();
+  const newRegion = region(page, "New region");
+  await expect(newRegion.getByLabel("Deliveries go to the street address")).toHaveCount(0);
+  await newRegion.getByLabel("Name (required)").fill(north.split(" > ").at(-1) ?? "");
+  await newRegion.getByLabel("Shipping address line 1").fill("100 Example Way");
+  await newRegion.getByLabel("Shipping city").fill("Springfield");
+  await newRegion.getByRole("button", { name: "Create region" }).click();
+  await expect(page.getByTestId("place-path")).toHaveText(north);
+  pages.set(north, `.${new URL(page.url()).pathname.replace(/^.*(?=\/geography\/)/, "")}`);
+  // It is the region's own, and no level above has one.
+  await expect(address()).toHaveAttribute("data-standing", "own");
+  await expect(address()).toContainText("100 Example Way, Springfield");
+  await expect(address()).toContainText("Set here");
+
+  // A site in it that shares the destination: the form says what it will inherit before
+  // anything is typed, and nothing is typed.
+  await page.getByRole("button", { name: "New site in it", exact: true }).click();
+  const before = region(page, "New site").getByTestId("shipping-note");
+  await expect(before).toHaveAttribute("data-standing", "inherited");
+  await expect(before).toContainText("100 Example Way, Springfield");
+  await expect(before).toContainText(`It will be inherited from ${north}`);
+  await region(page, "New site").getByRole("button", { name: "Cancel" }).click();
+  await newPlace(page, "New site in it", "site", sharing);
+  // On its page the address is seen to be inherited: marked in words, lighter, with
+  // the level it came from as a link.
+  await expect(address()).toHaveAttribute("data-standing", "inherited");
+  await expect(address()).toHaveClass(/inherited/);
+  await expect(address()).toContainText("100 Example Way, Springfield");
+  await expect(address()).toContainText(`Inherited from the region ${north}`);
+  await expect(address().getByRole("link", { name: north, exact: true })).toBeVisible();
+  await expect(address().getByRole("button")).toHaveCount(0);
+  // The form shows it read-only above the empty inputs.
+  const sharingForm = region(page, "Details");
+  const note = sharingForm.getByTestId("shipping-note");
+  await expect(note).toHaveAttribute("data-standing", "inherited");
+  await expect(note).toContainText(`Inherited from ${north}`);
+  await expect(note).toContainText("Enter an address here, or tick the box, to override it.");
+  await expect(sharingForm.getByLabel("Shipping address line 1")).toHaveValue("");
+  // The tick needs a street address: without one it is refused, at the tick.
+  const tick = sharingForm.getByLabel("Deliveries go to the street address");
+  await tick.check();
+  await expect(sharingForm.getByLabel("Shipping address line 1")).toHaveCount(0);
+  await expect(sharingForm.getByLabel("Shipping instructions")).toBeVisible();
+  await sharingForm.getByRole("button", { name: "Save" }).click();
+  await expect(sharingForm.locator('.alert-error[data-status="422"]')).toBeVisible();
+  await expect(tick).toHaveAttribute("aria-invalid", "true");
+  await sharingForm.getByRole("button", { name: "Undo changes" }).click();
+  await expect(address()).toHaveAttribute("data-standing", "inherited");
+
+  // A site whose deliveries go to its own door: the street address is typed once, and
+  // one tick makes it the shipping address. The shipping inputs are not offered.
+  await geography(page, north);
+  await page.getByRole("button", { name: "New site in it", exact: true }).click();
+  const door = region(page, "New site");
+  await door.getByLabel("Name (required)").fill(ownDoor.split(" > ").at(-1) ?? "");
+  await door.getByLabel("Address line 1", { exact: true }).fill("200 Example Road");
+  await door.getByLabel("City", { exact: true }).fill("Shelbyville");
+  await door.getByLabel("Deliveries go to the street address").check();
+  await expect(door.getByLabel("Shipping address line 1")).toHaveCount(0);
+  await expect(door.getByLabel("Shipping city")).toHaveCount(0);
+  await door.getByRole("button", { name: "Create site" }).click();
+  await expect(page.getByTestId("place-path")).toHaveText(ownDoor);
+  await expect(page.getByTestId("ship-same-as-address")).toHaveText("Go to the street address");
+  await expect(address()).toHaveAttribute("data-same-as-address", "true");
+  await expect(address()).toContainText("200 Example Road, Shelbyville");
+  await expect(address()).toContainText("it is the street address, by the tick");
+  // It is the site's own where the region has one too: an override, and marked so.
+  await expect(address()).toHaveAttribute("data-standing", "override");
+  await expect(address()).toContainText("Overrides");
+  await expect(address().getByRole("link", { name: north, exact: true })).toBeVisible();
+
+  // A site with another destination: the operator overrides what the region has.
+  await geography(page, north);
+  await newPlace(page, "New site in it", "site", elsewhere);
+  await expect(address()).toHaveAttribute("data-standing", "inherited");
+  const form = region(page, "Details");
+  await form.getByLabel("Shipping address line 1").fill("300 Example Avenue");
+  await form.getByLabel("Shipping city").fill("Capital City");
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("The site was saved.")).toBeVisible();
+  await expect(address()).toHaveAttribute("data-standing", "override");
+  await expect(address()).not.toHaveClass(/inherited/);
+  await expect(address()).toContainText("300 Example Avenue, Capital City");
+  await expect(address()).toContainText("Set here");
+  await expect(address()).toContainText("Overrides");
+  await expect(address().getByRole("link", { name: north, exact: true })).toBeVisible();
+  await expect(region(page, "Details").getByTestId("shipping-note")).toHaveAttribute(
+    "data-standing",
+    "override",
+  );
+  // The site that shares the region's destination is as it was.
+  await geography(page, sharing);
+  await expect(address()).toContainText("100 Example Way, Springfield");
+
+  // Ticked on a site that has a shipping address of its own, that address is cleared
+  // with the tick, in the same change, so that nothing has to be emptied by hand.
+  await geography(page, elsewhere);
+  const again = region(page, "Details");
+  await again.getByLabel("Address line 1", { exact: true }).fill("301 Example Avenue");
+  await again.getByLabel("Deliveries go to the street address").check();
+  const sent = page.waitForRequest(
+    (request) => request.method() === "PATCH" && request.url().includes("/api/v1/sites/"),
+  );
+  await again.getByRole("button", { name: "Save" }).click();
+  expect((await sent).postDataJSON()).toMatchObject({
+    ship_same_as_address: true,
+    ship_address1: null,
+    ship_city: null,
+  });
+  await expect(page.getByText("The site was saved.")).toBeVisible();
+  await expect(address()).toHaveAttribute("data-same-as-address", "true");
+  await expect(address()).toContainText("301 Example Avenue");
+  await expect(address()).toHaveAttribute("data-standing", "override");
+
+  // The override is taken back with one action: the site inherits again.
+  await address()
+    .getByRole("button", { name: `Use the address from ${north} again` })
+    .click();
+  await expect(
+    page.getByText(`${elsewhere.split(" > ").at(-1)} has the shipping address of ${north} again.`),
+  ).toBeVisible();
+  await expect(address()).toHaveAttribute("data-standing", "inherited");
+  await expect(address()).toHaveAttribute("data-same-as-address", "false");
+  await expect(address()).toContainText("100 Example Way, Springfield");
+  await expect(address()).toContainText(`Inherited from the region ${north}`);
+  await expect(page.getByTestId("ship-same-as-address")).toHaveCount(0);
+
+  // The contacts of a role are marked in the same way: the technical contact of the
+  // region at the top is inherited here, and one assigned here overrides it.
+  await expect(inForce(page, "technical")).toHaveAttribute("data-standing", "inherited");
+  await expect(inForce(page, "technical").locator("td").nth(1)).toContainText("Inherited");
+  await assign(page, "Technical", offered(lee, leeMail), lee);
+  await expect(inForce(page, "technical")).toHaveAttribute("data-standing", "override");
+  await expect(inForce(page, "technical").locator("td").nth(1)).toHaveText(
+    `Set here Overrides ${americas}`,
+  );
+  await expect(inForce(page, "federal")).toHaveAttribute("data-standing", "none");
+
+  await expectClean(page, seen, ["422 PATCH"]);
 });

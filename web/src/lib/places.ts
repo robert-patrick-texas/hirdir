@@ -198,9 +198,62 @@ export function countRows(tree: Pick<Tree, "unplaced" | "hidden" | "totals">): C
 
 type PlaceSource = RoleContacts["source"];
 
-/** True for what a place has from a level above it, and not of its own. */
-export function fromAbove(source: PlaceSource): boolean {
-  return source !== "own" && source !== "none";
+/**
+ * How one thing a place has in force stands: there is none; it is inherited from a level
+ * above; it is the place's own and no level above has one; or it is the place's own where
+ * a level above has one too, which makes it an override.
+ */
+export type Standing = "none" | "inherited" | "own" | "override";
+
+export function standingOf(value: {
+  source: PlaceSource;
+  overrides_hid?: string | null;
+}): Standing {
+  if (value.source === "none") return "none";
+  if (value.source !== "own") return "inherited";
+  return value.overrides_hid ? "override" : "own";
+}
+
+/**
+ * The level of the place that a value of a place's own overrides, from the two paths.
+ * The answer names that place by its HID and its path and not by its level. Above a
+ * region or a site there are only regions. Above a location there are the locations it
+ * is in, whose paths begin with the path of its site; then the site; then regions.
+ */
+export function overriddenLevel(
+  level: Level,
+  sitePath: string | null | undefined,
+  overridesPath: string,
+): Level {
+  if (level !== "location" || !sitePath) return "region";
+  if (overridesPath === sitePath) return "site";
+  return overridesPath.startsWith(sitePath + PATH_SEPARATOR) ? "location" : "region";
+}
+
+const SHIP_ADDRESS_FIELDS = [
+  "ship_address1",
+  "ship_address2",
+  "ship_city",
+  "ship_state",
+  "ship_postal_code",
+  "ship_country",
+] as const;
+
+/**
+ * The change that gives up a place's own shipping address, so that the one of the level
+ * above is in force again: the six fields cleared, and for a site and a location the
+ * word that deliveries go to the street address taken back. A region has no such word.
+ */
+export function clearedShipAddress(level: Level): Record<string, null | false> {
+  const cleared: Record<string, null | false> = {};
+  for (const field of SHIP_ADDRESS_FIELDS) cleared[field] = null;
+  if (level !== "region") cleared.ship_same_as_address = false;
+  return cleared;
+}
+
+/** The field of a form that the note on the shipping address stands above. */
+export function shippingNoteField(level: Level): string {
+  return level === "region" ? "ship_address1" : "ship_same_as_address";
 }
 
 /**

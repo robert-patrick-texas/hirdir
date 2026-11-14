@@ -271,6 +271,73 @@ describe("a field that is asked for only sometimes", () => {
   });
 });
 
+describe("a field that is cleared while it is not asked for", () => {
+  // Deliveries go to the street address: the shipping address is then not asked for,
+  // and one the record holds is cleared with the tick, which the server would refuse
+  // beside it.
+  const typed = (values: Record<string, unknown>) => values.ship_same_as_address !== true;
+  const specs: FieldSpec[] = [
+    { name: "ship_same_as_address", label: "Deliveries go to the street address", kind: "boolean" },
+    {
+      name: "ship_address1",
+      label: "Shipping address line 1",
+      kind: "text",
+      when: typed,
+      clearedWhenNotAsked: true,
+    },
+    {
+      name: "ship_city",
+      label: "Shipping city",
+      kind: "text",
+      when: typed,
+      clearedWhenNotAsked: true,
+    },
+    { name: "ship_instructions", label: "Shipping instructions", kind: "longtext" },
+  ];
+  const site = {
+    row_version: 3,
+    ship_same_as_address: false,
+    ship_address1: "100 Example Way",
+    ship_city: null,
+    ship_instructions: "Dock B",
+  };
+
+  it("clears what the record holds of it, in the same change as the tick", () => {
+    const built = buildPatch(specs, site, { ...formOf(specs, site), ship_same_as_address: true });
+    expect(built.body).toEqual({ row_version: 3, ship_same_as_address: true, ship_address1: null });
+    expect(built.changed).toEqual(["ship_same_as_address", "ship_address1"]);
+  });
+
+  it("sends nothing of a field the record does not hold, and leaves the others alone", () => {
+    const empty = { ...site, ship_address1: null };
+    const built = buildPatch(specs, empty, { ...formOf(specs, empty), ship_same_as_address: true });
+    expect(built.body).toEqual({ row_version: 3, ship_same_as_address: true });
+  });
+
+  it("asks for the address again when the tick is taken off, and sends what is typed", () => {
+    const ticked = { ...site, ship_same_as_address: true, ship_address1: null };
+    const built = buildPatch(specs, ticked, {
+      ...formOf(specs, ticked),
+      ship_same_as_address: false,
+      ship_address1: "300 Example Avenue",
+    });
+    expect(built.body).toEqual({
+      row_version: 3,
+      ship_same_as_address: false,
+      ship_address1: "300 Example Avenue",
+    });
+  });
+
+  it("sends nothing of it for a new record, where there is nothing to clear", () => {
+    const built = buildCreate(specs, {
+      ...formOf(specs),
+      ship_same_as_address: true,
+      ship_address1: "typed before the tick",
+    });
+    expect(built.body).toEqual({ ship_same_as_address: true });
+  });
+});
+
 describe("a location in a form", () => {
   const specs: FieldSpec[] = [{ name: "location_hid", label: "Location", kind: "location" }];
 

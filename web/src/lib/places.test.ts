@@ -3,11 +3,11 @@ import type { Schemas } from "../api/client";
 import {
   addressLines,
   addressOf,
+  clearedShipAddress,
   contactLine,
   countRows,
   DEEPEST_DRAWN,
   drawnDepth,
-  fromAbove,
   isLevel,
   itemsWithin,
   levelLabel,
@@ -15,9 +15,12 @@ import {
   locationsToMoveTo,
   nameOf,
   noContactText,
+  overriddenLevel,
   ownRoles,
   placePath,
   regionsToMoveTo,
+  shippingNoteField,
+  standingOf,
   type TreeNode,
   treeQuery,
   treeRows,
@@ -198,12 +201,49 @@ describe("countRows", () => {
 });
 
 describe("where what is in force came from", () => {
-  it("tells what a place has itself from what it has from above", () => {
-    expect(fromAbove("own")).toBe(false);
-    expect(fromAbove("none")).toBe(false);
-    expect(fromAbove("location")).toBe(true);
-    expect(fromAbove("site")).toBe(true);
-    expect(fromAbove("region")).toBe(true);
+  it("tells what is inherited, what is the place's own, and what overrides a level above", () => {
+    expect(standingOf({ source: "none", overrides_hid: null })).toBe("none");
+    expect(standingOf({ source: "region", overrides_hid: null })).toBe("inherited");
+    expect(standingOf({ source: "site", overrides_hid: AMERICAS })).toBe("inherited");
+    expect(standingOf({ source: "location", overrides_hid: null })).toBe("inherited");
+    expect(standingOf({ source: "own", overrides_hid: null })).toBe("own");
+    expect(standingOf({ source: "own" })).toBe("own");
+    // The place's own where a level above has one too: an override.
+    expect(standingOf({ source: "own", overrides_hid: CENTRAL })).toBe("override");
+  });
+
+  it("works out the level of what is overridden from the two paths", () => {
+    const sitePath = "Americas > Central > Site-2";
+    // Above a region and above a site there are only regions.
+    expect(overriddenLevel("region", null, "Americas")).toBe("region");
+    expect(overriddenLevel("site", null, "Americas > Central")).toBe("region");
+    // Above a location: the locations it is in, its site, then regions.
+    expect(overriddenLevel("location", sitePath, `${sitePath} > Building 1`)).toBe("location");
+    expect(overriddenLevel("location", sitePath, sitePath)).toBe("site");
+    expect(overriddenLevel("location", sitePath, "Americas > Central")).toBe("region");
+    // A site whose name only begins the same is not the site.
+    expect(overriddenLevel("location", sitePath, "Americas > Central > Site-20")).toBe("region");
+  });
+
+  it("gives an override of the shipping address up with one change", () => {
+    const cleared = {
+      ship_address1: null,
+      ship_address2: null,
+      ship_city: null,
+      ship_state: null,
+      ship_postal_code: null,
+      ship_country: null,
+    };
+    // A region has no word that deliveries go to the street address: it has no street address.
+    expect(clearedShipAddress("region")).toEqual(cleared);
+    expect(clearedShipAddress("site")).toEqual({ ...cleared, ship_same_as_address: false });
+    expect(clearedShipAddress("location")).toEqual({ ...cleared, ship_same_as_address: false });
+  });
+
+  it("puts the note on the shipping address above the first input of its group", () => {
+    expect(shippingNoteField("region")).toBe("ship_address1");
+    expect(shippingNoteField("site")).toBe("ship_same_as_address");
+    expect(shippingNoteField("location")).toBe("ship_same_as_address");
   });
 
   it("says of a role nobody is in whether a level stopped the looking further up", () => {

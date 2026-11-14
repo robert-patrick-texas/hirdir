@@ -1300,3 +1300,27 @@ main:has(.geography) {
 .place-field input[type="search"] {
   max-width: 34rem;
 }
+
+/* --- inherited, own, or an override ------------------------------------------------- */
+
+/* The word that says how a value in force stands, beside the value. */
+.mark {
+  margin-left: 0;
+}
+
+/* What a form says above an input: what applies before anything is typed. */
+.field-note {
+  grid-column: 1 / -1;
+}
+
+.form-note {
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border-left: 4px solid var(--border);
+  background: var(--surface);
+}
+
+/* The button that gives an override up, after what it would give up. */
+.again {
+  margin-left: 0.6rem;
+}
