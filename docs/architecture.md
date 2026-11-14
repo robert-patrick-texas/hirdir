@@ -407,7 +407,7 @@ the new serial number. One address is put under two networks and is not in
 other. An IPv6 address of the stack is kept in its short form. Last, every network,
 device group, membership and address is exported and imported back unchanged, as CSV
 and as JSON, and so is every item, sorted by `depth` so that a parent stands before its
-minor items. The client commands for groups and reports are not tried here yet.
+minor items.
 
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before
@@ -422,7 +422,12 @@ The client commands of the CLI are run in the container, from the package, while
 examples are loaded: `hirdir export` and `hirdir items list` must write the very file
 that `POST /exports` gave for the same filter, and `hirdir items show`, `hirdir items
 set` for one item and for many, and `hirdir import` with and without `--apply` are
-tried, with the exit codes for a rejected row and for no session. They are pointed at
+tried, with the exit codes for a rejected row and for no session. `hirdir groups show`
+must name a stack of the examples with its master's serial number, `hirdir groups
+list` must write the file that `POST /exports` gives, `hirdir items show` must say what
+a minor item has from the item it is in, `hirdir report summary` must count what `GET
+/reports/summary` counts, and `hirdir report duplicates` must list the address that two
+routers of the examples share. They are pointed at
 the service itself, past nginx, because the test site's certificate is a throwaway
 that no client should be told to trust.
 

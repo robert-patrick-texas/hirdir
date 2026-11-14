@@ -48,9 +48,8 @@
 # others, marked pkg, are about the package alone.
 #
 # The files are sent with curl, as the API takes them. The client commands of the
-# command line (hirdir import, hirdir export, hirdir items) are then run in the
-# container, from the package, by client_commands(). Those for groups and reports,
-# which 0.4.0 adds, are not tried here yet.
+# command line (hirdir import, hirdir export, hirdir items, hirdir groups and hirdir
+# report) are then run in the container, from the package, by client_commands().
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -1839,7 +1838,7 @@ cli_run() {
 }
 
 client_commands() {
-    section "the client commands of the package: hirdir import, export and items"
+    section "the client commands of the package: hirdir import, export, items, groups and report"
     local filter=$1 code=0 hid serial
     if ! inside hirdir import --help >/dev/null 2>&1; then
         fail "S16 the hirdir of this package has no import command"
@@ -1900,6 +1899,34 @@ client_commands() {
     code=0
     inside env HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN=not-a-token hirdir items list >/dev/null 2>&1 || code=$?
     expect "pkg without a session the commands exit with 3" "$code" 3
+
+    # What 0.4.0 added to the command line, on the examples: a stack, a minor item, the
+    # summary and the address that the two routers of the examples share.
+    cli_run "$work/cli.group" groups show site2-sw-core
+    expect "S19 hirdir groups show names a stack of the examples, with its type, its master's serial number and its members" \
+        "$code $(sed -n 's/^type: *//p' "$work/cli.group") $(sed -n 's/^serial_number: *//p' "$work/cli.group") $(sed -n 's/^members: *//p' "$work/cli.group") $(grep -c -E '^[12] +(master|member) ' "$work/cli.group")" \
+        "0 stack FCW0000Y001 2 2"
+    cli_run "$work/cli-groups.csv" groups list --format csv
+    api POST /exports '{"entity": "device_groups", "format": "csv"}'
+    expect "pkg hirdir groups list, as csv, is the file that POST /exports gives for device groups" \
+        "$code $(sha256sum <"$work/cli-groups.csv")" "0 $(sha256sum <"$work/body")"
+    cli_run "$work/cli.minor" items show LIT0000X001
+    expect "S18 hirdir items show says what a minor item has from the item it is in, and where it is" \
+        "$code $(grep -c -E '^lifecycle_state: +Prod \(parent_item\)$' "$work/cli.minor") $(sed -n 's/^position: *//p' "$work/cli.minor")" \
+        "0 1 PS-A"
+    api GET '/reports/summary?by=owner'
+    local wanted
+    wanted=$(json '[d["totals"]["component_count"], d["totals"]["managed_node_count"], len(d["rows"])]')
+    cli_run "$work/cli-summary.json" report summary --by owner --format json
+    cp "$work/cli-summary.json" "$work/body"
+    expect "S20 hirdir report summary --by owner, as json, counts what GET /reports/summary counts" \
+        "$code $(json '[d["totals"]["component_count"], d["totals"]["managed_node_count"], len(d["rows"])]')" "0 $wanted"
+    cli_run "$work/cli.summary" report summary --by owner
+    expect "pkg and on a terminal it is a table with a line for each owner and one for all" \
+        "$code $(head -n 1 "$work/cli.summary" | cut -d' ' -f1) $(grep -c '^(all) ' "$work/cli.summary")" "0 OWNER 1"
+    cli_run "$work/cli.duplicates" report duplicates
+    expect "S23 hirdir report duplicates lists the address that two routers of the examples share, once for each" \
+        "$code $(grep -c '^192\.0\.2\.254 ' "$work/cli.duplicates")" "0 2"
 }
 
 # ---- minor items, groups, a replacement and addresses ---------------------------------------
