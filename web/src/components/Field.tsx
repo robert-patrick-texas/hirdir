@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useId } from "react";
+import { type ReactNode, type Ref, useEffect, useId, useState } from "react";
 
 interface FieldProps {
   label: string;
@@ -69,17 +69,50 @@ interface CheckFieldProps extends FieldProps {
   disabled?: boolean;
 }
 
-export function CheckField({ label, error, hint, onChange, ...input }: CheckFieldProps) {
+/** How long a box shows what was chosen while the page has not yet said so itself. */
+const ECHO_MS = 2000;
+
+/**
+ * What a box shows: what the page says, and, for the moment after a click, what was
+ * chosen. A switch of a view is kept in the address of the page, and the address changes
+ * a moment after the click: without this the box would spring back and then turn, and
+ * would for that moment say the opposite of what was asked. The choice is shown until
+ * the page says something else than it said at the click, and no longer than two
+ * seconds, so a choice the page does not take is not shown as taken.
+ */
+function useEcho(checked: boolean): [boolean, (chosen: boolean) => void] {
+  const [echo, setEcho] = useState<{ from: boolean; to: boolean } | null>(null);
+  useEffect(() => {
+    if (!echo) return;
+    if (echo.from !== checked) {
+      setEcho(null);
+      return;
+    }
+    const timer = setTimeout(() => setEcho(null), ECHO_MS);
+    return () => clearTimeout(timer);
+  }, [echo, checked]);
+  return [
+    echo && echo.from === checked ? echo.to : checked,
+    (chosen) => setEcho({ from: checked, to: chosen }),
+  ];
+}
+
+export function CheckField({ label, error, hint, onChange, checked, ...input }: CheckFieldProps) {
   const id = useId();
+  const [shown, choose] = useEcho(checked);
   return (
     <div className="field field-check">
       <input
         {...input}
         id={id}
         type="checkbox"
+        checked={shown}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-error`)}
-        onChange={(event) => onChange(event.target.checked)}
+        onChange={(event) => {
+          choose(event.target.checked);
+          onChange(event.target.checked);
+        }}
       />
       <label htmlFor={id}>{label}</label>
       {hint && (

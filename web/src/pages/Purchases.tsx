@@ -406,7 +406,7 @@ export function PurchaseDetail() {
             <dt>Reference</dt>
             <dd>{record.reference}</dd>
             <dt>Status</dt>
-            <dd>
+            <dd data-testid="request-status" data-status={record.status}>
               {optionLabel(REQUEST_STATUSES, record.status)}
               <span className="muted">
                 {" "}

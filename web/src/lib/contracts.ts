@@ -321,6 +321,22 @@ export function coveringNumbers(coverage: readonly CoverageRef[]): string {
 }
 
 /**
+ * The numbers of the contracts that still count an item that is out of service, each
+ * once: those that cover it today, and those whose coverage of it was ended because it
+ * left service and of which the vendor has not been told. What the list for the vendor
+ * says of each of its items.
+ */
+export function countingNumbers(coverage: readonly CoverageRef[]): string {
+  const numbers: string[] = [];
+  for (const one of coverage) {
+    if ((one.in_force || one.left_service) && !numbers.includes(one.contract.number)) {
+      numbers.push(one.contract.number);
+    }
+  }
+  return numbers.join(", ");
+}
+
+/**
  * The statuses of the contracts that cover an item today, each once, as the item grid
  * shows them: Active, or Renewal pending where the renewal is late.
  */

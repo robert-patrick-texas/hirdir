@@ -208,7 +208,10 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState(false);
   const [ending, setEnding] = useState<string | null>(null);
-  const found = useLoad(`item-coverage ${item.hid} ${turn}`, (signal) =>
+  // Read again when the item itself changed: a move to Released or to Archived, or a
+  // retirement, ends its coverage on that day, and the rows here are then other rows.
+  const standing = `${item.row_version} ${item.lifecycle_state ?? ""} ${item.record_status}`;
+  const found = useLoad(`item-coverage ${item.hid} ${turn} ${standing}`, (signal) =>
     api.request("get", "/api/v1/contract-coverage", {
       query: { filter: `item_hid:eq:${item.hid}`, limit: EVERY, sort: ["-in_force"] },
       signal,
@@ -829,7 +832,10 @@ export function ContractCoverage({ contract, mayEdit, onChanged }: ContractCover
         entity="contract_coverage"
         columns={COVERAGE_COLUMNS}
         within={within}
-        reloadKey={reloads}
+        // Read again when a coverage changed here, and when the contract did: a renewal
+        // or a change of its period changes the days in force of every row. Neither
+        // number goes down, so the sum changes with either.
+        reloadKey={reloads + contract.row_version}
         load={(request, signal) =>
           api.request("get", "/api/v1/contracts/{hid}/coverage", {
             path: { hid: contract.hid },

@@ -2,10 +2,11 @@
 //
 //   S32  A purchase request with a line of ten switches is not in the component count.
 //        Receiving six creates six items in Delivered, each linked to the line, and four
-//        are still to come.
+//        are still to come. The other four, received as a count, are named for the line,
+//        and the request is then received.
 //
 // On the way: a serial number that is taken already is refused and nothing is received,
-// the line is taken back by lowering it to what arrived, and an item says which line it
+// a line is not lowered beneath what arrived on it, and an item says which line it
 // arrived on.
 //
 // It keeps to the rules of support.ts: an account and names of its own, and a model of
@@ -43,7 +44,7 @@ async function openRequest(page: Page) {
   await expect(page.getByRole("heading", { level: 1, name: reference })).toBeVisible();
 }
 
-test("S32: a request with a line of ten switches, of which six are received", async ({
+test("S32: a request with a line of ten switches: six are received, then four as a count", async ({
   page,
   account,
 }) => {
@@ -109,7 +110,7 @@ test("S32: a request with a line of ten switches, of which six are received", as
     .click();
   const receive = page.getByTestId("receive-line");
   await expect(receive).toContainText("10 items are still to come on this line.");
-  const arrived = receive.getByLabel("Serial numbers (required)");
+  const arrived = receive.getByLabel("Serial numbers", { exact: true });
   await arrived.fill(Array.from({ length: 11 }, (_, place) => `ENP${upper}9${place}`).join("\n"));
   await receive.getByRole("button", { name: "Receive 11 items" }).click();
   await expect(
@@ -126,6 +127,8 @@ test("S32: a request with a line of ten switches, of which six are received", as
   await expect(lineRow(page).getByTestId("line-pending")).toHaveText("4");
   await expect(page.getByTestId("request-received")).toHaveText("6 items");
   await expect(page.getByTestId("request-pending")).toHaveText("4 items");
+  // Four are still to come, so the request is not received yet.
+  await expect(page.getByTestId("request-status")).not.toHaveAttribute("data-status", "received");
 
   // The six items that arrived on the line are listed, each in Delivered.
   const onLine = page.getByTestId("arrived-items");
@@ -141,7 +144,7 @@ test("S32: a request with a line of ten switches, of which six are received", as
     .getByRole("button", { name: `Receive on ${line}` })
     .click();
   await receive
-    .getByLabel("Serial numbers (required)")
+    .getByLabel("Serial numbers", { exact: true })
     .fill([`ENP${upper}07`, serials[0]].join("\n"));
   await receive.getByRole("button", { name: "Receive 2 items" }).click();
   await expect(
@@ -174,7 +177,7 @@ test("S32: a request with a line of ten switches, of which six are received", as
   await page.goto(`./items?filter=${encodeURIComponent(ofModel)}`);
   await expect(page.getByTestId("grid-total")).toHaveText("6 items");
 
-  // The four that will not come: the line is taken back by lowering it to what arrived.
+  // A line is not lowered beneath what has arrived on it.
   await openRequest(page);
   await lineRow(page)
     .getByRole("button", { name: `Change ${line}` })
@@ -183,12 +186,59 @@ test("S32: a request with a line of ten switches, of which six are received", as
   await change.getByLabel("Quantity (required)").fill("5");
   await change.getByRole("button", { name: "Save" }).click();
   await expect(change.getByText(/6 have arrived on this line; not fewer than that/)).toBeVisible();
-  await change.getByLabel("Quantity (required)").fill("6");
-  await change.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText(`${line} was saved.`)).toBeVisible();
+  await change.getByRole("button", { name: "Close" }).click();
+  await expect(change).toHaveCount(0);
+  await expect(lineRow(page).getByTestId("line-pending")).toHaveText("4");
+
+  // The other four arrive with nothing to know them by yet: they are received as a
+  // count. More than the line still expects is said before anything is sent.
+  await lineRow(page)
+    .getByRole("button", { name: `Receive on ${line}` })
+    .click();
+  await expect(receive).toContainText("4 items are still to come on this line.");
+  const count = receive.getByLabel("How many more arrived, with nothing to know them by yet");
+  await count.fill("5");
+  await receive.getByRole("button", { name: "Receive 5 items" }).click();
+  await expect(
+    receive.getByText(
+      "5 items are more than the 4 this line still expects. Raise its quantity first.",
+    ),
+  ).toBeVisible();
+  await count.fill("4");
+  await receive.getByRole("button", { name: "Receive 4 items" }).click();
+  await expect(
+    page.getByText(`4 items were received on ${line}, in the state Delivered.`),
+  ).toBeVisible();
+  await expect(lineRow(page).getByTestId("line-received")).toHaveText("10");
   await expect(lineRow(page).getByTestId("line-pending")).toHaveText("0");
+  await expect(page.getByTestId("request-received")).toHaveText("10 items");
   await expect(page.getByTestId("request-pending")).toHaveText("0 items");
-  // Nothing more is received on it.
+  // Every line has arrived in full: the request is received, by itself.
+  await expect(page.getByTestId("request-status")).toHaveAttribute("data-status", "received");
+
+  // The four are named for the line, after the six that arrived before them.
+  await expect(rows).toHaveCount(10);
+  for (const place of ["007", "008", "009", "010"]) {
+    const named = rows.filter({ hasText: `${line}-${place}` });
+    await expect(named).toHaveCount(1);
+    await expect(named).toContainText("Delivered");
+  }
+  // One of them: it has its name from the line, no serial number, and says its line.
+  await onLine.getByRole("link", { name: `${line}-007`, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: `${line}-007` })).toBeVisible();
+  await expect(page.getByTestId("state")).toHaveText("Delivered");
+  await expect(
+    page.getByTestId("item-purchase-line").getByRole("link", { name: line, exact: true }),
+  ).toBeVisible();
+
+  // All ten are inventory, and still in no component count.
+  await summary(page, ofModel);
+  await expect(page.getByTestId("total-items")).toHaveText("10");
+  await expect(page.getByTestId("total-components")).toHaveText("0");
+
+  // Nothing more is received on the line.
+  await openRequest(page);
+  await expect(page.getByTestId("request-status")).toHaveAttribute("data-status", "received");
   await lineRow(page)
     .getByRole("button", { name: `Receive on ${line}` })
     .click();

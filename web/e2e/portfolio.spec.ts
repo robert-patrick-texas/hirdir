@@ -173,8 +173,18 @@ test("S31: the portfolio lists all four kinds with cost and weight totals, and e
     expect(header, column).toContain(column);
   }
   expect(lines).toHaveLength(6);
-  const text = lines.slice(1).join("\n");
-  for (const name of names) expect(text, name).toContain(name);
+  // Each of the five is a row of the file, by what the columns on show know it by: the
+  // serial number of a switch, the name of the software and of the service, and the PID
+  // of the one virtual machine. The Name column of the grid shows a host name where an
+  // item has no name; the file has the name alone, and the host name is a column that
+  // is not on show.
+  const rows = lines.slice(1);
+  for (const known of [`EXS${upper}01`, `EXS${upper}02`, vmPid, names[3] ?? "", names[4] ?? ""]) {
+    expect(
+      rows.filter((row) => row.split(",").includes(known)),
+      known,
+    ).toHaveLength(1);
+  }
 
   await expectClean(page, seen);
 });

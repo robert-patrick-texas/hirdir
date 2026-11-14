@@ -11,6 +11,7 @@ import {
   contractLabel,
   contractPath,
   contractsOfPath,
+  countingNumbers,
   coverageDay,
   coverBatches,
   coverBody,
@@ -431,6 +432,19 @@ describe("covering items", () => {
     expect(coveringNumbers([ref("B-2", true), ref("A-1", false), ref("B-2", true)])).toBe("B-2");
     expect(coveringNumbers([ref("B-2", true), ref("A-1", true)])).toBe("B-2, A-1");
     expect(coveringNumbers([])).toBe("");
+  });
+
+  it("lists the contracts that still count an item that left: in force, or ended because it left", () => {
+    const ref = (number: string, in_force: boolean, left_service: boolean) =>
+      ({ contract: { number }, in_force, left_service }) as Parameters<
+        typeof countingNumbers
+      >[0][number];
+    // Ended on the day the item was archived, the vendor not yet told: still counted.
+    expect(countingNumbers([ref("A-1", false, true)])).toBe("A-1");
+    // One ended by a person, or one the vendor has been told of, is counted no longer.
+    expect(countingNumbers([ref("A-1", false, false), ref("B-2", true, false)])).toBe("B-2");
+    expect(countingNumbers([ref("A-1", false, true), ref("A-1", true, false)])).toBe("A-1");
+    expect(countingNumbers([])).toBe("");
   });
 });
 

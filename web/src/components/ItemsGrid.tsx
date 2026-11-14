@@ -8,7 +8,7 @@ import { api, type Schemas } from "../api";
 import { type ListRequest, queryBody } from "../lib/gridQuery";
 import { stateNames } from "../lib/lifecycle";
 import { useChoices, useRules } from "../lib/lists";
-import { broughtForward } from "./grid/columns";
+import { broughtForward, type GridColumn } from "./grid/columns";
 import { DataGrid, type GridAction, type GridWithin, type Page } from "./grid/DataGrid";
 import { itemColumns, itemIsDimmed } from "./grid/itemColumns";
 import { Problem } from "./Problem";
@@ -25,6 +25,12 @@ interface ItemsGridProps {
    * start, though the item grid hides them, and stand right after the name, in this order.
    */
   shown?: readonly string[];
+  /**
+   * Columns that only this grid has, beside those of the item grid: what the page says
+   * of each of its items that the item grid has no column for. One that is to stand
+   * after the name is named in `shown` too. The list is the same one at every render.
+   */
+  extra?: ReadonlyArray<GridColumn<Item>>;
   /** Change it to read the rows again. */
   reloadKey?: number;
   actions?: ReadonlyArray<GridAction<Item>>;
@@ -43,6 +49,7 @@ export function ItemsGrid({
   id,
   within,
   shown = [],
+  extra,
   reloadKey,
   actions,
   read,
@@ -54,7 +61,10 @@ export function ItemsGrid({
   const wanted = shown.join(" ");
   const sorted = read !== undefined;
   const columns = useMemo(() => {
-    const made = broughtForward(itemColumns(choices.data, states), wanted.split(" "));
+    const made = broughtForward(
+      [...itemColumns(choices.data, states), ...(extra ?? [])],
+      wanted.split(" "),
+    );
     if (!sorted) return made;
     // Sorted by the field it has, and filtered by none.
     return made.map((column) => {
@@ -65,7 +75,7 @@ export function ItemsGrid({
         sortField: column.sortField === undefined ? field : column.sortField,
       };
     });
-  }, [choices.data, states, wanted, sorted]);
+  }, [choices.data, states, wanted, sorted, extra]);
   const ready = !choices.loading && !rules.loading;
 
   return (

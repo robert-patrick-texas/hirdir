@@ -13,6 +13,7 @@ import { ItemsGrid } from "../components/ItemsGrid";
 import { Problem } from "../components/Problem";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
+import { countingNumbers } from "../lib/contracts";
 import { filterText, itemsViewPath, parseFilter, viewFilter } from "../lib/filter";
 import { formatTime, itemName, plural } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -39,6 +40,8 @@ import { countText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
 /** What the address of a report page asks for. */
+type Item = Schemas["ItemOut"];
+
 interface View {
   filter: string;
   days: string;
@@ -198,10 +201,39 @@ function SectionCard({ name, label, about, section, shown, onShow }: SectionCard
 const COVERAGE_COLUMNS: Readonly<Record<CoverageSection, readonly string[]>> = {
   uncovered: ["covered", "covered_until", "contract.number"],
   expiring: ["covered_until", "contract.number", "covered"],
-  out_of_service: ["covered", "contract.number", "covered_until"],
+  out_of_service: ["out_of_service_cover", "covered", "covered_until"],
   renewal_pending: ["contract.status", "contract.number", "covered"],
   overlapping: ["contract_count", "contract.number", "covered_until"],
 };
+
+/**
+ * What the list for the vendor says of each of its items, and the item grid has no
+ * column for: the contracts that still count it. It is sorted and filtered by the field
+ * that makes the list, so every row of the list says yes to it.
+ */
+const COUNTED_UNDER: ReadonlyArray<GridColumn<Item>> = [
+  {
+    id: "out_of_service_cover",
+    header: "Still counted under",
+    kind: "boolean",
+    column: null,
+    value: (item) => countingNumbers(item.coverage),
+    hint: (item) =>
+      item.coverage.some((one) => one.left_service)
+        ? "Its coverage was ended because it left service, and the vendor has not been told."
+        : "",
+    choices: [
+      { value: "true", label: "Out of service, and still counted" },
+      { value: "false", label: "Not so" },
+    ],
+    width: 190,
+  },
+];
+
+/** The columns of its own that a list of the coverage report has, as a prop of its grid. */
+function extraOf(section: CoverageSection): { extra?: ReadonlyArray<GridColumn<Item>> } {
+  return section === "out_of_service" ? { extra: COUNTED_UNDER } : {};
+}
 
 /**
  * Reports → Coverage: the items in service that no contract covers, the cover that runs
@@ -354,6 +386,7 @@ export function CoverageReport() {
                 id={`coverage-${shown}`}
                 within={within}
                 shown={COVERAGE_COLUMNS[shown]}
+                {...extraOf(shown)}
               />
             )}
             {section && !section.filter && (
@@ -370,6 +403,7 @@ export function CoverageReport() {
                   id={`coverage-${shown}`}
                   within={{ sort: within.sort }}
                   shown={COVERAGE_COLUMNS[shown]}
+                  {...extraOf(shown)}
                   read={(request, signal) =>
                     api.request("get", "/api/v1/reports/coverage", {
                       query: {

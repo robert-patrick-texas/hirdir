@@ -6,8 +6,11 @@
 //   D-137  The rows selected in the item grid put under a contract in one request; the
 //          contract renewed in one place, with every item in scope showing the new number
 //          at once and the term before kept as history; a coverage ended with a date.
+//   D-140  A renewal entered before its period begins is kept as the next term, shown on
+//          the contract and in the list, and withdrawn again.
 //   S29    One contract covering items in two regions, one of them archived: the
-//          coverage report lists the archived item as covered though out of service.
+//          archived item's coverage ended on the day it left, and the coverage report
+//          lists it as out of service under a contract that still runs.
 //   S30    An item in Prod with no coverage, and items whose model's last day of support
 //          is next year: each is on its report, and each count leads to its rows.
 //
@@ -53,6 +56,10 @@ const firstNumber = `CON-${suffix}-1`;
 const renewedNumber = `CON-${suffix}-2`;
 const renewedStarts = `${year}-01-01`;
 const renewedEnds = `${year + 2}-12-31`;
+// A renewal that is entered before its period begins.
+const earlyNumber = `CON-${suffix}-2E`;
+const earlyStarts = `${year + 2}-01-01`;
+const earlyEnds = `${year + 3}-12-31`;
 const aloneNumber = `CON-${suffix}-9`;
 // A day of its own for one coverage, within the agreement's period and well before today.
 const bareStarts = `${year - 1}-06-01`;
@@ -436,7 +443,47 @@ test("D-137: rows of the item grid covered by one contract, the contract renewed
   await expect(
     form.getByText("A renewal gives the contract a new number, a new period, or both."),
   ).toBeVisible();
-  // The new number and the new period: one change of the one record.
+  // D-140: a renewal entered early, with a period that begins after today, is kept as
+  // the next term. The present number and period stay in force until that day.
+  await form.getByLabel("New number").fill(earlyNumber);
+  await form.getByLabel("New period: starts on").fill(earlyStarts);
+  await form.getByLabel("New period: ends on").fill(earlyEnds);
+  await form.getByRole("button", { name: "Renew for 2 items" }).click();
+  await expect(page.getByText(/^The renewal is kept as the next term\./)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: firstNumber })).toBeVisible();
+  await expect(page.getByTestId("contract-number")).toHaveText(firstNumber);
+  const next = page.getByTestId("next-term");
+  await expect(next).toHaveAttribute("data-starts", earlyStarts);
+  await expect(next).toContainText(
+    `Renews as ${earlyNumber} on ${earlyStarts}, until ${earlyEnds}.`,
+  );
+  await expect(page.getByTestId("contract-next-term")).toContainText(earlyNumber);
+  // The list of contracts finds it by the day its next term begins, under the number
+  // that is in force.
+  const withNext = `number:eq:${firstNumber} next_starts_on:eq:${earlyStarts}`;
+  await page.goto(`./contracts?filter=${encodeURIComponent(withNext)}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 contract");
+  await expect(
+    page.getByTestId("grid-contracts").getByRole("link", { name: firstNumber, exact: true }),
+  ).toBeVisible();
+  // It was entered too early: the next term is withdrawn, and the contract is as it was.
+  await openContract(page, firstNumber);
+  await page
+    .getByTestId("next-term")
+    .getByRole("button", { name: "Withdraw the next term" })
+    .click();
+  await page.getByRole("button", { name: "Withdraw", exact: true }).click();
+  await expect(
+    page.getByText(
+      `The next term was withdrawn: ${firstNumber} keeps its present number and period.`,
+    ),
+  ).toBeVisible();
+  await expect(page.getByTestId("next-term")).toHaveCount(0);
+  await expect(page.getByTestId("contract-number")).toHaveText(firstNumber);
+
+  // The renewal itself, in force at once: the new number and the new period are one
+  // change of the one record.
+  await renew.getByRole("button", { name: "Renew", exact: true }).click();
   await form.getByLabel("New number").fill(renewedNumber);
   await form.getByLabel("New period: starts on").fill(renewedStarts);
   await form.getByLabel("New period: ends on").fill(renewedEnds);
@@ -467,6 +514,7 @@ test("D-137: rows of the item grid covered by one contract, the contract renewed
   await openItem(page, covered);
   await expect(page.getByTestId("item-covered")).toHaveAttribute("data-covered", "true");
   await expect(page.getByTestId("item-covered-until")).toHaveText(renewedEnds);
+  await expect(page.getByTestId("item-contract-count")).toHaveAttribute("data-count", "1");
   const itemCoverage = page.getByTestId("item-coverage");
   await expect(itemCoverage.locator("tbody tr")).toHaveCount(1);
   await expect(itemCoverage.locator(`tr[data-contract="${renewedNumber}"]`)).toHaveAttribute(
@@ -493,16 +541,31 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   const seen = await watch(page.context());
   await signIn(page, account);
 
-  // The switch in the other region leaves service and is archived. Nothing ends its
-  // coverage but a person: it is still covered.
+  // The switch in the other region leaves service and is archived. Its coverage is
+  // ended on the day it leaves, which is its last day: the contract runs on for two
+  // years and covers the switch no longer than today. The coverage is marked as one the
+  // vendor still counts until it has been told.
   await openItem(page, archived);
   await move(page, "Pending-Removal", "Decommissioned");
   await move(page, "Released", "Decommissioned");
   await move(page, "Archived", "Decommissioned");
-  await expect(page.getByTestId("item-covered")).toHaveAttribute("data-covered", "true");
+  const ended = page.getByTestId("item-coverage").locator(`tr[data-contract="${renewedNumber}"]`);
+  await expect(ended).toHaveAttribute("data-left-service", "true");
+  await expect(ended.getByTestId("left-service")).toBeVisible();
+  const until = page.getByTestId("item-covered-until");
+  await expect(until).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+  const lastDay = ((await until.textContent()) ?? "").trim();
+  // The day is today as the server has it: the browser's day, or the one beside it
+  // where the two are in different time zones.
+  const near = [-1, 0, 1].map((days) =>
+    new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10),
+  );
+  expect(near).toContain(lastDay);
+  expect(lastDay < renewedEnds).toBe(true);
+  await expect(ended).toContainText(lastDay);
 
   // The coverage report, of this file's switches: two are in service, one of them with
-  // no cover, and one is covered though it is out of service.
+  // no cover, and one is out of service under a contract that still runs.
   await page.goto(`./reports/coverage?filter=${encodeURIComponent(own)}`);
   await expect(page.getByRole("heading", { level: 1, name: "Coverage" })).toBeVisible();
   await expect(page.getByTestId("total-in-service")).toHaveText("2");
@@ -512,6 +575,9 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   await expect(page.getByTestId("count-uncovered")).toHaveAttribute("data-count", "1");
   await expect(page.getByTestId("count-out_of_service")).toHaveAttribute("data-count", "1");
   await expect(page.getByTestId("count-expiring")).toHaveAttribute("data-count", "0");
+  // No switch of this file is under two contracts, or under one whose renewal is late.
+  await expect(page.getByTestId("count-overlapping")).toHaveAttribute("data-count", "0");
+  await expect(page.getByTestId("count-renewal_pending")).toHaveAttribute("data-count", "0");
 
   // S30: the list of what is in service with no cover is on show first, as a grid.
   await expect(page.getByTestId("section-heading")).toHaveText("In service with no cover");
@@ -520,17 +586,19 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
     page.getByTestId("grid-coverage-uncovered").getByRole("link", { name: bare, exact: true }),
   ).toBeVisible();
 
-  // S29: the archived switch is listed as covered though out of service.
+  // S29: the archived switch is listed as out of service and still counted, under the
+  // contract that still runs, with the day its coverage ended.
   await page
     .locator('.section-card[data-section="out_of_service"]')
     .getByRole("button", { name: "Show these items" })
     .click();
-  await expect(page.getByTestId("section-heading")).toHaveText("Cover on items out of service");
+  await expect(page.getByTestId("section-heading")).toHaveText("Out of service, and still counted");
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   const listed = gridRow(page, "grid-coverage-out_of_service", archived);
   await expect(listed.getByRole("link", { name: archived, exact: true })).toBeVisible();
+  await expect(listed.locator('[col-id="out_of_service_cover"]')).toHaveText(renewedNumber);
+  await expect(listed.locator('[col-id="covered_until"]')).toHaveText(lastDay);
   await expect(listed.locator('[col-id="lifecycle_state"]')).toHaveText("Archived");
-  await expect(listed.locator('[col-id="contract.number"]')).toHaveText(renewedNumber);
   // An archived item is shown greyed.
   await expect(listed).toHaveClass(/row-dim/);
 
@@ -576,6 +644,28 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   await page.getByLabel("Include archived").check();
   await expect(ldos.getByTestId("approaching-items")).toHaveText("3");
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
+
+  // D-141: once the vendor has been told that the archived switch left, a person says
+  // so on the item, from the list of the report. The mark is cleared, and the coverage
+  // stays ended on the day it ended.
+  await page.goto(
+    `./reports/coverage?${new URLSearchParams({ filter: own, section: "out_of_service" }).toString()}`,
+  );
+  await gridRow(page, "grid-coverage-out_of_service", archived)
+    .getByRole("link", { name: archived, exact: true })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: archived })).toBeVisible();
+  const told = page.getByTestId("item-coverage").locator(`tr[data-contract="${renewedNumber}"]`);
+  await expect(told).toHaveAttribute("data-left-service", "true");
+  await told
+    .getByRole("button", { name: `The vendor has been told, for ${renewedNumber}` })
+    .click();
+  await expect(
+    page.getByText(`${vendor} has been told that ${archived} left service.`),
+  ).toBeVisible();
+  await expect(told).toHaveAttribute("data-left-service", "false");
+  await expect(told.getByTestId("left-service")).toHaveCount(0);
+  await expect(told).toContainText(lastDay);
 
   await expectClean(page, seen);
 });
