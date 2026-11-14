@@ -1,6 +1,8 @@
 """The routes of the catalog: vendors, catalog entries, and owners with their people."""
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 
 from hirdir.api import lists, shapes
 from hirdir.api import records as r
@@ -9,7 +11,7 @@ from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
 from hirdir.domain import catalog, owners
-from hirdir.io import fields
+from hirdir.io import fields, planning
 
 vendors = APIRouter(prefix="/vendors", tags=["Catalog"], route_class=IdempotentRoute)
 entries = APIRouter(prefix="/catalog-entries", tags=["Catalog"], route_class=IdempotentRoute)
@@ -58,6 +60,28 @@ def update_vendor(
     """Change a vendor."""
     vendor = catalog.update_vendor(db, context, hid, body.row_version, _changes(body))
     return shapes.vendor_out(vendor)
+
+
+@vendors.get("/{hid}/portfolio")
+def vendor_portfolio(
+    hid: str,
+    _: Viewer,
+    db: Db,
+    include_archived: Annotated[
+        bool, Query(description="Count retired records and items in Archived as well.")
+    ] = False,
+    include_drafts: Annotated[bool, Query(description="Count draft records as well.")] = False,
+) -> r.PortfolioOut:
+    """Return everything from one vendor in one place: its items as a whole, by kind
+    and by model, with their cover and their dates, its contracts, and the capacity
+    lines that name it. The items themselves are the item list with `filter`."""
+    found = planning.portfolio(
+        db,
+        catalog.get_vendor(db, hid),
+        include_archived=include_archived,
+        include_drafts=include_drafts,
+    )
+    return shapes.portfolio_out(db, found)
 
 
 # --- catalog entries -----------------------------------------------------------------

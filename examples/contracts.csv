@@ -1,0 +1,6 @@
+hid,number,vendor,agreement,reseller,starts_on,ends_on,status,support_level,purchase_reference,account_manager,support_contact,support_url,annual_cost,notes,record_status,tags
+,CON-2025-0001,Cisco,Cisco Enterprise Agreement,,,,active,,RITM0009121,,,,61000.00,Campus switching and routing,active,
+,CON-2025-0002,Cisco,Cisco Enterprise Agreement,,,,active,"8x5, next business day",RITM0009122,,,,18500.00,Wireless,active,
+,CON-2026-0107,Cisco,,Example Reseller,2026-09-01,2027-08-31,active,"8x5, next business day",RITM0012345,,,,2400.00,To be rolled into the enterprise agreement when that is renewed,active,
+,JNP-2026-0031,Juniper,Juniper Enterprise Agreement,,,,active,,RITM0010989,,,,,,active,
+,PAN-2026-0042,Palo Alto Networks,,,2026-03-01,2027-02-28,active,Premium,,"Riley Lindqvist, riley.lindqvist@example.com, +1 555 0177",,https://support.example.com/firewalls,14200.00,,active,

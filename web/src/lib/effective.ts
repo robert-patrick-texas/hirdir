@@ -17,6 +17,7 @@ const FROM: Readonly<Record<Source, string>> = {
   location: "the location",
   site: "the site",
   region: "the region",
+  agreement: "the agreement it is in",
   setting: "the global setting",
   none: "",
 };

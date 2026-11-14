@@ -125,6 +125,11 @@ SPECS: dict[str, Spec] = {
         "states that carry support weight",
         _subset("weight_states", lifecycle.STATES),
     ),
+    "service_states": Spec(
+        ["Test", "Prod", "Down"],
+        "states in which an item is in service, for the coverage report",
+        _subset("service_states", lifecycle.STATES),
+    ),
     "count_kinds": Spec(
         ["hardware", "virtual_machine"],
         "kinds in the headline component count",

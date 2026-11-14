@@ -409,6 +409,75 @@ def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_pa
     engine.dispose()
 
 
+def test_the_upgrade_to_0008_keeps_what_is_held_and_covers_nothing(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0007")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO items (hid, name, quantity, lifecycle_state, record_status,"
+                " created_at, updated_at, row_version)"
+                " VALUES ('i-1', 'site2-sw-access-01', 1, 'Prod', 'active',"
+                " '2026-01-01', '2026-01-01', 7)"
+            )
+        )
+        # A site may have entered categories of its own before the list was loaded.
+        connection.execute(
+            text(
+                "INSERT INTO choices (hid, list, value, value_key, label, sort, active,"
+                " created_at, updated_at, row_version)"
+                " VALUES ('c-1', 'capacity_category', 'staff', 'staff', 'Our people', 5, 1,"
+                " '2026-01-01', '2026-01-01', 4)"
+            )
+        )
+        events = connection.execute(text("SELECT count(*) FROM audit_events")).scalar()
+    engine.dispose()
+
+    migrate.upgrade(url)
+
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        item = connection.execute(
+            text("SELECT name, lifecycle_state, purchase_line_hid, row_version FROM items")
+        ).one()
+        assert tuple(item) == ("site2-sw-access-01", "Prod", None, 7)
+        categories = dict(
+            connection.execute(
+                text("SELECT value, label FROM choices WHERE list = 'capacity_category'")
+            ).all()
+        )
+        # The one that was there is as it was, and the others are loaded beside it.
+        assert categories == {
+            "staff": "Our people",
+            "professional_services": "Professional services",
+            "smart_hands": "Smart hands",
+            "tools": "Tools",
+            "services": "Services",
+            "other_work": "Other work",
+        }
+        for table in (
+            "agreements",
+            "contracts",
+            "contract_coverage",
+            "purchase_requests",
+            "purchase_lines",
+            "external_systems",
+            "registrations",
+            "capacity_lines",
+        ):
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0  # noqa: S608
+        # The upgrade is no change of any record: it writes no event.
+        assert connection.execute(text("SELECT count(*) FROM audit_events")).scalar() == events
+        differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+    assert differences == []
+    command.downgrade(migrate.alembic_config(url), "0007")
+    with make_engine(url).connect() as connection:
+        columns = [row[1] for row in connection.execute(text("PRAGMA table_info(items)"))]
+        assert "purchase_line_hid" not in columns
+        assert connection.execute(text("SELECT name FROM items")).scalar() == "site2-sw-access-01"
+
+
 def test_a_small_preview_takes_its_turn_before_it_looks(config: Config) -> None:
     """Tried in place, work reads and then writes. Had another change been stored in
     between, SQLite would refuse the write at once, without waiting: so the writer's
@@ -433,6 +502,6 @@ def test_every_list_is_built_before_the_first_request() -> None:
     so that the first requests, answered side by side, find them ready."""
     from hirdir.io import fields, tables
 
-    assert fields.warm() == len(fields.LISTINGS) == 16
+    assert fields.warm() == len(fields.LISTINGS) == 25
     # And those of the tables that are paged and are no list, with every sort they take.
     assert tables.warm() == len(tables.TABLES) == 8

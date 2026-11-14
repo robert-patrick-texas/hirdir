@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import (
+    CapacityLine,
     CatalogEntry,
     Choice,
     ContactAssignment,
@@ -40,6 +41,7 @@ USES = {
     "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
     "contact_role": ((ContactAssignment, ContactAssignment.role),),
     "location_kind": ((Location, Location.kind),),
+    "capacity_category": ((CapacityLine, CapacityLine.category),),
 }
 
 

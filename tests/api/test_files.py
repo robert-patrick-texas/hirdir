@@ -502,8 +502,8 @@ def test_json_names_its_entity_and_null_clears(files: Files, make: Maker, catalo
 def test_an_unknown_column_rejects_the_file_and_a_read_only_one_is_passed_over(
     files: Files, make: Maker, catalog: dict
 ) -> None:
-    refused = files.preview("items", "serial_number,contract\nS1,C-0001\n", expect=422)
-    assert "'contract' is not a column of items" in errors(refused)["column"]
+    refused = files.preview("items", "serial_number,rack_unit\nS1,12\n", expect=422)
+    assert "'rack_unit' is not a column of items" in errors(refused)["column"]
     assert make.get("/imports")["total"] == 0
     passed = files.preview(
         "items",
@@ -646,7 +646,7 @@ def test_export_is_for_every_role_and_refuses_what_a_list_refuses(
     assert "columns" in errors(files.refused_export("items", columns=["nonsense"]))
     assert "filter" in errors(files.refused_export("items", filter="name:regex:("))
     assert "filter" in errors(files.refused_export("items", filter="nonsense:eq:1"))
-    files.refused_export("contracts")
+    files.refused_export("observations")
 
 
 def test_export_leaves_out_what_a_list_leaves_out(files: Files, make: Maker) -> None:

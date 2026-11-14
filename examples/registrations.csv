@@ -1,0 +1,7 @@
+hid,system,item,group,external_id,status,confirmed_at
+,Config Vault,AT-000161,,,pending,
+,Config Vault,AT-000141,,site2-rtr-wan-01,registered,
+,Fabric Director,,site2-sw-core,site2-sw-core,registered,2026-11-02T15:00:00+00:00
+,NetWatch,AT-000141,,node-1002,registered,2026-11-02T15:00:00+00:00
+,NetWatch,,site2-sw-core,node-1001,registered,2026-11-02T15:00:00+00:00
+,NetWatch,AT-000133,,node-0977,removed,

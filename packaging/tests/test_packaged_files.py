@@ -29,10 +29,19 @@ LOAD_ORDER = [
     "owners",
     "owner-members",
     "networks",
+    "external-systems",
+    "agreements",
+    "contracts",
+    "purchase-requests",
+    "purchase-lines",
     "items",
     "device-groups",
     "device-group-members",
+    "item-replacements",
     "addresses",
+    "contract-coverage",
+    "registrations",
+    "capacity-lines",
 ]
 
 

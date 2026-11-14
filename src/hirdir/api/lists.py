@@ -1,6 +1,7 @@
 """What every list route takes: a filter, a sort, a page, and what to leave out."""
 
 import types
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Union, get_args, get_origin
 
@@ -97,8 +98,11 @@ def from_body(body: shapes.ListQuery) -> ListRequest:
     )
 
 
-def read(db: Session, which: Listing, request: ListRequest) -> tuple[list[Any], int]:
-    """Return the page of a list a request asks for, and the total it matches."""
+def read(
+    db: Session, which: Listing, request: ListRequest, also: Sequence[Any] = ()
+) -> tuple[list[Any], int]:
+    """Return the page of a list a request asks for, and the total it matches. `also`
+    keeps it to the part of the list that the route is of."""
     return listing.page(
         db,
         which,
@@ -108,6 +112,7 @@ def read(db: Session, which: Listing, request: ListRequest) -> tuple[list[Any], 
         offset=request.offset,
         include_archived=request.include_archived,
         include_drafts=request.include_drafts,
+        also=also,
     )
 
 

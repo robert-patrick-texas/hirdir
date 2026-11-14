@@ -1,5 +1,6 @@
 """Reading one page of a list: filtered, sorted and counted by the database."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import func, select
@@ -25,8 +26,12 @@ def page(
     offset: int = 0,
     include_archived: bool = False,
     include_drafts: bool = False,
+    also: Sequence[Any] = (),
 ) -> tuple[list[Any], int]:
     """Return one page of a list, and how many records the filter matches in all.
+
+    `also` narrows the list further, to the part of it that a route is of: the
+    coverage of one contract, the lines of one request, a section of a report.
 
     The filter may be a decoded tree, JSON text or the short form. Blank values sort
     last, and records that tie are kept in a steady order by their HIDs, so that paging
@@ -36,6 +41,7 @@ def page(
     where = [
         filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db), db),
         *default_view(listing, include_archived, include_drafts),
+        *also,
     ]
     keys = filters.parse_sort(sort, listing.fields) or filters.parse_sort(
         list(listing.default_sort), listing.fields

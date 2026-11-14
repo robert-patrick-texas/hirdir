@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -33,6 +33,7 @@ where it came from.**
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
 | Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of, and the group that group is nested in; then the location it is at, the locations above that, the site, and each region outward |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
+| Contract: `reseller_hid`, `starts_on`, `ends_on`, `support_level`, `account_manager`, `support_contact`, `support_url`, each by itself | the support agreement it is grouped into |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
 | Site: the same three | each region outward |
 
@@ -48,7 +49,7 @@ The API returns an inheritable field as its own stored value plus an `effective`
 ```
 
 `source` is one of `own`, `catalog`, `parent_item`, `device_group`, `location`, `site`,
-`region`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
+`region`, `agreement`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
 
@@ -172,7 +173,14 @@ Taking a minor item out of its parent, by clearing `parent_item_hid` or naming a
 parent, keeps its record and its history. With no parent it is a major item, with
 whatever is its own: what it inherited stays with the parent it left.
 
-Release 0.5.0 has every field above except `purchase_line_hid`, which arrives in 0.6.0.
+`purchase_line_hid` arrives in release 0.6.0, with the purchase requests. An item that
+is received on a line is created with it; it may also be set by hand, on an item that
+was entered before its request was.
+
+**Coverage and registrations.** An item's record lists the coverages it has under
+contracts, with `covered`, true when one of them is in force today, and
+`covered_until`, the last day its cover runs to. It lists the external systems it is
+registered with. See `contracts` and `external_systems` below.
 
 **A planned location.** `location_hid` is where an item is. `planned_location_hid` is
 where it is going, when that place is not in use yet. A team that plans a new site
@@ -276,8 +284,10 @@ ends on `replaced_on` and each of the new ones begins then, so a stack keeps its
 and its master through an RMA. The replacement moves neither item in the lifecycle;
 that is done by a transition, with its own reason.
 
-The record arrives in release 0.4.0. Reports on replacements, and replacements in
-files, arrive in 0.6.0.
+The record arrives in release 0.4.0. From 0.6.0 replacements travel in files, as
+`item_replacements`, and `GET /reports/replacements` lists them with the count of each
+reason. A row of a file is matched by the item that left: an item is replaced once, so
+a row that names another new item for it is rejected.
 
 ### `device_groups` and `device_group_members`
 
@@ -536,44 +546,192 @@ The owner itself is in release 0.2.0, because an item needs one to point to. Its
 members arrive with contacts in 0.5.0, and so does the marked exception on an item that
 is given to an external owner.
 
+### `agreements`
+
+A support agreement between the organization and a vendor, such as an enterprise
+agreement, under which some part of the inventory is covered through support
+contracts. It groups those contracts, and says once what they share.
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | text, unique | required: "Cisco Enterprise Agreement" |
+| `number` | text | the agreement's own number, where it has one |
+| `vendor_hid` | reference | required: the vendor it is with |
+| `reseller_hid` | reference | optional: the vendor it was bought through |
+| `starts_on`, `ends_on` | date | its period. Either may be blank |
+| `status` | choice | `active`, `expired`, `pending`, `cancelled`. What a person says of it |
+| `support_level`, `purchase_reference` | text | |
+| `account_manager`, `support_contact` | text | whom to ask, and whom to call for support: free text |
+| `support_url` | text | where support is reached online |
+| `annual_cost` | money | the agreement's own total, added to nothing |
+| `notes` | text | |
+| `record_status` | choice | see Conventions. An agreement takes tags |
+
+A contract is put into an agreement by its `agreement_hid`, and is with the
+agreement's vendor. A contract may also stand by itself: a few switches bought lately
+are under a contract of their own, which is rolled into the agreement later by one
+change of that contract.
+
+**What a contract has from its agreement.** Where its own is blank, a contract in an
+agreement has the agreement's reseller, support level, account manager, support
+contact, support address and period, each by itself, and overrides any of them by
+saying its own. Its number, its status, its purchase reference, its cost and its notes
+are its own. The record answers the contract's own value and, in `effective`, the
+value in force with where it came from: `own`, `agreement` or `none`. Nothing is
+copied down: giving the agreement another account manager, or another period, changes
+what every contract in it shows that has none of its own, and what every item under
+those contracts shows, and writes to none of them. A contract with no dates of its own
+is so co-termed with its agreement.
+
+Rolling a contract into an agreement leaves what the contract says of its own in
+place, as overrides. They are cleared where the agreement should speak.
+
+The status of an agreement is what a person says of it, and gates nothing: a contract
+covers by its own status and by its period in force. An agreement is retired once no
+contract that is not retired is in it.
+
 ### `contracts` and `contract_coverage`
 
 | Field | Type | Notes |
 |---|---|---|
-| `contracts.number` | text | unique with the vendor |
-| `contracts.vendor_hid` | reference | the provider |
-| `contracts.starts_on`, `ends_on` | date | |
-| `contracts.status` | choice | `active`, `expired`, `pending`, `cancelled` |
+| `contracts.number` | text | required; unique with the vendor, without regard to case |
+| `contracts.vendor_hid` | reference | required: the manufacturer or the provider. Left out on a new contract in an agreement, the agreement's |
+| `contracts.agreement_hid` | reference | optional: the support agreement it is grouped into. Blank on a contract that stands by itself |
+| `contracts.reseller_hid` | reference | optional: the vendor it was bought through |
+| `contracts.purchase_reference` | text | the request or tracking number the present term was bought under: an RITM, a purchase order, a procurement number |
+| `contracts.account_manager`, `support_contact` | text | whom to ask about the contract, and whom to call for support: free text, a name with a number or an address |
+| `contracts.support_url` | text | where support is reached online: begins with `https://` or `http://` |
+| `contracts.starts_on`, `ends_on` | date | blank takes the agreement's, for a contract in one. Otherwise a blank is open: no start is from the beginning, no end until further notice |
+| `contracts.status` | choice | `active`, `expired`, `pending`, `cancelled`. Left out, `active`. What a person says of the contract; the clock never changes it |
 | `contracts.support_level`, `notes` | text | |
 | `contracts.annual_cost` | money | the contract total, when that is all that is known |
-| `contract_coverage.contract_hid`, `item_hid` | reference | |
+| `contracts.record_status` | choice | see Conventions. A contract takes tags |
+| `contract_coverage.contract_hid`, `item_hid` | reference | neither is changed afterwards |
 | `contract_coverage.starts_on`, `ends_on` | date | blank takes the contract's dates |
+
+A contract **covers** on a day when it is `active` in both senses, its `record_status`
+and its `status`, and the day is within its period in force: its own dates, or its
+agreement's where its own are blank. A **coverage** is one item under
+one contract for a range of days: its own `starts_on` and `ends_on`, each of which is
+the contract's where it is blank, and neither of which reaches beyond the contract's.
+The record answers both, the dates of its own and the dates in force. A coverage is in force on a day when its contract covers on that
+day and the day is within the dates in force.
+
+**One record, many items.** A contract is applied to one item or to many, and what is
+said of it is said on the contract, once. An item under it holds the link and nothing
+else: the number, the period, the status and the support level that the item shows
+are the contract's, read as they are asked for. So does a date of a coverage that has
+none of its own, and a date that is given to a coverage and is the contract's own is
+kept as blank, so that the coverage is for the contract's period whatever that
+becomes.
+
+**Renewing.** A contract that is renewed is usually given a new number and a new
+period of performance. That is one change of the one record, `POST
+/contracts/{hid}/renew`, and every item in scope has the new number and the new
+period at once: nothing is written to any item or to any coverage. The items in scope
+are those whose coverage under the contract has not been ended. A coverage that was
+ended on a day of its own stays ended. The status is `active` after a renewal unless
+it is told another. The terms a contract had before, each with its number, its period,
+its cost, the purchase reference it was bought under and the moment it was renewed,
+are answered by `GET /contracts/{hid}/terms` from the audit trail, and are stored
+nowhere else. They are the purchase history of the contract: a renewal gives the new
+term its own `purchase_reference`, and may name another reseller.
+
+Rules, checked on every write:
+
+- An item is covered by any number of contracts, at once and over time. Under one
+  contract it has no two coverages whose days overlap: a coverage that ended is
+  followed by a new one, as a membership is.
+- A coverage is ended by giving it `ends_on`, and is never removed. Last year's answer
+  stays on record.
+- Coverage is added several items at a time, by one request, and each is checked.
+- A minor item may be covered by itself: a supervisor module under its own contract.
+- A retired item, and a retired contract, are given no further coverage.
+- Nothing ends a coverage but a person. Retiring an item, or moving it to Released or
+  to Archived, leaves its coverage standing, and the coverage report then lists the
+  item as covered though out of service.
+
+`annual_cost` is the total of the contract as the vendor bills it. It is shown on the
+contract and in the vendor's portfolio, and is added to nothing: the annual support
+cost of a report is that of the items, from their models.
+
+On an item, derived when it is read and stored nowhere:
+
+| Field | Meaning |
+|---|---|
+| `covered` | a coverage of the item is in force today, in the application's time zone |
+| `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract has the status `active`. Blank when one of them names no end, and when there is none. A gap between two of them is not looked for |
+| `coverage` | its coverages, each with the contract, the dates in force and whether it is in force today |
+
+`covered`, `covered_until` and `contract.number`, the number of a contract that
+covers it today, are fields of the item list.
+
+**In service.** An item is in service when the lifecycle state in force for it is one
+of the `service_states` setting: Test, Prod and Down unless changed. It is out of
+service when it is retired, or its state in force is Pending-Removal, Released or
+Archived. An item with no state, and one that is Purchased, Delivered or Assigned, is
+neither: it has not been in service yet. The coverage report is built on the two.
 
 ### `purchase_requests` and `purchase_lines`
 
 | Field | Type | Notes |
 |---|---|---|
-| `purchase_requests.reference` | text, unique | the RITM or other request number |
-| `purchase_requests.requested_on`, `notes` | | |
-| `purchase_requests.status` | choice | `draft`, `pending`, `ordered`, `received`, `cancelled` |
-| `purchase_lines.catalog_entry_hid`, `quantity` | | model and how many |
-| `purchase_lines.destination_site_hid`, `expected_on` | | |
-| `purchase_lines.received_quantity` | integer | the number of items created from this line so far |
+| `purchase_requests.reference` | text, unique | required: the RITM or other request number. Holds no `/`, which separates it from the number of a line |
+| `purchase_requests.requested_on`, `notes` | date, text | |
+| `purchase_requests.status` | choice | `draft`, `pending`, `ordered`, `received`, `cancelled`. Left out, `pending`. Set by people |
+| `purchase_lines.request_hid` | reference | not changed afterwards |
+| `purchase_lines.line` | integer | the number of the line within its request, from 1. Left out, the next |
+| `purchase_lines.catalog_entry_hid`, `quantity` | reference, integer | model and how many. At least 1, and never below what was received |
+| `purchase_lines.destination_site_hid`, `expected_on` | reference, date | optional |
+| `purchase_lines.notes` | text | |
+| `purchase_lines.received_quantity` | integer | derived: the number of items that name this line |
+| `purchase_lines.pending_quantity` | integer | derived: `quantity` less `received_quantity` |
 
-Receiving creates `quantity` items in state `Delivered`, each pointing back to its line.
+A line is named by the reference of its request and its number: `RITM0012345/2`.
+
+A request and its lines are not inventory. Nothing of them is in any count, and no
+serial number is known yet. **Receiving** a line, `POST /purchase-lines/{hid}/receive`,
+says which items arrived: each with a serial number, an asset tag or a name, as every
+item needs, and together with the day and, when it is known, the location they were
+put in. It creates those items in the state Delivered, of the line's model, each with
+`purchase_line_hid` naming the line and `delivered_on` set, in one change, with an
+audit event for each. The items are then inventory: Delivered is not among the states
+that count, so they are in no component count until they are handed to the team.
+
+`received_quantity` is the number of items that name the line, counted as it is read
+and stored nowhere. Receiving more than is left is refused: the line is given a higher
+quantity first. A request that is a `draft` or `cancelled` receives nothing. The
+status of a request is not changed by a delivery: it is what a person says of it.
+
+A line is not removed. One that was entered by mistake, or is no longer wanted, is
+taken back by lowering its quantity to what was received.
 
 ### `external_systems` and `registrations`
 
 | Field | Type | Notes |
 |---|---|---|
-| `external_systems.name` | text, unique | the installation's own name for it |
-| `external_systems.kind` | choice | `monitoring`, `config_backup`, `access_control`, `sdn_controller`, `cloud_service`, `dns`, `discovery`, `other` |
+| `external_systems.name` | text, unique | required: the installation's own name for it |
+| `external_systems.kind` | choice | `monitoring`, `config_backup`, `access_control`, `sdn_controller`, `cloud_service`, `dns`, `discovery`, `other`. Left out, `other` |
 | `external_systems.url`, `notes` | text | |
-| `registrations.system_hid` | reference | |
-| `registrations.item_hid` or `registrations.group_hid` | reference | exactly one |
+| `external_systems.record_status` | choice | see Conventions |
+| `registrations.system_hid` | reference | not changed afterwards |
+| `registrations.item_hid` or `registrations.group_hid` | reference | exactly one, and not changed afterwards |
 | `registrations.external_id` | text | the other system's key for it |
-| `registrations.status` | choice | `registered`, `pending`, `removed` |
-| `registrations.confirmed_at` | timestamp | when the other system last agreed |
+| `registrations.status` | choice | `registered`, `pending`, `removed`. Left out, `registered` |
+| `registrations.confirmed_at` | timestamp | when the other system last agreed. Blank until somebody says |
+
+An item or a group is registered with one system once. A registration that ends is
+given the status `removed` and stays on record; when it begins again it is the same
+record, registered once more. A retired system takes no new registration.
+
+A registration is on the record it was made for. A stack that a monitoring system
+knows as one device is registered as the stack: the registration is listed on the
+stack, and not on its members. `registration.system` on the lists of items and of
+device groups finds a record by the name of a system it is registered with, a
+registration that is `removed` not counting.
+
+`confirmed_at` is a moment as `observed_at` of an item is: one that names no zone is
+in the application's time zone, and one more than a day ahead is refused.
 
 ### `capacity_lines`
 
@@ -593,7 +751,12 @@ A source of resource units, or a call on them other than the infrastructure.
 | `notes` | text | |
 | `record_status` | choice | a `draft` line is a what-if |
 
-The resource units of a line are `quantity` × `units_each`, a fixed amount.
+The resource units of a line are `quantity` × `units_each`, a fixed amount, worked out
+exactly. `category` is a value of the `capacity_category` list: a demand line has
+`other_work`, and a supply line any other value of the list. `name` is required, and
+unique on its side. A line is **in date** on a day that is not before `starts_on` and
+not after `ends_on`, by the application's day; a blank is open. A line is never
+deleted: it is retired, or given an end date.
 
 - **Staff.** A line names a kind of position and a number of them, never a person. Levels
   are separate lines with their own `units_each`. By convention one mid-level position
@@ -623,7 +786,7 @@ record cannot be removed.
 lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
 `contact_role`, `location_kind`, `replacement_reason` and `capacity_category`.
 `contact_role` and `location_kind` are loaded with their defaults by release 0.5.0,
-the first to use them. A value is lower-case
+the first to use them, and `capacity_category` by 0.6.0. A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
@@ -641,6 +804,7 @@ and is refused, not rounded, when it has more.
 | `fiscal_year_start_month` | 1 | for reports grouped by fiscal year |
 | `count_states` | Assigned, Test, Prod, Down, Pending-Removal | states that count toward the component count |
 | `weight_states` | Test, Prod, Down | states that carry support weight |
+| `service_states` | Test, Prod, Down | states in which an item is in service, for the coverage report |
 | `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
 | `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
 
@@ -677,7 +841,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
+| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |
@@ -922,14 +1086,21 @@ of four switches.
 
 | Measure | Definition |
 |---|---|
-| Infrastructure demand | Support weight of the chosen scope ÷ `weight_per_resource_unit`. |
+| Infrastructure demand | Support weight of the inventory ÷ `weight_per_resource_unit`. |
 | Demand | Infrastructure demand plus the units of every active demand line in date. |
 | Supply | The units of every active supply line in date, in total and by category. |
 | Balance | Supply − demand. |
 | Coverage | Supply ÷ demand, as a percentage. |
 
 With drafts included, draft lines and draft items are counted as if active, and the
-report shows both results side by side.
+report shows both results side by side: `active` and `with_drafts`. Each number is
+worked out exactly and rounded to two places once, half up. Coverage is blank when
+there is no demand. The report also says how much of the supply is the team's own
+positions, the lines of the category `staff`, and how much is everything else.
+
+The report is of the whole installation. A line may name the region or the site it
+serves, which is kept and shown, and narrows nothing yet: what a report of one region
+would count is not decided.
 
 Worked example, with `weight_per_resource_unit` at its default of 300 and a support
 weight of 2,400:

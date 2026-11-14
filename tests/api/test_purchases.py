@@ -1,0 +1,446 @@
+"""Purchases, external systems and capacity: requests and receiving, registrations, and
+the balance of demand against supply."""
+
+from datetime import date, timedelta
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.api.inventory import API, Maker, errors
+
+TODAY = date.today()
+
+
+def day(offset: int) -> str:
+    return (TODAY + timedelta(days=offset)).isoformat()
+
+
+def _change(make: Maker, path: str, expect: int = 200, **fields: Any) -> dict[str, Any]:
+    now = make.get(path)
+    return make.patch(path, {"row_version": now["row_version"], **fields}, expect)
+
+
+@pytest.fixture
+def entry(make: Maker) -> dict[str, Any]:
+    return make.entry(make.vendor(), support_weight="1")
+
+
+# --- purchases -----------------------------------------------------------------------
+
+
+def _request(make: Maker, entry: dict[str, Any], quantity: int = 4, **more: Any) -> dict:
+    body = {
+        "reference": "RITM0012345",
+        "lines": [{"catalog_entry_hid": entry["hid"], "quantity": quantity}],
+        **more,
+    }
+    return make.post("/purchase-requests", body)
+
+
+def _receive(make: Maker, line: dict[str, Any], *serials: str, expect: int = 201, **more: Any):
+    now = make.get(f"/purchase-lines/{line['hid']}")
+    body = {
+        "row_version": now["row_version"],
+        "items": [{"serial_number": serial} for serial in serials],
+        **more,
+    }
+    return make.post(f"/purchase-lines/{line['hid']}/receive", body, expect)
+
+
+def test_a_request_has_numbered_lines_and_is_no_inventory(make: Maker, entry: dict) -> None:
+    request = _request(make, entry, requested_on="2026-10-05", notes="Access switches")
+    assert (request["status"], request["quantity"], request["pending_quantity"]) == (
+        "pending",
+        4,
+        4,
+    )
+    (first,) = request["lines"]
+    assert (first["name"], first["line"], first["catalog"]["pid"]) == (
+        "RITM0012345/1",
+        1,
+        "C9300-48P",
+    )
+    site = make.site("Site-3", make.region("Americas"), record_status="draft")
+    second = make.post(
+        f"/purchase-requests/{request['hid']}/lines",
+        {
+            "catalog_entry_hid": entry["hid"],
+            "quantity": 2,
+            "destination_site_hid": site["hid"],
+            "expected_on": "2026-12-01",
+        },
+    )
+    assert (second["line"], second["destination_site"]["path"]) == (2, "Americas > Site-3")
+    assert "line" in errors(
+        make.post(
+            f"/purchase-requests/{request['hid']}/lines",
+            {"catalog_entry_hid": entry["hid"], "quantity": 1, "line": 2},
+            409,
+        )
+    )
+    assert "reference" in errors(make.post("/purchase-requests", {"reference": "ritm0012345"}, 409))
+    assert "reference" in errors(make.post("/purchase-requests", {"reference": "A/B"}, 422))
+    # Nothing of a request is in any list or count of items.
+    assert make.get("/items", include_drafts="true")["total"] == 0
+    assert make.totals(include_drafts="true")["items"] == 0
+    lines = make.get(f"/purchase-requests/{request['hid']}/lines", sort="-line")
+    assert [line["line"] for line in lines["items"]] == [2, 1]
+    listed = make.get("/purchase-requests", sort="-pending_quantity,line_count")
+    assert [(one["reference"], one["pending_quantity"]) for one in listed["items"]] == [
+        ("RITM0012345", 6)
+    ]
+    assert make.get("/purchase-requests", filter="pending_quantity:gt:0")["total"] == 1
+    assert make.get("/purchase-lines", filter="site:eq:Site-3 pending_quantity:gte:2")["total"] == 1
+
+
+def test_receiving_creates_the_items_that_arrived_and_never_more_than_the_line(
+    make: Maker, entry: dict
+) -> None:
+    request = _request(make, entry)
+    (line,) = request["lines"]
+    room = make.layout()["room"]
+    received = _receive(
+        make, line, "FCW-1", "FCW-2", delivered_on="2026-11-02", location_hid=room["hid"]
+    )
+    assert (received["received_quantity"], received["pending_quantity"]) == (2, 2)
+    assert [item["serial_number"] for item in received["items"]] == ["FCW-1", "FCW-2"]
+    items = make.get("/items", filter=f"purchase_line_hid:eq:{line['hid']}", sort="serial_number")
+    for item in items["items"]:
+        assert (item["lifecycle_state"], item["delivered_on"]) == ("Delivered", "2026-11-02")
+        assert item["purchase_line"] == {
+            "hid": line["hid"],
+            "name": "RITM0012345/1",
+            "request_hid": request["hid"],
+            "reference": "RITM0012345",
+            "line": 1,
+        }
+        assert item["location"]["path"].endswith("Room 102")
+        (created,) = make.audit(record_type="item", record_hid=item["hid"])
+        assert created["action"] == "create"
+    events = make.audit(record_type="purchase_line", record_hid=line["hid"])
+    assert [event["action"] for event in events] == ["receive", "create"]
+    assert events[0]["changes"] == [{"field": "received_quantity", "old": 0, "new": 2}]
+    # Each item that arrives needs something to know it by, and all arrive or none.
+    body = {"row_version": received["row_version"], "items": [{"serial_number": "FCW-3"}, {}]}
+    refused = make.post(f"/purchase-lines/{line['hid']}/receive", body, 422)
+    assert "items.1.serial_number" in errors(refused)
+    body["items"] = [{"serial_number": "FCW-3"}, {"serial_number": "FCW-1"}]
+    refused = make.post(f"/purchase-lines/{line['hid']}/receive", body, 409)
+    assert "items.1.serial_number" in errors(refused)
+    assert make.get("/items")["total"] == 2
+    # More than is still to come is refused, until the line is given more.
+    assert "items" in errors(_receive(make, line, "FCW-3", "FCW-4", "FCW-5", expect=422))
+    _change(make, f"/purchase-lines/{line['hid']}", quantity=5)
+    _receive(make, line, "FCW-3", "FCW-4", "FCW-5")
+    assert make.get(f"/purchase-requests/{request['hid']}")["pending_quantity"] == 0
+    # A line is never below what has arrived on it, and is taken back by lowering it.
+    assert "quantity" in errors(_change(make, f"/purchase-lines/{line['hid']}", 422, quantity=4))
+    other = make.entry(make.vendor("Juniper"), "EX4400-48P")
+    assert "catalog_entry_hid" in errors(
+        _change(make, f"/purchase-lines/{line['hid']}", 422, catalog_entry_hid=other["hid"])
+    )
+    # The status of a request is what a person says: a delivery does not change it.
+    assert make.get(f"/purchase-requests/{request['hid']}")["status"] == "pending"
+
+
+def test_a_request_that_is_a_draft_or_cancelled_receives_nothing(make: Maker, entry: dict) -> None:
+    request = _request(make, entry, status="draft")
+    (line,) = request["lines"]
+    assert "status" in errors(_receive(make, line, "FCW-1", expect=422))
+    _change(make, f"/purchase-requests/{request['hid']}", status="ordered")
+    _receive(make, line, "FCW-1")
+    _change(make, f"/purchase-requests/{request['hid']}", status="cancelled")
+    assert "status" in errors(_receive(make, line, "FCW-2", expect=422))
+    assert "status" in errors(
+        _change(make, f"/purchase-requests/{request['hid']}", 422, status="lost")
+    )
+
+
+def test_an_item_is_put_on_a_line_by_hand_and_the_line_counts_it(make: Maker, entry: dict) -> None:
+    (line,) = _request(make, entry, quantity=1)["lines"]
+    early = make.item(catalog_entry_hid=entry["hid"], serial_number="FCW-1")
+    linked = make.patch(
+        f"/items/{early['hid']}",
+        {"row_version": early["row_version"], "purchase_line_hid": line["hid"]},
+    )
+    assert linked["purchase_line"]["name"] == "RITM0012345/1"
+    assert make.get(f"/purchase-lines/{line['hid']}")["received_quantity"] == 1
+    # The line has nothing still to come.
+    refused = make.post(
+        "/items",
+        {
+            "catalog_entry_hid": entry["hid"],
+            "serial_number": "FCW-2",
+            "purchase_line_hid": line["hid"],
+        },
+        422,
+    )
+    assert "purchase_line_hid" in errors(refused)
+    assert "purchase_line_hid" in errors(
+        make.post("/items", {"name": "x", "purchase_line_hid": "no-such-line"}, 422)
+    )
+    cleared = make.patch(
+        f"/items/{early['hid']}", {"row_version": linked["row_version"], "purchase_line_hid": None}
+    )
+    assert cleared["purchase_line"] is None
+    assert make.get(f"/purchase-lines/{line['hid']}")["pending_quantity"] == 1
+
+
+# --- external systems ----------------------------------------------------------------
+
+
+def test_a_registration_is_of_one_record_with_one_system_once(make: Maker, entry: dict) -> None:
+    watch = make.post(
+        "/external-systems",
+        {"name": "NetWatch", "kind": "monitoring", "url": "https://netwatch.example.net"},
+    )
+    assert (watch["kind"], watch["registrations"]) == ("monitoring", 0)
+    assert "name" in errors(make.post("/external-systems", {"name": "netwatch"}, 409))
+    assert "url" in errors(make.post("/external-systems", {"name": "X", "url": "netwatch"}, 422))
+    make.post("/external-systems", {"name": "Y", "kind": "telepathy"}, 422)
+    switches = make.switches(entry, "sw", 2)
+    stack = make.stack("site2-sw-stack1", switches)
+    of_stack = make.post(
+        "/registrations",
+        {"system_hid": watch["hid"], "group_hid": stack["hid"], "external_id": "node-1"},
+    )
+    assert (of_stack["status"], of_stack["group"]["name"], of_stack["item"]) == (
+        "registered",
+        "site2-sw-stack1",
+        None,
+    )
+    body = {"system_hid": watch["hid"], "group_hid": stack["hid"]}
+    assert "group_hid" in errors(make.post("/registrations", body, 409))
+    both = {"system_hid": watch["hid"], "group_hid": stack["hid"], "item_hid": switches[0]["hid"]}
+    assert "item_hid" in errors(make.post("/registrations", both, 422))
+    assert "item_hid" in errors(make.post("/registrations", {"system_hid": watch["hid"]}, 422))
+    # On the stack, and not on its members.
+    assert [
+        one["system"]["name"] for one in make.get(f"/device-groups/{stack['hid']}")["registrations"]
+    ] == ["NetWatch"]
+    assert make.get(f"/items/{switches[0]['hid']}")["registrations"] == []
+    of_item = make.post(
+        "/registrations",
+        {
+            "system_hid": watch["hid"],
+            "item_hid": switches[1]["hid"],
+            "confirmed_at": "2026-11-02T10:00:00",
+        },
+    )
+    # A moment with no zone is in the application's time zone: New York, in winter.
+    assert of_item["confirmed_at"] == "2026-11-02T15:00:00Z"
+    ahead = {"row_version": of_item["row_version"], "confirmed_at": day(3) + "T00:00:00Z"}
+    assert "confirmed_at" in errors(make.patch(f"/registrations/{of_item['hid']}", ahead, 422))
+    assert make.found(filter="registration.system:eq:netwatch") == ["sw-02"]
+    assert make.found(filter="registration.system:ne:NetWatch") == ["sw-01"]
+    assert make.get("/device-groups", filter="registration.system:eq:NetWatch")["total"] == 1
+    make.get("/items", sort="registration.system")
+    assert make.get(f"/external-systems/{watch['hid']}")["registrations"] == 2
+    # One that ends is given the status removed, and is the same record when it begins again.
+    removed = _change(make, f"/registrations/{of_item['hid']}", status="removed")
+    assert removed["status"] == "removed"
+    assert make.found(filter="registration.system:eq:NetWatch") == []
+    assert make.get(f"/external-systems/{watch['hid']}")["registrations"] == 1
+    assert make.get("/registrations", filter="status:eq:removed")["total"] == 1
+    assert (
+        make.client.delete(
+            f"{API}/registrations/{of_item['hid']}", headers=make.headers
+        ).status_code
+        == 405
+    )
+    back = _change(make, f"/registrations/{of_item['hid']}", status="registered")
+    assert back["hid"] == of_item["hid"]
+    # A retired system takes no new registration, and keeps the ones it has.
+    make.post(
+        f"/external-systems/{watch['hid']}/retire",
+        {"row_version": make.get(f"/external-systems/{watch['hid']}")["row_version"]},
+        200,
+    )
+    third = make.item(name="third")
+    assert "system_hid" in errors(
+        make.post("/registrations", {"system_hid": watch["hid"], "item_hid": third["hid"]}, 422)
+    )
+    assert make.get("/registrations", sort="holder,-system.name")["total"] == 2
+    assert [
+        event["action"]
+        for event in make.audit(record_type="registration", record_hid=of_item["hid"])
+    ] == ["update", "update", "create"]
+
+
+# --- capacity ------------------------------------------------------------------------
+
+
+def _line(
+    make: Maker,
+    side: str,
+    category: str | None,
+    name: str,
+    quantity: str,
+    units: str,
+    expect: int = 201,
+    **more: Any,
+):
+    body = {"side": side, "name": name, "quantity": quantity, "units_each": units, **more}
+    if category is not None:
+        body["category"] = category
+    return make.post("/capacity-lines", body, expect)
+
+
+def test_what_a_capacity_line_must_be(make: Maker) -> None:
+    staff = _line(make, "supply", "staff", "Network engineer", "3", "1.0", annual_cost="1.50")
+    assert (staff["units"], staff["category_label"], staff["in_date"]) == ("3", "Staff", True)
+    # A demand line is other work, whether or not it says so.
+    project = _line(make, "demand", None, "Site consolidation", "1", "1.5")
+    assert project["category"] == "other_work"
+    assert "category" in errors(_line(make, "supply", None, "No category", "1", "1", 422))
+    assert "category" in errors(_line(make, "supply", "other_work", "Wrong side", "1", "1", 422))
+    assert "category" in errors(_line(make, "demand", "staff", "Wrong side", "1", "1", 422))
+    assert "category" in errors(_line(make, "supply", "magic", "No such", "1", "1", 422))
+    # The name is unique on its side.
+    assert "name" in errors(_line(make, "supply", "tools", "network engineer", "1", "1", 409))
+    _line(make, "demand", None, "Network engineer", "1", "1")
+    assert "ends_on" in errors(
+        _line(make, "supply", "tools", "Dates", "1", "1", 422, starts_on=day(5), ends_on=day(1))
+    )
+    region = make.region("Americas")
+    site = make.site("Site-2", region)
+    assert "site_hid" in errors(
+        _line(
+            make,
+            "supply",
+            "tools",
+            "Both",
+            "1",
+            "1",
+            422,
+            region_hid=region["hid"],
+            site_hid=site["hid"],
+        )
+    )
+    served = _line(make, "supply", "smart_hands", "Smart hands", "1", "0.5", site_hid=site["hid"])
+    assert served["site"]["path"] == "Americas > Site-2"
+    assert (
+        make.patch(
+            f"/capacity-lines/{staff['hid']}",
+            {"row_version": staff["row_version"], "units_each": "0.25"},
+        )["units"]
+        == "0.75"
+    )
+    listed = make.get("/capacity-lines", sort="-units", filter="side:eq:supply")
+    assert [line["name"] for line in listed["items"]] == ["Network engineer", "Smart hands"]
+    assert make.get("/capacity-lines", filter="units:gte:0.75 in_date:eq:true")["total"] == 3
+    retired = make.post(
+        f"/capacity-lines/{project['hid']}/retire", {"row_version": project["row_version"]}, 200
+    )
+    assert retired["record_status"] == "retired"
+    assert make.get("/capacity-lines", filter="side:eq:demand")["total"] == 1
+    # A category in use is not removed from its list.
+    staff_choice = next(
+        c for c in make.get("/choices", list="capacity_category") if c["value"] == "staff"
+    )
+    assert (
+        make.client.delete(f"{API}/choices/{staff_choice['hid']}", headers=make.headers).status_code
+        == 409
+    )
+
+
+def test_the_balance_is_exact_and_counts_what_is_in_date(
+    make: Maker, entry: dict, admin: dict
+) -> None:
+    empty = make.get("/reports/capacity")["active"]
+    assert (empty["demand"], empty["supply"], empty["balance"]) == ("0", "0", "0")
+    assert (empty["coverage_pct"], empty["own_share_pct"]) == (None, None)
+    assert [row["category"] for row in empty["by_category"]] == [
+        "staff",
+        "professional_services",
+        "smart_hands",
+        "tools",
+        "services",
+    ]
+    # A support weight of 1,000 at 300 to the unit is three and a third units.
+    heavy = make.entry(make.vendor("Juniper"), "MX960", support_weight="1000")
+    make.item(catalog_entry_hid=heavy["hid"], serial_number="JN-1", lifecycle_state="Prod")
+    make.item(
+        catalog_entry_hid=heavy["hid"],
+        serial_number="JN-2",
+        lifecycle_state="Prod",
+        record_status="draft",
+    )
+    _line(make, "supply", "staff", "Engineer", "3", "1.0", annual_cost="300000.00")
+    _line(make, "supply", "tools", "Tooling", "1", "0.33")
+    _line(
+        make,
+        "supply",
+        "services",
+        "What-if",
+        "2",
+        "1.5",
+        record_status="draft",
+        annual_cost="10.00",
+    )
+    _line(make, "supply", "tools", "Not yet", "1", "5", starts_on=day(5))
+    _line(make, "supply", "tools", "No longer", "1", "5", ends_on=day(-5))
+    report = make.get("/reports/capacity")
+    active, drafts = report["active"], report["with_drafts"]
+    assert (active["support_weight"], active["infrastructure_demand"]) == ("1000", "3.33")
+    assert (active["supply"], active["balance"], active["coverage_pct"]) == ("3.33", "0", "99.9")
+    assert (active["own_units"], active["outside_units"], active["own_share_pct"]) == (
+        "3",
+        "0.33",
+        "90.09",
+    )
+    assert active["annual_cost"] == "300000.00"
+    assert (drafts["support_weight"], drafts["infrastructure_demand"]) == ("2000", "6.67")
+    assert (drafts["supply"], drafts["balance"], drafts["annual_cost"]) == (
+        "6.33",
+        "-0.34",
+        "300010.00",
+    )
+    # The setting decides how much weight one unit carries.
+    set_ = make.client.put(
+        f"{API}/settings/weight_per_resource_unit",
+        json={"row_version": 0, "value": 500},
+        headers=admin,
+    )
+    assert set_.status_code == 200, set_.text
+    assert make.get("/reports/capacity")["active"]["infrastructure_demand"] == "2"
+
+
+WRITES = (
+    ("post", "/purchase-requests"),
+    ("patch", "/purchase-requests/x"),
+    ("post", "/purchase-requests/x/lines"),
+    ("patch", "/purchase-lines/x"),
+    ("post", "/purchase-lines/x/receive"),
+    ("post", "/external-systems"),
+    ("patch", "/external-systems/x"),
+    ("post", "/external-systems/x/retire"),
+    ("post", "/registrations"),
+    ("patch", "/registrations/x"),
+    ("post", "/capacity-lines"),
+    ("patch", "/capacity-lines/x"),
+    ("post", "/capacity-lines/x/retire"),
+)
+
+
+@pytest.mark.parametrize(("method", "path"), WRITES)
+def test_every_write_needs_the_inventory_role(
+    client: TestClient, viewer: dict[str, str], method: str, path: str
+) -> None:
+    assert client.request(method, API + path, json={}, headers=viewer).status_code == 403
+    assert client.request(method, API + path, json={}).status_code == 401
+
+
+def test_a_viewer_reads_all_of_it(client: TestClient, viewer: dict[str, str]) -> None:
+    for path in (
+        "/purchase-requests",
+        "/purchase-lines",
+        "/external-systems",
+        "/registrations",
+        "/capacity-lines",
+        "/reports/capacity",
+        "/reports/end-of-life",
+        "/reports/replacements",
+    ):
+        assert client.get(API + path, headers=viewer).status_code == 200, path

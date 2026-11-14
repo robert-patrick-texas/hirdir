@@ -104,7 +104,7 @@ def test_export_writes_what_the_api_exports(
     assert "wrote" in written.stderr
     sources = run("export", "catalog-entries", "--include-sources", "--format", "json").stdout
     assert json.loads(sources)["records"][0]["stack_discount_pct_source"] == "setting"
-    run("export", "contracts", expect=4)
+    run("export", "observations", expect=4)
 
 
 def test_an_item_is_shown_by_whatever_it_is_known_by(run, make: Maker, switches: list) -> None:
@@ -373,7 +373,7 @@ def test_the_summary_is_printed_whole_and_by_what_items_share(
         run("report", "summary", "--filter", "is_major:eq:false", "--format", "json").stdout
     )
     assert (filtered["totals"]["items"], filtered["totals"]["component_count"]) == (1, 0)
-    run("report", "summary", "--by", "contract", expect=4)
+    run("report", "summary", "--by", "serial_number", expect=4)
     run("report", "summary", "--format", "xml", expect=2)
 
 

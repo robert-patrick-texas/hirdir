@@ -15,14 +15,17 @@ import hirdir
 from hirdir.api import (
     addresses,
     catalog,
+    contracts,
     files,
     geography,
     groups,
     items,
     labels,
     problems,
+    purchases,
     reports,
     routes,
+    systems,
 )
 from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
@@ -39,6 +42,9 @@ ROUTERS = (
     *groups.ROUTERS,
     *addresses.ROUTERS,
     *geography.ROUTERS,
+    *contracts.ROUTERS,
+    *purchases.ROUTERS,
+    *systems.ROUTERS,
     *reports.ROUTERS,
     *labels.ROUTERS,
     *files.ROUTERS,

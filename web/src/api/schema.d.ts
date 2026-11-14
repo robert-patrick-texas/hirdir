@@ -203,6 +203,173 @@ export interface paths {
       };
     };
   };
+  "/api/v1/agreements": {
+    /** List support agreements, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_AgreementOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a support agreement with a vendor, such as an enterprise agreement.
+     * Contracts are grouped into it by their `agreement_hid`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AgreementCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["AgreementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/agreements/{hid}": {
+    /**
+     * Return one support agreement. Its contracts are `GET /contracts` with
+     * `agreement_hid` in the filter.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AgreementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change an agreement. Every contract in it that says nothing of its own has the
+     * change at once, and so has every item under those contracts: none is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AgreementPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AgreementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/agreements/{hid}/retire": {
+    /** Retire an agreement, once no contract that is not retired is in it. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AgreementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/audit-events": {
     /** List audit events, newest first unless a sort says otherwise. */
     get: {
@@ -311,6 +478,170 @@ export interface paths {
         /** Successful Response */
         204: {
           content?: never;
+        };
+      };
+    };
+  };
+  "/api/v1/capacity-lines": {
+    /**
+     * List capacity lines: the supply first, by category and name, unless a sort says
+     * otherwise.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CapacityLineOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a capacity line: a source of resource units, or other work that calls on
+     * them. A draft line is a what-if.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CapacityLineCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CapacityLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/capacity-lines/{hid}": {
+    /** Return one capacity line. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a capacity line. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CapacityLinePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/capacity-lines/{hid}/retire": {
+    /** Retire a capacity line. It counts for nothing any more. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
         };
       };
     };
@@ -929,6 +1260,396 @@ export interface paths {
       };
     };
   };
+  "/api/v1/contract-coverage": {
+    /**
+     * List coverage under every contract: that of one item with `item_hid` in the
+     * filter, that of one contract with `contract_hid`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CoverageOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts": {
+    /** List contracts, by number unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ContractOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a contract, by itself or in an agreement. Items are put under it with
+     * its coverage.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ContractOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}": {
+    /** Return one contract. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a contract. Every item under it shows the change at once, and no item
+     * and no coverage is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/coverage": {
+    /**
+     * List the items under a contract, with the days of each: filtered, sorted and
+     * paged as a list is. `in_force:eq:true` keeps to what it covers today.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CoverageOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Put items under a contract, several at a time: all of them, or none.
+     *
+     * A coverage with no dates of its own is for the contract's period, whatever that
+     * becomes when the contract is renewed.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CoverageAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CoverageOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/coverage/{coverage_hid}": {
+    /**
+     * Change the days of a coverage. It is ended by giving it `ends_on`, and is never
+     * removed.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          coverage_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CoveragePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CoverageOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/renew": {
+    /**
+     * Renew a contract: give it its new number, its new period, or both.
+     *
+     * It is one change of the one record. Every item in scope has the new number and the
+     * new period at once. The term it had is kept in the audit trail, and is listed by
+     * `GET /contracts/{hid}/terms`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractRenew"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/retire": {
+    /** Retire a contract. Its coverages stay on record, and cover nothing any more. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/terms": {
+    /**
+     * List the terms a contract had before it was renewed, the latest first: its
+     * purchase history.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractTerm"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups": {
     /**
      * List device groups, by name unless a sort says otherwise.
@@ -1266,6 +1987,164 @@ export interface paths {
       };
     };
   };
+  "/api/v1/external-systems": {
+    /** List external systems, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ExternalSystemOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create an external system: a monitoring tool, an SDN controller, a cloud service. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ExternalSystemCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ExternalSystemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/external-systems/{hid}": {
+    /** Return one external system. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ExternalSystemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change an external system. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ExternalSystemPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ExternalSystemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/external-systems/{hid}/retire": {
+    /** Retire an external system. Its registrations stay on record. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ExternalSystemOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/geography/tree": {
     /**
      * Return the regions, their sites and the locations within them as one tree, each
@@ -1398,7 +2277,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -1412,7 +2291,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -2852,6 +3731,345 @@ export interface paths {
       };
     };
   };
+  "/api/v1/purchase-lines": {
+    /**
+     * List the lines of every purchase request. `pending_quantity:gt:0` keeps to what
+     * is still to come: the planning list.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_PurchaseLineOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/purchase-lines/{hid}": {
+    /** Return one purchase line. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PurchaseLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a purchase line. Its quantity is never below what has arrived on it: a
+     * line is taken back by lowering it to that.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PurchaseLinePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PurchaseLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/purchase-lines/{hid}/receive": {
+    /**
+     * Receive items on a line: each is created in Delivered, of the line's model, and
+     * names the line. Either all of them are created or none is.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["Receive"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ReceivedOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/purchase-requests": {
+    /** List purchase requests, by reference unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_PurchaseRequestOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a purchase request, with its lines if they are known. Nothing of it is
+     * inventory until a line is received.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PurchaseRequestCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["PurchaseRequestOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/purchase-requests/{hid}": {
+    /** Return one purchase request, with its lines. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PurchaseRequestOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a purchase request. Its status is what a person says of it. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PurchaseRequestPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PurchaseRequestOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/purchase-requests/{hid}/lines": {
+    /**
+     * List the lines of a purchase request, by their numbers unless a sort says
+     * otherwise.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_PurchaseLineOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Add a line to a purchase request: a model and how many. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PurchaseLineAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["PurchaseLineOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/regions": {
     /** List regions, by name unless a sort says otherwise. */
     get: {
@@ -3073,6 +4291,207 @@ export interface paths {
       };
     };
   };
+  "/api/v1/registrations": {
+    /**
+     * List registrations: those of one system with `system_hid` in the filter, those
+     * of one item or group with `item_hid` or `group_hid`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_RegistrationOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Register one item or one device group with an external system.
+     *
+     * A stack that the system knows as one device is registered as the stack: the
+     * registration is then on the stack, and not on its members.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RegistrationCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["RegistrationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/registrations/{hid}": {
+    /** Return one registration. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RegistrationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a registration. One that ends is given the status `removed`, and is
+     * never deleted.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RegistrationPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RegistrationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/capacity": {
+    /**
+     * Return the capacity balance of the whole installation as of today: demand
+     * against supply, without the drafts and with them.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityOut"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/coverage": {
+    /**
+     * Say what contracts cover today: the items in service that none covers, the items
+     * covered though out of service, and those whose cover runs out soon.
+     *
+     * Each of the three is a list of items. `section` asks for a page of one, and each
+     * says the filter that lists the same items on `GET /items`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the item list, in the short form or as JSON. */
+          filter?: string;
+          /** How far ahead cover that runs out is looked for. */
+          within_days?: number;
+          /** The list to return a page of. */
+          section?: "uncovered" | "out_of_service" | "expiring" | null;
+          /** As the item list is sorted. For a section. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CoverageReport"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/duplicates": {
     /**
      * List each address that is held more than once under one network.
@@ -3113,6 +4532,51 @@ export interface paths {
       };
     };
   };
+  "/api/v1/reports/end-of-life": {
+    /**
+     * Count the items of a view that are past, and that approach, each of the four
+     * end-of-life dates, and those of one date by fiscal year. It holds no money.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the item list, in the short form or as JSON. */
+          filter?: string;
+          /** Which of the four dates the lists are of. */
+          date?: "end_of_sale" | "end_of_sw_support" | "end_of_hw_support" | "ldos";
+          /** How far ahead a date counts as approaching. */
+          within_days?: number;
+          /** The list to return a page of. */
+          section?: "past" | "approaching" | null;
+          /** As the item list is sorted. For a section. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["EndOfLifeReport"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/management": {
     /**
      * Return the estimated value and the annual support cost of a view of the items.
@@ -3126,7 +4590,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -3152,6 +4616,41 @@ export interface paths {
       };
     };
   };
+  "/api/v1/reports/replacements": {
+    /**
+     * List the replacements: the item that left and the item that took its place,
+     * with the count of each reason among all that the filter matches.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the replacements, in the short form or as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. The newest first. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ReplacementsReport"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/summary": {
     /**
      * Count a view of the items: components, managed nodes, support weight and health.
@@ -3165,7 +4664,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
           /** With `by`: list in each row the operators in force among its items. */
           operators?: boolean;
           /** Count retired records and items in Archived as well. */
@@ -4188,6 +5687,42 @@ export interface paths {
       };
     };
   };
+  "/api/v1/vendors/{hid}/portfolio": {
+    /**
+     * Return everything from one vendor in one place: its items as a whole, by kind
+     * and by model, with their cover and their dates, its contracts, and the capacity
+     * lines that name it. The items themselves are the item list with `filter`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PortfolioOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
 }
 
 /** Every record the routes take and return. */
@@ -4267,6 +5802,97 @@ export interface components {
       network_hid: string | null;
       role: string;
     };
+    /** A new support agreement. Contracts are put into it afterwards. */
+    AgreementCreate: {
+      account_manager?: string | null;
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      name: string;
+      notes?: string | null;
+      number?: string | null;
+      purchase_reference?: string | null;
+      record_status?: "draft" | "active";
+      reseller_hid?: string | null;
+      starts_on?: string | null;
+      status?: "active" | "expired" | "pending" | "cancelled";
+      support_contact?: string | null;
+      support_level?: string | null;
+      support_url?: string | null;
+      tags?: string[];
+      vendor_hid: string;
+    };
+    /**
+     * A support agreement with a vendor, such as an enterprise agreement, that groups
+     * contracts. A contract in it has from it what the contract leaves blank.
+     */
+    AgreementOut: {
+      /** Whom to ask about it: free text. */
+      account_manager: string | null;
+      /** The agreement's own total, added to nothing. */
+      annual_cost: string | null;
+      /** How many contracts that are not retired are in it. */
+      contracts: number;
+      created_at: string;
+      ends_on: string | null;
+      hid: string;
+      name: string;
+      notes: string | null;
+      /** The agreement's own number, if it has one. */
+      number: string | null;
+      purchase_reference: string | null;
+      record_status: "draft" | "active" | "retired";
+      reseller: components["schemas"]["VendorRef"] | null;
+      reseller_hid: string | null;
+      row_version: number;
+      starts_on: string | null;
+      status: "active" | "expired" | "pending" | "cancelled";
+      /** Whom to call for support: free text. */
+      support_contact: string | null;
+      support_level: string | null;
+      support_url: string | null;
+      tags: string[];
+      updated_at: string;
+      vendor: components["schemas"]["VendorRef"];
+      vendor_hid: string;
+    };
+    /**
+     * Fields of an agreement to change, and the version they were read at. Every
+     * contract in it that says nothing of its own shows the change at once.
+     */
+    AgreementPatch: {
+      account_manager?: string | null;
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      number?: string | null;
+      purchase_reference?: string | null;
+      record_status?: "draft" | "active" | null;
+      reseller_hid?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      support_contact?: string | null;
+      support_level?: string | null;
+      support_url?: string | null;
+      tags?: string[] | null;
+      vendor_hid?: string | null;
+    };
+    /** A support agreement, as named on a contract that is in it. */
+    AgreementRef: {
+      hid: string;
+      name: string;
+      number: string | null;
+    };
+    /** One item that arrived on a line: something to know it by. */
+    Arrived: {
+      asset_tag?: string | null;
+      comments?: string | null;
+      hostname?: string | null;
+      mac_address?: string | null;
+      name?: string | null;
+      serial_number?: string | null;
+    };
     /** The place of an assignment, and which of the three it is. */
     AssignedPlace: {
       hid: string;
@@ -4344,6 +5970,101 @@ export interface components {
       set?: {
         [key: string]: unknown;
       };
+    };
+    /** The supply of one category. */
+    CapacityCategory: {
+      annual_cost: string;
+      category: string;
+      label: string;
+      lines: number;
+      units: string;
+    };
+    /** A new capacity line. */
+    CapacityLineCreate: {
+      annual_cost?: string | null;
+      /** A value of the capacity_category list. Left out on a demand line. */
+      category?: string | null;
+      ends_on?: string | null;
+      name: string;
+      notes?: string | null;
+      quantity?: string;
+      record_status?: "draft" | "active";
+      region_hid?: string | null;
+      side: "supply" | "demand";
+      site_hid?: string | null;
+      starts_on?: string | null;
+      units_each: string;
+      vendor_hid?: string | null;
+    };
+    /** A source of resource units, or a call on them other than the infrastructure. */
+    CapacityLineOut: {
+      annual_cost: string | null;
+      category: string;
+      category_label: string;
+      created_at: string;
+      ends_on: string | null;
+      hid: string;
+      /** It counts today: not before it starts, not after it ends. */
+      in_date: boolean;
+      name: string;
+      notes: string | null;
+      quantity: string;
+      record_status: "draft" | "active" | "retired";
+      region: components["schemas"]["PlaceRef"] | null;
+      region_hid: string | null;
+      row_version: number;
+      side: "supply" | "demand";
+      site: components["schemas"]["PlaceRef"] | null;
+      site_hid: string | null;
+      starts_on: string | null;
+      /** `quantity` times `units_each`. */
+      units: string;
+      units_each: string;
+      updated_at: string;
+      vendor: components["schemas"]["VendorRef"] | null;
+      vendor_hid: string | null;
+    };
+    /** Fields of a capacity line to change, and the version they were read at. */
+    CapacityLinePatch: {
+      annual_cost?: string | null;
+      category?: string | null;
+      ends_on?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      quantity?: string | null;
+      record_status?: "draft" | "active" | null;
+      region_hid?: string | null;
+      row_version: number;
+      site_hid?: string | null;
+      starts_on?: string | null;
+      units_each?: string | null;
+      vendor_hid?: string | null;
+    };
+    /** Demand against supply for the whole installation, with and without the drafts. */
+    CapacityOut: {
+      active: components["schemas"]["CapacityView"];
+      as_of: string;
+      weight_per_resource_unit: string;
+      with_drafts: components["schemas"]["CapacityView"];
+    };
+    /** The balance of one view. */
+    CapacityView: {
+      /** What the supply lines cost a year. */
+      annual_cost: string;
+      /** Supply less demand. */
+      balance: string;
+      by_category: components["schemas"]["CapacityCategory"][];
+      /** Supply over demand. Blank with no demand. */
+      coverage_pct: string | null;
+      demand: string;
+      infrastructure_demand: string;
+      other_demand: string;
+      outside_units: string;
+      own_share_pct: string | null;
+      /** The supply that is the team's own positions. */
+      own_units: string;
+      supply: string;
+      support_weight: string;
     };
     /** The values in force of the fields a catalog entry inherits. */
     CatalogEffective: {
@@ -4506,6 +6227,144 @@ export interface components {
       phone: string | null;
       record_status: "draft" | "active" | "retired";
     };
+    /** A new contract. Items are put under it afterwards. */
+    ContractCreate: {
+      account_manager?: string | null;
+      agreement_hid?: string | null;
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      notes?: string | null;
+      number: string;
+      purchase_reference?: string | null;
+      record_status?: "draft" | "active";
+      reseller_hid?: string | null;
+      starts_on?: string | null;
+      status?: "active" | "expired" | "pending" | "cancelled";
+      support_contact?: string | null;
+      support_level?: string | null;
+      support_url?: string | null;
+      tags?: string[];
+      /** Left out, the vendor of the agreement it is put into. */
+      vendor_hid?: string | null;
+    };
+    /** What a contract has in force of the fields it may have from its agreement. */
+    ContractEffective: {
+      account_manager: components["schemas"]["EffectiveValue"];
+      ends_on: components["schemas"]["EffectiveValue"];
+      reseller_hid: components["schemas"]["EffectiveReference"];
+      starts_on: components["schemas"]["EffectiveValue"];
+      support_contact: components["schemas"]["EffectiveValue"];
+      support_level: components["schemas"]["EffectiveValue"];
+      support_url: components["schemas"]["EffectiveValue"];
+    };
+    /**
+     * A support contract. It is one record for every item it covers: what it says is
+     * said here, once. A field it may have from its agreement holds the contract's own
+     * value, and `effective` the value in force with its source.
+     */
+    ContractOut: {
+      /** Whom to ask about the contract: free text. */
+      account_manager: string | null;
+      /** The agreement it is grouped into. Blank for one that stands by itself. */
+      agreement: components["schemas"]["AgreementRef"] | null;
+      agreement_hid: string | null;
+      /** The contract's own total, added to nothing. */
+      annual_cost: string | null;
+      /** How many items it covers today. */
+      covered_items: number;
+      /** Active in both senses, and today is within its dates. */
+      covers_today: boolean;
+      created_at: string;
+      effective: components["schemas"]["ContractEffective"];
+      ends_on: string | null;
+      hid: string;
+      /** How many items have a coverage under it that has not been ended. */
+      items_in_scope: number;
+      notes: string | null;
+      number: string;
+      /** The request or tracking number the present term was bought under. */
+      purchase_reference: string | null;
+      record_status: "draft" | "active" | "retired";
+      /** The vendor it was bought through. */
+      reseller: components["schemas"]["VendorRef"] | null;
+      reseller_hid: string | null;
+      row_version: number;
+      starts_on: string | null;
+      /** What a person says of it. Never set by the clock. */
+      status: "active" | "expired" | "pending" | "cancelled";
+      /** Whom to call for support: free text. */
+      support_contact: string | null;
+      support_level: string | null;
+      /** Where support is reached online. */
+      support_url: string | null;
+      tags: string[];
+      updated_at: string;
+      /** The manufacturer or the provider. */
+      vendor: components["schemas"]["VendorRef"];
+      vendor_hid: string;
+    };
+    /**
+     * Fields of a contract to change, and the version they were read at. Every item
+     * under it shows the change at once.
+     */
+    ContractPatch: {
+      account_manager?: string | null;
+      /** Puts the contract into an agreement, or with null takes it out of one. */
+      agreement_hid?: string | null;
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      notes?: string | null;
+      number?: string | null;
+      purchase_reference?: string | null;
+      record_status?: "draft" | "active" | null;
+      reseller_hid?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      support_contact?: string | null;
+      support_level?: string | null;
+      support_url?: string | null;
+      tags?: string[] | null;
+      vendor_hid?: string | null;
+    };
+    /** A contract, as named on what it covers. */
+    ContractRef: {
+      hid: string;
+      number: string;
+      record_status: "draft" | "active" | "retired";
+      status: "active" | "expired" | "pending" | "cancelled";
+      /** The name of its vendor. */
+      vendor: string;
+    };
+    /**
+     * A renewal: the new number, the new period, or both, and what else changes with
+     * them. A field that is left out stays as it is.
+     */
+    ContractRenew: {
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      notes?: string | null;
+      number?: string | null;
+      purchase_reference?: string | null;
+      reseller_hid?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+      /** Left out, `active`. */
+      status?: "active" | "expired" | "pending" | "cancelled" | null;
+      support_level?: string | null;
+    };
+    /** A term a contract had before it was renewed. */
+    ContractTerm: {
+      annual_cost: string | null;
+      ends_on: string | null;
+      number: string;
+      purchase_reference: string | null;
+      /** When the renewal that ended this term was made. */
+      renewed_at: string;
+      renewed_by: string | null;
+      renewed_by_name: string | null;
+      starts_on: string | null;
+    };
     /** A controller of an endpoint, with the cluster it is in. */
     ControllerRef: {
       asset_tag: string | null;
@@ -4525,6 +6384,90 @@ export interface components {
       items: number;
       key: string | null;
       label: string | null;
+    };
+    /** Items to put under a contract together: all of them, or none. */
+    CoverageAdd: {
+      items: components["schemas"]["CoverageEntry"][];
+    };
+    /** One item to put under a contract. */
+    CoverageEntry: {
+      /** Left out, the contract's. */
+      ends_on?: string | null;
+      item_hid: string;
+      /** Left out, the contract's. */
+      starts_on?: string | null;
+    };
+    /** One item under one contract, for a range of days. */
+    CoverageOut: {
+      contract: components["schemas"]["ContractRef"];
+      contract_hid: string;
+      created_at: string;
+      /** The day it ends in force. */
+      effective_ends_on: string | null;
+      /** The day it starts in force. */
+      effective_starts_on: string | null;
+      /** Its own. Blank takes the contract's. */
+      ends_on: string | null;
+      hid: string;
+      /** It covers the item today. */
+      in_force: boolean;
+      item: components["schemas"]["ItemRef"];
+      item_hid: string;
+      /** The item's own lifecycle state. */
+      item_lifecycle_state: string | null;
+      item_record_status: "draft" | "active" | "retired";
+      row_version: number;
+      /** Its own. Blank takes the contract's. */
+      starts_on: string | null;
+      updated_at: string;
+    };
+    /**
+     * The days of a coverage to change, and the version they were read at. A coverage
+     * is ended by giving it `ends_on`.
+     */
+    CoveragePatch: {
+      ends_on?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+    };
+    /** One coverage of an item: the contract, and the days in force. */
+    CoverageRef: {
+      contract: components["schemas"]["ContractRef"];
+      contract_hid: string;
+      /** The day it ends in force. Blank is open. */
+      ends_on: string | null;
+      /** The coverage. */
+      hid: string;
+      /** It covers the item today. */
+      in_force: boolean;
+      /** The day it starts in force. Blank is open. */
+      starts_on: string | null;
+    };
+    /** What contracts cover, of a view of the items, today. */
+    CoverageReport: {
+      as_of: string;
+      items: components["schemas"]["ItemOut"][];
+      limit: number;
+      offset: number;
+      section: "uncovered" | "out_of_service" | "expiring" | null;
+      sections: {
+        [key: string]: components["schemas"]["ReportSection"];
+      };
+      service_states: string[];
+      total: number;
+      totals: components["schemas"]["CoverageTotals"];
+      within_days: number;
+    };
+    /** The counts of the coverage report. */
+    CoverageTotals: {
+      covered: number;
+      /** In service, and the cover runs out within the days. */
+      expiring: number;
+      /** Major items whose state in force is a service state. */
+      in_service: number;
+      /** Items covered today though out of service. */
+      out_of_service: number;
+      uncovered: number;
     };
     /** A new device group, with its first members if they are known. */
     DeviceGroupCreate: {
@@ -4596,6 +6539,8 @@ export interface components {
       planned_location: components["schemas"]["LocationRef"] | null;
       planned_location_hid: string | null;
       record_status: "draft" | "active" | "retired";
+      /** The external systems the group is registered with, as one device. */
+      registrations: components["schemas"]["RegistrationRef"][];
       row_version: number;
       /** For a stack: the serial number of the master that is seen, or else of the one intended, read as it is asked for. */
       serial_number: string | null;
@@ -4673,7 +6618,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label: string | null;
@@ -4690,7 +6635,7 @@ export interface components {
       is_open: boolean;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
@@ -4710,7 +6655,7 @@ export interface components {
     EffectiveReference: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -4733,15 +6678,33 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
+    };
+    /** The items of a view that are past, or near, an end-of-life date. */
+    EndOfLifeReport: {
+      as_of: string;
+      by_fiscal_year: components["schemas"]["FiscalYearCount"][];
+      date: "end_of_sale" | "end_of_sw_support" | "end_of_hw_support" | "ldos";
+      dates: {
+        [key: string]: components["schemas"]["PastAndApproaching"];
+      };
+      items: components["schemas"]["ItemOut"][];
+      limit: number;
+      offset: number;
+      section: "past" | "approaching" | null;
+      sections: {
+        [key: string]: components["schemas"]["ReportSection"];
+      };
+      total: number;
+      within_days: number;
     };
     /** What to export. The filter and the sort are those of a list. */
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -4756,6 +6719,46 @@ export interface components {
       /** Stored values and not the ones in force: the form to import back. */
       own_values?: boolean;
       sort?: string[];
+    };
+    /** A new external system. */
+    ExternalSystemCreate: {
+      kind?: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other";
+      name: string;
+      notes?: string | null;
+      record_status?: "draft" | "active";
+      url?: string | null;
+    };
+    /** Another system that knows items or groups. */
+    ExternalSystemOut: {
+      created_at: string;
+      hid: string;
+      kind: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other";
+      name: string;
+      notes: string | null;
+      record_status: "draft" | "active" | "retired";
+      /** How many records are registered with it, those removed not counted. */
+      registrations: number;
+      row_version: number;
+      updated_at: string;
+      url: string | null;
+    };
+    /** Fields of an external system to change, and the version they were read at. */
+    ExternalSystemPatch: {
+      kind?: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other" | null;
+      name?: string | null;
+      notes?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      url?: string | null;
+    };
+    /** The items whose date falls in one fiscal year. */
+    FiscalYearCount: {
+      component_count: number;
+      ends_on: string;
+      /** Named for the calendar year it ends in. */
+      fiscal_year: number;
+      items: number;
+      starts_on: string;
     };
     /** A region, a site or a location, with what is at or beneath it. */
     GeographyNode: {
@@ -4958,6 +6961,8 @@ export interface components {
       /** Where in its parent: PS-A, Slot 3. */
       position?: string | null;
       procured_on?: string | null;
+      /** The line of a purchase request it arrived on. */
+      purchase_line_hid?: string | null;
       quantity?: number;
       record_status?: "draft" | "active";
       serial_number?: string | null;
@@ -5006,6 +7011,12 @@ export interface components {
       condition: string | null;
       /** For an endpoint of a controller domain: the controllers of that domain. */
       controllers: components["schemas"]["ControllerRef"][];
+      /** Its coverages under contracts. */
+      coverage: components["schemas"]["CoverageRef"][];
+      /** A contract covers it today. */
+      covered: boolean;
+      /** The last day its cover runs to. Blank when a coverage names no end, and when there is none. */
+      covered_until: string | null;
       created_at: string;
       created_by: string | null;
       delivered_on: string | null;
@@ -5060,8 +7071,13 @@ export interface components {
       /** Where in its parent a minor item is. */
       position: string | null;
       procured_on: string | null;
+      /** The line of a purchase request it arrived on. */
+      purchase_line: components["schemas"]["PurchaseLineRef"] | null;
+      purchase_line_hid: string | null;
       quantity: number;
       record_status: "draft" | "active" | "retired";
+      /** The external systems it is registered with. */
+      registrations: components["schemas"]["RegistrationRef"][];
       /** The item that took its place. */
       replaced_by: components["schemas"]["ReplacementRef"] | null;
       /** The item whose place this one took. */
@@ -5116,6 +7132,7 @@ export interface components {
       planned_location_hid?: string | null;
       position?: string | null;
       procured_on?: string | null;
+      purchase_line_hid?: string | null;
       quantity?: number | null;
       record_status?: "draft" | "active" | null;
       row_version: number;
@@ -5133,6 +7150,11 @@ export interface components {
       name: string | null;
       pid: string | null;
       serial_number: string | null;
+    };
+    /** Items, and the components among them. */
+    ItemsCounted: {
+      component_count: number;
+      items: number;
     };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
@@ -5314,7 +7336,7 @@ export interface components {
     /** The value and the cost of a view of the items, for the people who pay for it. */
     ManagementOut: {
       /** What the rows are by: the site, unless asked. */
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "tag";
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "tag";
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -5544,6 +7566,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_AgreementOut_: {
+      items: components["schemas"]["AgreementOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_AssignmentOut_: {
       items: components["schemas"]["AssignmentOut"][];
       limit: number;
@@ -5552,6 +7580,12 @@ export interface components {
     };
     Page_AuditEventOut_: {
       items: components["schemas"]["AuditEventOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CapacityLineOut_: {
+      items: components["schemas"]["CapacityLineOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -5568,6 +7602,18 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_ContractOut_: {
+      items: components["schemas"]["ContractOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CoverageOut_: {
+      items: components["schemas"]["CoverageOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_DeviceGroupOut_: {
       items: components["schemas"]["DeviceGroupOut"][];
       limit: number;
@@ -5576,6 +7622,12 @@ export interface components {
     };
     Page_DuplicateOut_: {
       items: components["schemas"]["DuplicateOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ExternalSystemOut_: {
+      items: components["schemas"]["ExternalSystemOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -5634,8 +7686,26 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_PurchaseLineOut_: {
+      items: components["schemas"]["PurchaseLineOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_PurchaseRequestOut_: {
+      items: components["schemas"]["PurchaseRequestOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_RegionOut_: {
       items: components["schemas"]["RegionOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_RegistrationOut_: {
+      items: components["schemas"]["RegistrationOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -5657,6 +7727,11 @@ export interface components {
       limit: number;
       offset: number;
       total: number;
+    };
+    /** What is past a date, and what approaches it. */
+    PastAndApproaching: {
+      approaching: components["schemas"]["ItemsCounted"];
+      past: components["schemas"]["ItemsCounted"];
     };
     /** The items and the components of a set of items. */
     PlaceCount: {
@@ -5681,6 +7756,70 @@ export interface components {
       /** The names from the top region down, joined with ' > '. */
       path: string;
     };
+    /** The items of one kind. */
+    PortfolioKind: {
+      annual_support_cost: string;
+      component_count: number;
+      /** Major items that a contract covers today. */
+      covered: number;
+      est_value: string;
+      items: number;
+      kind: string;
+      support_weight: string;
+      /** Major items that no contract covers today. */
+      uncovered: number;
+    };
+    /** What a vendor's items come to. */
+    PortfolioMeasures: {
+      annual_support_cost: string;
+      component_count: number;
+      /** Major items that a contract covers today. */
+      covered: number;
+      est_value: string;
+      items: number;
+      support_weight: string;
+      /** Major items that no contract covers today. */
+      uncovered: number;
+    };
+    /** The items of one model, with the model's dates. */
+    PortfolioModel: {
+      annual_support_cost: string;
+      catalog_entry_hid: string;
+      component_count: number;
+      /** Major items that a contract covers today. */
+      covered: number;
+      /** The soonest day the cover of one of its covered items runs out. */
+      covered_until: string | null;
+      end_of_hw_support: string | null;
+      end_of_sale: string | null;
+      end_of_sw_support: string | null;
+      est_value: string;
+      function: string | null;
+      items: number;
+      kind: string;
+      ldos: string | null;
+      model_name: string | null;
+      pid: string;
+      support_weight: string;
+      type: string | null;
+      /** Major items that no contract covers today. */
+      uncovered: number;
+    };
+    /** Everything from one vendor, in one place. */
+    PortfolioOut: {
+      agreements: components["schemas"]["AgreementOut"][];
+      as_of: string;
+      capacity_lines: components["schemas"]["CapacityLineOut"][];
+      contracts: components["schemas"]["ContractOut"][];
+      /** The filter of `GET /items` for its items. */
+      filter: {
+        [key: string]: unknown;
+      };
+      kinds: components["schemas"]["PortfolioKind"][];
+      models: components["schemas"]["PortfolioModel"][];
+      totals: components["schemas"]["PortfolioMeasures"];
+      vendor: components["schemas"]["VendorRef"];
+    };
     /** An error, as an RFC 9457 problem document. */
     Problem: {
       detail?: string;
@@ -5693,6 +7832,134 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** A new line of a purchase request. */
+    PurchaseLineAdd: {
+      catalog_entry_hid: string;
+      destination_site_hid?: string | null;
+      expected_on?: string | null;
+      /** Left out, the next. */
+      line?: number | null;
+      notes?: string | null;
+      quantity: number;
+    };
+    /** One line of a purchase request: a model and how many. */
+    PurchaseLineOut: {
+      catalog: components["schemas"]["CatalogRef"];
+      catalog_entry_hid: string;
+      created_at: string;
+      destination_site: components["schemas"]["PlaceRef"] | null;
+      destination_site_hid: string | null;
+      expected_on: string | null;
+      hid: string;
+      line: number;
+      /** How the line is named: `RITM0012345/2`. */
+      name: string;
+      notes: string | null;
+      /** What is still to come. */
+      pending_quantity: number;
+      quantity: number;
+      /** The items that name this line. */
+      received_quantity: number;
+      /** The reference of its request. */
+      reference: string;
+      request_hid: string;
+      request_status: "draft" | "pending" | "ordered" | "received" | "cancelled";
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of a purchase line to change, and the version they were read at. */
+    PurchaseLinePatch: {
+      catalog_entry_hid?: string | null;
+      destination_site_hid?: string | null;
+      expected_on?: string | null;
+      line?: number | null;
+      notes?: string | null;
+      /** Never below what has arrived. */
+      quantity?: number | null;
+      row_version: number;
+    };
+    /** The line of a purchase request an item arrived on. */
+    PurchaseLineRef: {
+      hid: string;
+      line: number;
+      /** The reference of the request and the number of the line. */
+      name: string;
+      reference: string;
+      request_hid: string;
+    };
+    /** A new purchase request, with its lines if they are known. */
+    PurchaseRequestCreate: {
+      lines?: components["schemas"]["PurchaseLineAdd"][];
+      notes?: string | null;
+      reference: string;
+      requested_on?: string | null;
+      status?: "draft" | "pending" | "ordered" | "received" | "cancelled";
+    };
+    /** A request to buy, with its lines. */
+    PurchaseRequestOut: {
+      created_at: string;
+      hid: string;
+      lines: components["schemas"]["PurchaseLineOut"][];
+      notes: string | null;
+      pending_quantity: number;
+      /** The items of all its lines. */
+      quantity: number;
+      received_quantity: number;
+      reference: string;
+      requested_on: string | null;
+      row_version: number;
+      status: "draft" | "pending" | "ordered" | "received" | "cancelled";
+      updated_at: string;
+    };
+    /** Fields of a purchase request to change, and the version they were read at. */
+    PurchaseRequestPatch: {
+      notes?: string | null;
+      reference?: string | null;
+      requested_on?: string | null;
+      row_version: number;
+      status?: "draft" | "pending" | "ordered" | "received" | "cancelled" | null;
+    };
+    /** How many replacements were made for one reason. */
+    ReasonCount: {
+      count: number;
+      label: string;
+      reason: string;
+    };
+    /** The items that arrived on a line, and when and where. */
+    Receive: {
+      /** Left out, today. */
+      delivered_on?: string | null;
+      items: components["schemas"]["Arrived"][];
+      /** Where they were put. */
+      location_hid?: string | null;
+      row_version: number;
+    };
+    /** A line after a receipt, with the items the receipt created. */
+    ReceivedOut: {
+      catalog: components["schemas"]["CatalogRef"];
+      catalog_entry_hid: string;
+      created_at: string;
+      destination_site: components["schemas"]["PlaceRef"] | null;
+      destination_site_hid: string | null;
+      expected_on: string | null;
+      hid: string;
+      items: components["schemas"]["ItemRef"][];
+      line: number;
+      /** How the line is named: `RITM0012345/2`. */
+      name: string;
+      notes: string | null;
+      /** What is still to come. */
+      pending_quantity: number;
+      quantity: number;
+      /** The items that name this line. */
+      received_quantity: number;
+      /** The reference of its request. */
+      reference: string;
+      request_hid: string;
+      request_status: "draft" | "pending" | "ordered" | "received" | "cancelled";
+      row_version: number;
+      updated_at: string;
     };
     /** A new region. */
     RegionCreate: {
@@ -5760,6 +8027,49 @@ export interface components {
       ship_state?: string | null;
       tags?: string[] | null;
     };
+    /** A new registration: of one item, or of one device group. */
+    RegistrationCreate: {
+      /** With no zone, in the application's time zone. */
+      confirmed_at?: string | null;
+      external_id?: string | null;
+      group_hid?: string | null;
+      item_hid?: string | null;
+      status?: "registered" | "pending" | "removed";
+      system_hid: string;
+    };
+    /** An item or a device group as one external system knows it. */
+    RegistrationOut: {
+      confirmed_at: string | null;
+      created_at: string;
+      external_id: string | null;
+      group: components["schemas"]["DeviceGroupRef"] | null;
+      group_hid: string | null;
+      hid: string;
+      item: components["schemas"]["ItemRef"] | null;
+      item_hid: string | null;
+      row_version: number;
+      status: "registered" | "pending" | "removed";
+      system: components["schemas"]["SystemRef"];
+      system_hid: string;
+      updated_at: string;
+    };
+    /** Fields of a registration to change, and the version they were read at. */
+    RegistrationPatch: {
+      confirmed_at?: string | null;
+      external_id?: string | null;
+      row_version: number;
+      status?: "registered" | "pending" | "removed" | null;
+    };
+    /** One registration of an item or a group, as shown on that record. */
+    RegistrationRef: {
+      confirmed_at: string | null;
+      external_id: string | null;
+      /** The registration. */
+      hid: string;
+      status: "registered" | "pending" | "removed";
+      system: components["schemas"]["SystemRef"];
+      system_hid: string;
+    };
     /** The replacement of an item: what takes its place, why and when. */
     Replace: {
       /** Or the fields of a new item, created by this request. */
@@ -5799,6 +8109,39 @@ export interface components {
       reference: string | null;
       replaced_on: string;
       serial_number: string | null;
+    };
+    /** One replacement, as a row of the report. */
+    ReplacementRow: {
+      created_at: string;
+      hid: string;
+      new_item: components["schemas"]["ItemRef"];
+      new_item_hid: string;
+      old_item: components["schemas"]["ItemRef"];
+      old_item_hid: string;
+      reason: string;
+      reason_label: string;
+      reference: string | null;
+      replaced_on: string;
+      row_version: number;
+    };
+    /** A page of the replacements, and the count of each reason among all that match. */
+    ReplacementsReport: {
+      by_reason: components["schemas"]["ReasonCount"][];
+      items: components["schemas"]["ReplacementRow"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    /** One list of a report: how many items, and what lists them on the item list. */
+    ReportSection: {
+      count: number;
+      /** The filter of `GET /items` for them. */
+      filter: {
+        [key: string]: unknown;
+      } | null;
+      /** As it is to be sent with that filter. */
+      include_archived: boolean;
+      include_drafts: boolean;
     };
     /** The contacts in force for one role, and the level they came from. */
     RoleContacts: {
@@ -5992,7 +8335,7 @@ export interface components {
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };
@@ -6021,6 +8364,12 @@ export interface components {
       items: number;
       managed_node_count: number;
       support_weight: string;
+    };
+    /** An external system, as named on a registration. */
+    SystemRef: {
+      hid: string;
+      kind: string;
+      name: string;
     };
     /** A new tag. */
     TagCreate: {

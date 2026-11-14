@@ -1,0 +1,8 @@
+{"schema": "hirdir/1", "entity": "registrations", "mode": "upsert", "records": [
+  {"system": "Config Vault", "item": "AT-000161", "group": null, "external_id": null, "status": "pending", "confirmed_at": null},
+  {"system": "Config Vault", "item": "AT-000141", "group": null, "external_id": "site2-rtr-wan-01", "status": "registered", "confirmed_at": null},
+  {"system": "Fabric Director", "item": null, "group": "site2-sw-core", "external_id": "site2-sw-core", "status": "registered", "confirmed_at": "2026-11-02T15:00:00+00:00"},
+  {"system": "NetWatch", "item": "AT-000141", "group": null, "external_id": "node-1002", "status": "registered", "confirmed_at": "2026-11-02T15:00:00+00:00"},
+  {"system": "NetWatch", "item": null, "group": "site2-sw-core", "external_id": "node-1001", "status": "registered", "confirmed_at": "2026-11-02T15:00:00+00:00"},
+  {"system": "NetWatch", "item": "AT-000133", "group": null, "external_id": "node-0977", "status": "removed", "confirmed_at": null}
+]}

@@ -20,6 +20,7 @@ from hirdir.db.models import (
     Location,
     Operator,
     Owner,
+    PurchaseLine,
 )
 from hirdir.domain import catalog, choices, geography, health, lifecycle, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
@@ -46,6 +47,7 @@ FIELDS = (
     "operator_hid",
     "parent_item_hid",
     "position",
+    "purchase_line_hid",
     *DAYS,
     *catalog.AMOUNTS,
     *catalog.DATES,
@@ -370,6 +372,12 @@ def _checked(
                 {"position": "name the item it is in, as parent_item_hid, or leave this blank"},
             )
         values["position"] = position
+    if "purchase_line_hid" in fields:
+        line = fields["purchase_line_hid"] or None
+        if line is not None and (item is None or item.purchase_line_hid != line):
+            # One more item on the line: never more than the line has still to come.
+            _check_line(db, line)
+        values["purchase_line_hid"] = line
     if "condition" in fields:
         condition = records.clean(fields["condition"])
         values["condition"] = (
@@ -418,6 +426,29 @@ def _checked(
         )
     _check_unique(db, final("catalog_entry_hid"), final("serial_key"), final("asset_tag_key"), item)
     return values
+
+
+def _check_line(db: Session, line_hid: str) -> None:
+    """Refuse a purchase line that there is not, or that has nothing still to come."""
+    dialect.hold_other_writers(db)
+    line = db.get(PurchaseLine, line_hid) if isinstance(line_hid, str) else None
+    if line is None:
+        raise Invalid(
+            "there is no such purchase line",
+            {"purchase_line_hid": f"there is no purchase line {line_hid}"},
+        )
+    arrived = (
+        db.scalar(select(func.count()).select_from(Item).where(Item.purchase_line_hid == line.hid))
+        or 0
+    )
+    if arrived >= line.quantity:
+        raise Invalid(
+            "the line has nothing still to come",
+            {
+                "purchase_line_hid": f"all {line.quantity} of this line have arrived; "
+                "raise its quantity first"
+            },
+        )
 
 
 def _checked_plan(db: Session, value: Any, item: Item | None) -> str | None:

@@ -196,6 +196,28 @@ def parse(source: Any) -> Node | None:
     return from_tree(source)
 
 
+def to_tree(node: Node | None) -> dict[str, Any] | None:
+    """Return a filter in its JSON form, as a list route takes it back."""
+    if node is None:
+        return None
+    if isinstance(node, Condition):
+        return {"field": node.field, "op": node.op, "value": node.value}
+    return {node.joined_by: [to_tree(part) for part in node.parts]}
+
+
+def both(*trees: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return the filter that keeps what every one of several filters keeps."""
+    parts = [tree for tree in trees if tree is not None]
+    if not parts:
+        return None
+    return parts[0] if len(parts) == 1 else {"and": parts}
+
+
+def where(field: str, op: str, value: Any) -> dict[str, Any]:
+    """Return one condition in the JSON form of a filter."""
+    return {"field": field, "op": op, "value": value}
+
+
 # --- turning a filter into SQL -------------------------------------------------------
 
 

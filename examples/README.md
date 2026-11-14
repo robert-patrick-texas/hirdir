@@ -24,10 +24,19 @@ Load the files in this order, because a record names the ones it refers to:
 10. `owners.csv`
 11. `owner-members.csv`
 12. `networks.csv`
-13. `items.csv`
-14. `device-groups.csv`
-15. `device-group-members.csv`
-16. `addresses.csv`
+13. `external-systems.csv`
+14. `agreements.csv`
+15. `contracts.csv`
+16. `purchase-requests.csv`
+17. `purchase-lines.csv`
+18. `items.csv`
+19. `device-groups.csv`
+20. `device-group-members.csv`
+21. `item-replacements.csv`
+22. `addresses.csv`
+23. `contract-coverage.csv`
+24. `registrations.csv`
+25. `capacity-lines.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
@@ -44,10 +53,19 @@ hirdir import examples/contact-assignments.csv --entity contact_assignments
 hirdir import examples/owners.csv --entity owners
 hirdir import examples/owner-members.csv --entity owner_members
 hirdir import examples/networks.csv --entity networks
+hirdir import examples/external-systems.csv --entity external_systems
+hirdir import examples/agreements.csv --entity agreements
+hirdir import examples/contracts.csv --entity contracts
+hirdir import examples/purchase-requests.csv --entity purchase_requests
+hirdir import examples/purchase-lines.csv --entity purchase_lines
 hirdir import examples/items.csv --entity items
 hirdir import examples/device-groups.csv --entity device_groups
 hirdir import examples/device-group-members.csv --entity device_group_members
+hirdir import examples/item-replacements.csv --entity item_replacements
 hirdir import examples/addresses.csv --entity addresses
+hirdir import examples/contract-coverage.csv --entity contract_coverage
+hirdir import examples/registrations.csv --entity registrations
+hirdir import examples/capacity-lines.csv --entity capacity_lines
 ```
 
 Loaded a second time, every row is `unchanged`. The `hid` column is there and blank:

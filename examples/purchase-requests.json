@@ -1,0 +1,4 @@
+{"schema": "hirdir/1", "entity": "purchase_requests", "mode": "upsert", "records": [
+  {"reference": "RITM0012345", "requested_on": "2026-08-17", "status": "ordered", "notes": "Access switches for Site-3"},
+  {"reference": "RITM0012501", "requested_on": "2026-10-26", "status": "pending", "notes": "Two more switches for the lab"}
+]}

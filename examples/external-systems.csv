@@ -1,0 +1,4 @@
+hid,name,kind,url,notes,record_status
+,Config Vault,config_backup,https://configvault.example.net,,active
+,Fabric Director,sdn_controller,https://fabric.example.net,,active
+,NetWatch,monitoring,https://netwatch.example.net,,active

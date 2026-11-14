@@ -9,25 +9,48 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import ColumnElement, Integer, Select, and_, case, false, func, or_, select
+from sqlalchemy import (
+    BigInteger,
+    ColumnElement,
+    Date,
+    Integer,
+    Select,
+    and_,
+    case,
+    false,
+    func,
+    or_,
+    select,
+    type_coerce,
+)
 from sqlalchemy.orm import Session, aliased
 
 from hirdir.db import dialect
 from hirdir.db.models import (
     ADDRESS_FIELDS,
     Address,
+    Agreement,
+    CapacityLine,
     CatalogEntry,
     Contact,
     ContactAssignment,
+    Contract,
+    ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
+    ExternalSystem,
     Item,
+    ItemReplacement,
     Location,
     Network,
     Operator,
     Owner,
     OwnerMember,
+    PurchaseLine,
+    PurchaseRequest,
     Region,
+    Registration,
+    Scaled,
     Site,
     Tag,
     TagLink,
@@ -35,6 +58,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import (
     contacts,
+    contracts,
     descent,
     geography,
     groups,
@@ -44,6 +68,7 @@ from hirdir.domain import (
     operators,
     owners,
     records,
+    systems,
 )
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
@@ -404,6 +429,61 @@ MINOR_ITEMS: ColumnElement[Any] = func.nullif(
 )
 
 
+# The coverages of an item, each with its contract: what covers it today, and the last
+# day its cover runs to, as `hirdir.domain.contracts` works them out.
+_COVER: Any = aliased(ContractCoverage, name="item_coverage")
+_COVERING: Any = aliased(Contract, name="item_contract")
+_COVER_START = contracts.starts(_COVER, _COVERING)
+_COVER_END = contracts.ends(_COVER, _COVERING)
+_ITS_COVER = select(_COVER.hid).join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+_COVERS_TODAY = (_COVER.item_hid == Item.hid, contracts.coverage_in_force(_COVER, _COVERING))
+_ITEM_CONTRACTS = _one_of(_ITS_COVER, *_COVERS_TODAY)
+COVERED: ColumnElement[Any] = _ITS_COVER.where(*_COVERS_TODAY).correlate(Item).exists()
+COVERED_UNTIL: ColumnElement[Any] = type_coerce(
+    select(
+        case((func.count(case((_COVER_END.is_(None), 1))) > 0, None), else_=func.max(_COVER_END))
+    )
+    .select_from(_COVER)
+    .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+    .where(
+        _COVER.item_hid == Item.hid,
+        _COVERING.record_status == "active",
+        _COVERING.status == contracts.ACTIVE,
+        or_(_COVER_END.is_(None), dialect.today() <= _COVER_END),
+        or_(_COVER_START.is_(None), _COVER_END.is_(None), _COVER_START <= _COVER_END),
+    )
+    .correlate(Item)
+    .scalar_subquery(),
+    Date,
+)
+
+
+def _registered(holder: Any, hid: Any) -> dict[str, Field]:
+    """Return the field that finds a record by an external system it is registered
+    with, a registration that is removed not counting, sorted by the first name."""
+    its = (holder == hid, Registration.status != systems.REMOVED)
+    first = (
+        select(func.min(ExternalSystem.name_key))
+        .select_from(Registration)
+        .join(ExternalSystem, ExternalSystem.hid == Registration.system_hid)
+        .where(*its)
+        .scalar_subquery()
+    )
+    return {
+        "registration.system": Field(
+            "text",
+            ExternalSystem.name,
+            among=_one_of(
+                select(Registration.hid).join(
+                    ExternalSystem, ExternalSystem.hid == Registration.system_hid
+                ),
+                *its,
+            ),
+            ordered_by=first,
+        )
+    }
+
+
 ITEMS = Listing(
     model=Item,
     fields={
@@ -509,6 +589,7 @@ ITEMS = Listing(
         "catalog.pid": Field("text", CatalogEntry.pid),
         "catalog.model_name": Field("text", CatalogEntry.model_name),
         "catalog.vendor": Field("text", Vendor.name),
+        "catalog.vendor_hid": Field("reference", CatalogEntry.vendor_hid),
         "catalog.kind": Field("choice", CatalogEntry.kind),
         "catalog.type": Field("choice", CatalogEntry.type),
         "catalog.function": Field("choice", CatalogEntry.function),
@@ -531,6 +612,24 @@ ITEMS = Listing(
         ),
         **_address_fields(Item, Address.item_hid == Item.hid),
         "minor_items": Field("integer", ordered_by=MINOR_ITEMS),
+        # The line of a purchase request it arrived on.
+        "purchase_line_hid": Field("reference", Item.purchase_line_hid),
+        # Under a contract today, and the last day its cover runs to.
+        "covered": Field("boolean", COVERED),
+        "covered_until": Field("date", COVERED_UNTIL),
+        "contract.hid": Field("reference", _COVERING.hid, among=_ITEM_CONTRACTS),
+        "contract.number": Field(
+            "text",
+            _COVERING.number,
+            among=_ITEM_CONTRACTS,
+            ordered_by=select(func.min(_COVERING.number_key))
+            .select_from(_COVER)
+            .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+            .where(*_COVERS_TODAY)
+            .correlate(Item)
+            .scalar_subquery(),
+        ),
+        **_registered(Registration.item_hid, Item.hid),
     },
     joined=lambda query: (
         _with_items_above(query)
@@ -757,6 +856,7 @@ DEVICE_GROUPS = Listing(
         "owner.label": Field("text", Owner.label),
         "parent.name": Field("text", _PARENT_GROUP.name),
         "tags": _tags("device_group", DeviceGroup),
+        **_registered(Registration.group_hid, DeviceGroup.hid),
         "member.item_hid": Field(
             "reference",
             DeviceGroupMember.item_hid,
@@ -1060,6 +1160,343 @@ CONTACT_ASSIGNMENTS = Listing(
     has_status=False,
 )
 
+# --- contracts and coverage ----------------------------------------------------------
+
+_COVERED_ITEM: Any = aliased(Item, name="covered_item")
+_COVERED_ENTRY: Any = aliased(CatalogEntry, name="covered_entry")
+_OF_CONTRACT: Any = aliased(ContractCoverage, name="coverage_of_contract")
+_RESELLER: Any = aliased(Vendor, name="reseller")
+
+_CONTRACT_OF_AGREEMENT: Any = aliased(Contract, name="contract_of_agreement")
+
+AGREEMENTS = Listing(
+    model=Agreement,
+    fields={
+        **_bookkeeping(Agreement),
+        "vendor_hid": Field("reference", Agreement.vendor_hid),
+        "vendor": Field("text", Vendor.name),
+        "reseller_hid": Field("reference", Agreement.reseller_hid),
+        "reseller": Field("text", _RESELLER.name),
+        **_columns(Agreement, "text", "name", "number", *contracts.TEXTS, "support_url"),
+        **_columns(Agreement, "date", "starts_on", "ends_on"),
+        **_columns(Agreement, "choice", "status", "record_status"),
+        "annual_cost": Field("number", Agreement.annual_cost),
+        "tags": _tags("agreement", Agreement),
+        # How many contracts that are not retired it groups, as its record counts them.
+        "contracts": Field(
+            "integer",
+            ordered_by=select(func.count())
+            .where(
+                _CONTRACT_OF_AGREEMENT.agreement_hid == Agreement.hid,
+                _CONTRACT_OF_AGREEMENT.record_status != "retired",
+            )
+            .correlate(Agreement)
+            .scalar_subquery(),
+        ),
+    },
+    joined=lambda query: query.join(Vendor, Vendor.hid == Agreement.vendor_hid).outerjoin(
+        _RESELLER, _RESELLER.hid == Agreement.reseller_hid
+    ),
+    default_sort=("name",),
+)
+
+_ITS_AGREEMENT: Any = aliased(Agreement, name="its_agreement")
+
+CONTRACTS = Listing(
+    model=Contract,
+    fields={
+        **_bookkeeping(Contract),
+        "vendor_hid": Field("reference", Contract.vendor_hid),
+        "vendor": Field("text", Vendor.name),
+        # The agreement it is grouped into: blank for a contract that stands by itself.
+        "agreement_hid": Field("reference", Contract.agreement_hid),
+        "agreement.name": Field("text", _ITS_AGREEMENT.name),
+        "reseller_hid": Field("reference", Contract.reseller_hid),
+        "reseller": Field("text", _RESELLER.name),
+        **_columns(Contract, "text", "number", *contracts.TEXTS, "support_url"),
+        **_columns(Contract, "date", "starts_on", "ends_on"),
+        # What is in force: the contract's own, or its agreement's where that is blank.
+        **{
+            f"effective.{name}": Field(
+                "date"
+                if name.endswith("_on")
+                else "reference"
+                if name.endswith("_hid")
+                else "text",
+                contracts.in_force_of(Contract, name),
+            )
+            for name in contracts.INHERITED
+        },
+        **_columns(Contract, "choice", "status", "record_status"),
+        "annual_cost": Field("number", Contract.annual_cost),
+        # It covers today: active in both senses, and in date.
+        "covers_today": Field("boolean", contracts.contract_covers()),
+        "tags": _tags("contract", Contract),
+        # A contract is found by an item it covers, at any time.
+        "coverage.item_hid": Field(
+            "reference",
+            _OF_CONTRACT.item_hid,
+            among=_one_of(select(_OF_CONTRACT.hid), _OF_CONTRACT.contract_hid == Contract.hid),
+        ),
+        # How many items it covers today, as its record counts them.
+        "covered_items": Field(
+            "integer",
+            ordered_by=select(func.count(func.distinct(_OF_CONTRACT.item_hid)))
+            .where(
+                _OF_CONTRACT.contract_hid == Contract.hid,
+                contracts.coverage_in_force(_OF_CONTRACT, Contract),
+            )
+            .correlate(Contract)
+            .scalar_subquery(),
+        ),
+    },
+    joined=lambda query: (
+        query.join(Vendor, Vendor.hid == Contract.vendor_hid)
+        .outerjoin(_RESELLER, _RESELLER.hid == Contract.reseller_hid)
+        .outerjoin(_ITS_AGREEMENT, _ITS_AGREEMENT.hid == Contract.agreement_hid)
+    ),
+    default_sort=("number", "vendor"),
+)
+
+COVERAGE = Listing(
+    model=ContractCoverage,
+    fields={
+        **_bookkeeping(ContractCoverage),
+        **_columns(ContractCoverage, "reference", "contract_hid", "item_hid"),
+        **_columns(ContractCoverage, "date", "starts_on", "ends_on"),
+        # The days in force: its own or the contract's, and within the contract's.
+        "effective.starts_on": Field("date", type_coerce(contracts.starts(), Date)),
+        "effective.ends_on": Field("date", type_coerce(contracts.ends(), Date)),
+        "in_force": Field("boolean", contracts.coverage_in_force()),
+        "contract.number": Field("text", Contract.number),
+        "contract.status": Field("choice", Contract.status),
+        "vendor": Field("text", Vendor.name),
+        "item.name": Field("text", func.coalesce(_COVERED_ITEM.name, _COVERED_ITEM.hostname)),
+        "item.serial_number": Field("text", _COVERED_ITEM.serial_number),
+        "item.asset_tag": Field("text", _COVERED_ITEM.asset_tag),
+        "item.pid": Field("text", _COVERED_ENTRY.pid),
+        "item.lifecycle_state": Field("choice", _COVERED_ITEM.lifecycle_state),
+        "item.record_status": Field("choice", _COVERED_ITEM.record_status),
+    },
+    joined=lambda query: (
+        query.join(Contract, Contract.hid == ContractCoverage.contract_hid)
+        .join(Vendor, Vendor.hid == Contract.vendor_hid)
+        .join(_COVERED_ITEM, _COVERED_ITEM.hid == ContractCoverage.item_hid)
+        .outerjoin(_COVERED_ENTRY, _COVERED_ENTRY.hid == _COVERED_ITEM.catalog_entry_hid)
+    ),
+    default_sort=("contract.number", "item.name", "starts_on"),
+    has_status=False,
+)
+
+# --- purchases -----------------------------------------------------------------------
+
+_ARRIVED: Any = aliased(Item, name="arrived_item")
+_LINE_OF_REQUEST: Any = aliased(PurchaseLine, name="line_of_request")
+_LINE_ENTRY: Any = aliased(CatalogEntry, name="line_entry")
+_LINE_VENDOR: Any = aliased(Vendor, name="line_vendor")
+_LINE_SITE: Any = aliased(Site, name="line_site")
+# What has arrived on a line: the items that name it.
+RECEIVED: ColumnElement[Any] = (
+    select(func.count())
+    .where(_ARRIVED.purchase_line_hid == PurchaseLine.hid)
+    .correlate(PurchaseLine)
+    .scalar_subquery()
+)
+_REQUEST_ORDERED = (
+    select(func.coalesce(func.sum(_LINE_OF_REQUEST.quantity), 0))
+    .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)
+    .correlate(PurchaseRequest)
+    .scalar_subquery()
+)
+_REQUEST_ARRIVED = (
+    select(func.count())
+    .select_from(_ARRIVED)
+    .join(_LINE_OF_REQUEST, _LINE_OF_REQUEST.hid == _ARRIVED.purchase_line_hid)
+    .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)
+    .correlate(PurchaseRequest)
+    .scalar_subquery()
+)
+
+PURCHASE_REQUESTS = Listing(
+    model=PurchaseRequest,
+    fields={
+        **_bookkeeping(PurchaseRequest),
+        **_columns(PurchaseRequest, "text", "reference", "notes"),
+        "requested_on": Field("date", PurchaseRequest.requested_on),
+        "status": Field("choice", PurchaseRequest.status),
+        "line_count": Field(
+            "integer",
+            ordered_by=select(func.count())
+            .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)
+            .correlate(PurchaseRequest)
+            .scalar_subquery(),
+        ),
+        # How many items are still to come, on all of its lines.
+        "pending_quantity": Field("integer", (_REQUEST_ORDERED - _REQUEST_ARRIVED).cast(Integer)),
+    },
+    joined=lambda query: query,
+    default_sort=("reference",),
+    has_status=False,
+)
+
+PURCHASE_LINES = Listing(
+    model=PurchaseLine,
+    fields={
+        **_bookkeeping(PurchaseLine),
+        **_columns(
+            PurchaseLine, "reference", "request_hid", "catalog_entry_hid", "destination_site_hid"
+        ),
+        **_columns(PurchaseLine, "integer", "line", "quantity"),
+        "expected_on": Field("date", PurchaseLine.expected_on),
+        "notes": Field("text", PurchaseLine.notes),
+        "request.reference": Field("text", PurchaseRequest.reference),
+        "request.status": Field("choice", PurchaseRequest.status),
+        "catalog.pid": Field("text", _LINE_ENTRY.pid),
+        "catalog.model_name": Field("text", _LINE_ENTRY.model_name),
+        "catalog.vendor": Field("text", _LINE_VENDOR.name),
+        "site": Field("text", _LINE_SITE.name),
+        "received_quantity": Field("integer", RECEIVED.cast(Integer)),
+        "pending_quantity": Field("integer", (PurchaseLine.quantity - RECEIVED).cast(Integer)),
+    },
+    joined=lambda query: (
+        query.join(PurchaseRequest, PurchaseRequest.hid == PurchaseLine.request_hid)
+        .join(_LINE_ENTRY, _LINE_ENTRY.hid == PurchaseLine.catalog_entry_hid)
+        .join(_LINE_VENDOR, _LINE_VENDOR.hid == _LINE_ENTRY.vendor_hid)
+        .outerjoin(_LINE_SITE, _LINE_SITE.hid == PurchaseLine.destination_site_hid)
+    ),
+    default_sort=("request.reference", "line"),
+    has_status=False,
+)
+
+# --- external systems ----------------------------------------------------------------
+
+_REGISTERED_ITEM: Any = aliased(Item, name="registered_item")
+_REGISTERED_GROUP: Any = aliased(DeviceGroup, name="registered_group")
+_OF_SYSTEM: Any = aliased(Registration, name="registration_of_system")
+
+EXTERNAL_SYSTEMS = Listing(
+    model=ExternalSystem,
+    fields={
+        **_bookkeeping(ExternalSystem),
+        **_columns(ExternalSystem, "text", "name", "url", "notes"),
+        **_columns(ExternalSystem, "choice", "kind", "record_status"),
+        # How many records are registered with it, those removed not counted.
+        "registrations": Field(
+            "integer",
+            ordered_by=select(func.count())
+            .where(
+                _OF_SYSTEM.system_hid == ExternalSystem.hid, _OF_SYSTEM.status != systems.REMOVED
+            )
+            .correlate(ExternalSystem)
+            .scalar_subquery(),
+        ),
+    },
+    joined=lambda query: query,
+    default_sort=("name",),
+)
+
+REGISTRATIONS = Listing(
+    model=Registration,
+    fields={
+        **_bookkeeping(Registration),
+        **_columns(Registration, "reference", "system_hid", "item_hid", "group_hid"),
+        "external_id": Field("text", Registration.external_id),
+        "status": Field("choice", Registration.status),
+        "confirmed_at": Field("timestamp", Registration.confirmed_at),
+        "system.name": Field("text", ExternalSystem.name),
+        "system.kind": Field("choice", ExternalSystem.kind),
+        "item.name": Field("text", func.coalesce(_REGISTERED_ITEM.name, _REGISTERED_ITEM.hostname)),
+        "item.serial_number": Field("text", _REGISTERED_ITEM.serial_number),
+        "group.name": Field("text", _REGISTERED_GROUP.name),
+        # What is registered, an item or a group, by the name it is shown by.
+        "holder": Field(
+            "text",
+            func.coalesce(
+                _REGISTERED_GROUP.name,
+                _REGISTERED_ITEM.name,
+                _REGISTERED_ITEM.hostname,
+                _REGISTERED_ITEM.serial_number,
+                _REGISTERED_ITEM.asset_tag,
+            ),
+        ),
+    },
+    joined=lambda query: (
+        query.join(ExternalSystem, ExternalSystem.hid == Registration.system_hid)
+        .outerjoin(_REGISTERED_ITEM, _REGISTERED_ITEM.hid == Registration.item_hid)
+        .outerjoin(_REGISTERED_GROUP, _REGISTERED_GROUP.hid == Registration.group_hid)
+    ),
+    default_sort=("system.name", "holder"),
+    has_status=False,
+)
+
+# --- capacity ------------------------------------------------------------------------
+
+_LINE_REGION: Any = aliased(Region, name="capacity_region")
+_CAPACITY_SITE: Any = aliased(Site, name="capacity_site")
+_CAPACITY_VENDOR: Any = aliased(Vendor, name="capacity_vendor")
+# The units of a line: its quantity times the units of one. Each is kept in
+# hundredths, so the product is in ten-thousandths.
+UNITS: ColumnElement[Any] = type_coerce(
+    type_coerce(CapacityLine.quantity, BigInteger)
+    * type_coerce(CapacityLine.units_each, BigInteger),
+    Scaled(4),
+)
+
+CAPACITY_LINES = Listing(
+    model=CapacityLine,
+    fields={
+        **_bookkeeping(CapacityLine),
+        **_columns(CapacityLine, "choice", "side", "category", "record_status"),
+        **_columns(CapacityLine, "text", "name", "notes"),
+        **_columns(CapacityLine, "number", "quantity", "units_each", "annual_cost"),
+        "units": Field("number", UNITS),
+        **_columns(CapacityLine, "reference", "vendor_hid", "region_hid", "site_hid"),
+        "vendor": Field("text", _CAPACITY_VENDOR.name),
+        "region": Field("text", _LINE_REGION.name),
+        "site": Field("text", _CAPACITY_SITE.name),
+        **_columns(CapacityLine, "date", "starts_on", "ends_on"),
+        # It counts today: not before it starts, and not after it ends.
+        "in_date": Field(
+            "boolean",
+            and_(
+                or_(CapacityLine.starts_on.is_(None), CapacityLine.starts_on <= dialect.today()),
+                or_(CapacityLine.ends_on.is_(None), CapacityLine.ends_on >= dialect.today()),
+            ),
+        ),
+    },
+    joined=lambda query: (
+        query.outerjoin(_CAPACITY_VENDOR, _CAPACITY_VENDOR.hid == CapacityLine.vendor_hid)
+        .outerjoin(_LINE_REGION, _LINE_REGION.hid == CapacityLine.region_hid)
+        .outerjoin(_CAPACITY_SITE, _CAPACITY_SITE.hid == CapacityLine.site_hid)
+    ),
+    default_sort=("side", "category", "name"),
+)
+
+# --- replacements --------------------------------------------------------------------
+
+_OLD_ITEM: Any = aliased(Item, name="old_item")
+_NEW_ITEM: Any = aliased(Item, name="new_item")
+
+REPLACEMENTS = Listing(
+    model=ItemReplacement,
+    fields={
+        **_bookkeeping(ItemReplacement),
+        **_columns(ItemReplacement, "reference", "old_item_hid", "new_item_hid"),
+        "reason": Field("choice", ItemReplacement.reason),
+        "reference": Field("text", ItemReplacement.reference),
+        "replaced_on": Field("date", ItemReplacement.replaced_on),
+        "old.name": Field("text", func.coalesce(_OLD_ITEM.name, _OLD_ITEM.hostname)),
+        "old.serial_number": Field("text", _OLD_ITEM.serial_number),
+        "new.name": Field("text", func.coalesce(_NEW_ITEM.name, _NEW_ITEM.hostname)),
+        "new.serial_number": Field("text", _NEW_ITEM.serial_number),
+    },
+    joined=lambda query: query.join(_OLD_ITEM, _OLD_ITEM.hid == ItemReplacement.old_item_hid).join(
+        _NEW_ITEM, _NEW_ITEM.hid == ItemReplacement.new_item_hid
+    ),
+    default_sort=("-replaced_on", "old.name"),
+    has_status=False,
+)
+
 TAGS = Listing(
     model=Tag,
     fields={**_bookkeeping(Tag), **_columns(Tag, "text", "label", "colour", "description")},
@@ -1103,6 +1540,15 @@ LISTINGS: tuple[Listing, ...] = (
     CONTACTS,
     OPERATORS,
     CONTACT_ASSIGNMENTS,
+    AGREEMENTS,
+    CONTRACTS,
+    COVERAGE,
+    PURCHASE_REQUESTS,
+    PURCHASE_LINES,
+    EXTERNAL_SYSTEMS,
+    REGISTRATIONS,
+    CAPACITY_LINES,
+    REPLACEMENTS,
     TAGS,
 )
 

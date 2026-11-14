@@ -14,12 +14,17 @@ from sqlalchemy.orm import Session
 from hirdir.api import records as shapes
 from hirdir.db.models import (
     Address,
+    Agreement,
+    CapacityLine,
     CatalogEntry,
     Choice,
     Contact,
     ContactAssignment,
+    Contract,
+    ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
+    ExternalSystem,
     ImportJob,
     ImportRow,
     Item,
@@ -30,7 +35,10 @@ from hirdir.db.models import (
     Operator,
     Owner,
     OwnerMember,
+    PurchaseLine,
+    PurchaseRequest,
     Region,
+    Registration,
     Site,
     Tag,
     User,
@@ -38,23 +46,28 @@ from hirdir.db.models import (
 )
 from hirdir.domain import (
     addresses,
+    capacity,
+    choices,
     contacts,
+    contracts,
     descent,
     geography,
     groups,
     health,
     inheritance,
     operators,
+    purchases,
     records,
     replacements,
     settings,
+    systems,
     tags,
 )
 from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-from hirdir.io import imports
+from hirdir.io import balance, imports, planning
 
 FIRST_ROWS = 100
 
@@ -668,6 +681,92 @@ def _replacement_refs(
     )
 
 
+def _contract_refs(db: Session, found: list[Contract]) -> dict[str, shapes.ContractRef]:
+    vendors = _by_hid(db, Vendor, {contract.vendor_hid for contract in found})
+    return {
+        # The statuses are read as the record has them, and checked against the shape's.
+        contract.hid: shapes.ContractRef.model_validate(
+            {
+                "hid": contract.hid,
+                "number": contract.number,
+                "vendor": vendors[contract.vendor_hid].name,
+                "status": contract.status,
+                "record_status": contract.record_status,
+            }
+        )
+        for contract in found
+    }
+
+
+def _cover(
+    db: Session, item_hids: list[str], today: date
+) -> dict[str, tuple[list[shapes.CoverageRef], date | None]]:
+    """Return the coverages of each item, and the last day its cover runs to."""
+    found = contracts.of_items(db, item_hids)
+    refs = _contract_refs(
+        db, list({contract.hid: contract for its in found.values() for _, contract in its}.values())
+    )
+    out: dict[str, tuple[list[shapes.CoverageRef], date | None]] = {}
+    for hid, its in found.items():
+        listed = []
+        for coverage, contract in its:
+            span = contracts.span(coverage, contract)
+            listed.append(
+                shapes.CoverageRef(
+                    hid=coverage.hid,
+                    contract_hid=contract.hid,
+                    contract=refs[contract.hid],
+                    starts_on=span.starts_on,
+                    ends_on=span.ends_on,
+                    in_force=contracts.in_force(coverage, contract, today),
+                )
+            )
+        out[hid] = (listed, contracts.covered_until(its, today))
+    return out
+
+
+def _system_ref(system: ExternalSystem) -> shapes.SystemRef:
+    return shapes.SystemRef(hid=system.hid, name=system.name, kind=system.kind)
+
+
+def _registration_refs(
+    db: Session, field: str, hids: list[str]
+) -> dict[str, list[shapes.RegistrationRef]]:
+    """Return the registrations of each item, or of each group, as its record lists them."""
+    return {
+        hid: [
+            shapes.RegistrationRef.model_validate(
+                {
+                    "hid": registration.hid,
+                    "system_hid": system.hid,
+                    "system": _system_ref(system),
+                    "external_id": registration.external_id,
+                    "status": registration.status,
+                    "confirmed_at": registration.confirmed_at,
+                }
+            )
+            for registration, system in found
+        ]
+        for hid, found in systems.of_holders(db, field, hids).items()
+    }
+
+
+def _line_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.PurchaseLineRef]:
+    """Return each purchase line as the item that arrived on it names it."""
+    lines = _by_hid(db, PurchaseLine, hids)
+    requests = _by_hid(db, PurchaseRequest, {line.request_hid for line in lines.values()})
+    return {
+        line.hid: shapes.PurchaseLineRef(
+            hid=line.hid,
+            name=purchases.line_name(requests[line.request_hid], line),
+            request_hid=line.request_hid,
+            reference=requests[line.request_hid].reference,
+            line=line.line,
+        )
+        for line in lines.values()
+    }
+
+
 def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     """Return items with what they refer to and the values in force of what they inherit."""
     hids = [item.hid for item in items]
@@ -714,6 +813,10 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     )
     its_addresses = _address_refs(db, "item_hid", hids)
     replaced_by, replaces = _replacement_refs(db, hids)
+    today = contracts.today(db)
+    cover = _cover(db, hids, today)
+    registered = _registration_refs(db, "item_hid", hids)
+    arrived_on = _line_refs(db, {item.purchase_line_hid for item in items})
     out = []
     for item in items:
         entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -783,6 +886,11 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 addresses=its_addresses[item.hid],
                 replaces=replaces.get(item.hid),
                 replaced_by=replaced_by.get(item.hid),
+                purchase_line=arrived_on.get(item.purchase_line_hid or ""),
+                covered=any(one.in_force for one in cover[item.hid][0]),
+                covered_until=cover[item.hid][1],
+                coverage=cover[item.hid][0],
+                registrations=registered[item.hid],
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
                     operator_hid=marks.in_force(looked_after[item.hid], holders),
@@ -823,6 +931,11 @@ _ITEM_SHAPED = (
     "addresses",
     "replaces",
     "replaced_by",
+    "purchase_line",
+    "covered",
+    "covered_until",
+    "coverage",
+    "registrations",
     "tags",
     "effective",
 )
@@ -868,6 +981,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
             if group.parent_group_hid is not None:
                 nested[group.parent_group_hid].append(_group_ref(group))
     counts = groups.member_counts(db, hids)
+    registered = _registration_refs(db, "group_hid", hids)
     masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
     seen = groups.observed_masters(db, found)
     master_refs = item_refs(
@@ -939,6 +1053,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 else observed.hid == master.hid,
                 member_count=counts[group.hid],
                 addresses=its_addresses[group.hid],
+                registrations=registered[group.hid],
                 tags=labels[group.hid],
             )
         )
@@ -964,6 +1079,7 @@ _GROUP_SHAPED = (
     "master",
     "member_count",
     "addresses",
+    "registrations",
     "tags",
 )
 
@@ -1095,3 +1211,438 @@ def preview_out(db: Session, job: ImportJob) -> shapes.ImportPreview:
     """Return a preview: the job, and the first of its rows."""
     rows, _ = imports.list_rows(db, job.hid, None, FIRST_ROWS, 0)
     return shapes.ImportPreview(job=job_out(db, job), rows=[row_out(row) for row in rows])
+
+
+# --- contracts and coverage ----------------------------------------------------------
+
+
+def _vendor_ref(vendor: Vendor) -> shapes.VendorRef:
+    return shapes.VendorRef(hid=vendor.hid, name=vendor.name)
+
+
+def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.AgreementOut]:
+    """Return agreements, each with its vendor, its tags and how many contracts it groups."""
+    hids = [agreement.hid for agreement in found]
+    vendors = _by_hid(
+        db, Vendor, {one.vendor_hid for one in found} | {one.reseller_hid for one in found}
+    )
+    labels = tags.labels_of(db, contracts.AGREEMENT_TYPE, hids)
+    grouped = contracts.contracts_in(db, hids)
+    return [
+        shapes.AgreementOut(
+            **_own(agreement, shapes.AgreementOut, ("vendor", "reseller", "tags", "contracts")),
+            vendor=_vendor_ref(vendors[agreement.vendor_hid]),
+            reseller=_vendor_ref(vendors[agreement.reseller_hid])
+            if agreement.reseller_hid
+            else None,
+            tags=labels[agreement.hid],
+            contracts=grouped[agreement.hid],
+        )
+        for agreement in found
+    ]
+
+
+def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut]:
+    """Return contracts, each with its vendor, its agreement, what it has in force, its
+    tags and how many items it covers."""
+    hids = [contract.hid for contract in found]
+    in_force = {contract.hid: contracts.effective(contract) for contract in found}
+    vendors = _by_hid(
+        db,
+        Vendor,
+        {contract.vendor_hid for contract in found}
+        | {contract.reseller_hid for contract in found}
+        | {its["reseller_hid"].value for its in in_force.values()},
+    )
+    labels = tags.labels_of(db, contracts.RECORD_TYPE, hids)
+    covered = contracts.covered_items(db, hids)
+    scope = contracts.in_scope(db, hids)
+    today = contracts.today(db)
+    shaped = (
+        "vendor",
+        "agreement",
+        "effective",
+        "reseller",
+        "tags",
+        "covers_today",
+        "covered_items",
+        "items_in_scope",
+    )
+    out = []
+    for contract in found:
+        its = in_force[contract.hid]
+        within = contracts.agreement_of(contract)
+        through = vendors.get(its["reseller_hid"].value or "")
+        out.append(
+            shapes.ContractOut(
+                **_own(contract, shapes.ContractOut, shaped),
+                vendor=_vendor_ref(vendors[contract.vendor_hid]),
+                agreement=None
+                if within is None
+                else shapes.AgreementRef(hid=within.hid, name=within.name, number=within.number),
+                effective=shapes.ContractEffective(
+                    reseller_hid=shapes.EffectiveReference(
+                        value=its["reseller_hid"].value,
+                        label=through.name if through is not None else None,
+                        source=its["reseller_hid"].source,
+                        source_hid=its["reseller_hid"].source_hid,
+                    ),
+                    **{
+                        name: _effective(name, value)
+                        for name, value in its.items()
+                        if name != "reseller_hid"
+                    },
+                ),
+                reseller=_vendor_ref(vendors[contract.reseller_hid])
+                if contract.reseller_hid
+                else None,
+                tags=labels[contract.hid],
+                covers_today=contracts.covers(contract, today),
+                covered_items=covered[contract.hid],
+                items_in_scope=scope[contract.hid],
+            )
+        )
+    return out
+
+
+def contract_out(db: Session, contract: Contract) -> shapes.ContractOut:
+    """Return one contract."""
+    return contracts_out(db, [contract])[0]
+
+
+def terms_out(db: Session, contract: Contract) -> list[shapes.ContractTerm]:
+    """Return the terms a contract had before, each with who renewed it."""
+    found = contracts.terms(db, contract)
+    users = _by_hid(db, User, {term.renewed_by for term in found})
+    return [
+        shapes.ContractTerm(
+            number=term.number,
+            starts_on=term.starts_on,
+            ends_on=term.ends_on,
+            annual_cost=term.annual_cost,
+            purchase_reference=term.purchase_reference,
+            renewed_at=term.renewed_at,
+            renewed_by=term.renewed_by,
+            renewed_by_name=users[term.renewed_by].username if term.renewed_by in users else None,
+        )
+        for term in found
+    ]
+
+
+def coverage_out(db: Session, found: list[ContractCoverage]) -> list[shapes.CoverageOut]:
+    """Return coverages, each with its contract, its item and the days in force."""
+    held = _by_hid(db, Contract, {coverage.contract_hid for coverage in found})
+    refs = _contract_refs(db, list(held.values()))
+    items = _by_hid(db, Item, {coverage.item_hid for coverage in found})
+    named = item_refs(db, list(items.values()))
+    today = contracts.today(db)
+    out = []
+    for coverage in found:
+        contract, item = held[coverage.contract_hid], items[coverage.item_hid]
+        span = contracts.span(coverage, contract)
+        out.append(
+            shapes.CoverageOut(
+                **_own(
+                    coverage,
+                    shapes.CoverageOut,
+                    (
+                        "contract",
+                        "item",
+                        "item_lifecycle_state",
+                        "item_record_status",
+                        "effective_starts_on",
+                        "effective_ends_on",
+                        "in_force",
+                    ),
+                ),
+                contract=refs[contract.hid],
+                item=named[item.hid],
+                item_lifecycle_state=item.lifecycle_state,
+                item_record_status=item.record_status,
+                effective_starts_on=span.starts_on,
+                effective_ends_on=span.ends_on,
+                in_force=contracts.in_force(coverage, contract, today),
+            )
+        )
+    return out
+
+
+# --- purchases -----------------------------------------------------------------------
+
+
+def _catalog_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.CatalogRef]:
+    entries = _by_hid(db, CatalogEntry, hids)
+    vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
+    return {
+        entry.hid: shapes.CatalogRef(
+            hid=entry.hid,
+            vendor_hid=entry.vendor_hid,
+            vendor=vendors[entry.vendor_hid].name,
+            pid=entry.pid,
+            model_name=entry.model_name,
+            kind=entry.kind,
+            type=entry.type,
+            function=entry.function,
+        )
+        for entry in entries.values()
+    }
+
+
+def _site_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.PlaceRef]:
+    atlas = geography.Atlas(db)
+    wanted = sorted(hid for hid in hids if hid)
+    atlas.read_sites(wanted)
+    refs = {}
+    for hid in wanted:
+        site = atlas.site(hid)
+        if site is not None:
+            refs[hid] = shapes.PlaceRef(hid=hid, name=site.name, path=atlas.site_path(hid))
+    return refs
+
+
+def _region_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.PlaceRef]:
+    atlas = geography.Atlas(db)
+    return {
+        hid: shapes.PlaceRef(hid=hid, name=atlas.regions[hid].name, path=atlas.region_path(hid))
+        for hid in hids
+        if hid and hid in atlas.regions
+    }
+
+
+def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLineOut]:
+    """Return purchase lines, each with its model and what has arrived on it."""
+    requests = _by_hid(db, PurchaseRequest, {line.request_hid for line in found})
+    models = _catalog_refs(db, {line.catalog_entry_hid for line in found})
+    sites = _site_refs(db, {line.destination_site_hid for line in found})
+    arrived = purchases.received(db, [line.hid for line in found])
+    shaped = (
+        "reference",
+        "request_status",
+        "name",
+        "catalog",
+        "received_quantity",
+        "pending_quantity",
+        "destination_site",
+    )
+    out = []
+    for line in found:
+        request = requests[line.request_hid]
+        out.append(
+            shapes.PurchaseLineOut(
+                **_own(line, shapes.PurchaseLineOut, shaped),
+                reference=request.reference,
+                request_status=request.status,
+                name=purchases.line_name(request, line),
+                catalog=models[line.catalog_entry_hid],
+                received_quantity=arrived[line.hid],
+                pending_quantity=line.quantity - arrived[line.hid],
+                destination_site=sites.get(line.destination_site_hid or ""),
+            )
+        )
+    return out
+
+
+def received_out(db: Session, line: PurchaseLine, made: list[Item]) -> shapes.ReceivedOut:
+    """Return a line after a receipt, with the items the receipt created."""
+    refs = item_refs(db, made)
+    return shapes.ReceivedOut(
+        **lines_out(db, [line])[0].model_dump(), items=[refs[item.hid] for item in made]
+    )
+
+
+def requests_out(db: Session, found: list[PurchaseRequest]) -> list[shapes.PurchaseRequestOut]:
+    """Return purchase requests, each with its lines and what is still to come."""
+    its_lines = purchases.lines_of(db, [request.hid for request in found])
+    shaped = lines_out(db, [line for lines in its_lines.values() for line in lines])
+    by_request: dict[str, list[shapes.PurchaseLineOut]] = {request.hid: [] for request in found}
+    for line in shaped:
+        by_request[line.request_hid].append(line)
+    out = []
+    for request in found:
+        lines = by_request[request.hid]
+        out.append(
+            shapes.PurchaseRequestOut(
+                **_own(
+                    request,
+                    shapes.PurchaseRequestOut,
+                    ("lines", "quantity", "received_quantity", "pending_quantity"),
+                ),
+                lines=lines,
+                quantity=sum(line.quantity for line in lines),
+                received_quantity=sum(line.received_quantity for line in lines),
+                pending_quantity=sum(line.pending_quantity for line in lines),
+            )
+        )
+    return out
+
+
+# --- external systems ----------------------------------------------------------------
+
+
+def systems_out(db: Session, found: list[ExternalSystem]) -> list[shapes.ExternalSystemOut]:
+    """Return external systems, each with how many records are registered with it."""
+    counts = systems.registered(db, [system.hid for system in found])
+    return [
+        shapes.ExternalSystemOut(
+            **_own(system, shapes.ExternalSystemOut, ("registrations",)),
+            registrations=counts[system.hid],
+        )
+        for system in found
+    ]
+
+
+def registrations_out(db: Session, found: list[Registration]) -> list[shapes.RegistrationOut]:
+    """Return registrations, each with its system and the item or the group it is of."""
+    held = _by_hid(db, ExternalSystem, {registration.system_hid for registration in found})
+    items = item_refs(
+        db, list(_by_hid(db, Item, {registration.item_hid for registration in found}).values())
+    )
+    its_groups = _by_hid(db, DeviceGroup, {registration.group_hid for registration in found})
+    return [
+        shapes.RegistrationOut(
+            **_own(registration, shapes.RegistrationOut, ("system", "item", "group")),
+            system=_system_ref(held[registration.system_hid]),
+            item=items.get(registration.item_hid or ""),
+            group=_group_ref(its_groups[registration.group_hid])
+            if registration.group_hid
+            else None,
+        )
+        for registration in found
+    ]
+
+
+# --- capacity ------------------------------------------------------------------------
+
+
+def capacity_lines_out(db: Session, found: list[CapacityLine]) -> list[shapes.CapacityLineOut]:
+    """Return capacity lines, each with its units and what it refers to."""
+    vendors = _by_hid(db, Vendor, {line.vendor_hid for line in found})
+    regions = _region_refs(db, {line.region_hid for line in found})
+    sites = _site_refs(db, {line.site_hid for line in found})
+    called = {one.value: one.label for one in choices.list_choices(db, capacity.CATEGORY_LIST)}
+    today = contracts.today(db)
+    shaped = ("category_label", "units", "vendor", "region", "site", "in_date")
+    return [
+        shapes.CapacityLineOut(
+            **_own(line, shapes.CapacityLineOut, shaped),
+            category_label=called.get(line.category, line.category),
+            units=capacity.units(line),
+            vendor=_vendor_ref(vendors[line.vendor_hid]) if line.vendor_hid else None,
+            region=regions.get(line.region_hid or ""),
+            site=sites.get(line.site_hid or ""),
+            in_date=capacity.in_date(line, today),
+        )
+        for line in found
+    ]
+
+
+def capacity_out(found: balance.Balance) -> shapes.CapacityOut:
+    """Return the capacity balance."""
+    return shapes.CapacityOut.model_validate(found)
+
+
+# --- the reports that look ahead -----------------------------------------------------
+
+
+def _sections(found: dict[str, planning.Section]) -> dict[str, shapes.ReportSection]:
+    return {name: shapes.ReportSection.model_validate(one) for name, one in found.items()}
+
+
+def _page_of(db: Session, page: planning.Page) -> dict[str, Any]:
+    return {
+        "section": page.section,
+        "items": items_out(db, page.items),
+        "total": page.total,
+        "limit": page.limit,
+        "offset": page.offset,
+    }
+
+
+def coverage_report_out(db: Session, found: planning.Coverage) -> shapes.CoverageReport:
+    """Return the coverage report, with the items of the section that was asked for."""
+    return shapes.CoverageReport.model_validate(
+        {
+            "as_of": found.as_of,
+            "within_days": found.within_days,
+            "service_states": found.service_states,
+            "totals": shapes.CoverageTotals.model_validate(found.totals),
+            "sections": _sections(found.sections),
+            **_page_of(db, found.page),
+        }
+    )
+
+
+def end_of_life_out(db: Session, found: planning.EndOfLife) -> shapes.EndOfLifeReport:
+    """Return the end-of-life report, with the items of the section that was asked for."""
+    return shapes.EndOfLifeReport.model_validate(
+        {
+            "as_of": found.as_of,
+            "within_days": found.within_days,
+            "date": found.date,
+            "dates": {
+                name: shapes.PastAndApproaching.model_validate(one)
+                for name, one in found.dates.items()
+            },
+            "by_fiscal_year": [
+                shapes.FiscalYearCount.model_validate(year) for year in found.by_fiscal_year
+            ],
+            "sections": _sections(found.sections),
+            **_page_of(db, found.page),
+        }
+    )
+
+
+def replacement_rows_out(db: Session, found: list[ItemReplacement]) -> list[shapes.ReplacementRow]:
+    """Return replacements as rows of the report, each item as another record names it."""
+    held = _by_hid(
+        db,
+        Item,
+        {one.old_item_hid for one in found} | {one.new_item_hid for one in found},
+    )
+    refs = item_refs(db, list(held.values()))
+    called = {one.value: one.label for one in choices.list_choices(db, "replacement_reason")}
+    return [
+        shapes.ReplacementRow(
+            **_own(one, shapes.ReplacementRow, ("old_item", "new_item", "reason_label")),
+            old_item=refs[one.old_item_hid],
+            new_item=refs[one.new_item_hid],
+            reason_label=called.get(one.reason, one.reason),
+        )
+        for one in found
+    ]
+
+
+def portfolio_out(db: Session, found: planning.Portfolio) -> shapes.PortfolioOut:
+    """Return the portfolio of a vendor."""
+    measured = tuple(shapes.PortfolioMeasures.model_fields)
+
+    def measures(one: Any) -> dict[str, Any]:
+        return {name: getattr(one, name) for name in measured}
+
+    return shapes.PortfolioOut(
+        vendor=_vendor_ref(found.vendor),
+        as_of=found.as_of,
+        totals=shapes.PortfolioMeasures(**measures(found.totals)),
+        kinds=[shapes.PortfolioKind(**measures(one), kind=one.kind) for one in found.kinds],
+        models=[
+            shapes.PortfolioModel(
+                **measures(one),
+                catalog_entry_hid=one.entry.hid,
+                pid=one.entry.pid,
+                model_name=one.entry.model_name,
+                kind=one.entry.kind,
+                type=one.entry.type,
+                function=one.entry.function,
+                end_of_sale=one.entry.end_of_sale,
+                end_of_sw_support=one.entry.end_of_sw_support,
+                end_of_hw_support=one.entry.end_of_hw_support,
+                ldos=one.entry.ldos,
+                covered_until=one.covered_until,
+            )
+            for one in found.models
+        ],
+        agreements=agreements_out(db, found.agreements),
+        contracts=contracts_out(db, found.contracts),
+        capacity_lines=capacity_lines_out(db, found.capacity_lines),
+        filter=found.filter,
+    )

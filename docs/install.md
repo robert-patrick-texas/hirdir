@@ -191,10 +191,19 @@ hirdir import examples/contact-assignments.csv --entity contact_assignments --ap
 hirdir import examples/owners.csv --entity owners --apply
 hirdir import examples/owner-members.csv --entity owner_members --apply
 hirdir import examples/networks.csv --entity networks --apply
+hirdir import examples/external-systems.csv --entity external_systems --apply
+hirdir import examples/agreements.csv --entity agreements --apply
+hirdir import examples/contracts.csv --entity contracts --apply
+hirdir import examples/purchase-requests.csv --entity purchase_requests --apply
+hirdir import examples/purchase-lines.csv --entity purchase_lines --apply
 hirdir import examples/items.csv --entity items --apply
 hirdir import examples/device-groups.csv --entity device_groups --apply
 hirdir import examples/device-group-members.csv --entity device_group_members --apply
+hirdir import examples/item-replacements.csv --entity item_replacements --apply
 hirdir import examples/addresses.csv --entity addresses --apply
+hirdir import examples/contract-coverage.csv --entity contract_coverage --apply
+hirdir import examples/registrations.csv --entity registrations --apply
+hirdir import examples/capacity-lines.csv --entity capacity_lines --apply
 ```
 
 Without `--apply` a command shows what the file would do and changes nothing. Loaded a
@@ -210,6 +219,15 @@ Seven of the files are new in 0.5.0: the contacts, the operators, which are the 
 of who looks after what, the regions, the sites and the locations within them, who is
 the contact of which place in which role, and the people of each owner. The items and
 the device groups say where they are and which operator they have of their own.
+
+Nine of the files are new in 0.6.0: the external systems and what is registered with
+them; two support agreements, a Cisco one and a Juniper one, with the contracts
+grouped into them, a contract that stands by itself for switches bought lately, and
+what each contract covers; two purchase requests with their lines, on one of which two
+switches have arrived; the capacity lines of the worked example on the
+[data model](data-model.md#capacity-balance) page, one of them a draft; and one
+replacement. The dates of the contracts are fixed in the files, so what the coverage
+report says of them changes as the calendar moves on.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -692,6 +710,54 @@ Going back to 0.4.2 is as under
 this upgrade is at revision `0006`. 0.4.2 knows no region, site, location or contact,
 so whatever was entered of those with 0.5.0 is lost with the rest that was entered
 since the upgrade.
+
+### From 0.5.0 to 0.6.0
+
+The schema goes from revision `0007` to `0008`. Eight tables are added: `agreements`,
+`contracts`, `contract_coverage`, `purchase_requests`, `purchase_lines`,
+`external_systems`, `registrations` and `capacity_lines`, and with them the list of
+capacity categories is filled. All of the tables are empty after the upgrade.
+
+The `items` table gains one column, `purchase_line_hid`. To add a column that refers
+to another table, SQLite makes the table anew and copies every row across, inside the
+one transaction that the whole upgrade runs in. Nothing you have is changed by it.
+Every record is as it was, field for field and at the `row_version` it had, and every
+item has its history. The audit trail holds no event of the upgrade.
+
+What is new is empty until somebody fills it in. No item is under a contract: on the
+coverage report every major item in Test, Prod or Down is in service with no cover,
+which is true until the contracts are entered, and the first page says how many. No
+item arrived on a purchase line, nothing is registered with an external system, and
+there is no capacity line: the capacity report shows the support weight of the
+inventory as demand, and no supply.
+
+The list of capacity categories is filled with its defaults: `staff`,
+`professional_services`, `smart_hands`, `tools`, `services` and `other_work`. A value
+that a site had entered in the list is left as it is.
+
+Three things answer differently from now on, for a script that reads them:
+
+- The record of an item has `covered`, `covered_until`, `coverage`, `registrations`,
+  `purchase_line_hid` and `purchase_line`, and the record of a device group has
+  `registrations`.
+- `GET /reports/summary` and `GET /reports/management` take `by=contract`, which 0.5.0
+  refused.
+- A file of items may have a `purchase_line` column, which 0.5.0 rejected as unknown.
+  An export of the columns that can be set writes it.
+
+There is one setting more, `service_states`, the lifecycle states in which an item is
+in service for the coverage report: Test, Prod and Down until it is changed.
+`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is
+the one 0.5.0 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+
+The package now carries twenty-five example files, where it carried sixteen: see
+[Try it with the examples](#try-it-with-the-examples).
+
+Going back to 0.5.0 is as under
+[Going back to the release before](#going-back-to-the-release-before). The backup of
+this upgrade is at revision `0007`. 0.5.0 knows no contract, purchase request,
+external system or capacity line, so whatever was entered of those with 0.6.0 is lost
+with the rest that was entered since the upgrade.
 
 ### If the upgrade stops
 

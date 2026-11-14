@@ -147,3 +147,73 @@ def checked_status(value: Any, allowed: tuple[str, ...] = ("draft", "active")) -
             {"record_status": f"one of {', '.join(allowed)}; use the retire route to retire"},
         )
     return status
+
+
+def checked_day(name: str, value: Any) -> date | None:
+    """Return a day a change gives, or refuse what is not a date."""
+    if value is not None and (not isinstance(value, date) or isinstance(value, datetime)):
+        raise Invalid(f"{name} is not acceptable", {name: "a date, as YYYY-MM-DD"})
+    return value
+
+
+def checked_span(start: date | None, end: date | None, field: str = "ends_on") -> None:
+    """Refuse a range of days that ends before it starts. A blank is open."""
+    if start is not None and end is not None and end < start:
+        raise Invalid(
+            "the dates are not acceptable", {field: "must not be before the day it starts"}
+        )
+
+
+def checked_choice(value: Any, allowed: tuple[str, ...], field: str) -> str:
+    """Return one of a fixed list of values as the list spells it, or refuse it."""
+    wanted = key(value) if isinstance(value, str) else ""
+    if wanted not in allowed:
+        raise Invalid(f"{field} is not acceptable", {field: f"one of {', '.join(allowed)}"})
+    return wanted
+
+
+def checked_amount(name: str, value: Any) -> Decimal | None:
+    """Return an amount a change gives: a number that is not negative, or nothing."""
+    if value is None:
+        return None
+    if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
+        raise Invalid(f"{name} is not acceptable", {name: "a number that is not negative"})
+    return value
+
+
+def linked(
+    db: Session, model: Any, field: str, value: Any, record: Any | None, what: str
+) -> str | None:
+    """Return the HID of a record that a change refers to in `field`.
+
+    A reference that is left as it is, is not looked at again. A new one is to a
+    record that exists and is not retired.
+    """
+    hid = value or None
+    if hid is None or (record is not None and getattr(record, field) == hid):
+        return hid
+    found = db.get(model, hid) if isinstance(hid, str) else None
+    if found is None:
+        raise Invalid(f"there is no such {what}", {field: f"there is no {what} {hid}"})
+    if getattr(found, "record_status", None) == "retired":
+        raise Invalid(f"the {what} is retired", {field: f"this {what} is retired"})
+    return hid
+
+
+MAX_URL = 2000
+
+
+def checked_url(name: str, value: Any) -> str | None:
+    """Return an address on the web that a change gives, or refuse what is not one."""
+    url = clean(value)
+    if url is not None and (
+        not isinstance(url, str)
+        or len(url) > MAX_URL
+        or not url.lower().startswith(("https://", "http://"))
+        or any(character.isspace() for character in url)
+    ):
+        raise Invalid(
+            f"{name} is not acceptable",
+            {name: "an address that begins with https:// or http://, with no space"},
+        )
+    return url

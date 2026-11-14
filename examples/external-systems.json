@@ -1,0 +1,5 @@
+{"schema": "hirdir/1", "entity": "external_systems", "mode": "upsert", "records": [
+  {"name": "Config Vault", "kind": "config_backup", "url": "https://configvault.example.net", "notes": null, "record_status": "active"},
+  {"name": "Fabric Director", "kind": "sdn_controller", "url": "https://fabric.example.net", "notes": null, "record_status": "active"},
+  {"name": "NetWatch", "kind": "monitoring", "url": "https://netwatch.example.net", "notes": null, "record_status": "active"}
+]}

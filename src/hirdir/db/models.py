@@ -503,6 +503,10 @@ class Item(Bookkeeping, Base):
         ForeignKey("items.hid"), default=None, index=True
     )
     position: Mapped[str | None] = mapped_column(String(100), default=None)
+    # The line of a purchase request it arrived on.
+    purchase_line_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("purchase_lines.hid"), default=None, index=True
+    )
     procured_on: Mapped[date | None] = mapped_column(Date, default=None)
     delivered_on: Mapped[date | None] = mapped_column(Date, default=None)
     in_service_on: Mapped[date | None] = mapped_column(Date, default=None)
@@ -623,6 +627,182 @@ class Address(Bookkeeping, Base):
     )
     role: Mapped[str] = mapped_column(String(12), default="management")
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Agreement(Bookkeeping, Base):
+    """A support agreement with a vendor, such as an enterprise agreement, that groups
+    contracts. What it says of whom to ask, and of its period, is had by each contract
+    in it that says nothing of its own."""
+
+    __tablename__ = "agreements"
+    __table_args__ = (UniqueConstraint("name_key", name="agreements_name"),)
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    number: Mapped[str | None] = mapped_column(String(100), default=None)
+    vendor_hid: Mapped[str] = mapped_column(ForeignKey("vendors.hid"), index=True)
+    reseller_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
+    starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    support_level: Mapped[str | None] = mapped_column(String(200), default=None)
+    purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
+    account_manager: Mapped[str | None] = mapped_column(Text, default=None)
+    support_contact: Mapped[str | None] = mapped_column(Text, default=None)
+    support_url: Mapped[str | None] = mapped_column(String(2000), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Contract(Bookkeeping, Base):
+    """A support contract with a vendor, which covers items for a range of days."""
+
+    __tablename__ = "contracts"
+    __table_args__ = (UniqueConstraint("vendor_hid", "number_key", name="contracts_vendor_number"),)
+
+    hid: Mapped[str] = _hid()
+    number: Mapped[str] = mapped_column(String(100))
+    number_key: Mapped[str] = mapped_column(String(100), index=True)
+    vendor_hid: Mapped[str] = mapped_column(ForeignKey("vendors.hid"), index=True)
+    # The agreement it is grouped into. What the contract leaves blank it has from there.
+    agreement_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("agreements.hid"), default=None, index=True
+    )
+    # Whom it was bought through, where that is not the vendor itself.
+    reseller_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
+    starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    # What a person says of the contract. The clock never changes it.
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    support_level: Mapped[str | None] = mapped_column(String(200), default=None)
+    # The request or the tracking number this term was bought under.
+    purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
+    # Who to ask, as free text: nobody keeps a contact record for a vendor's desk.
+    account_manager: Mapped[str | None] = mapped_column(Text, default=None)
+    support_contact: Mapped[str | None] = mapped_column(Text, default=None)
+    support_url: Mapped[str | None] = mapped_column(String(2000), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class ContractCoverage(Bookkeeping, Base):
+    """One item under one contract for a range of days. A blank date is the contract's."""
+
+    __tablename__ = "contract_coverage"
+
+    hid: Mapped[str] = _hid()
+    contract_hid: Mapped[str] = mapped_column(ForeignKey("contracts.hid"), index=True)
+    item_hid: Mapped[str] = mapped_column(ForeignKey("items.hid"), index=True)
+    starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+
+
+class PurchaseRequest(Bookkeeping, Base):
+    """An internal request to buy, with lines of model and quantity."""
+
+    __tablename__ = "purchase_requests"
+    __table_args__ = (UniqueConstraint("reference_key", name="purchase_requests_reference"),)
+
+    hid: Mapped[str] = _hid()
+    reference: Mapped[str] = mapped_column(String(100))
+    reference_key: Mapped[str] = mapped_column(String(100))
+    requested_on: Mapped[date | None] = mapped_column(Date, default=None)
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class PurchaseLine(Bookkeeping, Base):
+    """One line of a purchase request: a model and how many, before any serial number."""
+
+    __tablename__ = "purchase_lines"
+    __table_args__ = (UniqueConstraint("request_hid", "line", name="purchase_lines_request_line"),)
+
+    hid: Mapped[str] = _hid()
+    request_hid: Mapped[str] = mapped_column(ForeignKey("purchase_requests.hid"), index=True)
+    line: Mapped[int] = mapped_column(Integer)
+    catalog_entry_hid: Mapped[str] = mapped_column(ForeignKey("catalog_entries.hid"), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    destination_site_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("sites.hid"), default=None, index=True
+    )
+    expected_on: Mapped[date | None] = mapped_column(Date, default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class ExternalSystem(Bookkeeping, Base):
+    """Another system that knows items or groups: a monitoring tool, an SDN controller."""
+
+    __tablename__ = "external_systems"
+    __table_args__ = (UniqueConstraint("name_key", name="external_systems_name"),)
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20), default="other")
+    url: Mapped[str | None] = mapped_column(String(2000), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Registration(Bookkeeping, Base):
+    """An item or a device group as one external system knows it."""
+
+    __tablename__ = "registrations"
+    __table_args__ = (
+        CheckConstraint(
+            "(item_hid IS NULL) <> (group_hid IS NULL)",
+            name="registrations_one_holder",
+        ),
+        UniqueConstraint("system_hid", "item_hid", name="registrations_system_item"),
+        UniqueConstraint("system_hid", "group_hid", name="registrations_system_group"),
+    )
+
+    hid: Mapped[str] = _hid()
+    system_hid: Mapped[str] = mapped_column(ForeignKey("external_systems.hid"), index=True)
+    item_hid: Mapped[str | None] = mapped_column(ForeignKey("items.hid"), default=None, index=True)
+    group_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("device_groups.hid"), default=None, index=True
+    )
+    external_id: Mapped[str | None] = mapped_column(String(200), default=None)
+    status: Mapped[str] = mapped_column(String(12), default="registered")
+    confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+
+
+class CapacityLine(Bookkeeping, Base):
+    """A source of resource units, or a call on them other than the infrastructure."""
+
+    __tablename__ = "capacity_lines"
+    __table_args__ = (
+        UniqueConstraint("side", "name_key", name="capacity_lines_side_name"),
+        CheckConstraint("region_hid IS NULL OR site_hid IS NULL", name="capacity_lines_one_place"),
+    )
+
+    hid: Mapped[str] = _hid()
+    side: Mapped[str] = mapped_column(String(10))
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    quantity: Mapped[Decimal] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(1))
+    units_each: Mapped[Decimal] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(0))
+    annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
+    vendor_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
+    region_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("regions.hid"), default=None, index=True
+    )
+    site_hid: Mapped[str | None] = mapped_column(ForeignKey("sites.hid"), default=None, index=True)
+    starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
 class Tag(Bookkeeping, Base):

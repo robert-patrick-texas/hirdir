@@ -67,6 +67,8 @@ const NONE: Readonly<Record<By, string>> = {
   // The items that are nowhere: no location in force, and so no site and no region.
   site: "Nowhere: no location",
   region: "Nowhere: no location",
+  // What no contract covers today.
+  contract: "Under no contract",
   lifecycle_state: "No state",
   disposition: "No disposition",
   condition: "No condition",

@@ -13,6 +13,7 @@ stalled server. The engine is the `regex` package, which offers the per-match ti
 limit. See P-19 in docs/decisions.md for when RE2 takes its place.
 """
 
+import json
 import re
 import socket
 import time
@@ -24,9 +25,11 @@ from functools import lru_cache
 from typing import Any
 
 import regex
-from sqlalchemy import Boolean, ColumnElement, String, func, literal, select, text
+from sqlalchemy import Boolean, ColumnElement, Date, String, func, literal, select, text
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
+
+from hirdir import clock
 
 REGEX_MAX_LENGTH = 200
 REGEX_MAX_REPEAT = 100
@@ -149,6 +152,26 @@ def _sqlite_address_key(value: Any) -> str | None:
         return f"9{text}"
 
 
+def _sqlite_today(setting: Any) -> str:
+    """Return today's date in the application's time zone, as SQLite keeps a date.
+
+    `setting` is the `time_zone` setting as the database holds it: JSON text, or
+    nothing where it was never changed or was returned to its default.
+    """
+    zone = None
+    if setting is not None:
+        try:
+            zone = json.loads(setting)
+        except ValueError:
+            zone = None
+    if not isinstance(zone, str) or not zone:
+        zone = clock.DEFAULT_ZONE
+    try:
+        return clock.today(zone).isoformat()
+    except KeyError, ValueError, OSError:
+        return clock.today().isoformat()
+
+
 def is_busy(error: Exception) -> bool:
     """Say whether a statement failed because another writer held the database too long.
 
@@ -188,6 +211,7 @@ def prepare_sqlite(dbapi_connection: Any) -> None:
     dbapi_connection.create_function(
         "hirdir_address_key", 1, _sqlite_address_key, deterministic=True
     )
+    dbapi_connection.create_function("hirdir_today", 1, _sqlite_today)
 
 
 class regex_match(FunctionElement):
@@ -276,6 +300,40 @@ def as_address(expression: Any) -> ColumnElement[Any]:
     numbers. The least and the greatest of several are taken of this, not of the text.
     """
     return address_key(expression)
+
+
+class today_here(FunctionElement):
+    """Today's date in the application's time zone, as the database works it out.
+
+    The zone is the `time_zone` setting, read by the statement itself, so that a list
+    which asks what is in force today needs nothing handed to it. It stands in a
+    subquery of its own, which a statement works out once and not for every row.
+    """
+
+    type = Date()
+    name = "today_here"
+    inherit_cache = True
+
+
+_TIME_ZONE = "(SELECT value FROM settings WHERE key = 'time_zone')"
+
+
+@compiles(today_here, "sqlite")
+def _today_sqlite(element: today_here, compiler: Any, **kw: Any) -> str:
+    return f"(SELECT hirdir_today({_TIME_ZONE}))"
+
+
+@compiles(today_here)
+@compiles(today_here, "postgresql")
+def _today_postgresql(element: today_here, compiler: Any, **kw: Any) -> str:
+    setting = "(SELECT value #>> '{}' FROM settings WHERE key = 'time_zone')"
+    return f"CAST(now() AT TIME ZONE coalesce({setting}, '{clock.DEFAULT_ZONE}') AS date)"
+
+
+def today() -> ColumnElement[Any]:
+    """Return today's date in the application's time zone, for a statement to compare
+    a day with: what a contract covers today, which line is in date."""
+    return today_here()
 
 
 class list_values(FunctionElement):

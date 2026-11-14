@@ -30,6 +30,7 @@ Source = Literal[
     "location",
     "site",
     "region",
+    "agreement",
     "setting",
     "none",
 ]

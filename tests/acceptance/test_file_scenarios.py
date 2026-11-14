@@ -32,10 +32,19 @@ LOAD_ORDER = (
     "owners",
     "owner_members",
     "networks",
+    "external_systems",
+    "agreements",
+    "contracts",
+    "purchase_requests",
+    "purchase_lines",
     "items",
     "device_groups",
     "device_group_members",
+    "item_replacements",
     "addresses",
+    "contract_coverage",
+    "registrations",
+    "capacity_lines",
 )
 ROUTES = {
     "tags": "/tags",
@@ -52,6 +61,15 @@ ROUTES = {
     "items": "/items",
     "device_groups": "/device-groups",
     "addresses": "/addresses",
+    "external_systems": "/external-systems",
+    "agreements": "/agreements",
+    "contracts": "/contracts",
+    "purchase_requests": "/purchase-requests",
+    "purchase_lines": "/purchase-lines",
+    "item_replacements": "/reports/replacements",
+    "contract_coverage": "/contract-coverage",
+    "registrations": "/registrations",
+    "capacity_lines": "/capacity-lines",
 }
 IVY = ("ivy", "acceptance-inventory")
 IAN = ("ian", "acceptance-second")

@@ -1,0 +1,3 @@
+{"schema": "hirdir/1", "entity": "item_replacements", "mode": "upsert", "records": [
+  {"old_item": "AT-000133", "new_item": "AT-000107", "reason": "refresh", "reference": "CHG0031877", "replaced_on": "2026-06-30"}
+]}

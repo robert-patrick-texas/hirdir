@@ -22,26 +22,37 @@ from hirdir.db.models import (
     ADDRESS_FIELDS,
     SHIP_FIELDS,
     Address,
+    Agreement,
+    CapacityLine,
     CatalogEntry,
     Contact,
     ContactAssignment,
+    Contract,
+    ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
+    ExternalSystem,
     Item,
+    ItemReplacement,
     Location,
     Network,
     Operator,
     Owner,
     OwnerMember,
+    PurchaseLine,
+    PurchaseRequest,
     Region,
+    Registration,
     Site,
     Tag,
     Vendor,
 )
 from hirdir.domain import (
     addresses,
+    capacity,
     catalog,
     contacts,
+    contracts,
     descent,
     geography,
     groups,
@@ -52,8 +63,11 @@ from hirdir.domain import (
     moves,
     operators,
     owners,
+    purchases,
     records,
+    replacements,
     settings,
+    systems,
     tags,
 )
 from hirdir.domain.audit import AuditContext
@@ -295,6 +309,18 @@ class Run:
     def operator(self, text: str, field: str = "operator") -> Operator:
         """Return the operator a row names, by its HID or its label."""
         return operators.the_one(self.db, text, field)
+
+    def contract(self, text: str, vendor: str | None = None, field: str = "contract") -> Contract:
+        """Return the contract a row names, by its HID or its number. Where two vendors
+        use one number, the vendor the row names says which."""
+        maker = self.vendor(vendor) if vendor else None
+        if vendor and maker is None:
+            raise Invalid("there is no such vendor", {"vendor": f"there is no vendor {vendor}"})
+        return contracts.the_one(self.db, text, field, maker.hid if maker is not None else None)
+
+    def system(self, text: str, field: str = "system") -> ExternalSystem:
+        """Return the external system a row names, by its HID or its name."""
+        return systems.the_one(self.db, text, field)
 
     def network(self, text: str, field: str = "network") -> Network:
         """Return the network a row names, by HID or label. A network is never made here."""
@@ -1539,6 +1565,7 @@ class Items(Entity):
         _PLANNED,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
+        Column("purchase_line", limit=140),
         *AMOUNTS,
         *DATES,
         STATUS,
@@ -1555,6 +1582,9 @@ class Items(Entity):
         Column("region", settable=False),
         Column("owner_exception", "boolean", settable=False),
         Column("owner_exception_reason", limit=LONG, settable=False),
+        Column("covered", "boolean", settable=False),
+        Column("covered_until", "date", settable=False),
+        Column("contracts", "list", settable=False),
         *_sources((_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
@@ -1579,6 +1609,8 @@ class Items(Entity):
         "operator.label": "operator",
         "site_hid": "site",
         "region_hid": "region",
+        "purchase_line_hid": "purchase_line",
+        "contract.number": "contracts",
         **{f"effective.{name}": name for name in inheritance.STANDING},
         **MGMT_SPELLINGS,
     }
@@ -1591,6 +1623,7 @@ class Items(Entity):
         "location_hid": "location",
         "planned_location_hid": "planned_location",
         "parent_item_hid": "parent",
+        "purchase_line_hid": "purchase_line",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
         # A move names its state and its reason otherwise than a file does.
@@ -1862,6 +1895,11 @@ class Items(Entity):
             given["parent_item_hid"] = (
                 run.item(parent, "parent").hid if parent is not None else None
             )
+        if "purchase_line" in values:
+            named = values["purchase_line"]
+            given["purchase_line_hid"] = (
+                purchases.the_line(db, named, "purchase_line").hid if named is not None else None
+            )
         above = self._above(run, record, given)
         if "owner" in values:
             named = values["owner"]
@@ -1986,10 +2024,18 @@ class Items(Entity):
             {item.operator_hid for item in found} | {one.value for one in looked_after.values()},
         )
         called = {hid: items.name_or_hid(mark.label, hid) for hid, mark in marks.items()}
+        today = contracts.today(db)
+        cover = contracts.of_items(db, hids)
+        arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
+            covering = [
+                contract.number
+                for coverage, contract in cover[item.hid]
+                if contracts.in_force(coverage, contract, today)
+            ]
             in_force = inheritance.of_item(item, entry, line)
             in_force["location_hid"] = placed[item.hid]
             in_force["owner_hid"] = owned[item.hid]
@@ -2021,6 +2067,10 @@ class Items(Entity):
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": outside,
                 "owner_exception_reason": owner_in_force.exception_reason if outside else None,
+                "purchase_line": arrived_on.get(item.purchase_line_hid or ""),
+                "covered": bool(covering),
+                "covered_until": contracts.covered_until(cover[item.hid], today),
+                "contracts": sorted(set(covering), key=records.key),
             }
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
@@ -2039,6 +2089,827 @@ class Items(Entity):
                 row[f"{column}_source"] = effective.source
             rows.append(row)
         return rows
+
+
+def _line_names(db: Session, hids: set[str | None]) -> dict[str, str]:
+    """Return how a file names each purchase line: `RITM0012345/2`."""
+    lines = _by_hid(db, PurchaseLine, hids)
+    requests = _by_hid(db, PurchaseRequest, {line.request_hid for line in lines.values()})
+    return {
+        line.hid: purchases.line_name(requests[line.request_hid], line) for line in lines.values()
+    }
+
+
+class ItemReplacements(Entity):
+    """Replacements: the item that left, and the item that took its place."""
+
+    name = "item_replacements"
+    record_type = "item_replacement"
+    model = ItemReplacement
+    listing = fields.REPLACEMENTS
+    columns = (
+        HID,
+        Column("old_item"),
+        Column("new_item"),
+        Column("reason", limit=40),
+        Column("reference"),
+        Column("replaced_on", "date"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "old_item_hid": "old_item",
+        "new_item_hid": "new_item",
+        "old.name": "old_item",
+        "old.serial_number": "old_item",
+        "new.name": "new_item",
+        "new.serial_number": "new_item",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"old_item_hid": "old_item", "new_item_hid": "new_item"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a replacement by the item that left: an item is replaced once."""
+        old = values.get("old_item")
+        if not old:
+            return None
+        return run.db.scalar(
+            select(ItemReplacement).where(
+                ItemReplacement.old_item_hid == run.item(old, "old_item").hid
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return " by ".join(
+            str(values[name]) for name in ("old_item", "new_item") if values.get(name)
+        )
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        db = run.db
+        given = _plain_fields(values, ("reason", "reference", "replaced_on"))
+        if record is None:
+            for name in ("old_item", "new_item"):
+                if not values.get(name):
+                    raise Invalid("a replacement is of two items", {name: "must not be blank"})
+            old = run.item(values["old_item"], "old_item")
+            return replacements.replace(
+                db,
+                run.context,
+                old.hid,
+                old.row_version,
+                reason=given.get("reason"),
+                new_item_hid=run.item(values["new_item"], "new_item").hid,
+                reference=given.get("reference"),
+                replaced_on=given.get("replaced_on"),
+            )
+        for name in ("old_item", "new_item"):
+            if values.get(name):
+                given[f"{name}_hid"] = run.item(values[name], name).hid
+        if given.get("replaced_on", _MISSING) is None:
+            del given["replaced_on"]
+        return replacements.update_replacement(
+            db, run.context, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        held = _by_hid(
+            db, Item, {one.old_item_hid for one in found} | {one.new_item_hid for one in found}
+        )
+        named = items.reference_texts(db, list(held.values()))
+        return [
+            {
+                **_kept(one),
+                "old_item": named[one.old_item_hid],
+                "new_item": named[one.new_item_hid],
+                "reason": one.reason,
+                "reference": one.reference,
+                "replaced_on": one.replaced_on,
+            }
+            for one in found
+        ]
+
+
+class ExternalSystems(Entity):
+    """External systems."""
+
+    name = "external_systems"
+    record_type = "external_system"
+    model = ExternalSystem
+    listing = fields.EXTERNAL_SYSTEMS
+    columns = (
+        HID,
+        Column("name"),
+        Column("kind", limit=20),
+        Column("url", limit=2000),
+        NOTES,
+        STATUS,
+        *BOOKKEEPING,
+    )
+    _direct = ("name", "kind", "url", "notes")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name = values.get("name")
+        if not name:
+            return None
+        return run.db.scalar(
+            select(ExternalSystem).where(ExternalSystem.name_key == records.key(name))
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("name") or (record.name if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        if record is None:
+            return systems.create_system(run.db, run.context, _new(given))
+        return systems.update_system(run.db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        return [
+            {
+                **_kept(system),
+                **{name: getattr(system, name) for name in self._direct},
+                "record_status": system.record_status,
+            }
+            for system in found
+        ]
+
+
+class Registrations(Entity):
+    """The registrations of items and device groups with external systems."""
+
+    name = "registrations"
+    record_type = "registration"
+    model = Registration
+    listing = fields.REGISTRATIONS
+    columns = (
+        HID,
+        Column("system"),
+        Column("item"),
+        Column("group"),
+        Column("external_id"),
+        Column("status", limit=12),
+        Column("confirmed_at", "timestamp"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "system_hid": "system",
+        "system.name": "system",
+        "item_hid": "item",
+        "item.name": "item",
+        "group_hid": "group",
+        "group.name": "group",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "system_hid": "system",
+        "item_hid": "item",
+        "group_hid": "group",
+    }
+
+    def _holder(self, run: Run, values: Mapping[str, Any]) -> tuple[str, str]:
+        """Return the item or the group a row names, as the field that holds it."""
+        named = [name for name in ("item", "group") if values.get(name)]
+        if len(named) != 1:
+            raise Invalid(
+                "a registration is of one item or one device group",
+                dict.fromkeys(named or ("item", "group"), "exactly one of item and group"),
+            )
+        if named[0] == "item":
+            return "item_hid", run.item(values["item"], "item").hid
+        return "group_hid", run.group(values["group"]).hid
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        if not values.get("system") or not (values.get("item") or values.get("group")):
+            return None
+        field, hid = self._holder(run, values)
+        return systems.find_registration(run.db, run.system(values["system"]).hid, field, hid)
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("system", "item", "group")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("external_id", "status", "confirmed_at"))
+        if record is None:
+            if not values.get("system"):
+                raise Invalid("a registration is with a system", {"system": "must not be blank"})
+            field, hid = self._holder(run, values)
+            given.update({"system_hid": run.system(values["system"]).hid, field: hid})
+            return systems.create_registration(run.db, run.context, _new(given))
+        if values.get("system"):
+            given["system_hid"] = run.system(values["system"]).hid
+        if values.get("item") or values.get("group"):
+            field, hid = self._holder(run, values)
+            given[field] = hid
+        return systems.update_registration(
+            run.db, run.context, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        held = _by_hid(db, ExternalSystem, {one.system_hid for one in found})
+        its_items = _by_hid(db, Item, {one.item_hid for one in found})
+        named = items.reference_texts(db, list(its_items.values()))
+        its_groups = _by_hid(db, DeviceGroup, {one.group_hid for one in found})
+        return [
+            {
+                **_kept(one),
+                "system": items.name_or_hid(held[one.system_hid].name, one.system_hid),
+                "item": named[one.item_hid] if one.item_hid else None,
+                "group": items.name_or_hid(its_groups[one.group_hid].name, one.group_hid)
+                if one.group_hid
+                else None,
+                "external_id": one.external_id,
+                "status": one.status,
+                "confirmed_at": one.confirmed_at,
+            }
+            for one in found
+        ]
+
+
+# What an agreement and a contract in it both say. A contract has from its agreement
+# the ones that inherit, where it says nothing of its own.
+_TERMS = (
+    Column("reseller", inherits=True),
+    Column("starts_on", "date", inherits=True),
+    Column("ends_on", "date", inherits=True),
+    Column("status", limit=10),
+    Column("support_level", inherits=True),
+    Column("purchase_reference"),
+    Column("account_manager", limit=LONG, inherits=True),
+    Column("support_contact", limit=LONG, inherits=True),
+    Column("support_url", limit=2000, inherits=True),
+    Column("annual_cost", "money"),
+    NOTES,
+    STATUS,
+    TAGS,
+)
+_TERMS_DIRECT = (
+    "starts_on",
+    "ends_on",
+    "status",
+    *contracts.TEXTS,
+    "support_url",
+    "annual_cost",
+    "tags",
+)
+
+
+def _vendor_named(run: Run, text: str, field: str) -> str:
+    vendor = run.vendor(text)
+    if vendor is None:
+        raise Invalid("there is no such vendor", {field: f"there is no vendor {text}"})
+    return vendor.hid
+
+
+def _terms_given(run: Run, values: Mapping[str, Any], record: Any | None) -> dict[str, Any]:
+    """Return what a row of an agreement or of a contract sets of what both hold."""
+    given = {**_plain_fields(values, _TERMS_DIRECT), **_status(values, record)}
+    if given.get("tags", _MISSING) is None:
+        given["tags"] = []
+    if values.get("vendor"):
+        given["vendor_hid"] = _vendor_named(run, values["vendor"], "vendor")
+    if "reseller" in values:
+        named = values["reseller"]
+        given["reseller_hid"] = _vendor_named(run, named, "reseller") if named is not None else None
+    return given
+
+
+class Agreements(Entity):
+    """Support agreements, which group contracts."""
+
+    name = "agreements"
+    record_type = "agreement"
+    model = Agreement
+    listing = fields.AGREEMENTS
+    columns = (
+        HID,
+        Column("name"),
+        Column("number", limit=100),
+        Column("vendor"),
+        *(Column(column.name, column.kind, column.limit) for column in _TERMS),
+        Column("contracts", "integer", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {"vendor_hid": "vendor", "reseller_hid": "reseller"}
+    renamed: ClassVar[Mapping[str, str]] = {"vendor_hid": "vendor", "reseller_hid": "reseller"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name = values.get("name")
+        if not name:
+            return None
+        return run.db.scalar(select(Agreement).where(Agreement.name_key == records.key(name)))
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("name") or (record.name if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {**_plain_fields(values, ("name", "number")), **_terms_given(run, values, record)}
+        if record is None:
+            return contracts.create_agreement(run.db, run.context, _new(given))
+        return contracts.update_agreement(
+            run.db, run.context, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        hids = [agreement.hid for agreement in found]
+        vendors = _by_hid(
+            db, Vendor, {one.vendor_hid for one in found} | {one.reseller_hid for one in found}
+        )
+        labels = tags.labels_of(db, self.record_type, hids)
+        grouped = contracts.contracts_in(db, hids)
+        return [
+            {
+                **_kept(one),
+                "name": one.name,
+                "number": one.number,
+                **{name: getattr(one, name) for name in _TERMS_DIRECT if name != "tags"},
+                "vendor": vendors[one.vendor_hid].name,
+                "reseller": vendors[one.reseller_hid].name if one.reseller_hid else None,
+                "record_status": one.record_status,
+                "tags": labels[one.hid],
+                "contracts": grouped[one.hid],
+            }
+            for one in found
+        ]
+
+
+class Contracts(Entity):
+    """Contracts."""
+
+    name = "contracts"
+    record_type = "contract"
+    model = Contract
+    listing = fields.CONTRACTS
+    columns = (
+        HID,
+        Column("number", limit=100),
+        Column("vendor"),
+        Column("agreement"),
+        *_TERMS,
+        Column("covered_items", "integer", settable=False),
+        *_sources(_TERMS),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "vendor_hid": "vendor",
+        "reseller_hid": "reseller",
+        "agreement_hid": "agreement",
+        "agreement.name": "agreement",
+        **{f"effective.{name}": name.removesuffix("_hid") for name in contracts.INHERITED},
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "vendor_hid": "vendor",
+        "reseller_hid": "reseller",
+        "agreement_hid": "agreement",
+    }
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a contract by its number, with the vendor where two use one."""
+        number, vendor = values.get("number"), values.get("vendor")
+        if not number:
+            return None
+        maker = run.vendor(vendor) if vendor else None
+        if vendor and maker is None:
+            return None
+        found = contracts.named(run.db, number, maker.hid if maker is not None else None)
+        if len(found) > 1:
+            raise Invalid(
+                f"more than one contract has the number {number}",
+                {"number": "more than one vendor uses this number; name the vendor"},
+            )
+        return found[0] if found else None
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("number") or (record.number if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        db = run.db
+        given = {**_plain_fields(values, ("number",)), **_terms_given(run, values, record)}
+        within = contracts.agreement_of(record) if record is not None else None
+        if "agreement" in values:
+            named = values["agreement"]
+            within = contracts.the_agreement(db, named, "agreement") if named is not None else None
+            given["agreement_hid"] = within.hid if within is not None else None
+        if within is not None:
+            # A row that holds the very value the contract has from its agreement
+            # leaves it inheriting, as an export of the values in force would hold it.
+            for name in contracts.INHERITED:
+                if given.get(name) is None:
+                    continue
+                own = getattr(record, name) if record is not None else None
+                if own is None and given[name] == getattr(within, name):
+                    del given[name]
+        if record is None:
+            return contracts.create_contract(db, run.context, _new(given))
+        return contracts.update_contract(db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        hids = [contract.hid for contract in found]
+        in_force = {contract.hid: contracts.effective(contract) for contract in found}
+        vendors = _by_hid(
+            db,
+            Vendor,
+            {one.vendor_hid for one in found}
+            | {one.reseller_hid for one in found}
+            | {its["reseller_hid"].value for its in in_force.values()},
+        )
+        labels = tags.labels_of(db, self.record_type, hids)
+        covered = contracts.covered_items(db, hids)
+        rows = []
+        for contract in found:
+            within = contracts.agreement_of(contract)
+            row: dict[str, Any] = {
+                **_kept(contract),
+                "number": contract.number,
+                **{name: getattr(contract, name) for name in _TERMS_DIRECT if name != "tags"},
+                "vendor": vendors[contract.vendor_hid].name,
+                "agreement": items.name_or_hid(within.name, within.hid)
+                if within is not None
+                else None,
+                "record_status": contract.record_status,
+                "tags": labels[contract.hid],
+                "covered_items": covered[contract.hid],
+            }
+            for name, effective in in_force[contract.hid].items():
+                column = name.removesuffix("_hid")
+                value = getattr(contract, name) if own else effective.value
+                if name == "reseller_hid":
+                    value = vendors[value].name if value else None
+                row[column] = value
+                row[f"{column}_source"] = effective.source
+            rows.append(row)
+        return rows
+
+
+class Coverage(Entity):
+    """The coverage of items under contracts."""
+
+    name = "contract_coverage"
+    record_type = "contract_coverage"
+    model = ContractCoverage
+    listing = fields.COVERAGE
+    columns = (
+        HID,
+        Column("contract", limit=100),
+        Column("vendor"),
+        Column("item"),
+        Column("starts_on", "date"),
+        Column("ends_on", "date"),
+        Column("in_force", "boolean", settable=False),
+        Column("effective_starts_on", "date", settable=False),
+        Column("effective_ends_on", "date", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "contract_hid": "contract",
+        "contract.number": "contract",
+        "item_hid": "item",
+        "item.name": "item",
+        "effective.starts_on": "effective_starts_on",
+        "effective.ends_on": "effective_ends_on",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"contract_hid": "contract", "item_hid": "item"}
+
+    def _contract(self, run: Run, values: Mapping[str, Any]) -> Contract:
+        return run.contract(values["contract"], values.get("vendor"))
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a coverage: by its contract, its item and the day it starts,
+        or with no such day the one that has not been ended."""
+        if not values.get("contract") or not values.get("item"):
+            return None
+        contract = self._contract(run, values)
+        its = list(
+            run.db.scalars(
+                select(ContractCoverage)
+                .where(
+                    ContractCoverage.contract_hid == contract.hid,
+                    ContractCoverage.item_hid == run.item(values["item"], "item").hid,
+                )
+                .order_by(ContractCoverage.starts_on, ContractCoverage.hid)
+            )
+        )
+        starts_on = values.get("starts_on")
+        if starts_on is not None:
+            matching = [
+                one
+                for one in its
+                if starts_on in (one.starts_on, contracts.span(one, contract).starts_on)
+            ]
+        else:
+            matching = [one for one in its if one.ends_on is None] or (its if len(its) == 1 else [])
+        if len(matching) > 1:
+            raise Invalid(
+                "more than one coverage of this item under this contract answers",
+                {"starts_on": "give the day the coverage starts, or its HID"},
+            )
+        return matching[0] if matching else None
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("contract", "item", "starts_on")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("starts_on", "ends_on"))
+        if record is None:
+            for name in ("contract", "item"):
+                if not values.get(name):
+                    raise Invalid(
+                        "a coverage is of an item under a contract", {name: "must not be blank"}
+                    )
+            contract = self._contract(run, values)
+            entry = {"item_hid": run.item(values["item"], "item").hid, **_new(given)}
+            try:
+                return contracts.add_coverage(run.db, run.context, contract.hid, [entry])[0]
+            except DomainError as error:
+                # The one item of a row is told by the columns of the row.
+                told = {
+                    name.removeprefix("items.0.").replace("item_hid", "item"): why
+                    for name, why in getattr(error, "fields", {}).items()
+                }
+                if isinstance(error, Invalid):
+                    raise Invalid(str(error), told) from None
+                raise
+        if values.get("contract") and self._contract(run, values).hid != record.contract_hid:
+            raise Invalid(
+                "a coverage stays with its contract and its item",
+                {"contract": "end this coverage and add the other"},
+            )
+        if values.get("item") and run.item(values["item"], "item").hid != record.item_hid:
+            raise Invalid(
+                "a coverage stays with its contract and its item",
+                {"item": "end this coverage and add the other"},
+            )
+        return contracts.update_coverage(
+            run.db, run.context, record.contract_hid, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        held = _by_hid(db, Contract, {one.contract_hid for one in found})
+        vendors = _by_hid(db, Vendor, {contract.vendor_hid for contract in held.values()})
+        its_items = _by_hid(db, Item, {one.item_hid for one in found})
+        named = items.reference_texts(db, list(its_items.values()))
+        today = contracts.today(db)
+        rows = []
+        for one in found:
+            contract = held[one.contract_hid]
+            span = contracts.span(one, contract)
+            rows.append(
+                {
+                    **_kept(one),
+                    "contract": items.name_or_hid(contract.number, contract.hid),
+                    "vendor": vendors[contract.vendor_hid].name,
+                    "item": named[one.item_hid],
+                    "starts_on": one.starts_on,
+                    "ends_on": one.ends_on,
+                    "in_force": contracts.in_force(one, contract, today),
+                    "effective_starts_on": span.starts_on,
+                    "effective_ends_on": span.ends_on,
+                }
+            )
+        return rows
+
+
+class PurchaseRequests(Entity):
+    """Purchase requests."""
+
+    name = "purchase_requests"
+    record_type = "purchase_request"
+    model = PurchaseRequest
+    listing = fields.PURCHASE_REQUESTS
+    columns = (
+        HID,
+        Column("reference", limit=100),
+        Column("requested_on", "date"),
+        Column("status", limit=10),
+        NOTES,
+        *BOOKKEEPING,
+    )
+    _direct = ("reference", "requested_on", "status", "notes")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        reference = values.get("reference")
+        if not reference:
+            return None
+        return run.db.scalar(
+            select(PurchaseRequest).where(PurchaseRequest.reference_key == records.key(reference))
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("reference") or (record.reference if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, self._direct)
+        if record is None:
+            return purchases.create_request(run.db, run.context, _new(given))
+        return purchases.update_request(run.db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        return [
+            {**_kept(one), **{name: getattr(one, name) for name in self._direct}} for one in found
+        ]
+
+
+class PurchaseLines(Entity):
+    """The lines of purchase requests."""
+
+    name = "purchase_lines"
+    record_type = "purchase_line"
+    model = PurchaseLine
+    listing = fields.PURCHASE_LINES
+    columns = (
+        HID,
+        Column("request", limit=100),
+        Column("line", "integer"),
+        Column("vendor"),
+        Column("pid", limit=100),
+        Column("quantity", "integer"),
+        Column("destination_site", limit=LONG),
+        Column("expected_on", "date"),
+        NOTES,
+        Column("received_quantity", "integer", settable=False),
+        Column("pending_quantity", "integer", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "request_hid": "request",
+        "request.reference": "request",
+        "catalog.pid": "pid",
+        "catalog.vendor": "vendor",
+        "catalog_entry_hid": "pid",
+        "destination_site_hid": "destination_site",
+        "site": "destination_site",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "request_hid": "request",
+        "catalog_entry_hid": "pid",
+        "destination_site_hid": "destination_site",
+    }
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a line by its request and its number there."""
+        request, number = values.get("request"), values.get("line")
+        if not request or number is None:
+            return None
+        found = purchases.find_request(run.db, request)
+        if found is None:
+            return None
+        return run.db.scalar(
+            select(PurchaseLine).where(
+                PurchaseLine.request_hid == found.hid, PurchaseLine.line == number
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        request, number = values.get("request"), values.get("line")
+        if request and number is not None:
+            return f"{request}{purchases.SEPARATOR}{number}"
+        return str(request or "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        db = run.db
+        given = _plain_fields(values, ("line", "quantity", "expected_on", "notes"))
+        if values.get("vendor") or values.get("pid"):
+            vendor, pid = values.get("vendor"), values.get("pid")
+            if not vendor or not pid:
+                missing = "vendor" if not vendor else "pid"
+                raise Invalid("a model is a vendor and a PID", {missing: "must not be blank"})
+            entry = run.entry(vendor, pid, create=True)
+            given["catalog_entry_hid"] = entry.hid if entry is not None else None
+        if "destination_site" in values:
+            named = values["destination_site"]
+            given["destination_site_hid"] = (
+                run.place(named, "destination_site", geography.SITE).hid
+                if named is not None
+                else None
+            )
+        if record is None:
+            if not values.get("request"):
+                raise Invalid("a line is of a request", {"request": "must not be blank"})
+            request = purchases.the_request(db, values["request"], "request")
+            return purchases.add_line(db, run.context, request.hid, _new(given))
+        if values.get("request"):
+            given["request_hid"] = purchases.the_request(db, values["request"], "request").hid
+        return purchases.update_line(db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        requests = _by_hid(db, PurchaseRequest, {line.request_hid for line in found})
+        entries = _by_hid(db, CatalogEntry, {line.catalog_entry_hid for line in found})
+        vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
+        atlas = geography.Atlas(db)
+        atlas.read_sites(line.destination_site_hid for line in found)
+        arrived = purchases.received(db, [line.hid for line in found])
+        rows = []
+        for line in found:
+            entry = entries[line.catalog_entry_hid]
+            rows.append(
+                {
+                    **_kept(line),
+                    "request": requests[line.request_hid].reference,
+                    "line": line.line,
+                    "vendor": vendors[entry.vendor_hid].name,
+                    "pid": entry.pid,
+                    "quantity": line.quantity,
+                    "destination_site": atlas.site_path(line.destination_site_hid) or None,
+                    "expected_on": line.expected_on,
+                    "notes": line.notes,
+                    "received_quantity": arrived[line.hid],
+                    "pending_quantity": line.quantity - arrived[line.hid],
+                }
+            )
+        return rows
+
+
+class CapacityLines(Entity):
+    """Capacity lines."""
+
+    name = "capacity_lines"
+    record_type = "capacity_line"
+    model = CapacityLine
+    listing = fields.CAPACITY_LINES
+    columns = (
+        HID,
+        Column("side", limit=10),
+        Column("category", limit=40),
+        Column("name"),
+        Column("quantity", "number"),
+        Column("units_each", "number"),
+        Column("annual_cost", "money"),
+        Column("vendor"),
+        Column("region", limit=LONG),
+        Column("site", limit=LONG),
+        Column("starts_on", "date"),
+        Column("ends_on", "date"),
+        NOTES,
+        STATUS,
+        Column("units", "number", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "vendor_hid": "vendor",
+        "region_hid": "region",
+        "site_hid": "site",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "vendor_hid": "vendor",
+        "region_hid": "region",
+        "site_hid": "site",
+    }
+    _direct = (
+        "side",
+        "category",
+        "name",
+        "quantity",
+        "units_each",
+        "annual_cost",
+        "starts_on",
+        "ends_on",
+        "notes",
+    )
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a line by its side and its name."""
+        side, name = values.get("side"), values.get("name")
+        if not side or not name:
+            return None
+        return capacity.find_line(run.db, side, name)
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("side", "name")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        if "vendor" in values:
+            named = values["vendor"]
+            vendor = run.vendor(named) if named is not None else None
+            if named is not None and vendor is None:
+                raise Invalid("there is no such vendor", {"vendor": f"there is no vendor {named}"})
+            given["vendor_hid"] = vendor.hid if vendor is not None else None
+        for name, level in (("region", geography.REGION), ("site", geography.SITE)):
+            if name in values:
+                named = values[name]
+                given[f"{name}_hid"] = (
+                    run.place(named, name, level).hid if named is not None else None
+                )
+        if record is None:
+            return capacity.create_line(run.db, run.context, _new(given))
+        return capacity.update_line(run.db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        vendors = _by_hid(db, Vendor, {line.vendor_hid for line in found})
+        atlas = geography.Atlas(db)
+        atlas.read_sites(line.site_hid for line in found)
+        return [
+            {
+                **_kept(line),
+                **{name: getattr(line, name) for name in self._direct},
+                "vendor": vendors[line.vendor_hid].name if line.vendor_hid else None,
+                "region": _region_named(atlas, line.region_hid),
+                "site": atlas.site_path(line.site_hid) or None,
+                "record_status": line.record_status,
+                "units": capacity.units(line),
+            }
+            for line in found
+        ]
 
 
 class Networks(Entity):
@@ -2540,10 +3411,19 @@ ENTITIES: Mapping[str, Entity] = {
         Owners(),
         OwnerMembers(),
         Networks(),
+        ExternalSystems(),
+        Agreements(),
+        Contracts(),
+        PurchaseRequests(),
+        PurchaseLines(),
         Items(),
         DeviceGroups(),
         DeviceGroupMembers(),
+        ItemReplacements(),
         Addresses(),
+        Coverage(),
+        Registrations(),
+        CapacityLines(),
     )
 }
 # The order in which files are loaded into an empty database: a record after the ones it
@@ -2561,10 +3441,19 @@ LOAD_ORDER = (
     "owners",
     "owner_members",
     "networks",
+    "external_systems",
+    "agreements",
+    "contracts",
+    "purchase_requests",
+    "purchase_lines",
     "items",
     "device_groups",
     "device_group_members",
+    "item_replacements",
     "addresses",
+    "contract_coverage",
+    "registrations",
+    "capacity_lines",
 )
 
 

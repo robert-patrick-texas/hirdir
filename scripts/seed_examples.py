@@ -31,13 +31,18 @@ from hirdir.db.engine import make_engine, make_sessions
 from hirdir.domain import (
     addresses,
     audit,
+    capacity,
     catalog,
     contacts,
+    contracts,
     geography,
     groups,
     items,
     operators,
     owners,
+    purchases,
+    replacements,
+    systems,
     tags,
 )
 from hirdir.io import exports, files
@@ -60,6 +65,7 @@ VENDORS = (
     ("Canonical", [], "Ubuntu support"),
     ("Cisco", ["Cisco Systems"], None),
     ("Example Cloud", [], "A fictional provider of hosted services"),
+    ("Example Reseller", [], "A fictional reseller of hardware and support"),
     ("Example Software", [], "A fictional maker of network management software"),
     ("Fluke Networks", [], None),
     ("Juniper", ["Juniper Networks"], None),
@@ -636,6 +642,191 @@ PLACE_OPERATORS = {
 }
 
 
+# The other tools that know the inventory: name, kind, address.
+EXTERNAL_SYSTEMS = (
+    ("Config Vault", "config_backup", f"https://configvault.{DOMAIN}"),
+    ("Fabric Director", "sdn_controller", f"https://fabric.{DOMAIN}"),
+    ("NetWatch", "monitoring", f"https://netwatch.{DOMAIN}"),
+)
+# What is registered where: the system, the group or the item, the other system's key
+# for it, the status, and whether the other system has confirmed it.
+REGISTRATIONS = (
+    ("NetWatch", "site2-sw-core", "node-1001", "registered", True),
+    ("Fabric Director", "site2-sw-core", "site2-sw-core", "registered", True),
+    ("NetWatch", "site2-rtr-wan-01", "node-1002", "registered", True),
+    ("Config Vault", "site2-rtr-wan-01", "site2-rtr-wan-01", "registered", False),
+    ("Config Vault", "site2-fw-edge-01", None, "pending", False),
+    ("NetWatch", "site2-sw-floor-03", "node-0977", "removed", False),
+)
+# The support agreements with vendors. The telephone numbers are from the range kept
+# for fiction, and the addresses are in a domain kept for examples.
+AGREEMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "Cisco Enterprise Agreement",
+        "number": "EA-0004417",
+        "vendor": "Cisco",
+        "reseller": "Example Reseller",
+        "starts_on": "2025-01-01",
+        "ends_on": "2027-12-31",
+        "support_level": "24x7, four-hour response",
+        "purchase_reference": "RITM0009120",
+        "account_manager": "Jordan Reyes, jordan.reyes@example.com, +1 555 0142",
+        "support_contact": "Enterprise support desk, +1 555 0100. Quote the contract number.",
+        "support_url": "https://support.example.com/enterprise",
+        "annual_cost": "96000.00",
+    },
+    {
+        "name": "Juniper Enterprise Agreement",
+        "number": "JEA-20417",
+        "vendor": "Juniper",
+        "starts_on": "2026-01-01",
+        "ends_on": "2026-12-31",
+        "support_level": "8x5, next business day",
+        "purchase_reference": "RITM0010988",
+        "account_manager": "Morgan Okafor, morgan.okafor@example.com, +1 555 0163",
+        "support_url": "https://support.example.com/juniper",
+    },
+)
+# The contracts: grouped into an agreement, from which each has what it leaves blank,
+# or standing by themselves.
+CONTRACTS: tuple[dict[str, Any], ...] = (
+    {
+        "number": "CON-2025-0001",
+        "agreement": "Cisco Enterprise Agreement",
+        "purchase_reference": "RITM0009121",
+        "annual_cost": "61000.00",
+        "notes": "Campus switching and routing",
+    },
+    {
+        # Its support level is its own: an override of the agreement's.
+        "number": "CON-2025-0002",
+        "agreement": "Cisco Enterprise Agreement",
+        "support_level": "8x5, next business day",
+        "purchase_reference": "RITM0009122",
+        "annual_cost": "18500.00",
+        "notes": "Wireless",
+    },
+    {
+        # Bought with the switches themselves, and not in the agreement yet.
+        "number": "CON-2026-0107",
+        "vendor": "Cisco",
+        "reseller": "Example Reseller",
+        "starts_on": "2026-09-01",
+        "ends_on": "2027-08-31",
+        "support_level": "8x5, next business day",
+        "purchase_reference": "RITM0012345",
+        "annual_cost": "2400.00",
+        "notes": "To be rolled into the enterprise agreement when that is renewed",
+    },
+    {
+        "number": "JNP-2026-0031",
+        "agreement": "Juniper Enterprise Agreement",
+        "purchase_reference": "RITM0010989",
+    },
+    {
+        "number": "PAN-2026-0042",
+        "vendor": "Palo Alto Networks",
+        "starts_on": "2026-03-01",
+        "ends_on": "2027-02-28",
+        "support_level": "Premium",
+        "account_manager": "Riley Lindqvist, riley.lindqvist@example.com, +1 555 0177",
+        "support_url": "https://support.example.com/firewalls",
+        "annual_cost": "14200.00",
+    },
+)
+# What each contract covers: the contract, the host names, and the day a coverage was
+# ended where it was.
+COVERAGE: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
+    (
+        "CON-2025-0001",
+        (
+            "site2-sw-core-01",
+            "site2-sw-core-02",
+            *(f"site2-sw-access-{number:02d}" for number in range(1, 7)),
+            "site2-sw-floor-01",
+            "site2-sw-floor-02",
+            "site2-rtr-wan-01",
+            "site2-rtr-wan-02",
+        ),
+        None,
+    ),
+    # Taken out of its stack, and out of the contract, on the same day.
+    ("CON-2025-0001", ("site2-sw-floor-03",), "2026-06-30"),
+    (
+        "CON-2025-0002",
+        ("site2-wlc-01", "site2-wlc-02", *(f"site2-ap-{number:02d}" for number in range(1, 5))),
+        None,
+    ),
+    ("CON-2026-0107", ("site2-sw-access-07", "site2-sw-access-08"), None),
+    ("JNP-2026-0031", ("lab-sw-ex-01", "lab-sw-ex-02"), None),
+    ("PAN-2026-0042", ("site2-fw-edge-01", "site2-fw-edge-02"), None),
+)
+# The purchase requests: reference, day, status, notes, and the lines of each as
+# vendor, PID, quantity, destination site and the day it is expected.
+PURCHASES = (
+    (
+        "RITM0012345",
+        "2026-08-17",
+        "ordered",
+        "Access switches for Site-3",
+        (
+            ("Cisco", "C9300-48P", 4, "Site-3", "2026-12-01"),
+            ("Cisco", "PWR-C1-715WAC-P", 4, "Site-3", "2026-12-01"),
+        ),
+    ),
+    (
+        "RITM0012501",
+        "2026-10-26",
+        "pending",
+        "Two more switches for the lab",
+        (("Juniper", "EX4400-48P", 2, "Site-2", None),),
+    ),
+)
+# The items that arrived on a line already.
+ARRIVED = {"site2-sw-access-07": "RITM0012345/1", "site2-sw-access-08": "RITM0012345/1"}
+# The capacity lines of the worked example on the data model page: side, category,
+# name, quantity, units each, and the rest.
+CAPACITY: tuple[tuple[Any, ...], ...] = (
+    ("demand", "other_work", "Site consolidation project", "1", "1.5", {}),
+    ("demand", "other_work", "Organization transition", "1", "0.5", {}),
+    ("supply", "staff", "Junior network engineer", "2", "0.6", {}),
+    ("supply", "staff", "Network engineer", "3", "1.0", {}),
+    ("supply", "staff", "Senior network engineer", "1", "1.8", {}),
+    (
+        "supply",
+        "professional_services",
+        "Escalation partner",
+        "1",
+        "1.0",
+        {"vendor": "Example Reseller", "annual_cost": "48000.00"},
+    ),
+    (
+        "supply",
+        "smart_hands",
+        "Colocation smart hands",
+        "1",
+        "0.5",
+        {"site": "Site-1", "annual_cost": "9000.00"},
+    ),
+    ("supply", "tools", "Automation and tooling", "1", "1.5", {}),
+    (
+        "supply",
+        "services",
+        "AI assistant",
+        "1",
+        "1.0",
+        {
+            "vendor": "Example Cloud",
+            "annual_cost": "24000.00",
+            "record_status": "draft",
+            "notes": "A what-if: the balance with it is beside the balance without",
+        },
+    ),
+)
+# The switch that left its stack, and the spare that stands in for it.
+REPLACED = ("site2-sw-floor-03", "site2-sw-access-07", "refresh", "CHG0031877", "2026-06-30")
+
+
 def _placed(item: dict[str, Any]) -> str | None:
     """Return the path of the location an example item is at, or None for nowhere."""
     host = item.get("hostname") or ""
@@ -892,6 +1083,17 @@ def _items() -> list[dict[str, Any]]:
     ]
 
 
+def _dated(given: dict[str, Any]) -> dict[str, Any]:
+    """Return the fields of an agreement or a contract with its days and its cost typed."""
+    fields = dict(given)
+    for name in ("starts_on", "ends_on"):
+        if name in fields:
+            fields[name] = date.fromisoformat(fields[name])
+    if "annual_cost" in fields:
+        fields["annual_cost"] = Decimal(fields["annual_cost"])
+    return fields
+
+
 def build(db: Session) -> None:
     """Fill an empty database with the example inventory."""
     for label, colour, description in TAGS:
@@ -1017,9 +1219,55 @@ def build(db: Session) -> None:
     for label, members in OWNER_MEMBERS:
         for name in members:
             owners.add_member(db, SEED, its_owners[label].hid, {"contact_hid": people[name].hid})
+    its_systems = {
+        name: systems.create_system(db, SEED, {"name": name, "kind": kind, "url": url})
+        for name, kind, url in EXTERNAL_SYSTEMS
+    }
+    its_agreements = {}
+    for given in AGREEMENTS:
+        fields = _dated(given)
+        fields["vendor_hid"] = vendors[fields.pop("vendor")].hid
+        if "reseller" in fields:
+            fields["reseller_hid"] = vendors[fields.pop("reseller")].hid
+        its_agreements[given["name"]] = contracts.create_agreement(db, SEED, fields)
+    its_contracts = {}
+    for given in CONTRACTS:
+        fields = _dated(given)
+        for name in ("vendor", "reseller"):
+            if name in fields:
+                fields[f"{name}_hid"] = vendors[fields.pop(name)].hid
+        if "agreement" in fields:
+            fields["agreement_hid"] = its_agreements[fields.pop("agreement")].hid
+        its_contracts[given["number"]] = contracts.create_contract(db, SEED, fields)
+    for reference, requested, status, notes, lines in PURCHASES:
+        request = purchases.create_request(
+            db,
+            SEED,
+            {
+                "reference": reference,
+                "requested_on": date.fromisoformat(requested),
+                "status": status,
+                "notes": notes,
+            },
+        )
+        for vendor, pid, quantity, site, expected in lines:
+            purchases.add_line(
+                db,
+                SEED,
+                request.hid,
+                {
+                    "catalog_entry_hid": entries[vendor, pid].hid,
+                    "quantity": quantity,
+                    "destination_site_hid": sites[site].hid,
+                    "expected_on": date.fromisoformat(expected) if expected else None,
+                },
+            )
     for item in _items():
         fields = {name: value for name, value in item.items() if value is not None}
         fields["catalog_entry_hid"] = entries[fields.pop("vendor"), fields.pop("pid")].hid
+        if item.get("hostname") in ARRIVED:
+            line = purchases.the_line(db, ARRIVED[item["hostname"]], "purchase_line")
+            fields["purchase_line_hid"] = line.hid
         if "owner" in fields:
             fields["owner_hid"] = its_owners[fields.pop("owner")].hid
         where = _placed(item)
@@ -1096,6 +1344,61 @@ def build(db: Session) -> None:
                 "is_primary": is_primary,
             },
         )
+    old, new, reason, reference, day = REPLACED
+    replacements.replace(
+        db,
+        SEED,
+        item(old).hid,
+        item(old).row_version,
+        reason=reason,
+        new_item_hid=item(new).hid,
+        reference=reference,
+        replaced_on=date.fromisoformat(day),
+    )
+    for number, hostnames, ended in COVERAGE:
+        contracts.add_coverage(
+            db,
+            SEED,
+            its_contracts[number].hid,
+            [
+                {
+                    "item_hid": item(hostname).hid,
+                    "ends_on": date.fromisoformat(ended) if ended else None,
+                }
+                for hostname in hostnames
+            ],
+        )
+    for system, holder, key, status, confirmed in REGISTRATIONS:
+        whose = (
+            {"group_hid": made[holder].hid} if holder in made else {"item_hid": item(holder).hid}
+        )
+        systems.create_registration(
+            db,
+            SEED,
+            {
+                "system_hid": its_systems[system].hid,
+                **whose,
+                "external_id": key,
+                "status": status,
+                "confirmed_at": SEEN if confirmed else None,
+            },
+        )
+    for side, category, name, quantity, units, more in CAPACITY:
+        fields = {
+            "side": side,
+            "category": category,
+            "name": name,
+            "quantity": Decimal(quantity),
+            "units_each": Decimal(units),
+            **more,
+        }
+        if "vendor" in fields:
+            fields["vendor_hid"] = vendors[fields.pop("vendor")].hid
+        if "site" in fields:
+            fields["site_hid"] = sites[fields.pop("site")].hid
+        if "annual_cost" in fields:
+            fields["annual_cost"] = Decimal(fields["annual_cost"])
+        capacity.create_line(db, SEED, fields)
     db.flush()
 
 

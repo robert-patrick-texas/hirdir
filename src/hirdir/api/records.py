@@ -989,6 +989,60 @@ class ItemRef(Model):
     pid: str | None
 
 
+ContractStatus = Literal["active", "expired", "pending", "cancelled"]
+RegistrationStatus = Literal["registered", "pending", "removed"]
+
+
+class ContractRef(Model):
+    """A contract, as named on what it covers."""
+
+    hid: str
+    number: str
+    vendor: str = Field(description="The name of its vendor.")
+    status: ContractStatus
+    record_status: RecordStatus
+
+
+class CoverageRef(Model):
+    """One coverage of an item: the contract, and the days in force."""
+
+    hid: str = Field(description="The coverage.")
+    contract_hid: str
+    contract: ContractRef
+    starts_on: date | None = Field(description="The day it starts in force. Blank is open.")
+    ends_on: date | None = Field(description="The day it ends in force. Blank is open.")
+    in_force: bool = Field(description="It covers the item today.")
+
+
+class SystemRef(Model):
+    """An external system, as named on a registration."""
+
+    hid: str
+    name: str
+    kind: str
+
+
+class RegistrationRef(Model):
+    """One registration of an item or a group, as shown on that record."""
+
+    hid: str = Field(description="The registration.")
+    system_hid: str
+    system: SystemRef
+    external_id: str | None
+    status: RegistrationStatus
+    confirmed_at: datetime | None
+
+
+class PurchaseLineRef(Model):
+    """The line of a purchase request an item arrived on."""
+
+    hid: str
+    name: str = Field(description="The reference of the request and the number of the line.")
+    request_hid: str
+    reference: str
+    line: int
+
+
 class DeviceGroupRef(Model):
     """A device group, as named on another record."""
 
@@ -1145,6 +1199,10 @@ class ItemOut(Model):
     parent_item_hid: str | None
     parent: ItemRef | None = Field(description="The item a minor item is in.")
     position: str | None = Field(description="Where in its parent a minor item is.")
+    purchase_line_hid: str | None
+    purchase_line: PurchaseLineRef | None = Field(
+        description="The line of a purchase request it arrived on."
+    )
     is_major: bool = Field(description="An item with no parent. Major items are counted.")
     depth: int = Field(description="0 for a major item, 1 for a minor item of it, and so on.")
     minor_items: int = Field(description="How many minor items are directly in this one.")
@@ -1168,6 +1226,17 @@ class ItemOut(Model):
     addresses: list[AddressRef] = Field(description="Its addresses, the primary one first.")
     replaces: ReplacementRef | None = Field(description="The item whose place this one took.")
     replaced_by: ReplacementRef | None = Field(description="The item that took its place.")
+    covered: bool = Field(description="A contract covers it today.")
+    covered_until: date | None = Field(
+        description=(
+            "The last day its cover runs to. Blank when a coverage names no end, and when "
+            "there is none."
+        )
+    )
+    coverage: list[CoverageRef] = Field(description="Its coverages under contracts.")
+    registrations: list[RegistrationRef] = Field(
+        description="The external systems it is registered with."
+    )
     tags: list[str]
     record_status: RecordStatus
     row_version: int
@@ -1221,6 +1290,9 @@ class ItemCreate(Model):
     position: ShortText | None = Field(
         default=None, description="Where in its parent: PS-A, Slot 3."
     )
+    purchase_line_hid: Hid | None = Field(
+        default=None, description="The line of a purchase request it arrived on."
+    )
     procured_on: date | None = None
     delivered_on: date | None = None
     in_service_on: date | None = None
@@ -1273,6 +1345,7 @@ class ItemPatch(Model):
         default=None, description="Null takes a minor item out of its parent."
     )
     position: ShortText | None = None
+    purchase_line_hid: Hid | None = None
     procured_on: date | None = None
     delivered_on: date | None = None
     in_service_on: date | None = None
@@ -1466,6 +1539,9 @@ class DeviceGroupOut(Model):
     )
     member_count: int = Field(description="How many current members it has.")
     addresses: list[AddressRef]
+    registrations: list[RegistrationRef] = Field(
+        description="The external systems the group is registered with, as one device."
+    )
     tags: list[str]
     record_status: RecordStatus
     row_version: int
@@ -1600,6 +1676,750 @@ class AddressPatch(Model):
     is_primary: bool | None = None
 
 
+# --- contracts and coverage ----------------------------------------------------------
+
+Url = Annotated[str, Field(max_length=2000)]
+
+
+class AgreementRef(Model):
+    """A support agreement, as named on a contract that is in it."""
+
+    hid: str
+    name: str
+    number: str | None
+
+
+class AgreementOut(Model):
+    """A support agreement with a vendor, such as an enterprise agreement, that groups
+    contracts. A contract in it has from it what the contract leaves blank."""
+
+    hid: str
+    name: str
+    number: str | None = Field(description="The agreement's own number, if it has one.")
+    vendor_hid: str
+    vendor: VendorRef
+    reseller_hid: str | None
+    reseller: VendorRef | None
+    starts_on: date | None
+    ends_on: date | None
+    status: ContractStatus
+    support_level: str | None
+    purchase_reference: str | None
+    account_manager: str | None = Field(description="Whom to ask about it: free text.")
+    support_contact: str | None = Field(description="Whom to call for support: free text.")
+    support_url: str | None
+    annual_cost: Money | None = Field(description="The agreement's own total, added to nothing.")
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    contracts: int = Field(description="How many contracts that are not retired are in it.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgreementCreate(Model):
+    """A new support agreement. Contracts are put into it afterwards."""
+
+    name: Name = Field(min_length=1)
+    number: ShortText | None = None
+    vendor_hid: Hid
+    reseller_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    status: ContractStatus = "active"
+    support_level: Name | None = None
+    purchase_reference: Name | None = None
+    account_manager: LongText | None = None
+    support_contact: LongText | None = None
+    support_url: Url | None = None
+    annual_cost: Money | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class AgreementPatch(Model):
+    """Fields of an agreement to change, and the version they were read at. Every
+    contract in it that says nothing of its own shows the change at once."""
+
+    row_version: int
+    name: Name | None = None
+    number: ShortText | None = None
+    vendor_hid: Hid | None = None
+    reseller_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    status: ContractStatus | None = None
+    support_level: Name | None = None
+    purchase_reference: Name | None = None
+    account_manager: LongText | None = None
+    support_contact: LongText | None = None
+    support_url: Url | None = None
+    annual_cost: Money | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class ContractEffective(Model):
+    """What a contract has in force of the fields it may have from its agreement."""
+
+    reseller_hid: EffectiveReference
+    starts_on: EffectiveValue
+    ends_on: EffectiveValue
+    support_level: EffectiveValue
+    account_manager: EffectiveValue
+    support_contact: EffectiveValue
+    support_url: EffectiveValue
+
+
+class ContractOut(Model):
+    """A support contract. It is one record for every item it covers: what it says is
+    said here, once. A field it may have from its agreement holds the contract's own
+    value, and `effective` the value in force with its source."""
+
+    hid: str
+    number: str
+    vendor_hid: str
+    vendor: VendorRef = Field(description="The manufacturer or the provider.")
+    agreement_hid: str | None
+    agreement: AgreementRef | None = Field(
+        description="The agreement it is grouped into. Blank for one that stands by itself."
+    )
+    effective: ContractEffective
+    reseller_hid: str | None
+    reseller: VendorRef | None = Field(description="The vendor it was bought through.")
+    starts_on: date | None
+    ends_on: date | None
+    status: ContractStatus = Field(description="What a person says of it. Never set by the clock.")
+    support_level: str | None
+    purchase_reference: str | None = Field(
+        description="The request or tracking number the present term was bought under."
+    )
+    account_manager: str | None = Field(description="Whom to ask about the contract: free text.")
+    support_contact: str | None = Field(description="Whom to call for support: free text.")
+    support_url: str | None = Field(description="Where support is reached online.")
+    annual_cost: Money | None = Field(description="The contract's own total, added to nothing.")
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    covers_today: bool = Field(description="Active in both senses, and today is within its dates.")
+    covered_items: int = Field(description="How many items it covers today.")
+    items_in_scope: int = Field(
+        description="How many items have a coverage under it that has not been ended."
+    )
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContractCreate(Model):
+    """A new contract. Items are put under it afterwards."""
+
+    number: ShortText = Field(min_length=1)
+    vendor_hid: Hid | None = Field(
+        default=None, description="Left out, the vendor of the agreement it is put into."
+    )
+    agreement_hid: Hid | None = None
+    reseller_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    status: ContractStatus = "active"
+    support_level: Name | None = None
+    purchase_reference: Name | None = None
+    account_manager: LongText | None = None
+    support_contact: LongText | None = None
+    support_url: Url | None = None
+    annual_cost: Money | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class ContractPatch(Model):
+    """Fields of a contract to change, and the version they were read at. Every item
+    under it shows the change at once."""
+
+    row_version: int
+    number: ShortText | None = None
+    vendor_hid: Hid | None = None
+    agreement_hid: Hid | None = Field(
+        default=None,
+        description="Puts the contract into an agreement, or with null takes it out of one.",
+    )
+    reseller_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    status: ContractStatus | None = None
+    support_level: Name | None = None
+    purchase_reference: Name | None = None
+    account_manager: LongText | None = None
+    support_contact: LongText | None = None
+    support_url: Url | None = None
+    annual_cost: Money | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class ContractRenew(Model):
+    """A renewal: the new number, the new period, or both, and what else changes with
+    them. A field that is left out stays as it is."""
+
+    row_version: int
+    number: ShortText | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    annual_cost: Money | None = None
+    purchase_reference: Name | None = None
+    reseller_hid: Hid | None = None
+    support_level: Name | None = None
+    notes: LongText | None = None
+    status: ContractStatus | None = Field(default=None, description="Left out, `active`.")
+
+
+class ContractTerm(Model):
+    """A term a contract had before it was renewed."""
+
+    number: str
+    starts_on: date | None
+    ends_on: date | None
+    annual_cost: Money | None
+    purchase_reference: str | None
+    renewed_at: datetime = Field(description="When the renewal that ended this term was made.")
+    renewed_by: str | None
+    renewed_by_name: str | None
+
+
+class CoverageOut(Model):
+    """One item under one contract, for a range of days."""
+
+    hid: str
+    contract_hid: str
+    contract: ContractRef
+    item_hid: str
+    item: ItemRef
+    item_lifecycle_state: str | None = Field(description="The item's own lifecycle state.")
+    item_record_status: RecordStatus
+    starts_on: date | None = Field(description="Its own. Blank takes the contract's.")
+    ends_on: date | None = Field(description="Its own. Blank takes the contract's.")
+    effective_starts_on: date | None = Field(description="The day it starts in force.")
+    effective_ends_on: date | None = Field(description="The day it ends in force.")
+    in_force: bool = Field(description="It covers the item today.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CoverageEntry(Model):
+    """One item to put under a contract."""
+
+    item_hid: Hid
+    starts_on: date | None = Field(default=None, description="Left out, the contract's.")
+    ends_on: date | None = Field(default=None, description="Left out, the contract's.")
+
+
+class CoverageAdd(Model):
+    """Items to put under a contract together: all of them, or none."""
+
+    items: list[CoverageEntry] = Field(min_length=1, max_length=10_000)
+
+
+class CoveragePatch(Model):
+    """The days of a coverage to change, and the version they were read at. A coverage
+    is ended by giving it `ends_on`."""
+
+    row_version: int
+    starts_on: date | None = None
+    ends_on: date | None = None
+
+
+# --- purchases -----------------------------------------------------------------------
+
+PurchaseStatus = Literal["draft", "pending", "ordered", "received", "cancelled"]
+
+
+class PurchaseLineOut(Model):
+    """One line of a purchase request: a model and how many."""
+
+    hid: str
+    request_hid: str
+    reference: str = Field(description="The reference of its request.")
+    request_status: PurchaseStatus
+    name: str = Field(description="How the line is named: `RITM0012345/2`.")
+    line: int
+    catalog_entry_hid: str
+    catalog: CatalogRef
+    quantity: int
+    received_quantity: int = Field(description="The items that name this line.")
+    pending_quantity: int = Field(description="What is still to come.")
+    destination_site_hid: str | None
+    destination_site: PlaceRef | None
+    expected_on: date | None
+    notes: str | None
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReceivedOut(PurchaseLineOut):
+    """A line after a receipt, with the items the receipt created."""
+
+    items: list[ItemRef]
+
+
+class PurchaseLineAdd(Model):
+    """A new line of a purchase request."""
+
+    catalog_entry_hid: Hid
+    quantity: int = Field(ge=1, le=100_000)
+    line: int | None = Field(default=None, ge=1, le=100_000, description="Left out, the next.")
+    destination_site_hid: Hid | None = None
+    expected_on: date | None = None
+    notes: LongText | None = None
+
+
+class PurchaseLinePatch(Model):
+    """Fields of a purchase line to change, and the version they were read at."""
+
+    row_version: int
+    catalog_entry_hid: Hid | None = None
+    quantity: int | None = Field(
+        default=None, ge=0, le=100_000, description="Never below what has arrived."
+    )
+    line: int | None = Field(default=None, ge=1, le=100_000)
+    destination_site_hid: Hid | None = None
+    expected_on: date | None = None
+    notes: LongText | None = None
+
+
+class PurchaseRequestOut(Model):
+    """A request to buy, with its lines."""
+
+    hid: str
+    reference: str
+    requested_on: date | None
+    status: PurchaseStatus
+    notes: str | None
+    lines: list[PurchaseLineOut]
+    quantity: int = Field(description="The items of all its lines.")
+    received_quantity: int
+    pending_quantity: int
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PurchaseRequestCreate(Model):
+    """A new purchase request, with its lines if they are known."""
+
+    reference: ShortText = Field(min_length=1)
+    requested_on: date | None = None
+    status: PurchaseStatus = "pending"
+    notes: LongText | None = None
+    lines: list[PurchaseLineAdd] = Field(default=[], max_length=1000)
+
+
+class PurchaseRequestPatch(Model):
+    """Fields of a purchase request to change, and the version they were read at."""
+
+    row_version: int
+    reference: ShortText | None = None
+    requested_on: date | None = None
+    status: PurchaseStatus | None = None
+    notes: LongText | None = None
+
+
+class Arrived(Model):
+    """One item that arrived on a line: something to know it by."""
+
+    serial_number: ShortText | None = None
+    asset_tag: ShortText | None = None
+    name: Name | None = None
+    hostname: HostName | None = None
+    mac_address: str | None = Field(default=None, max_length=40)
+    comments: LongText | None = None
+
+
+class Receive(Model):
+    """The items that arrived on a line, and when and where."""
+
+    row_version: int
+    items: list[Arrived] = Field(min_length=1, max_length=1000)
+    delivered_on: date | None = Field(default=None, description="Left out, today.")
+    location_hid: Hid | None = Field(default=None, description="Where they were put.")
+
+
+# --- external systems ----------------------------------------------------------------
+
+SystemKind = Literal[
+    "monitoring",
+    "config_backup",
+    "access_control",
+    "sdn_controller",
+    "cloud_service",
+    "dns",
+    "discovery",
+    "other",
+]
+
+
+class ExternalSystemOut(Model):
+    """Another system that knows items or groups."""
+
+    hid: str
+    name: str
+    kind: SystemKind
+    url: str | None
+    notes: str | None
+    record_status: RecordStatus
+    registrations: int = Field(
+        description="How many records are registered with it, those removed not counted."
+    )
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExternalSystemCreate(Model):
+    """A new external system."""
+
+    name: Name = Field(min_length=1)
+    kind: SystemKind = "other"
+    url: Url | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+
+
+class ExternalSystemPatch(Model):
+    """Fields of an external system to change, and the version they were read at."""
+
+    row_version: int
+    name: Name | None = None
+    kind: SystemKind | None = None
+    url: Url | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+
+
+class RegistrationOut(Model):
+    """An item or a device group as one external system knows it."""
+
+    hid: str
+    system_hid: str
+    system: SystemRef
+    item_hid: str | None
+    item: ItemRef | None
+    group_hid: str | None
+    group: DeviceGroupRef | None
+    external_id: str | None
+    status: RegistrationStatus
+    confirmed_at: datetime | None
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class RegistrationCreate(Model):
+    """A new registration: of one item, or of one device group."""
+
+    system_hid: Hid
+    item_hid: Hid | None = None
+    group_hid: Hid | None = None
+    external_id: Name | None = None
+    status: RegistrationStatus = "registered"
+    confirmed_at: datetime | None = Field(
+        default=None, description="With no zone, in the application's time zone."
+    )
+
+
+class RegistrationPatch(Model):
+    """Fields of a registration to change, and the version they were read at."""
+
+    row_version: int
+    external_id: Name | None = None
+    status: RegistrationStatus | None = None
+    confirmed_at: datetime | None = None
+
+
+# --- capacity ------------------------------------------------------------------------
+
+Units = Annotated[
+    Decimal,
+    PlainSerializer(_plain, return_type=str, when_used="json"),
+    WithJsonSchema({"type": "string", "pattern": r"^-?\d+(\.\d{1,4})?$", "examples": ["1.5"]}),
+]
+Side = Literal["supply", "demand"]
+
+
+class CapacityLineOut(Model):
+    """A source of resource units, or a call on them other than the infrastructure."""
+
+    hid: str
+    side: Side
+    category: str
+    category_label: str
+    name: str
+    quantity: Weight
+    units_each: Weight
+    units: Units = Field(description="`quantity` times `units_each`.")
+    annual_cost: Money | None
+    vendor_hid: str | None
+    vendor: VendorRef | None
+    region_hid: str | None
+    region: PlaceRef | None
+    site_hid: str | None
+    site: PlaceRef | None
+    starts_on: date | None
+    ends_on: date | None
+    in_date: bool = Field(description="It counts today: not before it starts, not after it ends.")
+    notes: str | None
+    record_status: RecordStatus
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CapacityLineCreate(Model):
+    """A new capacity line."""
+
+    side: Side
+    category: str | None = Field(
+        default=None,
+        max_length=40,
+        description="A value of the capacity_category list. Left out on a demand line.",
+    )
+    name: Name = Field(min_length=1)
+    quantity: Weight = Decimal(1)
+    units_each: Weight
+    annual_cost: Money | None = None
+    vendor_hid: Hid | None = None
+    region_hid: Hid | None = None
+    site_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+
+
+class CapacityLinePatch(Model):
+    """Fields of a capacity line to change, and the version they were read at."""
+
+    row_version: int
+    category: str | None = Field(default=None, max_length=40)
+    name: Name | None = None
+    quantity: Weight | None = None
+    units_each: Weight | None = None
+    annual_cost: Money | None = None
+    vendor_hid: Hid | None = None
+    region_hid: Hid | None = None
+    site_hid: Hid | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+
+
+class CapacityCategory(Model):
+    """The supply of one category."""
+
+    category: str
+    label: str
+    lines: int
+    units: Units
+    annual_cost: MoneySum
+
+
+class CapacityView(Model):
+    """The balance of one view."""
+
+    support_weight: WeightSum
+    infrastructure_demand: Units
+    other_demand: Units
+    demand: Units
+    supply: Units
+    balance: Units = Field(description="Supply less demand.")
+    coverage_pct: Units | None = Field(description="Supply over demand. Blank with no demand.")
+    own_units: Units = Field(description="The supply that is the team's own positions.")
+    outside_units: Units
+    own_share_pct: Units | None
+    annual_cost: MoneySum = Field(description="What the supply lines cost a year.")
+    by_category: list[CapacityCategory]
+
+
+class CapacityOut(Model):
+    """Demand against supply for the whole installation, with and without the drafts."""
+
+    as_of: date
+    weight_per_resource_unit: Units
+    active: CapacityView
+    with_drafts: CapacityView
+
+
+# --- the reports that look ahead -----------------------------------------------------
+
+CoverageSection = Literal["uncovered", "out_of_service", "expiring"]
+EndOfLifeSection = Literal["past", "approaching"]
+EndOfLifeDate = Literal["end_of_sale", "end_of_sw_support", "end_of_hw_support", "ldos"]
+
+
+class ReportSection(Model):
+    """One list of a report: how many items, and what lists them on the item list."""
+
+    count: int
+    filter: dict[str, Any] | None = Field(description="The filter of `GET /items` for them.")
+    include_archived: bool = Field(description="As it is to be sent with that filter.")
+    include_drafts: bool
+
+
+class CoverageTotals(Model):
+    """The counts of the coverage report."""
+
+    in_service: int = Field(description="Major items whose state in force is a service state.")
+    covered: int
+    uncovered: int
+    out_of_service: int = Field(description="Items covered today though out of service.")
+    expiring: int = Field(description="In service, and the cover runs out within the days.")
+
+
+class CoverageReport(Model):
+    """What contracts cover, of a view of the items, today."""
+
+    as_of: date
+    within_days: int
+    service_states: list[str]
+    totals: CoverageTotals
+    sections: dict[str, ReportSection]
+    section: CoverageSection | None
+    items: list[ItemOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class ItemsCounted(Model):
+    """Items, and the components among them."""
+
+    items: int
+    component_count: int
+
+
+class PastAndApproaching(Model):
+    """What is past a date, and what approaches it."""
+
+    past: ItemsCounted
+    approaching: ItemsCounted
+
+
+class FiscalYearCount(ItemsCounted):
+    """The items whose date falls in one fiscal year."""
+
+    fiscal_year: int = Field(description="Named for the calendar year it ends in.")
+    starts_on: date
+    ends_on: date
+
+
+class EndOfLifeReport(Model):
+    """The items of a view that are past, or near, an end-of-life date."""
+
+    as_of: date
+    within_days: int
+    date: EndOfLifeDate
+    dates: dict[str, PastAndApproaching]
+    by_fiscal_year: list[FiscalYearCount]
+    sections: dict[str, ReportSection]
+    section: EndOfLifeSection | None
+    items: list[ItemOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class ReplacementRow(Model):
+    """One replacement, as a row of the report."""
+
+    hid: str
+    old_item_hid: str
+    old_item: ItemRef
+    new_item_hid: str
+    new_item: ItemRef
+    reason: str
+    reason_label: str
+    reference: str | None
+    replaced_on: date
+    row_version: int
+    created_at: datetime
+
+
+class ReasonCount(Model):
+    """How many replacements were made for one reason."""
+
+    reason: str
+    label: str
+    count: int
+
+
+class ReplacementsReport(Model):
+    """A page of the replacements, and the count of each reason among all that match."""
+
+    items: list[ReplacementRow]
+    total: int
+    limit: int
+    offset: int
+    by_reason: list[ReasonCount]
+
+
+class PortfolioMeasures(Model):
+    """What a vendor's items come to."""
+
+    items: int
+    component_count: int
+    support_weight: WeightSum
+    est_value: MoneySum
+    annual_support_cost: MoneySum
+    covered: int = Field(description="Major items that a contract covers today.")
+    uncovered: int = Field(description="Major items that no contract covers today.")
+
+
+class PortfolioKind(PortfolioMeasures):
+    """The items of one kind."""
+
+    kind: str
+
+
+class PortfolioModel(PortfolioMeasures):
+    """The items of one model, with the model's dates."""
+
+    catalog_entry_hid: str
+    pid: str
+    model_name: str | None
+    kind: str
+    type: str | None
+    function: str | None
+    end_of_sale: date | None
+    end_of_sw_support: date | None
+    end_of_hw_support: date | None
+    ldos: date | None
+    covered_until: date | None = Field(
+        description="The soonest day the cover of one of its covered items runs out."
+    )
+
+
+class PortfolioOut(Model):
+    """Everything from one vendor, in one place."""
+
+    vendor: VendorRef
+    as_of: date
+    totals: PortfolioMeasures
+    kinds: list[PortfolioKind]
+    models: list[PortfolioModel]
+    agreements: list[AgreementOut]
+    contracts: list[ContractOut]
+    capacity_lines: list[CapacityLineOut]
+    filter: dict[str, Any] = Field(description="The filter of `GET /items` for its items.")
+
+
 # --- reports -------------------------------------------------------------------------
 
 SummaryBy = Literal[
@@ -1611,6 +2431,7 @@ SummaryBy = Literal[
     "operator",
     "site",
     "region",
+    "contract",
     "lifecycle_state",
     "disposition",
     "condition",
@@ -1618,7 +2439,7 @@ SummaryBy = Literal[
     "tag",
 ]
 ManagementBy = Literal[
-    "vendor", "kind", "type", "function", "owner", "operator", "site", "region", "tag"
+    "vendor", "kind", "type", "function", "owner", "operator", "site", "region", "contract", "tag"
 ]
 
 
@@ -1878,10 +2699,19 @@ EntityName = Literal[
     "owners",
     "owner_members",
     "networks",
+    "external_systems",
+    "agreements",
+    "contracts",
+    "purchase_requests",
+    "purchase_lines",
     "items",
-    "addresses",
     "device_groups",
     "device_group_members",
+    "item_replacements",
+    "addresses",
+    "contract_coverage",
+    "registrations",
+    "capacity_lines",
 ]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
 

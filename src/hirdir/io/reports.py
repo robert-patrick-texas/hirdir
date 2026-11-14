@@ -29,6 +29,8 @@ from hirdir.db import dialect
 from hirdir.db.models import (
     Address,
     CatalogEntry,
+    Contract,
+    ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
     Item,
@@ -38,7 +40,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import choices, geography, groups, health, records, settings
+from hirdir.domain import choices, contracts, geography, groups, health, records, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
@@ -52,7 +54,17 @@ HUNDREDTH = Decimal("0.01")
 # weight x quantity x (100% - discount) is exact in units of this size.
 WEIGHT_STEPS = Decimal(100 * 100 * 100)
 MONEY_STEPS = Decimal(100)
-SHARED = ("vendor", "kind", "type", "function", "owner", "operator", "site", "region")
+SHARED = (
+    "vendor",
+    "kind",
+    "type",
+    "function",
+    "owner",
+    "operator",
+    "site",
+    "region",
+    "contract",
+)
 SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
 MANAGEMENT_BY = (*SHARED, "tag")
 ONE_NODE = groups.MANAGED_AS[0]
@@ -310,6 +322,29 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
             return query.outerjoin(above, above.c.hid == fields.ITEM_SITE.region_hid)
 
         return above.c.above, above.c.above, within
+    if by == "contract":
+        # Every contract that covers an item today. An item is so in the row of each,
+        # and what no contract covers is in the blank row.
+        cover = aliased(ContractCoverage, name="report_coverage")
+        contract = aliased(Contract, name="report_contract")
+        provider = aliased(Vendor, name="report_contract_vendor")
+        covering = (
+            select(
+                cover.item_hid.label("item_hid"),
+                contract.hid.label("contract_hid"),
+                (contract.number + " (" + provider.name + ")").label("label"),
+            )
+            .join(contract, contract.hid == cover.contract_hid)
+            .join(provider, provider.hid == contract.vendor_hid)
+            .where(contracts.coverage_in_force(cover, contract))
+            .distinct()
+            .subquery("covering")
+        )
+
+        def covered(query: Any) -> Any:
+            return query.outerjoin(covering, covering.c.item_hid == Item.hid)
+
+        return covering.c.contract_hid, covering.c.label, covered
     if by in ("lifecycle_state", "disposition"):
         column = fields.standing(by)
         return column, column, None
@@ -364,6 +399,13 @@ def _run(db: Session, statement: Any) -> list[Any]:
 def _checked_by(by: str | None, allowed: tuple[str, ...]) -> None:
     if by is not None and by not in allowed:
         raise Invalid("the grouping is not acceptable", {"by": f"one of {', '.join(allowed)}"})
+
+
+def weight_steps(db: Session, include_drafts: bool = False) -> int:
+    """Return the support weight of the whole inventory, exactly, in the steps it is
+    summed in: `WEIGHT_STEPS` of them to one."""
+    terms = _terms(db, None, False, include_drafts)
+    return _sums(db, terms, terms.weight).get(None, [0, 0])[0]
 
 
 def _sums(

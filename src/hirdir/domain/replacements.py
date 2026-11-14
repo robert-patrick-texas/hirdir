@@ -15,7 +15,7 @@ from hirdir.db import dialect
 from hirdir.db.models import Item, ItemReplacement
 from hirdir.domain import audit, choices, groups, items, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, StaleVersion
+from hirdir.domain.errors import Conflict, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
@@ -186,4 +186,48 @@ def replace(
             ],
         )
     db.flush()
+    return replacement
+
+
+def get_replacement(db: Session, hid: str) -> ItemReplacement:
+    """Return the replacement with hid."""
+    replacement = db.get(ItemReplacement, hid)
+    if replacement is None:
+        raise NotFound(f"there is no replacement {hid}")
+    return replacement
+
+
+def update_replacement(
+    db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
+) -> ItemReplacement:
+    """Change why a replacement was made, or the reference it was made under.
+
+    Which item took the place of which, and on what day, is not changed: the
+    memberships were handed over then.
+    """
+    replacement = get_replacement(db, hid)
+    values: dict[str, Any] = {}
+    for name in ("old_item_hid", "new_item_hid", "replaced_on"):
+        if name in fields and fields[name] != getattr(replacement, name):
+            raise Invalid(
+                "a replacement is not made a second time",
+                {name: "which item took the place of which, and when, is not changed"},
+            )
+    if "reason" in fields:
+        given = records.clean(fields["reason"])
+        if not given:
+            raise Invalid("a replacement has a reason", {"reason": "must not be blank"})
+        values["reason"] = (
+            given
+            if records.key(given) == replacement.reason
+            else choices.checked(db, "replacement_reason", given, "reason")
+        )
+    if "reference" in fields:
+        reference = records.clean(fields["reference"])
+        if reference is not None and len(reference) > MAX_REFERENCE:
+            raise Invalid(
+                "the reference is too long", {"reference": f"at most {MAX_REFERENCE} characters"}
+            )
+        values["reference"] = reference
+    records.apply(db, context, RECORD_TYPE, replacement, row_version, values)
     return replacement

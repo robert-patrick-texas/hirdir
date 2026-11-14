@@ -9,7 +9,7 @@ from hirdir.api import shapes
 from hirdir.api.deps import Db, Viewer
 from hirdir.api.lists import Limit, Offset, sort_of
 from hirdir.api.schemas import Page
-from hirdir.io import reports, tables
+from hirdir.io import balance, planning, reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -118,6 +118,136 @@ def duplicates(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/coverage")
+def coverage(
+    _: Viewer,
+    db: Db,
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=8000,
+            description="A filter of the item list, in the short form or as JSON.",
+        ),
+    ] = "",
+    within_days: Annotated[
+        int, Query(ge=0, le=36_500, description="How far ahead cover that runs out is looked for.")
+    ] = planning.EXPIRING_WITHIN,
+    section: Annotated[
+        r.CoverageSection | None, Query(description="The list to return a page of.")
+    ] = None,
+    sort: Annotated[
+        list[str] | None, Query(description="As the item list is sorted. For a section.")
+    ] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
+    include_drafts: Drafts = False,
+) -> r.CoverageReport:
+    """Say what contracts cover today: the items in service that none covers, the items
+    covered though out of service, and those whose cover runs out soon.
+
+    Each of the three is a list of items. `section` asks for a page of one, and each
+    says the filter that lists the same items on `GET /items`.
+    """
+    found = planning.coverage(
+        db,
+        filter_=filter_,
+        include_drafts=include_drafts,
+        within_days=within_days,
+        section=section,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return shapes.coverage_report_out(db, found)
+
+
+@router.get("/end-of-life")
+def end_of_life(
+    _: Viewer,
+    db: Db,
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=8000,
+            description="A filter of the item list, in the short form or as JSON.",
+        ),
+    ] = "",
+    date: Annotated[
+        r.EndOfLifeDate, Query(description="Which of the four dates the lists are of.")
+    ] = "ldos",
+    within_days: Annotated[
+        int, Query(ge=0, le=36_500, description="How far ahead a date counts as approaching.")
+    ] = planning.APPROACHING_WITHIN,
+    section: Annotated[
+        r.EndOfLifeSection | None, Query(description="The list to return a page of.")
+    ] = None,
+    sort: Annotated[
+        list[str] | None, Query(description="As the item list is sorted. For a section.")
+    ] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+) -> r.EndOfLifeReport:
+    """Count the items of a view that are past, and that approach, each of the four
+    end-of-life dates, and those of one date by fiscal year. It holds no money."""
+    found = planning.end_of_life(
+        db,
+        filter_=filter_,
+        date_=date,
+        within_days=within_days,
+        section=section,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+        include_archived=include_archived,
+        include_drafts=include_drafts,
+    )
+    return shapes.end_of_life_out(db, found)
+
+
+@router.get("/replacements")
+def replacements(
+    _: Viewer,
+    db: Db,
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=8000,
+            description="A filter of the replacements, in the short form or as JSON.",
+        ),
+    ] = "",
+    sort: Annotated[
+        list[str] | None,
+        Query(description="Field names, `-` in front for descending. The newest first."),
+    ] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
+) -> r.ReplacementsReport:
+    """List the replacements: the item that left and the item that took its place,
+    with the count of each reason among all that the filter matches."""
+    page, total, by_reason = planning.replacements(
+        db, filter_=filter_, sort=sort, limit=limit, offset=offset
+    )
+    return r.ReplacementsReport(
+        items=shapes.replacement_rows_out(db, page),
+        total=total,
+        limit=limit,
+        offset=offset,
+        by_reason=[r.ReasonCount.model_validate(one) for one in by_reason],
+    )
+
+
+@router.get("/capacity")
+def capacity(_: Viewer, db: Db) -> r.CapacityOut:
+    """Return the capacity balance of the whole installation as of today: demand
+    against supply, without the drafts and with them."""
+    return shapes.capacity_out(balance.balance(db))
 
 
 ROUTERS = (router,)
