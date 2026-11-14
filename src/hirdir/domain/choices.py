@@ -15,6 +15,7 @@ LISTS = (
     "catalog_type",
     "catalog_function",
     "state_reason",
+    "item_condition",
     "contact_role",
     "location_kind",
     "replacement_reason",
@@ -28,6 +29,7 @@ USES = {
     "catalog_type": ((CatalogEntry, CatalogEntry.type),),
     "catalog_function": ((CatalogEntry, CatalogEntry.function),),
     "state_reason": ((Item, Item.state_reason),),
+    "item_condition": ((Item, Item.condition),),
     "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
 }
 

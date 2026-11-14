@@ -12,7 +12,7 @@ from hirdir import clock, ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect
 from hirdir.db.models import AuditEvent, CatalogEntry, DeviceGroup, DeviceGroupMember, Item, Owner
-from hirdir.domain import catalog, choices, lifecycle, records, tags
+from hirdir.domain import catalog, choices, health, lifecycle, records, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.lifecycle import UNSET
@@ -28,6 +28,9 @@ FIELDS = (
     *TEXTS[2:],
     "quantity",
     *STANDING,
+    "condition",
+    "observed_status",
+    "observed_at",
     "owner_hid",
     "parent_item_hid",
     "position",
@@ -42,6 +45,8 @@ HEX = re.compile(r"[0-9a-f]*")
 MAX_DEPTH = 3
 # The types of group whose members are major items.
 MAJOR_ONLY = ("stack", "cluster")
+# The states in which an item has left the team's hands, and is in no group any more.
+OUT_OF_HANDS = ("Released", "Archived")
 
 
 def mac_digits(value: str) -> str:
@@ -330,6 +335,14 @@ def _checked(db: Session, fields: dict[str, Any], item: Item | None) -> dict[str
                 {"position": "name the item it is in, as parent_item_hid, or leave this blank"},
             )
         values["position"] = position
+    if "condition" in fields:
+        condition = records.clean(fields["condition"])
+        values["condition"] = (
+            choices.checked(db, health.CONDITION_LIST, condition, "condition")
+            if condition
+            else None
+        )
+    values.update(health.observation(fields, item))
     if "quantity" in fields:
         quantity = 1 if fields["quantity"] is None else fields["quantity"]
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
@@ -516,18 +529,15 @@ def update_item(
 def retire_item(db: Session, context: AuditContext, hid: str, row_version: int) -> Item:
     """Retire an item: keep the record and its history, and leave it out of what is counted.
 
-    Its memberships of groups end today, under the rules of leaving a group: the
-    master of a stack is not retired while the stack has other members.
+    Its memberships of groups end today: a retired item is in no stack, cluster or
+    domain any more, and the memberships stay on record with the day they ended.
     """
-    # Groups are built on items, so the module that knows them is fetched here.
-    from hirdir.domain import groups
-
     dialect.hold_other_writers(db)
     item = get_item(db, hid)
     if item.record_status != "retired":
         if item.row_version != row_version:
             records.touch(item, context, row_version)
-        groups.leave_all(db, context, hid)
+        _leave_groups(db, context, hid)
     records.apply(
         db, context, RECORD_TYPE, item, row_version, {"record_status": "retired"}, action="retire"
     )
@@ -581,10 +591,23 @@ def transition(
     extra = [change("state_reason", item.state_reason, reason)]
     if forced:
         extra.append(change("forced", None, True))
+    if to in OUT_OF_HANDS:
+        # Checked against the groups it is in, so nobody else may be changing them.
+        dialect.hold_other_writers(db)
     records.apply(db, context, RECORD_TYPE, item, row_version, values, extra, action="transition")
     item.state_reason = reason
     item.state_changed_at = clock.now()
+    if to in OUT_OF_HANDS:
+        _leave_groups(db, context, item.hid)
     return item
+
+
+def _leave_groups(db: Session, context: AuditContext, hid: str) -> None:
+    """End every current membership of an item that has left the team's hands."""
+    # Groups are built on items, so the module that knows them is fetched here.
+    from hirdir.domain import groups
+
+    groups.leave_all(db, context, hid)
 
 
 def _inherit_standing(

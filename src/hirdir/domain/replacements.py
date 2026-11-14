@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
-from hirdir.db.models import DeviceGroup, Item, ItemReplacement
+from hirdir.db.models import Item, ItemReplacement
 from hirdir.domain import audit, choices, groups, items, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, StaleVersion
@@ -55,11 +55,8 @@ def _line_before(db: Session, item_hid: str) -> set[str]:
     return before - {item_hid}
 
 
-def _take_over(
-    db: Session, context: AuditContext, old: Item, new: Item, day: date
-) -> list[DeviceGroup]:
+def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: date) -> None:
     """Give the new item the old one's place in each group it is a current member of."""
-    touched = []
     for member, group in groups.memberships_of(db, [old.hid])[old.hid]:
         if day < member.joined_on:
             raise Invalid(
@@ -70,16 +67,19 @@ def _take_over(
                 },
             )
         role, position = member.role, member.position
-        records.apply(db, context, groups.MEMBER_TYPE, member, None, {"left_on": day})
+        was_seen = group.observed_master_hid == old.hid
+        seen_at = group.master_observed_at
+        groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
         groups.add_members(
             db,
             context,
             group.hid,
             [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
-            check=False,
         )
-        touched.append(group)
-    return touched
+        if was_seen:
+            # The item that took the place is the master that is seen, as the old one was.
+            seen = {"observed_master_hid": new.hid, "master_observed_at": seen_at}
+            groups.update_group(db, context, group.hid, group.row_version, seen)
 
 
 def replace(
@@ -162,8 +162,7 @@ def replace(
         replaced_on=day,
     )
     records.created(db, context, RECORD_TYPE, replacement, FIELDS)
-    for group in _take_over(db, context, old, new, day):
-        groups.check_group(db, group)
+    _take_over(db, context, old, new, day)
     # Both items say so in their own history, and a copy of either read before this is
     # stale from here on.
     for item, field, other in ((old, "replaced_by", new), (new, "replaces", old)):

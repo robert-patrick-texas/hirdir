@@ -1974,12 +1974,12 @@ export interface paths {
       };
     };
   };
-  "/api/v1/reports/summary": {
+  "/api/v1/reports/management": {
     /**
-     * Count a view of the items: components, managed nodes, weight, value and cost.
+     * Return the estimated value and the annual support cost of a view of the items.
      *
-     * The view is what the item list shows for the same filter. With `by`, the answer
-     * also holds one row for each value.
+     * For the people who pay for the network: the whole view, and with `by` one row for
+     * each value. Neither condition nor health is in it.
      */
     get: {
       parameters: {
@@ -1987,7 +1987,46 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "tag" | null;
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ManagementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/summary": {
+    /**
+     * Count a view of the items: components, managed nodes, support weight and health.
+     *
+     * The view is what the item list shows for the same filter. With `by`, the answer
+     * also holds one row for each value. The money is in the management report.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the item list, in the short form or as JSON. */
+          filter?: string;
+          /** One row for each value of this. */
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -2813,7 +2852,7 @@ export interface components {
       /** IPv4 or IPv6, in any common notation. */
       address: string;
       group_hid?: string | null;
-      /** The primary management address of the record. */
+      /** The primary management address of the record, of this address's family. */
       is_primary?: boolean;
       item_hid?: string | null;
       /** Blank is the unlabelled space. */
@@ -2834,6 +2873,7 @@ export interface components {
       /** In canonical form, with no prefix length. */
       address: string;
       created_at: string;
+      family: 4 | 6;
       group: components["schemas"]["DeviceGroupRef"] | null;
       group_hid: string | null;
       hid: string;
@@ -2857,6 +2897,7 @@ export interface components {
     /** An address, as listed on the item or the group that has it. */
     AddressRef: {
       address: string;
+      family: 4 | 6;
       hid: string;
       is_primary: boolean;
       /** The label of the network, if it is under one. */
@@ -3012,12 +3053,40 @@ export interface components {
       row_version: number;
       sort?: number | null;
     };
+    /** A controller of an endpoint, with the cluster it is in. */
+    ControllerRef: {
+      asset_tag: string | null;
+      /** The name of its cluster, when it is in one. */
+      cluster: string | null;
+      cluster_hid: string | null;
+      hid: string;
+      /** Its name, or its hostname when it has no name. */
+      name: string | null;
+      pid: string | null;
+      serial_number: string | null;
+    };
+    /** The items and the components that share one value: a kind, or a condition. */
+    Counted: {
+      /** The major items among them that are in hand, whatever their kind. */
+      component_count: number;
+      items: number;
+      key: string | null;
+      label: string | null;
+    };
     /** A new device group, with its first members if they are known. */
     DeviceGroupCreate: {
+      expected_members?: number | null;
       fqdn?: string | null;
       hostname?: string | null;
+      /** A cluster only. Left out, one. */
+      managed_as?: "one" | "members" | "members_and_cluster" | null;
+      master_observed_at?: string | null;
       members?: components["schemas"]["MemberAdd"][];
       name: string;
+      observed_at?: string | null;
+      /** A stack only: one of the members given here. */
+      observed_master_hid?: string | null;
+      observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
       record_status?: "draft" | "active";
@@ -3028,34 +3097,57 @@ export interface components {
     DeviceGroupOut: {
       addresses: components["schemas"]["AddressRef"][];
       created_at: string;
+      expected_members: number | null;
       fqdn: string | null;
       /** The groups nested directly in this one. */
       groups: components["schemas"]["DeviceGroupRef"][];
+      /** Of a stack and a cluster; otherwise null. */
+      health: components["schemas"]["HealthOut"] | null;
       hid: string;
       hostname: string | null;
+      /** A cluster: one managed node, one for each member, or those and its own. */
+      managed_as: "one" | "members" | "members_and_cluster" | null;
+      /** The master that is intended, if one is marked. */
       master: components["schemas"]["ItemRef"] | null;
+      /** False when the master that is seen is not the one intended. Not a fault. */
+      master_as_intended: boolean | null;
+      master_observed_at: string | null;
       /** How many current members it has. */
       member_count: number;
       /** The fields of the group that a current member contradicts. */
       members_disagree: string[];
       name: string;
+      observed_at: string | null;
+      /** The member that is seen to be master. */
+      observed_master: components["schemas"]["ItemRef"] | null;
+      observed_master_hid: string | null;
+      observed_status: "online" | "degraded" | "unreachable" | "present" | null;
       owner: components["schemas"]["OwnerRef"] | null;
       owner_hid: string | null;
       parent: components["schemas"]["DeviceGroupRef"] | null;
       parent_group_hid: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
-      /** For a stack, the serial number of its master, read as it is asked for. */
+      /** For a stack: the serial number of the master that is seen, or else of the one intended, read as it is asked for. */
       serial_number: string | null;
+      /** Which of the two masters the serial number is read from. */
+      serial_source: "observed" | "intended" | null;
       tags: string[];
       type: "stack" | "cluster" | "controller_domain" | "custom";
       updated_at: string;
     };
     /** Fields of a device group to change, and the version they were read at. */
     DeviceGroupPatch: {
+      expected_members?: number | null;
       fqdn?: string | null;
       hostname?: string | null;
+      managed_as?: "one" | "members" | "members_and_cluster" | null;
+      master_observed_at?: string | null;
       name?: string | null;
+      observed_at?: string | null;
+      /** A current member of the stack. Null clears it. */
+      observed_master_hid?: string | null;
+      observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       owner_hid?: string | null;
       parent_group_hid?: string | null;
       record_status?: "draft" | "active" | null;
@@ -3179,6 +3271,18 @@ export interface components {
       detail?: string;
       status: string;
     };
+    /** The components of each health. */
+    HealthCount: {
+      degraded: number;
+      failed: number;
+      good: number;
+      unknown: number;
+    };
+    /** How a record is doing, worked out as it is read, and why. */
+    HealthOut: {
+      reasons: string[];
+      value: "good" | "degraded" | "failed" | "unknown";
+    };
     /** A stored preview of an import or a bulk edit, and what became of it. */
     ImportJobOut: {
       applied_at: string | null;
@@ -3237,6 +3341,8 @@ export interface components {
       asset_tag?: string | null;
       catalog_entry_hid?: string | null;
       comments?: string | null;
+      /** A value of the item_condition list. */
+      condition?: string | null;
       delivered_on?: string | null;
       description?: string | null;
       /** Left out, the state's own on entry. */
@@ -3254,6 +3360,9 @@ export interface components {
       /** In any common notation. */
       mac_address?: string | null;
       name?: string | null;
+      /** Left out, now. Given with observed_status only. */
+      observed_at?: string | null;
+      observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
       parent_item_hid?: string | null;
@@ -3299,8 +3408,10 @@ export interface components {
       catalog: components["schemas"]["CatalogRef"] | null;
       catalog_entry_hid: string | null;
       comments: string | null;
+      /** The state of the hardware, as a person knows it. */
+      condition: string | null;
       /** For an endpoint of a controller domain: the controllers of that domain. */
-      controllers: components["schemas"]["ItemRef"][];
+      controllers: components["schemas"]["ControllerRef"][];
       created_at: string;
       created_by: string | null;
       delivered_on: string | null;
@@ -3317,6 +3428,7 @@ export interface components {
       fqdn: string | null;
       /** Its current memberships of groups. */
       groups: components["schemas"]["MembershipRef"][];
+      health: components["schemas"]["HealthOut"];
       hid: string;
       hostname: string | null;
       in_service_on: string | null;
@@ -3330,6 +3442,9 @@ export interface components {
       minor_items: number;
       /** Blank shows the hostname. */
       name: string | null;
+      observed_at: string | null;
+      /** What is seen of it: on the network, or `present`, by a person. */
+      observed_status: "online" | "degraded" | "unreachable" | "present" | null;
       owner: components["schemas"]["OwnerRef"] | null;
       owner_hid: string | null;
       /** The item a minor item is in. */
@@ -3365,6 +3480,7 @@ export interface components {
       asset_tag?: string | null;
       catalog_entry_hid?: string | null;
       comments?: string | null;
+      condition?: string | null;
       delivered_on?: string | null;
       description?: string | null;
       disposition?: string | null;
@@ -3379,6 +3495,9 @@ export interface components {
       ldos?: string | null;
       mac_address?: string | null;
       name?: string | null;
+      observed_at?: string | null;
+      /** Null clears it, and the moment with it. */
+      observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
       owner_hid?: string | null;
       /** Null takes a minor item out of its parent. */
       parent_item_hid?: string | null;
@@ -3401,13 +3520,6 @@ export interface components {
       name: string | null;
       pid: string | null;
       serial_number: string | null;
-    };
-    /** The items and the components of one kind. */
-    KindCount: {
-      /** As the headline would count them, were the kind among `count_kinds`. */
-      component_count: number;
-      items: number;
-      kind: string;
     };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
@@ -3457,13 +3569,37 @@ export interface components {
       /** Field names, `-` in front for descending. */
       sort?: string[];
     };
+    /** What the management report counts of a set of items. */
+    ManagementMeasures: {
+      annual_support_cost: string;
+      component_count: number;
+      est_value: string;
+      /** Every item of the set, major and minor. */
+      items: number;
+    };
+    /** The value and the cost of a view of the items, for the people who pay for it. */
+    ManagementOut: {
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "tag" | null;
+      rows: components["schemas"]["ManagementRow"][];
+      totals: components["schemas"]["ManagementMeasures"];
+    };
+    /** The value and the cost of the items that share one value. */
+    ManagementRow: {
+      annual_support_cost: string;
+      component_count: number;
+      est_value: string;
+      /** Every item of the set, major and minor. */
+      items: number;
+      key: string | null;
+      label: string | null;
+    };
     /** An item to make a member of a group. */
     MemberAdd: {
       item_hid: string;
       /** Left out, today. */
       joined_on?: string | null;
       position?: number | null;
-      /** stack: master, member. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain. */
+      /** stack: member, or master for the one that is meant to be master. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain. */
       role?: string | null;
     };
     /** One item's time in one group. */
@@ -3759,17 +3895,16 @@ export interface components {
       access_code: string;
       username: string;
     };
-    /** A summary of a view of the items. */
+    /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "tag" | null;
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };
     /** The measures of the items that share one value of what the summary is by. */
     SummaryRow: {
-      annual_support_cost: string;
+      by_health: components["schemas"]["HealthCount"];
       component_count: number;
-      est_value: string;
       /** Every item of the set, major and minor. */
       items: number;
       /** The value, or the HID of the record. Null for none. */
@@ -3779,12 +3914,12 @@ export interface components {
       managed_node_count: number;
       support_weight: string;
     };
-    /** The measures of the whole view, and its items by kind. */
+    /** The measures of the whole view, and its items by condition and by kind. */
     SummaryTotals: {
-      annual_support_cost: string;
-      by_kind: components["schemas"]["KindCount"][];
+      by_condition: components["schemas"]["Counted"][];
+      by_health: components["schemas"]["HealthCount"];
+      by_kind: components["schemas"]["Counted"][];
       component_count: number;
-      est_value: string;
       /** Every item of the set, major and minor. */
       items: number;
       managed_node_count: number;

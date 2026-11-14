@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import ColumnElement, Integer, Select, case, func, or_, select
+from sqlalchemy import ColumnElement, Integer, Select, and_, case, func, or_, select
 from sqlalchemy.orm import aliased
 
 from hirdir.db.models import (
@@ -24,7 +24,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import inheritance, lifecycle, records
+from hirdir.domain import health, inheritance, lifecycle, records
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
 from hirdir.io.filters import Field
@@ -112,6 +112,33 @@ def standing(name: str) -> ColumnElement[Any]:
 
 STATE_IN_FORCE = standing("lifecycle_state")
 
+# The health of an item: the cascade of `hirdir.domain.health.of_item`, for the database
+# to filter and sort by. A test holds the two together.
+HEALTH: ColumnElement[Any] = case(
+    (
+        or_(
+            Item.condition.in_(health.FAILED_CONDITIONS),
+            and_(
+                standing("expected_online").is_(True),
+                Item.observed_status == health.UNREACHABLE,
+            ),
+        ),
+        health.FAILED,
+    ),
+    (
+        or_(
+            Item.condition.in_(health.POOR_CONDITIONS),
+            Item.observed_status.in_((health.OBSERVED_DEGRADED, health.UNREACHABLE)),
+        ),
+        health.DEGRADED,
+    ),
+    (
+        or_(Item.condition == health.GOOD_CONDITION, Item.observed_status.in_(health.SEEN_WELL)),
+        health.GOOD,
+    ),
+    else_=health.UNKNOWN,
+)
+
 
 def _with_items_above(query: Select[Any]) -> Select[Any]:
     below = Item
@@ -180,8 +207,17 @@ ITEMS = Listing(
         "mac_address": Field("mac", Item.mac_address, convert=mac_digits),
         "quantity": Field("integer", Item.quantity),
         **_columns(
-            Item, "choice", "lifecycle_state", "disposition", "state_reason", "record_status"
+            Item,
+            "choice",
+            "lifecycle_state",
+            "disposition",
+            "state_reason",
+            "condition",
+            "observed_status",
+            "record_status",
         ),
+        "observed_at": Field("timestamp", Item.observed_at),
+        "health": Field("choice", HEALTH),
         "expected_online": Field("boolean", Item.expected_online),
         "state_changed_at": Field("timestamp", Item.state_changed_at),
         **_columns(
@@ -231,7 +267,19 @@ DEVICE_GROUPS = Listing(
         **_bookkeeping(DeviceGroup),
         **_columns(DeviceGroup, "reference", "parent_group_hid", "owner_hid"),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
-        **_columns(DeviceGroup, "choice", "type", "record_status"),
+        **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
+        "expected_members": Field("integer", DeviceGroup.expected_members),
+        "observed_at": Field("timestamp", DeviceGroup.observed_at),
+        # A stack answers to the serial number of any of its current members.
+        "member.serial_number": Field(
+            "text",
+            Item.serial_number,
+            among=_one_of(
+                select(DeviceGroupMember.hid).join(Item, Item.hid == DeviceGroupMember.item_hid),
+                DeviceGroupMember.group_hid == DeviceGroup.hid,
+                DeviceGroupMember.left_on.is_(None),
+            ),
+        ),
         "owner.label": Field("text", Owner.label),
         "parent.name": Field("text", _PARENT_GROUP.name),
         "tags": Field("tags", test=_tagged("device_group", DeviceGroup.hid)),

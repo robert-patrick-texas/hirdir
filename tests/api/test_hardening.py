@@ -577,34 +577,33 @@ def test_a_member_of_a_stack_is_not_given_a_parent_while_it_joins(
     assert (now["is_major"], len(now["groups"])) in ((True, 1), (False, 0))
 
 
-def test_the_master_of_a_stack_is_not_retired_until_another_is_master(make: Maker) -> None:
-    entry = make.entry(make.vendor())
+def test_a_retired_member_is_no_longer_a_member_of_its_stack(make: Maker) -> None:
+    entry = make.entry(make.vendor(), support_weight="1")
     switches = make.switches(entry, "site2-sw", 3, lifecycle_state="Prod")
     stack = make.stack("site2-sw-stack1", switches)
 
-    def retire(item: dict, expect: int = 200) -> dict:
+    def retire(item: dict) -> dict:
         current = make.get(f"/items/{item['hid']}")
         return make.post(
-            f"/items/{item['hid']}/retire", {"row_version": current["row_version"]}, expect
+            f"/items/{item['hid']}/retire", {"row_version": current["row_version"]}, 200
         )
 
-    problem = retire(switches[0], 422)
-    assert "make another member the master first" in errors(problem)["record_status"]
-    assert make.get(f"/items/{switches[0]['hid']}")["record_status"] == "active"
-
-    # A member that is not the master is retired, and leaves the stack that day.
-    retired = retire(switches[2])
+    # The review found a retired master still shown as the master, and the others
+    # still earning the discount. Retiring ends the membership that day.
+    retired = retire(switches[0])
     assert (retired["record_status"], retired["groups"]) == ("retired", [])
     again = make.get(f"/device-groups/{stack['hid']}")
-    assert (again["member_count"], again["serial_number"]) == (2, switches[0]["serial_number"])
+    assert (again["member_count"], again["master"], again["serial_number"]) == (2, None, None)
     past = make.members(stack, include_past="true")
     assert past[2]["left_on"] is not None
-    # The other member may be retired as well: the master alone is still the stack.
+    totals = make.totals()
+    assert (totals["component_count"], totals["managed_node_count"]) == (2, 1)
+    assert totals["support_weight"] == "1"
+    # With one left, it is one switch alone, and takes the full effort.
     retire(switches[1])
     assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
-    assert make.totals()["managed_node_count"] == 1
-    # And the master, once it is alone, leaves a shell behind.
-    retire(switches[0])
+    assert make.totals()["support_weight"] == "1"
+    retire(switches[2])
     assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 0
 
 
@@ -668,11 +667,12 @@ def test_one_item_does_not_make_the_summary_fail_for_everybody(make: Maker) -> N
     )
 
     summary = make.get("/reports/summary", by="kind")
+    money = make.get("/reports/management", by="kind")
 
     # Exact, however large: nothing is rounded on the way.
-    assert summary["totals"]["est_value"] == "19999999999999980000000.00"
     assert summary["totals"]["support_weight"] == "199999999980000000"
-    assert summary["rows"][0]["est_value"] == "19999999999999980000000.00"
+    assert money["totals"]["est_value"] == "19999999999999980000000.00"
+    assert money["rows"][0]["est_value"] == "19999999999999980000000.00"
 
 
 def test_support_weight_is_rounded_half_up(make: Maker) -> None:

@@ -301,6 +301,16 @@ class CatalogRef(Model):
     function: str | None
 
 
+class HealthOut(Model):
+    """How a record is doing, worked out as it is read, and why."""
+
+    value: Literal["good", "degraded", "failed", "unknown"]
+    reasons: list[str]
+
+
+ObservedStatus = Literal["online", "degraded", "unreachable", "present"]
+
+
 class ItemRef(Model):
     """An item, as named on another record."""
 
@@ -338,11 +348,19 @@ class MembershipRef(Model):
     joined_on: date
 
 
+class ControllerRef(ItemRef):
+    """A controller of an endpoint, with the cluster it is in."""
+
+    cluster_hid: str | None
+    cluster: str | None = Field(description="The name of its cluster, when it is in one.")
+
+
 class AddressRef(Model):
     """An address, as listed on the item or the group that has it."""
 
     hid: str
     address: str
+    family: Literal[4, 6]
     network_hid: str | None
     network: str | None = Field(description="The label of the network, if it is under one.")
     role: str
@@ -400,6 +418,12 @@ class ItemOut(Model):
     expected_online: bool | None
     state_reason: str | None
     state_changed_at: datetime | None
+    condition: str | None = Field(description="The state of the hardware, as a person knows it.")
+    observed_status: ObservedStatus | None = Field(
+        description="What is seen of it: on the network, or `present`, by a person."
+    )
+    observed_at: datetime | None
+    health: HealthOut
     owner_hid: str | None
     owner: OwnerRef | None
     parent_item_hid: str | None
@@ -422,7 +446,7 @@ class ItemOut(Model):
     ldos: date | None
     effective: ItemEffective
     groups: list[MembershipRef] = Field(description="Its current memberships of groups.")
-    controllers: list[ItemRef] = Field(
+    controllers: list[ControllerRef] = Field(
         description="For an endpoint of a controller domain: the controllers of that domain."
     )
     addresses: list[AddressRef] = Field(description="Its addresses, the primary one first.")
@@ -459,6 +483,13 @@ class ItemCreate(Model):
     )
     expected_online: bool | None = None
     state_reason: str | None = Field(default=None, max_length=40)
+    condition: str | None = Field(
+        default=None, max_length=40, description="A value of the item_condition list."
+    )
+    observed_status: ObservedStatus | None = None
+    observed_at: datetime | None = Field(
+        default=None, description="Left out, now. Given with observed_status only."
+    )
     owner_hid: Hid | None = None
     parent_item_hid: Hid | None = Field(
         default=None, description="The item this one is in. Given, the item is a minor item."
@@ -501,6 +532,11 @@ class ItemPatch(Model):
     quantity: int | None = Field(default=None, ge=1, le=1_000_000_000)
     disposition: str | None = Field(default=None, max_length=12)
     expected_online: bool | None = None
+    condition: str | None = Field(default=None, max_length=40)
+    observed_status: ObservedStatus | None = Field(
+        default=None, description="Null clears it, and the moment with it."
+    )
+    observed_at: datetime | None = None
     owner_hid: Hid | None = None
     parent_item_hid: Hid | None = Field(
         default=None, description="Null takes a minor item out of its parent."
@@ -592,8 +628,9 @@ class MemberAdd(Model):
         default=None,
         max_length=20,
         description=(
-            "stack: master, member. cluster: active, standby, member. controller domain: "
-            "controller, endpoint. Left out, member, or endpoint in a controller domain."
+            "stack: member, or master for the one that is meant to be master. cluster: "
+            "active, standby, member. controller domain: controller, endpoint. Left out, "
+            "member, or endpoint in a controller domain."
         ),
     )
     position: int | None = Field(default=None, ge=0, le=10_000)
@@ -632,6 +669,9 @@ class MemberOut(Model):
     updated_at: datetime
 
 
+ManagedAs = Literal["one", "members", "members_and_cluster"]
+
+
 class DeviceGroupOut(Model):
     """A stack, a cluster, a controller domain or another labelled set of items."""
 
@@ -648,10 +688,29 @@ class DeviceGroupOut(Model):
     members_disagree: list[str] = Field(
         description="The fields of the group that a current member contradicts."
     )
-    serial_number: str | None = Field(
-        description="For a stack, the serial number of its master, read as it is asked for."
+    managed_as: ManagedAs | None = Field(
+        description="A cluster: one managed node, one for each member, or those and its own."
     )
-    master: ItemRef | None
+    expected_members: int | None
+    observed_status: ObservedStatus | None
+    observed_at: datetime | None
+    health: HealthOut | None = Field(description="Of a stack and a cluster; otherwise null.")
+    serial_number: str | None = Field(
+        description=(
+            "For a stack: the serial number of the master that is seen, or else of the one "
+            "intended, read as it is asked for."
+        )
+    )
+    serial_source: Literal["observed", "intended"] | None = Field(
+        description="Which of the two masters the serial number is read from."
+    )
+    master: ItemRef | None = Field(description="The master that is intended, if one is marked.")
+    observed_master_hid: str | None
+    observed_master: ItemRef | None = Field(description="The member that is seen to be master.")
+    master_observed_at: datetime | None
+    master_as_intended: bool | None = Field(
+        description="False when the master that is seen is not the one intended. Not a fault."
+    )
     member_count: int = Field(description="How many current members it has.")
     addresses: list[AddressRef]
     tags: list[str]
@@ -670,6 +729,14 @@ class DeviceGroupCreate(Model):
     fqdn: HostName | None = None
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
+    managed_as: ManagedAs | None = Field(default=None, description="A cluster only. Left out, one.")
+    expected_members: int | None = Field(default=None, ge=1, le=10_000)
+    observed_status: ObservedStatus | None = None
+    observed_at: datetime | None = None
+    observed_master_hid: Hid | None = Field(
+        default=None, description="A stack only: one of the members given here."
+    )
+    master_observed_at: datetime | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
     members: list[MemberAdd] = Field(default=[], max_length=1000)
@@ -685,6 +752,14 @@ class DeviceGroupPatch(Model):
     fqdn: HostName | None = None
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
+    managed_as: ManagedAs | None = None
+    expected_members: int | None = Field(default=None, ge=1, le=10_000)
+    observed_status: ObservedStatus | None = None
+    observed_at: datetime | None = None
+    observed_master_hid: Hid | None = Field(
+        default=None, description="A current member of the stack. Null clears it."
+    )
+    master_observed_at: datetime | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
@@ -732,6 +807,7 @@ class AddressOut(Model):
     group_hid: str | None
     group: DeviceGroupRef | None
     address: str = Field(description="In canonical form, with no prefix length.")
+    family: Literal[4, 6]
     network_hid: str | None
     network: NetworkRef | None
     role: AddressRole
@@ -750,7 +826,8 @@ class AddressCreate(Model):
     network_hid: Hid | None = Field(default=None, description="Blank is the unlabelled space.")
     role: AddressRole = "management"
     is_primary: bool = Field(
-        default=False, description="The primary management address of the record."
+        default=False,
+        description="The primary management address of the record, of this address's family.",
     )
 
 
@@ -767,35 +844,55 @@ class AddressPatch(Model):
 # --- reports -------------------------------------------------------------------------
 
 SummaryBy = Literal[
-    "vendor", "kind", "type", "function", "owner", "lifecycle_state", "disposition", "tag"
+    "vendor",
+    "kind",
+    "type",
+    "function",
+    "owner",
+    "lifecycle_state",
+    "disposition",
+    "condition",
+    "health",
+    "tag",
 ]
+ManagementBy = Literal["vendor", "kind", "type", "function", "owner", "tag"]
+
+
+class HealthCount(Model):
+    """The components of each health."""
+
+    good: int
+    degraded: int
+    failed: int
+    unknown: int
+
+
+class Counted(Model):
+    """The items and the components that share one value: a kind, or a condition."""
+
+    key: str | None
+    label: str | None
+    items: int
+    component_count: int = Field(
+        description="The major items among them that are in hand, whatever their kind."
+    )
 
 
 class Measures(Model):
-    """The counts and sums of a set of items."""
+    """What the summary counts of a set of items. It holds no money."""
 
     items: int = Field(description="Every item of the set, major and minor.")
     component_count: int
     managed_node_count: int
     support_weight: WeightSum
-    est_value: MoneySum
-    annual_support_cost: MoneySum
-
-
-class KindCount(Model):
-    """The items and the components of one kind."""
-
-    kind: str
-    items: int
-    component_count: int = Field(
-        description="As the headline would count them, were the kind among `count_kinds`."
-    )
+    by_health: HealthCount
 
 
 class SummaryTotals(Measures):
-    """The measures of the whole view, and its items by kind."""
+    """The measures of the whole view, and its items by condition and by kind."""
 
-    by_kind: list[KindCount]
+    by_condition: list[Counted]
+    by_kind: list[Counted]
 
 
 class SummaryRow(Measures):
@@ -806,11 +903,35 @@ class SummaryRow(Measures):
 
 
 class SummaryOut(Model):
-    """A summary of a view of the items."""
+    """A summary of a view of the items, for the people who run the network."""
 
     by: SummaryBy | None
     totals: SummaryTotals
     rows: list[SummaryRow]
+
+
+class ManagementMeasures(Model):
+    """What the management report counts of a set of items."""
+
+    items: int = Field(description="Every item of the set, major and minor.")
+    component_count: int
+    est_value: MoneySum
+    annual_support_cost: MoneySum
+
+
+class ManagementRow(ManagementMeasures):
+    """The value and the cost of the items that share one value."""
+
+    key: str | None
+    label: str | None
+
+
+class ManagementOut(Model):
+    """The value and the cost of a view of the items, for the people who pay for it."""
+
+    by: ManagementBy | None
+    totals: ManagementMeasures
+    rows: list[ManagementRow]
 
 
 class AddressHolder(Model):

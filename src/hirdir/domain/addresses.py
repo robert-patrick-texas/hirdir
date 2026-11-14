@@ -7,7 +7,7 @@ network is accepted, because shared and virtual addresses are real, and is repor
 """
 
 import ipaddress
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -231,20 +231,37 @@ def of_holders(db: Session, field: str, hids: list[str]) -> dict[str, list[Addre
     return found
 
 
-def primary_of(db: Session, field: str, hid: str) -> Address | None:
-    """Return the primary management address of an item or of a group."""
+def family(address: str) -> Literal[4, 6]:
+    """Return the family of a stored address: 4 or 6."""
+    return 6 if ":" in address else 4
+
+
+def _of_family(which: int) -> Any:
+    """Return the condition that a stored address is of a family."""
+    return Address.address.contains(":") if which == 6 else ~Address.address.contains(":")
+
+
+def primary_of(db: Session, field: str, hid: str, which: int) -> Address | None:
+    """Return the primary management address of one family of an item or of a group."""
     return db.scalar(
-        select(Address).where(getattr(Address, field) == hid, Address.is_primary).limit(1)
+        select(Address)
+        .where(getattr(Address, field) == hid, Address.is_primary, _of_family(which))
+        .limit(1)
     )
 
 
 def _one_primary(db: Session, context: AuditContext, address: Address) -> None:
-    """Take the mark off whichever other address of the same record was primary."""
+    """Take the mark off whichever other address of the record was primary in its family.
+
+    A device may be managed over IPv4, over IPv6 or over both, so there is one primary
+    of each.
+    """
     field = "item_hid" if address.item_hid else "group_hid"
     others = db.scalars(
         select(Address).where(
             getattr(Address, field) == getattr(address, field),
             Address.is_primary,
+            _of_family(family(address.address)),
             Address.hid != address.hid,
         )
     )
@@ -307,20 +324,34 @@ def set_primary(
     hid: str,
     address: str | None,
     network_hid: Any = UNSET,
+    which: int | None = None,
 ) -> None:
-    """Make an address the primary management address of an item or a group.
+    """Make an address the primary management address, of its family, of an item or a group.
 
     The one there is, is changed; with none, one is added. Given no address, the one
-    there is, is removed. The network is left as it is unless one is named.
+    of the family `which` is removed, and of both families when none is named. Given an
+    address and a family, the address must be of that family. The network is left as
+    it is unless one is named.
     """
-    current = primary_of(db, field, hid)
     if address is None:
-        if current is not None:
-            delete_address(db, context, current.hid)
+        for one in (4, 6) if which is None else (which,):
+            current = primary_of(db, field, hid, one)
+            if current is not None:
+                delete_address(db, context, current.hid)
         return
-    fields: dict[str, Any] = {"address": address}
+    try:
+        stored = canonical(address)
+    except ValueError as error:
+        raise Invalid("the address is not acceptable", {"address": str(error)}) from None
+    if which is not None and family(stored) != which:
+        raise Invalid(
+            "the address is of the other family",
+            {"address": f"an IPv{which} address; this one is IPv{family(stored)}"},
+        )
+    fields: dict[str, Any] = {"address": stored}
     if network_hid is not UNSET:
         fields["network_hid"] = network_hid
+    current = primary_of(db, field, hid, family(stored))
     if current is not None:
         update_address(db, context, current.hid, None, fields)
     else:

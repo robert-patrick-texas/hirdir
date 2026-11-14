@@ -29,7 +29,16 @@ from hirdir.db.models import (
     User,
     Vendor,
 )
-from hirdir.domain import addresses, groups, inheritance, records, replacements, settings, tags
+from hirdir.domain import (
+    addresses,
+    groups,
+    health,
+    inheritance,
+    records,
+    replacements,
+    settings,
+    tags,
+)
 from hirdir.domain import items as item_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
@@ -59,6 +68,10 @@ def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
     return shapes.EffectiveValue(
         value=shown, source=effective.source, source_hid=effective.source_hid
     )
+
+
+def _health(found: health.Health) -> shapes.HealthOut:
+    return shapes.HealthOut.model_validate(found)
 
 
 def _count_by(db: Session, column: Any, hids: list[str]) -> dict[str, int]:
@@ -99,6 +112,7 @@ def _address_refs(db: Session, field: str, hids: list[str]) -> dict[str, list[sh
             shapes.AddressRef(
                 hid=address.hid,
                 address=address.address,
+                family=addresses.family(address.address),
                 network_hid=address.network_hid,
                 network=networks[address.network_hid].label if address.network_hid else None,
                 role=address.role,
@@ -208,7 +222,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     )
     controllers = groups.controllers(db, domains)
     controller_refs = item_refs(
-        db, list({item.hid: item for listed in controllers.values() for item in listed}.values())
+        db,
+        list({item.hid: item for listed in controllers.values() for item, _ in listed}.values()),
     )
     its_addresses = _address_refs(db, "item_hid", hids)
     replaced_by, replaces = _replacement_refs(db, hids)
@@ -220,11 +235,15 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         effective = inheritance.of_item(item, entry, line)
         owner_in_force = owners.get(effective["owner_hid"].value)
         its_groups = memberships[item.hid]
-        its_controllers: dict[str, shapes.ItemRef] = {}
+        its_controllers: dict[str, shapes.ControllerRef] = {}
         for member, group in its_groups:
             if group.hid in controllers and member.role == "endpoint":
-                for controller in controllers[group.hid]:
-                    its_controllers[controller.hid] = controller_refs[controller.hid]
+                for controller, cluster in controllers[group.hid]:
+                    its_controllers[controller.hid] = shapes.ControllerRef(
+                        **controller_refs[controller.hid].model_dump(),
+                        cluster_hid=cluster.hid if cluster is not None else None,
+                        cluster=cluster.name if cluster is not None else None,
+                    )
         out.append(
             shapes.ItemOut(
                 **{
@@ -247,6 +266,11 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
+                health=_health(
+                    health.of_item(
+                        item.condition, item.observed_status, effective["expected_online"].value
+                    )
+                ),
                 depth=len(line),
                 minor_items=minor[item.hid],
                 groups=[
@@ -285,6 +309,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
 
 
 _ITEM_SHAPED = (
+    "health",
     "catalog",
     "owner",
     "parent",
@@ -339,7 +364,11 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 nested[group.parent_group_hid].append(_group_ref(group))
     counts = groups.member_counts(db, hids)
     masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
-    master_refs = item_refs(db, list(masters.values()))
+    seen = groups.observed_masters(db, found)
+    master_refs = item_refs(
+        db, list({item.hid: item for item in (*masters.values(), *seen.values())}.values())
+    )
+    healths = groups.health_of(db, found)
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
     disagree = groups.members_disagree(db, found)
@@ -347,7 +376,11 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
         parent = parents.get(group.parent_group_hid) if group.parent_group_hid else None
-        master = masters.get(group.hid)
+        master, observed = masters.get(group.hid), seen.get(group.hid)
+        # Read from the master that is seen, and else from the one intended, each time
+        # it is asked for, and stored nowhere.
+        reported = observed or master
+        its_health = healths[group.hid]
         out.append(
             shapes.DeviceGroupOut(
                 **{
@@ -359,9 +392,16 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 groups=nested[group.hid],
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
                 members_disagree=disagree[group.hid],
-                # Read from the master each time it is asked for, and stored nowhere.
-                serial_number=master.serial_number if master is not None else None,
+                health=_health(its_health) if its_health is not None else None,
+                serial_number=reported.serial_number if reported is not None else None,
+                serial_source=None
+                if reported is None
+                else ("observed" if observed is not None else "intended"),
                 master=master_refs[master.hid] if master is not None else None,
+                observed_master=master_refs[observed.hid] if observed is not None else None,
+                master_as_intended=None
+                if observed is None or master is None
+                else observed.hid == master.hid,
                 member_count=counts[group.hid],
                 addresses=its_addresses[group.hid],
                 tags=labels[group.hid],
@@ -371,6 +411,10 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
 
 
 _GROUP_SHAPED = (
+    "health",
+    "serial_source",
+    "observed_master",
+    "master_as_intended",
     "parent",
     "groups",
     "owner",
@@ -434,8 +478,9 @@ def addresses_out(db: Session, found: list[Address]) -> list[shapes.AddressOut]:
                 **{
                     name: getattr(address, name)
                     for name in shapes.AddressOut.model_fields
-                    if name not in ("item", "group", "network")
+                    if name not in ("item", "group", "network", "family")
                 },
+                family=addresses.family(address.address),
                 item=refs.get(address.item_hid) if address.item_hid else None,
                 group=None if group is None else _group_ref(group),
                 network=None

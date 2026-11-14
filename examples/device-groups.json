@@ -1,6 +1,8 @@
 {"schema": "hirdir/1", "entity": "device_groups", "mode": "upsert", "records": [
-  {"name": "site2-sw-core", "type": "stack", "hostname": "site2-sw-core", "fqdn": "site2-sw-core.example.net", "parent": null, "owner": null, "record_status": "active", "tags": ["critical"]},
-  {"name": "site2-sw-floor", "type": "stack", "hostname": "site2-sw-floor", "fqdn": "site2-sw-floor.example.net", "parent": null, "owner": null, "record_status": "active", "tags": []},
-  {"name": "site2-wireless", "type": "controller_domain", "hostname": null, "fqdn": null, "parent": null, "owner": null, "record_status": "active", "tags": []},
-  {"name": "site2-wlc-ha", "type": "cluster", "hostname": "site2-wlc", "fqdn": "site2-wlc.example.net", "parent": "site2-wireless", "owner": null, "record_status": "active", "tags": []}
+  {"name": "site2-fw-edge", "type": "cluster", "hostname": null, "fqdn": null, "parent": null, "owner": null, "managed_as": "members", "expected_members": null, "observed_status": null, "observed_at": null, "record_status": "active", "tags": ["critical"]},
+  {"name": "site2-rtr-wan", "type": "cluster", "hostname": null, "fqdn": null, "parent": null, "owner": null, "managed_as": "members", "expected_members": null, "observed_status": null, "observed_at": null, "record_status": "active", "tags": []},
+  {"name": "site2-sw-core", "type": "stack", "hostname": "site2-sw-core", "fqdn": "site2-sw-core.example.net", "parent": null, "owner": null, "managed_as": null, "expected_members": null, "observed_status": "online", "observed_at": "2026-11-02T15:00:00+00:00", "record_status": "active", "tags": ["critical"]},
+  {"name": "site2-sw-floor", "type": "stack", "hostname": "site2-sw-floor", "fqdn": "site2-sw-floor.example.net", "parent": null, "owner": null, "managed_as": null, "expected_members": 3, "observed_status": null, "observed_at": null, "record_status": "active", "tags": []},
+  {"name": "site2-wireless", "type": "controller_domain", "hostname": null, "fqdn": null, "parent": null, "owner": null, "managed_as": null, "expected_members": null, "observed_status": null, "observed_at": null, "record_status": "active", "tags": []},
+  {"name": "site2-wlc-ha", "type": "cluster", "hostname": "site2-wlc", "fqdn": "site2-wlc.example.net", "parent": "site2-wireless", "owner": null, "managed_as": "one", "expected_members": null, "observed_status": null, "observed_at": null, "record_status": "active", "tags": []}
 ]}

@@ -297,6 +297,9 @@ class Item(Bookkeeping, Base):
     expected_online: Mapped[bool | None] = mapped_column(Boolean, default=None)
     state_reason: Mapped[str | None] = mapped_column(String(40), default=None)
     state_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    condition: Mapped[str | None] = mapped_column(String(40), default=None, index=True)
+    observed_status: Mapped[str | None] = mapped_column(String(12), default=None, index=True)
+    observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
     )
@@ -354,6 +357,14 @@ class DeviceGroup(Bookkeeping, Base):
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
     )
+    # How a cluster is managed: as one node, as its members, or as both.
+    managed_as: Mapped[str | None] = mapped_column(String(20), default=None)
+    expected_members: Mapped[int | None] = mapped_column(Integer, default=None)
+    observed_status: Mapped[str | None] = mapped_column(String(12), default=None)
+    observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    # The member of a stack that is seen to be master, which the stack decides itself.
+    observed_master_hid: Mapped[str | None] = mapped_column(ForeignKey("items.hid"), default=None)
+    master_observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 

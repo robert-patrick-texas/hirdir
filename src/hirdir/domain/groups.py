@@ -6,7 +6,7 @@ last year can still be answered: a membership is ended, and never removed.
 """
 
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, aliased
 from hirdir import clock
 from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, Item, Owner
-from hirdir.domain import items, records, settings, tags
+from hirdir.domain import health, items, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
@@ -31,11 +31,29 @@ ROLES: Mapping[str, tuple[str, ...]] = {
     "custom": ("member",),
 }
 MASTER = "master"
+PLAIN = "member"
+# How a cluster is managed: as one node, as its members, or as its members and a node
+# of its own. See "Counting and weight" on the data model page.
+MANAGED_AS = ("one", "members", "members_and_cluster")
 MAX_NESTING = 8
 MAX_AT_ONCE = 1000
 TEXTS = ("hostname", "fqdn")
-FIELDS = ("type", "name", *TEXTS, "parent_group_hid", "owner_hid", "record_status")
+FIELDS = (
+    "type",
+    "name",
+    *TEXTS,
+    "parent_group_hid",
+    "owner_hid",
+    "managed_as",
+    "expected_members",
+    "observed_status",
+    "observed_at",
+    "observed_master_hid",
+    "master_observed_at",
+    "record_status",
+)
 MEMBER_FIELDS = ("group_hid", "item_hid", "role", "position", "joined_on", "left_on")
+OBSERVED_MASTER = ("observed_master_hid", "master_observed_at")
 
 
 def today(db: Session) -> date:
@@ -155,16 +173,19 @@ def memberships_of(
     return found
 
 
-def controllers(db: Session, domain_hids: Sequence[str]) -> dict[str, list[Item]]:
-    """Return the controllers of each controller domain.
+def controllers(
+    db: Session, domain_hids: Sequence[str]
+) -> dict[str, list[tuple[Item, DeviceGroup | None]]]:
+    """Return the controllers of each controller domain, each with the cluster it is in.
 
-    They are the current members with the role `controller`, and the current members
-    of every cluster nested in the domain that is not retired.
+    They are the current members with the role `controller`, which are in no cluster,
+    and the current members of every cluster nested in the domain, at any depth, that
+    is not retired. A domain may hold several clusters: an east pair and a west pair.
     """
-    found: dict[str, list[Item]] = {hid: [] for hid in domain_hids}
+    found: dict[str, list[tuple[Item, DeviceGroup | None]]] = {hid: [] for hid in domain_hids}
     if not domain_hids:
         return found
-    direct = (
+    direct = db.execute(
         select(DeviceGroupMember.group_hid, Item)
         .join(Item, Item.hid == DeviceGroupMember.item_hid)
         .where(
@@ -173,23 +194,52 @@ def controllers(db: Session, domain_hids: Sequence[str]) -> dict[str, list[Item]
             DeviceGroupMember.role == "controller",
         )
     )
-    nested = (
-        select(DeviceGroup.parent_group_hid, Item)
-        .join(DeviceGroupMember, DeviceGroupMember.group_hid == DeviceGroup.hid)
-        .join(Item, Item.hid == DeviceGroupMember.item_hid)
-        .where(
-            DeviceGroup.parent_group_hid.in_(domain_hids),
-            DeviceGroup.type == "cluster",
-            DeviceGroup.record_status != "retired",
-            DeviceGroupMember.left_on.is_(None),
+    for domain_hid, item in direct:
+        found[domain_hid].append((item, None))
+    # The groups within each domain, a level at a time: which domain each is under.
+    under = {hid: hid for hid in domain_hids}
+    clusters: dict[str, DeviceGroup] = {}
+    level = list(domain_hids)
+    for _ in range(MAX_NESTING):
+        inside = list(
+            db.scalars(
+                select(DeviceGroup).where(
+                    DeviceGroup.parent_group_hid.in_(level),
+                    DeviceGroup.record_status != "retired",
+                )
+            )
         )
-    )
-    for query in (direct, nested):
-        for domain_hid, item in db.execute(query):
-            if all(item.hid != other.hid for other in found[domain_hid]):
-                found[domain_hid].append(item)
+        level = []
+        for group in inside:
+            if group.hid in under or group.parent_group_hid is None:
+                continue
+            under[group.hid] = under[group.parent_group_hid]
+            level.append(group.hid)
+            if group.type == "cluster":
+                clusters[group.hid] = group
+        if not level:
+            break
+    if clusters:
+        nested = db.execute(
+            select(DeviceGroupMember.group_hid, Item)
+            .join(Item, Item.hid == DeviceGroupMember.item_hid)
+            .where(
+                DeviceGroupMember.group_hid.in_(clusters),
+                DeviceGroupMember.left_on.is_(None),
+            )
+        )
+        for cluster_hid, item in nested:
+            listed = found[under[cluster_hid]]
+            if all(item.hid != other.hid for other, _ in listed):
+                listed.append((item, clusters[cluster_hid]))
     for listed in found.values():
-        listed.sort(key=lambda item: (records.key(items.shown_name(item)), item.hid))
+        listed.sort(
+            key=lambda one: (
+                records.key(one[1].name) if one[1] is not None else "",
+                records.key(items.shown_name(one[0])),
+                one[0].hid,
+            )
+        )
     return found
 
 
@@ -228,33 +278,41 @@ def members_disagree(db: Session, found: Sequence[DeviceGroup]) -> dict[str, lis
 # --- the rules of a group ------------------------------------------------------------
 
 
-def check_group(db: Session, group: DeviceGroup) -> None:
-    """Refuse a stack that has no master, or more than one.
+def observed_masters(db: Session, found: Sequence[DeviceGroup]) -> dict[str, Item]:
+    """Return the item that each of the groups is seen to have as its master."""
+    wanted = {group.observed_master_hid for group in found if group.observed_master_hid}
+    if not wanted:
+        return {}
+    its = {item.hid: item for item in db.scalars(select(Item).where(Item.hid.in_(wanted)))}
+    return {
+        group.hid: its[group.observed_master_hid]
+        for group in found
+        if group.observed_master_hid in its
+    }
 
-    A stack with no members at all is one whose members are still to come. From its
-    first member on, an active stack has exactly one master. It may be the master
-    alone: a stack waits for a member in staging, and loses one in production when a
-    switch fails and is taken out. A draft is being built, and may have no master yet.
-    A retired one has no members.
-    """
-    if group.type != "stack" or group.record_status == "retired":
-        return
-    members = current_members(db, group.hid)
-    if not members:
-        return
-    count = sum(1 for member in members if member.role == MASTER)
-    if count > 1:
-        raise Invalid(
-            f"the stack {group.name} would have {count} masters",
-            {"members": "a stack has exactly one master"},
+
+def health_of(db: Session, found: Sequence[DeviceGroup]) -> dict[str, health.Health | None]:
+    """Return the health of each group: of a stack and a cluster, from its members."""
+    with_health = [group.hid for group in found if group.type in health.HAS_HEALTH]
+    members: dict[str, list[tuple[health.Health, str | None]]] = {hid: [] for hid in with_health}
+    if with_health:
+        rows = db.execute(
+            select(DeviceGroupMember.group_hid, Item)
+            .join(Item, Item.hid == DeviceGroupMember.item_hid)
+            .where(
+                DeviceGroupMember.group_hid.in_(with_health),
+                DeviceGroupMember.left_on.is_(None),
+            )
         )
-    if group.record_status != "active":
-        return
-    if count == 0:
-        raise Invalid(
-            f"the stack {group.name} would have no master",
-            {"members": "a stack has exactly one master"},
+        for group_hid, item in rows:
+            its = health.of_item(item.condition, item.observed_status, item.expected_online)
+            members[group_hid].append((its, item.lifecycle_state))
+    return {
+        group.hid: health.of_group(
+            group.type, members.get(group.hid, []), group.observed_status, group.expected_members
         )
+        for group in found
+    }
 
 
 def _ever_had_members(db: Session, group_hid: str) -> bool:
@@ -339,17 +397,104 @@ def _checked(db: Session, fields: dict[str, Any], group: DeviceGroup | None) -> 
         values["owner_hid"] = hid
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
+    kind = values.get("type", group.type if group is not None else None)
+    if "managed_as" in fields or "type" in values:
+        given = fields.get("managed_as", group.managed_as if group is not None else None)
+        managed = records.key(str(given)) if given else None
+        if kind != "cluster":
+            if "managed_as" in fields and managed is not None:
+                raise Invalid(
+                    "only a cluster says how it is managed",
+                    {"managed_as": "a stack is always one managed node; leave this blank"},
+                )
+            managed = None
+        elif managed is None:
+            managed = MANAGED_AS[0]
+        elif managed not in MANAGED_AS:
+            raise Invalid(
+                "how the cluster is managed is not acceptable",
+                {"managed_as": f"one of {', '.join(MANAGED_AS)}"},
+            )
+        values["managed_as"] = managed
+    if "expected_members" in fields:
+        expected = fields["expected_members"]
+        if expected is not None and (
+            isinstance(expected, bool)
+            or not isinstance(expected, int)
+            or not 1 <= expected <= 10_000
+        ):
+            raise Invalid(
+                "the number of members is not acceptable",
+                {"expected_members": "a whole number from 1 to 10000, or blank"},
+            )
+        values["expected_members"] = expected
+    values.update(health.observation(fields, group))
+    values.update(_observed_master(db, fields, group, kind))
     return values
+
+
+def _observed_master(
+    db: Session, fields: dict[str, Any], group: DeviceGroup | None, kind: str | None
+) -> dict[str, Any]:
+    """Return the master that is seen and the moment it was seen, as a change sets them.
+
+    Which member is master is decided by the stack as it boots, so this is an
+    observation: of a stack only, and of an item that is a current member of it.
+    """
+    if "observed_master_hid" not in fields and "master_observed_at" not in fields:
+        return {}
+    current = group.observed_master_hid if group is not None else None
+    hid = (fields["observed_master_hid"] or None) if "observed_master_hid" in fields else current
+    at = fields.get("master_observed_at")
+    if at is not None and not isinstance(at, datetime):
+        raise Invalid(
+            "the moment is not acceptable", {"master_observed_at": "a date and time in ISO 8601"}
+        )
+    if hid is None:
+        if at is not None:
+            raise Invalid(
+                "no master is observed at that moment",
+                {"master_observed_at": "give observed_master_hid with it"},
+            )
+        return {"observed_master_hid": None, "master_observed_at": None}
+    if kind != "stack":
+        raise Invalid(
+            "only a stack has a master",
+            {"observed_master_hid": "the master that is seen is recorded on a stack"},
+        )
+    if hid != current:
+        member = (
+            db.scalar(
+                select(DeviceGroupMember.hid).where(
+                    DeviceGroupMember.group_hid == group.hid,
+                    DeviceGroupMember.item_hid == hid,
+                    DeviceGroupMember.left_on.is_(None),
+                )
+            )
+            if group is not None
+            else None
+        )
+        if member is None:
+            raise Invalid(
+                "the master that is seen is a member of the stack",
+                {"observed_master_hid": "this item is not a current member of the stack"},
+            )
+    if at is None:
+        unchanged = hid == current and "master_observed_at" not in fields
+        at = group.master_observed_at if unchanged and group is not None else clock.now()
+    return {"observed_master_hid": hid, "master_observed_at": at}
 
 
 # --- changing a group ----------------------------------------------------------------
 
 
 def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> DeviceGroup:
-    """Create a device group, with the members it is given, and check it as a whole."""
+    """Create a device group, with the members it is given."""
     dialect.hold_other_writers(db)
     labels = fields.pop("tags", None) or []
     members = fields.pop("members", None) or []
+    # The master that is seen is one of the members, so it is set once they are in.
+    seen = {name: fields.pop(name) for name in OBSERVED_MASTER if name in fields}
     group = DeviceGroup(**_checked(db, {"type": None, "name": None, **fields}, None))
     records.created(
         db,
@@ -361,13 +506,17 @@ def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> 
     )
     if members:
         add_members(db, context, group.hid, members)
+    if any(value is not None for value in seen.values()):
+        records.apply(
+            db, context, RECORD_TYPE, group, None, _observed_master(db, seen, group, group.type)
+        )
     return group
 
 
 def update_group(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> DeviceGroup:
-    """Change a device group. One that is made active is checked as a whole."""
+    """Change a device group."""
     dialect.hold_other_writers(db)
     group = get_group(db, hid)
     has_tags = "tags" in fields
@@ -375,7 +524,6 @@ def update_group(
     values = _checked(db, fields, group)
     tag_change = tags.set_labels(db, RECORD_TYPE, hid, labels) if has_tags else []
     records.apply(db, context, RECORD_TYPE, group, row_version, values, tag_change)
-    check_group(db, group)
     return group
 
 
@@ -383,9 +531,8 @@ def retire_group(db: Session, context: AuditContext, hid: str, row_version: int)
     """Retire a group: its record stays, and its current memberships end today."""
     dialect.hold_other_writers(db)
     group = get_group(db, hid)
-    records.apply(
-        db, context, RECORD_TYPE, group, row_version, {"record_status": "retired"}, action="retire"
-    )
+    values = {"record_status": "retired", "observed_master_hid": None, "master_observed_at": None}
+    records.apply(db, context, RECORD_TYPE, group, row_version, values, action="retire")
     day = today(db)
     for member in current_members(db, hid):
         # A membership that began on a later day than this one ends on the day it began.
@@ -462,12 +609,13 @@ def add_members(
     context: AuditContext,
     group_hid: str,
     members: Sequence[dict[str, Any]],
-    check: bool = True,
 ) -> list[DeviceGroupMember]:
-    """Add items to a group, all together, and check the group once they are in.
+    """Add items to a group, all together.
 
     A membership that is given `left_on` is one that has ended already, entered for
-    the record: a file may hold the history of a group.
+    the record: a file may hold the history of a group. A stack has at most one member
+    marked as the master that is intended: one that is added so takes the mark from
+    the member that had it.
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
@@ -502,19 +650,41 @@ def add_members(
             raise Invalid(
                 "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
             )
+        role = _checked_role(group, given.get("role"))
+        if left is None and group.type == "stack" and role == MASTER:
+            if any(one.role == MASTER and one.left_on is None for one in made):
+                raise Invalid(
+                    "a stack has one intended master",
+                    {"role": "more than one of these members is named as the master"},
+                )
+            _unmark_master(db, context, group.hid, None)
         member = DeviceGroupMember(
             group_hid=group.hid,
             item_hid=item.hid,
-            role=_checked_role(group, given.get("role")),
+            role=role,
             position=_checked_position(given.get("position")),
             joined_on=joined,
             left_on=left,
         )
         records.created(db, context, MEMBER_TYPE, member, MEMBER_FIELDS)
         made.append(member)
-    if check:
-        check_group(db, group)
     return made
+
+
+def _unmark_master(db: Session, context: AuditContext, group_hid: str, but: str | None) -> None:
+    """Make the member that is marked as the intended master of a stack a plain member."""
+    for other in current_members(db, group_hid):
+        if other.role == MASTER and other.hid != but:
+            records.apply(db, context, MEMBER_TYPE, other, None, {"role": PLAIN})
+
+
+def _forget_observed_master(
+    db: Session, context: AuditContext, group: DeviceGroup, item_hid: str
+) -> None:
+    """Clear the master that was seen, when that item is no longer in the stack."""
+    if group.observed_master_hid == item_hid:
+        values = {"observed_master_hid": None, "master_observed_at": None}
+        records.apply(db, context, RECORD_TYPE, group, None, values)
 
 
 def update_member(
@@ -524,12 +694,12 @@ def update_member(
     member_hid: str,
     row_version: int | None,
     fields: dict[str, Any],
-    check: bool = True,
 ) -> DeviceGroupMember:
     """Change a membership: its role, its position or its dates. Giving it `left_on` ends it.
 
-    Making a member the master of a stack makes the former master a member, in the
-    same change. The master does not leave a stack that has other members.
+    Marking a member as the intended master of a stack takes the mark from the member
+    that had it, in the same change. No rule stops a member leaving, the master among
+    them: a stack may be left with no intended master, and with none that is seen.
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
@@ -557,46 +727,22 @@ def update_member(
             "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
         )
     leaving = left is not None and not ended
-    others = [one for one in current_members(db, group.hid) if one.hid != member.hid]
-    if group.type == "stack" and group.record_status != "retired":
-        if leaving and member.role == MASTER and others:
-            raise Invalid(
-                "the master does not leave a stack that has other members",
-                {"left_on": "make another member the master first"},
-            )
-        if values.get("role") == MASTER and member.role != MASTER and not leaving:
-            for other in others:
-                if other.role == MASTER:
-                    records.apply(
-                        db, context, MEMBER_TYPE, other, None, {"role": ROLES["stack"][0]}
-                    )
+    marking = values.get("role") == MASTER and member.role != MASTER
+    if group.type == "stack" and marking and not leaving and not ended:
+        _unmark_master(db, context, group.hid, member.hid)
     records.apply(db, context, MEMBER_TYPE, member, row_version, values)
-    if check:
-        check_group(db, group)
+    if leaving:
+        _forget_observed_master(db, context, group, member.item_hid)
     return member
 
 
 def leave_all(db: Session, context: AuditContext, item_hid: str) -> None:
-    """End every current membership of an item today, under the rules of leaving.
+    """End every current membership of an item today.
 
-    An item that is retired is in no group any more. Where its leaving would break a
-    group, as the master of a stack would, the leaving is refused, and so is whatever
-    asked for it.
+    An item that is retired, or has left the team's hands, is in no group any more.
+    The memberships stay on record with the day they ended.
     """
     day = today(db)
     for member, group in memberships_of(db, [item_hid])[item_hid]:
-        try:
-            update_member(
-                db,
-                context,
-                group.hid,
-                member.hid,
-                None,
-                {"left_on": max(day, member.joined_on)},
-            )
-        except Invalid as error:
-            said = " ".join(error.fields.values())
-            raise Invalid(
-                f"the item is a member of {group.name}: {error}",
-                {"record_status": f"end its membership of {group.name} first: {said}"},
-            ) from None
+        left = max(day, member.joined_on)
+        update_member(db, context, group.hid, member.hid, None, {"left_on": left})

@@ -33,6 +33,7 @@ from hirdir.domain import (
     addresses,
     catalog,
     groups,
+    health,
     inheritance,
     items,
     lifecycle,
@@ -108,10 +109,8 @@ class Run:
         self._vendors: dict[str, str] = {}
         self._entries: dict[tuple[str, str], str] = {}
         self._owners: dict[str, str] = {}
-        # The row being worked, and the rows that changed the members of each group.
+        # The row being worked.
         self.row = 0
-        self.touched: dict[str, list[int]] = {}
-        self.placed: dict[int, tuple[str, str]] = {}
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
@@ -260,57 +259,109 @@ class Run:
             raise Invalid("there is no such group", {field: f"there is no device group {text}"})
         return found
 
-    def members_changed(self, group_hid: str, item_hid: str) -> None:
-        """Note that this row changed an item's place in a group, to be checked at the end."""
-        rows, number = self.touched.setdefault(group_hid, []), self.row
-        rows.append(number)
-        self.placed[number] = (group_hid, item_hid)
 
-        def forget() -> None:
-            rows.remove(number)
-            self.placed.pop(number, None)
-
-        self._undo.append(forget)
+# The columns that set a primary management address, and the family each is of: an
+# address of either family in `mgmt_address`, which is filed under its own.
+MGMT = {"mgmt_ipv4": 4, "mgmt_ipv6": 6, "mgmt_address": None}
+# The spellings a site's own file is likely to use for them.
+MGMT_SPELLINGS = {
+    "ip_address": "mgmt_address",
+    "ip": "mgmt_address",
+    "mgmt_ip": "mgmt_address",
+    "ipv4_address": "mgmt_ipv4",
+    "ipv4": "mgmt_ipv4",
+    "ipv6_address": "mgmt_ipv6",
+    "ipv6": "mgmt_ipv6",
+}
 
 
 def _management(run: Run, field: str, hid: str, values: Mapping[str, Any]) -> None:
-    """Set, change or remove the primary management address of an item or a group."""
-    if "mgmt_address" not in values:
+    """Set, change or remove the primary management addresses of an item or a group.
+
+    There is one of each family. `mgmt_ipv4` and `mgmt_ipv6` name theirs, and
+    `mgmt_address` takes either and files it under its own; cleared, it removes both.
+    """
+    named = [name for name in MGMT if name in values]
+    if not named:
         if values.get("mgmt_network") is not None:
             raise Invalid(
                 "a network is named with its address",
-                {"mgmt_network": "give mgmt_address with it"},
+                {"mgmt_network": "give mgmt_address, mgmt_ipv4 or mgmt_ipv6 with it"},
             )
         return
     network: Any = addresses.UNSET
     if "mgmt_network" in values:
-        named = values["mgmt_network"]
-        network = run.network(named, "mgmt_network").hid if named is not None else None
-    addresses.set_primary(run.db, run.context, field, hid, values["mgmt_address"], network)
+        label = values["mgmt_network"]
+        network = run.network(label, "mgmt_network").hid if label is not None else None
+
+    def stored(name: str) -> str | None:
+        given = values[name]
+        try:
+            return addresses.canonical(given) if given is not None else None
+        except ValueError as error:
+            raise Invalid("the address is not acceptable", {name: str(error)}) from None
+
+    # What each family is to have: an address, or nothing. The columns that name a
+    # family are read first, and `mgmt_address` then fills in what they leave open.
+    wanted: dict[int, str | None] = {}
+    for name, which in (("mgmt_ipv4", 4), ("mgmt_ipv6", 6)):
+        if name not in values:
+            continue
+        address = stored(name)
+        if address is not None and addresses.family(address) != which:
+            raise Invalid(
+                "the address is of the other family",
+                {name: f"an IPv{which} address; this one is IPv{addresses.family(address)}"},
+            )
+        wanted[which] = address
+    if "mgmt_address" in values:
+        address = stored("mgmt_address")
+        if address is None:
+            wanted.setdefault(4, None)
+            wanted.setdefault(6, None)
+        else:
+            which = addresses.family(address)
+            if wanted.get(which, address) != address:
+                raise Invalid(
+                    "two columns name the management address",
+                    {"mgmt_address": f"mgmt_ipv{which} names another IPv{which} address"},
+                )
+            wanted[which] = address
+    for which, address in sorted(wanted.items()):
+        addresses.set_primary(run.db, run.context, field, hid, address, network, which)
 
 
-def _primaries(db: Session, field: str, hids: list[str]) -> dict[str, tuple[str, str | None]]:
-    """Return the primary management address of each record, with the label of its network."""
-    found = {
-        hid: next(address for address in listed if address.is_primary)
-        for hid, listed in addresses.of_holders(db, field, hids).items()
-        if any(address.is_primary for address in listed)
-    }
-    networks = _by_hid(db, Network, {address.network_hid for address in found.values()})
-    return {
-        hid: (
-            address.address,
-            networks[address.network_hid].label if address.network_hid else None,
-        )
-        for hid, address in found.items()
-    }
+def _primaries(db: Session, field: str, hids: list[str]) -> dict[str, dict[str, str | None]]:
+    """Return the management columns of each record: its primary address of each family,
+    either of them as `mgmt_address`, and the label of the network it is under."""
+    found = addresses.of_holders(db, field, hids)
+    networks = _by_hid(
+        db, Network, {address.network_hid for listed in found.values() for address in listed}
+    )
+    columns: dict[str, dict[str, str | None]] = {}
+    for hid, listed in found.items():
+        primary = {addresses.family(one.address): one for one in listed if one.is_primary}
+        first = primary.get(4) or primary.get(6)
+        columns[hid] = {
+            "mgmt_address": first.address if first else None,
+            "mgmt_ipv4": primary[4].address if 4 in primary else None,
+            "mgmt_ipv6": primary[6].address if 6 in primary else None,
+            "mgmt_network": networks[first.network_hid].label
+            if first and first.network_hid
+            else None,
+        }
+    return columns
 
 
+NO_MGMT: Mapping[str, str | None] = dict.fromkeys((*MGMT, "mgmt_network"))
 MANAGEMENT = (
     # Every address is in a file of its own, so an export writes these when asked.
     Column("mgmt_address", limit=45, listed=False),
+    Column("mgmt_ipv4", limit=45, listed=False),
+    Column("mgmt_ipv6", limit=45, listed=False),
     Column("mgmt_network", limit=100, listed=False),
 )
+OBSERVATION = (Column("observed_status", limit=12), Column("observed_at", "timestamp"))
 
 
 def _status(values: Mapping[str, Any], record: Any) -> dict[str, Any]:
@@ -351,6 +402,11 @@ class Entity:
     renamed: ClassVar[Mapping[str, str]] = {}
     # The columns a bulk edit may not set: they tell one record from another.
     not_in_bulk: ClassVar[frozenset[str]] = frozenset()
+    # The columns that are told as changed only when a row names them. Some are set to
+    # the moment of the change when a row does not give them, and a preview and its
+    # apply are made at different moments. Others say again what another column says:
+    # the management address of one family, and the same address under either.
+    only_when_named: ClassVar[frozenset[str]] = frozenset()
 
     def column(self, name: str) -> Column | None:
         """Return the column with a name, as a file or as a filter names it."""
@@ -733,6 +789,8 @@ class Items(Entity):
         Column("quantity", "integer"),
         *_STANDING,
         Column("state_reason", limit=40),
+        Column("condition", limit=40),
+        *OBSERVATION,
         _OWNER,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
@@ -747,6 +805,7 @@ class Items(Entity):
         Column("state_changed_at", "timestamp", settable=False),
         Column("is_major", "boolean", settable=False),
         Column("depth", "integer", settable=False),
+        Column("health", limit=12, settable=False),
         *_sources((_OWNER, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
@@ -763,7 +822,9 @@ class Items(Entity):
         **{f"effective.{name}": name for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": "owner",
         **{f"effective.{name}": name for name in inheritance.STANDING},
+        **MGMT_SPELLINGS,
     }
+    only_when_named = frozenset({"observed_at", *MGMT})
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
         "owner_hid": "owner",
@@ -775,9 +836,19 @@ class Items(Entity):
         "reason": "state_reason",
     }
     not_in_bulk = frozenset(
-        {"serial_number", "asset_tag", "mac_address", "name", "hostname", "fqdn", "mgmt_address"}
+        {"serial_number", "asset_tag", "mac_address", "name", "hostname", "fqdn", *MGMT}
     )
-    _direct = (*items.TEXTS, "mac_address", "position", "quantity", *items.DAYS, "tags")
+    _direct = (
+        *items.TEXTS,
+        "mac_address",
+        "position",
+        "quantity",
+        "condition",
+        "observed_status",
+        "observed_at",
+        *items.DAYS,
+        "tags",
+    )
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         """Match a row to an item. The first rule that applies decides.
@@ -1052,7 +1123,6 @@ class Items(Entity):
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
             in_force = inheritance.of_item(item, entry, line)
-            address, network = primaries.get(item.hid, (None, None))
             row: dict[str, Any] = {
                 **_kept(item),
                 "vendor": vendors[entry.vendor_hid].name if entry else None,
@@ -1060,8 +1130,7 @@ class Items(Entity):
                 **{name: getattr(item, name) for name in self._direct if name != "tags"},
                 "parent": parents[line[0].hid] if line else None,
                 "state_reason": item.state_reason,
-                "mgmt_address": address,
-                "mgmt_network": network,
+                **primaries.get(item.hid, NO_MGMT),
                 "record_status": item.record_status,
                 "tags": labels[item.hid],
                 "model_name": entry.model_name if entry else None,
@@ -1071,6 +1140,9 @@ class Items(Entity):
                 "state_changed_at": item.state_changed_at,
                 "is_major": item.parent_item_hid is None,
                 "depth": len(line),
+                "health": health.of_item(
+                    item.condition, item.observed_status, in_force["expected_online"].value
+                ).value,
             }
             for name, effective in in_force.items():
                 column = "owner" if name == "owner_hid" else name
@@ -1128,18 +1200,35 @@ class DeviceGroups(Entity):
         Column("fqdn", limit=255),
         Column("parent"),
         Column("owner"),
+        Column("managed_as", limit=20),
+        Column("expected_members", "integer"),
+        *OBSERVATION,
         *MANAGEMENT,
         STATUS,
         TAGS,
         Column("serial_number", settable=False),
         Column("members", "integer", settable=False),
+        Column("health", limit=12, settable=False),
         *BOOKKEEPING,
+    )
+    only_when_named = frozenset({"observed_at", *MGMT})
+    _direct = (
+        "name",
+        "type",
+        "hostname",
+        "fqdn",
+        "managed_as",
+        "expected_members",
+        "observed_status",
+        "observed_at",
+        "tags",
     )
     aliases: ClassVar[Mapping[str, str]] = {
         "owner.label": "owner",
         "owner_hid": "owner",
         "parent.name": "parent",
         "parent_group_hid": "parent",
+        **MGMT_SPELLINGS,
     }
     renamed: ClassVar[Mapping[str, str]] = {
         "owner_hid": "owner",
@@ -1173,10 +1262,7 @@ class DeviceGroups(Entity):
         return values.get("name") or (record.name if record is not None else "")
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
-        given = {
-            **_plain_fields(values, ("name", "type", "hostname", "fqdn", "tags")),
-            **_status(values, record),
-        }
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
         if "parent" in values:
             parent = values["parent"]
             given["parent_group_hid"] = (
@@ -1202,10 +1288,12 @@ class DeviceGroups(Entity):
         primaries = _primaries(db, "group_hid", hids)
         counts = groups.member_counts(db, hids)
         masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
+        seen = groups.observed_masters(db, found)
+        healths = groups.health_of(db, found)
         rows = []
         for group in found:
-            address, network = primaries.get(group.hid, (None, None))
-            master = masters.get(group.hid)
+            master = seen.get(group.hid) or masters.get(group.hid)
+            its_health = healths[group.hid]
             rows.append(
                 {
                     **_kept(group),
@@ -1221,12 +1309,16 @@ class DeviceGroups(Entity):
                     "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
                     if group.owner_hid
                     else None,
-                    "mgmt_address": address,
-                    "mgmt_network": network,
+                    "managed_as": group.managed_as,
+                    "expected_members": group.expected_members,
+                    "observed_status": group.observed_status,
+                    "observed_at": group.observed_at,
+                    **primaries.get(group.hid, NO_MGMT),
                     "record_status": group.record_status,
                     "tags": labels[group.hid],
                     "serial_number": master.serial_number if master is not None else None,
                     "members": counts[group.hid],
+                    "health": its_health.value if its_health is not None else None,
                 }
             )
         return rows
@@ -1247,8 +1339,13 @@ class DeviceGroupMembers(Entity):
         Column("position", "integer"),
         Column("joined_on", "date"),
         Column("left_on", "date"),
+        # Which member of a stack is seen to be master, and when it was seen. It is
+        # kept on the stack, and travels on the row of the member.
+        Column("observed_master", "boolean"),
+        Column("master_observed_at", "timestamp"),
         *BOOKKEEPING,
     )
+    only_when_named = frozenset({"master_observed_at"})
     aliases: ClassVar[Mapping[str, str]] = {
         "group.name": "group",
         "group_hid": "group",
@@ -1259,6 +1356,7 @@ class DeviceGroupMembers(Entity):
         "group_hid": "group",
         "item_hid": "item",
         "members": "",
+        "observed_master_hid": "observed_master",
     }
     _direct = ("role", "position", "joined_on", "left_on")
 
@@ -1301,10 +1399,11 @@ class DeviceGroupMembers(Entity):
                     )
             group = run.group(values["group"])
             item = run.item(values["item"], "item")
-            run.members_changed(group.hid, item.hid)
-            return groups.add_members(
-                db, context, group.hid, [{"item_hid": item.hid, **_new(given)}], check=False
+            made = groups.add_members(
+                db, context, group.hid, [{"item_hid": item.hid, **_new(given)}]
             )[0]
+            self._seen_as_master(run, made, values)
+            return made
         for name, model in (("group", DeviceGroup), ("item", Item)):
             if name not in values:
                 continue
@@ -1320,64 +1419,54 @@ class DeviceGroupMembers(Entity):
             del given["role"]
         if given.get("joined_on", _MISSING) is None:
             raise Invalid("a membership has a day it began", {"joined_on": "is not cleared"})
-        run.members_changed(record.group_hid, record.item_hid)
-        return groups.update_member(
-            db, context, record.group_hid, record.hid, record.row_version, given, check=False
+        changed = groups.update_member(
+            db, context, record.group_hid, record.hid, record.row_version, given
         )
+        self._seen_as_master(run, changed, values)
+        return changed
+
+    @staticmethod
+    def _seen_as_master(run: Run, member: Any, values: Mapping[str, Any]) -> None:
+        """Record on the stack that this member is seen to be its master, or no longer is."""
+        if "observed_master" not in values and "master_observed_at" not in values:
+            return
+        group = groups.get_group(run.db, member.group_hid)
+        seen = values.get("observed_master", group.observed_master_hid == member.item_hid)
+        fields: dict[str, Any]
+        if seen:
+            fields = {"observed_master_hid": member.item_hid}
+            if values.get("master_observed_at") is not None:
+                fields["master_observed_at"] = values["master_observed_at"]
+        elif values.get("master_observed_at") is not None:
+            raise Invalid(
+                "no master is observed at that moment",
+                {"master_observed_at": "give observed_master with it"},
+            )
+        elif group.observed_master_hid != member.item_hid:
+            return
+        else:
+            fields = {"observed_master_hid": None}
+        groups.update_group(run.db, run.context, group.hid, group.row_version, fields)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         its_groups = _by_hid(db, DeviceGroup, {member.group_hid for member in found})
         its_items = _by_hid(db, Item, {member.item_hid for member in found})
         named = items.reference_texts(db, list(its_items.values()))
-        return [
-            {
-                **_kept(member),
-                "group": items.name_or_hid(its_groups[member.group_hid].name, member.group_hid),
-                "item": named[member.item_hid],
-                **{name: getattr(member, name) for name in self._direct},
-            }
-            for member in found
-        ]
-
-    def finish(self, run: Run) -> dict[int, list[dict[str, str]]]:
-        """Check each group whose members the file changed, now that all of them are in.
-
-        The rows of a group that is left wrong are rejected together. So are the rows
-        that lean on them: a later row was judged with those rows in place, as when one
-        row takes an item out of a stack and the next puts it into another. Whatever
-        shares an item with a rejected row, and whatever shares a group with that, goes
-        with it, so that what is left is what an apply will do.
-        """
-        wrong: dict[str, str] = {}
-        for group_hid, rows in run.touched.items():
-            group = run.db.get(DeviceGroup, group_hid)
-            if group is None or not rows:
-                continue
-            try:
-                groups.check_group(run.db, group)
-            except DomainError as error:
-                said = " ".join(getattr(error, "fields", {}).values())
-                wrong[group_hid] = f"{error}: {said}. The rows of this group are rejected together"
-        if not wrong:
-            return {}
-        first = next(iter(wrong))
-        first_name = run.db.get_one(DeviceGroup, first).name
-        with_them = set(wrong)
-        while True:
-            their_items = {item for group, item in run.placed.values() if group in with_them}
-            more = {group for group, item in run.placed.values() if item in their_items}
-            if more <= with_them:
-                break
-            with_them |= more
-        leaning = (
-            f"this row was worked with rows of {first_name} in place, and they are "
-            "rejected: preview the file again without them"
-        )
-        return {
-            number: [{"field": "", "message": wrong.get(group, leaning)}]
-            for number, (group, _) in run.placed.items()
-            if group in with_them
-        }
+        rows = []
+        for member in found:
+            group = its_groups[member.group_hid]
+            seen = member.left_on is None and group.observed_master_hid == member.item_hid
+            rows.append(
+                {
+                    **_kept(member),
+                    "group": items.name_or_hid(group.name, member.group_hid),
+                    "item": named[member.item_hid],
+                    **{name: getattr(member, name) for name in self._direct},
+                    "observed_master": seen,
+                    "master_observed_at": group.master_observed_at if seen else None,
+                }
+            )
+        return rows
 
 
 class Addresses(Entity):

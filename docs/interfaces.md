@@ -98,7 +98,10 @@ allows (`catalog.pid`, `catalog.vendor`, `owner.label`, `contract.number`,
 comparison. On the item list `is_major` and `depth` tell major items from minor ones,
 `parent.name` is the name of the item a minor item is in, `owner.label` is the label
 of the owner in force, and `group.name`, `group.type`, `group.hid`, `address` and
-`network.label` find an item by any of its current groups and any of its addresses: `eq` is true when one of them matches, and `ne` and `empty` when none does.
+`network.label` find an item by any of its current groups and any of its addresses,
+and `condition`, `observed_status`, `observed_at` and the derived `health` say how it
+is doing. On the list of groups, `member.serial_number` finds a stack by the serial
+number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
@@ -174,10 +177,10 @@ a later release, such as `location`, is unknown until that release.
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status` | |
 | `networks` | `label`, `kind` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `owner`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, and a `_source` for each of the eleven fields that inherit |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, and a `_source` for each of the eleven fields that inherit |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | |
-| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members` |
-| `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on` | |
+| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
+| `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at` | |
 
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
@@ -197,7 +200,8 @@ are read there too.
 | Minor items | `parent` names the item a minor item is in, and `!clear` takes it out. An item that a file creates stands before the minor items the same file puts in it: an export sorted by `depth` writes them so. Rows that change items that exist are worked an item before its minor items, wherever they stand, so that a row with the owner or the state its item would inherit anyway leaves it inheriting, also when the same file changes the item above. A bulk edit is worked in the same order |
 | Management address | An item and a device group have a primary management address of each family. `mgmt_ipv4` and `mgmt_ipv6` set them, and `mgmt_address` takes an address of either family and files it under its own. A value changes the one there is or adds one; `!clear` removes it, and in `mgmt_address` removes both. `mgmt_network` is the label of the network the addresses of the row are under. It is optional: with no such column the network stays as it is, and a new address is in the unlabelled address space. A row that names `mgmt_network` and no address is rejected. Every address of a record, these among them, is in the `addresses` entity, so an export writes these columns only when they are asked for by name |
 | A first file | A file of host names, with or without addresses, loads as it is: `hostname` alone makes an item, and loading it again finds each item by its host name and changes nothing. The spellings such a file is likely to use are read as the columns they mean: `ip_address`, `ip` and `mgmt_ip` as `mgmt_address`, `ipv4_address` and `ipv4` as `mgmt_ipv4`, `ipv6_address` and `ipv6` as `mgmt_ipv6` |
-| Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A stack is checked for its one master once a file of members has been worked through. The rows of a group that the file would leave wrong are rejected together, and with them the rows that were worked with those in place: the ones that share an item with them |
+| Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A row of members with the role `master` marks the master that is intended, and takes the mark from the member that had it. `observed_master`, true on the row of one member, records on the stack that this member is seen to be master, with `master_observed_at` or else the moment of the change |
+| Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change. A row that states a status as it is, with no moment, changes nothing. `!clear` in `observed_status` clears both. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
@@ -236,8 +240,9 @@ a spreadsheet does not run it as a formula. Import removes that apostrophe again
 value that itself begins with an apostrophe before such a character is written with one
 more, so that it comes back as it was.
 
-Device groups export `serial_number`, which for a stack is its master's, and `members`,
-the number of current ones. Neither can be set.
+Device groups export `serial_number`, which for a stack is that of the master seen or
+else of the one intended, `members`, the number of current ones, and `health`. None
+of them can be set.
 
 Every template in `examples/` is produced by exporting the seeded example database, so
 the templates can never drift from the importer. `make examples` writes them, and a
@@ -326,7 +331,8 @@ hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
 hirdir import items.csv --entity items --apply --skip-rejected
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
-hirdir report summary --by owner --format json
+hirdir report summary --by health --format json
+hirdir report management --by owner
 hirdir report duplicates
 hirdir report capacity --include-drafts
 ```
@@ -340,7 +346,7 @@ hirdir report capacity --include-drafts
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
-| A group | `hirdir groups show` takes the HID or the name, and prints the group with its current members, their roles and, for a stack, the master's serial number |
+| A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
 | Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. `hirdir report duplicates` lists the addresses held more than once |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |

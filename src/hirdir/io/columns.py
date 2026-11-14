@@ -7,7 +7,7 @@ list of text, with a date as `YYYY-MM-DD` and a decimal as text. The rules work 
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
@@ -96,6 +96,18 @@ def _day(value: Any) -> str:
         raise Unreadable("a date, as YYYY-MM-DD") from None
 
 
+def _moment(value: Any) -> str:
+    """Read a date and time in ISO 8601, and write it in UTC. With no zone, it is UTC."""
+    try:
+        if not isinstance(value, str):
+            raise ValueError
+        moment = datetime.fromisoformat(value.strip())
+    except ValueError:
+        raise Unreadable("a date and time in ISO 8601, such as 2026-11-14T15:04:05Z") from None
+    moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC).isoformat()
+
+
 def _amount(column: Column, value: Any) -> str:
     expected = "a number with at most two decimal places"
     if isinstance(value, bool) or not isinstance(value, str | int | float):
@@ -136,6 +148,8 @@ def read(column: Column, value: Any) -> Any:
         return _truth(value)
     if kind == "date":
         return _day(value)
+    if kind == "timestamp":
+        return _moment(value)
     if kind in ("money", "number"):
         return _amount(column, value)
     if kind == "list":
@@ -188,6 +202,8 @@ def typed(column: Column, value: Any) -> Any:
         return None
     if column.kind == "date":
         return date.fromisoformat(value)
+    if column.kind == "timestamp":
+        return datetime.fromisoformat(value)
     if column.kind in ("money", "number"):
         return Decimal(value)
     return value

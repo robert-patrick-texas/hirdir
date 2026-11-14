@@ -54,7 +54,7 @@ SHOWN = {
     "tags": "label,colour,description",
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
-    "device_groups": "name,type,hostname,serial_number,members,owner,record_status",
+    "device_groups": "name,type,hostname,serial_number,members,health,owner,record_status",
 }
 # What a minor item may have from the item it is in.
 FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
@@ -240,6 +240,21 @@ def _in_force(item: dict[str, Any], name: str) -> Any:
     return f"{shown} ({effective['source']})"
 
 
+def _health(health: dict[str, Any] | None) -> str | None:
+    """Return a health with its reasons, as one line."""
+    if health is None:
+        return None
+    return f"{health['value']}: {'; '.join(health['reasons'])}"
+
+
+def _observed(target: Target, record: dict[str, Any], zone: str) -> str | None:
+    """Return what is observed of a record, with the moment it was seen."""
+    if record["observed_status"] is None:
+        return None
+    seen = clock.shown(datetime.fromisoformat(record["observed_at"]), zone)
+    return f"{record['observed_status']}, seen {seen}"
+
+
 def _zone(target: Target) -> str:
     """Return the application's time zone, as the server has it set."""
     for setting in client.call(target, "GET", "/settings"):
@@ -273,6 +288,9 @@ def show(
         ("minor_items", found["minor_items"] or None),
         *((name, _in_force(found, name)) for name in FROM_ABOVE),
         ("state_reason", found["state_reason"]),
+        ("condition", found["condition"]),
+        ("observed_status", _observed(target, found, zone)),
+        ("health", _health(found["health"])),
         ("owner", _in_force(found, "owner_hid")),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
@@ -282,7 +300,8 @@ def show(
         place = f", position {group['position']}" if group["position"] is not None else ""
         lines.append(("group", f"{group['name']} ({group['type']}, {group['role']}{place})"))
     for controller in found["controllers"]:
-        lines.append(("controller", _named(controller)))
+        within = f" ({controller['cluster']})" if controller["cluster"] else ""
+        lines.append(("controller", _named(controller) + within))
     for address in found["addresses"]:
         lines.append(("address", _address(address)))
     for name in ("replaces", "replaced_by"):
@@ -400,13 +419,29 @@ def show_group(
     owner = found["owner"]["label"] if found["owner"] else None
     if owner and "owner_hid" in found["members_disagree"]:
         owner += " (a member has another owner)"
+    zone = _zone(target)
+    serial = found["serial_number"]
+    if serial:
+        serial += f" (of the master that is {found['serial_source']})"
+    seen = _named(found["observed_master"]) if found["observed_master"] else None
+    if seen:
+        at = clock.shown(datetime.fromisoformat(found["master_observed_at"]), zone)
+        seen += f", seen {at}"
+        if found["master_as_intended"] is False:
+            seen += " (not the one intended)"
     lines: list[tuple[str, Any]] = [
         ("hid", found["hid"]),
         ("name", found["name"]),
         ("type", found["type"]),
         ("hostname", found["hostname"]),
         ("fqdn", found["fqdn"]),
-        ("serial_number", found["serial_number"]),
+        ("serial_number", serial),
+        ("intended_master", _named(found["master"]) if found["master"] else None),
+        ("observed_master", seen),
+        ("managed_as", found["managed_as"]),
+        ("expected_members", found["expected_members"]),
+        ("observed_status", _observed(target, found, zone)),
+        ("health", _health(found["health"])),
         ("in", found["parent"]["name"] if found["parent"] else None),
         *(("group", f"{inner['name']} ({inner['type']})") for inner in found["groups"]),
         ("owner", owner),
@@ -443,14 +478,9 @@ def show_group(
 
 # --- reports -------------------------------------------------------------------------
 
-MEASURES = (
-    "items",
-    "component_count",
-    "managed_node_count",
-    "support_weight",
-    "est_value",
-    "annual_support_cost",
-)
+MEASURES = ("items", "component_count", "managed_node_count", "support_weight")
+HEALTHS = ("good", "degraded", "failed", "unknown")
+MONEY = ("items", "component_count", "est_value", "annual_support_cost")
 
 
 def _rows(format_: str, output: Path | None, rows: list[list[str]]) -> None:
@@ -479,7 +509,7 @@ def summary(
         str | None,
         typer.Option(
             help="One row for each: vendor, kind, type, function, owner, lifecycle_state, "
-            "disposition or tag."
+            "disposition, condition, health or tag."
         ),
     ] = None,
     include_archived: Archived = False,
@@ -489,7 +519,7 @@ def summary(
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Count a view of the items: components, managed nodes, weight, value and cost."""
+    """Count a view of the items: components, managed nodes, support weight and health."""
     _checked_format(format_)
     target = client.load_target(url, token)
     found = client.call(
@@ -507,21 +537,75 @@ def summary(
         typer.echo(json.dumps(found, indent=2))
         return
     totals = found["totals"]
+
+    def cells(row: dict[str, Any]) -> list[str]:
+        return [
+            *(str(row[name]) for name in MEASURES),
+            *(str(row["by_health"][name]) for name in HEALTHS),
+        ]
+
+    head = [*MEASURES, *HEALTHS]
     if by is None:
         if format_ == "csv":
-            _rows(format_, output, [list(MEASURES), [str(totals[name]) for name in MEASURES]])
+            _rows(format_, output, [head, cells(totals)])
             return
-        for name in MEASURES:
-            typer.echo(f"{name + ':':<21}{totals[name]}")
+        for name, value in zip(head, cells(totals), strict=True):
+            typer.echo(f"{name + ':':<21}{value}")
         for kind in totals["by_kind"]:
             typer.echo(
-                f"{kind['kind'] + ':':<21}{kind['items']} items, {kind['component_count']} in hand"
+                f"{kind['key'] + ':':<21}{kind['items']} items, {kind['component_count']} in hand"
             )
         return
-    rows = [[by, *MEASURES]]
+    rows = [[by, *head]]
     for row in found["rows"]:
-        rows.append([row["label"] or "(none)", *(str(row[name]) for name in MEASURES)])
-    rows.append(["(all)", *(str(totals[name]) for name in MEASURES)])
+        rows.append([row["label"] or "(none)", *cells(row)])
+    rows.append(["(all)", *cells(totals)])
+    _rows(format_, output, rows)
+
+
+@report.command("management")
+def management(
+    filter_: Filter = None,
+    by: Annotated[
+        str | None,
+        typer.Option(help="One row for each: vendor, kind, type, function, owner or tag."),
+    ] = None,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show the estimated value and the annual support cost of a view of the items."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found = client.call(
+        target,
+        "GET",
+        "/reports/management",
+        params={
+            "filter": filter_,
+            "by": by,
+            "include_archived": include_archived,
+            "include_drafts": include_drafts,
+        },
+    )
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    totals = found["totals"]
+    if by is None:
+        if format_ == "csv":
+            _rows(format_, output, [list(MONEY), [str(totals[name]) for name in MONEY]])
+            return
+        for name in MONEY:
+            typer.echo(f"{name + ':':<21}{totals[name]}")
+        return
+    rows = [[by, *MONEY]]
+    for row in found["rows"]:
+        rows.append([row["label"] or "(none)", *(str(row[name]) for name in MONEY)])
+    rows.append(["(all)", *(str(totals[name]) for name in MONEY)])
     _rows(format_, output, rows)
 
 

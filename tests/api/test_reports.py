@@ -20,9 +20,12 @@ def _measures(found: dict) -> tuple:
         found["component_count"],
         found["managed_node_count"],
         Decimal(found["support_weight"]),
-        Decimal(found["est_value"]),
-        Decimal(found["annual_support_cost"]),
     )
+
+
+def _money(make: Maker, **params) -> tuple:
+    found = make.get("/reports/management", **params)["totals"]
+    return Decimal(found["est_value"]), Decimal(found["annual_support_cost"])
 
 
 def test_an_empty_inventory_counts_nothing(make: Maker) -> None:
@@ -34,9 +37,15 @@ def test_an_empty_inventory_counts_nothing(make: Maker) -> None:
         "component_count": 0,
         "managed_node_count": 0,
         "support_weight": "0",
+        "by_health": {"good": 0, "degraded": 0, "failed": 0, "unknown": 0},
+        "by_condition": [],
+        "by_kind": [],
+    }
+    assert make.get("/reports/management")["totals"] == {
+        "items": 0,
+        "component_count": 0,
         "est_value": "0.00",
         "annual_support_cost": "0.00",
-        "by_kind": [],
     }
 
 
@@ -57,16 +66,12 @@ def test_components_are_major_items_in_hand_and_weight_is_carried_in_service(mak
 
     # Seven records. Purchased and Delivered are not yet in hand; a blank state counts.
     # The minor item is not a component, and its value is in the sum.
-    assert _measures(totals) == (
-        7,
-        4,
-        4,
-        Decimal("2"),
-        Decimal("108900"),
-        Decimal("8700"),
-    )
-    assert totals["est_value"] == "108900.00"
-    assert totals["by_kind"] == [{"kind": "hardware", "items": 7, "component_count": 4}]
+    assert _measures(totals) == (7, 4, 4, Decimal("2"))
+    assert _money(make) == (Decimal("108900"), Decimal("8700"))
+    assert make.get("/reports/management")["totals"]["est_value"] == "108900.00"
+    assert totals["by_kind"] == [
+        {"key": "hardware", "label": "hardware", "items": 7, "component_count": 4}
+    ]
 
 
 def test_quantity_multiplies_and_an_override_is_what_counts(make: Maker) -> None:
@@ -89,17 +94,11 @@ def test_quantity_multiplies_and_an_override_is_what_counts(make: Maker) -> None
     totals = make.totals()
 
     # Software carries weight and cost, and stands beside the headline count, not in it.
-    assert _measures(totals) == (
-        2,
-        1,
-        1,
-        Decimal("5"),
-        Decimal("4520000"),
-        Decimal("363950"),
-    )
-    assert totals["by_kind"] == [
-        {"kind": "hardware", "items": 1, "component_count": 1},
-        {"kind": "software", "items": 1, "component_count": 1},
+    assert _measures(totals) == (2, 1, 1, Decimal("5"))
+    assert _money(make) == (Decimal("4520000"), Decimal("363950"))
+    assert [(one["key"], one["items"], one["component_count"]) for one in totals["by_kind"]] == [
+        ("hardware", 1, 1),
+        ("software", 1, 1),
     ]
 
 
@@ -133,7 +132,7 @@ def test_a_stack_is_one_managed_node_and_its_members_earn_the_discount(
     everything = make.totals()
     assert _measures(everything)[1:4] == (12, 6, Decimal("8.8"))
     # The discount never touches the cost: twelve switches cost twelve times one.
-    assert Decimal(everything["annual_support_cost"]) == 12 * Decimal("1450")
+    assert _money(make)[1] == 12 * Decimal("1450")
 
     # The global discount reaches the model that sets none, and not the one that does.
     setting = Maker(make.client, admin)

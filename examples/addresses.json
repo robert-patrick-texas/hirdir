@@ -8,16 +8,17 @@
   {"item": "AT-000106", "group": null, "address": "192.0.2.16", "network": "Management", "role": "management", "is_primary": true},
   {"item": "AT-000141", "group": null, "address": "192.0.2.2", "network": "Management", "role": "management", "is_primary": true},
   {"item": null, "group": "site2-sw-floor", "address": "192.0.2.21", "network": "Management", "role": "management", "is_primary": true},
-  {"item": "AT-000141", "group": null, "address": "192.0.2.254", "network": "Management", "role": "virtual", "is_primary": false},
-  {"item": "AT-000142", "group": null, "address": "192.0.2.254", "network": "Management", "role": "virtual", "is_primary": false},
+  {"item": null, "group": "site2-rtr-wan", "address": "192.0.2.254", "network": "Management", "role": "virtual", "is_primary": false},
   {"item": "AT-000142", "group": null, "address": "192.0.2.3", "network": "Management", "role": "management", "is_primary": true},
   {"item": null, "group": "site2-wlc-ha", "address": "192.0.2.30", "network": "Management", "role": "management", "is_primary": true},
   {"item": "AT-000161", "group": null, "address": "192.0.2.4", "network": "Management", "role": "management", "is_primary": true},
   {"item": "AT-000162", "group": null, "address": "192.0.2.5", "network": "Management", "role": "management", "is_primary": true},
   {"item": "netconfig-01", "group": null, "address": "198.51.100.10", "network": null, "role": "management", "is_primary": true},
+  {"item": "netmon-01", "group": null, "address": "198.51.100.10", "network": null, "role": "secondary", "is_primary": false},
   {"item": "netmon-01", "group": null, "address": "198.51.100.11", "network": null, "role": "management", "is_primary": true},
+  {"item": null, "group": "site2-sw-core", "address": "2001:db8::1", "network": "Management", "role": "management", "is_primary": true},
   {"item": "AT-000141", "group": null, "address": "2001:db8::2", "network": null, "role": "loopback", "is_primary": false},
   {"item": "AT-000142", "group": null, "address": "2001:db8::3", "network": null, "role": "loopback", "is_primary": false},
-  {"item": "AT-000161", "group": null, "address": "203.0.113.1", "network": "Guest", "role": "secondary", "is_primary": false},
-  {"item": "AT-000161", "group": null, "address": "203.0.113.1", "network": "Voice", "role": "secondary", "is_primary": false}
+  {"item": null, "group": "site2-fw-edge", "address": "203.0.113.1", "network": "Guest", "role": "virtual", "is_primary": false},
+  {"item": null, "group": "site2-fw-edge", "address": "203.0.113.1", "network": "Voice", "role": "virtual", "is_primary": false}
 ]}

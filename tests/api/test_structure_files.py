@@ -210,7 +210,7 @@ def test_what_a_management_address_in_a_file_must_be(make: Maker, files: Files) 
     for line, field, expected in (
         ("AT-000101,192.0.2.0/24,", "mgmt_address", "no prefix length"),
         ("AT-000101,192.0.2.10,Blue", "mgmt_network", "there is no network Blue"),
-        ("AT-000101,,Red", "mgmt_network", "give mgmt_address with it"),
+        ("AT-000101,,Red", "mgmt_network", "give mgmt_address, mgmt_ipv4 or mgmt_ipv6 with it"),
     ):
         preview = files.preview("items", head + line + "\n")
         assert counts(preview["job"]) == (0, 0, 0, 1), line
@@ -374,38 +374,24 @@ def test_groups_and_their_members_load_in_order_and_again_unchanged(
     ]
 
 
-def test_a_stack_is_checked_when_the_whole_file_of_members_is_worked(
-    make: Maker, files: Files
-) -> None:
+def test_a_file_of_members_needs_no_master_and_marks_at_most_one(make: Maker, files: Files) -> None:
     _inventory(make)
     files.load("device_groups", GROUPS)
     text = (
         "group,item,role,position\n"
         "site2-sw-stack1,AT-000101,member,1\n"
-        "site2-sw-stack1,AT-000102,member,2\n"
+        "site2-sw-stack1,AT-000102,master,2\n"
+        "site2-sw-stack1,AT-000103,master,3\n"
         "site2-wireless,AT-000105,endpoint,\n"
     )
 
-    preview = files.preview("device_group_members", text)
+    # No rule depends on a master, so every row stands by itself. Of two rows that mark
+    # the intended master, the later one has it.
+    assert counts(files.load("device_group_members", text)) == (4, 0, 0, 0)
 
-    # The stack would have no master: its rows are rejected together, and the rest stands.
-    assert counts(preview["job"]) == (1, 0, 0, 2)
-    for row in preview["rows"][:2]:
-        assert row["outcome"] == "rejected"
-        assert reasons(row)[""] == (
-            "the stack site2-sw-stack1 would have no master: a stack has exactly one "
-            "master. The rows of this group are rejected together"
-        )
-    assert files.apply(preview, 422)["status"] == 422
-    files.apply(preview, skip_rejected="true")
     stack = make.get("/device-groups", filter="name:eq:site2-sw-stack1")["items"][0]
-    assert stack["member_count"] == 0
-    domain = make.get("/device-groups", filter="name:eq:site2-wireless")["items"][0]
-    assert domain["member_count"] == 1
-
-    # The master alone is a stack, and a file may make one so.
-    one = "group,item,role\nsite2-sw-stack1,AT-000101,master\n"
-    assert counts(files.preview("device_group_members", one)["job"]) == (1, 0, 0, 0)
+    assert (stack["member_count"], stack["serial_number"]) == (3, "FCW0000X003")
+    assert [member["role"] for member in make.members(stack)] == ["member", "member", "master"]
 
 
 def test_a_file_changes_the_master_and_ends_a_membership(make: Maker, files: Files) -> None:
@@ -533,36 +519,6 @@ def test_groups_of_one_file_are_worked_a_group_before_the_groups_within_it(
     files.apply(preview)
     exported = files.export("device_groups", own_values=True)
     assert [row["parent"] for row in table(exported)] == ["z-domain", "a-cluster", ""]
-
-
-def test_a_row_that_leans_on_a_rejected_row_is_rejected_with_it(make: Maker, files: Files) -> None:
-    _inventory(make)
-    files.load("device_groups", GROUPS)
-    files.load("device_group_members", MEMBERS)
-    make.item(name="site2-sw-08", asset_tag="AT-000108")
-    text = (
-        "group,item,role\n"
-        # The master is made a plain member, which leaves the stack with no master.
-        "site2-sw-stack1,AT-000101,member\n"
-        # A row about the same item was worked with that row in place, and goes with it.
-        "site2-wireless,AT-000101,endpoint\n"
-        # A row about another group and another item stands by itself.
-        "site2-wlc-ha,AT-000108,member\n"
-    )
-
-    preview = files.preview("device_group_members", text)
-
-    assert [row["outcome"] for row in preview["rows"]] == ["rejected", "rejected", "create"]
-    assert "would have no master" in reasons(preview["rows"][0])[""]
-    assert "preview the file again without them" in reasons(preview["rows"][1])[""]
-    # What is left is what an apply does.
-    assert files.apply(preview, skip_rejected="true")["status"] == "applied"
-    stack = make.get("/device-groups", filter="name:eq:site2-sw-stack1")["items"][0]
-    assert (stack["member_count"], stack["serial_number"]) == (2, "FCW0000X001")
-    cluster = make.get("/device-groups", filter="name:eq:site2-wlc-ha")["items"][0]
-    assert cluster["member_count"] == 2
-    domain = make.get("/device-groups", filter="name:eq:site2-wireless")["items"][0]
-    assert domain["member_count"] == 1
 
 
 def test_a_file_that_changes_an_item_and_its_minor_items_copies_nothing_down(

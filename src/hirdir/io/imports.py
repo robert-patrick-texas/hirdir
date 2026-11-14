@@ -126,7 +126,11 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
         run.claim(record.hid)
     record = which.write(run, record, values, new)
     db.flush()
-    result.changes = _differences(which, before, which.read(db, [record])[0])
+    result.changes = [
+        change
+        for change in _differences(which, before, which.read(db, [record])[0])
+        if change["field"] not in which.only_when_named or change["field"] in values
+    ]
     if not new:
         changed = result.changes or record.row_version != result.row_version
         result.outcome = "update" if changed else "unchanged"

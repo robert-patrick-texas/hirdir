@@ -34,10 +34,10 @@ def summary(
     include_archived: Archived = False,
     include_drafts: Drafts = False,
 ) -> r.SummaryOut:
-    """Count a view of the items: components, managed nodes, weight, value and cost.
+    """Count a view of the items: components, managed nodes, support weight and health.
 
     The view is what the item list shows for the same filter. With `by`, the answer
-    also holds one row for each value.
+    also holds one row for each value. The money is in the management report.
     """
     found = reports.summary(
         db,
@@ -47,6 +47,39 @@ def summary(
         include_drafts=include_drafts,
     )
     return r.SummaryOut.model_validate(found)
+
+
+@router.get("/management")
+def management(
+    _: Viewer,
+    db: Db,
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=8000,
+            description="A filter of the item list, in the short form or as JSON.",
+        ),
+    ] = "",
+    by: Annotated[
+        r.ManagementBy | None, Query(description="One row for each value of this.")
+    ] = None,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+) -> r.ManagementOut:
+    """Return the estimated value and the annual support cost of a view of the items.
+
+    For the people who pay for the network: the whole view, and with `by` one row for
+    each value. Neither condition nor health is in it.
+    """
+    found = reports.management(
+        db,
+        filter_=filter_,
+        by=by,
+        include_archived=include_archived,
+        include_drafts=include_drafts,
+    )
+    return r.ManagementOut.model_validate(found)
 
 
 @router.get("/duplicates")

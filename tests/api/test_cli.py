@@ -323,10 +323,11 @@ def test_a_group_is_shown_with_its_members_and_its_masters_serial_number(
 def test_groups_networks_and_addresses_are_listed_as_any_list_is(run, stack: dict) -> None:
     groups = run("groups", "list").stdout.splitlines()
     assert groups[0].split() == [
-        "HID", "NAME", "TYPE", "HOSTNAME", "SERIAL_NUMBER", "MEMBERS", "OWNER", "RECORD_STATUS"
+        "HID", "NAME", "TYPE", "HOSTNAME", "SERIAL_NUMBER", "MEMBERS", "HEALTH", "OWNER",
+        "RECORD_STATUS",
     ]  # fmt: skip
     assert groups[1].split()[1:] == [
-        "site2-sw-stack1", "stack", "site2-sw-stack1", "FCW0000X001", "3", "active"
+        "site2-sw-stack1", "stack", "site2-sw-stack1", "FCW0000X001", "3", "unknown", "active"
     ]  # fmt: skip
     assert run("networks", "list", "--format", "csv").stdout.splitlines()[1].endswith(",Red,vrf")
     rows = list(
@@ -350,7 +351,8 @@ def test_the_summary_is_printed_whole_and_by_what_items_share(
     assert f"{'items:':<21}4" in whole
     assert f"{'component_count:':<21}3" in whole
     assert f"{'managed_node_count:':<21}1" in whole
-    assert f"{'est_value:':<21}54000.00" in whole
+    assert f"{'unknown:':<21}3" in whole
+    assert "est_value" not in whole
     assert f"{'hardware:':<21}4 items, 3 in hand" in whole
 
     table = [
@@ -384,3 +386,52 @@ def test_the_duplicates_report_names_who_holds_an_address_twice(run, stack: dict
     ]
     found = json.loads(run("report", "duplicates", "--format", "json").stdout)
     assert (found[0]["address"], found[0]["count"]) == ("192.0.2.254", 2)
+
+
+def test_the_management_report_prints_the_value_and_the_cost(run, stack: dict) -> None:
+    whole = run("report", "management").stdout
+    assert f"{'items:':<21}4" in whole
+    assert f"{'est_value:':<21}54000.00" in whole
+    assert f"{'annual_support_cost:':<21}0.00" in whole
+    assert "health" not in whole
+
+    table = run("report", "management", "--by", "owner").stdout.splitlines()
+    assert table[0].split() == [
+        "OWNER",
+        "ITEMS",
+        "COMPONENT_COUNT",
+        "EST_VALUE",
+        "ANNUAL_SUPPORT_COST",
+    ]
+    assert [line.split("  ")[0] for line in table[1:]] == ["Network Engineering", "(none)", "(all)"]
+    found = json.loads(run("report", "management", "--format", "json").stdout)
+    assert found["totals"]["est_value"] == "54000.00"
+    run("report", "management", "--by", "health", expect=4)
+
+
+def test_an_item_and_a_group_are_shown_with_how_they_are_doing(
+    run, make: Maker, stack: dict, switches: list
+) -> None:
+    run("items", "set", "site2-sw-1", "condition=good", "observed_status=online")
+    shown = run("items", "show", "site2-sw-1").stdout
+    assert f"{'condition:':<21}good" in shown
+    assert f"{'observed_status:':<21}online, seen " in shown
+    assert f"{'health:':<21}good: its condition is good; it is observed online" in shown
+
+    current = make.get(f"/device-groups/{stack['hid']}")
+    make.patch(
+        f"/device-groups/{stack['hid']}",
+        {"row_version": current["row_version"], "observed_master_hid": switches[1]["hid"]},
+    )
+    group = run("groups", "show", "site2-sw-stack1").stdout
+    assert f"{'serial_number:':<21}FCW0000X002 (of the master that is observed)" in group
+    assert f"{'intended_master:':<21}site2-sw-1" in group
+    assert f"{'observed_master:':<21}site2-sw-2, seen " in group
+    assert "(not the one intended)" in group
+    assert f"{'health:':<21}unknown: " in group
+    # A stack answers to the serial number of any member.
+    listed = run(
+        "groups", "list", "--filter", "member.serial_number:eq:FCW0000X003", "--format", "csv"
+    ).stdout.splitlines()
+    assert len(listed) == 2
+    assert "site2-sw-stack1" in listed[1]

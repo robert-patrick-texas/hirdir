@@ -50,7 +50,13 @@ def test_migration_loads_the_rules_and_the_choices(db: Session) -> None:
     states = list(db.scalars(select(LifecycleRule.state).order_by(LifecycleRule.sort)))
     assert tuple(states) == lifecycle.STATES
     lists = set(db.scalars(select(Choice.list_name)))
-    assert lists == {"catalog_type", "catalog_function", "state_reason", "replacement_reason"}
+    assert lists == {
+        "catalog_type",
+        "catalog_function",
+        "state_reason",
+        "replacement_reason",
+        "item_condition",
+    }
     for rule in lifecycle.list_rules(db):
         assert set(rule.next_states) <= set(lifecycle.STATES)
         assert set(rule.must_be_online) <= set(rule.may_be_online)

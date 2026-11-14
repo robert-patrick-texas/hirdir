@@ -103,7 +103,7 @@
           },
           "is_primary": {
             "default": false,
-            "description": "The primary management address of the record.",
+            "description": "The primary management address of the record, of this address's family.",
             "title": "Is Primary",
             "type": "boolean"
           },
@@ -225,6 +225,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "family": {
+            "enum": [
+              4,
+              6
+            ],
+            "title": "Family",
+            "type": "integer"
+          },
           "group": {
             "anyOf": [
               {
@@ -323,6 +331,7 @@
           "group_hid",
           "group",
           "address",
+          "family",
           "network_hid",
           "network",
           "role",
@@ -410,6 +419,14 @@
             "title": "Address",
             "type": "string"
           },
+          "family": {
+            "enum": [
+              4,
+              6
+            ],
+            "title": "Family",
+            "type": "integer"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -449,6 +466,7 @@
         "required": [
           "hid",
           "address",
+          "family",
           "network_hid",
           "network",
           "role",
@@ -1597,10 +1615,157 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "ControllerRef": {
+        "additionalProperties": false,
+        "description": "A controller of an endpoint, with the cluster it is in.",
+        "properties": {
+          "asset_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Tag"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its cluster, when it is in one.",
+            "title": "Cluster"
+          },
+          "cluster_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cluster Hid"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its name, or its hostname when it has no name.",
+            "title": "Name"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "serial_number",
+          "asset_tag",
+          "pid",
+          "cluster_hid",
+          "cluster"
+        ],
+        "title": "ControllerRef",
+        "type": "object"
+      },
+      "Counted": {
+        "additionalProperties": false,
+        "description": "The items and the components that share one value: a kind, or a condition.",
+        "properties": {
+          "component_count": {
+            "description": "The major items among them that are in hand, whatever their kind.",
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "items",
+          "component_count"
+        ],
+        "title": "Counted",
+        "type": "object"
+      },
       "DeviceGroupCreate": {
         "additionalProperties": false,
         "description": "A new device group, with its first members if they are known.",
         "properties": {
+          "expected_members": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Members"
+          },
           "fqdn": {
             "anyOf": [
               {
@@ -1625,6 +1790,35 @@
             ],
             "title": "Hostname"
           },
+          "managed_as": {
+            "anyOf": [
+              {
+                "enum": [
+                  "one",
+                  "members",
+                  "members_and_cluster"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A cluster only. Left out, one.",
+            "title": "Managed As"
+          },
+          "master_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Observed At"
+          },
           "members": {
             "default": [],
             "items": {
@@ -1639,6 +1833,48 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "observed_master_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A stack only: one of the members given here.",
+            "title": "Observed Master Hid"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Status"
           },
           "owner_hid": {
             "anyOf": [
@@ -1717,6 +1953,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "expected_members": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Members"
+          },
           "fqdn": {
             "anyOf": [
               {
@@ -1736,6 +1983,17 @@
             "title": "Groups",
             "type": "array"
           },
+          "health": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HealthOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a stack and a cluster; otherwise null."
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -1751,6 +2009,23 @@
             ],
             "title": "Hostname"
           },
+          "managed_as": {
+            "anyOf": [
+              {
+                "enum": [
+                  "one",
+                  "members",
+                  "members_and_cluster"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A cluster: one managed node, one for each member, or those and its own.",
+            "title": "Managed As"
+          },
           "master": {
             "anyOf": [
               {
@@ -1759,7 +2034,32 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "The master that is intended, if one is marked."
+          },
+          "master_as_intended": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "False when the master that is seen is not the one intended. Not a fault.",
+            "title": "Master As Intended"
+          },
+          "master_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Observed At"
           },
           "member_count": {
             "description": "How many current members it has.",
@@ -1777,6 +2077,57 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "observed_master": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member that is seen to be master."
+          },
+          "observed_master_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Master Hid"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Status"
           },
           "owner": {
             "anyOf": [
@@ -1842,8 +2193,24 @@
                 "type": "null"
               }
             ],
-            "description": "For a stack, the serial number of its master, read as it is asked for.",
+            "description": "For a stack: the serial number of the master that is seen, or else of the one intended, read as it is asked for.",
             "title": "Serial Number"
+          },
+          "serial_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "observed",
+                  "intended"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of the two masters the serial number is read from.",
+            "title": "Serial Source"
           },
           "tags": {
             "items": {
@@ -1880,8 +2247,18 @@
           "owner_hid",
           "owner",
           "members_disagree",
+          "managed_as",
+          "expected_members",
+          "observed_status",
+          "observed_at",
+          "health",
           "serial_number",
+          "serial_source",
           "master",
+          "observed_master_hid",
+          "observed_master",
+          "master_observed_at",
+          "master_as_intended",
           "member_count",
           "addresses",
           "tags",
@@ -1897,6 +2274,19 @@
         "additionalProperties": false,
         "description": "Fields of a device group to change, and the version they were read at.",
         "properties": {
+          "expected_members": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Members"
+          },
           "fqdn": {
             "anyOf": [
               {
@@ -1921,6 +2311,34 @@
             ],
             "title": "Hostname"
           },
+          "managed_as": {
+            "anyOf": [
+              {
+                "enum": [
+                  "one",
+                  "members",
+                  "members_and_cluster"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managed As"
+          },
+          "master_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Observed At"
+          },
           "name": {
             "anyOf": [
               {
@@ -1932,6 +2350,48 @@
               }
             ],
             "title": "Name"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "observed_master_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A current member of the stack. Null clears it.",
+            "title": "Observed Master Hid"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Status"
           },
           "owner_hid": {
             "anyOf": [
@@ -2649,6 +3109,65 @@
         "title": "Health",
         "type": "object"
       },
+      "HealthCount": {
+        "additionalProperties": false,
+        "description": "The components of each health.",
+        "properties": {
+          "degraded": {
+            "title": "Degraded",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "good": {
+            "title": "Good",
+            "type": "integer"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "good",
+          "degraded",
+          "failed",
+          "unknown"
+        ],
+        "title": "HealthCount",
+        "type": "object"
+      },
+      "HealthOut": {
+        "additionalProperties": false,
+        "description": "How a record is doing, worked out as it is read, and why.",
+        "properties": {
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "value": {
+            "enum": [
+              "good",
+              "degraded",
+              "failed",
+              "unknown"
+            ],
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "reasons"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
       "ImportJobOut": {
         "additionalProperties": false,
         "description": "A stored preview of an import or a bulk edit, and what became of it.",
@@ -2993,6 +3512,19 @@
             ],
             "title": "Comments"
           },
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A value of the item_condition list.",
+            "title": "Condition"
+          },
           "delivered_on": {
             "anyOf": [
               {
@@ -3176,6 +3708,36 @@
               }
             ],
             "title": "Name"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, now. Given with observed_status only.",
+            "title": "Observed At"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Status"
           },
           "owner_hid": {
             "anyOf": [
@@ -3444,10 +4006,22 @@
             ],
             "title": "Comments"
           },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The state of the hardware, as a person knows it.",
+            "title": "Condition"
+          },
           "controllers": {
             "description": "For an endpoint of a controller domain: the controllers of that domain.",
             "items": {
-              "$ref": "#/components/schemas/ItemRef"
+              "$ref": "#/components/schemas/ControllerRef"
             },
             "title": "Controllers",
             "type": "array"
@@ -3591,6 +4165,9 @@
             "title": "Groups",
             "type": "array"
           },
+          "health": {
+            "$ref": "#/components/schemas/HealthOut"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -3674,6 +4251,36 @@
             ],
             "description": "Blank shows the hostname.",
             "title": "Name"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What is seen of it: on the network, or `present`, by a person.",
+            "title": "Observed Status"
           },
           "owner": {
             "anyOf": [
@@ -3896,6 +4503,10 @@
           "expected_online",
           "state_reason",
           "state_changed_at",
+          "condition",
+          "observed_status",
+          "observed_at",
+          "health",
           "owner_hid",
           "owner",
           "parent_item_hid",
@@ -3987,6 +4598,18 @@
               }
             ],
             "title": "Comments"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
           },
           "delivered_on": {
             "anyOf": [
@@ -4157,6 +4780,36 @@
               }
             ],
             "title": "Name"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "observed_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "online",
+                  "degraded",
+                  "unreachable",
+                  "present"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null clears it, and the moment with it.",
+            "title": "Observed Status"
           },
           "owner_hid": {
             "anyOf": [
@@ -4375,32 +5028,6 @@
           "pid"
         ],
         "title": "ItemRef",
-        "type": "object"
-      },
-      "KindCount": {
-        "additionalProperties": false,
-        "description": "The items and the components of one kind.",
-        "properties": {
-          "component_count": {
-            "description": "As the headline would count them, were the kind among `count_kinds`.",
-            "title": "Component Count",
-            "type": "integer"
-          },
-          "items": {
-            "title": "Items",
-            "type": "integer"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "items",
-          "component_count"
-        ],
-        "title": "KindCount",
         "type": "object"
       },
       "LifecycleRuleOut": {
@@ -4681,6 +5308,150 @@
         "title": "ListQuery",
         "type": "object"
       },
+      "ManagementMeasures": {
+        "additionalProperties": false,
+        "description": "What the management report counts of a set of items.",
+        "properties": {
+          "annual_support_cost": {
+            "examples": [
+              "54000.00"
+            ],
+            "pattern": "^\\d+\\.\\d{2}$",
+            "title": "Annual Support Cost",
+            "type": "string"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "est_value": {
+            "examples": [
+              "54000.00"
+            ],
+            "pattern": "^\\d+\\.\\d{2}$",
+            "title": "Est Value",
+            "type": "string"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "component_count",
+          "est_value",
+          "annual_support_cost"
+        ],
+        "title": "ManagementMeasures",
+        "type": "object"
+      },
+      "ManagementOut": {
+        "additionalProperties": false,
+        "description": "The value and the cost of a view of the items, for the people who pay for it.",
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "vendor",
+                  "kind",
+                  "type",
+                  "function",
+                  "owner",
+                  "tag"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ManagementRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ManagementMeasures"
+          }
+        },
+        "required": [
+          "by",
+          "totals",
+          "rows"
+        ],
+        "title": "ManagementOut",
+        "type": "object"
+      },
+      "ManagementRow": {
+        "additionalProperties": false,
+        "description": "The value and the cost of the items that share one value.",
+        "properties": {
+          "annual_support_cost": {
+            "examples": [
+              "54000.00"
+            ],
+            "pattern": "^\\d+\\.\\d{2}$",
+            "title": "Annual Support Cost",
+            "type": "string"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "est_value": {
+            "examples": [
+              "54000.00"
+            ],
+            "pattern": "^\\d+\\.\\d{2}$",
+            "title": "Est Value",
+            "type": "string"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "items",
+          "component_count",
+          "est_value",
+          "annual_support_cost",
+          "key",
+          "label"
+        ],
+        "title": "ManagementRow",
+        "type": "object"
+      },
       "MemberAdd": {
         "additionalProperties": false,
         "description": "An item to make a member of a group.",
@@ -4726,7 +5497,7 @@
                 "type": "null"
               }
             ],
-            "description": "stack: master, member. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain.",
+            "description": "stack: member, or master for the one that is meant to be master. cluster: active, standby, member. controller domain: controller, endpoint. Left out, member, or endpoint in a controller domain.",
             "title": "Role"
           }
         },
@@ -6331,7 +7102,7 @@
       },
       "SummaryOut": {
         "additionalProperties": false,
-        "description": "A summary of a view of the items.",
+        "description": "A summary of a view of the items, for the people who run the network.",
         "properties": {
           "by": {
             "anyOf": [
@@ -6344,6 +7115,8 @@
                   "owner",
                   "lifecycle_state",
                   "disposition",
+                  "condition",
+                  "health",
                   "tag"
                 ],
                 "type": "string"
@@ -6377,25 +7150,12 @@
         "additionalProperties": false,
         "description": "The measures of the items that share one value of what the summary is by.",
         "properties": {
-          "annual_support_cost": {
-            "examples": [
-              "54000.00"
-            ],
-            "pattern": "^\\d+\\.\\d{2}$",
-            "title": "Annual Support Cost",
-            "type": "string"
+          "by_health": {
+            "$ref": "#/components/schemas/HealthCount"
           },
           "component_count": {
             "title": "Component Count",
             "type": "integer"
-          },
-          "est_value": {
-            "examples": [
-              "54000.00"
-            ],
-            "pattern": "^\\d+\\.\\d{2}$",
-            "title": "Est Value",
-            "type": "string"
           },
           "items": {
             "description": "Every item of the set, major and minor.",
@@ -6444,8 +7204,7 @@
           "component_count",
           "managed_node_count",
           "support_weight",
-          "est_value",
-          "annual_support_cost",
+          "by_health",
           "key",
           "label"
         ],
@@ -6454,19 +7213,21 @@
       },
       "SummaryTotals": {
         "additionalProperties": false,
-        "description": "The measures of the whole view, and its items by kind.",
+        "description": "The measures of the whole view, and its items by condition and by kind.",
         "properties": {
-          "annual_support_cost": {
-            "examples": [
-              "54000.00"
-            ],
-            "pattern": "^\\d+\\.\\d{2}$",
-            "title": "Annual Support Cost",
-            "type": "string"
+          "by_condition": {
+            "items": {
+              "$ref": "#/components/schemas/Counted"
+            },
+            "title": "By Condition",
+            "type": "array"
+          },
+          "by_health": {
+            "$ref": "#/components/schemas/HealthCount"
           },
           "by_kind": {
             "items": {
-              "$ref": "#/components/schemas/KindCount"
+              "$ref": "#/components/schemas/Counted"
             },
             "title": "By Kind",
             "type": "array"
@@ -6474,14 +7235,6 @@
           "component_count": {
             "title": "Component Count",
             "type": "integer"
-          },
-          "est_value": {
-            "examples": [
-              "54000.00"
-            ],
-            "pattern": "^\\d+\\.\\d{2}$",
-            "title": "Est Value",
-            "type": "string"
           },
           "items": {
             "description": "Every item of the set, major and minor.",
@@ -6506,8 +7259,8 @@
           "component_count",
           "managed_node_count",
           "support_weight",
-          "est_value",
-          "annual_support_cost",
+          "by_health",
+          "by_condition",
           "by_kind"
         ],
         "title": "SummaryTotals",
@@ -7210,7 +7963,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11287,9 +12040,106 @@
         ]
       }
     },
+    "/api/v1/reports/management": {
+      "get": {
+        "description": "Return the estimated value and the annual support cost of a view of the items.\n\nFor the people who pay for the network: the whole view, and with `by` one row for\neach value. Neither condition nor health is in it.",
+        "operationId": "management_api_v1_reports_management_get",
+        "parameters": [
+          {
+            "description": "A filter of the item list, in the short form or as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "A filter of the item list, in the short form or as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One row for each value of this.",
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "vendor",
+                    "kind",
+                    "type",
+                    "function",
+                    "owner",
+                    "tag"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One row for each value of this.",
+              "title": "By"
+            }
+          },
+          {
+            "description": "Count retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Count draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Management",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/v1/reports/summary": {
       "get": {
-        "description": "Count a view of the items: components, managed nodes, weight, value and cost.\n\nThe view is what the item list shows for the same filter. With `by`, the answer\nalso holds one row for each value.",
+        "description": "Count a view of the items: components, managed nodes, support weight and health.\n\nThe view is what the item list shows for the same filter. With `by`, the answer\nalso holds one row for each value. The money is in the management report.",
         "operationId": "summary_api_v1_reports_summary_get",
         "parameters": [
           {
@@ -11321,6 +12171,8 @@
                     "owner",
                     "lifecycle_state",
                     "disposition",
+                    "condition",
+                    "health",
                     "tag"
                   ],
                   "type": "string"

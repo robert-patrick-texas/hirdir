@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from tests.api.inventory import API, Maker, errors
 
 NOBODY = "01900000-0000-7000-8000-000000000000"
+# A day that is after whichever day the test runs on, when a member joins "today".
+LATER, LATER_STILL = "2099-01-01", "2099-01-02"
 
 
 def _switches(make: Maker, count: int = 4, prefix: str = "site2-sw-stack1", **more) -> list[dict]:
@@ -62,42 +64,39 @@ def test_a_stack_is_made_with_its_members_and_reads_its_serial_from_the_master(
     assert make.audit(record_hid=stack["hid"])[0]["action"] == "create"
 
 
-def test_an_active_stack_has_one_master_and_may_be_its_master_alone(make: Maker) -> None:
+def test_a_stack_may_be_one_switch_alone_and_needs_no_master(make: Maker) -> None:
     switches = _switches(make)
 
-    # The master alone is a stack: one that waits for a member, or has lost one.
+    # One switch is a stack: one that waits for a member, or has lost one.
     alone = make.group("alone", "stack", [(switches[3], "master")])
     assert (alone["member_count"], alone["serial_number"]) == (1, switches[3]["serial_number"])
-    problem = make.group("no-master", "stack", [(switches[2], "member")], expect=422)
-    assert errors(problem) == {"members": "a stack has exactly one master"}
+    # No rule depends on a master: the intended one is marked when somebody knows it.
+    plain = make.group("plain", "stack", [(switches[0], "member"), (switches[1], "member")])
+    assert (plain["member_count"], plain["master"], plain["serial_number"]) == (2, None, None)
+    # At most one member is marked.
     problem = make.group(
-        "none", "stack", [(switches[0], "member"), (switches[1], "member")], expect=422
+        "two",
+        "stack",
+        [(make.item(name="one"), "master"), (make.item(name="other"), "master")],
+        expect=422,
     )
-    assert errors(problem) == {"members": "a stack has exactly one master"}
-    problem = make.group(
-        "two", "stack", [(switches[0], "master"), (switches[1], "master")], expect=422
-    )
-    assert "2 masters" in problem["detail"]
+    assert "more than one" in errors(problem)["role"]
     # Nothing of a refused stack is kept.
-    assert make.get("/device-groups", include_drafts="true")["total"] == 1
-    assert len(make.audit(record_type="device_group_member")) == 1
+    assert make.get("/device-groups", include_drafts="true")["total"] == 2
+    assert len(make.audit(record_type="device_group_member")) == 3
 
 
-def test_a_stack_with_no_members_yet_is_accepted_and_filled_in_one_request(make: Maker) -> None:
-    switches = _switches(make, 2)
+def test_a_stack_is_filled_a_member_at_a_time_or_several_at_once(make: Maker) -> None:
+    switches = _switches(make, 3)
     stack = make.group("site2-sw-stack1", "stack")
     assert (stack["member_count"], stack["serial_number"], stack["master"]) == (0, None, None)
 
-    # A first member that is not the master would leave an active stack with none.
-    problem = make.add(stack, [{"item_hid": switches[0]["hid"]}], expect=422)
-    assert errors(problem) == {"members": "a stack has exactly one master"}
-    assert make.members(stack) == []
-
+    make.add(stack, [{"item_hid": switches[0]["hid"], "position": 1}])
     made = make.add(
         stack,
         [
-            {"item_hid": switches[0]["hid"], "role": "master", "position": 1},
-            {"item_hid": switches[1]["hid"], "position": 2, "joined_on": "2026-01-05"},
+            {"item_hid": switches[1]["hid"], "role": "master", "position": 2},
+            {"item_hid": switches[2]["hid"], "position": 3, "joined_on": "2026-01-05"},
         ],
     )
     assert [(member["role"], member["joined_on"] is not None) for member in made] == [
@@ -105,12 +104,11 @@ def test_a_stack_with_no_members_yet_is_accepted_and_filled_in_one_request(make:
         ("member", True),
     ]
     assert made[1]["joined_on"] == "2026-01-05"
-    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 2
+    filled = make.get(f"/device-groups/{stack['hid']}")
+    assert (filled["member_count"], filled["serial_number"]) == (3, switches[1]["serial_number"])
 
 
-def test_a_draft_stack_is_built_a_member_at_a_time_and_checked_when_made_active(
-    make: Maker,
-) -> None:
+def test_a_draft_stack_is_made_active_as_it_is(make: Maker) -> None:
     switches = _switches(make, 2)
     stack = make.group("site2-sw-stack1", "stack", record_status="draft")
     for switch in switches:
@@ -118,21 +116,14 @@ def test_a_draft_stack_is_built_a_member_at_a_time_and_checked_when_made_active(
     stack = make.get(f"/device-groups/{stack['hid']}")
     assert stack["member_count"] == 2
 
-    problem = make.patch(
-        f"/device-groups/{stack['hid']}",
-        {"row_version": stack["row_version"], "record_status": "active"},
-        expect=422,
-    )
-    assert errors(problem) == {"members": "a stack has exactly one master"}
-
-    _role(make, stack, make.members(stack)[0], "master")
     active = make.patch(
         f"/device-groups/{stack['hid']}",
         {"row_version": stack["row_version"], "record_status": "active"},
     )
-    assert (active["record_status"], active["serial_number"]) == (
-        "active",
-        switches[0]["serial_number"],
+    assert (active["record_status"], active["serial_number"]) == ("active", None)
+    _role(make, stack, make.members(stack)[0], "master")
+    assert (
+        make.get(f"/device-groups/{stack['hid']}")["serial_number"] == switches[0]["serial_number"]
     )
 
 
@@ -159,33 +150,27 @@ def test_making_another_member_master_makes_the_former_master_a_member(make: Mak
     assert problem["status"] == 409
 
 
-def test_the_master_does_not_leave_a_stack_that_has_other_members(make: Maker) -> None:
+def test_members_leave_one_by_one_the_master_among_them(make: Maker) -> None:
     switches = _switches(make, 3)
     stack = make.stack("site2-sw-stack1", switches)
     master, second, third = make.members(stack)
 
-    problem = _leave(make, stack, master, "2026-11-13", expect=422)
-    assert errors(problem) == {"left_on": "make another member the master first"}
-
-    # A member leaves with a date, and the membership is kept.
-    ended = _leave(make, stack, third, "2026-11-13")
-    assert ended["left_on"] == "2026-11-13"
-    assert [member["hid"] for member in make.members(stack)] == [master["hid"], second["hid"]]
+    # The intended master leaves while the stack has others: nothing stops it, and the
+    # stack has no intended master until somebody marks one.
+    ended = _leave(make, stack, master, LATER)
+    assert ended["left_on"] == LATER
+    after = make.get(f"/device-groups/{stack['hid']}")
+    assert (after["member_count"], after["master"], after["serial_number"]) == (2, None, None)
+    assert [member["hid"] for member in make.members(stack)] == [second["hid"], third["hid"]]
+    # A membership is ended with a date and kept.
     every = make.members(stack, include_past="true")
-    assert [member["hid"] for member in every] == [master["hid"], second["hid"], third["hid"]]
-    assert make.get(f"/items/{switches[2]['hid']}")["groups"] == []
-
-    # The last member beside the master may go too: the master alone is still the stack,
-    # and when the master goes as well the stack is a shell again.
-    _leave(make, stack, second, "2026-11-13")
-    assert make.get(f"/device-groups/{stack['hid']}")["member_count"] == 1
-    _leave(make, stack, make.members(stack)[0], "2026-11-13")
+    assert [member["hid"] for member in every] == [second["hid"], third["hid"], master["hid"]]
+    assert make.get(f"/items/{switches[0]['hid']}")["groups"] == []
+    # The rest leave too, and the stack is a shell again.
+    _leave(make, stack, second, LATER)
+    _leave(make, stack, third, LATER)
     again = make.get(f"/device-groups/{stack['hid']}")
-    assert (again["member_count"], again["serial_number"], again["record_status"]) == (
-        0,
-        None,
-        "active",
-    )
+    assert (again["member_count"], again["record_status"]) == (0, "active")
 
 
 def test_a_membership_that_has_ended_is_corrected_in_its_dates_only(make: Maker) -> None:
@@ -193,7 +178,7 @@ def test_a_membership_that_has_ended_is_corrected_in_its_dates_only(make: Maker)
     stack = make.stack("site2-sw-stack1", switches)
     third = make.members(stack)[2]
     path = f"/device-groups/{stack['hid']}/members/{third['hid']}"
-    ended = make.patch(path, {"row_version": third["row_version"], "left_on": "2026-11-13"})
+    ended = make.patch(path, {"row_version": third["row_version"], "left_on": LATER})
 
     problem = make.patch(path, {"row_version": ended["row_version"], "role": "master"}, 422)
     assert "only its dates are corrected" in errors(problem)["left_on"]
@@ -201,8 +186,8 @@ def test_a_membership_that_has_ended_is_corrected_in_its_dates_only(make: Maker)
     assert "added again" in errors(problem)["left_on"]
     problem = make.patch(path, {"row_version": ended["row_version"], "left_on": "1999-01-01"}, 422)
     assert errors(problem) == {"left_on": "must not be before the day it joined"}
-    fixed = make.patch(path, {"row_version": ended["row_version"], "left_on": "2026-11-14"})
-    assert fixed["left_on"] == "2026-11-14"
+    fixed = make.patch(path, {"row_version": ended["row_version"], "left_on": LATER_STILL})
+    assert fixed["left_on"] == LATER_STILL
 
     # The item that is back joins again, with a new membership.
     again = make.add(stack, [{"item_hid": switches[2]["hid"], "position": 3}])
@@ -412,11 +397,12 @@ def test_an_endpoint_lists_the_controllers_of_its_domain(make: Maker) -> None:
 
     for point in points:
         item = make.get(f"/items/{point['hid']}")
-        # A controller of its own, and the members of the cluster nested in the domain.
-        assert [controller["name"] for controller in item["controllers"]] == [
-            "site2-wlc-01",
-            "site2-wlc-02",
-            "site2-wlc-03",
+        # A controller of its own, and the members of the cluster nested in the domain,
+        # each with the cluster it is in.
+        assert [(one["cluster"], one["name"]) for one in item["controllers"]] == [
+            (None, "site2-wlc-03"),
+            ("site2-wlc-ha", "site2-wlc-01"),
+            ("site2-wlc-ha", "site2-wlc-02"),
         ]
     # A controller is not its own endpoint.
     assert make.get(f"/items/{controllers[2]['hid']}")["controllers"] == []

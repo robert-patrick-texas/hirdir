@@ -1,5 +1,7 @@
-hid,name,type,hostname,fqdn,parent,owner,record_status,tags
-,site2-sw-core,stack,site2-sw-core,site2-sw-core.example.net,,,active,critical
-,site2-sw-floor,stack,site2-sw-floor,site2-sw-floor.example.net,,,active,
-,site2-wireless,controller_domain,,,,,active,
-,site2-wlc-ha,cluster,site2-wlc,site2-wlc.example.net,site2-wireless,,active,
+hid,name,type,hostname,fqdn,parent,owner,managed_as,expected_members,observed_status,observed_at,record_status,tags
+,site2-fw-edge,cluster,,,,,members,,,,active,critical
+,site2-rtr-wan,cluster,,,,,members,,,,active,
+,site2-sw-core,stack,site2-sw-core,site2-sw-core.example.net,,,,,online,2026-11-02T15:00:00+00:00,active,critical
+,site2-sw-floor,stack,site2-sw-floor,site2-sw-floor.example.net,,,,3,,,active,
+,site2-wireless,controller_domain,,,,,,,,,active,
+,site2-wlc-ha,cluster,site2-wlc,site2-wlc.example.net,site2-wireless,,one,,,,active,

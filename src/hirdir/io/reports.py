@@ -38,7 +38,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import choices, records, settings
+from hirdir.domain import choices, groups, health, records, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
@@ -52,35 +52,50 @@ HUNDREDTH = Decimal("0.01")
 # weight x quantity x (100% - discount) is exact in units of this size.
 WEIGHT_STEPS = Decimal(100 * 100 * 100)
 MONEY_STEPS = Decimal(100)
-BY = ("vendor", "kind", "type", "function", "owner", "lifecycle_state", "disposition", "tag")
+SHARED = ("vendor", "kind", "type", "function", "owner")
+SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
+MANAGEMENT_BY = (*SHARED, "tag")
+ONE_NODE = groups.MANAGED_AS[0]
+AND_ITS_OWN = groups.MANAGED_AS[2]
 
 
 @dataclass(frozen=True)
-class Measures:
-    """The counts and sums of a set of items."""
+class HealthCount:
+    """The components of each health."""
 
-    items: int = 0
-    component_count: int = 0
-    managed_node_count: int = 0
-    support_weight: Decimal = Decimal(0)
-    est_value: Decimal = Decimal(0)
-    annual_support_cost: Decimal = Decimal(0)
+    good: int = 0
+    degraded: int = 0
+    failed: int = 0
+    unknown: int = 0
 
 
 @dataclass(frozen=True)
-class KindCount:
-    """The items and the components of one kind."""
+class Counted:
+    """The items and the components that share one value: a kind, or a condition."""
 
-    kind: str
+    key: str | None
+    label: str | None
     items: int
     component_count: int
 
 
 @dataclass(frozen=True)
-class Totals(Measures):
-    """The measures of the whole view, and its items by kind."""
+class Measures:
+    """What the summary counts of a set of items. It holds no money."""
 
-    by_kind: tuple[KindCount, ...] = ()
+    items: int = 0
+    component_count: int = 0
+    managed_node_count: int = 0
+    support_weight: Decimal = Decimal(0)
+    by_health: HealthCount = HealthCount()
+
+
+@dataclass(frozen=True)
+class Totals(Measures):
+    """The measures of the whole view, and its items by condition and by kind."""
+
+    by_condition: tuple[Counted, ...] = ()
+    by_kind: tuple[Counted, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,11 +108,38 @@ class Row(Measures):
 
 @dataclass(frozen=True)
 class Summary:
-    """A summary of a view of the items."""
+    """A summary of a view of the items, for the people who run the network."""
 
     by: str | None
     totals: Totals
     rows: list[Row] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Money:
+    """What the management report counts of a set of items."""
+
+    items: int = 0
+    component_count: int = 0
+    est_value: Decimal = Decimal(0)
+    annual_support_cost: Decimal = Decimal(0)
+
+
+@dataclass(frozen=True)
+class MoneyRow(Money):
+    """The value and the cost of the items that share one value."""
+
+    key: str | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class Management:
+    """The value and the cost of a view of the items, for the people who pay for it."""
+
+    by: str | None
+    totals: Money
+    rows: list[MoneyRow] = field(default_factory=list)
 
 
 def _whole(column: Any) -> ColumnElement[Any]:
@@ -105,14 +147,24 @@ def _whole(column: Any) -> ColumnElement[Any]:
     return type_coerce(column, BigInteger)
 
 
-def _current_group(kind: str, statuses: tuple[str, ...]) -> Any:
-    """Return, for each item, the group of a type that it is a current member of."""
+def _current(kind: str, statuses: tuple[str, ...]) -> Any:
+    """Return, for each item, the group of a type that it is a current member of, with
+    how many current members that group has and how it says it is managed."""
+    sizes = (
+        select(DeviceGroupMember.group_hid.label("group_hid"), func.count().label("size"))
+        .where(DeviceGroupMember.left_on.is_(None))
+        .group_by(DeviceGroupMember.group_hid)
+        .subquery(f"{kind}_sizes")
+    )
     return (
         select(
             DeviceGroupMember.item_hid.label("item_hid"),
             func.min(DeviceGroup.hid).label("group_hid"),
+            func.min(sizes.c.size).label("size"),
+            func.min(func.coalesce(DeviceGroup.managed_as, ONE_NODE)).label("managed_as"),
         )
         .join(DeviceGroup, DeviceGroup.hid == DeviceGroupMember.group_hid)
+        .join(sizes, sizes.c.group_hid == DeviceGroup.hid)
         .where(
             DeviceGroupMember.left_on.is_(None),
             DeviceGroup.type == kind,
@@ -125,15 +177,19 @@ def _current_group(kind: str, statuses: tuple[str, ...]) -> Any:
 
 @dataclass(frozen=True)
 class _Terms:
-    """The pieces every summary statement is made of, for one view."""
+    """The pieces every statement of a report is made of, for one view."""
 
     where: tuple[Any, ...]
     stack: Any
     cluster: Any
-    kind: ColumnElement[Any]
+    component: ColumnElement[bool]
     counted_whatever_kind: ColumnElement[bool]
-    counts: tuple[ColumnElement[Any], ...]
-    amounts: tuple[ColumnElement[Any], ...]
+    items: ColumnElement[Any]
+    components: ColumnElement[Any]
+    nodes: ColumnElement[Any]
+    health: tuple[ColumnElement[Any], ...]
+    weight: tuple[ColumnElement[Any], ...]
+    money: tuple[ColumnElement[Any], ...]
 
     def source(self, query: Any) -> Any:
         """Return a statement over the view, with what the measures read joined in."""
@@ -145,7 +201,11 @@ class _Terms:
         )
 
 
-def _terms(db: Session, where: tuple[Any, ...], include_drafts: bool) -> _Terms:
+def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bool) -> _Terms:
+    where = (
+        filters.to_sql(filters.parse(filter_), ITEMS.fields),
+        *default_view(ITEMS, include_archived, include_drafts),
+    )
     count_states = list(settings.value(db, "count_states"))
     weight_states = list(settings.value(db, "weight_states"))
     count_kinds = list(settings.value(db, "count_kinds"))
@@ -153,76 +213,67 @@ def _terms(db: Session, where: tuple[Any, ...], include_drafts: bool) -> _Terms:
     # A draft stack is not yet one device on the network. In a view that holds the
     # drafts it is, as a draft item is counted there.
     statuses = ("active", "draft") if include_drafts else ("active",)
-    stack, cluster = _current_group("stack", statuses), _current_group("cluster", statuses)
+    stack, cluster = _current("stack", statuses), _current("cluster", statuses)
     major = Item.parent_item_hid.is_(None)
     counted = and_(
         major, or_(Item.lifecycle_state.is_(None), Item.lifecycle_state.in_(count_states))
     )
     component = and_(counted, KIND.in_(count_kinds))
-    # A cluster comes before a stack: an item in both is part of the cluster's one node.
-    node = func.coalesce(cluster.c.group_hid, stack.c.group_hid, Item.hid)
-    counts = (
-        func.count(distinct(Item.hid)),
-        func.count(distinct(case((component, Item.hid)))),
-        func.count(distinct(case((component, node)))),
+    # What an item is on the network. In a cluster that is managed as one, it is part
+    # of the cluster's one node. Otherwise it counts through its stack, or by itself.
+    node = case(
+        (cluster.c.managed_as == ONE_NODE, cluster.c.group_hid),
+        else_=func.coalesce(stack.c.group_hid, Item.hid),
     )
+    # A cluster that answers as a node of its own, beside its members, is one more.
+    its_own = case((and_(component, cluster.c.managed_as == AND_ITS_OWN), cluster.c.group_hid))
     weighed = and_(major, Item.lifecycle_state.in_(weight_states))
-    # The amounts of one item, each as the whole number of steps it is stored as. They
-    # are multiplied and summed outside the database, where no number is too large:
-    # here the items that share them are only gathered, and their quantities added.
-    amounts = (
-        case(
-            (
-                weighed,
-                func.coalesce(_whole(Item.support_weight), _whole(CatalogEntry.support_weight)),
-            )
+    its_health = fields.HEALTH
+    return _Terms(
+        where=where,
+        stack=stack,
+        cluster=cluster,
+        component=component,
+        counted_whatever_kind=counted,
+        items=func.count(distinct(Item.hid)),
+        components=func.count(distinct(case((component, Item.hid)))),
+        nodes=func.count(distinct(case((component, node)))) + func.count(distinct(its_own)),
+        health=tuple(
+            func.count(distinct(case((and_(component, its_health == value), Item.hid))))
+            for value in health.HEALTHS
         ),
-        case(
-            (
-                stack.c.group_hid.is_not(None),
-                10_000 - func.coalesce(_whole(CatalogEntry.stack_discount_pct), discount),
+        # The amounts of one item, each as the whole number of steps it is stored as.
+        # They are multiplied and summed outside the database, where no number is too
+        # large: here the items that share them are only gathered, and their
+        # quantities added.
+        weight=(
+            case(
+                (
+                    weighed,
+                    func.coalesce(_whole(Item.support_weight), _whole(CatalogEntry.support_weight)),
+                )
             ),
-            else_=10_000,
+            # One switch alone takes the full effort: the discount is for a stack of
+            # two or more.
+            case(
+                (
+                    stack.c.size >= 2,
+                    10_000 - func.coalesce(_whole(CatalogEntry.stack_discount_pct), discount),
+                ),
+                else_=10_000,
+            ),
         ),
-        func.coalesce(_whole(Item.est_value), _whole(CatalogEntry.est_value)),
-        func.coalesce(_whole(Item.annual_support_cost), _whole(CatalogEntry.annual_support_cost)),
+        money=(
+            func.coalesce(_whole(Item.est_value), _whole(CatalogEntry.est_value)),
+            func.coalesce(
+                _whole(Item.annual_support_cost), _whole(CatalogEntry.annual_support_cost)
+            ),
+        ),
     )
-    return _Terms(where, stack, cluster, KIND, counted, counts, amounts)
-
-
-@dataclass
-class _Sums:
-    """The sums of one row of a summary, in whole steps, as they are gathered."""
-
-    weight: int = 0
-    value: int = 0
-    cost: int = 0
-
-    def add(self, weight: Any, share: Any, value: Any, cost: Any, quantity: Any) -> None:
-        """Add the items that share these amounts, `quantity` of them in all."""
-        quantity = int(quantity or 0)
-        self.weight += int(weight or 0) * int(share) * quantity
-        self.value += int(value or 0) * quantity
-        self.cost += int(cost or 0) * quantity
-
-
-def _measures(counts: Any, sums: _Sums) -> dict[str, Any]:
-    items, components, nodes = counts
-    return {
-        "items": items,
-        "component_count": components,
-        "managed_node_count": nodes,
-        # Summed exactly, and rounded once.
-        "support_weight": (Decimal(sums.weight) / WEIGHT_STEPS).quantize(
-            HUNDREDTH, rounding=ROUND_HALF_UP
-        ),
-        "est_value": Decimal(sums.value) / MONEY_STEPS,
-        "annual_support_cost": Decimal(sums.cost) / MONEY_STEPS,
-    }
 
 
 def _grouping(by: str) -> tuple[Any, Any, Any]:
-    """Return what a summary is grouped by: the key, its label, and a join it needs."""
+    """Return what a report is grouped by: the key, its label, and a join it needs."""
     if by == "vendor":
         return Vendor.hid, Vendor.name, None
     if by == "kind":
@@ -236,6 +287,10 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     if by in ("lifecycle_state", "disposition"):
         column = fields.standing(by)
         return column, column, None
+    if by == "condition":
+        return Item.condition, Item.condition, None
+    if by == "health":
+        return fields.HEALTH, fields.HEALTH, None
     link = aliased(TagLink, name="summary_tag_link")
     tag = aliased(Tag, name="summary_tag")
 
@@ -247,11 +302,15 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     return tag.hid, tag.label, tagged
 
 
+# The lists of choices that say what people call the values a report may be by.
+LABELLED = {"type": "catalog_type", "function": "catalog_function", "condition": "item_condition"}
+
+
 def _labels(db: Session, by: str) -> dict[str, str]:
-    """Return what people call the values a summary is by, where a list of choices says."""
-    if by not in ("type", "function"):
+    """Return what people call the values a report is by, where a list of choices says."""
+    if by not in LABELLED:
         return {}
-    return {choice.value: choice.label for choice in choices.list_choices(db, f"catalog_{by}")}
+    return {choice.value: choice.label for choice in choices.list_choices(db, LABELLED[by])}
 
 
 def _run(db: Session, statement: Any) -> list[Any]:
@@ -269,6 +328,87 @@ def _run(db: Session, statement: Any) -> list[Any]:
             raise filters.refuse("a value in the filter cannot be compared") from None
 
 
+def _checked_by(by: str | None, allowed: tuple[str, ...]) -> None:
+    if by is not None and by not in allowed:
+        raise Invalid("the grouping is not acceptable", {"by": f"one of {', '.join(allowed)}"})
+
+
+def _sums(
+    db: Session, terms: _Terms, amounts: tuple[Any, ...], key: Any = None, join: Any = None
+) -> dict[Any, list[int]]:
+    """Return, for each value of a key, the exact sums of amounts times quantity.
+
+    The amounts are multiplied together and by the quantity of the items that share
+    them, here and not in the database, so the sums are exact however large they grow.
+    `weight` is a weight and the share of it that counts; `money` is two amounts, each
+    summed by itself.
+    """
+    paired = amounts is terms.weight
+    head = () if key is None else (key,)
+    statement = terms.source(select(*head, *amounts, func.sum(Item.quantity)))
+    if join is not None:
+        statement = join(statement)
+    found: dict[Any, list[int]] = {}
+    for row in _run(db, statement.group_by(*head, *amounts)):
+        sums = found.setdefault(row[0] if head else None, [0, 0])
+        first, second, quantity = (int(value or 0) for value in row[len(head) :])
+        if paired:
+            sums[0] += first * second * quantity
+        else:
+            sums[0] += first * quantity
+            sums[1] += second * quantity
+    return found
+
+
+def _measures(counts: Any, sums: list[int]) -> dict[str, Any]:
+    items, components, nodes, *healths = counts
+    return {
+        "items": items,
+        "component_count": components,
+        "managed_node_count": nodes,
+        # Summed exactly, and rounded once.
+        "support_weight": (Decimal(sums[0]) / WEIGHT_STEPS).quantize(
+            HUNDREDTH, rounding=ROUND_HALF_UP
+        ),
+        "by_health": HealthCount(**dict(zip(health.HEALTHS, healths, strict=True))),
+    }
+
+
+def _money(counts: Any, sums: list[int]) -> dict[str, Any]:
+    items, components = counts
+    return {
+        "items": items,
+        "component_count": components,
+        "est_value": Decimal(sums[0]) / MONEY_STEPS,
+        "annual_support_cost": Decimal(sums[1]) / MONEY_STEPS,
+    }
+
+
+def _in_order(rows: list[Any]) -> list[Any]:
+    """Return rows by what people read, the blank one last."""
+    return sorted(
+        rows, key=lambda row: (row.key is None, records.key(row.label or ""), row.key or "")
+    )
+
+
+def _counted(db: Session, terms: _Terms, key: Any, labels: dict[str, str]) -> list[Counted]:
+    """Return the items and the components of each value of a key."""
+    found = _run(
+        db,
+        terms.source(
+            select(
+                key,
+                terms.items,
+                func.count(distinct(case((terms.counted_whatever_kind, Item.hid)))),
+            )
+        ).group_by(key),
+    )
+    return [
+        Counted(key=value, label=labels.get(value, value), items=items, component_count=components)
+        for value, items, components in found
+    ]
+
+
 def summary(
     db: Session,
     *,
@@ -277,63 +417,86 @@ def summary(
     include_archived: bool = False,
     include_drafts: bool = False,
 ) -> Summary:
-    """Count a view of the items, as a whole and by one of the things items share."""
-    if by is not None and by not in BY:
-        raise Invalid("the grouping is not acceptable", {"by": f"one of {', '.join(BY)}"})
-    where = (
-        filters.to_sql(filters.parse(filter_), ITEMS.fields),
-        *default_view(ITEMS, include_archived, include_drafts),
-    )
-    terms = _terms(db, where, include_drafts)
-    whole = _run(db, terms.source(select(*terms.counts)))[0]
-    total = _Sums()
-    for row in _run(
-        db,
-        terms.source(select(*terms.amounts, func.sum(Item.quantity))).group_by(*terms.amounts),
-    ):
-        total.add(*row)
-    kinds = _run(
-        db,
-        terms.source(
-            select(
-                terms.kind,
-                func.count(distinct(Item.hid)),
-                func.count(distinct(case((terms.counted_whatever_kind, Item.hid)))),
-            )
-        ).group_by(terms.kind),
-    )
+    """Count a view of the items, as a whole and by one of the things items share.
+
+    Components, managed nodes, support weight and health: what the people who run the
+    network ask. The money is in `management`.
+    """
+    _checked_by(by, SUMMARY_BY)
+    terms = _terms(db, filter_, include_archived, include_drafts)
+    counts = (terms.items, terms.components, terms.nodes, *terms.health)
+    whole = _run(db, terms.source(select(*counts)))[0]
     order = {kind: place for place, kind in enumerate(settings.CATALOG_KINDS)}
+    conditions = [choice.value for choice in choices.list_choices(db, "item_condition")]
     totals = Totals(
-        **_measures(whole, total),
-        by_kind=tuple(
-            KindCount(kind=kind, items=items, component_count=components)
-            for kind, items, components in sorted(
-                kinds, key=lambda row: order.get(row[0], len(order))
+        **_measures(whole, _sums(db, terms, terms.weight).get(None, [0, 0])),
+        by_condition=tuple(
+            sorted(
+                _counted(db, terms, Item.condition, _labels(db, "condition")),
+                key=lambda one: (
+                    one.key is None,
+                    conditions.index(one.key) if one.key in conditions else len(conditions),
+                ),
             )
+        ),
+        by_kind=tuple(
+            sorted(_counted(db, terms, KIND, {}), key=lambda one: order.get(one.key, len(order)))
         ),
     )
     if by is None:
         return Summary(None, totals)
     key, label, join = _grouping(by)
-    counting = terms.source(select(key, label, *terms.counts))
-    adding = terms.source(select(key, *terms.amounts, func.sum(Item.quantity)))
+    counting = terms.source(select(key, label, *counts))
     if join is not None:
-        counting, adding = join(counting), join(adding)
-    sums: dict[Any, _Sums] = {}
-    for row in _run(db, adding.group_by(key, *terms.amounts)):
-        sums.setdefault(row[0], _Sums()).add(*row[1:])
+        counting = join(counting)
+    sums = _sums(db, terms, terms.weight, key, join)
     called = _labels(db, by)
     rows = [
         Row(
             key=row[0],
             label=called.get(row[1], row[1]),
-            **_measures(row[2:], sums.get(row[0], _Sums())),
+            **_measures(row[2:], sums.get(row[0], [0, 0])),
         )
         for row in _run(db, counting.group_by(key, label))
     ]
-    # By what people read, the blank one last.
-    rows.sort(key=lambda row: (row.key is None, records.key(row.label or ""), row.key or ""))
-    return Summary(by, totals, rows)
+    return Summary(by, totals, _in_order(rows))
+
+
+def management(
+    db: Session,
+    *,
+    filter_: Any = None,
+    by: str | None = None,
+    include_archived: bool = False,
+    include_drafts: bool = False,
+) -> Management:
+    """Return the estimated value and the annual support cost of a view of the items.
+
+    For the people who pay for the network: the whole inventory, and one row for each
+    value of `by`. Neither condition nor health is in it.
+    """
+    _checked_by(by, MANAGEMENT_BY)
+    terms = _terms(db, filter_, include_archived, include_drafts)
+    counts = (terms.items, terms.components)
+    whole = _run(db, terms.source(select(*counts)))[0]
+    totals = Money(**_money(whole, _sums(db, terms, terms.money).get(None, [0, 0])))
+    if by is None:
+        return Management(None, totals)
+    key, label, join = _grouping(by)
+    counting = terms.source(select(key, label, *counts))
+    if join is not None:
+        counting = join(counting)
+    sums = _sums(db, terms, terms.money, key, join)
+    called = _labels(db, by)
+    rows = [
+        MoneyRow(
+            key=row[0],
+            label=called.get(row[1], row[1]),
+            **_money(row[2:], sums.get(row[0], [0, 0])),
+        )
+        for row in _run(db, counting.group_by(key, label))
+    ]
+    return Management(by, totals, _in_order(rows))
 
 
 # --- addresses held more than once ---------------------------------------------------

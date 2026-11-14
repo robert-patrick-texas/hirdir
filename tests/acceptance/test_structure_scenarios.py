@@ -56,6 +56,10 @@ class Structure(Inventory):
     def totals(self, **params: Any) -> dict[str, Any]:
         return self.get("/reports/summary", **params)["totals"]
 
+    def cost(self, **params: Any) -> Decimal:
+        """Return the annual support cost of a view, from the management report."""
+        return Decimal(self.get("/reports/management", **params)["totals"]["annual_support_cost"])
+
 
 @pytest.fixture
 def structure(server: Server) -> Structure:
@@ -146,29 +150,42 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
     assert structure.totals()["component_count"] == before["component_count"] + 1
 
 
-def test_s19_a_stack_shows_the_serial_number_of_its_master(structure: Structure) -> None:
+def test_s19_a_stack_shows_the_serial_number_of_the_master_that_is_seen(
+    structure: Structure,
+) -> None:
     switches = structure.switches(structure.entry(), "site2-sw-stack1", 4)
     stack = structure.stack("site2-sw-stack1", switches)
     assert stack["type"] == "stack"
     assert stack["member_count"] == 4
-    assert stack["serial_number"] == switches[0]["serial_number"]
-
-    members = structure.members(stack)
-    assert [member["role"] for member in members] == ["master", "member", "member", "member"]
-    third = members[2]
-    structure.patch(
-        f"/device-groups/{stack['hid']}/members/{third['hid']}",
-        {"row_version": third["row_version"], "role": "master"},
+    # One member is marked as the master that is intended, and the stack shows its serial.
+    assert (stack["serial_number"], stack["serial_source"]) == (
+        switches[0]["serial_number"],
+        "intended",
     )
 
-    # The serial number is read from the master, so it is right at once.
-    again = structure.get(f"/device-groups/{stack['hid']}")
-    assert again["serial_number"] == switches[2]["serial_number"]
+    # The stack booted and made its third switch master. That is recorded as seen.
+    again = structure.patch(
+        f"/device-groups/{stack['hid']}",
+        {"row_version": stack["row_version"], "observed_master_hid": switches[2]["hid"]},
+    )
+
+    # The serial number is read from the master that is seen, so it is right at once.
+    assert (again["serial_number"], again["serial_source"]) == (
+        switches[2]["serial_number"],
+        "observed",
+    )
     assert again["hid"] == stack["hid"]
+    assert again["master_as_intended"] is False
+    # What is intended is as it was: one member is marked, and it is the first.
     roles = {member["item_hid"]: member["role"] for member in structure.members(stack)}
-    assert roles[switches[2]["hid"]] == "master"
-    assert roles[switches[0]["hid"]] == "member"
+    assert roles[switches[0]["hid"]] == "master"
     assert list(roles.values()).count("master") == 1
+    # The stack is found by the serial number of any of its members.
+    for switch in switches:
+        found = structure.get(
+            "/device-groups", filter=f"member.serial_number:eq:{switch['serial_number']}"
+        )["items"]
+        assert [group["hid"] for group in found] == [stack["hid"]]
 
 
 def test_s20_the_stack_discount_lowers_the_weight_and_never_the_cost(structure: Structure) -> None:
@@ -177,15 +194,16 @@ def test_s20_the_stack_discount_lowers_the_weight_and_never_the_cost(structure: 
     assert discount["value"] == 50
     model = structure.entry(support_weight="1.0", annual_support_cost="1450.00")
     switches = structure.switches(model, "site2-sw-stack1", 4, lifecycle_state="Prod")
-    alone = structure.totals(filter=f"hid:eq:{switches[0]['hid']}")
-    assert Decimal(alone["support_weight"]) == Decimal("1.0")
+    one = f"hid:eq:{switches[0]['hid']}"
+    assert Decimal(structure.totals(filter=one)["support_weight"]) == Decimal("1.0")
+    cost_of_one = structure.cost(filter=one)
     stack = structure.stack("site2-sw-stack1", switches)
     in_stack = "group.name:eq:site2-sw-stack1"
 
     totals = structure.totals(filter=in_stack)
     assert Decimal(totals["support_weight"]) == Decimal("2.0")
     assert (totals["component_count"], totals["managed_node_count"]) == (4, 1)
-    assert Decimal(totals["annual_support_cost"]) == 4 * Decimal(alone["annual_support_cost"])
+    assert structure.cost(filter=in_stack) == 4 * cost_of_one
 
     structure.patch(
         f"/catalog-entries/{model['hid']}",
@@ -194,7 +212,7 @@ def test_s20_the_stack_discount_lowers_the_weight_and_never_the_cost(structure: 
     totals = structure.totals(filter=in_stack)
     assert Decimal(totals["support_weight"]) == Decimal("2.8")
     assert (totals["component_count"], totals["managed_node_count"]) == (4, 1)
-    assert Decimal(totals["annual_support_cost"]) == Decimal("5800.00")
+    assert structure.cost(filter=in_stack) == Decimal("5800.00")
     assert structure.get(f"/device-groups/{stack['hid']}")["member_count"] == 4
 
 

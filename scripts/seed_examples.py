@@ -17,7 +17,7 @@ import sys
 import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -33,6 +33,8 @@ from hirdir.io import exports, files
 from hirdir.io.entities import ENTITIES, LOAD_ORDER
 
 TARGET = Path(__file__).resolve().parent.parent / "examples"
+# The moment at which the examples were last looked at: fixed, so the files do not change.
+SEEN = datetime(2026, 11, 2, 15, 0, tzinfo=UTC)
 SEED = audit.SYSTEM
 DOMAIN = "example.net"
 
@@ -297,7 +299,15 @@ GROUPS: tuple[tuple[str, str, dict[str, Any], tuple[tuple[Any, ...], ...]], ...]
     (
         "site2-sw-core",
         "stack",
-        {"hostname": "site2-sw-core", "fqdn": f"site2-sw-core.{DOMAIN}", "tags": ["critical"]},
+        {
+            "hostname": "site2-sw-core",
+            "fqdn": f"site2-sw-core.{DOMAIN}",
+            "tags": ["critical"],
+            "observed_status": "online",
+            "observed_at": SEEN,
+            # The second switch came up first after the last power work, and is master.
+            "seen_master": "site2-sw-core-02",
+        },
         (
             ("site2-sw-core-01", "master", 1, "2023-09-04", None),
             ("site2-sw-core-02", "member", 2, "2023-09-04", None),
@@ -306,7 +316,8 @@ GROUPS: tuple[tuple[str, str, dict[str, Any], tuple[tuple[Any, ...], ...]], ...]
     (
         "site2-sw-floor",
         "stack",
-        {"hostname": "site2-sw-floor", "fqdn": f"site2-sw-floor.{DOMAIN}"},
+        # Meant to have three members: it is one short since the third was taken out.
+        {"hostname": "site2-sw-floor", "fqdn": f"site2-sw-floor.{DOMAIN}", "expected_members": 3},
         (
             ("site2-sw-floor-01", "master", 1, "2021-06-14", None),
             ("site2-sw-floor-02", "member", 2, "2021-06-14", None),
@@ -326,10 +337,35 @@ GROUPS: tuple[tuple[str, str, dict[str, Any], tuple[tuple[Any, ...], ...]], ...]
     (
         "site2-wlc-ha",
         "cluster",
-        {"hostname": "site2-wlc", "fqdn": f"site2-wlc.{DOMAIN}", "parent": "site2-wireless"},
+        # One device on the network: the pair has one address to manage.
+        {
+            "hostname": "site2-wlc",
+            "fqdn": f"site2-wlc.{DOMAIN}",
+            "parent": "site2-wireless",
+            "managed_as": "one",
+        },
         (
             ("site2-wlc-01", "active", None, "2024-05-06", None),
             ("site2-wlc-02", "standby", None, "2024-05-06", None),
+        ),
+    ),
+    (
+        "site2-fw-edge",
+        "cluster",
+        # Each firewall is managed at its own address, and they share virtual ones.
+        {"managed_as": "members", "tags": ["critical"]},
+        (
+            ("site2-fw-edge-01", "active", None, "2025-01-13", None),
+            ("site2-fw-edge-02", "standby", None, "2025-01-13", None),
+        ),
+    ),
+    (
+        "site2-rtr-wan",
+        "cluster",
+        {"managed_as": "members"},
+        (
+            ("site2-rtr-wan-01", "active", None, "2020-02-10", None),
+            ("site2-rtr-wan-02", "standby", None, "2020-02-10", None),
         ),
     ),
 )
@@ -347,23 +383,45 @@ ADDRESSES: tuple[tuple[str, str, str | None, str, bool], ...] = (
         for number in range(1, 7)
     ),
     ("site2-sw-core", "192.0.2.1", "Management", "management", True),
+    # Managed over IPv6 as well: a primary address of each family.
+    ("site2-sw-core", "2001:db8::1", "Management", "management", True),
     ("site2-sw-floor", "192.0.2.21", "Management", "management", True),
     ("site2-wlc-ha", "192.0.2.30", "Management", "management", True),
     ("site2-rtr-wan-01", "192.0.2.2", "Management", "management", True),
     ("site2-rtr-wan-01", "2001:db8::2", None, "loopback", False),
     ("site2-rtr-wan-02", "192.0.2.3", "Management", "management", True),
     ("site2-rtr-wan-02", "2001:db8::3", None, "loopback", False),
-    # A gateway address that the two routers share: held twice under one network, which
-    # is accepted, and is in the duplicates report.
-    ("site2-rtr-wan-01", "192.0.2.254", "Management", "virtual", False),
-    ("site2-rtr-wan-02", "192.0.2.254", "Management", "virtual", False),
+    # A gateway address that the two routers share is an address of their cluster, held
+    # once: it is no duplicate.
+    ("site2-rtr-wan", "192.0.2.254", "Management", "virtual", False),
     ("site2-fw-edge-01", "192.0.2.4", "Management", "management", True),
     ("site2-fw-edge-02", "192.0.2.5", "Management", "management", True),
     # The same address under two networks is two addresses.
-    ("site2-fw-edge-01", "203.0.113.1", "Guest", "secondary", False),
-    ("site2-fw-edge-01", "203.0.113.1", "Voice", "secondary", False),
+    ("site2-fw-edge", "203.0.113.1", "Guest", "virtual", False),
+    ("site2-fw-edge", "203.0.113.1", "Voice", "virtual", False),
     ("netconfig-01", "198.51.100.10", None, "management", True),
     ("netmon-01", "198.51.100.11", None, "management", True),
+    # A mistake: the address of netconfig-01, entered on netmon-01 as well. Held twice
+    # under one network, it is accepted, and is in the duplicates report.
+    ("netmon-01", "198.51.100.10", None, "secondary", False),
+)
+
+# What is known of how some items are doing: condition, observed status, when it was seen
+DOING: tuple[tuple[str, str | None, str | None], ...] = (
+    *((f"site2-sw-access-{number:02d}", "good", "online") for number in range(1, 7)),
+    # A cold spare on its shelf, counted at the last audit, and one nobody has tried yet.
+    ("site2-sw-access-07", "good", "present"),
+    ("site2-sw-access-08", "untested", None),
+    ("site2-sw-core-01", "good", "online"),
+    ("site2-sw-core-02", "good", "online"),
+    ("site2-sw-floor-01", "degraded", "online"),
+    ("site2-sw-floor-02", "good", "online"),
+    ("site2-sw-floor-03", "suspect", None),
+    ("site2-rtr-wan-01", "good", "online"),
+    ("site2-rtr-wan-02", "good", "unreachable"),
+    ("LIT0000X004", "failed", None),
+    # Test equipment is never on the network: what is observed of it is that it is there.
+    ("LQ0000X001", "good", "present"),
 )
 
 OWNERS = (
@@ -687,6 +745,9 @@ def build(db: Session) -> None:
         fields: dict[str, Any] = {"name": name, "type": type_, **more}
         if "parent" in fields:
             fields["parent_group_hid"] = made[fields.pop("parent")].hid
+        if "seen_master" in fields:
+            fields["observed_master_hid"] = item(fields.pop("seen_master")).hid
+            fields["master_observed_at"] = SEEN
         fields["members"] = [
             {
                 "item_hid": item(hostname).hid,
@@ -698,6 +759,12 @@ def build(db: Session) -> None:
             for hostname, role, position, joined, left in members
         ]
         made[name] = groups.create_group(db, SEED, fields)
+    for known_as, condition, observed in DOING:
+        one = item(known_as)
+        doing: dict[str, Any] = {"condition": condition}
+        if observed is not None:
+            doing.update(observed_status=observed, observed_at=SEEN)
+        items.update_item(db, SEED, one.hid, one.row_version, doing)
     networks = {
         label: addresses.create_network(db, SEED, {"label": label, "kind": kind})
         for label, kind in NETWORKS
