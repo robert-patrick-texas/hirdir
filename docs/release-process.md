@@ -26,7 +26,7 @@ ruff, ty and the build tools.
 `make upgrade` does the work:
 
 1. `uv python install` the newest production CPython, and set it in `.python-version`.
-2. `uv lock --upgrade`, then `uv sync`.
+2. `uv lock --upgrade`, then `uv sync --all-groups`.
 3. Every npm dependency to `@latest`, saved exact.
 4. Rebuild the web UI.
 5. `make check`.

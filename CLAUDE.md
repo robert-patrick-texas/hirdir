@@ -42,7 +42,7 @@ The next release is the first row of the table in
 
 | Task | Command |
 |---|---|
-| Set up | `uv sync` and `npm --prefix web ci` |
+| Set up | `uv sync --all-groups` and `npm --prefix web ci` |
 | Run for development | `make dev` |
 | Format, lint, type-check, test | `make check` |
 | Python tests that a change can reach, while working | `make test-changed` |
