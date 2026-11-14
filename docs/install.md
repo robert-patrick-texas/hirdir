@@ -192,8 +192,12 @@ hirdir import examples/addresses.csv --entity addresses --apply
 
 Without `--apply` a command shows what the file would do and changes nothing. Loaded a
 second time, every row is `unchanged`. Four of the files are new in 0.4.0: the networks,
-the device groups, which are stacks, a cluster and a controller domain, their members,
-and the addresses of items and of groups. So are the minor items among the items.
+the device groups, which are stacks, clusters and a controller domain, their members,
+and the addresses of items and of groups. So are the minor items among the items. From
+0.4.1 the same nine files also show the condition of an item and what is observed of
+it, a stack whose master is seen to be another switch than the one intended, clusters
+that say how they are managed, and an address that two routers share, which their
+cluster holds.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -496,6 +500,60 @@ Going back to 0.3.0 is as under
 [Going back to the release before](#going-back-to-the-release-before). The backup of
 this upgrade is at revision `0004`, and it holds no group, network or address, because
 0.3.0 had none: whatever was entered with 0.4.0 is lost with the rest.
+
+### From 0.4.0 to 0.4.1
+
+The schema goes from revision `0005` to `0006`. No table is added.
+
+The `items` table gains three columns, `condition`, `observed_status` and
+`observed_at`. The `device_groups` table gains six: `managed_as`, `expected_members`,
+`observed_status`, `observed_at`, `observed_master_hid` and `master_observed_at`. To
+add those six, SQLite makes the table of groups anew and copies every row across,
+inside the one transaction that the whole upgrade runs in. Nothing you have is changed
+by it. Every item, device group, membership, network and address is as it was, field
+for field and at the `row_version` it had, and every item has its history. A serial
+number is still unique within its model, an asset tag among all items, and the name
+of a group among groups.
+
+What is new is empty until somebody fills it in. No item has a condition and nothing
+is observed of any, so the health of each is `unknown`. A stack or a cluster is
+`unknown` too, unless one of its members is in Down or in Pending-Removal, which shows
+it as `degraded` from the start. A stack shows the serial number of its master as
+before: the master you marked is the one intended, and none is recorded as seen.
+
+Every cluster there is counts as before. 0.4.0 counted each cluster as one managed
+node, and the upgrade says so on each: `managed_as` is `one`. The managed-node count,
+the component count and the support weight of a view are what 0.4.0 gave. A cluster
+whose members are each managed at an address of their own, as a pair of firewalls is,
+was counted as one node all the same, and still is until you say how it is managed:
+`members`, or `members_and_cluster` where the cluster answers as a node of its own as
+well. See "Counting and weight" on the [data model](data-model.md#counting-and-weight)
+page.
+
+The list of conditions, `item_condition`, is filled with its defaults: `untested`,
+`good`, `degraded`, `suspect`, `failed` and `dead`.
+
+The upgrade ends no membership. From 0.4.1 an item that is retired, or moved to
+Released or to Archived, leaves its groups on that day. 0.4.0 left such an item in its
+stack, cluster or domain, and one that it left there is a member still after the
+upgrade, until its membership is given an end date.
+
+Two things answer differently from now on, for a script that reads them:
+
+- `GET /reports/summary` and `hirdir report summary` hold no money. Estimated value
+  and annual support cost are in `GET /reports/management` and `hirdir report
+  management`. The summary counts the components by health and by condition instead.
+- The record of an address says which `family` it is of, 4 or 6, and an item or a
+  group may have a primary management address of each.
+
+`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is the
+one 0.4.0 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+
+Going back to 0.4.0 is as under
+[Going back to the release before](#going-back-to-the-release-before). The backup of
+this upgrade is at revision `0005`. 0.4.0 knows no condition, no observation and no
+`managed_as`, so whatever was entered of those with 0.4.1 is lost with the rest that
+was entered since the upgrade.
 
 ### If the upgrade stops
 
