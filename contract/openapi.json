@@ -3544,7 +3544,7 @@
       },
       "EffectiveLocation": {
         "additionalProperties": false,
-        "description": "The location in force, with its site. The label is its path.",
+        "description": "A location in force, with its site. The label is its path.",
         "properties": {
           "label": {
             "anyOf": [
@@ -3630,6 +3630,18 @@
             ],
             "title": "Source Hid"
           },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the item or the group it came from. Null for its own.",
+            "title": "Source Label"
+          },
           "value": {
             "anyOf": [
               {
@@ -3648,6 +3660,7 @@
           "label",
           "source",
           "source_hid",
+          "source_label",
           "site_hid",
           "site",
           "region_hid",
@@ -4500,12 +4513,20 @@
         "additionalProperties": false,
         "description": "What a device group has in force of what it may have from the group it is in.",
         "properties": {
+          "location_hid": {
+            "$ref": "#/components/schemas/EffectiveLocation"
+          },
           "operator_hid": {
             "$ref": "#/components/schemas/EffectiveOperator"
+          },
+          "planned_location_hid": {
+            "$ref": "#/components/schemas/EffectiveLocation"
           }
         },
         "required": [
-          "operator_hid"
+          "operator_hid",
+          "location_hid",
+          "planned_location_hid"
         ],
         "title": "GroupEffective",
         "type": "object"
@@ -5509,12 +5530,17 @@
           "owner_hid": {
             "$ref": "#/components/schemas/EffectiveReference"
           },
+          "planned_location_hid": {
+            "$ref": "#/components/schemas/EffectiveLocation",
+            "description": "Where it is going, by its own plan or by that of what it is in."
+          },
           "support_weight": {
             "$ref": "#/components/schemas/EffectiveValue"
           }
         },
         "required": [
           "owner_hid",
+          "planned_location_hid",
           "operator_hid",
           "location_hid",
           "lifecycle_state",

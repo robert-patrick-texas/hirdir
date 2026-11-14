@@ -39,6 +39,7 @@ from hirdir.db.models import (
 from hirdir.domain import (
     addresses,
     contacts,
+    descent,
     geography,
     groups,
     health,
@@ -154,6 +155,29 @@ def _exception(owner: Owner | None) -> dict[str, Any]:
         "owner_exception": outside,
         "owner_exception_reason": owner.exception_reason if owner is not None and outside else None,
     }
+
+
+def _keyed(prefix: str, found: dict[str, Effective]) -> dict[str, Effective]:
+    """Return what was found under keys of its own, to be gathered with others."""
+    return {f"{prefix}:{hid}": one for hid, one in found.items()}
+
+
+def _place_in_force(
+    found: Effective, places: dict[str, shapes.LocationRef], holders: dict[str, str]
+) -> shapes.EffectiveLocation:
+    """Return a location in force: its path, its site, and where it came from."""
+    place = places.get(found.value or "")
+    return shapes.EffectiveLocation(
+        value=found.value,
+        label=place.path if place is not None else None,
+        source=found.source,
+        source_hid=found.source_hid,
+        source_label=holders.get(found.source_hid or "") if found.source != "own" else None,
+        site_hid=place.site_hid if place is not None else None,
+        site=place.site if place is not None else None,
+        region_hid=place.region_hid if place is not None else None,
+        region=place.region if place is not None else None,
+    )
 
 
 class _Labels:
@@ -661,12 +685,15 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     marks = _Labels(
         db, {item.operator_hid for item in items} | {one.value for one in looked_after.values()}
     )
-    holders = _holders(db, looked_after, above)
+    where = descent.of_items(db, items, lines, "location_hid")
+    going = descent.of_items(db, items, lines, "planned_location_hid")
+    holders = _holders(db, {**looked_after, **_keyed("w", where), **_keyed("g", going)}, above)
     places = location_refs(
         db,
         {item.location_hid for item in items}
         | {item.planned_location_hid for item in items}
-        | {one.location_hid for one in above.values()},
+        | {one.value for one in where.values()}
+        | {one.value for one in going.values()},
     )
     parents = item_refs(db, [lines[item.hid][0] for item in items if lines[item.hid]])
     minor = _count_by(db, Item.parent_item_hid, hids)
@@ -692,8 +719,9 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         owner = owners.get(item.owner_hid) if item.owner_hid else None
         line = lines[item.hid]
         effective = inheritance.of_item(item, entry, line)
+        # Where it is, and where it is going: its own, or from the item or group above.
+        effective["location_hid"] = where[item.hid]
         owner_in_force = owners.get(effective["owner_hid"].value)
-        place = places.get(effective["location_hid"].value)
         its_groups = memberships[item.hid]
         its_controllers: dict[str, shapes.ControllerRef] = {}
         for member, group in its_groups:
@@ -762,16 +790,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                         source=effective["owner_hid"].source,
                         source_hid=effective["owner_hid"].source_hid,
                     ),
-                    location_hid=shapes.EffectiveLocation(
-                        value=effective["location_hid"].value,
-                        label=place.path if place is not None else None,
-                        source=effective["location_hid"].source,
-                        source_hid=effective["location_hid"].source_hid,
-                        site_hid=place.site_hid if place is not None else None,
-                        site=place.site if place is not None else None,
-                        region_hid=place.region_hid if place is not None else None,
-                        region=place.region if place is not None else None,
-                    ),
+                    location_hid=_place_in_force(where[item.hid], places, holders),
+                    planned_location_hid=_place_in_force(going[item.hid], places, holders),
                     **{
                         name: _effective(name, value)
                         for name, value in effective.items()
@@ -852,15 +872,20 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
     disagree = groups.members_disagree(db, found)
-    places = location_refs(
-        db,
-        {group.location_hid for group in found} | {group.planned_location_hid for group in found},
-    )
     looked_after = operators.of_groups(db, found)
     marks = _Labels(
         db, {group.operator_hid for group in found} | {one.value for one in looked_after.values()}
     )
-    holders = _holders(db, looked_after, {})
+    where = descent.of_groups(db, found, "location_hid")
+    going = descent.of_groups(db, found, "planned_location_hid")
+    holders = _holders(db, {**looked_after, **_keyed("w", where), **_keyed("g", going)}, {})
+    places = location_refs(
+        db,
+        {group.location_hid for group in found}
+        | {group.planned_location_hid for group in found}
+        | {one.value for one in where.values()}
+        | {one.value for one in going.values()},
+    )
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
@@ -885,7 +910,9 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 planned_location=places.get(group.planned_location_hid or ""),
                 operator=marks.ref(group.operator_hid),
                 effective=shapes.GroupEffective(
-                    operator_hid=marks.in_force(looked_after[group.hid], holders)
+                    operator_hid=marks.in_force(looked_after[group.hid], holders),
+                    location_hid=_place_in_force(where[group.hid], places, holders),
+                    planned_location_hid=_place_in_force(going[group.hid], places, holders),
                 ),
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,

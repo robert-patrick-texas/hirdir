@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from hirdir.db.models import DeviceGroup, Location, Region, Site
 from hirdir.domain import geography, records
 from hirdir.domain.errors import Invalid
-from hirdir.io import reports
+from hirdir.io import fields, reports
 
 
 @dataclass
@@ -182,16 +182,13 @@ def tree(
             nodes[at].planned += count
             at = above.get(at)
 
-    groups_view = [DeviceGroup.planned_location_hid.is_not(None)]
+    going_to = fields.GROUP_PLANNED_IN_FORCE
+    groups_view = [going_to.is_not(None)]
     if not include_drafts:
         groups_view.append(DeviceGroup.record_status != "draft")
     if not include_archived:
         groups_view.append(DeviceGroup.record_status != "retired")
-    groups_going = db.execute(
-        select(DeviceGroup.planned_location_hid, func.count())
-        .where(*groups_view)
-        .group_by(DeviceGroup.planned_location_hid)
-    )
+    groups_going = db.execute(select(going_to, func.count()).where(*groups_view).group_by(going_to))
     for hid, count in groups_going:
         at = hid
         seen = set()

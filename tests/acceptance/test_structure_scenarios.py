@@ -160,6 +160,7 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
             "label": "Americas > Site-2 > Room 102",
             "source": "parent_item",
             "source_hid": switch["hid"],
+            "source_label": "site2-sw-access-01",
             "site_hid": site["hid"],
             "site": "Site-2",
             "region_hid": region["hid"],

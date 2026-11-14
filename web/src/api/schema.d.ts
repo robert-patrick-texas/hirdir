@@ -4546,7 +4546,7 @@ export interface components {
       source_path: string | null;
       value: string | null;
     };
-    /** The location in force, with its site. The label is its path. */
+    /** A location in force, with its site. The label is its path. */
     EffectiveLocation: {
       /** What people call the record. */
       label: string | null;
@@ -4558,6 +4558,8 @@ export interface components {
       site_hid: string | null;
       source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
+      /** The name of the item or the group it came from. Null for its own. */
+      source_label: string | null;
       /** The HID of the record. */
       value: string | null;
     };
@@ -4701,7 +4703,9 @@ export interface components {
     };
     /** What a device group has in force of what it may have from the group it is in. */
     GroupEffective: {
+      location_hid: components["schemas"]["EffectiveLocation"];
       operator_hid: components["schemas"]["EffectiveOperator"];
+      planned_location_hid: components["schemas"]["EffectiveLocation"];
     };
     /** A user group. */
     GroupOut: {
@@ -4864,6 +4868,8 @@ export interface components {
       /** The operator in force: its own, that of the item above it, of a group it is a member of, or of the place it is at. */
       operator_hid: components["schemas"]["EffectiveOperator"];
       owner_hid: components["schemas"]["EffectiveReference"];
+      /** Where it is going, by its own plan or by that of what it is in. */
+      planned_location_hid: components["schemas"]["EffectiveLocation"];
       support_weight: components["schemas"]["EffectiveValue"];
     };
     /**

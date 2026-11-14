@@ -1022,8 +1022,11 @@ class ReplacementRef(Model):
 
 
 class EffectiveLocation(EffectiveReference):
-    """The location in force, with its site. The label is its path."""
+    """A location in force, with its site. The label is its path."""
 
+    source_label: str | None = Field(
+        description="The name of the item or the group it came from. Null for its own."
+    )
     site_hid: str | None
     site: str | None = Field(description="The name of its site.")
     region_hid: str | None
@@ -1048,6 +1051,9 @@ class ItemEffective(Model):
     standing of the item it is in."""
 
     owner_hid: EffectiveReference
+    planned_location_hid: EffectiveLocation = Field(
+        description="Where it is going, by its own plan or by that of what it is in."
+    )
     operator_hid: EffectiveOperator = Field(
         description=(
             "The operator in force: its own, that of the item above it, of a group it is "
@@ -1375,6 +1381,8 @@ class GroupEffective(Model):
     """What a device group has in force of what it may have from the group it is in."""
 
     operator_hid: EffectiveOperator
+    location_hid: EffectiveLocation
+    planned_location_hid: EffectiveLocation
 
 
 class DeviceGroupOut(Model):

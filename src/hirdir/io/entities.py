@@ -42,6 +42,7 @@ from hirdir.domain import (
     addresses,
     catalog,
     contacts,
+    descent,
     geography,
     groups,
     health,
@@ -1486,6 +1487,7 @@ class Items(Entity):
     _OWNER = Column("owner", inherits=True)
     _LOCATION = Column("location", limit=LONG, inherits=True)
     _OPERATOR = Column("operator", limit=40, inherits=True)
+    _PLANNED = Column("planned_location", limit=LONG, inherits=True)
     _STANDING = (
         Column("lifecycle_state", limit=20, inherits=True),
         Column("disposition", limit=12, inherits=True),
@@ -1513,7 +1515,7 @@ class Items(Entity):
         _OWNER,
         _OPERATOR,
         _LOCATION,
-        Column("planned_location", limit=LONG),
+        _PLANNED,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
         *AMOUNTS,
@@ -1532,7 +1534,7 @@ class Items(Entity):
         Column("region", settable=False),
         Column("owner_exception", "boolean", settable=False),
         Column("owner_exception_reason", limit=LONG, settable=False),
-        *_sources((_OWNER, _OPERATOR, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
+        *_sources((_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -1755,6 +1757,19 @@ class Items(Entity):
         return [] if parent is None else [parent, *items.ancestors(run.db, parent)]
 
     @staticmethod
+    def _from_above(run: Run, record: Any | None, above: list[Item], field: str) -> str | None:
+        """Return what an item has in a field with none of its own: that of the nearest
+        item above it, or of a group the item at the top of the line is a member of."""
+        held = next((getattr(one, field) for one in above if getattr(one, field)), None)
+        if held is not None:
+            return held
+        line = above if record is None else [record, *above]
+        if not line:
+            return None
+        top = line[-1].hid
+        return descent.from_groups(run.db, [top], field)[top].value
+
+    @staticmethod
     def _operator_above(
         run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]
     ) -> str | None:
@@ -1779,7 +1794,7 @@ class Items(Entity):
             if held is not None:
                 return held
         own = given.get("location_hid", record.location_hid if record is not None else None)
-        place = own or next((one.location_hid for one in above if one.location_hid), None)
+        place = own or Items._from_above(run, record, above, "location_hid")
         return operators.from_places(run.db, [place], gone)[place].value if place else None
 
     @staticmethod
@@ -1851,18 +1866,23 @@ class Items(Entity):
             location_hid = (
                 run.place(named, "location", geography.LOCATION).hid if named is not None else None
             )
-            inherited = next((one.location_hid for one in above if one.location_hid), None)
+            inherited = self._from_above(run, record, above, "location_hid")
             own = record.location_hid if record is not None else None
             if location_hid is None or own is not None or location_hid != inherited:
-                # Otherwise the row says where the item is anyway, with the item above.
+                # Otherwise the row says where the item is anyway, with the item above
+                # it or with its group.
                 given["location_hid"] = location_hid
         if "planned_location" in values:
             named = values["planned_location"]
-            given["planned_location_hid"] = (
+            planned_hid = (
                 run.place(named, "planned_location", geography.LOCATION).hid
                 if named is not None
                 else None
             )
+            inherited = self._from_above(run, record, above, "planned_location_hid")
+            own = record.planned_location_hid if record is not None else None
+            if planned_hid is None or own is not None or planned_hid != inherited:
+                given["planned_location_hid"] = planned_hid
         given.update(self._overrides(record, before, entry, values))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
@@ -1933,6 +1953,11 @@ class Items(Entity):
             | {one.location_hid for line in lines.values() for one in line}
         )
         looked_after = operators.of_items(db, found, lines)
+        placed = descent.of_items(db, found, lines, "location_hid")
+        going = descent.of_items(db, found, lines, "planned_location_hid")
+        atlas.read_locations(
+            {one.value for one in placed.values()} | {one.value for one in going.values()}
+        )
         marks = _by_hid(
             db,
             Operator,
@@ -1944,6 +1969,7 @@ class Items(Entity):
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
             in_force = inheritance.of_item(item, entry, line)
+            in_force["location_hid"] = placed[item.hid]
             where = atlas.location(in_force["location_hid"].value or "")
             site = atlas.site(where.site_hid) if where is not None else None
             owner_in_force = its_owners.get(in_force["owner_hid"].value or "")
@@ -1968,7 +1994,6 @@ class Items(Entity):
                 "health": health.of_item(
                     item.condition, item.observed_status, in_force["expected_online"].value
                 ).value,
-                "planned_location": atlas.location_path(item.planned_location_hid) or None,
                 "site": site.name if site is not None else None,
                 "region": atlas.regions[site.region_hid].name if site is not None else None,
                 "owner_exception": outside,
@@ -1977,6 +2002,9 @@ class Items(Entity):
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
             row["operator_source"] = looked_after[item.hid].source
+            plan = item.planned_location_hid if own else going[item.hid].value
+            row["planned_location"] = atlas.location_path(plan) or None
+            row["planned_location_source"] = going[item.hid].source
             for name, effective in in_force.items():
                 column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
                 value = getattr(item, name) if own else effective.value

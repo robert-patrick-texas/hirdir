@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
@@ -396,6 +396,31 @@ def locations_beneath(hid: str) -> Select[Any]:
     start = select(Location.hid.label("hid")).where(Location.hid == hid).cte(recursive=True)
     beneath = start.union_all(select(inner.hid).where(inner.parent_location_hid == start.c.hid))
     return select(beneath.c.hid)
+
+
+def locations_not_in_use() -> Any:
+    """Return the statement that yields the HID of every location that is not in use:
+    it is not active, or something it is in is not, a location above it, its site, or
+    a region its site is in. It is what `in_use` says of one location, for a list."""
+    inner: Any = aliased(Location)
+    idle = (
+        select(Location.hid.label("hid"))
+        .where(Location.record_status != "active")
+        .cte("idle_locations", recursive=True)
+    )
+    idle = idle.union(select(inner.hid).where(inner.parent_location_hid == idle.c.hid))
+    lower: Any = aliased(Region)
+    closed = (
+        select(Region.hid.label("hid"))
+        .where(Region.record_status != "active")
+        .cte("idle_regions", recursive=True)
+    )
+    closed = closed.union(select(lower.hid).where(lower.parent_region_hid == closed.c.hid))
+    sites = select(Site.hid).where(
+        or_(Site.record_status != "active", Site.region_hid.in_(select(closed.c.hid)))
+    )
+    top: Any = aliased(Location)
+    return select(idle.c.hid).union(select(top.hid).where(top.site_hid.in_(sites)))
 
 
 def region_ancestry() -> Any:
@@ -809,7 +834,11 @@ def update_place(
     opened = values.get("record_status") == "active" and record.record_status != "active"
     records.apply(db, context, level, record, row_version, values, tag_change)
     if opened:
-        move_in(db, context)
+        # What is planned for a place that is thereby in use is moved in. The module
+        # that knows items and groups is fetched here: they are built on places.
+        from hirdir.domain import moves
+
+        moves.move_in(db, context)
     return record
 
 
@@ -837,56 +866,6 @@ def checked_plan(db: Session, hid: str, field_: str = "planned_location_hid") ->
             {field_: "this place is active: give it as the location, and it is there"},
         )
     return hid
-
-
-def move_in(db: Session, context: AuditContext) -> int:
-    """Move every item and device group that is planned for a location now in use
-    into it.
-
-    A place that was a draft has been made active. What was meant for it is there from
-    now on: the location of each such record becomes the planned one, and the plan is
-    cleared. It is a change of each record, with an entry of its own in the audit
-    trail and the request of the change that opened the place, in the same
-    transaction. A retired record is left where it is. Return how many were moved.
-    """
-    planned: set[str | None] = set()
-    for model in (Item, DeviceGroup):
-        planned.update(
-            db.scalars(
-                select(model.planned_location_hid)
-                .where(model.planned_location_hid.is_not(None), _live(model))
-                .distinct()
-            )
-        )
-    if not planned:
-        return 0
-    atlas = Atlas(db)
-    atlas.read_locations(planned)
-    ready = [
-        hid
-        for hid in sorted(hid for hid in planned if hid)
-        if (location := atlas.location(hid)) is not None and in_use(atlas, location)
-    ]
-    moved = 0
-    for start in range(0, len(ready), 500):
-        piece = ready[start : start + 500]
-        for model, record_type in ((Item, "item"), (DeviceGroup, "device_group")):
-            arriving = db.scalars(
-                select(model)
-                .where(model.planned_location_hid.in_(piece), _live(model))
-                .order_by(model.hid)
-            )
-            for record in list(arriving):
-                records.apply(
-                    db,
-                    context,
-                    record_type,
-                    record,
-                    None,
-                    {"location_hid": record.planned_location_hid, "planned_location_hid": None},
-                )
-                moved += 1
-    return moved
 
 
 def _count(db: Session, model: Any, *where: Any) -> int:

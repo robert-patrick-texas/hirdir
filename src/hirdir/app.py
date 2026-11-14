@@ -29,6 +29,7 @@ from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.ids import new_hid
+from hirdir.io import fields
 
 API_PREFIX = "/api/v1"
 ROUTERS = (
@@ -176,6 +177,8 @@ def create_app(config: Config) -> FastAPI:
         redoc_url=None,
     )
     bind(app, config)
+    # Every list is made ready by this one thread, before requests arrive side by side.
+    fields.warm()
 
     api = APIRouter(prefix=API_PREFIX)
     for router in ROUTERS:

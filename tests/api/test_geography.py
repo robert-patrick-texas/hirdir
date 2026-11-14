@@ -293,6 +293,7 @@ def test_a_minor_item_is_where_the_item_above_it_is(make: Maker) -> None:
         "label": ROOM,
         "source": "parent_item",
         "source_hid": switch["hid"],
+        "source_label": "site2-sw-access-01",
         "site_hid": places["site"]["hid"],
         "site": "Site-2",
         "region_hid": places["central"]["hid"],

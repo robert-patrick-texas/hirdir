@@ -31,6 +31,7 @@ describe("the location in force", () => {
     region_hid: ENTRY,
     source: "own" as const,
     source_hid: ENTRY,
+    source_label: null,
   };
 
   it("says the whole path of a location the item has itself", () => {

@@ -32,7 +32,15 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import geography, health, inheritance, lifecycle, operators, records
+from hirdir.domain import (
+    descent,
+    geography,
+    health,
+    inheritance,
+    lifecycle,
+    operators,
+    records,
+)
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
 from hirdir.io.filters import Field, refuse
@@ -96,24 +104,23 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.owner_hid for one in _LINE))
-# Where an item is: a minor item is where the nearest item above it is that has a location.
-LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.location_hid for one in _LINE))
 
 
-def _operator_in_force() -> ColumnElement[Any]:
-    """Return the operator in force for an item, as `hirdir.domain.operators` works it
-    out: its own, that of the nearest item above it, that of a group the item at the
-    top of the line is a current member of, or that of the place it is at. An operator
-    that is retired is passed over at every level."""
+def _from_groups(field: str, live: Any = None) -> ColumnElement[Any]:
+    """Return what an item has in a field from the groups that the item at the top of
+    its line is a current member of, as `hirdir.domain.descent` works it out: that of
+    the first group, a stack before a cluster before a controller domain before any
+    other and then by name, that has one in force, its own or from the group it is
+    nested in."""
     top = case(
         *((one.parent_item_hid.is_(None), one.hid) for one in _LINE[:-1]),
         else_=_LINE[-1].hid,
     )
-    reach = operators.group_reach()
-    member: Any = aliased(DeviceGroupMember, name="operator_member")
-    group: Any = aliased(DeviceGroup, name="operator_group")
-    from_group = (
-        select(reach.c.operator_hid)
+    reach = descent.group_reach(field, live)
+    member: Any = aliased(DeviceGroupMember, name=f"{field}_member")
+    group: Any = aliased(DeviceGroup, name=f"{field}_group")
+    return (
+        select(reach.c.value)
         .select_from(member)
         .join(group, group.hid == member.group_hid)
         .join(reach, reach.c.group_hid == group.hid)
@@ -124,8 +131,8 @@ def _operator_in_force() -> ColumnElement[Any]:
         )
         .order_by(
             case(
-                *((group.type == kind, place) for place, kind in enumerate(operators.GROUP_ORDER)),
-                else_=len(operators.GROUP_ORDER),
+                *((group.type == kind, place) for place, kind in enumerate(descent.GROUP_ORDER)),
+                else_=len(descent.GROUP_ORDER),
             ),
             group.name_key,
             group.hid,
@@ -134,6 +141,24 @@ def _operator_in_force() -> ColumnElement[Any]:
         .correlate(*_LINE)
         .scalar_subquery()
     )
+
+
+# Where an item is: its own location, that of the nearest item above it that has one,
+# or that of a group the item at the top of the line is a member of.
+LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    *(one.location_hid for one in _LINE), _from_groups("location_hid")
+)
+# Where it is going, by the same descent.
+PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    *(one.planned_location_hid for one in _LINE), _from_groups("planned_location_hid")
+)
+
+
+def _operator_in_force() -> ColumnElement[Any]:
+    """Return the operator in force for an item, as `hirdir.domain.operators` works it
+    out: its own, that of the nearest item above it, that of a group the item at the
+    top of the line is a current member of, or that of the place it is at. An operator
+    that is retired is passed over at every level."""
     places = operators.location_reach()
     from_place = (
         select(places.c.operator_hid)
@@ -142,7 +167,9 @@ def _operator_in_force() -> ColumnElement[Any]:
         .scalar_subquery()
     )
     return func.coalesce(
-        *(operators.live(one.operator_hid) for one in _LINE), from_group, from_place
+        *(operators.live(one.operator_hid) for one in _LINE),
+        _from_groups("operator_hid", operators.live),
+        from_place,
     )
 
 
@@ -361,12 +388,11 @@ ITEMS = Listing(
         "location.kind": Field("choice", ITEM_LOCATION.kind),
         # Where the item is going, when that place is not in use yet.
         "planned_location_hid": Field("reference", Item.planned_location_hid),
+        "effective.planned_location_hid": Field("reference", PLANNED_IN_FORCE),
         "planned_location": Field(
             "place",
-            Item.planned_location_hid,
-            within=_within(
-                Item.planned_location_hid, PLANNED_LOCATION.site_hid, PLANNED_SITE.region_hid
-            ),
+            PLANNED_IN_FORCE,
+            within=_within(PLANNED_IN_FORCE, PLANNED_LOCATION.site_hid, PLANNED_SITE.region_hid),
         ),
         "site": Field("text", ITEM_SITE.name),
         "site.code": Field("text", ITEM_SITE.code),
@@ -403,7 +429,7 @@ ITEMS = Listing(
         .outerjoin(Owner, Owner.hid == OWNER_IN_FORCE)
         .outerjoin(ITEM_OPERATOR, ITEM_OPERATOR.hid == OPERATOR_IN_FORCE)
         .outerjoin(ITEM_OPERATOR_CONTACT, ITEM_OPERATOR_CONTACT.hid == ITEM_OPERATOR.contact_hid)
-        .outerjoin(PLANNED_LOCATION, PLANNED_LOCATION.hid == Item.planned_location_hid)
+        .outerjoin(PLANNED_LOCATION, PLANNED_LOCATION.hid == PLANNED_IN_FORCE)
         .outerjoin(PLANNED_SITE, PLANNED_SITE.hid == PLANNED_LOCATION.site_hid)
         .outerjoin(ITEM_LOCATION, ITEM_LOCATION.hid == LOCATION_IN_FORCE)
         .outerjoin(ITEM_SITE, ITEM_SITE.hid == ITEM_LOCATION.site_hid)
@@ -420,16 +446,38 @@ _GROUP_OPERATOR: Any = aliased(Operator, name="group_operator")
 _GROUP_PLANNED: Any = aliased(Location, name="group_planned_location")
 _GROUP_PLANNED_SITE: Any = aliased(Site, name="group_planned_site")
 
+
+def _group_in_force(field: str, live: Any = None) -> ColumnElement[Any]:
+    """Return what a group has in force in a field: its own, or that of the nearest
+    group it is nested in that has one."""
+    reach = descent.group_reach(field, live)
+    return (
+        select(reach.c.value)
+        .where(reach.c.group_hid == DeviceGroup.hid)
+        .correlate(DeviceGroup)
+        .scalar_subquery()
+    )
+
+
+GROUP_LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    DeviceGroup.location_hid, _group_in_force("location_hid")
+)
+GROUP_PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(
+    DeviceGroup.planned_location_hid, _group_in_force("planned_location_hid")
+)
+
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
     fields={
         **_bookkeeping(DeviceGroup),
         **_columns(DeviceGroup, "reference", "parent_group_hid", "owner_hid", "location_hid"),
+        "effective.location_hid": Field("reference", GROUP_LOCATION_IN_FORCE),
+        "effective.planned_location_hid": Field("reference", GROUP_PLANNED_IN_FORCE),
         "location": Field(
             "place",
-            DeviceGroup.location_hid,
+            GROUP_LOCATION_IN_FORCE,
             within=_within(
-                DeviceGroup.location_hid, _GROUP_LOCATION.site_hid, _GROUP_SITE.region_hid
+                GROUP_LOCATION_IN_FORCE, _GROUP_LOCATION.site_hid, _GROUP_SITE.region_hid
             ),
         ),
         "location.name": Field("text", _GROUP_LOCATION.name),
@@ -437,13 +485,16 @@ DEVICE_GROUPS = Listing(
         "region": Field("text", _GROUP_REGION.name),
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "operator_hid": Field("reference", DeviceGroup.operator_hid),
+        "effective.operator_hid": Field(
+            "reference", _group_in_force("operator_hid", operators.live)
+        ),
         "operator.label": Field("text", _GROUP_OPERATOR.label),
         "planned_location_hid": Field("reference", DeviceGroup.planned_location_hid),
         "planned_location": Field(
             "place",
-            DeviceGroup.planned_location_hid,
+            GROUP_PLANNED_IN_FORCE,
             within=_within(
-                DeviceGroup.planned_location_hid,
+                GROUP_PLANNED_IN_FORCE,
                 _GROUP_PLANNED.site_hid,
                 _GROUP_PLANNED_SITE.region_hid,
             ),
@@ -479,11 +530,11 @@ DEVICE_GROUPS = Listing(
     joined=lambda query: (
         query.outerjoin(Owner, Owner.hid == DeviceGroup.owner_hid)
         .outerjoin(_PARENT_GROUP, _PARENT_GROUP.hid == DeviceGroup.parent_group_hid)
-        .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == DeviceGroup.location_hid)
+        .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == GROUP_LOCATION_IN_FORCE)
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
         .outerjoin(_GROUP_REGION, _GROUP_REGION.hid == _GROUP_SITE.region_hid)
         .outerjoin(_GROUP_OPERATOR, _GROUP_OPERATOR.hid == DeviceGroup.operator_hid)
-        .outerjoin(_GROUP_PLANNED, _GROUP_PLANNED.hid == DeviceGroup.planned_location_hid)
+        .outerjoin(_GROUP_PLANNED, _GROUP_PLANNED.hid == GROUP_PLANNED_IN_FORCE)
         .outerjoin(_GROUP_PLANNED_SITE, _GROUP_PLANNED_SITE.hid == _GROUP_PLANNED.site_hid)
     ),
     default_sort=("name",),
@@ -671,6 +722,8 @@ LOCATIONS = Listing(
         "region.name": Field("text", _LOCATION_REGION.name),
         "parent.name": Field("text", _PARENT_LOCATION.name),
         "is_top": Field("boolean", Location.parent_location_hid.is_(None)),
+        # In use: active, as is everything it is in. What is not is planned for.
+        "in_use": Field("boolean", Location.hid.not_in(geography.locations_not_in_use())),
         "operator_hid": Field("reference", Location.operator_hid),
         **_columns(Location, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
         "kind": Field("choice", Location.kind),
@@ -764,3 +817,41 @@ def default_view(
             # The state in force: a module of an archived chassis is archived with it.
             left_out.append(or_(STATE_IN_FORCE.is_(None), STATE_IN_FORCE != lifecycle.ARCHIVED))
     return left_out
+
+
+LISTINGS: tuple[Listing, ...] = (
+    ITEMS,
+    DEVICE_GROUPS,
+    DEVICE_GROUP_MEMBERS,
+    NETWORKS,
+    ADDRESSES,
+    CATALOG_ENTRIES,
+    VENDORS,
+    OWNERS,
+    OWNER_MEMBERS,
+    REGIONS,
+    SITES,
+    LOCATIONS,
+    CONTACTS,
+    OPERATORS,
+    CONTACT_ASSIGNMENTS,
+    TAGS,
+)
+
+
+def warm() -> int:
+    """Build the statement of every list once, with every field, before a request is
+    answered. Return how many statements were built.
+
+    The tables and their aliases work out their columns the first time they are used,
+    and that first time is not safe to share between two requests answered at once: a
+    server just started could answer its first lists with an error until it was
+    started again. Built here, by the one thread that starts the application, they are
+    ready before any request arrives.
+    """
+    built = 0
+    for listing in LISTINGS:
+        columns = [one.expression for one in listing.fields.values() if one.expression is not None]
+        str(listing.joined(select(listing.model.hid, *columns)).compile())
+        built += 1
+    return built

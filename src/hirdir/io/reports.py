@@ -608,7 +608,7 @@ def by_planned_location(
 ) -> dict[str, int]:
     """Return how many items of a view are planned for each location, and not there yet."""
     terms = _terms(db, filter_, include_archived, include_drafts)
-    where = Item.planned_location_hid
+    where = fields.PLANNED_IN_FORCE
     found = _run(
         db,
         terms.source(select(where, terms.items)).where(where.is_not(None)).group_by(where),

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
 from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site
-from hirdir.domain import geography, groups, records, tags
+from hirdir.domain import descent, geography, records, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
@@ -25,10 +25,8 @@ from hirdir.domain.inheritance import NOTHING, Effective
 RECORD_TYPE = "operator"
 FIELDS = ("label", "description", "colour", "contact_hid", "record_status")
 MAX_LABEL = 40
-# Which of an item's groups says who its operator is, the first that has one: the
-# stack before the cluster before the controller domain before any other group.
-GROUP_ORDER = ("stack", "cluster", "controller_domain", "custom")
-SOURCE_GROUP = "device_group"
+GROUP_ORDER = descent.GROUP_ORDER
+SOURCE_GROUP = descent.SOURCE_GROUP
 # What may be given an operator, for counting what a label is on.
 HOLDERS: tuple[Any, ...] = (Item, DeviceGroup, Region, Site, Location)
 
@@ -171,56 +169,16 @@ def of_groups(
 ) -> dict[str, Effective]:
     """Return the operator in force of each group: its own, or that of the nearest
     group it is nested in that has one."""
-    gone = released(db) if gone is None else gone
-    held: dict[str, DeviceGroup] = {group.hid: group for group in found}
-    wanted = {group.parent_group_hid for group in found}
-    for _ in range(groups.MAX_NESTING + 1):
-        missing = {hid for hid in wanted if hid and hid not in held}
-        if not missing:
-            break
-        level = list(db.scalars(select(DeviceGroup).where(DeviceGroup.hid.in_(missing))))
-        held.update((group.hid, group) for group in level)
-        wanted = {group.parent_group_hid for group in level}
-    in_force: dict[str, Effective] = {}
-    for group in found:
-        at: DeviceGroup | None = group
-        seen: set[str] = set()
-        result = NOTHING
-        while at is not None and at.hid not in seen:
-            seen.add(at.hid)
-            if at.operator_hid is not None and at.operator_hid not in gone:
-                source = "own" if at is group else SOURCE_GROUP
-                result = Effective(at.operator_hid, source, at.hid)
-                break
-            at = held.get(at.parent_group_hid or "")
-        in_force[group.hid] = result
-    return in_force
+    return descent.of_groups(db, found, "operator_hid", released(db) if gone is None else gone)
 
 
 def from_groups(
     db: Session, item_hids: Sequence[str], gone: set[str] | None = None
 ) -> dict[str, Effective]:
-    """Return the operator each item has from the groups it is a current member of:
-    that of the first group, in the order of `GROUP_ORDER` and then by name, that has
-    one in force."""
-    gone = released(db) if gone is None else gone
-    memberships = groups.memberships_of(db, item_hids)
-    its_groups = {group.hid: group for listed in memberships.values() for _, group in listed}
-    by_group = of_groups(db, list(its_groups.values()), gone)
-    found: dict[str, Effective] = {}
-    for hid in item_hids:
-        ordered = sorted(
-            (group for _, group in memberships[hid]),
-            key=lambda group: (GROUP_ORDER.index(group.type), group.name_key, group.hid),
-        )
-        chosen = next(
-            (by_group[group.hid] for group in ordered if by_group[group.hid].value is not None),
-            None,
-        )
-        found[hid] = (
-            NOTHING if chosen is None else Effective(chosen.value, SOURCE_GROUP, chosen.source_hid)
-        )
-    return found
+    """Return the operator each item has from the groups it is a current member of."""
+    return descent.from_groups(
+        db, item_hids, "operator_hid", released(db) if gone is None else gone
+    )
 
 
 def from_places(
@@ -255,30 +213,16 @@ def of_items(
     the top of the line is a current member of, then that of the place the item is at.
     """
     gone = released(db)
-    in_force: dict[str, Effective] = {}
-    tops: dict[str, str] = {}
-    where: dict[str, str | None] = {}
-    for item in found:
-        line = [item, *lines[item.hid]]
-        holder = next(
-            (one for one in line if one.operator_hid is not None and one.operator_hid not in gone),
-            None,
-        )
-        if holder is not None:
-            source = "own" if holder is item else "parent_item"
-            in_force[item.hid] = Effective(holder.operator_hid, source, holder.hid)
-        else:
-            tops[item.hid] = line[-1].hid
-            where[item.hid] = next((one.location_hid for one in line if one.location_hid), None)
-    if not tops:
+    in_force = descent.of_items(db, found, lines, "operator_hid", gone)
+    nobody = [item for item in found if in_force[item.hid].value is None]
+    if not nobody:
         return in_force
-    by_group = from_groups(db, sorted(set(tops.values())), gone)
-    by_place = from_places(db, sorted({hid for hid in where.values() if hid}), gone)
-    for hid, top in tops.items():
-        in_force[hid] = by_group[top]
-        place = where[hid]
-        if in_force[hid].value is None and place:
-            in_force[hid] = by_place[place]
+    where = descent.of_items(db, nobody, lines, "location_hid")
+    by_place = from_places(db, sorted({one.value for one in where.values() if one.value}), gone)
+    for item in nobody:
+        place = where[item.hid].value
+        if place:
+            in_force[item.hid] = by_place[place]
     return in_force
 
 
@@ -292,22 +236,8 @@ def live(column: Any) -> ColumnElement[Any]:
 
 
 def group_reach() -> Any:
-    """Return, as a table, each group that has an operator in force with that operator:
-    its own, or that of the nearest group it is nested in."""
-    inner: Any = aliased(DeviceGroup)
-    start = (
-        select(
-            DeviceGroup.hid.label("group_hid"),
-            live(DeviceGroup.operator_hid).label("operator_hid"),
-        )
-        .where(live(DeviceGroup.operator_hid).is_not(None))
-        .cte(recursive=True)
-    )
-    return start.union_all(
-        select(inner.hid, start.c.operator_hid).where(
-            inner.parent_group_hid == start.c.group_hid, live(inner.operator_hid).is_(None)
-        )
-    )
+    """Return, as a table, each group that has an operator in force with that operator."""
+    return descent.group_reach("operator_hid", live)
 
 
 def location_reach() -> Any:

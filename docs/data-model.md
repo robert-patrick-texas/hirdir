@@ -55,6 +55,10 @@ to inheriting.
 In `effective` a decimal and a date are text, a reference is the HID of the record, and
 `expected_online` is `true` or `false`. `source_hid` is the record the value came from:
 for `parent_item`, the item above that holds it, which need not be the direct parent.
+For `device_group` it is the group that holds it, which may be one that the item's
+group is nested in. A location in force, `effective.location_hid` and
+`effective.planned_location_hid`, also has `source_label`, the name of that item or
+group, so that a page says "from site2-sw-stack1" without another request.
 
 ## Records
 
@@ -147,6 +151,20 @@ the one that failed is moved to Pending-Removal by itself. It is returned to inh
 by a transition to no state. Nothing is copied down: moving the switch changes what
 its minor items show, and writes to none of them.
 
+**From its group.** What is set once on the record above is had by the records
+beneath it that say nothing of their own, down every hierarchy, with an override at
+every level. So an item with no location of its own, and none from an item above it,
+is where a device group is that it is a current member of, and one with no planned
+location is planned for where its group is planned for, as it has its group's
+operator. An operator puts devices into a group and moves the group, and does not go
+back to each device. Where an item is in several groups, the first that has a value
+decides: a stack before a cluster before a controller domain before any other group,
+and then by name. A group that has none has that of the nearest group it is nested
+in. A member with a location of its own keeps it, as an override: the access points
+of a controller domain are each where they hang. Every answer says where the value
+came from, `own`, `parent_item` or `device_group`, and from which record. The owner
+is not had from a group in this release: see P-93 in [Decisions](decisions.md).
+
 Taking a minor item out of its parent, by clearing `parent_item_hid` or naming another
 parent, keeps its record and its history. With no parent it is a major item, with
 whatever is its own: what it inherited stays with the parent it left.
@@ -170,12 +188,18 @@ plan. One that is in use is refused, since the item can be moved there now, and 
 one that is retired. A plan is given up by clearing it, and is cleared when the item
 is given the planned location as its location. Giving the item another location in
 the meantime, another shelf in staging, leaves the plan standing. A retired item is
-not moved. A location is not retired while items are planned for it. A minor item
-with no plan of its own goes where the item above it goes, as it is where that item
-is. A device group has a planned location in the same way, for itself: it is moved
-in by the same change, with its own entry in the audit trail. Its members are items
-with locations and plans of their own, and are planned for with it by one bulk edit
-of the members.
+not moved. A location is not retired while items or groups are planned for it.
+
+A device group has a planned location in the same way, and is moved in by the same
+change, with its own entry in the audit trail. What says nothing of its own goes with
+what it is in: a minor item with its item, a member with its group, a group with the
+group it is nested in. Such a record with no location of its own needs no change when
+the place opens: it is where the record above it is. One that has a location of its
+own, the store room it was put in, and its plan from above gives that location up in
+the same change, with an entry of its own in its history, and is thereafter where the
+record above it is. One with a plan of its own goes where that says. So a stack and
+its switches are planned for a new site by one change of the stack, and are all there
+when the site is made active.
 
 **The operator.** The owner of an item is the part of the organization that answers
 for it. Its operator is one person: the member of the team who looks after it, and
@@ -241,7 +265,7 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
-| `planned_location_hid` | reference | optional. Where the group is going, in a place not in use yet, as on an item |
+| `planned_location_hid` | reference | optional. Where the group is going, in a place not in use yet, as on an item. Its members that have no plan of their own are going there too |
 | `operator_hid` | reference | optional. An operator, for the group and for each member that has none of its own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |

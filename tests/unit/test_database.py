@@ -426,3 +426,11 @@ def test_a_small_preview_takes_its_turn_before_it_looks(config: Config) -> None:
         # And the work that was tried may write, having read.
         trying.execute(text("UPDATE settings SET row_version = row_version"))
     engine.dispose()
+
+
+def test_every_list_is_built_before_the_first_request() -> None:
+    """The statements of the lists are built by the thread that starts the application,
+    so that the first requests, answered side by side, find them ready."""
+    from hirdir.io import fields
+
+    assert fields.warm() == len(fields.LISTINGS) == 16
