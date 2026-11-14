@@ -216,9 +216,12 @@ Rules, checked on every write:
   `intended`. It is not stored, so it is right the moment either changes. A stack
   answers to the serial number of any of its current members: on the list of groups,
   `member.serial_number` finds it.
-- In a `controller_domain`, a controller is an item, or a nested group of type `cluster`:
-  one whose `parent_group_hid` is the domain. The controllers of an endpoint are the
-  members with the role `controller` and the current members of every such cluster.
+- In a `controller_domain`, a controller is an item, or a group of type `cluster`
+  nested in the domain, at any depth. The controllers of an endpoint are the members
+  with the role `controller` and the current members of every such cluster, each
+  listed with the cluster it is in. A domain may hold several clusters, an east pair
+  and a west pair of wireless LAN controllers: the access points are endpoints of the
+  domain, so one that fails over from one pair to the other needs no change.
 - A membership is ended by giving it `left_on`, and is never removed. An item that
   comes back joins again, with a new membership. Retiring a group ends its current
   memberships on that day. Retiring an item ends its memberships too. A move in the
@@ -246,6 +249,11 @@ management address, and its members usually carry neither.
 
 The same `address` twice under one network is allowed and is listed in the duplicates
 report. The same address under two networks is two different addresses.
+
+An address that two devices share, the virtual address of a pair of routers or
+firewalls, is an address of the group they are in, with the role `virtual`, held once.
+Each member keeps its own management address. The shared address is then no duplicate,
+and the report is left with the repeats nobody meant.
 
 Only an address with the role `management` may be primary. A device may be managed
 over IPv4, over IPv6, over both or over neither, so there is one primary of each
