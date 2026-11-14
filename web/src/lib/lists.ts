@@ -3,6 +3,7 @@
 import { api } from "../api";
 import { groupTypeLabel } from "./groups";
 import { type Loaded, useLoad } from "./hooks";
+import { ownerOptions } from "./owners";
 import type { Option } from "./patch";
 
 // The most rows the server lists at once.
@@ -37,11 +38,39 @@ export function useVendorOptions(): Loaded<Option[]> {
   });
 }
 
-/** The owners a form may choose from, by label. */
+/**
+ * The owners a form may choose from, by label. Those outside the operations team stand
+ * under a heading of their own, so that it shows which choice is an exception.
+ */
 export function useOwnerOptions(): Loaded<Option[]> {
   return useLoad("owner-options", async (signal) => {
     const page = await api.request("get", "/api/v1/owners", { query: { limit: EVERY }, signal });
-    return page.items.map((owner) => ({ value: owner.hid, label: owner.label }));
+    return ownerOptions(page.items);
+  });
+}
+
+/** The contacts a place or an owner may be given, by name, with the address of each. */
+export function useContactOptions(turn = 0): Loaded<Option[]> {
+  return useLoad(`contact-options ${turn}`, async (signal) => {
+    const page = await api.request("get", "/api/v1/contacts", {
+      query: { limit: EVERY, include_drafts: true },
+      signal,
+    });
+    return page.items.map((contact) => ({
+      value: contact.hid,
+      label: contact.email ? `${contact.name} (${contact.email})` : contact.name,
+    }));
+  });
+}
+
+/** The regions a site or a region may be in, by path, drafts among them. */
+export function useRegions(turn = 0) {
+  return useLoad(`regions ${turn}`, async (signal) => {
+    const page = await api.request("get", "/api/v1/regions", {
+      query: { limit: EVERY, include_drafts: true },
+      signal,
+    });
+    return [...page.items].sort((one, other) => one.path.localeCompare(other.path));
   });
 }
 

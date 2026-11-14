@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { api, type Schemas } from "../api";
 import { useEntryOptions, useOwnerOptions, useTags } from "../lib/lists";
+import { EXCEPTION_HINT, externalOwners } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
 import { Problem } from "./Problem";
 import { CreateForm } from "./RecordForm";
@@ -25,8 +26,9 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
   const owners = useOwnerOptions();
   const tags = useTags();
   const minor = within !== undefined;
-  const specs = useMemo<FieldSpec[]>(
-    () => [
+  const specs = useMemo<FieldSpec[]>(() => {
+    const outside = externalOwners(owners.data);
+    return [
       {
         name: "catalog_entry_hid",
         label: "Catalog entry",
@@ -71,6 +73,22 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
         options: owners.data ?? [],
       },
       {
+        // Asked for only while the owner chosen is outside the team.
+        name: "owner_exception_reason",
+        label: "Reason for the exception",
+        kind: "longtext",
+        maxLength: 10000,
+        required: true,
+        hint: EXCEPTION_HINT,
+        when: (values) => outside.has(String(values.owner_hid ?? "")),
+      },
+      {
+        name: "location_hid",
+        label: "Location",
+        kind: "location",
+        blank: minor ? "Where the item it is in is" : "No location",
+      },
+      {
         name: "lifecycle_state",
         label: "Lifecycle state",
         kind: "choice",
@@ -84,9 +102,8 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
         kind: "set",
         options: (tags.data ?? []).map((tag) => ({ value: tag.label, label: tag.label })),
       },
-    ],
-    [entries.data, owners.data, tags.data, states, minor],
-  );
+    ];
+  }, [entries.data, owners.data, tags.data, states, minor]);
 
   return (
     <CreateForm<Schemas["ItemCreate"], Item>
@@ -105,9 +122,9 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
       {within ? (
         <p className="hint">
           A minor item of {within.name}: a power supply, a module, a transceiver. Left blank, its
-          owner and its lifecycle state are those of the item it is in, and follow it. It needs
-          something to know it by: a serial number with a catalog entry, an asset tag, a name or a
-          hostname.
+          owner, its location and its lifecycle state are those of the item it is in, and follow it.
+          It needs something to know it by: a serial number with a catalog entry, an asset tag, a
+          name or a hostname.
         </p>
       ) : (
         <p className="hint">

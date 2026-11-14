@@ -13,7 +13,9 @@ const pages = {
   audit: () => import("./pages/Audit"),
   catalog: () => import("./pages/Catalog"),
   choices: () => import("./pages/Choices"),
+  contacts: () => import("./pages/Contacts"),
   deviceGroups: () => import("./pages/DeviceGroups"),
+  geography: () => import("./pages/Geography"),
   groups: () => import("./pages/Groups"),
   import: () => import("./pages/Import"),
   itemDetail: () => import("./pages/ItemDetail"),
@@ -37,12 +39,17 @@ const CatalogEntryDetail = lazy(() =>
   pages.catalog().then((page) => ({ default: page.CatalogEntryDetail })),
 );
 const Choices = lazy(() => pages.choices().then((page) => ({ default: page.Choices })));
+const ContactDetail = lazy(() =>
+  pages.contacts().then((page) => ({ default: page.ContactDetail })),
+);
+const Contacts = lazy(() => pages.contacts().then((page) => ({ default: page.Contacts })));
 const DeviceGroupDetail = lazy(() =>
   pages.deviceGroups().then((page) => ({ default: page.DeviceGroupDetail })),
 );
 const DeviceGroups = lazy(() =>
   pages.deviceGroups().then((page) => ({ default: page.DeviceGroups })),
 );
+const Geography = lazy(() => pages.geography().then((page) => ({ default: page.Geography })));
 const Duplicates = lazy(() => pages.reports().then((page) => ({ default: page.Duplicates })));
 const GroupDetail = lazy(() => pages.groups().then((page) => ({ default: page.GroupDetail })));
 const Groups = lazy(() => pages.groups().then((page) => ({ default: page.Groups })));
@@ -142,6 +149,30 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <AllAddresses />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="geography/:level?/:hid?"
+              element={
+                <RequireRole needs="viewer">
+                  <Geography />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="contacts"
+              element={
+                <RequireRole needs="viewer">
+                  <Contacts />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="contacts/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <ContactDetail />
                 </RequireRole>
               }
             />

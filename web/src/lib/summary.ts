@@ -29,6 +29,8 @@ export const SUMMARY_BY: ReadonlyArray<Option & { value: By }> = [
   { value: "type", label: "Type" },
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
+  { value: "site", label: "Site" },
+  { value: "region", label: "Region" },
   { value: "lifecycle_state", label: "Lifecycle state" },
   { value: "disposition", label: "Disposition" },
   { value: "condition", label: "Condition" },
@@ -37,10 +39,12 @@ export const SUMMARY_BY: ReadonlyArray<Option & { value: By }> = [
 ];
 
 /**
- * What the management report can be by. By site, which is what it shows unless asked
- * otherwise, arrives with sites in 0.5.0.
+ * What the management report can be by. By site comes first: it is what the report
+ * shows unless asked otherwise, and the report has no view of the totals alone.
  */
 export const MANAGEMENT_BY: ReadonlyArray<Option & { value: ManagementBy }> = [
+  { value: "site", label: "Site" },
+  { value: "region", label: "Region" },
   { value: "vendor", label: "Vendor" },
   { value: "kind", label: "Kind" },
   { value: "type", label: "Type" },
@@ -56,8 +60,9 @@ const NONE: Readonly<Record<By, string>> = {
   type: "No type",
   function: "No function",
   owner: "No owner",
-  site: "No site",
-  region: "No region",
+  // The items that are nowhere: no location in force, and so no site and no region.
+  site: "Nowhere: no location",
+  region: "Nowhere: no location",
   lifecycle_state: "No state",
   disposition: "No disposition",
   condition: "No condition",
@@ -77,10 +82,16 @@ export function byLabel(by: string | null | undefined): string {
   return SUMMARY_BY.find((known) => known.value === by)?.label ?? by ?? "";
 }
 
+/** True for what a report is by when its rows are places, each labelled with its path. */
+export function isByPlace(by: string | null | undefined): by is "site" | "region" {
+  return by === "site" || by === "region";
+}
+
 /**
  * What to call one row. A kind, a type, a function, a condition and a health come as the
  * value a record holds and are shown by the label of that value; the rest come with what
- * people call them. The row of the blank says what is missing.
+ * people call them, a site and a region with their path. The row of the blank says what
+ * is missing.
  */
 export function rowLabel(
   by: By,

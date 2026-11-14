@@ -50,6 +50,7 @@ import {
   type Option,
 } from "../lib/patch";
 import { pickLabel } from "../lib/pick";
+import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 
@@ -208,6 +209,27 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     value: (group) => group.parent?.name,
     width: 170,
   },
+  {
+    // The location of a group that is in one place, by its name: what the list filters
+    // and sorts by. The whole path is the hint of the cell, and what an export writes.
+    id: "location.name",
+    header: "Location",
+    kind: "text",
+    column: "location",
+    value: (group) => group.location?.name,
+    hint: (group) => group.location?.path,
+    hide: true,
+    width: 200,
+  },
+  {
+    id: "site",
+    header: "Site",
+    kind: "text",
+    column: null,
+    value: (group) => group.location?.site,
+    hide: true,
+    width: 150,
+  },
   { id: "tags", header: "Tags", kind: "tags", value: (group) => group.tags.join(", "), width: 160 },
   {
     // The primary one of each family. An export writes a column for each.
@@ -321,7 +343,7 @@ function groupSpecs(
   current: DeviceGroup | null,
   type: string,
 ): FieldSpec[] {
-  const { owner, parent } = current ?? {};
+  const { owner, parent, location } = current ?? {};
   const managed: FieldSpec[] =
     type === "cluster"
       ? [
@@ -382,6 +404,14 @@ function groupSpecs(
       kind: "choice",
       blank: "No owner",
       options: withCurrent(lists.owners, owner ? { value: owner.hid, label: owner.label } : null),
+    },
+    {
+      name: "location_hid",
+      label: "Location",
+      kind: "location",
+      blank: "No location",
+      options: location ? [{ value: location.hid, label: location.path }] : [],
+      hint: "For a group that is in one place.",
     },
     {
       name: "record_status",
@@ -631,7 +661,7 @@ export function DeviceGroupDetail() {
 }
 
 function GroupFacts({ group }: { group: DeviceGroup }) {
-  const { owner, parent, master, observed_master: seen } = group;
+  const { owner, parent, location, master, observed_master: seen } = group;
   const disputed = ownerDisputed(group);
   const members = itemsPath(`group.hid:eq:${group.hid}`);
   const source = serialSourceText(group.serial_source);
@@ -732,6 +762,20 @@ function GroupFacts({ group }: { group: DeviceGroup }) {
             <Dash />
           )}
           {disputed && <span className="badge">Members disagree</span>}
+        </dd>
+        <dt>Location</dt>
+        <dd data-testid="group-location">
+          {location ? (
+            <>
+              <Link to={placePath("location", location.hid)}>{location.path}</Link>
+              <span className="muted">
+                {" "}
+                · site <Link to={placePath("site", location.site_hid)}>{location.site}</Link>
+              </span>
+            </>
+          ) : (
+            <Dash />
+          )}
         </dd>
         <dt>In group</dt>
         <dd>{parent ? <Link to={groupPath(parent.hid)}>{parent.name}</Link> : <Dash />}</dd>

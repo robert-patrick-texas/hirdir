@@ -7,6 +7,7 @@ import {
   bulkRows,
   CATALOG_ENTRY,
   NOT_IN_BULK,
+  OWNER,
 } from "./bulk";
 import type { GridView } from "./transfer";
 
@@ -249,6 +250,85 @@ describe("buildBulk", () => {
       ROWS,
     );
     expect(noReason.body.set).toEqual({ lifecycle_state: "Prod" });
+  });
+
+  it("sets a location by the HID of the one that was chosen, and clears it with null", () => {
+    const fields: BulkField[] = [
+      ...FIELDS,
+      { name: "location", label: "Location", kind: "location", clearable: true },
+    ];
+    const set = buildBulk(
+      fields,
+      draft({ lines: [{ name: "location", clear: false, value: "l-102" }] }),
+      ROWS,
+    );
+    expect(set.body.set).toEqual({ location: "l-102" });
+    const cleared = buildBulk(
+      fields,
+      draft({ lines: [{ name: "location", clear: true, value: "l-102" }] }),
+      ROWS,
+    );
+    expect(cleared.body.set).toEqual({ location: null });
+    const blank = buildBulk(
+      fields,
+      draft({ lines: [{ name: "location", clear: false, value: "" }] }),
+      ROWS,
+    );
+    expect(blank.errors.location).toBe("Give a value, or choose to clear the field.");
+  });
+
+  it("sends the reason for an exception beside an owner outside the team", () => {
+    const outside = new Set(["o-facilities"]);
+    const built = buildBulk(
+      FIELDS,
+      draft({
+        lines: [{ name: OWNER, clear: false, value: "o-facilities" }],
+        ownerReason: " In the plant room ",
+      }),
+      ROWS,
+      {},
+      outside,
+    );
+    expect(built.body.set).toEqual({
+      owner: "o-facilities",
+      owner_exception_reason: "In the plant room",
+    });
+  });
+
+  it("sends no reason with an owner of the team, with none given, or with the owner cleared", () => {
+    const outside = new Set(["o-facilities"]);
+    const inside = buildBulk(
+      FIELDS,
+      draft({
+        lines: [{ name: OWNER, clear: false, value: "o-engineering" }],
+        ownerReason: "In the plant room",
+      }),
+      ROWS,
+      {},
+      outside,
+    );
+    expect(inside.body.set).toEqual({ owner: "o-engineering" });
+    // Left blank, an item that has a reason keeps it: the server judges the rest.
+    const blank = buildBulk(
+      FIELDS,
+      draft({ lines: [{ name: OWNER, clear: false, value: "o-facilities" }], ownerReason: " " }),
+      ROWS,
+      {},
+      outside,
+    );
+    expect(blank.body.set).toEqual({ owner: "o-facilities" });
+    expect(blank.errors).toEqual({});
+    const cleared = buildBulk(
+      FIELDS,
+      draft({
+        lines: [{ name: OWNER, clear: true, value: "o-facilities" }],
+        ownerReason: "In the plant room",
+      }),
+      ROWS,
+      {},
+      outside,
+    );
+    expect(cleared.body.set).toEqual({ owner: null });
   });
 
   it("never sets a field that tells one item from another", () => {

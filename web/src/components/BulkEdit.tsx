@@ -16,6 +16,7 @@ import {
   CATALOG_ENTRY,
   type EntryRef,
   LIFECYCLE_STATE,
+  OWNER,
 } from "../lib/bulk";
 import { plural } from "../lib/format";
 import { CONDITION_LIST, OBSERVED_CHOICES } from "../lib/health";
@@ -23,11 +24,12 @@ import { toApiError, useLoad } from "../lib/hooks";
 import { Keys, withKey } from "../lib/idempotency";
 import { EVERY, useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
+import { EXCEPTION_HINT, externalOwners } from "../lib/owners";
 import type { FormValue, Option } from "../lib/patch";
 import type { Preview, StaleRow } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
-import { CheckField, CheckGroupField, SelectField } from "./Field";
+import { CheckField, CheckGroupField, SelectField, TextAreaField } from "./Field";
 import { FormFields } from "./FormFields";
 import { ApplyPreview, JobCounts, PreviewRows } from "./Preview";
 import { Problem } from "./Problem";
@@ -76,12 +78,20 @@ function bulkFields(
       options: entries,
     },
     {
-      name: "owner",
+      name: OWNER,
       label: "Owner",
       kind: "choice",
       blank: "Choose an owner",
       options: owners,
       clearable: true,
+    },
+    {
+      name: "location",
+      label: "Location",
+      kind: "location",
+      blank: "None chosen",
+      clearable: true,
+      hint: "Cleared, a minor item is where the item it is in is, and a major item is nowhere.",
     },
     {
       name: LIFECYCLE_STATE,
@@ -213,6 +223,7 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const [lines, setLines] = useState<BulkLine[]>([]);
   const [adding, setAdding] = useState("");
   const [reason, setReason] = useState("");
+  const [ownerReason, setOwnerReason] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
   const [removeTags, setRemoveTags] = useState<string[]>([]);
   const [found, setFound] = useState<Record<string, string>>({});
@@ -225,13 +236,22 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const count = chosenCount(rows);
   // Every item the list shows: the reader set no filter, whatever a switch of the grid adds.
   const whole = rows.kind === "all" && (view.filter === null || view.unfiltered === true);
+  const outside = useMemo(() => externalOwners(owners.data), [owners.data]);
   const built = buildBulk(
     fields,
-    { lines, reason, addTags, removeTags },
+    { lines, reason, ownerReason, addTags, removeTags },
     bulkRows(rows, view),
     entries.data?.refs ?? {},
+    outside,
   );
-  const names = [...lines.map((line) => line.name), "vendor", "pid", "add_tags", "remove_tags"];
+  const names = [
+    ...lines.map((line) => line.name),
+    "vendor",
+    "pid",
+    "owner_exception_reason",
+    "add_tags",
+    "remove_tags",
+  ];
   const refused = fieldErrors(error, names).shown;
   const said: Record<string, string> = { ...refused, ...found };
   const entryError = [said[CATALOG_ENTRY], refused.vendor, refused.pid].filter(Boolean).join("; ");
@@ -360,6 +380,18 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
                         </option>
                       ))}
                     </SelectField>
+                  )}
+                  {line.name === OWNER && !line.clear && outside.has(String(line.value)) && (
+                    <TextAreaField
+                      label="Reason for the exception"
+                      name="owner_exception_reason"
+                      value={ownerReason}
+                      onChange={setOwnerReason}
+                      maxLength={10000}
+                      disabled={busy}
+                      error={said.owner_exception_reason}
+                      hint={`${EXCEPTION_HINT} Left blank, an item that has a reason keeps it, and one that has none is rejected.`}
+                    />
                   )}
                 </div>
                 <p className="actions">

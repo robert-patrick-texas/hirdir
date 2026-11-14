@@ -5,6 +5,7 @@ import {
   conditionLabel,
   countText,
   isBy,
+  isByPlace,
   isManagementBy,
   kindLabel,
   kindsShown,
@@ -48,13 +49,15 @@ const KINDS = [
 ];
 
 describe("what a summary is by", () => {
-  it("offers the ten groupings the server has", () => {
+  it("offers the twelve groupings the server has, the site and the region among them", () => {
     expect(SUMMARY_BY.map((by) => by.value)).toEqual([
       "vendor",
       "kind",
       "type",
       "function",
       "owner",
+      "site",
+      "region",
       "lifecycle_state",
       "disposition",
       "condition",
@@ -63,13 +66,19 @@ describe("what a summary is by", () => {
     ]);
     expect(isBy("owner")).toBe(true);
     expect(isBy("health")).toBe(true);
-    expect(isBy("site")).toBe(false);
+    expect(isBy("site")).toBe(true);
+    expect(isBy("region")).toBe(true);
+    expect(isBy("contract")).toBe(false);
+    expect(byLabel("site")).toBe("Site");
     expect(byLabel("lifecycle_state")).toBe("Lifecycle state");
     expect(byLabel(null)).toBe("");
   });
 
-  it("offers the management report its six, with neither condition nor health", () => {
+  it("offers the management report its eight, the site first, with neither condition nor health", () => {
+    // By site is what the report shows unless asked otherwise, so it is offered first.
     expect(MANAGEMENT_BY.map((by) => by.value)).toEqual([
+      "site",
+      "region",
       "vendor",
       "kind",
       "type",
@@ -81,12 +90,29 @@ describe("what a summary is by", () => {
     expect(isManagementBy("health")).toBe(false);
     expect(isManagementBy("condition")).toBe(false);
     expect(isManagementBy("lifecycle_state")).toBe(false);
-    // By site arrives with sites.
-    expect(isManagementBy("site")).toBe(false);
+    expect(isManagementBy("site")).toBe(true);
+    expect(isManagementBy("region")).toBe(true);
+  });
+
+  it("knows the two whose rows are places", () => {
+    expect(isByPlace("site")).toBe(true);
+    expect(isByPlace("region")).toBe(true);
+    expect(isByPlace("owner")).toBe(false);
+    expect(isByPlace(null)).toBe(false);
   });
 });
 
 describe("rowLabel", () => {
+  it("labels a site and a region by its path, and the blank row as the items that are nowhere", () => {
+    const site = { key: OWNER, label: "Americas > Central > Site-2" };
+    expect(rowLabel("site", site)).toBe("Americas > Central > Site-2");
+    expect(rowLabel("region", { key: OWNER, label: "Americas > Central" })).toBe(
+      "Americas > Central",
+    );
+    expect(rowLabel("site", { key: null, label: null })).toBe("Nowhere: no location");
+    expect(rowLabel("region", { key: null, label: null })).toBe("Nowhere: no location");
+  });
+
   it("shows a record by what people call it", () => {
     expect(rowLabel("owner", { key: OWNER, label: "Network Engineering" })).toBe(
       "Network Engineering",

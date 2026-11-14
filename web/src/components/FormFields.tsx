@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import type { FieldSpec, FormValue, FormValues, Option } from "../lib/patch";
+import { asked, type FieldSpec, type FormValue, type FormValues, type Option } from "../lib/patch";
 import { CheckField, CheckGroupField, SelectField, TextAreaField, TextField } from "./Field";
+import { LocationField } from "./LocationField";
 
 interface FormFieldsProps {
   specs: readonly FieldSpec[];
@@ -43,6 +44,8 @@ function grouped(options: readonly Option[]): ReactNode {
 export function FormFields(props: FormFieldsProps) {
   const groups: Array<{ heading: string; specs: FieldSpec[] }> = [];
   for (const spec of props.specs) {
+    // A field the form does not ask for, given what it holds now, is not shown.
+    if (!asked(spec, props.values)) continue;
     const last = groups.at(-1);
     if (!last || spec.heading !== undefined)
       groups.push({ heading: spec.heading ?? "", specs: [spec] });
@@ -119,6 +122,17 @@ function inputs({ specs, values, onChange, errors, hints, disabled }: FormFields
             options={spec.options ?? []}
             value={Array.isArray(value) ? value : []}
             onChange={(next) => onChange(name, next)}
+          />
+        );
+      case "location":
+        return (
+          <LocationField
+            key={name}
+            {...shared}
+            value={text}
+            onChange={(next) => onChange(name, next)}
+            known={spec.options ?? []}
+            {...(spec.blank === undefined ? {} : { blank: spec.blank })}
           />
         );
       case "longtext":

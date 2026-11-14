@@ -49,7 +49,9 @@ import {
   RECORD_STATUSES,
   SETTABLE_STATUSES,
 } from "../lib/options";
+import { EXCEPTION_HINT, externalOwners } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
+import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 
@@ -205,6 +207,9 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
   // The owner in force: a minor item with none of its own has the owner of the item it is in.
   const owner = item.effective.owner_hid;
   const ownerInherited = isInherited(owner);
+  // The location in force, likewise: a minor item is where the item it is in is.
+  const location = item.effective.location_hid;
+  const locationInherited = isInherited(location);
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -257,7 +262,46 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
                   )}
                 </span>
               )}
+              {item.owner_exception && (
+                <span className="badge" data-testid="owner-exception">
+                  Outside the operations team
+                </span>
+              )}
             </span>
+          )}
+        </Fact>
+        {item.owner_exception && (
+          <Fact label="Reason for the exception">
+            <span data-testid="owner-exception-reason">
+              {item.owner_exception_reason ||
+                (ownerInherited ? "Given on the item that has the owner" : "")}
+            </span>
+          </Fact>
+        )}
+        <Fact label="Location">
+          {typeof location.value === "string" && (
+            <span data-testid="location" data-source={location.source}>
+              <Link to={placePath("location", location.value)}>{effectiveLabel(location)}</Link>
+              <span className={locationInherited ? "inherited" : "muted"}>
+                {" "}
+                · {sourceLabel(location)}
+                {locationInherited && location.source_hid && (
+                  <>
+                    {": "}
+                    <Link to={`/items/${encodeURIComponent(location.source_hid)}`}>
+                      the item that has it
+                    </Link>
+                  </>
+                )}
+              </span>
+            </span>
+          )}
+        </Fact>
+        <Fact label="Site">
+          {location.site && location.site_hid && (
+            <Link to={placePath("site", location.site_hid)} data-testid="site">
+              {location.site}
+            </Link>
           )}
         </Fact>
         <Fact label="Management address">
@@ -755,6 +799,8 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const specs = useMemo<FieldSpec[]>(() => {
     const { catalog, owner } = item;
     const minor = !item.is_major;
+    // The owners outside the team: those the list marks, and the one the item has.
+    const outside = externalOwners(owners.data, [item.owner_exception ? item.owner_hid : null]);
     return [
       {
         name: "catalog_entry_hid",
@@ -792,6 +838,22 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         kind: "choice",
         blank: minor ? "The owner of the item it is in" : "No owner",
         options: withCurrent(owners.data, owner && { value: owner.hid, label: owner.label }),
+      },
+      {
+        // Asked for only while the owner chosen is outside the team.
+        name: "owner_exception_reason",
+        label: "Reason for the exception",
+        kind: "longtext",
+        maxLength: 10000,
+        hint: EXCEPTION_HINT,
+        when: (values) => outside.has(String(values.owner_hid ?? "")),
+      },
+      {
+        name: "location_hid",
+        label: "Location",
+        kind: "location",
+        blank: minor ? "Where the item it is in is" : "No location",
+        options: item.location ? [{ value: item.location.hid, label: item.location.path }] : [],
       },
       {
         name: "record_status",
@@ -842,6 +904,12 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       : inForce.value === null
         ? "Blank, and no item above it has an owner."
         : `Blank has ${effectiveLabel(inForce)}, the owner of the item it is in.`;
+    const where = item.effective.location_hid;
+    hints.location_hid = item.location_hid
+      ? "Set here. Clear it to be where the item it is in is again."
+      : where.value === null
+        ? "None, and no item above it has a location."
+        : `None of its own: it is in ${effectiveLabel(where)}, where the item it is in is.`;
   }
   for (const [field] of INHERITED) {
     hints[field] = inheritHint(
