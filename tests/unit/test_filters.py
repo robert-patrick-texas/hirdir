@@ -245,3 +245,25 @@ def test_addresses_are_put_in_order_as_addresses_and_a_list_by_its_least_text() 
 def test_the_published_schema_names_the_same_operators() -> None:
     schema = json.loads((ROOT / "contract" / "filter.schema.json").read_text(encoding="utf-8"))
     assert schema["$defs"]["condition"]["properties"]["op"]["enum"] == list(filters.OPERATORS)
+
+
+def test_filters_are_joined_without_growing_deeper() -> None:
+    where = filters.where
+    one, two = where("a", "eq", 1), where("b", "eq", 2)
+    assert filters.both(None, None) is None
+    assert filters.both(None, one) == one
+    assert filters.both(one, two) == {"and": [one, two]}
+    assert filters.both({"and": [one, two]}, where("c", "eq", 3), None) == {
+        "and": [one, two, where("c", "eq", 3)]
+    }
+    either = {"or": [one, two]}
+    assert filters.both(either, one) == {"and": [either, one]}
+    # What a filter is read as is what it is written back as.
+    short = filters.parse("lifecycle_state:in:Test,Prod name:prefix:site2-")
+    assert filters.to_tree(short) == {
+        "and": [
+            where("lifecycle_state", "in", ["Test", "Prod"]),
+            where("name", "prefix", "site2-"),
+        ]
+    }
+    assert filters.to_tree(None) is None
