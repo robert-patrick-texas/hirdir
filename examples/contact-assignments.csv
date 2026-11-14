@@ -1,0 +1,8 @@
+hid,region,site,location,role,contact,priority,stop_inheritance
+,Americas,,,escalation,robin.achterberg@example.net,1,false
+,Americas,,,operational,noc@example.net,1,false
+,,Americas > Central > Site-2,,shipping,sam.okafor@example.net,1,false
+,,Americas > East > Site-1,,shipping,,1,true
+,Americas,,,technical,dana.whitfield@example.net,1,false
+,,,Americas > Central > Site-2 > Building 1,technical,lee.marchetti@example.net,1,false
+,Americas,,,technical,robin.achterberg@example.net,2,false

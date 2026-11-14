@@ -2198,7 +2198,7 @@ through_nginx() {
 # The files of examples/ in the order they load in, which is the order of examples/README.md
 # and of "Load order" in docs/interfaces.md. A record names the ones it refers to: an
 # item its network, a group its items, and an address either of the two.
-load_order=(tags vendors catalog-entries owners networks items device-groups device-group-members addresses)
+load_order=(tags vendors catalog-entries regions sites locations contacts contact-assignments owners owner-members networks items device-groups device-group-members addresses)
 large_rows=150
 
 # large_file PATH VENDOR PID: write a CSV file of items of that model which is larger
@@ -2243,7 +2243,7 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
 # The tables that hirdir admin reset clears: the inventory, those of 0.4.0 among it, and
 # what was stored about it. A test in packaging/tests/ fails when a table that a reset
 # clears is not named here.
-inventory_tables="tags vendors owners catalog_entries items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links"
+inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links"
 
 # Which of those tables hold a row, and whether the table of accounts does. It is read
 # from the database file with the Python of the package, because the service is stopped

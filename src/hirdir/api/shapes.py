@@ -16,6 +16,8 @@ from hirdir.db.models import (
     Address,
     CatalogEntry,
     Choice,
+    Contact,
+    ContactAssignment,
     DeviceGroup,
     DeviceGroupMember,
     ImportJob,
@@ -23,14 +25,20 @@ from hirdir.db.models import (
     Item,
     ItemReplacement,
     LifecycleRule,
+    Location,
     Network,
     Owner,
+    OwnerMember,
+    Region,
+    Site,
     Tag,
     User,
     Vendor,
 )
 from hirdir.domain import (
     addresses,
+    contacts,
+    geography,
     groups,
     health,
     inheritance,
@@ -40,6 +48,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.domain import items as item_rules
+from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
 from hirdir.io import imports
@@ -129,9 +138,277 @@ def vendor_out(vendor: Vendor) -> shapes.VendorOut:
     return shapes.VendorOut.model_validate(vendor)
 
 
-def owner_out(owner: Owner) -> shapes.OwnerOut:
-    """Return an owner."""
-    return shapes.OwnerOut.model_validate(owner)
+def _contact_ref(contact: Contact) -> shapes.ContactRef:
+    return shapes.ContactRef.model_validate(contact)
+
+
+def _owner_member(member: OwnerMember, contact: Contact) -> shapes.OwnerMemberOut:
+    return shapes.OwnerMemberOut(
+        **{
+            name: getattr(member, name)
+            for name in shapes.OwnerMemberOut.model_fields
+            if name != "contact"
+        },
+        contact=_contact_ref(contact),
+    )
+
+
+def owner_member_out(db: Session, member: OwnerMember) -> shapes.OwnerMemberOut:
+    """Return one member of an owner, with its contact."""
+    return _owner_member(member, db.get_one(Contact, member.contact_hid))
+
+
+def owner_members_out(db: Session, owner_hid: str) -> list[shapes.OwnerMemberOut]:
+    """Return the members of an owner, the primary first."""
+    found = owner_rules.members_of(db, [owner_hid])[owner_hid]
+    return [_owner_member(member, contact) for member, contact in found]
+
+
+def owners_out(db: Session, found: list[Owner]) -> list[shapes.OwnerOut]:
+    """Return owners, each with its tags and its people."""
+    hids = [owner.hid for owner in found]
+    labels = tags.labels_of(db, owner_rules.RECORD_TYPE, hids)
+    members = owner_rules.members_of(db, hids)
+    return [
+        shapes.OwnerOut(
+            **{
+                name: getattr(owner, name)
+                for name in shapes.OwnerOut.model_fields
+                if name not in ("tags", "members")
+            },
+            tags=labels[owner.hid],
+            members=[_owner_member(member, contact) for member, contact in members[owner.hid]],
+        )
+        for owner in found
+    ]
+
+
+def owner_out(db: Session, owner: Owner) -> shapes.OwnerOut:
+    """Return one owner."""
+    return owners_out(db, [owner])[0]
+
+
+def location_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.LocationRef]:
+    """Return each of the locations as an item or a group that is there names it."""
+    atlas = geography.Atlas(db)
+    wanted = sorted(hid for hid in hids if hid)
+    atlas.read_locations(wanted)
+    refs = {}
+    for hid in wanted:
+        location = atlas.location(hid)
+        site = atlas.site(location.site_hid) if location is not None else None
+        if location is None or site is None:
+            continue
+        refs[hid] = shapes.LocationRef(
+            hid=hid,
+            name=location.name,
+            path=atlas.location_path(hid),
+            kind=location.kind,
+            site_hid=site.hid,
+            site=site.name,
+        )
+    return refs
+
+
+def _own(record: Any, model: Any, shaped: tuple[str, ...]) -> dict[str, Any]:
+    return {name: getattr(record, name) for name in model.model_fields if name not in shaped}
+
+
+def _live_counts(db: Session, model: Any, column: Any, hids: list[str]) -> dict[str, int]:
+    """Return how many records that are not retired name each of hids in a column."""
+    counts = dict.fromkeys(hids, 0)
+    if hids:
+        counted = db.execute(
+            select(column, func.count())
+            .select_from(model)
+            .where(column.in_(hids), model.record_status != "retired")
+            .group_by(column)
+        )
+        for hid, count in counted:
+            counts[hid] = count
+    return counts
+
+
+def regions_out(db: Session, found: list[Region]) -> list[shapes.RegionOut]:
+    """Return regions, each with its path and what is directly in it."""
+    atlas = geography.Atlas(db)
+    hids = [region.hid for region in found]
+    labels = tags.labels_of(db, geography.REGION, hids)
+    within = _live_counts(db, Region, Region.parent_region_hid, hids)
+    sites = _live_counts(db, Site, Site.region_hid, hids)
+    out = []
+    for region in found:
+        parent = atlas.regions.get(region.parent_region_hid or "")
+        out.append(
+            shapes.RegionOut(
+                **_own(region, shapes.RegionOut, ("parent", "path", "tags", "regions", "sites")),
+                parent=None
+                if parent is None
+                else shapes.PlaceRef(
+                    hid=parent.hid, name=parent.name, path=atlas.region_path(parent.hid)
+                ),
+                path=atlas.region_path(region.hid),
+                tags=labels[region.hid],
+                regions=within[region.hid],
+                sites=sites[region.hid],
+            )
+        )
+    return out
+
+
+def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
+    """Return sites, each with its region, its path and its number of locations."""
+    atlas = geography.Atlas(db)
+    atlas.take(found)
+    hids = [site.hid for site in found]
+    labels = tags.labels_of(db, geography.SITE, hids)
+    locations = _live_counts(db, Location, Location.site_hid, hids)
+    return [
+        shapes.SiteOut(
+            **_own(site, shapes.SiteOut, ("region", "path", "tags", "locations")),
+            region=shapes.PlaceRef(
+                hid=site.region_hid,
+                name=atlas.regions[site.region_hid].name,
+                path=atlas.region_path(site.region_hid),
+            ),
+            path=atlas.site_path(site.hid),
+            tags=labels[site.hid],
+            locations=locations[site.hid],
+        )
+        for site in found
+    ]
+
+
+def locations_out(db: Session, found: list[Location]) -> list[shapes.LocationOut]:
+    """Return locations, each with its site, what it is in, its path and what is in it."""
+    atlas = geography.Atlas(db)
+    atlas.take(found)
+    atlas.read_locations(location.parent_location_hid for location in found)
+    atlas.read_sites(location.site_hid for location in found)
+    hids = [location.hid for location in found]
+    labels = tags.labels_of(db, geography.LOCATION, hids)
+    within = _live_counts(db, Location, Location.parent_location_hid, hids)
+    placed = _live_counts(db, Item, Item.location_hid, hids)
+    out = []
+    for location in found:
+        site = atlas.site(location.site_hid)
+        parent = (
+            atlas.location(location.parent_location_hid) if location.parent_location_hid else None
+        )
+        out.append(
+            shapes.LocationOut(
+                **_own(
+                    location,
+                    shapes.LocationOut,
+                    ("site", "parent", "path", "depth", "tags", "locations", "items"),
+                ),
+                site=shapes.PlaceRef(
+                    hid=location.site_hid,
+                    name=site.name if site is not None else "",
+                    path=atlas.site_path(location.site_hid),
+                ),
+                parent=None
+                if parent is None
+                else shapes.PlaceRef(
+                    hid=parent.hid, name=parent.name, path=atlas.location_path(parent.hid)
+                ),
+                path=atlas.location_path(location.hid),
+                depth=len(atlas.location_line(location.hid)) - 1,
+                tags=labels[location.hid],
+                locations=within[location.hid],
+                items=placed[location.hid],
+            )
+        )
+    return out
+
+
+def place_out(db: Session, level: str, record: Any) -> Any:
+    """Return one region, site or location."""
+    if level == geography.REGION:
+        return regions_out(db, [record])[0]
+    if level == geography.SITE:
+        return sites_out(db, [record])[0]
+    return locations_out(db, [record])[0]
+
+
+def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
+    """Return contacts, each with its tags and the number of its assignments."""
+    hids = [contact.hid for contact in found]
+    labels = tags.labels_of(db, contacts.RECORD_TYPE, hids)
+    uses = contacts.uses(db, hids)
+    return [
+        shapes.ContactOut(
+            **_own(contact, shapes.ContactOut, ("tags", "uses")),
+            tags=labels[contact.hid],
+            uses=uses[contact.hid],
+        )
+        for contact in found
+    ]
+
+
+def assignments_out(db: Session, found: list[ContactAssignment]) -> list[shapes.AssignmentOut]:
+    """Return contact assignments, each with its contact and its place."""
+    atlas = geography.Atlas(db)
+    atlas.read_sites(assignment.site_hid for assignment in found)
+    atlas.read_locations(assignment.location_hid for assignment in found)
+    people = _by_hid(db, Contact, {assignment.contact_hid for assignment in found})
+    out = []
+    for assignment in found:
+        name, hid = contacts.place_of(assignment)
+        level = contacts.PLACES[name]
+        if level == geography.REGION:
+            called, path = atlas.regions[hid].name, atlas.region_path(hid)
+        elif level == geography.SITE:
+            site = atlas.site(hid)
+            called, path = (site.name if site is not None else ""), atlas.site_path(hid)
+        else:
+            location = atlas.location(hid)
+            called = location.name if location is not None else ""
+            path = atlas.location_path(hid)
+        contact = people.get(assignment.contact_hid) if assignment.contact_hid else None
+        out.append(
+            shapes.AssignmentOut(
+                **_own(assignment, shapes.AssignmentOut, ("contact", "place")),
+                contact=None if contact is None else _contact_ref(contact),
+                place=shapes.AssignedPlace.model_validate(
+                    {"hid": hid, "name": called, "path": path, "level": level}
+                ),
+            )
+        )
+    return out
+
+
+def effective_out(found: geography.InForce) -> shapes.PlaceEffective:
+    """Return what a place has in force."""
+    return shapes.PlaceEffective.model_validate(
+        {
+            "level": found.level,
+            "hid": found.hid,
+            "path": found.path,
+            "contacts": [
+                {
+                    "role": one.role,
+                    "label": one.label,
+                    "source": one.source,
+                    "source_hid": one.source_hid,
+                    "source_path": one.source_path,
+                    "stopped": one.stopped,
+                    "contacts": [
+                        {
+                            **_contact_ref(contact).model_dump(),
+                            "assignment_hid": assignment.hid,
+                            "contact_hid": contact.hid,
+                            "priority": assignment.priority,
+                        }
+                        for assignment, contact in one.contacts
+                    ],
+                }
+                for one in found.contacts
+            ],
+            "ship_address": found.ship_address,
+            "ship_instructions": found.ship_instructions,
+        }
+    )
 
 
 def entries_out(db: Session, entries: list[CatalogEntry]) -> list[shapes.CatalogEntryOut]:
@@ -209,6 +486,9 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         {item.owner_hid for item in items} | {item.owner_hid for item in above.values()},
     )
     labels = tags.labels_of(db, "item", hids)
+    places = location_refs(
+        db, {item.location_hid for item in items} | {one.location_hid for one in above.values()}
+    )
     parents = item_refs(db, [lines[item.hid][0] for item in items if lines[item.hid]])
     minor = _count_by(db, Item.parent_item_hid, hids)
     memberships = groups.memberships_of(db, hids)
@@ -234,6 +514,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
         line = lines[item.hid]
         effective = inheritance.of_item(item, entry, line)
         owner_in_force = owners.get(effective["owner_hid"].value)
+        place = places.get(effective["location_hid"].value)
         its_groups = memberships[item.hid]
         its_controllers: dict[str, shapes.ControllerRef] = {}
         for member, group in its_groups:
@@ -264,6 +545,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     function=entry.function,
                 ),
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                owner_exception=owner_in_force is not None and owner_in_force.is_external,
+                location=places.get(item.location_hid) if item.location_hid else None,
                 parent=parents.get(item.parent_item_hid) if item.parent_item_hid else None,
                 is_major=item.parent_item_hid is None,
                 health=_health(
@@ -297,10 +580,18 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                         source=effective["owner_hid"].source,
                         source_hid=effective["owner_hid"].source_hid,
                     ),
+                    location_hid=shapes.EffectiveLocation(
+                        value=effective["location_hid"].value,
+                        label=place.path if place is not None else None,
+                        source=effective["location_hid"].source,
+                        source_hid=effective["location_hid"].source_hid,
+                        site_hid=place.site_hid if place is not None else None,
+                        site=place.site if place is not None else None,
+                    ),
                     **{
                         name: _effective(name, value)
                         for name, value in effective.items()
-                        if name != "owner_hid"
+                        if name not in ("owner_hid", "location_hid")
                     },
                 ),
             )
@@ -312,6 +603,8 @@ _ITEM_SHAPED = (
     "health",
     "catalog",
     "owner",
+    "owner_exception",
+    "location",
     "parent",
     "is_major",
     "depth",
@@ -372,6 +665,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
     disagree = groups.members_disagree(db, found)
+    places = location_refs(db, {group.location_hid for group in found})
     out = []
     for group in found:
         owner = owners.get(group.owner_hid) if group.owner_hid else None
@@ -391,6 +685,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 parent=None if parent is None else _group_ref(parent),
                 groups=nested[group.hid],
                 owner=None if owner is None else shapes.OwnerRef(hid=owner.hid, label=owner.label),
+                location=places.get(group.location_hid) if group.location_hid else None,
                 members_disagree=disagree[group.hid],
                 health=_health(its_health) if its_health is not None else None,
                 serial_number=reported.serial_number if reported is not None else None,
@@ -412,6 +707,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
 
 _GROUP_SHAPED = (
     "health",
+    "location",
     "serial_source",
     "observed_master",
     "master_as_intended",

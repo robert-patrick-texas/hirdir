@@ -614,6 +614,319 @@ export interface paths {
       };
     };
   };
+  "/api/v1/contact-assignments": {
+    /**
+     * List contact assignments: those of one place with `region_hid`, `site_hid` or
+     * `location_hid` in the filter, those of one contact with `contact_hid`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_AssignmentOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Assign a contact to a region, a site or a location in a role.
+     *
+     * With no contact and `stop_inheritance` set, the place says that it has nobody in
+     * that role, and nothing above it is looked at.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AssignmentCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["AssignmentOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contact-assignments/{hid}": {
+    /** Return one contact assignment. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AssignmentOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Remove an assignment. The audit event of the removal holds what it was. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the role, the priority or the contact of an assignment. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AssignmentPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AssignmentOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contacts": {
+    /** List contacts, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ContactOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a contact: a person, or a shared mailbox. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContactCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contacts/{hid}": {
+    /** Return one contact. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a contact. Every place and owner it is assigned to shows the change at once. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contacts/{hid}/retire": {
+    /** Retire a contact. Its assignments stay, and show it as retired. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups": {
     /**
      * List device groups, by name unless a sort says otherwise.
@@ -946,6 +1259,48 @@ export interface paths {
       };
     };
   };
+  "/api/v1/geography/tree": {
+    /**
+     * Return the regions, their sites and the locations within them as one tree, each
+     * with the items and the components at or beneath it.
+     *
+     * The counts are of the view the item list shows for the same filter. The roots,
+     * `unplaced` and `hidden` add up to `totals`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the item list, in the short form or as JSON. */
+          filter?: string;
+          /** The HID or the path of a region, site or location to start from. */
+          root?: string | null;
+          /** False stops at the sites. */
+          locations?: boolean;
+          /** Retired places, and retired and archived items, as well. */
+          include_archived?: boolean;
+          /** Draft places and items as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["GeographyTree"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/health/live": {
     /** Say that the process is running. Needs no sign-in. */
     get: {
@@ -1031,7 +1386,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -1045,7 +1400,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+            entity: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -1633,6 +1988,226 @@ export interface paths {
       };
     };
   };
+  "/api/v1/locations": {
+    /** List locations, by site and name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_LocationOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a location: in a site, or within another location of one. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["LocationCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["LocationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/locations/query": {
+    /** List locations, with the filter and sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_LocationOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/locations/{hid}": {
+    /** Return one location. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["LocationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a location. It is moved within its site by giving it another parent. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["LocationPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["LocationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/locations/{hid}/effective": {
+    /**
+     * Return what a location has in force: its contacts for each role and its shipping
+     * address and instructions, each with the level it came from.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PlaceEffective"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/locations/{hid}/retire": {
+    /**
+     * Retire a location that nothing that is not retired is in: no location, no item
+     * and no device group.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["LocationOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/networks": {
     /** List networks, by label unless a sort says otherwise. */
     get: {
@@ -1904,6 +2479,126 @@ export interface paths {
       };
     };
   };
+  "/api/v1/owners/{hid}/members": {
+    /** List the people of an owner: its primary first, then the alternates. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OwnerMemberOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Make a contact one of the people of an owner.
+     *
+     * The first is the primary. One that is added as primary takes that role from the
+     * member that had it, in the same change.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnerMemberAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["OwnerMemberOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/owners/{hid}/members/{member_hid}": {
+    /** Remove one of the people of an owner. The audit event holds what it was. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          member_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the role or the priority of one of the people of an owner. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          member_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["OwnerMemberPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OwnerMemberOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/owners/{hid}/retire": {
     /** Retire an owner. Items keep it. */
     post: {
@@ -1927,6 +2622,197 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OwnerOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/regions": {
+    /** List regions, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_RegionOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a region: at the top, or within another. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RegionCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["RegionOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/regions/{hid}": {
+    /** Return one region. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RegionOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a region. Given another parent, it moves with everything in it: the paths
+     * and what is inherited follow at once, and no other record is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RegionPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RegionOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/regions/{hid}/effective": {
+    /**
+     * Return what a region has in force: its contacts for each role and its shipping
+     * address and instructions, each with the level it came from.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PlaceEffective"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/regions/{hid}/retire": {
+    /** Retire a region that no region or site that is not retired is in. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RegionOut"];
           };
         };
         /** Validation Error */
@@ -1988,7 +2874,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -2027,7 +2913,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -2190,6 +3076,195 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["SettingOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites": {
+    /** List sites, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_SiteOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a site in a region. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SiteCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["SiteOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites/{hid}": {
+    /** Return one site. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SiteOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Change a site. Given another region, it moves: the paths of its locations, what
+     * they inherit and the totals of both regions follow at once. It is one change of one
+     * record, and no item is written to.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SitePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SiteOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites/{hid}/effective": {
+    /** Return what a site has in force, each thing with the level it came from. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PlaceEffective"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites/{hid}/retire": {
+    /** Retire a site that no location that is not retired is in. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SiteOut"];
           };
         };
         /** Validation Error */
@@ -2906,6 +3981,51 @@ export interface components {
       network_hid: string | null;
       role: string;
     };
+    /** The place of an assignment, and which of the three it is. */
+    AssignedPlace: {
+      hid: string;
+      level: "region" | "site" | "location";
+      name: string;
+      /** The names from the top region down, joined with ' > '. */
+      path: string;
+    };
+    /** A contact for a place in a role, or the word that the place has none. */
+    AssignmentCreate: {
+      contact_hid?: string | null;
+      location_hid?: string | null;
+      /** 1 is primary. Left out, after the last. */
+      priority?: number | null;
+      region_hid?: string | null;
+      /** A value of the contact_role list. */
+      role: string;
+      site_hid?: string | null;
+      /** With no contact: none here, and do not look further up. */
+      stop_inheritance?: boolean;
+    };
+    /** A contact of one region, site or location, in one role. */
+    AssignmentOut: {
+      contact: components["schemas"]["ContactRef"] | null;
+      contact_hid: string | null;
+      created_at: string;
+      hid: string;
+      location_hid: string | null;
+      place: components["schemas"]["AssignedPlace"];
+      priority: number;
+      region_hid: string | null;
+      role: string;
+      row_version: number;
+      site_hid: string | null;
+      stop_inheritance: boolean;
+      updated_at: string;
+    };
+    /** Fields of an assignment to change, and the version they were read at. */
+    AssignmentPatch: {
+      contact_hid?: string | null;
+      priority?: number | null;
+      role?: string | null;
+      row_version: number;
+      stop_inheritance?: boolean | null;
+    };
     /** One event of the audit trail. */
     AuditEventOut: {
       action: string;
@@ -3054,6 +4174,52 @@ export interface components {
       row_version: number;
       sort?: number | null;
     };
+    /** A new contact. */
+    ContactCreate: {
+      email?: string | null;
+      name: string;
+      notes?: string | null;
+      organization?: string | null;
+      phone?: string | null;
+      record_status?: "draft" | "active";
+      tags?: string[];
+    };
+    /** A person or a shared mailbox. */
+    ContactOut: {
+      created_at: string;
+      email: string | null;
+      hid: string;
+      name: string;
+      notes: string | null;
+      organization: string | null;
+      phone: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      tags: string[];
+      updated_at: string;
+      /** How many places and owners it is assigned to. */
+      uses: number;
+    };
+    /** Fields of a contact to change, and the version they were read at. */
+    ContactPatch: {
+      email?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      organization?: string | null;
+      phone?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      tags?: string[] | null;
+    };
+    /** A contact, as shown where it is assigned. */
+    ContactRef: {
+      email: string | null;
+      hid: string;
+      name: string;
+      organization: string | null;
+      phone: string | null;
+      record_status: "draft" | "active" | "retired";
+    };
     /** A controller of an endpoint, with the cluster it is in. */
     ControllerRef: {
       asset_tag: string | null;
@@ -3079,6 +4245,7 @@ export interface components {
       expected_members?: number | null;
       fqdn?: string | null;
       hostname?: string | null;
+      location_hid?: string | null;
       /** A cluster only. Left out, one. */
       managed_as?: "one" | "members" | "members_and_cluster" | null;
       master_observed_at?: string | null;
@@ -3106,6 +4273,8 @@ export interface components {
       health: components["schemas"]["HealthOut"] | null;
       hid: string;
       hostname: string | null;
+      location: components["schemas"]["LocationRef"] | null;
+      location_hid: string | null;
       /** A cluster: one managed node, one for each member, or those and its own. */
       managed_as: "one" | "members" | "members_and_cluster" | null;
       /** The master that is intended, if one is marked. */
@@ -3142,6 +4311,7 @@ export interface components {
       expected_members?: number | null;
       fqdn?: string | null;
       hostname?: string | null;
+      location_hid?: string | null;
       managed_as?: "one" | "members" | "members_and_cluster" | null;
       master_observed_at?: string | null;
       name?: string | null;
@@ -3171,6 +4341,37 @@ export interface components {
       network: string | null;
       network_hid: string | null;
     };
+    /** A contact in force for a place, with the assignment it comes by. */
+    EffectiveContact: {
+      assignment_hid: string;
+      contact_hid: string;
+      email: string | null;
+      hid: string;
+      name: string;
+      organization: string | null;
+      phone: string | null;
+      priority: number;
+      record_status: "draft" | "active" | "retired";
+    };
+    /** The shipping instructions in force, and the level they came from. */
+    EffectiveInstructions: {
+      source: "own" | "location" | "site" | "region" | "none";
+      source_hid: string | null;
+      source_path: string | null;
+      value: string | null;
+    };
+    /** The location in force, with its site. The label is its path. */
+    EffectiveLocation: {
+      /** What people call the record. */
+      label: string | null;
+      /** The name of its site. */
+      site: string | null;
+      site_hid: string | null;
+      source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
+      source_hid: string | null;
+      /** The HID of the record. */
+      value: string | null;
+    };
     /** A record in force, and where it came from. */
     EffectiveReference: {
       /** What people call the record. */
@@ -3179,6 +4380,13 @@ export interface components {
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
+    };
+    /** The shipping address in force, and the level it came from. */
+    EffectiveShipAddress: {
+      source: "own" | "location" | "site" | "region" | "none";
+      source_hid: string | null;
+      source_path: string | null;
+      value: components["schemas"]["ShipAddress"] | null;
     };
     /**
      * A value in force, and where it came from.
@@ -3194,7 +4402,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "owners" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
+      entity: "tags" | "vendors" | "catalog_entries" | "regions" | "sites" | "locations" | "contacts" | "contact_assignments" | "owners" | "owner_members" | "networks" | "items" | "addresses" | "device_groups" | "device_group_members";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -3209,6 +4417,31 @@ export interface components {
       /** Stored values and not the ones in force: the form to import back. */
       own_values?: boolean;
       sort?: string[];
+    };
+    /** A region, a site or a location, with what is at or beneath it. */
+    GeographyNode: {
+      children: components["schemas"]["GeographyNode"][];
+      code: string | null;
+      component_count: number;
+      hid: string;
+      /** Every item of the set, major and minor. */
+      items: number;
+      /** Of a location. */
+      kind: string | null;
+      level: "region" | "site" | "location";
+      name: string;
+      path: string;
+      record_status: "draft" | "active" | "retired";
+    };
+    /** The regions, their sites and the locations within them, with the counts of a view. */
+    GeographyTree: {
+      /** The items in a place the view leaves out. */
+      hidden: components["schemas"]["PlaceCount"];
+      roots: components["schemas"]["GeographyNode"][];
+      /** The whole view. */
+      totals: components["schemas"]["PlaceCount"];
+      /** The items with no location in force. */
+      unplaced: components["schemas"]["PlaceCount"];
     };
     /** A role to grant to exactly one user or one group. */
     GrantCreate: {
@@ -3358,12 +4591,15 @@ export interface components {
       in_service_on?: string | null;
       ldos?: string | null;
       lifecycle_state?: string | null;
+      location_hid?: string | null;
       /** In any common notation. */
       mac_address?: string | null;
       name?: string | null;
       /** Left out, now. Given with observed_status only. */
       observed_at?: string | null;
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      /** Needed with an owner outside the operations team. */
+      owner_exception_reason?: string | null;
       owner_hid?: string | null;
       /** The item this one is in. Given, the item is a minor item. */
       parent_item_hid?: string | null;
@@ -3381,8 +4617,8 @@ export interface components {
     };
     /**
      * The values in force of the fields an item inherits: the amounts and the dates
-     * from its catalog entry, and for a minor item the owner and the standing of the item
-     * it is in.
+     * from its catalog entry, and for a minor item the owner, the location and the
+     * standing of the item it is in.
      */
     ItemEffective: {
       annual_support_cost: components["schemas"]["EffectiveValue"];
@@ -3394,6 +4630,7 @@ export interface components {
       expected_online: components["schemas"]["EffectiveValue"];
       ldos: components["schemas"]["EffectiveValue"];
       lifecycle_state: components["schemas"]["EffectiveValue"];
+      location_hid: components["schemas"]["EffectiveLocation"];
       owner_hid: components["schemas"]["EffectiveReference"];
       support_weight: components["schemas"]["EffectiveValue"];
     };
@@ -3437,6 +4674,9 @@ export interface components {
       is_major: boolean;
       ldos: string | null;
       lifecycle_state: string | null;
+      /** Its own location. */
+      location: components["schemas"]["LocationRef"] | null;
+      location_hid: string | null;
       /** Twelve lower-case hex digits. */
       mac_address: string | null;
       /** How many minor items are directly in this one. */
@@ -3447,6 +4687,10 @@ export interface components {
       /** What is seen of it: on the network, or `present`, by a person. */
       observed_status: "online" | "degraded" | "unreachable" | "present" | null;
       owner: components["schemas"]["OwnerRef"] | null;
+      /** The owner in force is outside the operations team. */
+      owner_exception: boolean;
+      /** Why this item is with an owner outside the operations team. */
+      owner_exception_reason: string | null;
       owner_hid: string | null;
       /** The item a minor item is in. */
       parent: components["schemas"]["ItemRef"] | null;
@@ -3494,11 +4738,14 @@ export interface components {
       hostname?: string | null;
       in_service_on?: string | null;
       ldos?: string | null;
+      /** Null: a minor item is where the item above it is. */
+      location_hid?: string | null;
       mac_address?: string | null;
       name?: string | null;
       observed_at?: string | null;
       /** Null clears it, and the moment with it. */
       observed_status?: "online" | "degraded" | "unreachable" | "present" | null;
+      owner_exception_reason?: string | null;
       owner_hid?: string | null;
       /** Null takes a minor item out of its parent. */
       parent_item_hid?: string | null;
@@ -3570,6 +4817,111 @@ export interface components {
       /** Field names, `-` in front for descending. */
       sort?: string[];
     };
+    /** A new location: in a site, or within a location of one. */
+    LocationCreate: {
+      address1?: string | null;
+      address2?: string | null;
+      city?: string | null;
+      code?: string | null;
+      country?: string | null;
+      /** A value of the location_kind list. */
+      kind?: string | null;
+      latitude?: string | null;
+      longitude?: string | null;
+      name: string;
+      notes?: string | null;
+      parent_location_hid?: string | null;
+      postal_code?: string | null;
+      record_status?: "draft" | "active";
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      /** Its site. May be left out when the parent is named. */
+      site_hid?: string | null;
+      state?: string | null;
+      tags?: string[];
+    };
+    /** A place within a site: a building, a floor, a room, a rack. */
+    LocationOut: {
+      address1: string | null;
+      address2: string | null;
+      city: string | null;
+      code: string | null;
+      country: string | null;
+      created_at: string;
+      /** 0 for a location directly in its site. */
+      depth: number;
+      hid: string;
+      /** How many items have it as their own location. */
+      items: number;
+      kind: string | null;
+      latitude: string | null;
+      /** How many locations are directly in it, retired aside. */
+      locations: number;
+      longitude: string | null;
+      name: string;
+      notes: string | null;
+      parent: components["schemas"]["PlaceRef"] | null;
+      parent_location_hid: string | null;
+      path: string;
+      postal_code: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      ship_address1: string | null;
+      ship_address2: string | null;
+      ship_city: string | null;
+      ship_country: string | null;
+      ship_instructions: string | null;
+      ship_postal_code: string | null;
+      ship_state: string | null;
+      site: components["schemas"]["PlaceRef"];
+      site_hid: string;
+      state: string | null;
+      tags: string[];
+      updated_at: string;
+    };
+    /** Fields of a location to change, and the version they were read at. */
+    LocationPatch: {
+      address1?: string | null;
+      address2?: string | null;
+      city?: string | null;
+      code?: string | null;
+      country?: string | null;
+      kind?: string | null;
+      latitude?: string | null;
+      longitude?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      /** Another location of the same site moves it. Null: in the site. */
+      parent_location_hid?: string | null;
+      postal_code?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      state?: string | null;
+      tags?: string[] | null;
+    };
+    /** A location, as named on the item or the group that is there, with its site. */
+    LocationRef: {
+      hid: string;
+      kind: string | null;
+      name: string;
+      /** The names from the top region down, joined with ' > '. */
+      path: string;
+      /** The name of its site. */
+      site: string;
+      site_hid: string;
+    };
     /** What the management report counts of a set of items. */
     ManagementMeasures: {
       annual_support_cost: string;
@@ -3580,7 +4932,8 @@ export interface components {
     };
     /** The value and the cost of a view of the items, for the people who pay for it. */
     ManagementOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "tag" | null;
+      /** What the rows are by: the site, unless asked. */
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "tag";
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -3675,6 +5028,32 @@ export interface components {
       label: string;
       organization?: string | null;
       record_status?: "draft" | "active";
+      tags?: string[];
+    };
+    /** A contact to make one of the people of an owner. */
+    OwnerMemberAdd: {
+      contact_hid: string;
+      priority?: number | null;
+      /** Left out, primary for the first member and alternate after that. */
+      role?: "primary" | "alternate" | null;
+    };
+    /** One of the people of an owner. */
+    OwnerMemberOut: {
+      contact: components["schemas"]["ContactRef"];
+      contact_hid: string;
+      created_at: string;
+      hid: string;
+      owner_hid: string;
+      priority: number;
+      role: "primary" | "alternate";
+      row_version: number;
+      updated_at: string;
+    };
+    /** Fields of a member of an owner to change, and the version they were read at. */
+    OwnerMemberPatch: {
+      priority?: number | null;
+      role?: "primary" | "alternate" | null;
+      row_version: number;
     };
     /** Who answers for an item. */
     OwnerOut: {
@@ -3683,9 +5062,12 @@ export interface components {
       hid: string;
       is_external: boolean;
       label: string;
+      /** Its people, the primary first. */
+      members: components["schemas"]["OwnerMemberOut"][];
       organization: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
+      tags: string[];
       updated_at: string;
     };
     /** Fields of an owner to change, and the version they were read at. */
@@ -3696,6 +5078,7 @@ export interface components {
       organization?: string | null;
       record_status?: "draft" | "active" | null;
       row_version: number;
+      tags?: string[] | null;
     };
     /** An owner, as named on another record. */
     OwnerRef: {
@@ -3708,6 +5091,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_AssignmentOut_: {
+      items: components["schemas"]["AssignmentOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_AuditEventOut_: {
       items: components["schemas"]["AuditEventOut"][];
       limit: number;
@@ -3716,6 +5105,12 @@ export interface components {
     };
     Page_CatalogEntryOut_: {
       items: components["schemas"]["CatalogEntryOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ContactOut_: {
+      items: components["schemas"]["ContactOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -3750,6 +5145,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_LocationOut_: {
+      items: components["schemas"]["LocationOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_MemberOut_: {
       items: components["schemas"]["MemberOut"][];
       limit: number;
@@ -3768,6 +5169,18 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_RegionOut_: {
+      items: components["schemas"]["RegionOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_SiteOut_: {
+      items: components["schemas"]["SiteOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_UserOut_: {
       items: components["schemas"]["UserOut"][];
       limit: number;
@@ -3779,6 +5192,28 @@ export interface components {
       limit: number;
       offset: number;
       total: number;
+    };
+    /** The items and the components of a set of items. */
+    PlaceCount: {
+      component_count: number;
+      /** Every item of the set, major and minor. */
+      items: number;
+    };
+    /** What a place has in force: its contacts by role, and where deliveries go. */
+    PlaceEffective: {
+      contacts: components["schemas"]["RoleContacts"][];
+      hid: string;
+      level: "region" | "site" | "location";
+      path: string;
+      ship_address: components["schemas"]["EffectiveShipAddress"];
+      ship_instructions: components["schemas"]["EffectiveInstructions"];
+    };
+    /** A region, a site or a location, as named on another record. */
+    PlaceRef: {
+      hid: string;
+      name: string;
+      /** The names from the top region down, joined with ' > '. */
+      path: string;
     };
     /** An error, as an RFC 9457 problem document. */
     Problem: {
@@ -3792,6 +5227,67 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** A new region. */
+    RegionCreate: {
+      code?: string | null;
+      name: string;
+      notes?: string | null;
+      /** The region it is in. Left out, a region at the top. */
+      parent_region_hid?: string | null;
+      record_status?: "draft" | "active";
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      tags?: string[];
+    };
+    /** A part of the world that sites are in. */
+    RegionOut: {
+      code: string | null;
+      created_at: string;
+      hid: string;
+      name: string;
+      notes: string | null;
+      parent: components["schemas"]["PlaceRef"] | null;
+      parent_region_hid: string | null;
+      path: string;
+      record_status: "draft" | "active" | "retired";
+      /** How many regions are directly in it, retired ones aside. */
+      regions: number;
+      row_version: number;
+      ship_address1: string | null;
+      ship_address2: string | null;
+      ship_city: string | null;
+      ship_country: string | null;
+      ship_instructions: string | null;
+      ship_postal_code: string | null;
+      ship_state: string | null;
+      /** How many sites are directly in it, retired ones aside. */
+      sites: number;
+      tags: string[];
+      updated_at: string;
+    };
+    /** Fields of a region to change, and the version they were read at. */
+    RegionPatch: {
+      code?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      /** Another region moves it, with everything in it. */
+      parent_region_hid?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      tags?: string[] | null;
     };
     /** The replacement of an item: what takes its place, why and when. */
     Replace: {
@@ -3832,6 +5328,17 @@ export interface components {
       reference: string | null;
       replaced_on: string;
       serial_number: string | null;
+    };
+    /** The contacts in force for one role, and the level they came from. */
+    RoleContacts: {
+      contacts: components["schemas"]["EffectiveContact"][];
+      label: string;
+      role: string;
+      source: "own" | "location" | "site" | "region" | "none";
+      source_hid: string | null;
+      source_path: string | null;
+      /** A level said: none here, and do not look further up. */
+      stopped: boolean;
     };
     /** One field a row changes, in the columns of the file. */
     RowChange: {
@@ -3891,14 +5398,105 @@ export interface components {
       row_version: number;
       value?: unknown;
     };
+    /** A shipping address, taken whole. */
+    ShipAddress: {
+      address1: string | null;
+      address2: string | null;
+      city: string | null;
+      country: string | null;
+      postal_code: string | null;
+      state: string | null;
+    };
     /** A username and access code. */
     SignIn: {
       access_code: string;
       username: string;
     };
+    /** A new site, in one region. */
+    SiteCreate: {
+      address1?: string | null;
+      address2?: string | null;
+      city?: string | null;
+      code?: string | null;
+      country?: string | null;
+      latitude?: string | null;
+      longitude?: string | null;
+      name: string;
+      notes?: string | null;
+      postal_code?: string | null;
+      record_status?: "draft" | "active";
+      region_hid: string;
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      state?: string | null;
+      tags?: string[];
+    };
+    /** A place the team works at. */
+    SiteOut: {
+      address1: string | null;
+      address2: string | null;
+      city: string | null;
+      code: string | null;
+      country: string | null;
+      created_at: string;
+      hid: string;
+      latitude: string | null;
+      /** How many locations it has, retired ones aside. */
+      locations: number;
+      longitude: string | null;
+      name: string;
+      notes: string | null;
+      path: string;
+      postal_code: string | null;
+      record_status: "draft" | "active" | "retired";
+      region: components["schemas"]["PlaceRef"];
+      region_hid: string;
+      row_version: number;
+      ship_address1: string | null;
+      ship_address2: string | null;
+      ship_city: string | null;
+      ship_country: string | null;
+      ship_instructions: string | null;
+      ship_postal_code: string | null;
+      ship_state: string | null;
+      state: string | null;
+      tags: string[];
+      updated_at: string;
+    };
+    /** Fields of a site to change, and the version they were read at. */
+    SitePatch: {
+      address1?: string | null;
+      address2?: string | null;
+      city?: string | null;
+      code?: string | null;
+      country?: string | null;
+      latitude?: string | null;
+      longitude?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      postal_code?: string | null;
+      record_status?: "draft" | "active" | null;
+      /** Another region moves the site. */
+      region_hid?: string | null;
+      row_version: number;
+      ship_address1?: string | null;
+      ship_address2?: string | null;
+      ship_city?: string | null;
+      ship_country?: string | null;
+      ship_instructions?: string | null;
+      ship_postal_code?: string | null;
+      ship_state?: string | null;
+      state?: string | null;
+      tags?: string[] | null;
+    };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "site" | "region" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };

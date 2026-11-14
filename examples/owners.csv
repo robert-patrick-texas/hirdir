@@ -1,5 +1,5 @@
-hid,label,organization,is_external,exception_reason,record_status
-,Facilities Management,Corporate Services,true,Owns the building management network; the operations team supports its switches,active
-,Network Engineering,Infrastructure Operations,false,,active
-,Security Operations,Infrastructure Operations,false,,active
-,Voice Services,Infrastructure Operations,false,,active
+hid,label,organization,is_external,exception_reason,record_status,tags
+,Facilities Management,Corporate Services,true,Owns the building management network; the operations team supports its switches,active,
+,Network Engineering,Infrastructure Operations,false,,active,
+,Security Operations,Infrastructure Operations,false,,active,
+,Voice Services,Infrastructure Operations,false,,active,

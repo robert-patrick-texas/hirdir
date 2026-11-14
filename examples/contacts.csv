@@ -1,0 +1,9 @@
+hid,name,organization,email,phone,notes,record_status,tags
+,Dana Whitfield,Infrastructure Operations,dana.whitfield@example.net,'+1 555 0100,,active,
+,Facilities Help Desk,Corporate Services,facilities@example.net,'+1 555 0150,,active,
+,Lee Marchetti,Infrastructure Operations,lee.marchetti@example.net,'+1 555 0102,,active,
+,Network Operations Desk,Infrastructure Operations,noc@example.net,'+1 555 0199,,active,
+,Priya Raman,Infrastructure Operations,priya.raman@example.net,'+1 555 0103,,active,
+,Robin Achterberg,Infrastructure Operations,robin.achterberg@example.net,'+1 555 0101,,active,
+,Sam Okafor,Corporate Services,sam.okafor@example.net,'+1 555 0110,,active,
+,Tomas Lindqvist,Infrastructure Operations,tomas.lindqvist@example.net,'+1 555 0104,,active,

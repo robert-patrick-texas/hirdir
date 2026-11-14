@@ -19,19 +19,29 @@ from hirdir import ids
 from hirdir.auth.roles import Role
 from hirdir.db import dialect
 from hirdir.db.models import (
+    ADDRESS_FIELDS,
+    SHIP_FIELDS,
     Address,
     CatalogEntry,
+    Contact,
+    ContactAssignment,
     DeviceGroup,
     DeviceGroupMember,
     Item,
+    Location,
     Network,
     Owner,
+    OwnerMember,
+    Region,
+    Site,
     Tag,
     Vendor,
 )
 from hirdir.domain import (
     addresses,
     catalog,
+    contacts,
+    geography,
     groups,
     health,
     inheritance,
@@ -68,6 +78,12 @@ AMOUNTS = (
     Column("support_weight", "number", inherits=True),
     Column("annual_support_cost", "money", inherits=True),
 )
+STREET = tuple(Column(name) for name in ADDRESS_FIELDS)
+SHIPPING = (*(Column(name) for name in SHIP_FIELDS), Column("ship_instructions", limit=LONG))
+COORDINATES = (Column("latitude", "degrees"), Column("longitude", "degrees"))
+CODE = Column("code", limit=40)
+NOTES = Column("notes", limit=LONG)
+PATH = Column("path", limit=LONG, settable=False)
 
 
 def _sources(columns: tuple[Column, ...]) -> tuple[Column, ...]:
@@ -256,6 +272,14 @@ class Run:
                 {field: f"row {before} of the file names the {which} master of this stack"},
             )
         self._learn(self.masters, (group_hid, which), self.row)
+
+    def place(self, text: str, field: str, level: str | None = None) -> geography.Place:
+        """Return the region, site or location a row names, by its HID or its path."""
+        return geography.the_place(self.db, text, field, level)
+
+    def contact(self, text: str, field: str = "contact") -> Contact:
+        """Return the one contact a row names: by HID, email address or name."""
+        return contacts.the_one(self.db, text, field)
 
     def network(self, text: str, field: str = "network") -> Network:
         """Return the network a row names, by HID or label. A network is never made here."""
@@ -593,6 +617,7 @@ class Owners(Entity):
         Column("is_external", "boolean"),
         Column("exception_reason", limit=LONG),
         STATUS,
+        TAGS,
         *BOOKKEEPING,
     )
 
@@ -607,16 +632,21 @@ class Owners(Entity):
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         given = {
-            **_plain_fields(values, ("label", "organization", "is_external", "exception_reason")),
+            **_plain_fields(
+                values, ("label", "organization", "is_external", "exception_reason", "tags")
+            ),
             **_status(values, record),
         }
         if given.get("is_external", _MISSING) is None:
             given["is_external"] = False
+        if given.get("tags", _MISSING) is None:
+            given["tags"] = []
         if record is None:
             return owners.create_owner(run.db, run.context, _new(given))
         return owners.update_owner(run.db, run.context, record.hid, record.row_version, given)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        labels = tags.labels_of(db, self.record_type, [owner.hid for owner in found])
         return [
             {
                 **_kept(owner),
@@ -625,8 +655,550 @@ class Owners(Entity):
                 "is_external": owner.is_external,
                 "exception_reason": owner.exception_reason,
                 "record_status": owner.record_status,
+                "tags": labels[owner.hid],
             }
             for owner in found
+        ]
+
+
+def _in_force_parts(text: Any) -> int:
+    """Return how many names a path holds, for working a place before what is in it."""
+    return len(text.split(geography.SEPARATOR)) if isinstance(text, str) and text.strip() else 0
+
+
+class _Places(Entity):
+    """What the files of regions, sites and locations share."""
+
+    level: ClassVar[str]
+    _fields: ClassVar[tuple[str, ...]]
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("region", "site", "parent", "name")]
+        return geography.JOINED.join(str(part) for part in named if part) or (
+            record.name if record is not None else ""
+        )
+
+    def _given(self, values: Mapping[str, Any], record: Any | None) -> dict[str, Any]:
+        given = {**_plain_fields(values, (*self._fields, "tags")), **_status(values, record)}
+        if given.get("tags", _MISSING) is None:
+            given["tags"] = []
+        return given
+
+    def _store(self, run: Run, record: Any | None, given: dict[str, Any]) -> Any:
+        if record is None:
+            return geography.create_place(run.db, run.context, self.level, _new(given))
+        return geography.update_place(
+            run.db, run.context, self.level, record.hid, record.row_version, given
+        )
+
+    def _row(self, record: Any, labels: dict[str, list[str]], path: str) -> dict[str, Any]:
+        return {
+            **_kept(record),
+            **{name: getattr(record, name) for name in self._fields},
+            "record_status": record.record_status,
+            "tags": labels[record.hid],
+            "path": path,
+        }
+
+
+class Regions(_Places):
+    """Regions."""
+
+    name = "regions"
+    record_type = "region"
+    level = geography.REGION
+    model = Region
+    listing = fields.REGIONS
+    columns = (
+        HID,
+        Column("name"),
+        Column("parent", limit=LONG),
+        CODE,
+        *SHIPPING,
+        NOTES,
+        STATUS,
+        TAGS,
+        PATH,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "parent.name": "parent",
+        "parent_region_hid": "parent",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"parent_region_hid": "parent"}
+    _fields = ("name", "code", *geography.SHIPPING, "notes")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name, parent = values.get("name"), values.get("parent")
+        if not name:
+            return None
+        # Among the regions of the one it is in, and at the top when it is in none: a
+        # region of the same name elsewhere is another record.
+        within = run.place(parent, "parent", geography.REGION) if parent else None
+        found = geography.find_within(run.db, within, name)
+        return found.record if found is not None and found.level == geography.REGION else None
+
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work a region before the regions of the same file that are within it."""
+        return sorted(
+            range(1, len(rows) + 1),
+            key=lambda number: (_in_force_parts(rows[number - 1].get("parent")), number),
+        )
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = self._given(values, record)
+        if "parent" in values:
+            parent = values["parent"]
+            given["parent_region_hid"] = (
+                run.place(parent, "parent", geography.REGION).hid if parent is not None else None
+            )
+        return self._store(run, record, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        atlas = geography.Atlas(db)
+        labels = tags.labels_of(db, self.record_type, [region.hid for region in found])
+        return [
+            {
+                **self._row(region, labels, atlas.region_path(region.hid)),
+                "parent": atlas.region_path(region.parent_region_hid) or None,
+            }
+            for region in found
+        ]
+
+
+class Sites(_Places):
+    """Sites."""
+
+    name = "sites"
+    record_type = "site"
+    level = geography.SITE
+    model = Site
+    listing = fields.SITES
+    columns = (
+        HID,
+        Column("name"),
+        Column("region", limit=LONG),
+        CODE,
+        *STREET,
+        *SHIPPING,
+        *COORDINATES,
+        NOTES,
+        STATUS,
+        TAGS,
+        PATH,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {"region.name": "region", "region_hid": "region"}
+    renamed: ClassVar[Mapping[str, str]] = {"region_hid": "region"}
+    _fields = (
+        "name",
+        "code",
+        *ADDRESS_FIELDS,
+        *geography.SHIPPING,
+        "latitude",
+        "longitude",
+        "notes",
+    )
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name, region = values.get("name"), values.get("region")
+        if not name or not region:
+            return None
+        within = run.place(region, "region", geography.REGION)
+        return run.db.scalar(
+            select(Site).where(Site.region_hid == within.hid, Site.name_key == records.key(name))
+        )
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = self._given(values, record)
+        if values.get("region"):
+            given["region_hid"] = run.place(values["region"], "region", geography.REGION).hid
+        elif "region" in values:
+            raise Invalid("a site is in a region", {"region": "is not cleared"})
+        return self._store(run, record, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        atlas = geography.Atlas(db)
+        atlas.take(found)
+        labels = tags.labels_of(db, self.record_type, [site.hid for site in found])
+        return [
+            {
+                **self._row(site, labels, atlas.site_path(site.hid)),
+                "region": atlas.region_path(site.region_hid),
+            }
+            for site in found
+        ]
+
+
+class Locations(_Places):
+    """Locations."""
+
+    name = "locations"
+    record_type = "location"
+    level = geography.LOCATION
+    model = Location
+    listing = fields.LOCATIONS
+    columns = (
+        HID,
+        Column("name"),
+        Column("site", limit=LONG),
+        Column("parent", limit=LONG),
+        CODE,
+        Column("kind", limit=40),
+        *STREET,
+        *SHIPPING,
+        *COORDINATES,
+        NOTES,
+        STATUS,
+        TAGS,
+        PATH,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "site.name": "site",
+        "site_hid": "site",
+        "parent.name": "parent",
+        "parent_location_hid": "parent",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "site_hid": "site",
+        "parent_location_hid": "parent",
+    }
+    _fields = (
+        "name",
+        "code",
+        "kind",
+        *ADDRESS_FIELDS,
+        *geography.SHIPPING,
+        "latitude",
+        "longitude",
+        "notes",
+    )
+
+    @staticmethod
+    def _where(
+        run: Run, values: Mapping[str, Any], record: Any | None
+    ) -> tuple[geography.Place | None, geography.Place | None]:
+        """Return the site a row names and the location its location is in.
+
+        The parent is named whole, or from the site down, and a row that names it whole
+        need not name the site.
+        """
+        site_text, parent_text = values.get("site"), values.get("parent")
+        site = run.place(site_text, "site", geography.SITE) if site_text else None
+        if site is None and record is not None:
+            site = geography.get_place(run.db, geography.SITE, record.site_hid)
+        parent = None
+        if parent_text:
+            parent = geography.find_place(run.db, parent_text, site)
+            if parent is None or parent.level != geography.LOCATION:
+                raise Invalid(
+                    "there is no such location", {"parent": f"there is no location {parent_text}"}
+                )
+            if site is None:
+                site = geography.get_place(run.db, geography.SITE, parent.record.site_hid)
+        return site, parent
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name = values.get("name")
+        if not name:
+            return None
+        site, parent = self._where(run, values, None)
+        if site is None:
+            return None
+        # Among the locations of the one it is in, or of the site when it is in none.
+        found = geography.find_within(run.db, parent or site, name)
+        if found is None or found.level != geography.LOCATION:
+            return None
+        return found.record
+
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work a location before the locations of the same file that are within it."""
+
+        def depth(row: Mapping[str, Any]) -> int:
+            parts = _in_force_parts(row.get("parent"))
+            site, parent = row.get("site"), row.get("parent")
+            if (
+                isinstance(site, str)
+                and isinstance(parent, str)
+                and records.key(parent).startswith(records.key(site))
+            ):
+                parts -= _in_force_parts(site)
+            return parts
+
+        return sorted(range(1, len(rows) + 1), key=lambda number: (depth(rows[number - 1]), number))
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = self._given(values, record)
+        site, parent = self._where(run, values, record)
+        if "site" in values or record is None:
+            if site is None:
+                raise Invalid("a location is in a site", {"site": "name the site it is in"})
+            given["site_hid"] = site.hid
+        if "parent" in values:
+            given["parent_location_hid"] = parent.hid if parent is not None else None
+        return self._store(run, record, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        atlas = geography.Atlas(db)
+        atlas.take(found)
+        atlas.read_locations(location.parent_location_hid for location in found)
+        atlas.read_sites(location.site_hid for location in found)
+        labels = tags.labels_of(db, self.record_type, [location.hid for location in found])
+        return [
+            {
+                **self._row(location, labels, atlas.location_path(location.hid)),
+                "site": atlas.site_path(location.site_hid),
+                "parent": atlas.location_path(location.parent_location_hid) or None,
+            }
+            for location in found
+        ]
+
+
+class Contacts(Entity):
+    """Contacts."""
+
+    name = "contacts"
+    record_type = "contact"
+    model = Contact
+    listing = fields.CONTACTS
+    columns = (
+        HID,
+        Column("name"),
+        Column("organization"),
+        Column("email", limit=254),
+        Column("phone", limit=50),
+        NOTES,
+        STATUS,
+        TAGS,
+        *BOOKKEEPING,
+    )
+    _direct = ("name", "organization", "email", "phone", "notes", "tags")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a contact: by its email address, and with none by its name."""
+        email, name = values.get("email"), values.get("name")
+        if email:
+            return run.db.scalar(select(Contact).where(Contact.email_key == records.key(email)))
+        if not name:
+            return None
+        named = list(
+            run.db.scalars(
+                select(Contact)
+                .where(Contact.name_key == records.key(name), Contact.record_status != "retired")
+                .limit(2)
+            )
+        )
+        if len(named) > 1:
+            raise Invalid(
+                f"more than one contact is called {name}",
+                {"name": "more than one contact answers to this; give its email address or HID"},
+            )
+        return named[0] if named else None
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return (
+            values.get("email") or values.get("name") or (record.name if record is not None else "")
+        )
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        if given.get("tags", _MISSING) is None:
+            given["tags"] = []
+        if record is None:
+            return contacts.create_contact(run.db, run.context, _new(given))
+        return contacts.update_contact(run.db, run.context, record.hid, record.row_version, given)
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        labels = tags.labels_of(db, self.record_type, [contact.hid for contact in found])
+        return [
+            {
+                **_kept(contact),
+                **{name: getattr(contact, name) for name in self._direct if name != "tags"},
+                "record_status": contact.record_status,
+                "tags": labels[contact.hid],
+            }
+            for contact in found
+        ]
+
+
+class ContactAssignments(Entity):
+    """The contacts of regions, sites and locations, each in a role."""
+
+    name = "contact_assignments"
+    record_type = "contact_assignment"
+    model = ContactAssignment
+    listing = fields.CONTACT_ASSIGNMENTS
+    columns = (
+        HID,
+        Column("region", limit=LONG),
+        Column("site", limit=LONG),
+        Column("location", limit=LONG),
+        Column("role", limit=40),
+        Column("contact", limit=254),
+        Column("priority", "integer"),
+        Column("stop_inheritance", "boolean"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "region_hid": "region",
+        "site_hid": "site",
+        "location_hid": "location",
+        "contact_hid": "contact",
+        "contact.name": "contact",
+        "contact.email": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "region_hid": "region",
+        "site_hid": "site",
+        "location_hid": "location",
+        "contact_hid": "contact",
+    }
+    _levels = (geography.REGION, geography.SITE, geography.LOCATION)
+
+    def _place(self, run: Run, values: Mapping[str, Any]) -> dict[str, str]:
+        """Return the place a row names, as the field of an assignment that holds it."""
+        named = [level for level in self._levels if values.get(level)]
+        if len(named) != 1:
+            raise Invalid(
+                "an assignment is to one place",
+                dict.fromkeys(named or self._levels, "exactly one of region, site and location"),
+            )
+        return {f"{named[0]}_hid": run.place(values[named[0]], named[0], named[0]).hid}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to an assignment: by its place, its role and its contact, or as
+        the one that stops inheritance for its place and role."""
+        role = values.get("role")
+        if not role or not any(values.get(level) for level in self._levels):
+            return None
+        ((field, hid),) = self._place(run, values).items()
+        query = select(ContactAssignment).where(
+            getattr(ContactAssignment, field) == hid,
+            ContactAssignment.role == records.key(role),
+        )
+        if values.get("contact"):
+            query = query.where(ContactAssignment.contact_hid == run.contact(values["contact"]).hid)
+        elif values.get("stop_inheritance"):
+            query = query.where(ContactAssignment.stop_inheritance.is_(True))
+        else:
+            return None
+        return run.db.scalar(query)
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in (*self._levels, "role", "contact")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("role", "priority", "stop_inheritance"))
+        if given.get("stop_inheritance", _MISSING) is None:
+            given["stop_inheritance"] = False
+        if "contact" in values:
+            contact = values["contact"]
+            given["contact_hid"] = run.contact(contact).hid if contact is not None else None
+        if record is None:
+            given.update(self._place(run, values))
+            return contacts.create_assignment(run.db, run.context, _new(given))
+        if any(level in values for level in self._levels):
+            given.update(self._place(run, values))
+        return contacts.update_assignment(
+            run.db, run.context, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        atlas = geography.Atlas(db)
+        atlas.read_sites(assignment.site_hid for assignment in found)
+        atlas.read_locations(assignment.location_hid for assignment in found)
+        people = _by_hid(db, Contact, {assignment.contact_hid for assignment in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        return [
+            {
+                **_kept(assignment),
+                "region": atlas.region_path(assignment.region_hid) or None,
+                "site": atlas.site_path(assignment.site_hid) or None,
+                "location": atlas.location_path(assignment.location_hid) or None,
+                "role": assignment.role,
+                "contact": named[assignment.contact_hid] if assignment.contact_hid else None,
+                "priority": assignment.priority,
+                "stop_inheritance": assignment.stop_inheritance,
+            }
+            for assignment in found
+        ]
+
+
+class OwnerMembers(Entity):
+    """The people of owners."""
+
+    name = "owner_members"
+    record_type = "owner_member"
+    model = OwnerMember
+    listing = fields.OWNER_MEMBERS
+    columns = (
+        HID,
+        Column("owner"),
+        Column("contact", limit=254),
+        Column("role", limit=10),
+        Column("priority", "integer"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "owner_hid": "owner",
+        "owner.label": "owner",
+        "contact_hid": "contact",
+        "contact.name": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"owner_hid": "owner", "contact_hid": "contact"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        owner, contact = values.get("owner"), values.get("contact")
+        if not owner or not contact:
+            return None
+        return run.db.scalar(
+            select(OwnerMember).where(
+                OwnerMember.owner_hid == run.owner(owner).hid,
+                OwnerMember.contact_hid == run.contact(contact).hid,
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return " ".join(str(values[name]) for name in ("owner", "contact") if values.get(name))
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("role", "priority"))
+        if record is None:
+            for name in ("owner", "contact"):
+                if not values.get(name):
+                    raise Invalid("a member is a contact of an owner", {name: "must not be blank"})
+            given["contact_hid"] = run.contact(values["contact"]).hid
+            return owners.add_member(
+                run.db, run.context, run.owner(values["owner"]).hid, _new(given)
+            )
+        for name in ("owner", "contact"):
+            if name not in values:
+                continue
+            named = run.owner(values[name]) if name == "owner" else run.contact(values[name])
+            if named.hid != getattr(record, f"{name}_hid"):
+                raise Invalid(
+                    "a member stays with its owner and its contact",
+                    {name: "remove this member and add the other"},
+                )
+        return owners.update_member(
+            run.db, run.context, record.owner_hid, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        its_owners = _by_hid(db, Owner, {member.owner_hid for member in found})
+        people = _by_hid(db, Contact, {member.contact_hid for member in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        return [
+            {
+                **_kept(member),
+                "owner": items.name_or_hid(its_owners[member.owner_hid].label, member.owner_hid),
+                "contact": named[member.contact_hid],
+                "role": member.role,
+                "priority": member.priority,
+            }
+            for member in found
         ]
 
 
@@ -786,6 +1358,7 @@ class Items(Entity):
     listing = fields.ITEMS
     # What a minor item has from the item it is in, when it has none of its own.
     _OWNER = Column("owner", inherits=True)
+    _LOCATION = Column("location", limit=LONG, inherits=True)
     _STANDING = (
         Column("lifecycle_state", limit=20, inherits=True),
         Column("disposition", limit=12, inherits=True),
@@ -811,6 +1384,8 @@ class Items(Entity):
         Column("condition", limit=40),
         *OBSERVATION,
         _OWNER,
+        Column("owner_exception_reason", limit=LONG),
+        _LOCATION,
         *MANAGEMENT,
         *(Column(name, "date") for name in items.DAYS),
         *AMOUNTS,
@@ -825,7 +1400,10 @@ class Items(Entity):
         Column("is_major", "boolean", settable=False),
         Column("depth", "integer", settable=False),
         Column("health", limit=12, settable=False),
-        *_sources((_OWNER, *_STANDING, *AMOUNTS, *DATES)),
+        Column("site", settable=False),
+        Column("region", limit=LONG, settable=False),
+        Column("owner_exception", "boolean", settable=False),
+        *_sources((_OWNER, _LOCATION, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -840,6 +1418,11 @@ class Items(Entity):
         "parent.name": "parent",
         **{f"effective.{name}": name for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": "owner",
+        "location_hid": "location",
+        "effective.location_hid": "location",
+        "location.name": "location",
+        "site_hid": "site",
+        "region_hid": "region",
         **{f"effective.{name}": name for name in inheritance.STANDING},
         **MGMT_SPELLINGS,
     }
@@ -848,6 +1431,7 @@ class Items(Entity):
     renamed: ClassVar[Mapping[str, str]] = {
         "catalog_entry_hid": "pid",
         "owner_hid": "owner",
+        "location_hid": "location",
         "parent_item_hid": "parent",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
@@ -866,6 +1450,7 @@ class Items(Entity):
         "condition",
         "observed_status",
         "observed_at",
+        "owner_exception_reason",
         *items.DAYS,
         "tags",
     )
@@ -1088,6 +1673,16 @@ class Items(Entity):
             if owner_hid is None or own is not None or owner_hid != inherited:
                 # Otherwise the row holds the owner the item has from the item above.
                 given["owner_hid"] = owner_hid
+        if "location" in values:
+            named = values["location"]
+            location_hid = (
+                run.place(named, "location", geography.LOCATION).hid if named is not None else None
+            )
+            inherited = next((one.location_hid for one in above if one.location_hid), None)
+            own = record.location_hid if record is not None else None
+            if location_hid is None or own is not None or location_hid != inherited:
+                # Otherwise the row says where the item is anyway, with the item above.
+                given["location_hid"] = location_hid
         given.update(self._overrides(record, before, entry, values))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
@@ -1151,11 +1746,19 @@ class Items(Entity):
         labels = tags.labels_of(db, self.record_type, hids)
         primaries = _primaries(db, "item_hid", hids)
         parents = items.reference_texts(db, [line[0] for line in lines.values() if line])
+        atlas = geography.Atlas(db)
+        atlas.read_locations(
+            {item.location_hid for item in found}
+            | {one.location_hid for line in lines.values() for one in line}
+        )
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
             in_force = inheritance.of_item(item, entry, line)
+            where = atlas.location(in_force["location_hid"].value or "")
+            site = atlas.site(where.site_hid) if where is not None else None
+            owner_in_force = its_owners.get(in_force["owner_hid"].value or "")
             row: dict[str, Any] = {
                 **_kept(item),
                 "vendor": vendors[entry.vendor_hid].name if entry else None,
@@ -1176,12 +1779,17 @@ class Items(Entity):
                 "health": health.of_item(
                     item.condition, item.observed_status, in_force["expected_online"].value
                 ).value,
+                "site": site.name if site is not None else None,
+                "region": atlas.region_path(site.region_hid) if site is not None else None,
+                "owner_exception": owner_in_force is not None and owner_in_force.is_external,
             }
             for name, effective in in_force.items():
-                column = "owner" if name == "owner_hid" else name
+                column = {"owner_hid": "owner", "location_hid": "location"}.get(name, name)
                 value = getattr(item, name) if own else effective.value
                 if name == "owner_hid":
                     value = items.name_or_hid(its_owners[value].label, value) if value else None
+                elif name == "location_hid":
+                    value = atlas.location_path(value) if value else None
                 row[column] = value
                 row[f"{column}_source"] = effective.source
             rows.append(row)
@@ -1233,6 +1841,7 @@ class DeviceGroups(Entity):
         Column("fqdn", limit=255),
         Column("parent"),
         Column("owner"),
+        Column("location", limit=LONG),
         Column("managed_as", limit=20),
         Column("expected_members", "integer"),
         *OBSERVATION,
@@ -1260,12 +1869,15 @@ class DeviceGroups(Entity):
     aliases: ClassVar[Mapping[str, str]] = {
         "owner.label": "owner",
         "owner_hid": "owner",
+        "location_hid": "location",
+        "location.name": "location",
         "parent.name": "parent",
         "parent_group_hid": "parent",
         **MGMT_SPELLINGS,
     }
     renamed: ClassVar[Mapping[str, str]] = {
         "owner_hid": "owner",
+        "location_hid": "location",
         "parent_group_hid": "parent",
         "address": "mgmt_address",
         "network_hid": "mgmt_network",
@@ -1305,6 +1917,11 @@ class DeviceGroups(Entity):
         if "owner" in values:
             owner = values["owner"]
             given["owner_hid"] = run.owner(owner).hid if owner is not None else None
+        if "location" in values:
+            place = values["location"]
+            given["location_hid"] = (
+                run.place(place, "location", geography.LOCATION).hid if place is not None else None
+            )
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
         if record is None:
@@ -1324,6 +1941,8 @@ class DeviceGroups(Entity):
         masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
         seen = groups.observed_masters(db, found)
         healths = groups.health_of(db, found)
+        atlas = geography.Atlas(db)
+        atlas.read_locations(group.location_hid for group in found)
         rows = []
         for group in found:
             master = seen.get(group.hid) or masters.get(group.hid)
@@ -1343,6 +1962,7 @@ class DeviceGroups(Entity):
                     "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
                     if group.owner_hid
                     else None,
+                    "location": atlas.location_path(group.location_hid) or None,
                     "managed_as": group.managed_as,
                     "expected_members": group.expected_members,
                     "observed_status": group.observed_status,
@@ -1642,7 +2262,13 @@ ENTITIES: Mapping[str, Entity] = {
         Tags(),
         Vendors(),
         CatalogEntries(),
+        Regions(),
+        Sites(),
+        Locations(),
+        Contacts(),
+        ContactAssignments(),
         Owners(),
+        OwnerMembers(),
         Networks(),
         Items(),
         DeviceGroups(),
@@ -1656,7 +2282,13 @@ LOAD_ORDER = (
     "tags",
     "vendors",
     "catalog_entries",
+    "regions",
+    "sites",
+    "locations",
+    "contacts",
+    "contact_assignments",
     "owners",
+    "owner_members",
     "networks",
     "items",
     "device_groups",

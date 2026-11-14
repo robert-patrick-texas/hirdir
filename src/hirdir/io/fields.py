@@ -9,25 +9,32 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import ColumnElement, Integer, Select, and_, case, func, or_, select
-from sqlalchemy.orm import aliased
+from sqlalchemy import ColumnElement, Integer, Select, and_, case, false, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from hirdir.db.models import (
+    ADDRESS_FIELDS,
     Address,
     CatalogEntry,
+    Contact,
+    ContactAssignment,
     DeviceGroup,
     DeviceGroupMember,
     Item,
+    Location,
     Network,
     Owner,
+    OwnerMember,
+    Region,
+    Site,
     Tag,
     TagLink,
     Vendor,
 )
-from hirdir.domain import health, inheritance, lifecycle, records
+from hirdir.domain import geography, health, inheritance, lifecycle, records
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
-from hirdir.io.filters import Field
+from hirdir.io.filters import Field, refuse
 
 
 @dataclass(frozen=True)
@@ -88,6 +95,37 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.owner_hid for one in _LINE))
+# Where an item is: a minor item is where the nearest item above it is that has a location.
+LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*(one.location_hid for one in _LINE))
+ITEM_LOCATION: Any = aliased(Location, name="item_location")
+ITEM_SITE: Any = aliased(Site, name="item_site")
+ITEM_REGION: Any = aliased(Region, name="item_region")
+
+
+def _within(
+    location: Any = None, site: Any = None, region: Any = None
+) -> Callable[[Session, str], ColumnElement[bool]]:
+    """Return the test that a record is at or beneath a place a filter names.
+
+    The three are the columns that say which location, which site and which region the
+    record is in. A place of a level the record cannot be within finds nothing.
+    """
+
+    def test(db: Session, text: str) -> ColumnElement[bool]:
+        place = geography.find_place(db, text)
+        if place is None:
+            raise refuse(f"there is no region, site or location {text}")
+        if place.level == geography.REGION:
+            return false() if region is None else region.in_(geography.regions_beneath(place.hid))
+        if place.level == geography.SITE:
+            return false() if site is None else site == place.hid
+        if location is None:
+            return false()
+        return location.in_(geography.locations_beneath(place.hid))
+
+    return test
+
+
 DEPTH: ColumnElement[Any] = case(
     *(
         (one.parent_item_hid.is_(None), level)
@@ -193,7 +231,9 @@ ITEMS = Listing(
     model=Item,
     fields={
         **_bookkeeping(Item),
-        **_columns(Item, "reference", "catalog_entry_hid", "owner_hid", "parent_item_hid"),
+        **_columns(
+            Item, "reference", "catalog_entry_hid", "owner_hid", "location_hid", "parent_item_hid"
+        ),
         "parent.name": Field("text", func.coalesce(ABOVE[0].name, ABOVE[0].hostname)),
         "is_major": Field("boolean", Item.parent_item_hid.is_(None)),
         "depth": Field("integer", DEPTH.cast(Integer)),
@@ -240,6 +280,23 @@ ITEMS = Listing(
         **_columns(Item, "number", *_INHERITED_AMOUNTS),
         **{f"effective.{name}": _effective(name) for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": Field("reference", OWNER_IN_FORCE),
+        "effective.location_hid": Field("reference", LOCATION_IN_FORCE),
+        # Where the item is, by the location in force.
+        "location": Field(
+            "place",
+            LOCATION_IN_FORCE,
+            within=_within(LOCATION_IN_FORCE, ITEM_LOCATION.site_hid, ITEM_SITE.region_hid),
+        ),
+        "location.name": Field("text", ITEM_LOCATION.name),
+        "location.kind": Field("choice", ITEM_LOCATION.kind),
+        "site": Field("text", ITEM_SITE.name),
+        "site.code": Field("text", ITEM_SITE.code),
+        "site_hid": Field("reference", ITEM_SITE.hid),
+        "region": Field("text", ITEM_REGION.name),
+        "region_hid": Field("reference", ITEM_REGION.hid),
+        "owner_exception_reason": Field("text", Item.owner_exception_reason),
+        # With an owner outside the team: the owner in force, so a minor item is too.
+        "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "effective.lifecycle_state": Field("choice", STATE_IN_FORCE),
         "effective.disposition": Field("choice", standing("disposition")),
         "effective.expected_online": Field("boolean", standing("expected_online")),
@@ -262,17 +319,31 @@ ITEMS = Listing(
         .outerjoin(CatalogEntry, CatalogEntry.hid == Item.catalog_entry_hid)
         .outerjoin(Vendor, Vendor.hid == CatalogEntry.vendor_hid)
         .outerjoin(Owner, Owner.hid == OWNER_IN_FORCE)
+        .outerjoin(ITEM_LOCATION, ITEM_LOCATION.hid == LOCATION_IN_FORCE)
+        .outerjoin(ITEM_SITE, ITEM_SITE.hid == ITEM_LOCATION.site_hid)
+        .outerjoin(ITEM_REGION, ITEM_REGION.hid == ITEM_SITE.region_hid)
     ),
     default_sort=("name",),
 )
 
 _PARENT_GROUP: Any = aliased(DeviceGroup, name="parent_group")
+_GROUP_LOCATION: Any = aliased(Location, name="group_location")
+_GROUP_SITE: Any = aliased(Site, name="group_site")
 
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
     fields={
         **_bookkeeping(DeviceGroup),
-        **_columns(DeviceGroup, "reference", "parent_group_hid", "owner_hid"),
+        **_columns(DeviceGroup, "reference", "parent_group_hid", "owner_hid", "location_hid"),
+        "location": Field(
+            "place",
+            DeviceGroup.location_hid,
+            within=_within(
+                DeviceGroup.location_hid, _GROUP_LOCATION.site_hid, _GROUP_SITE.region_hid
+            ),
+        ),
+        "location.name": Field("text", _GROUP_LOCATION.name),
+        "site": Field("text", _GROUP_SITE.name),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),
@@ -301,8 +372,11 @@ DEVICE_GROUPS = Listing(
         ),
         **_address_fields(_GROUP_ADDRESSES),
     },
-    joined=lambda query: query.outerjoin(Owner, Owner.hid == DeviceGroup.owner_hid).outerjoin(
-        _PARENT_GROUP, _PARENT_GROUP.hid == DeviceGroup.parent_group_hid
+    joined=lambda query: (
+        query.outerjoin(Owner, Owner.hid == DeviceGroup.owner_hid)
+        .outerjoin(_PARENT_GROUP, _PARENT_GROUP.hid == DeviceGroup.parent_group_hid)
+        .outerjoin(_GROUP_LOCATION, _GROUP_LOCATION.hid == DeviceGroup.location_hid)
+        .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
     ),
     default_sort=("name",),
 )
@@ -398,9 +472,132 @@ OWNERS = Listing(
         **_columns(Owner, "text", "label", "organization", "exception_reason"),
         "is_external": Field("boolean", Owner.is_external),
         "record_status": Field("choice", Owner.record_status),
+        "tags": Field("tags", test=_tagged("owner", Owner.hid)),
+        "member.contact_hid": Field(
+            "reference",
+            OwnerMember.contact_hid,
+            among=_one_of(select(OwnerMember.hid), OwnerMember.owner_hid == Owner.hid),
+        ),
     },
     joined=lambda query: query,
     default_sort=("label",),
+)
+
+_OWNER_CONTACT: Any = aliased(Contact, name="member_contact")
+
+OWNER_MEMBERS = Listing(
+    model=OwnerMember,
+    fields={
+        **_bookkeeping(OwnerMember),
+        **_columns(OwnerMember, "reference", "owner_hid", "contact_hid"),
+        # The primary first, so that a file of members loads into an owner that has none.
+        "role": Field(
+            "choice", OwnerMember.role, ordered_by=case((OwnerMember.role == "primary", 0), else_=1)
+        ),
+        "priority": Field("integer", OwnerMember.priority),
+        "owner.label": Field("text", Owner.label),
+        "contact.name": Field("text", _OWNER_CONTACT.name),
+    },
+    joined=lambda query: query.join(Owner, Owner.hid == OwnerMember.owner_hid).join(
+        _OWNER_CONTACT, _OWNER_CONTACT.hid == OwnerMember.contact_hid
+    ),
+    default_sort=("owner.label", "role", "priority"),
+    has_status=False,
+)
+
+_SHIPPING = (*(f"ship_{name}" for name in ADDRESS_FIELDS), "ship_instructions")
+_PARENT_REGION: Any = aliased(Region, name="parent_region")
+
+REGIONS = Listing(
+    model=Region,
+    fields={
+        **_bookkeeping(Region),
+        "parent_region_hid": Field("reference", Region.parent_region_hid),
+        "parent.name": Field("text", _PARENT_REGION.name),
+        # At or beneath a region: the region itself, and every region within it.
+        "region": Field("place", Region.hid, within=_within(region=Region.hid)),
+        **_columns(Region, "text", "name", "code", "notes", *_SHIPPING),
+        "record_status": Field("choice", Region.record_status),
+        "tags": Field("tags", test=_tagged("region", Region.hid)),
+    },
+    joined=lambda query: query.outerjoin(
+        _PARENT_REGION, _PARENT_REGION.hid == Region.parent_region_hid
+    ),
+    default_sort=("name",),
+)
+
+SITES = Listing(
+    model=Site,
+    fields={
+        **_bookkeeping(Site),
+        "region_hid": Field("reference", Site.region_hid),
+        "region": Field(
+            "place", Site.region_hid, within=_within(site=Site.hid, region=Site.region_hid)
+        ),
+        "region.name": Field("text", Region.name),
+        **_columns(Site, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
+        **_columns(Site, "number", "latitude", "longitude"),
+        "record_status": Field("choice", Site.record_status),
+        "tags": Field("tags", test=_tagged("site", Site.hid)),
+    },
+    joined=lambda query: query.join(Region, Region.hid == Site.region_hid),
+    default_sort=("name",),
+)
+
+_PARENT_LOCATION: Any = aliased(Location, name="parent_location")
+
+LOCATIONS = Listing(
+    model=Location,
+    fields={
+        **_bookkeeping(Location),
+        **_columns(Location, "reference", "site_hid", "parent_location_hid"),
+        "location": Field(
+            "place", Location.hid, within=_within(Location.hid, Location.site_hid, Site.region_hid)
+        ),
+        "site.name": Field("text", Site.name),
+        "site.code": Field("text", Site.code),
+        "parent.name": Field("text", _PARENT_LOCATION.name),
+        "is_top": Field("boolean", Location.parent_location_hid.is_(None)),
+        **_columns(Location, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
+        "kind": Field("choice", Location.kind),
+        **_columns(Location, "number", "latitude", "longitude"),
+        "record_status": Field("choice", Location.record_status),
+        "tags": Field("tags", test=_tagged("location", Location.hid)),
+    },
+    joined=lambda query: query.join(Site, Site.hid == Location.site_hid).outerjoin(
+        _PARENT_LOCATION, _PARENT_LOCATION.hid == Location.parent_location_hid
+    ),
+    default_sort=("site.name", "name"),
+)
+
+CONTACTS = Listing(
+    model=Contact,
+    fields={
+        **_bookkeeping(Contact),
+        **_columns(Contact, "text", "name", "organization", "email", "phone", "notes"),
+        "record_status": Field("choice", Contact.record_status),
+        "tags": Field("tags", test=_tagged("contact", Contact.hid)),
+    },
+    joined=lambda query: query,
+    default_sort=("name",),
+)
+
+CONTACT_ASSIGNMENTS = Listing(
+    model=ContactAssignment,
+    fields={
+        **_bookkeeping(ContactAssignment),
+        **_columns(
+            ContactAssignment, "reference", "contact_hid", "region_hid", "site_hid", "location_hid"
+        ),
+        "role": Field("choice", ContactAssignment.role),
+        "priority": Field("integer", ContactAssignment.priority),
+        "stop_inheritance": Field("boolean", ContactAssignment.stop_inheritance),
+        "contact.name": Field("text", Contact.name),
+        "contact.email": Field("text", Contact.email),
+    },
+    joined=lambda query: query.outerjoin(Contact, Contact.hid == ContactAssignment.contact_hid),
+    default_sort=("role", "priority", "contact.name"),
+    has_status=False,
 )
 
 TAGS = Listing(

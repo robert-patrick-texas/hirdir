@@ -56,6 +56,8 @@ def test_migration_loads_the_rules_and_the_choices(db: Session) -> None:
         "state_reason",
         "replacement_reason",
         "item_condition",
+        "contact_role",
+        "location_kind",
     }
     for rule in lifecycle.list_rules(db):
         assert set(rule.next_states) <= set(lifecycle.STATES)

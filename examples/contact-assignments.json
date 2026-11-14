@@ -1,0 +1,9 @@
+{"schema": "hirdir/1", "entity": "contact_assignments", "mode": "upsert", "records": [
+  {"region": "Americas", "site": null, "location": null, "role": "escalation", "contact": "robin.achterberg@example.net", "priority": 1, "stop_inheritance": false},
+  {"region": "Americas", "site": null, "location": null, "role": "operational", "contact": "noc@example.net", "priority": 1, "stop_inheritance": false},
+  {"region": null, "site": "Americas > Central > Site-2", "location": null, "role": "shipping", "contact": "sam.okafor@example.net", "priority": 1, "stop_inheritance": false},
+  {"region": null, "site": "Americas > East > Site-1", "location": null, "role": "shipping", "contact": null, "priority": 1, "stop_inheritance": true},
+  {"region": "Americas", "site": null, "location": null, "role": "technical", "contact": "dana.whitfield@example.net", "priority": 1, "stop_inheritance": false},
+  {"region": null, "site": null, "location": "Americas > Central > Site-2 > Building 1", "role": "technical", "contact": "lee.marchetti@example.net", "priority": 1, "stop_inheritance": false},
+  {"region": "Americas", "site": null, "location": null, "role": "technical", "contact": "robin.achterberg@example.net", "priority": 2, "stop_inheritance": false}
+]}

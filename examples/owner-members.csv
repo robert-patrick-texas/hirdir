@@ -1,0 +1,8 @@
+hid,owner,contact,role,priority
+,Facilities Management,facilities@example.net,primary,1
+,Network Engineering,dana.whitfield@example.net,primary,1
+,Network Engineering,robin.achterberg@example.net,alternate,1
+,Network Engineering,lee.marchetti@example.net,alternate,2
+,Security Operations,priya.raman@example.net,primary,1
+,Voice Services,tomas.lindqvist@example.net,primary,1
+,Voice Services,dana.whitfield@example.net,alternate,1

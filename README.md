@@ -5,26 +5,27 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.4.2, structure. An item may be in another item: a power supply
-or a module has the owner and the lifecycle state of its switch unless it is given its
-own, and is not counted. Switches are grouped into stacks, controllers into clusters,
-and controllers with their access points or phones into controller domains, with the
-dates each member joined and left. A stack records the master that is meant and the
-one that is seen, and shows the serial number of the one seen; a cluster says whether
-it is one device on the network or several. Each item has a condition and what was
-last observed of it, on the network or by a person who looked, and from those a
-health, which a stack and a cluster have too: green, amber, red or not known. Items
-and groups have addresses, one of each family to manage them by, under network labels
-where there are any. The summary counts a view of the inventory, components beside
-managed nodes, with support weight and health; a management report gives its
-estimated value and annual support cost. This stands on 0.3.0, files and the command
-line, on 0.2.0, the inventory itself, with vendors, a catalog of models, owners and
-items that inherit from their model and move through the lifecycle, and on the
-skeleton of 0.1.0: the package installs and runs behind nginx, people sign in, and an
-Admin manages accounts. A set of fictional [examples](examples/README.md) loads into
-an empty installation. A host with an earlier release is upgraded by installing the
-new package. Regions, sites, locations and contacts arrive with 0.5.0. The order of
-work is in the [build plan](docs/build-plan.md).
+**Status:** release 0.5.0, places and people. Regions hold sites, and a site holds
+locations within one another: a building, a floor, a room, a rack. An item is given a
+location, and its site and region follow; a power supply is where its switch is. Each
+place has a path, `Americas > Central > Site-2 > Building 1 > Room 102`, and the tree
+of places shows what is at or beneath each one. Contacts are assigned to a region, a
+site or a location in a role, and a place with none of its own for a role has those of
+the nearest place above it, as it has the shipping address and instructions: every
+answer says which level a contact came from. A site is moved to another region by one
+change, and the paths, the contacts and the totals follow with no item written to. An
+owner has its people, a primary and alternates, and an item that is with an owner
+outside the team says why. The management report is by site. This stands on 0.4.0 to
+0.4.2, structure: minor items, stacks, clusters and controller domains, addresses, the
+condition of an item with what was last observed of it, and the health that follows;
+on 0.3.0, files and the command line; on 0.2.0, the inventory itself, with vendors, a
+catalog of models, owners and items that inherit from their model and move through the
+lifecycle; and on the skeleton of 0.1.0: the package installs and runs behind nginx,
+people sign in, and an Admin manages accounts. A set of fictional
+[examples](examples/README.md) loads into an empty installation. A host with an
+earlier release is upgraded by installing the new package. Contracts, purchases and
+capacity arrive with 0.6.0. The order of work is in the
+[build plan](docs/build-plan.md).
 
 ![Lifecycle workflow](images/lifecycle-workflow.png)
 

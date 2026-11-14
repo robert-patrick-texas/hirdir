@@ -780,16 +780,15 @@ def test_the_management_report_holds_the_money_and_no_health(
     whole = make.get("/reports/management")
     by_owner = make.get("/reports/management", by="owner")
 
-    assert whole == {
-        "by": None,
-        "totals": {
-            "items": 3,
-            "component_count": 3,
-            "est_value": "42200.00",
-            "annual_support_cost": "3450.00",
-        },
-        "rows": [],
+    # Asked for by nothing, it is by site: nothing is anywhere yet, so all of it is in
+    # the one row of the items that are nowhere.
+    money = {
+        "items": 3,
+        "component_count": 3,
+        "est_value": "42200.00",
+        "annual_support_cost": "3450.00",
     }
+    assert whole == {"by": "site", "totals": money, "rows": [{"key": None, "label": None, **money}]}
     assert [
         (row["label"], row["est_value"], row["annual_support_cost"]) for row in by_owner["rows"]
     ] == [

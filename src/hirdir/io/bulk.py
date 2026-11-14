@@ -106,7 +106,7 @@ def preview(
     order = filters.order_by(
         filters.parse_sort(list(ITEMS.default_sort), ITEMS.fields), ITEMS.fields
     )
-    where = [filters.to_sql(condition, ITEMS.fields, settings.time_zone(db))]
+    where = [filters.to_sql(condition, ITEMS.fields, settings.time_zone(db), db)]
     if hids is None:
         # Rows named one by one are changed whatever their status. A filter leaves out
         # what a list leaves out.

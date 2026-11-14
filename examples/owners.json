@@ -1,6 +1,6 @@
 {"schema": "hirdir/1", "entity": "owners", "mode": "upsert", "records": [
-  {"label": "Facilities Management", "organization": "Corporate Services", "is_external": true, "exception_reason": "Owns the building management network; the operations team supports its switches", "record_status": "active"},
-  {"label": "Network Engineering", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active"},
-  {"label": "Security Operations", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active"},
-  {"label": "Voice Services", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active"}
+  {"label": "Facilities Management", "organization": "Corporate Services", "is_external": true, "exception_reason": "Owns the building management network; the operations team supports its switches", "record_status": "active", "tags": []},
+  {"label": "Network Engineering", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active", "tags": []},
+  {"label": "Security Operations", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active", "tags": []},
+  {"label": "Voice Services", "organization": "Infrastructure Operations", "is_external": false, "exception_reason": null, "record_status": "active", "tags": []}
 ]}

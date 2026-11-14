@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, sites, locations, contacts, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, owners, contracts and catalog entries are never deleted. They carry `record_status`. A membership of a group is ended with a date. An address, a contact assignment, a member of an owner, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -33,6 +33,7 @@ where it came from.**
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
+| Site: the same three | each region outward |
 
 The API returns an inheritable field as its own stored value plus an `effective` block:
 
@@ -46,7 +47,7 @@ The API returns an inheritable field as its own stored value plus an `effective`
 ```
 
 `source` is one of `own`, `catalog`, `parent_item`, `location`, `site`, `region`,
-`setting` or `none`. Grids and exports show the effective value and offer a
+`setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
 
@@ -116,6 +117,7 @@ lifecycle fields included.
 | `observed_status` | choice | `online`, `degraded`, `unreachable` or `present`: what is seen of it. Blank until somebody says |
 | `observed_at` | timestamp | when that was seen. Set with `observed_status`, to now unless another moment is given |
 | `owner_hid`, `location_hid` | reference | |
+| `owner_exception_reason` | text | why this item is with an owner outside the operations team. Required with such an owner; see `owners` |
 | `purchase_line_hid` | reference | the request line it arrived on |
 | `procured_on`, `delivered_on`, `in_service_on` | date | |
 | `warranty_start`, `warranty_end` | date | |
@@ -135,7 +137,8 @@ a major item, so it is not given a parent, and a minor item is not made a member
 one.
 
 A minor item whose own `owner_hid` is blank has the owner of the nearest item above it
-that has one. Its standing is taken as a whole: with a `lifecycle_state` of its own it
+that has one, and one whose own `location_hid` is blank is where the nearest item above
+it is that has a location: a power supply is in Room 102 because its switch is. Its standing is taken as a whole: with a `lifecycle_state` of its own it
 has its own disposition and intent, and with none it has all three of the nearest item
 above it that has a state. A power supply is in production because its switch is, and
 the one that failed is moved to Pending-Removal by itself. It is returned to inheriting
@@ -146,8 +149,7 @@ Taking a minor item out of its parent, by clearing `parent_item_hid` or naming a
 parent, keeps its record and its history. With no parent it is a major item, with
 whatever is its own: what it inherited stays with the parent it left.
 
-Release 0.4.0 has every field above except `location_hid`, which arrives in 0.5.0, and
-`purchase_line_hid`, in 0.6.0.
+Release 0.5.0 has every field above except `purchase_line_hid`, which arrives in 0.6.0.
 
 ### `item_replacements`
 
@@ -180,7 +182,7 @@ files, arrive in 0.6.0.
 | `name` | text, unique | required |
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
-| `location_hid`, `owner_hid` | reference | optional. `location_hid` arrives in 0.5.0 |
+| `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |
 | `observed_master_hid` | reference | a stack only: the current member that is seen to be master now. Set with `observed_at` of its own, `master_observed_at` |
@@ -271,32 +273,79 @@ that holds what was removed.
 
 | Record | Fields | Rules |
 |---|---|---|
-| `regions` | `code`, `name`, `parent_region_hid`, `notes` | Any depth, no cycles. `name` unique among siblings. |
-| `sites` | `code`, `name`, `region_hid`, address fields, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. |
-| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, `latitude`, `longitude`, `notes` | `name` unique among siblings. A parent location is in the same site. `kind` is building, floor, room, rack, warehouse or other. |
+| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `notes`, `record_status` | Any depth, no cycles. `name` unique among siblings. |
+| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
+| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
 
-Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`. A
-shipping address is a second set with the prefix `ship_`, plus `ship_instructions`. A
-shipping address is taken whole from the nearest record that has one.
+Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`.
+The shipping set is the same six with the prefix `ship_`, plus `ship_instructions`. A
+region has the shipping set and no street address.
+
+`name` is required and holds no `>`. Within one region, a site and a region directly
+beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
+`S2`, and is unique when present: among regions, among sites, and within its site for a
+location. `latitude` and `longitude` are decimal degrees with up to six places, given
+together or not at all. All three records take tags.
 
 A **path** is the names from the top region down, joined with ` > `:
-`Americas > Central > Site-A > Building 1 > Room 102`. A path identifies a region, site
-or location in an import when no HID is given.
+`Americas > Central > Site-2 > Building 1 > Room 102`. A path identifies a region, site
+or location in an import when no HID is given, and every answer that holds one of the
+three holds its `path`. It is worked out when it is read and stored nowhere, so moving
+a site to another region changes the path of the site and of everything in it, and
+writes to none of them.
+
+**Nesting.** Regions nest to any depth. Locations nest at most eight deep within a
+site: a building, a floor, a room, a rack. A location stays in the site it was made
+in: `site_hid` is not changed, and a location is moved within its site by giving it
+another parent. A site is moved by giving it another region, and a region with
+everything in it by giving it another parent. Each move is one change of one record,
+and one audit event. No record is ever beneath itself.
+
+**What an item is given** is a location: `location_hid` on the item, and on a device
+group that is in one place. Its site and its regions follow from the location. A
+location that is retired is given to no further item.
+
+**Retiring.** A region, a site or a location is retired only when nothing that is not
+retired is in it: no region, site or location beneath it, and no item or device group
+placed there. A site or a location may be a draft, and so may a region.
+
+**The shipping address** of a place is taken whole, all six fields together, from the
+nearest record that has any of them: the location itself, the locations above it, its
+site, then each region outward. `ship_instructions` is inherited by itself in the same
+way, so instructions written once on a region reach every dock beneath it. A street
+address is never taken for a shipping address, and coordinates do not inherit.
+`GET /locations/{hid}/effective` answers both with where they came from, and the same
+route of a site and of a region answers for those.
 
 ### `contacts` and `contact_assignments`
 
 | Field | Type | Notes |
 |---|---|---|
-| `contacts.name`, `organization`, `email`, `phone`, `notes` | text | one record per person or shared mailbox |
-| `contact_assignments.contact_hid` | reference | |
-| `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three |
-| `contact_assignments.role` | choice | `shipping`, `technical`, `federal`, `operational`, `escalation` |
-| `contact_assignments.priority` | integer | 1 is primary |
+| `contacts.name` | text | required. One record per person or shared mailbox |
+| `contacts.organization`, `phone`, `notes` | text | |
+| `contacts.email` | text | unique when present, without regard to case |
+| `contacts.record_status` | choice | see Conventions. A contact takes tags |
+| `contact_assignments.contact_hid` | reference | blank only on an assignment that stops inheritance |
+| `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three, and not changed afterwards |
+| `contact_assignments.role` | choice | a value of the `contact_role` list: `shipping`, `technical`, `federal`, `operational`, `escalation` |
+| `contact_assignments.priority` | integer | 1 is primary. Left out, one more than the highest of that place and role |
 | `contact_assignments.stop_inheritance` | boolean | an assignment with no contact and this flag set means "none here, and do not look further up" |
 
 Resolution for a location and a role: take the assignments on the location. If there are
 none, take the parent location's, then the site's, then each region's outward. The first
-level that has any supplies all of them.
+level that has any supplies all of them, in the order of their priority. A level whose
+only assignment for the role is the one that stops inheritance supplies none, and
+nothing above it is looked at.
+
+A contact is assigned once to one place in one role. The assignment that stops
+inheritance stands alone for its place and role: it is refused where contacts are
+assigned, and a contact is refused where it stands. An assignment with a contact never
+carries the flag. A retired contact is given no further assignment, and the ones it
+has are shown with its status.
+
+An assignment is removed outright, and the audit event of the removal holds what it
+was. Nothing is copied down: changing the technical contact of a region changes what
+every location beneath it shows, unless a level between them has its own.
 
 ### `owners` and `owner_members`
 
@@ -305,9 +354,24 @@ level that has any supplies all of them.
 | `owners.label` | text, unique | "Network Engineering" |
 | `owners.organization` | text | |
 | `owners.is_external` | boolean | an owner outside the operations team |
-| `owners.exception_reason` | text | required when `is_external` |
-| `owners.record_status` | choice | see Conventions |
-| `owner_members.contact_hid`, `role`, `priority` | | `role` is `primary` or `alternate`; exactly one primary |
+| `owners.exception_reason` | text | required when `is_external`: why this owner is in the list at all |
+| `owners.record_status` | choice | see Conventions. An owner takes tags |
+| `owner_members.owner_hid`, `contact_hid` | reference | a contact is a member of an owner once |
+| `owner_members.role` | choice | `primary` or `alternate` |
+| `owner_members.priority` | integer | the order of the alternates. Left out, one more than the highest |
+
+An owner may have no members. One that has any has exactly one `primary`: the first
+member is the primary, marking another member makes the one that had it an
+`alternate`, in the same change, and the primary is not removed while other members
+remain. A member is removed outright, with an audit event that holds what it was.
+
+**An item with an owner outside the team is an exception, and says why.** Giving an
+item an owner that `is_external` is refused unless `owner_exception_reason` comes with
+it, or the item already has one. The reason is the item's: why this switch is looked
+after by somebody else. It is cleared when the item is given an owner that is not
+external, or none. `owner_exception` is derived and is true when the owner in force
+is external, so the minor items of such an item are marked with it. It is a field to
+filter by. A device group may have an external owner and gives no reason.
 
 The owner itself is in release 0.2.0, because an item needs one to point to. Its
 members arrive with contacts in 0.5.0, and so does the marked exception on an item that
@@ -398,7 +462,9 @@ record cannot be removed.
 
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
 lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
-`contact_role`, `location_kind`, `replacement_reason` and `capacity_category`. A value is lower-case
+`contact_role`, `location_kind`, `replacement_reason` and `capacity_category`.
+`contact_role` and `location_kind` are loaded with their defaults by release 0.5.0,
+the first to use them. A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
@@ -452,7 +518,7 @@ A preview of a change to many records, kept so that what is applied is what was 
 | Field | Type | Notes |
 |---|---|---|
 | `source` | choice | `file` for an import, `bulk` for a bulk edit |
-| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `owners`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
+| `entity` | choice | `tags`, `vendors`, `catalog_entries`, `regions`, `sites`, `locations`, `contacts`, `contact_assignments`, `owners`, `owner_members`, `networks`, `items`, `addresses`, `device_groups`, `device_group_members`, and each further record type as its release arrives |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
 | `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |

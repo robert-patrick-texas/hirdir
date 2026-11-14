@@ -56,6 +56,8 @@ const NONE: Readonly<Record<By, string>> = {
   type: "No type",
   function: "No function",
   owner: "No owner",
+  site: "No site",
+  region: "No region",
   lifecycle_state: "No state",
   disposition: "No disposition",
   condition: "No condition",

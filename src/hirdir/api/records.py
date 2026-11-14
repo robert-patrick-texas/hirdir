@@ -240,6 +240,502 @@ class CatalogEntryPatch(Model):
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
 
+# --- geography -----------------------------------------------------------------------
+
+Code = Annotated[str, Field(max_length=40)]
+Level = Literal["region", "site", "location"]
+
+
+def _degrees(value: Decimal) -> str:
+    return f"{value:.6f}"
+
+
+Latitude = Annotated[
+    Decimal,
+    Field(ge=-90, le=90, max_digits=8, decimal_places=6),
+    PlainSerializer(_degrees, return_type=str, when_used="json"),
+    WithJsonSchema(
+        {"type": "string", "pattern": r"^-?\d{1,2}(\.\d{1,6})?$", "examples": ["41.878100"]}
+    ),
+]
+Longitude = Annotated[
+    Decimal,
+    Field(ge=-180, le=180, max_digits=9, decimal_places=6),
+    PlainSerializer(_degrees, return_type=str, when_used="json"),
+    WithJsonSchema(
+        {"type": "string", "pattern": r"^-?\d{1,3}(\.\d{1,6})?$", "examples": ["-87.629800"]}
+    ),
+]
+
+
+class PlaceRef(Model):
+    """A region, a site or a location, as named on another record."""
+
+    hid: str
+    name: str
+    path: str = Field(description="The names from the top region down, joined with ' > '.")
+
+
+class LocationRef(PlaceRef):
+    """A location, as named on the item or the group that is there, with its site."""
+
+    kind: str | None
+    site_hid: str
+    site: str = Field(description="The name of its site.")
+
+
+class RegionOut(Model):
+    """A part of the world that sites are in."""
+
+    hid: str
+    code: str | None
+    name: str
+    parent_region_hid: str | None
+    parent: PlaceRef | None
+    path: str
+    ship_address1: str | None
+    ship_address2: str | None
+    ship_city: str | None
+    ship_state: str | None
+    ship_postal_code: str | None
+    ship_country: str | None
+    ship_instructions: str | None
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    regions: int = Field(description="How many regions are directly in it, retired ones aside.")
+    sites: int = Field(description="How many sites are directly in it, retired ones aside.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class RegionCreate(Model):
+    """A new region."""
+
+    name: Name = Field(min_length=1)
+    code: Code | None = None
+    parent_region_hid: Hid | None = Field(
+        default=None, description="The region it is in. Left out, a region at the top."
+    )
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class RegionPatch(Model):
+    """Fields of a region to change, and the version they were read at."""
+
+    row_version: int
+    name: Name | None = None
+    code: Code | None = None
+    parent_region_hid: Hid | None = Field(
+        default=None, description="Another region moves it, with everything in it."
+    )
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class SiteOut(Model):
+    """A place the team works at."""
+
+    hid: str
+    code: str | None
+    name: str
+    region_hid: str
+    region: PlaceRef
+    path: str
+    address1: str | None
+    address2: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    country: str | None
+    ship_address1: str | None
+    ship_address2: str | None
+    ship_city: str | None
+    ship_state: str | None
+    ship_postal_code: str | None
+    ship_country: str | None
+    ship_instructions: str | None
+    latitude: Latitude | None
+    longitude: Longitude | None
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    locations: int = Field(description="How many locations it has, retired ones aside.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SiteCreate(Model):
+    """A new site, in one region."""
+
+    name: Name = Field(min_length=1)
+    code: Code | None = None
+    region_hid: Hid
+    address1: Name | None = None
+    address2: Name | None = None
+    city: Name | None = None
+    state: Name | None = None
+    postal_code: Name | None = None
+    country: Name | None = None
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    latitude: Latitude | None = None
+    longitude: Longitude | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class SitePatch(Model):
+    """Fields of a site to change, and the version they were read at."""
+
+    row_version: int
+    name: Name | None = None
+    code: Code | None = None
+    region_hid: Hid | None = Field(default=None, description="Another region moves the site.")
+    address1: Name | None = None
+    address2: Name | None = None
+    city: Name | None = None
+    state: Name | None = None
+    postal_code: Name | None = None
+    country: Name | None = None
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    latitude: Latitude | None = None
+    longitude: Longitude | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class LocationOut(Model):
+    """A place within a site: a building, a floor, a room, a rack."""
+
+    hid: str
+    code: str | None
+    name: str
+    site_hid: str
+    site: PlaceRef
+    parent_location_hid: str | None
+    parent: PlaceRef | None
+    kind: str | None
+    path: str
+    depth: int = Field(description="0 for a location directly in its site.")
+    address1: str | None
+    address2: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    country: str | None
+    ship_address1: str | None
+    ship_address2: str | None
+    ship_city: str | None
+    ship_state: str | None
+    ship_postal_code: str | None
+    ship_country: str | None
+    ship_instructions: str | None
+    latitude: Latitude | None
+    longitude: Longitude | None
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    locations: int = Field(description="How many locations are directly in it, retired aside.")
+    items: int = Field(description="How many items have it as their own location.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class LocationCreate(Model):
+    """A new location: in a site, or within a location of one."""
+
+    name: Name = Field(min_length=1)
+    code: Code | None = None
+    site_hid: Hid | None = Field(
+        default=None, description="Its site. May be left out when the parent is named."
+    )
+    parent_location_hid: Hid | None = None
+    kind: str | None = Field(
+        default=None, max_length=40, description="A value of the location_kind list."
+    )
+    address1: Name | None = None
+    address2: Name | None = None
+    city: Name | None = None
+    state: Name | None = None
+    postal_code: Name | None = None
+    country: Name | None = None
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    latitude: Latitude | None = None
+    longitude: Longitude | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class LocationPatch(Model):
+    """Fields of a location to change, and the version they were read at."""
+
+    row_version: int
+    name: Name | None = None
+    code: Code | None = None
+    parent_location_hid: Hid | None = Field(
+        default=None, description="Another location of the same site moves it. Null: in the site."
+    )
+    kind: str | None = Field(default=None, max_length=40)
+    address1: Name | None = None
+    address2: Name | None = None
+    city: Name | None = None
+    state: Name | None = None
+    postal_code: Name | None = None
+    country: Name | None = None
+    ship_address1: Name | None = None
+    ship_address2: Name | None = None
+    ship_city: Name | None = None
+    ship_state: Name | None = None
+    ship_postal_code: Name | None = None
+    ship_country: Name | None = None
+    ship_instructions: LongText | None = None
+    latitude: Latitude | None = None
+    longitude: Longitude | None = None
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class PlaceCount(Model):
+    """The items and the components of a set of items."""
+
+    items: int = Field(description="Every item of the set, major and minor.")
+    component_count: int
+
+
+class GeographyNode(PlaceCount):
+    """A region, a site or a location, with what is at or beneath it."""
+
+    level: Level
+    hid: str
+    name: str
+    code: str | None
+    kind: str | None = Field(description="Of a location.")
+    path: str
+    record_status: RecordStatus
+    children: list[GeographyNode]
+
+
+class GeographyTree(Model):
+    """The regions, their sites and the locations within them, with the counts of a view."""
+
+    totals: PlaceCount = Field(description="The whole view.")
+    unplaced: PlaceCount = Field(description="The items with no location in force.")
+    hidden: PlaceCount = Field(description="The items in a place the view leaves out.")
+    roots: list[GeographyNode]
+
+
+# --- contacts ------------------------------------------------------------------------
+
+
+class ContactRef(Model):
+    """A contact, as shown where it is assigned."""
+
+    hid: str
+    name: str
+    organization: str | None
+    email: str | None
+    phone: str | None
+    record_status: RecordStatus
+
+
+class ContactOut(Model):
+    """A person or a shared mailbox."""
+
+    hid: str
+    name: str
+    organization: str | None
+    email: str | None
+    phone: str | None
+    notes: str | None
+    record_status: RecordStatus
+    tags: list[str]
+    uses: int = Field(description="How many places and owners it is assigned to.")
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContactCreate(Model):
+    """A new contact."""
+
+    name: Name = Field(min_length=1)
+    organization: Name | None = None
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=50)
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+class ContactPatch(Model):
+    """Fields of a contact to change, and the version they were read at."""
+
+    row_version: int
+    name: Name | None = None
+    organization: Name | None = None
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=50)
+    notes: LongText | None = None
+    record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
+
+
+class AssignedPlace(PlaceRef):
+    """The place of an assignment, and which of the three it is."""
+
+    level: Level
+
+
+class AssignmentOut(Model):
+    """A contact of one region, site or location, in one role."""
+
+    hid: str
+    contact_hid: str | None
+    contact: ContactRef | None
+    region_hid: str | None
+    site_hid: str | None
+    location_hid: str | None
+    place: AssignedPlace
+    role: str
+    priority: int
+    stop_inheritance: bool
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssignmentCreate(Model):
+    """A contact for a place in a role, or the word that the place has none."""
+
+    contact_hid: Hid | None = None
+    region_hid: Hid | None = None
+    site_hid: Hid | None = None
+    location_hid: Hid | None = None
+    role: str = Field(max_length=40, description="A value of the contact_role list.")
+    priority: int | None = Field(
+        default=None, ge=1, le=1000, description="1 is primary. Left out, after the last."
+    )
+    stop_inheritance: bool = Field(
+        default=False,
+        description="With no contact: none here, and do not look further up.",
+    )
+
+
+class AssignmentPatch(Model):
+    """Fields of an assignment to change, and the version they were read at."""
+
+    row_version: int
+    contact_hid: Hid | None = None
+    role: str | None = Field(default=None, max_length=40)
+    priority: int | None = Field(default=None, ge=1, le=1000)
+    stop_inheritance: bool | None = None
+
+
+class EffectiveContact(ContactRef):
+    """A contact in force for a place, with the assignment it comes by."""
+
+    assignment_hid: str
+    contact_hid: str
+    priority: int
+
+
+PlaceSource = Literal["own", "location", "site", "region", "none"]
+
+
+class RoleContacts(Model):
+    """The contacts in force for one role, and the level they came from."""
+
+    role: str
+    label: str
+    source: PlaceSource
+    source_hid: str | None
+    source_path: str | None
+    stopped: bool = Field(description="A level said: none here, and do not look further up.")
+    contacts: list[EffectiveContact]
+
+
+class ShipAddress(Model):
+    """A shipping address, taken whole."""
+
+    address1: str | None
+    address2: str | None
+    city: str | None
+    state: str | None
+    postal_code: str | None
+    country: str | None
+
+
+class EffectiveShipAddress(Model):
+    """The shipping address in force, and the level it came from."""
+
+    value: ShipAddress | None
+    source: PlaceSource
+    source_hid: str | None
+    source_path: str | None
+
+
+class EffectiveInstructions(Model):
+    """The shipping instructions in force, and the level they came from."""
+
+    value: str | None
+    source: PlaceSource
+    source_hid: str | None
+    source_path: str | None
+
+
+class PlaceEffective(Model):
+    """What a place has in force: its contacts by role, and where deliveries go."""
+
+    level: Level
+    hid: str
+    path: str
+    contacts: list[RoleContacts]
+    ship_address: EffectiveShipAddress
+    ship_instructions: EffectiveInstructions
+
+
 # --- owners --------------------------------------------------------------------------
 
 
@@ -248,6 +744,39 @@ class OwnerRef(Model):
 
     hid: str
     label: str
+
+
+class OwnerMemberOut(Model):
+    """One of the people of an owner."""
+
+    hid: str
+    owner_hid: str
+    contact_hid: str
+    contact: ContactRef
+    role: Literal["primary", "alternate"]
+    priority: int
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class OwnerMemberAdd(Model):
+    """A contact to make one of the people of an owner."""
+
+    contact_hid: Hid
+    role: Literal["primary", "alternate"] | None = Field(
+        default=None,
+        description="Left out, primary for the first member and alternate after that.",
+    )
+    priority: int | None = Field(default=None, ge=1, le=1000)
+
+
+class OwnerMemberPatch(Model):
+    """Fields of a member of an owner to change, and the version they were read at."""
+
+    row_version: int
+    role: Literal["primary", "alternate"] | None = None
+    priority: int | None = Field(default=None, ge=1, le=1000)
 
 
 class OwnerOut(Model):
@@ -259,6 +788,8 @@ class OwnerOut(Model):
     is_external: bool
     exception_reason: str | None
     record_status: RecordStatus
+    tags: list[str]
+    members: list[OwnerMemberOut] = Field(description="Its people, the primary first.")
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -272,6 +803,7 @@ class OwnerCreate(Model):
     is_external: bool = False
     exception_reason: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
+    tags: list[ShortText] = Field(default=[], max_length=100)
 
 
 class OwnerPatch(Model):
@@ -283,6 +815,7 @@ class OwnerPatch(Model):
     is_external: bool | None = None
     exception_reason: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
+    tags: list[ShortText] | None = Field(default=None, max_length=100)
 
 
 # --- items ---------------------------------------------------------------------------
@@ -379,12 +912,20 @@ class ReplacementRef(Model):
     replaced_on: date
 
 
+class EffectiveLocation(EffectiveReference):
+    """The location in force, with its site. The label is its path."""
+
+    site_hid: str | None
+    site: str | None = Field(description="The name of its site.")
+
+
 class ItemEffective(Model):
     """The values in force of the fields an item inherits: the amounts and the dates
-    from its catalog entry, and for a minor item the owner and the standing of the item
-    it is in."""
+    from its catalog entry, and for a minor item the owner, the location and the
+    standing of the item it is in."""
 
     owner_hid: EffectiveReference
+    location_hid: EffectiveLocation
     lifecycle_state: EffectiveValue
     disposition: EffectiveValue
     expected_online: EffectiveValue
@@ -426,6 +967,12 @@ class ItemOut(Model):
     health: HealthOut
     owner_hid: str | None
     owner: OwnerRef | None
+    owner_exception_reason: str | None = Field(
+        description="Why this item is with an owner outside the operations team."
+    )
+    owner_exception: bool = Field(description="The owner in force is outside the operations team.")
+    location_hid: str | None
+    location: LocationRef | None = Field(description="Its own location.")
     parent_item_hid: str | None
     parent: ItemRef | None = Field(description="The item a minor item is in.")
     position: str | None = Field(description="Where in its parent a minor item is.")
@@ -491,6 +1038,10 @@ class ItemCreate(Model):
         default=None, description="Left out, now. Given with observed_status only."
     )
     owner_hid: Hid | None = None
+    owner_exception_reason: LongText | None = Field(
+        default=None, description="Needed with an owner outside the operations team."
+    )
+    location_hid: Hid | None = None
     parent_item_hid: Hid | None = Field(
         default=None, description="The item this one is in. Given, the item is a minor item."
     )
@@ -538,6 +1089,10 @@ class ItemPatch(Model):
     )
     observed_at: datetime | None = None
     owner_hid: Hid | None = None
+    owner_exception_reason: LongText | None = None
+    location_hid: Hid | None = Field(
+        default=None, description="Null: a minor item is where the item above it is."
+    )
     parent_item_hid: Hid | None = Field(
         default=None, description="Null takes a minor item out of its parent."
     )
@@ -685,6 +1240,8 @@ class DeviceGroupOut(Model):
     groups: list[DeviceGroupRef] = Field(description="The groups nested directly in this one.")
     owner_hid: str | None
     owner: OwnerRef | None
+    location_hid: str | None
+    location: LocationRef | None
     members_disagree: list[str] = Field(
         description="The fields of the group that a current member contradicts."
     )
@@ -729,6 +1286,7 @@ class DeviceGroupCreate(Model):
     fqdn: HostName | None = None
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
+    location_hid: Hid | None = None
     managed_as: ManagedAs | None = Field(default=None, description="A cluster only. Left out, one.")
     expected_members: int | None = Field(default=None, ge=1, le=10_000)
     observed_status: ObservedStatus | None = None
@@ -752,6 +1310,7 @@ class DeviceGroupPatch(Model):
     fqdn: HostName | None = None
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
+    location_hid: Hid | None = None
     managed_as: ManagedAs | None = None
     expected_members: int | None = Field(default=None, ge=1, le=10_000)
     observed_status: ObservedStatus | None = None
@@ -849,13 +1408,15 @@ SummaryBy = Literal[
     "type",
     "function",
     "owner",
+    "site",
+    "region",
     "lifecycle_state",
     "disposition",
     "condition",
     "health",
     "tag",
 ]
-ManagementBy = Literal["vendor", "kind", "type", "function", "owner", "tag"]
+ManagementBy = Literal["vendor", "kind", "type", "function", "owner", "site", "region", "tag"]
 
 
 class HealthCount(Model):
@@ -932,7 +1493,7 @@ class ManagementRow(ManagementMeasures):
 class ManagementOut(Model):
     """The value and the cost of a view of the items, for the people who pay for it."""
 
-    by: ManagementBy | None
+    by: ManagementBy = Field(description="What the rows are by: the site, unless asked.")
     totals: ManagementMeasures
     rows: list[ManagementRow]
 
@@ -1086,7 +1647,13 @@ EntityName = Literal[
     "tags",
     "vendors",
     "catalog_entries",
+    "regions",
+    "sites",
+    "locations",
+    "contacts",
+    "contact_assignments",
     "owners",
+    "owner_members",
     "networks",
     "items",
     "addresses",

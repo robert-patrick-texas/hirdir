@@ -23,7 +23,13 @@ LOAD_ORDER = (
     "tags",
     "vendors",
     "catalog_entries",
+    "regions",
+    "sites",
+    "locations",
+    "contacts",
+    "contact_assignments",
     "owners",
+    "owner_members",
     "networks",
     "items",
     "device_groups",
@@ -34,6 +40,11 @@ ROUTES = {
     "tags": "/tags",
     "vendors": "/vendors",
     "catalog_entries": "/catalog-entries",
+    "regions": "/regions",
+    "sites": "/sites",
+    "locations": "/locations",
+    "contacts": "/contacts",
+    "contact_assignments": "/contact-assignments",
     "owners": "/owners",
     "networks": "/networks",
     "items": "/items",
@@ -92,6 +103,9 @@ class Desk:
     def total(self, entity: str) -> int:
         if entity == "tags":
             return len(self.get("/tags"))
+        if entity == "owner_members":
+            owners = self.get("/owners", include_archived=True, include_drafts=True)
+            return sum(len(owner["members"]) for owner in owners["items"])
         if entity == "device_group_members":
             # Memberships are listed a group at a time, the ones that have ended too.
             groups = self.get("/device-groups", include_archived=True, include_drafts=True)

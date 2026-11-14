@@ -373,7 +373,7 @@ def test_the_summary_is_printed_whole_and_by_what_items_share(
         run("report", "summary", "--filter", "is_major:eq:false", "--format", "json").stdout
     )
     assert (filtered["totals"]["items"], filtered["totals"]["component_count"]) == (1, 0)
-    run("report", "summary", "--by", "site", expect=4)
+    run("report", "summary", "--by", "contract", expect=4)
     run("report", "summary", "--format", "xml", expect=2)
 
 
@@ -389,11 +389,20 @@ def test_the_duplicates_report_names_who_holds_an_address_twice(run, stack: dict
 
 
 def test_the_management_report_prints_the_value_and_the_cost(run, stack: dict) -> None:
-    whole = run("report", "management").stdout
-    assert f"{'items:':<21}4" in whole
-    assert f"{'est_value:':<21}54000.00" in whole
-    assert f"{'annual_support_cost:':<21}0.00" in whole
-    assert "health" not in whole
+    # Asked for by nothing, it is by site: the items that are nowhere, and all of them.
+    whole = run("report", "management").stdout.splitlines()
+    assert whole[0].split() == [
+        "SITE",
+        "ITEMS",
+        "COMPONENT_COUNT",
+        "EST_VALUE",
+        "ANNUAL_SUPPORT_COST",
+    ]
+    assert [line.split() for line in whole[1:]] == [
+        ["(none)", "4", "3", "54000.00", "0.00"],
+        ["(all)", "4", "3", "54000.00", "0.00"],
+    ]
+    assert "health" not in "".join(whole).lower()
 
     table = run("report", "management", "--by", "owner").stdout.splitlines()
     assert table[0].split() == [
@@ -435,3 +444,109 @@ def test_an_item_and_a_group_are_shown_with_how_they_are_doing(
     ).stdout.splitlines()
     assert len(listed) == 2
     assert "site2-sw-stack1" in listed[1]
+
+
+def test_the_geography_is_shown_as_a_tree_and_a_place_with_what_it_has_in_force(
+    run, make: Maker, tmp_path: Path
+) -> None:
+    places = make.layout()
+    make.region("East", places["americas"])
+    room = "Americas > Central > Site-2 > Building 1 > Room 102"
+    make.item(hostname="site2-sw-1", location_hid=places["room"]["hid"], lifecycle_state="Prod")
+    make.item(hostname="site2-sw-2", lifecycle_state="Prod")
+    dana = make.contact("Dana Whitfield", phone="+1 555 0100")
+    make.assign(dana, "technical", region_hid=places["americas"]["hid"])
+    make.assign(None, "shipping", stop_inheritance=True, site_hid=places["site"]["hid"])
+    central = places["central"]
+    make.patch(
+        f"/regions/{central['hid']}",
+        {"row_version": central["row_version"], "ship_address1": "1 Depot Road"},
+    )
+
+    tree = run("geography", "tree").stdout.splitlines()
+    assert tree[0].split() == ["PLACE", "LEVEL", "ITEMS", "COMPONENT_COUNT"]
+    assert [line.rstrip() for line in tree[1:]] == [
+        "Americas          region    1      1",
+        "  Central         region    1      1",
+        "    Site-2        site      1      1",
+        "      Building 1  location  1      1",
+        "        Room 102  location  1      1",
+        "  East            region    0      0",
+        "(nowhere)                   1      1",
+        "(all)                       2      2",
+    ]
+    short = run("geography", "tree", "--root", "Americas > Central", "--no-locations").stdout
+    assert [line.split()[0] for line in short.splitlines()[1:]] == [
+        "Central",
+        "Site-2",
+        "(nowhere)",
+        "(all)",
+    ]
+    target = tmp_path / "tree.csv"
+    run("geography", "tree", "--format", "csv", "--output", str(target))
+    rows = list(csv.DictReader(target.open()))
+    assert (rows[4]["place"], rows[4]["items"]) == (room, "1")
+    assert json.loads(run("geography", "tree", "--format", "json").stdout)["totals"]["items"] == 2
+    run("geography", "tree", "--root", "Atlantis", expect=4)
+
+    shown = run("locations", "show", room).stdout
+    assert f"{'path:':<21}{room}" in shown
+    assert f"{'kind:':<21}room" in shown
+    assert f"{'items:':<21}1" in shown
+    assert (
+        f"{'technical:':<21}Dana Whitfield dana.whitfield@example.net +1 555 0100 (from Americas)"
+        in shown
+    )
+    assert f"{'shipping:':<21}nobody (from Americas > Central > Site-2)" in shown
+    assert f"{'ship_address:':<21}1 Depot Road (from Americas > Central)" in shown
+    by_hid = json.loads(run("sites", "show", places["site"]["hid"], "--format", "json").stdout)
+    assert by_hid["effective"]["contacts"][1]["source"] == "region"
+    assert (
+        f"{'ship_address:':<21}1 Depot Road\n"
+        in run("regions", "show", "Americas > Central").stdout
+    )
+    # A place of another level is said to be so, and nothing is shown.
+    run("locations", "show", "Americas > Central", expect=4)
+
+    listed = run("sites", "list").stdout.splitlines()
+    assert listed[0].split() == ["HID", "PATH", "CODE", "CITY", "COUNTRY", "RECORD_STATUS"]
+    assert "Americas > Central > Site-2" in listed[1]
+    assert "Dana Whitfield" in run("contacts", "list").stdout
+    within = run("items", "list", "--filter", "location:within:Americas > Central").stdout
+    assert [line.split()[1] for line in within.splitlines()[1:]] == ["site2-sw-1"]
+
+
+def test_a_site_is_moved_and_an_item_is_put_somewhere_from_the_command_line(
+    run, make: Maker
+) -> None:
+    places = make.layout()
+    make.region("East", places["americas"])
+    switch = make.item(hostname="site2-sw-1")
+    outside = make.owner("Facilities", is_external=True, exception_reason="Runs the plant rooms")
+
+    room = "Americas > Central > Site-2 > Building 1 > Room 102"
+    run("items", "set", "site2-sw-1", f"location={room}")
+    shown = run("items", "show", "site2-sw-1").stdout
+    assert f"{'location:':<21}{room}" in shown
+
+    moved = run("sites", "move", "Americas > Central > Site-2", "Americas > East").stdout
+    assert moved.strip() == "Americas > Central > Site-2 is now Americas > East > Site-2"
+    assert make.get(f"/items/{switch['hid']}")["effective"]["location_hid"]["label"] == (
+        "Americas > East > Site-2 > Building 1 > Room 102"
+    )
+    assert run("regions", "move", "Americas > East", "top").stdout.strip() == (
+        "Americas > East is now East"
+    )
+    run("regions", "move", "Americas", "East > Site-2", expect=4)
+    run("sites", "move", "Nowhere", "East", expect=4)
+
+    # An owner outside the team needs the reason with it.
+    run("items", "set", "site2-sw-1", f"owner={outside['label']}", expect=4)
+    run(
+        "items",
+        "set",
+        "site2-sw-1",
+        f"owner={outside['label']}",
+        "owner_exception_reason=In the plant room",
+    )
+    assert f"{'owner_exception:':<21}In the plant room" in run("items", "show", "site2-sw-1").stdout

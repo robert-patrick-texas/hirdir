@@ -1,0 +1,9 @@
+{"schema": "hirdir/1", "entity": "owner_members", "mode": "upsert", "records": [
+  {"owner": "Facilities Management", "contact": "facilities@example.net", "role": "primary", "priority": 1},
+  {"owner": "Network Engineering", "contact": "dana.whitfield@example.net", "role": "primary", "priority": 1},
+  {"owner": "Network Engineering", "contact": "robin.achterberg@example.net", "role": "alternate", "priority": 1},
+  {"owner": "Network Engineering", "contact": "lee.marchetti@example.net", "role": "alternate", "priority": 2},
+  {"owner": "Security Operations", "contact": "priya.raman@example.net", "role": "primary", "priority": 1},
+  {"owner": "Voice Services", "contact": "tomas.lindqvist@example.net", "role": "primary", "priority": 1},
+  {"owner": "Voice Services", "contact": "dana.whitfield@example.net", "role": "alternate", "priority": 1}
+]}

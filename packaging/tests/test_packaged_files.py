@@ -20,7 +20,13 @@ LOAD_ORDER = [
     "tags",
     "vendors",
     "catalog-entries",
+    "regions",
+    "sites",
+    "locations",
+    "contacts",
+    "contact-assignments",
     "owners",
+    "owner-members",
     "networks",
     "items",
     "device-groups",
@@ -93,7 +99,7 @@ def test_the_examples_are_shipped_where_the_install_page_says() -> None:
 
 
 def test_the_examples_load_in_one_order_wherever_it_is_written() -> None:
-    """The package test, the install page and examples/README.md give the same nine files."""
+    """The package test, the install page and examples/README.md give the same files."""
     readme = (ROOT / "examples" / "README.md").read_text(encoding="utf-8")
     assert re.findall(r"^\d+\. `(.+)\.csv`$", readme, re.M) == LOAD_ORDER
     script = (PACKAGING / "package-test.sh").read_text(encoding="utf-8")

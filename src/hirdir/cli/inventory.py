@@ -51,6 +51,10 @@ SHOWN = {
     "vendors": "name,aliases,review_status",
     "catalog_entries": "vendor,pid,model_name,kind,type,ldos,review_status",
     "owners": "label,organization,is_external,record_status",
+    "regions": "path,code,record_status",
+    "sites": "path,code,city,country,record_status",
+    "locations": "path,kind,code,record_status",
+    "contacts": "name,organization,email,phone,record_status",
     "tags": "label,colour,description",
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
@@ -165,6 +169,11 @@ tags = _lists("tags", "tags")
 networks = _lists("networks", "networks")
 addresses = _lists("addresses", "addresses")
 groups = _lists("device_groups", "device groups")
+regions = _lists("regions", "regions")
+sites = _lists("sites", "sites")
+locations = _lists("locations", "locations")
+contacts = _lists("contacts", "contacts")
+geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
 GROUPS = {
     "items": items,
@@ -175,6 +184,11 @@ GROUPS = {
     "networks": networks,
     "addresses": addresses,
     "groups": groups,
+    "regions": regions,
+    "sites": sites,
+    "locations": locations,
+    "contacts": contacts,
+    "geography": geography,
     "report": report,
 }
 
@@ -292,6 +306,8 @@ def show(
         ("observed_status", _observed(target, found, zone)),
         ("health", _health(found["health"])),
         ("owner", _in_force(found, "owner_hid")),
+        ("owner_exception", found["owner_exception_reason"] or found["owner_exception"] or None),
+        ("location", _in_force(found, "location_hid")),
         ("quantity", found["quantity"]),
         ("tags", ", ".join(found["tags"]) or None),
         ("record_status", found["record_status"]),
@@ -310,7 +326,8 @@ def show(
             why = " ".join(part for part in (other["reason"], other["reference"]) if part)
             lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
-        if name not in ("owner_hid", *FROM_ABOVE) and effective["value"] is not None:
+        shown = ("owner_hid", "location_hid", *FROM_ABOVE)
+        if name not in shown and effective["value"] is not None:
             lines.append((name, f"{effective['value']} ({effective['source']})"))
     for name in ("state_changed_at", "created_at", "updated_at"):
         if found[name]:
@@ -438,6 +455,7 @@ def show_group(
         ("serial_number", serial),
         ("intended_master", _named(found["master"]) if found["master"] else None),
         ("observed_master", seen),
+        ("location", found["location"]["path"] if found["location"] else None),
         ("managed_as", found["managed_as"]),
         ("expected_members", found["expected_members"]),
         ("observed_status", _observed(target, found, zone)),
@@ -568,7 +586,10 @@ def management(
     filter_: Filter = None,
     by: Annotated[
         str | None,
-        typer.Option(help="One row for each: vendor, kind, type, function, owner or tag."),
+        typer.Option(
+            help="One row for each: vendor, kind, type, function, owner, site, region or "
+            "tag. Left out, site."
+        ),
     ] = None,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
@@ -577,7 +598,8 @@ def management(
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Show the estimated value and the annual support cost of a view of the items."""
+    """Show the estimated value and the annual support cost of a view of the items, for
+    the whole of it and for each site."""
     _checked_format(format_)
     target = client.load_target(url, token)
     found = client.call(
@@ -595,13 +617,8 @@ def management(
         typer.echo(json.dumps(found, indent=2))
         return
     totals = found["totals"]
-    if by is None:
-        if format_ == "csv":
-            _rows(format_, output, [list(MONEY), [str(totals[name]) for name in MONEY]])
-            return
-        for name in MONEY:
-            typer.echo(f"{name + ':':<21}{totals[name]}")
-        return
+    # Asked for by nothing, the server answers by site, and says so.
+    by = found["by"]
     rows = [[by, *MONEY]]
     for row in found["rows"]:
         rows.append([row["label"] or "(none)", *(str(row[name]) for name in MONEY)])
@@ -881,3 +898,181 @@ def set_(
         skip_rejected=skip_rejected,
         as_json=format_ == "json",
     )
+
+
+# --- places --------------------------------------------------------------------------
+
+LEVELS = {"region": "regions", "site": "sites", "location": "locations"}
+PLACE_COUNTS = ("items", "component_count")
+
+
+def find_place(target: Target, text: str, level: str | None = None) -> dict[str, Any]:
+    """Return the region, site or location known by text: its HID or its path.
+
+    The server finds it, as it finds the place a filter names, so that a path means
+    here what it means there.
+    """
+    found = client.call(
+        target,
+        "GET",
+        "/geography/tree",
+        params={
+            "root": text,
+            "locations": False,
+            "include_archived": True,
+            "include_drafts": True,
+        },
+    )["roots"][0]
+    if level is not None and found["level"] != level:
+        raise client.fail(
+            f"{found['path']} is a {found['level']}, not a {level}", client.EXIT_INVALID
+        )
+    return found
+
+
+def _show_place(level: str) -> Any:
+    def show(
+        place: Annotated[str, typer.Argument(help="An HID or a path.")],
+        format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        target = client.load_target(url, token)
+        node = find_place(target, place, level)
+        record = client.call(target, "GET", f"/{LEVELS[level]}/{node['hid']}")
+        in_force = client.call(target, "GET", f"/{LEVELS[level]}/{node['hid']}/effective")
+        if format_ == "json":
+            typer.echo(json.dumps({**record, "effective": in_force}, indent=2))
+            return
+        lines: list[tuple[str, Any]] = [
+            ("hid", record["hid"]),
+            ("path", record["path"]),
+            ("code", record["code"]),
+            ("kind", record.get("kind")),
+            ("items", node["items"]),
+            ("component_count", node["component_count"]),
+            ("tags", ", ".join(record["tags"]) or None),
+            ("record_status", record["record_status"]),
+        ]
+        street = [record.get(name) for name in ("address1", "address2", "city", "state")]
+        street += [record.get(name) for name in ("postal_code", "country")]
+        lines.append(("address", ", ".join(part for part in street if part) or None))
+        for role in in_force["contacts"]:
+            where = _from(role)
+            if role["stopped"]:
+                lines.append((role["role"], f"nobody{where}"))
+            for contact in role["contacts"]:
+                reached = " ".join(part for part in (contact["email"], contact["phone"]) if part)
+                lines.append((role["role"], f"{contact['name']} {reached}".rstrip() + where))
+        shipping = in_force["ship_address"]
+        if shipping["value"] is not None:
+            parts = ", ".join(part for part in shipping["value"].values() if part)
+            lines.append(("ship_address", parts + _from(shipping)))
+        said = in_force["ship_instructions"]
+        if said["value"] is not None:
+            lines.append(("ship_instructions", said["value"] + _from(said)))
+        lines.append(("row_version", record["row_version"]))
+        for name, value in lines:
+            if value is not None:
+                typer.echo(f"{name + ':':<21}{value}")
+
+    show.__doc__ = (
+        f"Show one {level} with the contacts and the shipping address it has in force, "
+        "each with the level it came from."
+    )
+    return show
+
+
+def _from(found: dict[str, Any]) -> str:
+    """Return where a value in force came from, for the end of its line."""
+    if found["source"] in ("own", "none"):
+        return ""
+    return f" (from {found['source_path']})"
+
+
+def _move(level: str, field: str, into: str) -> Any:
+    def move(
+        place: Annotated[str, typer.Argument(help="An HID or a path.")],
+        to: Annotated[
+            str, typer.Argument(help=f"The HID or the path of the {into} to move it to.")
+        ],
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        target = client.load_target(url, token)
+        node = find_place(target, place, level)
+        top = level == "region" and to.strip().lower() == "top"
+        new = None if top else find_place(target, to, "region")["hid"]
+        record = client.call(target, "GET", f"/{LEVELS[level]}/{node['hid']}")
+        changed = client.call(
+            target,
+            "PATCH",
+            f"/{LEVELS[level]}/{node['hid']}",
+            {"row_version": record["row_version"], field: new},
+        )
+        typer.echo(f"{record['path']} is now {changed['path']}")
+
+    move.__doc__ = (
+        f"Move a {level} to another {into}: one change, after which the paths and the "
+        "totals follow."
+    )
+    return move
+
+
+regions.command("show")(_show_place("region"))
+sites.command("show")(_show_place("site"))
+locations.command("show")(_show_place("location"))
+sites.command("move")(_move("site", "region_hid", "region"))
+regions.command("move")(_move("region", "parent_region_hid", "region, or `top` for none"))
+
+
+@geography.command("tree")
+def tree(
+    filter_: Filter = None,
+    root: Annotated[
+        str | None, typer.Option(help="The HID or the path of the place to start from.")
+    ] = None,
+    locations_: Annotated[
+        bool, typer.Option("--locations/--no-locations", help="Stop at the sites, or do not.")
+    ] = True,
+    include_archived: Archived = False,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show the regions, their sites and the locations within them, each with the items
+    and the components at or beneath it."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found = client.call(
+        target,
+        "GET",
+        "/geography/tree",
+        params={
+            "filter": filter_,
+            "root": root,
+            "locations": locations_,
+            "include_archived": include_archived,
+            "include_drafts": include_drafts,
+        },
+    )
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    indent = "" if format_ == "csv" else "  "
+    rows = [["place", "level", *PLACE_COUNTS]]
+
+    def walk(node: dict[str, Any], depth: int) -> None:
+        name = node["path"] if format_ == "csv" else indent * depth + node["name"]
+        rows.append([name, node["level"], *(str(node[count]) for count in PLACE_COUNTS)])
+        for child in node["children"]:
+            walk(child, depth + 1)
+
+    for top in found["roots"]:
+        walk(top, 0)
+    for name, label in (("unplaced", "(nowhere)"), ("hidden", "(not shown)"), ("totals", "(all)")):
+        if name == "totals" or found[name]["items"]:
+            rows.append([label, "", *(str(found[name][count]) for count in PLACE_COUNTS)])
+    _rows(format_, output, rows)

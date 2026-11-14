@@ -78,6 +78,12 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
     module_model = structure.entry("C9300-NM-8X", type="module")
     first = structure.post("/owners", {"label": "Network Engineering"})
     second = structure.post("/owners", {"label": "Campus Networks"})
+    region = structure.post("/regions", {"name": "Americas"})
+    site = structure.post("/sites", {"name": "Site-2", "region_hid": region["hid"]})
+    staging, room = (
+        structure.post("/locations", {"name": name, "site_hid": site["hid"]})
+        for name in ("Staging", "Room 102")
+    )
     before = structure.totals()
 
     switch = structure.post(
@@ -87,6 +93,7 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
             "serial_number": "FCW0000X001",
             "hostname": "site2-sw-access-01",
             "owner_hid": first["hid"],
+            "location_hid": staging["hid"],
             "lifecycle_state": "Assigned",
         },
     )
@@ -113,6 +120,7 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
             "source_hid": switch["hid"],
         }
         assert made["effective"]["lifecycle_state"]["value"] == "Assigned"
+        assert made["effective"]["location_hid"]["label"] == "Americas > Site-2 > Staging"
 
     # Four records more, and one component more: the minor items are not counted.
     after = structure.totals()
@@ -121,7 +129,11 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
 
     switch = structure.patch(
         f"/items/{switch['hid']}",
-        {"row_version": switch["row_version"], "owner_hid": second["hid"]},
+        {
+            "row_version": switch["row_version"],
+            "owner_hid": second["hid"],
+            "location_hid": room["hid"],
+        },
     )
     for to in ("Test", "Prod"):
         switch = structure.post(
@@ -143,8 +155,17 @@ def test_s18_minor_items_follow_their_switch_and_are_not_counted(structure: Stru
         }
         assert effective["disposition"]["value"] == "Production"
         assert effective["expected_online"]["value"] is True
+        assert effective["location_hid"] == {
+            "value": room["hid"],
+            "label": "Americas > Site-2 > Room 102",
+            "source": "parent_item",
+            "source_hid": switch["hid"],
+            "site_hid": site["hid"],
+            "site": "Site-2",
+        }
         # Nothing was copied down: the minor items were not written to.
         assert child["owner_hid"] is None
+        assert child["location_hid"] is None
         assert child["lifecycle_state"] is None
         assert child["row_version"] == 1
     assert structure.totals()["component_count"] == before["component_count"] + 1

@@ -1,4 +1,4 @@
-"""The routes of the catalog: vendors, catalog entries and owners."""
+"""The routes of the catalog: vendors, catalog entries, and owners with their people."""
 
 from fastapi import APIRouter
 
@@ -130,7 +130,7 @@ def list_owners(_: Viewer, db: Db, listed: Listed) -> Page[r.OwnerOut]:
     page, total = lists.read(db, fields.OWNERS, listed)
     return lists.narrowed(
         Page(
-            items=[shapes.owner_out(owner) for owner in page],
+            items=shapes.owners_out(db, page),
             total=total,
             limit=listed.limit,
             offset=listed.offset,
@@ -143,26 +143,61 @@ def list_owners(_: Viewer, db: Db, listed: Listed) -> Page[r.OwnerOut]:
 @owner_routes.post("", status_code=201)
 def create_owner(body: r.OwnerCreate, _: Inventory, context: Audit, db: Db) -> r.OwnerOut:
     """Create an owner."""
-    return shapes.owner_out(owners.create_owner(db, context, body.model_dump()))
+    return shapes.owner_out(db, owners.create_owner(db, context, body.model_dump()))
 
 
 @owner_routes.get("/{hid}")
 def get_owner(hid: str, _: Viewer, db: Db) -> r.OwnerOut:
     """Return one owner."""
-    return shapes.owner_out(owners.get_owner(db, hid))
+    return shapes.owner_out(db, owners.get_owner(db, hid))
 
 
 @owner_routes.patch("/{hid}")
 def update_owner(hid: str, body: r.OwnerPatch, _: Inventory, context: Audit, db: Db) -> r.OwnerOut:
     """Change an owner."""
     owner = owners.update_owner(db, context, hid, body.row_version, _changes(body))
-    return shapes.owner_out(owner)
+    return shapes.owner_out(db, owner)
 
 
 @owner_routes.post("/{hid}/retire")
 def retire_owner(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db) -> r.OwnerOut:
     """Retire an owner. Items keep it."""
-    return shapes.owner_out(owners.retire_owner(db, context, hid, body.row_version))
+    return shapes.owner_out(db, owners.retire_owner(db, context, hid, body.row_version))
+
+
+@owner_routes.get("/{hid}/members")
+def list_owner_members(hid: str, _: Viewer, db: Db) -> list[r.OwnerMemberOut]:
+    """List the people of an owner: its primary first, then the alternates."""
+    owners.get_owner(db, hid)
+    return shapes.owner_members_out(db, hid)
+
+
+@owner_routes.post("/{hid}/members", status_code=201)
+def add_owner_member(
+    hid: str, body: r.OwnerMemberAdd, _: Inventory, context: Audit, db: Db
+) -> r.OwnerMemberOut:
+    """Make a contact one of the people of an owner.
+
+    The first is the primary. One that is added as primary takes that role from the
+    member that had it, in the same change.
+    """
+    member = owners.add_member(db, context, hid, body.model_dump())
+    return shapes.owner_member_out(db, member)
+
+
+@owner_routes.patch("/{hid}/members/{member_hid}")
+def update_owner_member(
+    hid: str, member_hid: str, body: r.OwnerMemberPatch, _: Inventory, context: Audit, db: Db
+) -> r.OwnerMemberOut:
+    """Change the role or the priority of one of the people of an owner."""
+    member = owners.update_member(db, context, hid, member_hid, body.row_version, _changes(body))
+    return shapes.owner_member_out(db, member)
+
+
+@owner_routes.delete("/{hid}/members/{member_hid}", status_code=204)
+def remove_owner_member(hid: str, member_hid: str, _: Inventory, context: Audit, db: Db) -> None:
+    """Remove one of the people of an owner. The audit event holds what it was."""
+    owners.remove_member(db, context, hid, member_hid)
 
 
 ROUTERS = (vendors, entries, owner_routes)

@@ -475,6 +475,300 @@
         "title": "AddressRef",
         "type": "object"
       },
+      "AssignedPlace": {
+        "additionalProperties": false,
+        "description": "The place of an assignment, and which of the three it is.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "The names from the top region down, joined with ' > '.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "path",
+          "level"
+        ],
+        "title": "AssignedPlace",
+        "type": "object"
+      },
+      "AssignmentCreate": {
+        "additionalProperties": false,
+        "description": "A contact for a place in a role, or the word that the place has none.",
+        "properties": {
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 is primary. Left out, after the last.",
+            "title": "Priority"
+          },
+          "region_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Hid"
+          },
+          "role": {
+            "description": "A value of the contact_role list.",
+            "maxLength": 40,
+            "title": "Role",
+            "type": "string"
+          },
+          "site_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Hid"
+          },
+          "stop_inheritance": {
+            "default": false,
+            "description": "With no contact: none here, and do not look further up.",
+            "title": "Stop Inheritance",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "AssignmentCreate",
+        "type": "object"
+      },
+      "AssignmentOut": {
+        "additionalProperties": false,
+        "description": "A contact of one region, site or location, in one role.",
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContactRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
+          },
+          "place": {
+            "$ref": "#/components/schemas/AssignedPlace"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "region_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Hid"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "site_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Hid"
+          },
+          "stop_inheritance": {
+            "title": "Stop Inheritance",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "contact_hid",
+          "contact",
+          "region_hid",
+          "site_hid",
+          "location_hid",
+          "place",
+          "role",
+          "priority",
+          "stop_inheritance",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AssignmentOut",
+        "type": "object"
+      },
+      "AssignmentPatch": {
+        "additionalProperties": false,
+        "description": "Fields of an assignment to change, and the version they were read at.",
+        "properties": {
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "stop_inheritance": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Inheritance"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "AssignmentPatch",
+        "type": "object"
+      },
       "AuditEventOut": {
         "additionalProperties": false,
         "description": "One event of the audit trail.",
@@ -1615,6 +1909,371 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "ContactCreate": {
+        "additionalProperties": false,
+        "description": "A new contact.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ContactCreate",
+        "type": "object"
+      },
+      "ContactOut": {
+        "additionalProperties": false,
+        "description": "A person or a shared mailbox.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "uses": {
+            "description": "How many places and owners it is assigned to.",
+            "title": "Uses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "organization",
+          "email",
+          "phone",
+          "notes",
+          "record_status",
+          "tags",
+          "uses",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ContactOut",
+        "type": "object"
+      },
+      "ContactPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a contact to change, and the version they were read at.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "ContactPatch",
+        "type": "object"
+      },
+      "ContactRef": {
+        "additionalProperties": false,
+        "description": "A contact, as shown where it is assigned.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "organization",
+          "email",
+          "phone",
+          "record_status"
+        ],
+        "title": "ContactRef",
+        "type": "object"
+      },
       "ControllerRef": {
         "additionalProperties": false,
         "description": "A controller of an endpoint, with the cluster it is in.",
@@ -1789,6 +2448,18 @@
               }
             ],
             "title": "Hostname"
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
           },
           "managed_as": {
             "anyOf": [
@@ -2008,6 +2679,27 @@
               }
             ],
             "title": "Hostname"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
           },
           "managed_as": {
             "anyOf": [
@@ -2246,6 +2938,8 @@
           "groups",
           "owner_hid",
           "owner",
+          "location_hid",
+          "location",
           "members_disagree",
           "managed_as",
           "expected_members",
@@ -2310,6 +3004,18 @@
               }
             ],
             "title": "Hostname"
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
           },
           "managed_as": {
             "anyOf": [
@@ -2554,6 +3260,233 @@
         "title": "DuplicateOut",
         "type": "object"
       },
+      "EffectiveContact": {
+        "additionalProperties": false,
+        "description": "A contact in force for a place, with the assignment it comes by.",
+        "properties": {
+          "assignment_hid": {
+            "title": "Assignment Hid",
+            "type": "string"
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "organization",
+          "email",
+          "phone",
+          "record_status",
+          "assignment_hid",
+          "contact_hid",
+          "priority"
+        ],
+        "title": "EffectiveContact",
+        "type": "object"
+      },
+      "EffectiveInstructions": {
+        "additionalProperties": false,
+        "description": "The shipping instructions in force, and the level they came from.",
+        "properties": {
+          "source": {
+            "enum": [
+              "own",
+              "location",
+              "site",
+              "region",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "source_path"
+        ],
+        "title": "EffectiveInstructions",
+        "type": "object"
+      },
+      "EffectiveLocation": {
+        "additionalProperties": false,
+        "description": "The location in force, with its site. The label is its path.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call the record.",
+            "title": "Label"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of its site.",
+            "title": "Site"
+          },
+          "site_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Hid"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "location",
+              "site",
+              "region",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The HID of the record.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "source",
+          "source_hid",
+          "site_hid",
+          "site"
+        ],
+        "title": "EffectiveLocation",
+        "type": "object"
+      },
       "EffectiveReference": {
         "additionalProperties": false,
         "description": "A record in force, and where it came from.",
@@ -2615,6 +3548,63 @@
           "source_hid"
         ],
         "title": "EffectiveReference",
+        "type": "object"
+      },
+      "EffectiveShipAddress": {
+        "additionalProperties": false,
+        "description": "The shipping address in force, and the level it came from.",
+        "properties": {
+          "source": {
+            "enum": [
+              "own",
+              "location",
+              "site",
+              "region",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "source_path"
+        ],
+        "title": "EffectiveShipAddress",
         "type": "object"
       },
       "EffectiveValue": {
@@ -2695,7 +3685,13 @@
               "tags",
               "vendors",
               "catalog_entries",
+              "regions",
+              "sites",
+              "locations",
+              "contacts",
+              "contact_assignments",
               "owners",
+              "owner_members",
               "networks",
               "items",
               "addresses",
@@ -2783,6 +3779,128 @@
           "entity"
         ],
         "title": "ExportRequest",
+        "type": "object"
+      },
+      "GeographyNode": {
+        "additionalProperties": false,
+        "description": "A region, a site or a location, with what is at or beneath it.",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/GeographyNode"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a location.",
+            "title": "Kind"
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "component_count",
+          "level",
+          "hid",
+          "name",
+          "code",
+          "kind",
+          "path",
+          "record_status",
+          "children"
+        ],
+        "title": "GeographyNode",
+        "type": "object"
+      },
+      "GeographyTree": {
+        "additionalProperties": false,
+        "description": "The regions, their sites and the locations within them, with the counts of a view.",
+        "properties": {
+          "hidden": {
+            "$ref": "#/components/schemas/PlaceCount",
+            "description": "The items in a place the view leaves out."
+          },
+          "roots": {
+            "items": {
+              "$ref": "#/components/schemas/GeographyNode"
+            },
+            "title": "Roots",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PlaceCount",
+            "description": "The whole view."
+          },
+          "unplaced": {
+            "$ref": "#/components/schemas/PlaceCount",
+            "description": "The items with no location in force."
+          }
+        },
+        "required": [
+          "totals",
+          "unplaced",
+          "hidden",
+          "roots"
+        ],
+        "title": "GeographyTree",
         "type": "object"
       },
       "GrantCreate": {
@@ -3684,6 +4802,18 @@
             ],
             "title": "Lifecycle State"
           },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
+          },
           "mac_address": {
             "anyOf": [
               {
@@ -3738,6 +4868,19 @@
               }
             ],
             "title": "Observed Status"
+          },
+          "owner_exception_reason": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Needed with an owner outside the operations team.",
+            "title": "Owner Exception Reason"
           },
           "owner_hid": {
             "anyOf": [
@@ -3884,7 +5027,7 @@
       },
       "ItemEffective": {
         "additionalProperties": false,
-        "description": "The values in force of the fields an item inherits: the amounts and the dates\nfrom its catalog entry, and for a minor item the owner and the standing of the item\nit is in.",
+        "description": "The values in force of the fields an item inherits: the amounts and the dates\nfrom its catalog entry, and for a minor item the owner, the location and the\nstanding of the item it is in.",
         "properties": {
           "annual_support_cost": {
             "$ref": "#/components/schemas/EffectiveValue"
@@ -3913,6 +5056,9 @@
           "lifecycle_state": {
             "$ref": "#/components/schemas/EffectiveValue"
           },
+          "location_hid": {
+            "$ref": "#/components/schemas/EffectiveLocation"
+          },
           "owner_hid": {
             "$ref": "#/components/schemas/EffectiveReference"
           },
@@ -3922,6 +5068,7 @@
         },
         "required": [
           "owner_hid",
+          "location_hid",
           "lifecycle_state",
           "disposition",
           "expected_online",
@@ -4223,6 +5370,28 @@
             ],
             "title": "Lifecycle State"
           },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own location."
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
+          },
           "mac_address": {
             "anyOf": [
               {
@@ -4291,6 +5460,23 @@
                 "type": "null"
               }
             ]
+          },
+          "owner_exception": {
+            "description": "The owner in force is outside the operations team.",
+            "title": "Owner Exception",
+            "type": "boolean"
+          },
+          "owner_exception_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this item is with an owner outside the operations team.",
+            "title": "Owner Exception Reason"
           },
           "owner_hid": {
             "anyOf": [
@@ -4509,6 +5695,10 @@
           "health",
           "owner_hid",
           "owner",
+          "owner_exception_reason",
+          "owner_exception",
+          "location_hid",
+          "location",
           "parent_item_hid",
           "parent",
           "position",
@@ -4757,6 +5947,19 @@
             ],
             "title": "Ldos"
           },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: a minor item is where the item above it is.",
+            "title": "Location Hid"
+          },
           "mac_address": {
             "anyOf": [
               {
@@ -4810,6 +6013,18 @@
             ],
             "description": "Null clears it, and the moment with it.",
             "title": "Observed Status"
+          },
+          "owner_exception_reason": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Exception Reason"
           },
           "owner_hid": {
             "anyOf": [
@@ -5308,6 +6523,966 @@
         "title": "ListQuery",
         "type": "object"
       },
+      "LocationCreate": {
+        "additionalProperties": false,
+        "description": "A new location: in a site, or within a location of one.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A value of the location_kind list.",
+            "title": "Kind"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Location Hid"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "site_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its site. May be left out when the parent is named.",
+            "title": "Site Hid"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "LocationCreate",
+        "type": "object"
+      },
+      "LocationOut": {
+        "additionalProperties": false,
+        "description": "A place within a site: a building, a floor, a room, a rack.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "depth": {
+            "description": "0 for a location directly in its site.",
+            "title": "Depth",
+            "type": "integer"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items": {
+            "description": "How many items have it as their own location.",
+            "title": "Items",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "locations": {
+            "description": "How many locations are directly in it, retired aside.",
+            "title": "Locations",
+            "type": "integer"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaceRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Location Hid"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "site": {
+            "$ref": "#/components/schemas/PlaceRef"
+          },
+          "site_hid": {
+            "title": "Site Hid",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "code",
+          "name",
+          "site_hid",
+          "site",
+          "parent_location_hid",
+          "parent",
+          "kind",
+          "path",
+          "depth",
+          "address1",
+          "address2",
+          "city",
+          "state",
+          "postal_code",
+          "country",
+          "ship_address1",
+          "ship_address2",
+          "ship_city",
+          "ship_state",
+          "ship_postal_code",
+          "ship_country",
+          "ship_instructions",
+          "latitude",
+          "longitude",
+          "notes",
+          "record_status",
+          "tags",
+          "locations",
+          "items",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LocationOut",
+        "type": "object"
+      },
+      "LocationPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a location to change, and the version they were read at.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Another location of the same site moves it. Null: in the site.",
+            "title": "Parent Location Hid"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "LocationPatch",
+        "type": "object"
+      },
+      "LocationRef": {
+        "additionalProperties": false,
+        "description": "A location, as named on the item or the group that is there, with its site.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "The names from the top region down, joined with ' > '.",
+            "title": "Path",
+            "type": "string"
+          },
+          "site": {
+            "description": "The name of its site.",
+            "title": "Site",
+            "type": "string"
+          },
+          "site_hid": {
+            "title": "Site Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "path",
+          "kind",
+          "site_hid",
+          "site"
+        ],
+        "title": "LocationRef",
+        "type": "object"
+      },
       "ManagementMeasures": {
         "additionalProperties": false,
         "description": "What the management report counts of a set of items.",
@@ -5352,23 +7527,19 @@
         "description": "The value and the cost of a view of the items, for the people who pay for it.",
         "properties": {
           "by": {
-            "anyOf": [
-              {
-                "enum": [
-                  "vendor",
-                  "kind",
-                  "type",
-                  "function",
-                  "owner",
-                  "tag"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "description": "What the rows are by: the site, unless asked.",
+            "enum": [
+              "vendor",
+              "kind",
+              "type",
+              "function",
+              "owner",
+              "site",
+              "region",
+              "tag"
             ],
-            "title": "By"
+            "title": "By",
+            "type": "string"
           },
           "rows": {
             "items": {
@@ -5918,12 +8089,170 @@
             ],
             "title": "Record Status",
             "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
           }
         },
         "required": [
           "label"
         ],
         "title": "OwnerCreate",
+        "type": "object"
+      },
+      "OwnerMemberAdd": {
+        "additionalProperties": false,
+        "description": "A contact to make one of the people of an owner.",
+        "properties": {
+          "contact_hid": {
+            "maxLength": 36,
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "primary",
+                  "alternate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, primary for the first member and alternate after that.",
+            "title": "Role"
+          }
+        },
+        "required": [
+          "contact_hid"
+        ],
+        "title": "OwnerMemberAdd",
+        "type": "object"
+      },
+      "OwnerMemberOut": {
+        "additionalProperties": false,
+        "description": "One of the people of an owner.",
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef"
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "owner_hid": {
+            "title": "Owner Hid",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "alternate"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "owner_hid",
+          "contact_hid",
+          "contact",
+          "role",
+          "priority",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OwnerMemberOut",
+        "type": "object"
+      },
+      "OwnerMemberPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a member of an owner to change, and the version they were read at.",
+        "properties": {
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "primary",
+                  "alternate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "OwnerMemberPatch",
         "type": "object"
       },
       "OwnerOut": {
@@ -5958,6 +8287,14 @@
             "title": "Label",
             "type": "string"
           },
+          "members": {
+            "description": "Its people, the primary first.",
+            "items": {
+              "$ref": "#/components/schemas/OwnerMemberOut"
+            },
+            "title": "Members",
+            "type": "array"
+          },
           "organization": {
             "anyOf": [
               {
@@ -5982,6 +8319,13 @@
             "title": "Row Version",
             "type": "integer"
           },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -5995,6 +8339,8 @@
           "is_external",
           "exception_reason",
           "record_status",
+          "tags",
+          "members",
           "row_version",
           "created_at",
           "updated_at"
@@ -6071,6 +8417,22 @@
           "row_version": {
             "title": "Row Version",
             "type": "integer"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
           }
         },
         "required": [
@@ -6129,6 +8491,38 @@
           "offset"
         ],
         "title": "Page[AddressOut]",
+        "type": "object"
+      },
+      "Page_AssignmentOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AssignmentOut]",
         "type": "object"
       },
       "Page_AuditEventOut_": {
@@ -6193,6 +8587,38 @@
           "offset"
         ],
         "title": "Page[CatalogEntryOut]",
+        "type": "object"
+      },
+      "Page_ContactOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContactOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ContactOut]",
         "type": "object"
       },
       "Page_DeviceGroupOut_": {
@@ -6355,6 +8781,38 @@
         "title": "Page[ItemOut]",
         "type": "object"
       },
+      "Page_LocationOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LocationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[LocationOut]",
+        "type": "object"
+      },
       "Page_MemberOut_": {
         "additionalProperties": false,
         "properties": {
@@ -6451,6 +8909,70 @@
         "title": "Page[OwnerOut]",
         "type": "object"
       },
+      "Page_RegionOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[RegionOut]",
+        "type": "object"
+      },
+      "Page_SiteOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SiteOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[SiteOut]",
+        "type": "object"
+      },
       "Page_UserOut_": {
         "additionalProperties": false,
         "properties": {
@@ -6515,6 +9037,99 @@
         "title": "Page[VendorOut]",
         "type": "object"
       },
+      "PlaceCount": {
+        "additionalProperties": false,
+        "description": "The items and the components of a set of items.",
+        "properties": {
+          "component_count": {
+            "title": "Component Count",
+            "type": "integer"
+          },
+          "items": {
+            "description": "Every item of the set, major and minor.",
+            "title": "Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "component_count"
+        ],
+        "title": "PlaceCount",
+        "type": "object"
+      },
+      "PlaceEffective": {
+        "additionalProperties": false,
+        "description": "What a place has in force: its contacts by role, and where deliveries go.",
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/RoleContacts"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "ship_address": {
+            "$ref": "#/components/schemas/EffectiveShipAddress"
+          },
+          "ship_instructions": {
+            "$ref": "#/components/schemas/EffectiveInstructions"
+          }
+        },
+        "required": [
+          "level",
+          "hid",
+          "path",
+          "contacts",
+          "ship_address",
+          "ship_instructions"
+        ],
+        "title": "PlaceEffective",
+        "type": "object"
+      },
+      "PlaceRef": {
+        "additionalProperties": false,
+        "description": "A region, a site or a location, as named on another record.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "The names from the top region down, joined with ' > '.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "path"
+        ],
+        "title": "PlaceRef",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": false,
         "description": "An error, as an RFC 9457 problem document.",
@@ -6571,6 +9186,545 @@
           "message"
         ],
         "title": "ProblemField",
+        "type": "object"
+      },
+      "RegionCreate": {
+        "additionalProperties": false,
+        "description": "A new region.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_region_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The region it is in. Left out, a region at the top.",
+            "title": "Parent Region Hid"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RegionCreate",
+        "type": "object"
+      },
+      "RegionOut": {
+        "additionalProperties": false,
+        "description": "A part of the world that sites are in.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaceRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_region_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Region Hid"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "regions": {
+            "description": "How many regions are directly in it, retired ones aside.",
+            "title": "Regions",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "sites": {
+            "description": "How many sites are directly in it, retired ones aside.",
+            "title": "Sites",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "code",
+          "name",
+          "parent_region_hid",
+          "parent",
+          "path",
+          "ship_address1",
+          "ship_address2",
+          "ship_city",
+          "ship_state",
+          "ship_postal_code",
+          "ship_country",
+          "ship_instructions",
+          "notes",
+          "record_status",
+          "tags",
+          "regions",
+          "sites",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RegionOut",
+        "type": "object"
+      },
+      "RegionPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a region to change, and the version they were read at.",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_region_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Another region moves it, with everything in it.",
+            "title": "Parent Region Hid"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "RegionPatch",
         "type": "object"
       },
       "Replace": {
@@ -6791,6 +9945,76 @@
           "replaced_on"
         ],
         "title": "ReplacementRef",
+        "type": "object"
+      },
+      "RoleContacts": {
+        "additionalProperties": false,
+        "description": "The contacts in force for one role, and the level they came from.",
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/EffectiveContact"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "location",
+              "site",
+              "region",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "stopped": {
+            "description": "A level said: none here, and do not look further up.",
+            "title": "Stopped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "role",
+          "label",
+          "source",
+          "source_hid",
+          "source_path",
+          "stopped",
+          "contacts"
+        ],
+        "title": "RoleContacts",
         "type": "object"
       },
       "RowChange": {
@@ -7076,6 +10300,88 @@
         "title": "SettingSet",
         "type": "object"
       },
+      "ShipAddress": {
+        "additionalProperties": false,
+        "description": "A shipping address, taken whole.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "address1",
+          "address2",
+          "city",
+          "state",
+          "postal_code",
+          "country"
+        ],
+        "title": "ShipAddress",
+        "type": "object"
+      },
       "SignIn": {
         "additionalProperties": false,
         "description": "A username and access code.",
@@ -7100,6 +10406,826 @@
         "title": "SignIn",
         "type": "object"
       },
+      "SiteCreate": {
+        "additionalProperties": false,
+        "description": "A new site, in one region.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "region_hid": {
+            "maxLength": 36,
+            "title": "Region Hid",
+            "type": "string"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "region_hid"
+        ],
+        "title": "SiteCreate",
+        "type": "object"
+      },
+      "SiteOut": {
+        "additionalProperties": false,
+        "description": "A place the team works at.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "locations": {
+            "description": "How many locations it has, retired ones aside.",
+            "title": "Locations",
+            "type": "integer"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "region": {
+            "$ref": "#/components/schemas/PlaceRef"
+          },
+          "region_hid": {
+            "title": "Region Hid",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "code",
+          "name",
+          "region_hid",
+          "region",
+          "path",
+          "address1",
+          "address2",
+          "city",
+          "state",
+          "postal_code",
+          "country",
+          "ship_address1",
+          "ship_address2",
+          "ship_city",
+          "ship_state",
+          "ship_postal_code",
+          "ship_country",
+          "ship_instructions",
+          "latitude",
+          "longitude",
+          "notes",
+          "record_status",
+          "tags",
+          "locations",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SiteOut",
+        "type": "object"
+      },
+      "SitePatch": {
+        "additionalProperties": false,
+        "description": "Fields of a site to change, and the version they were read at.",
+        "properties": {
+          "address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address1"
+          },
+          "address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address2"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "41.878100"
+                ],
+                "pattern": "^-?\\d{1,2}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-87.629800"
+                ],
+                "pattern": "^-?\\d{1,3}(\\.\\d{1,6})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "region_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Another region moves the site.",
+            "title": "Region Hid"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "ship_address1": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address1"
+          },
+          "ship_address2": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Address2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "ship_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Instructions"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "SitePatch",
+        "type": "object"
+      },
       "SummaryOut": {
         "additionalProperties": false,
         "description": "A summary of a view of the items, for the people who run the network.",
@@ -7113,6 +11239,8 @@
                   "type",
                   "function",
                   "owner",
+                  "site",
+                  "region",
                   "lifecycle_state",
                   "disposition",
                   "condition",
@@ -9166,6 +13294,696 @@
         ]
       }
     },
+    "/api/v1/contact-assignments": {
+      "get": {
+        "description": "List contact assignments: those of one place with `region_hid`, `site_hid` or\n`location_hid` in the filter, those of one contact with `contact_hid`.",
+        "operationId": "list_assignments_api_v1_contact_assignments_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AssignmentOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Assignments",
+        "tags": [
+          "People"
+        ]
+      },
+      "post": {
+        "description": "Assign a contact to a region, a site or a location in a role.\n\nWith no contact and `stop_inheritance` set, the place says that it has nobody in\nthat role, and nothing above it is looked at.",
+        "operationId": "create_assignment_api_v1_contact_assignments_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Assignment",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contact-assignments/{hid}": {
+      "delete": {
+        "description": "Remove an assignment. The audit event of the removal holds what it was.",
+        "operationId": "delete_assignment_api_v1_contact_assignments__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Assignment",
+        "tags": [
+          "People"
+        ]
+      },
+      "get": {
+        "description": "Return one contact assignment.",
+        "operationId": "get_assignment_api_v1_contact_assignments__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Assignment",
+        "tags": [
+          "People"
+        ]
+      },
+      "patch": {
+        "description": "Change the role, the priority or the contact of an assignment.",
+        "operationId": "update_assignment_api_v1_contact_assignments__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Assignment",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contacts": {
+      "get": {
+        "description": "List contacts, by name unless a sort says otherwise.",
+        "operationId": "list_contacts_api_v1_contacts_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ContactOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Contacts",
+        "tags": [
+          "People"
+        ]
+      },
+      "post": {
+        "description": "Create a contact: a person, or a shared mailbox.",
+        "operationId": "create_contact_api_v1_contacts_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Contact",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contacts/{hid}": {
+      "get": {
+        "description": "Return one contact.",
+        "operationId": "get_contact_api_v1_contacts__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contact",
+        "tags": [
+          "People"
+        ]
+      },
+      "patch": {
+        "description": "Change a contact. Every place and owner it is assigned to shows the change at once.",
+        "operationId": "update_contact_api_v1_contacts__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Contact",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/contacts/{hid}/retire": {
+      "post": {
+        "description": "Retire a contact. Its assignments stay, and show it as retired.",
+        "operationId": "retire_contact_api_v1_contacts__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Contact",
+        "tags": [
+          "People"
+        ]
+      }
+    },
     "/api/v1/device-groups": {
       "get": {
         "description": "List device groups, by name unless a sort says otherwise.\n\nDrafts and retired groups are left out unless asked for.",
@@ -9826,6 +14644,108 @@
         ]
       }
     },
+    "/api/v1/geography/tree": {
+      "get": {
+        "description": "Return the regions, their sites and the locations within them as one tree, each\nwith the items and the components at or beneath it.\n\nThe counts are of the view the item list shows for the same filter. The roots,\n`unplaced` and `hidden` add up to `totals`.",
+        "operationId": "geography_tree_api_v1_geography_tree_get",
+        "parameters": [
+          {
+            "description": "A filter of the item list, in the short form or as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "A filter of the item list, in the short form or as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The HID or the path of a region, site or location to start from.",
+            "in": "query",
+            "name": "root",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The HID or the path of a region, site or location to start from.",
+              "title": "Root"
+            }
+          },
+          {
+            "description": "False stops at the sites.",
+            "in": "query",
+            "name": "locations",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "False stops at the sites.",
+              "title": "Locations",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Retired places, and retired and archived items, as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Retired places, and retired and archived items, as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Draft places and items as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Draft places and items as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeographyTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Geography Tree",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "description": "Say that the process is running. Needs no sign-in.",
@@ -9971,7 +14891,13 @@
                     "tags",
                     "vendors",
                     "catalog_entries",
+                    "regions",
+                    "sites",
+                    "locations",
+                    "contacts",
+                    "contact_assignments",
                     "owners",
+                    "owner_members",
                     "networks",
                     "items",
                     "addresses",
@@ -10059,7 +14985,13 @@
                       "tags",
                       "vendors",
                       "catalog_entries",
+                      "regions",
+                      "sites",
+                      "locations",
+                      "contacts",
+                      "contact_assignments",
                       "owners",
+                      "owner_members",
                       "networks",
                       "items",
                       "addresses",
@@ -11268,6 +16200,455 @@
         ]
       }
     },
+    "/api/v1/locations": {
+      "get": {
+        "description": "List locations, by site and name unless a sort says otherwise.",
+        "operationId": "list_locations_api_v1_locations_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_LocationOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Locations",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "post": {
+        "description": "Create a location: in a site, or within another location of one.",
+        "operationId": "create_location_api_v1_locations_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Location",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/locations/query": {
+      "post": {
+        "description": "List locations, with the filter and sort in the body.",
+        "operationId": "query_locations_api_v1_locations_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_LocationOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Locations",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/locations/{hid}": {
+      "get": {
+        "description": "Return one location.",
+        "operationId": "get_location_api_v1_locations__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Location",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "patch": {
+        "description": "Change a location. It is moved within its site by giving it another parent.",
+        "operationId": "update_location_api_v1_locations__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Location",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/locations/{hid}/effective": {
+      "get": {
+        "description": "Return what a location has in force: its contacts for each role and its shipping\naddress and instructions, each with the level it came from.",
+        "operationId": "location_effective_api_v1_locations__hid__effective_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceEffective"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Location Effective",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/locations/{hid}/retire": {
+      "post": {
+        "description": "Retire a location that nothing that is not retired is in: no location, no item\nand no device group.",
+        "operationId": "retire_location_api_v1_locations__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Location",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
     "/api/v1/networks": {
       "get": {
         "description": "List networks, by label unless a sort says otherwise.",
@@ -11886,6 +17267,228 @@
         ]
       }
     },
+    "/api/v1/owners/{hid}/members": {
+      "get": {
+        "description": "List the people of an owner: its primary first, then the alternates.",
+        "operationId": "list_owner_members_api_v1_owners__hid__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OwnerMemberOut"
+                  },
+                  "title": "Response List Owner Members Api V1 Owners  Hid  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Owner Members",
+        "tags": [
+          "People"
+        ]
+      },
+      "post": {
+        "description": "Make a contact one of the people of an owner.\n\nThe first is the primary. One that is added as primary takes that role from the\nmember that had it, in the same change.",
+        "operationId": "add_owner_member_api_v1_owners__hid__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerMemberAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Owner Member",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/owners/{hid}/members/{member_hid}": {
+      "delete": {
+        "description": "Remove one of the people of an owner. The audit event holds what it was.",
+        "operationId": "remove_owner_member_api_v1_owners__hid__members__member_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_hid",
+            "required": true,
+            "schema": {
+              "title": "Member Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Owner Member",
+        "tags": [
+          "People"
+        ]
+      },
+      "patch": {
+        "description": "Change the role or the priority of one of the people of an owner.",
+        "operationId": "update_owner_member_api_v1_owners__hid__members__member_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_hid",
+            "required": true,
+            "schema": {
+              "title": "Member Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerMemberPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Owner Member",
+        "tags": [
+          "People"
+        ]
+      }
+    },
     "/api/v1/owners/{hid}/retire": {
       "post": {
         "description": "Retire an owner. Items keep it.",
@@ -11955,6 +17558,413 @@
         "summary": "Retire Owner",
         "tags": [
           "People"
+        ]
+      }
+    },
+    "/api/v1/regions": {
+      "get": {
+        "description": "List regions, by name unless a sort says otherwise.",
+        "operationId": "list_regions_api_v1_regions_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RegionOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Regions",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "post": {
+        "description": "Create a region: at the top, or within another.",
+        "operationId": "create_region_api_v1_regions_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Region",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/regions/{hid}": {
+      "get": {
+        "description": "Return one region.",
+        "operationId": "get_region_api_v1_regions__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Region",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "patch": {
+        "description": "Change a region. Given another parent, it moves with everything in it: the paths\nand what is inherited follow at once, and no other record is written to.",
+        "operationId": "update_region_api_v1_regions__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Region",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/regions/{hid}/effective": {
+      "get": {
+        "description": "Return what a region has in force: its contacts for each role and its shipping\naddress and instructions, each with the level it came from.",
+        "operationId": "region_effective_api_v1_regions__hid__effective_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceEffective"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Region Effective",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/regions/{hid}/retire": {
+      "post": {
+        "description": "Retire a region that no region or site that is not retired is in.",
+        "operationId": "retire_region_api_v1_regions__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Region",
+        "tags": [
+          "Geography"
         ]
       }
     },
@@ -12072,6 +18082,8 @@
                     "type",
                     "function",
                     "owner",
+                    "site",
+                    "region",
                     "tag"
                   ],
                   "type": "string"
@@ -12169,6 +18181,8 @@
                     "type",
                     "function",
                     "owner",
+                    "site",
+                    "region",
                     "lifecycle_state",
                     "disposition",
                     "condition",
@@ -12459,6 +18473,413 @@
         "summary": "Set Setting",
         "tags": [
           "Labels and lists"
+        ]
+      }
+    },
+    "/api/v1/sites": {
+      "get": {
+        "description": "List sites, by name unless a sort says otherwise.",
+        "operationId": "list_sites_api_v1_sites_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SiteOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sites",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "post": {
+        "description": "Create a site in a region.",
+        "operationId": "create_site_api_v1_sites_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Site",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/sites/{hid}": {
+      "get": {
+        "description": "Return one site.",
+        "operationId": "get_site_api_v1_sites__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Site",
+        "tags": [
+          "Geography"
+        ]
+      },
+      "patch": {
+        "description": "Change a site. Given another region, it moves: the paths of its locations, what\nthey inherit and the totals of both regions follow at once. It is one change of one\nrecord, and no item is written to.",
+        "operationId": "update_site_api_v1_sites__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SitePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Site",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/sites/{hid}/effective": {
+      "get": {
+        "description": "Return what a site has in force, each thing with the level it came from.",
+        "operationId": "site_effective_api_v1_sites__hid__effective_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceEffective"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Site Effective",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/sites/{hid}/retire": {
+      "post": {
+        "description": "Retire a site that no location that is not retired is in.",
+        "operationId": "retire_site_api_v1_sites__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Site",
+        "tags": [
+          "Geography"
         ]
       }
     },

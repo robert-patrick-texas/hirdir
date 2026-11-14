@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, aliased
 
 from hirdir import clock
 from hirdir.db import dialect
-from hirdir.db.models import DeviceGroup, DeviceGroupMember, Item, Owner
+from hirdir.db.models import DeviceGroup, DeviceGroupMember, Item, Location, Owner
 from hirdir.domain import health, items, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -44,6 +44,7 @@ FIELDS = (
     *TEXTS,
     "parent_group_hid",
     "owner_hid",
+    "location_hid",
     "managed_as",
     "expected_members",
     "observed_status",
@@ -412,6 +413,19 @@ def _checked(
             if owner.record_status == "retired":
                 raise Invalid("the owner is retired", {"owner_hid": "this owner is retired"})
         values["owner_hid"] = hid
+    if "location_hid" in fields:
+        hid = fields["location_hid"] or None
+        if hid is not None and (group is None or group.location_hid != hid):
+            location = db.get(Location, hid)
+            if location is None:
+                raise Invalid(
+                    "there is no such location", {"location_hid": f"there is no location {hid}"}
+                )
+            if location.record_status == "retired":
+                raise Invalid(
+                    "the location is retired", {"location_hid": "this location is retired"}
+                )
+        values["location_hid"] = hid
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
     kind = values.get("type", group.type if group is not None else None)

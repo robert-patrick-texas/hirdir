@@ -45,6 +45,7 @@ KINDS: dict[str, tuple[str, ...]] = {
     "timestamp": (*COMPARING, *ORDERING),
     "boolean": ("eq", "ne", "in", "empty"),
     "tags": ("has", "empty"),
+    "place": ("within", "empty"),
 }
 
 
@@ -57,6 +58,10 @@ class Field:
     at all when the label is blank. `convert` turns one value of a filter into the form
     the column is compared with, when the kind alone does not say how, and raises
     ValueError for a value it cannot take.
+
+    A field of kind `place` says where a record is. `within` builds the condition that
+    it is at or beneath a region, a site or a location named by its HID or its path,
+    which is looked up in the database it is given.
 
     A record may have several of some fields: an item has the names of all its groups
     and every one of its addresses. Such a field has `among`, which turns a condition
@@ -71,6 +76,7 @@ class Field:
     # What the field is sorted by, where that is not the order of its values as text.
     ordered_by: Any = None
     among: Callable[[ColumnElement[bool]], ColumnElement[bool]] | None = None
+    within: Callable[[Any, str], ColumnElement[bool]] | None = None
 
 
 @dataclass(frozen=True)
@@ -276,7 +282,9 @@ def _equal(field: Field, value: Any) -> ColumnElement[bool]:
     return field.expression == literal(value, type_=field.expression.type)
 
 
-def _condition(condition: Condition, fields: Mapping[str, Field], zone: str) -> ColumnElement[bool]:
+def _condition(
+    condition: Condition, fields: Mapping[str, Field], zone: str, db: Any
+) -> ColumnElement[bool]:
     name, op, value = condition.field, condition.op, condition.value
     field = fields.get(name)
     if field is None:
@@ -295,6 +303,16 @@ def _condition(condition: Condition, fields: Mapping[str, Field], zone: str) -> 
             return field.test(value.strip())
         tagged = field.test("")
         return ~tagged if _truth(value, f"{name} empty") else tagged
+
+    if field.kind == "place":
+        if op == "empty":
+            nowhere = field.expression.is_(None)
+            return nowhere if _truth(value, f"{name} empty") else ~nowhere
+        if field.within is None or db is None:
+            raise refuse(f"{name} cannot be filtered here")
+        if not isinstance(value, str) or not value.strip():
+            raise refuse(f"{name} within takes the HID or the path of a region, site or location")
+        return field.within(db, _text(name, value))
 
     if field.among is None:
         return _test(field, name, op, value, zone)
@@ -354,14 +372,21 @@ def _test(field: Field, name: str, op: str, value: Any, zone: str) -> ColumnElem
 
 
 def to_sql(
-    node: Node | None, fields: Mapping[str, Field], zone: str = clock.DEFAULT_ZONE
+    node: Node | None,
+    fields: Mapping[str, Field],
+    zone: str = clock.DEFAULT_ZONE,
+    db: Any = None,
 ) -> ColumnElement[bool]:
-    """Return the SQL condition of a filter, checked against the fields a list allows."""
+    """Return the SQL condition of a filter, checked against the fields a list allows.
+
+    `db` is where a place that a filter names is looked up. Without it, a filter that
+    names one is refused.
+    """
     if node is None:
         return true()
     if isinstance(node, Condition):
-        return _condition(node, fields, zone)
-    parts = [to_sql(part, fields, zone) for part in node.parts]
+        return _condition(node, fields, zone, db)
+    parts = [to_sql(part, fields, zone, db) for part in node.parts]
     if node.joined_by == "and":
         return and_(true(), *parts)
     return or_(false(), *parts)
@@ -389,7 +414,12 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
             descending = name.startswith("-")
             name = name.lstrip("+-").strip()
             field = fields.get(name)
-            if field is None or field.expression is None or field.among is not None:
+            if (
+                field is None
+                or field.expression is None
+                or field.among is not None
+                or field.kind == "place"
+            ):
                 raise Invalid(
                     "the sort is not acceptable",
                     {"sort": f"{name} is not a field this list can be sorted by"},

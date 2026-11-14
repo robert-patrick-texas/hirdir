@@ -38,7 +38,7 @@ NOTHING = Effective(None, "none", None)
 
 
 STANDING = ("lifecycle_state", "disposition", "expected_online")
-PARENT_FIELDS = ("owner_hid", *STANDING)
+PARENT_FIELDS = ("owner_hid", "location_hid", *STANDING)
 
 
 def of_item(
@@ -47,7 +47,8 @@ def of_item(
     """Return the value in force of each field an item inherits.
 
     The amounts and the dates come from its catalog entry. A minor item has the owner
-    of the nearest item above it that has one, and, when it has no lifecycle state of
+    of the nearest item above it that has one, is where the nearest one that has a
+    location is, and, when it has no lifecycle state of
     its own, the state, disposition and intent of the nearest one that has a state: the
     three are taken together, because the lifecycle rules check them against one
     another. `above` is the items above it, the nearest first.
@@ -75,6 +76,7 @@ def of_item(
             found[name] = NOTHING
 
     from_nearest("owner_hid", ("owner_hid",))
+    from_nearest("location_hid", ("location_hid",))
     from_nearest("lifecycle_state", STANDING)
     return found
 

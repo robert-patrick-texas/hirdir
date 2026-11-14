@@ -6,7 +6,14 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from hirdir.db.models import CatalogEntry, Choice, Item, ItemReplacement
+from hirdir.db.models import (
+    CatalogEntry,
+    Choice,
+    ContactAssignment,
+    Item,
+    ItemReplacement,
+    Location,
+)
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -31,6 +38,8 @@ USES = {
     "state_reason": ((Item, Item.state_reason),),
     "item_condition": ((Item, Item.condition),),
     "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
+    "contact_role": ((ContactAssignment, ContactAssignment.role),),
+    "location_kind": ((Location, Location.kind),),
 }
 
 

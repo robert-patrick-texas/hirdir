@@ -21,7 +21,7 @@ and CLI's types are generated from it.
 | Large filters | `POST /items/query` takes the same parameters as a JSON body |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Removing | `DELETE /addresses/{hid}`, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored, as it may behind a large import being applied, is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
@@ -36,8 +36,8 @@ and CLI's types are generated from it.
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace` |
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
 | Addresses | `/networks`, `/addresses` |
-| Geography | `/regions`, `/sites`, `/locations`, `GET /geography/tree`, `GET /locations/{hid}/effective` |
-| People | `/contacts`, `/contact-assignments`, `/owners` |
+| Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective` |
+| People | `/contacts`, `POST /contacts/{hid}/retire`, `/contact-assignments`, `/owners`, `GET` and `POST /owners/{hid}/members`, `PATCH` and `DELETE /owners/{hid}/members/{member_hid}` |
 | Contracts | `/contracts`, `/contracts/{hid}/coverage` |
 | Purchases | `/purchase-requests`, `/purchase-requests/{hid}/lines`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `/registrations` |
@@ -89,7 +89,7 @@ One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
 | `lt`, `lte`, `gt`, `gte`, `between` | numbers, dates, times | A time that names no zone is in the application's time zone |
 | `empty` | any | `true` for blank, `false` for not blank |
 | `has` | tags | carries the tag. `empty` on `tags` finds records with none |
-| `within` | region, site, location | at or beneath the named place, by HID or path |
+| `within` | a place | at or beneath the named region, site or location, by HID or path. Takes `empty` as well |
 
 Fields are the record's own, plus dotted fields of related records that the route
 allows (`catalog.pid`, `catalog.vendor`, `owner.label`, `contract.number`,
@@ -100,7 +100,12 @@ comparison. On the item list `is_major` and `depth` tell major items from minor 
 of the owner in force, and `group.name`, `group.type`, `group.hid`, `address` and
 `network.label` find an item by any of its current groups and any of its addresses,
 and `condition`, `observed_status`, `observed_at` and the derived `health` say how it
-is doing. On the list of groups, `member.serial_number` finds a stack by the serial
+is doing. `location` is where the item is, by the location in force, and takes
+`within` with a region, a site or a location, and `empty`; `site` and `region` are the
+names of its site and of the region the site is in, `site.code` the site's code, and
+`location.name` and `location.kind` those of the location; `owner_exception` is true
+for an item whose owner in force is outside the team. The lists of device groups and
+of locations have `location` with `within` too, and the list of sites has `region`. On the list of groups, `member.serial_number` finds a stack by the serial
 number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
@@ -167,20 +172,31 @@ hid,vendor,pid,serial_number,asset_tag,name,lifecycle_state,disposition,expected
 A file names its columns as the fields are named on the [data model](data-model.md)
 page, with a reference written as people write it: `vendor` and `pid` for a catalog
 entry, `owner` for an owner's label. Release 0.3.0 carries the records that exist so
-far, and 0.4.0 adds networks, addresses, device groups and their members. A column of
-a later release, such as `location`, is unknown until that release.
+far, 0.4.0 adds networks, addresses, device groups and their members, and 0.5.0
+regions, sites, locations, contacts, their assignments and the members of owners. A
+column of a later release, such as `contract`, is unknown until that release.
 
 | Entity | Columns that can be set | Further columns an export can write |
 |---|---|---|
 | `tags` | `label`, `colour`, `description` | |
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
-| `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status` | |
+| `regions` | `name`, `parent`, `code`, the shipping set, `notes`, `record_status`, `tags` | `path` |
+| `sites` | `name`, `region`, `code`, the address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status`, `tags` | `path` |
+| `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `latitude`, `longitude`, `notes`, `record_status`, `tags` | `path` |
+| `contacts` | `name`, `organization`, `email`, `phone`, `notes`, `record_status`, `tags` | |
+| `contact_assignments` | `region`, `site`, `location`, `role`, `contact`, `priority`, `stop_inheritance` | |
+| `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
+| `owner_members` | `owner`, `contact`, `role`, `priority` | |
 | `networks` | `label`, `kind` | |
-| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, and a `_source` for each of the eleven fields that inherit |
+| `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `owner_exception_reason`, `location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site`, `region`, `owner_exception`, and a `_source` for each of the twelve fields that inherit |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | `family` |
-| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
+| `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
 | `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at` | |
+
+The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
+`country`, and the shipping set is the same six with `ship_` before them, and
+`ship_instructions`.
 
 Every entity has `hid` as its first column, and an export can also write `row_version`,
 `created_at` and `updated_at`. In CSV, `true` and `false` are written so, `yes`, `no`,
@@ -195,17 +211,20 @@ are read there too.
 | Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files |
 | Sending a file | The file is the body of `POST /imports/preview`, as `text/csv` or `application/json`, with `entity`, `mode` and `file_name` beside it in the URL. A JSON file names its entity and mode in its envelope, and the URL may leave them out; the two must not disagree |
 | Modes | `create` refuses a row that matches an existing record. `upsert` creates or updates. There is no mode that deletes |
-| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, a network's label, a device group's name. For items, the order on the data model page. An address is found by its item or group, its address and its network; a membership by its group, its item and `joined_on`, or with no `joined_on` the current one. Two rows of one file that name the same record: the second is rejected |
-| References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, network label, contract number, geographic path, group name. An item is named by its HID, or by a serial number, an asset tag or a name that one item alone has; an export writes the asset tag when there is one, then the serial number, then the name, and the HID when another item answers to the same text. A name that has the form of an HID is read as one, so an export writes the HID of a record so named |
+| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, a network's label, a device group's name. A region is found by its path, which is `parent` and `name`; a site by `region` and `name`; a location by `site`, `parent` and `name`. A contact is found by its email address, and a row with none by a name that one contact alone has. An assignment is found by its place, its role and its contact, or as the one that stops inheritance for its place and role; a member of an owner by the owner and the contact. For items, the order on the data model page. An address is found by its item or group, its address and its network; a membership by its group, its item and `joined_on`, or with no `joined_on` the current one. Two rows of one file that name the same record: the second is rejected |
+| References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, network label, contract number, geographic path, group name. A contact is named by its HID, its email address or a name that one contact alone has, and an export writes the email address when there is one. An item is named by its HID, or by a serial number, an asset tag or a name that one item alone has; an export writes the asset tag when there is one, then the serial number, then the name, and the HID when another item answers to the same text. A name that has the form of an HID is read as one, so an export writes the HID of a record so named |
 | Minor items | `parent` names the item a minor item is in, and `!clear` takes it out. An item that a file creates stands before the minor items the same file puts in it: an export sorted by `depth` writes them so. Rows that change items that exist are worked an item before its minor items, wherever they stand, so that a row with the owner or the state its item would inherit anyway leaves it inheriting, also when the same file changes the item above. A bulk edit is worked in the same order |
 | Management address | An item and a device group have a primary management address of each family. `mgmt_ipv4` and `mgmt_ipv6` set them, and `mgmt_address` takes an address of either family and files it under its own. A value changes the one there is or adds one; `!clear` removes it, and in `mgmt_address` removes both. `mgmt_network` is the label of the network the addresses of the row are under. It is optional: with no such column the network stays as it is, and a new address is in the unlabelled address space. An export writes it where both addresses are under one network, and leaves it blank where they are under two, so that a file loaded back moves neither. A row that names `mgmt_network` and no address is rejected. Every address of a record, these among them, is in the `addresses` entity, so an export writes these columns only when they are asked for by name |
 | A first file | A file of host names, with or without addresses, loads as it is: `hostname` alone makes an item, and loading it again finds each item by its host name and changes nothing. The spellings such a file is likely to use are read as the columns they mean: `ip_address`, `ip` and `mgmt_ip` as `mgmt_address`, `ipv4_address` and `ipv4` as `mgmt_ipv4`, `ipv6_address` and `ipv6` as `mgmt_ipv6` |
+| Places | `location` on an item and on a device group is the path of a location, or its HID. `parent` of a region is the path of the region it is in, `region` of a site the path of its region, and `site` of a location the path of its site. `parent` of a location is the path of the location it is in, whole or from the site down: `Building 1 > Floor 2`. A row of a location that names its parent whole need not name the site. The regions of one file are worked a region before the regions within it, and the locations likewise, wherever they stand. A row that would move a location to another site is rejected |
+| Contacts of a place | A row of `contact_assignments` names one place, in `region`, `site` or `location`, with a `role` and a `contact`. A row with `stop_inheritance` true and no contact is the one that stops inheritance for that place and role. An import does not remove an assignment |
+| An external owner | A row that gives an item an owner outside the team carries `owner_exception_reason`, or the item already has one. A reason alone, on an item whose own owner is not external, is rejected |
 | Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A row of members with the role `master` marks the master that is intended, and takes the mark from the member that had it. `observed_master`, true on the row of one member, records on the stack that this member is seen to be master, with `master_observed_at` or else the moment of the change. One file names one intended master and one observed master of a stack at most: a second row that names one is rejected |
 | Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change, and with no zone named, in the application's time zone. A row that states a status as it is, with no moment, changes nothing, where a person who does so on a page or by a bulk edit has looked again and sets the moment to now. `!clear` in `observed_status` clears both, and a moment is not cleared by itself. What a preview tells of a row leaves out a moment that the clock will set, since the apply is made later. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner and standing of the item above it |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
@@ -215,7 +234,7 @@ are read there too.
 | Whose preview | A preview is applied once, by anybody who holds the Inventory role, whoever made it: one person may prepare a file and another look it over and apply it. The job says who made it and who applied it. Anybody who may read the inventory may read it |
 | Rejected rows | By default any rejected row blocks the apply, with a `422`, and the preview stays good. `skip_rejected=true` applies the rest |
 | Limits | 20 MB and 100,000 rows per file. A larger file is a `413`. A site may raise the 20 MB in its configuration file and in nginx; see [install.md](install.md#uploads). Behind the packaged nginx a body of more than 20 MB is refused by nginx itself, with a `413` that is nginx's own page and not a problem document |
-| Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, networks, contracts, purchase requests, items (parents before children), device groups, members, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
+| Load order | tags, vendors, catalog entries, regions, sites, locations, contacts, contact assignments, owners, owner members, networks, contracts, purchase requests, items (parents before children), device groups, members, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply. The preview and the apply are events on the job |
 
 ### Export
@@ -254,7 +273,9 @@ test fails when they are out of date.
 HIDs, and the change: `set`, which names columns of an import and their new values,
 with `null` to clear one, and `add_tags` and `remove_tags`. The fields that tell one
 item from another cannot be set on more than one item at once: `serial_number`,
-`asset_tag`, `mac_address`, `name`, `hostname`, `fqdn` and `mgmt_address`. A change that names a single
+`asset_tag`, `mac_address`, `name`, `hostname`, `fqdn` and `mgmt_address`. `location`
+and `owner` are set on many at once like any other column, an external owner with its
+`owner_exception_reason` beside it. A change that names a single
 item by its HID may set them. A filter leaves out what a list leaves out, unless
 `include_archived` or `include_drafts` says otherwise; items named by their HIDs are
 changed whatever their status. One bulk edit changes at most 100,000 items, and more is
@@ -283,17 +304,20 @@ holds no money.
 | `by_condition` | on `totals` only: the components of each condition, and those with none |
 | `by_kind` | on `totals` only: items and components of each kind, so that software and services stand beside the headline count |
 
-`by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `lifecycle_state`,
-`disposition`, `condition`, `health` and `tag`.
+`by` is one of `vendor`, `kind`, `type`, `function`, `owner`, `site`, `region`,
+`lifecycle_state`, `disposition`, `condition`, `health` and `tag`.
 
 **The management report**, `GET /reports/management`, is for the people who pay for
 the network. It holds `items`, `component_count`, `est_value` and
 `annual_support_cost`, and neither condition nor health. `by` is one of `vendor`,
-`kind`, `type`, `function`, `owner` and `tag`. From 0.5.0, which has sites, it is also
-by `site`, and that is what it shows when no `by` is given: the whole inventory, and
-each site beneath it.
+`kind`, `type`, `function`, `owner`, `site`, `region` and `tag`. With no `by` it is by
+`site`, and the answer says so: the whole inventory, and each site beneath it.
 
-In both, `region` and `contract` join `by` as those records arrive. A row of `type` or
+In both, a row of `site` or `region` has the HID of the place as its key and its path
+as its label, and the items that are nowhere are in the blank row. A row of a region
+holds everything at or beneath it: an item is in the row of each region above it, as an
+item with several tags is in the row of each, and the totals count it once. `contract`
+joins `by` when that record arrives. A row of `type` or
 `function` is labelled as its list of choices labels the value. A minor item is in the
 row of the owner, state and disposition in force for it. An item with several tags is
 in the row of each, and the totals count it once. A stack whose members fall in two
@@ -306,6 +330,76 @@ default is not counted, unless `include_drafts` or `include_archived` asks for i
 pages with `limit` and `offset`.
 
 The end-of-life and coverage reports arrive in 0.6.0.
+
+## Geography
+
+`GET /geography/tree` answers the regions, their sites and the locations within them
+as one tree, each node with what is at or beneath it:
+
+```json
+{
+  "totals":   { "items": 61, "component_count": 40 },
+  "unplaced": { "items": 4, "component_count": 3 },
+  "hidden":   { "items": 0, "component_count": 0 },
+  "roots": [
+    { "level": "region", "hid": "0193a1f4-...", "name": "Americas", "code": "AMER",
+      "kind": null, "path": "Americas", "record_status": "active",
+      "items": 57, "component_count": 37,
+      "children": [
+        { "level": "region", "name": "Central", "path": "Americas > Central", "...": "...",
+          "children": [
+            { "level": "site", "name": "Site-2", "path": "Americas > Central > Site-2", "...": "...",
+              "children": [ { "level": "location", "name": "Building 1", "kind": "building", "...": "..." } ] } ] } ] }
+  ]
+}
+```
+
+`items` is every item whose location in force is at or beneath the node, major and
+minor, and `component_count` the components among them, as defined under "Counting
+and weight" on the [data model](data-model.md#counting-and-weight) page. The view is
+the one the item list shows: `filter`, `include_drafts` and `include_archived` mean
+what they mean there, and a place that is a draft or retired is in the tree only when
+it is asked for in the same way. `unplaced` counts the items with no location in
+force, and `hidden` those in a place the view leaves out, so that the roots, `unplaced`
+and `hidden` always add up to `totals`. Within a node the regions come first, then the
+sites, each by name; locations are by name.
+
+`root` is the HID or the path of one region, site or location: the tree is then that
+node alone with what is beneath it, and the counts beside it are still those of the
+whole view. `locations=false` stops at the sites, whose counts hold their locations
+all the same, so a page can show the regions and sites at once and fetch the inside of
+a site when it is opened.
+
+`GET /locations/{hid}/effective` answers what a location has in force, and
+`GET /sites/{hid}/effective` and `GET /regions/{hid}/effective` the same for a site and
+a region:
+
+```json
+{
+  "level": "location", "hid": "0193a1f4-...", "path": "Americas > Central > Site-2 > Building 1 > Room 102",
+  "contacts": [
+    { "role": "technical", "label": "Technical", "source": "region", "source_hid": "0193a1f4-...",
+      "source_path": "Americas", "stopped": false,
+      "contacts": [ { "assignment_hid": "...", "contact_hid": "...", "name": "Dana Whitfield",
+                      "organization": null, "email": "dana.whitfield@example.net",
+                      "phone": "+1 555 0100", "priority": 1, "record_status": "active" } ] },
+    { "role": "shipping", "label": "Shipping", "source": "site", "source_hid": "...",
+      "source_path": "Americas > Central > Site-2", "stopped": false, "contacts": [ "..." ] },
+    { "role": "federal", "label": "Federal", "source": "none", "source_hid": null,
+      "source_path": null, "stopped": false, "contacts": [] }
+  ],
+  "ship_address": { "value": { "address1": "100 Example Way", "address2": null, "city": "Springfield",
+                               "state": "IL", "postal_code": "00000", "country": "US" },
+                    "source": "site", "source_hid": "...", "source_path": "Americas > Central > Site-2" },
+  "ship_instructions": { "value": "Dock B, weekdays 08:00 to 15:00", "source": "region",
+                         "source_hid": "...", "source_path": "Americas" }
+}
+```
+
+There is one entry for each role of the `contact_role` list. `source` is `own` for
+what the place itself has, `location` for a location above it, `site`, `region`, or
+`none`. `stopped` is true where a level said "none here, and do not look further up",
+and `source` then names that level.
 
 ## CLI
 
@@ -326,12 +420,19 @@ hirdir items set PS-A parent=FCW0000X002 position=PS-B
 hirdir groups list --filter 'type:eq:stack'
 hirdir groups show site2-sw-stack1               # by HID or name; --include-past for who has left
 hirdir addresses list --filter 'network.label:eq:Red'
+hirdir geography tree                            # regions, sites and locations, with what is in each
+hirdir geography tree --root 'Americas > Central' --no-locations
+hirdir locations show 'Americas > Central > Site-2 > Building 1 > Room 102'
+hirdir sites move 'Americas > Central > Site-2' 'Americas > East'
+hirdir items set <hid> location='Americas > Central > Site-2 > Building 1 > Room 102'
+hirdir contacts list --filter 'organization:contains:Operations'
 hirdir vendors portfolio Cisco --format csv --output cisco-renewal.csv
 hirdir import items.csv --entity items                 # preview only
 hirdir import items.csv --entity items --apply
 hirdir import items.csv --entity items --apply --skip-rejected
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
 hirdir report summary --by health --format json
+hirdir report management                         # by site
 hirdir report management --by owner
 hirdir report duplicates
 hirdir report capacity --include-drafts
@@ -341,13 +442,15 @@ hirdir report capacity --include-drafts
 |---|---|
 | Server and token | `--url` and `--token`, or `HIRDIR_URL` and `HIRDIR_TOKEN`, or `~/.config/hirdir/config.toml`, in that order |
 | Output | A table on a terminal. `--format json` or `csv` for scripts. Data on stdout, messages on stderr |
-| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners`, `tags`, `networks`, `addresses` and `groups` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
+| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners`, `tags`, `networks`, `addresses`, `groups`, `regions`, `sites`, `locations` and `contacts` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
-| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. `hirdir report duplicates` lists the addresses held more than once |
+| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
+| The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |
 

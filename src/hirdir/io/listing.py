@@ -34,7 +34,7 @@ def page(
     """
     model = listing.model
     where = [
-        filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db)),
+        filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db), db),
         *default_view(listing, include_archived, include_drafts),
     ]
     keys = filters.parse_sort(sort, listing.fields) or filters.parse_sort(

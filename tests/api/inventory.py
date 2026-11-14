@@ -117,6 +117,61 @@ class Maker:
             body["network_hid"] = network["hid"]
         return self.post("/addresses", body, expect)
 
+    def region(self, name: str, parent: dict[str, Any] | None = None, **more: Any) -> dict:
+        body = {"name": name, "parent_region_hid": parent["hid"] if parent else None, **more}
+        return self.post("/regions", body)
+
+    def site(self, name: str, region: dict[str, Any], **more: Any) -> dict[str, Any]:
+        return self.post("/sites", {"name": name, "region_hid": region["hid"], **more})
+
+    def location(
+        self,
+        name: str,
+        site: dict[str, Any] | None = None,
+        parent: dict[str, Any] | None = None,
+        expect: int = 201,
+        **more: Any,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name, **more}
+        if site is not None:
+            body["site_hid"] = site["hid"]
+        if parent is not None:
+            body["parent_location_hid"] = parent["hid"]
+        return self.post("/locations", body, expect)
+
+    def layout(self) -> dict[str, dict[str, Any]]:
+        """Make `Americas > Central`, Site-2, Building 1 and Room 102 within it."""
+        americas = self.region("Americas")
+        central = self.region("Central", americas)
+        site = self.site("Site-2", central)
+        building = self.location("Building 1", site, kind="building")
+        room = self.location("Room 102", parent=building, kind="room")
+        return {
+            "americas": americas,
+            "central": central,
+            "site": site,
+            "building": building,
+            "room": room,
+        }
+
+    def contact(self, name: str, **more: Any) -> dict[str, Any]:
+        email = f"{name.lower().replace(' ', '.')}@example.net"
+        return self.post("/contacts", {"name": name, "email": email, **more})
+
+    def assign(
+        self, contact: dict[str, Any] | None, role: str, expect: int = 201, **place: Any
+    ) -> dict[str, Any]:
+        body = {"role": role, **place}
+        if contact is not None:
+            body["contact_hid"] = contact["hid"]
+        return self.post("/contact-assignments", body, expect)
+
+    def in_force(self, place: dict[str, Any], level: str = "locations") -> dict[str, Any]:
+        """Return what a place has in force, with its contacts by role."""
+        found = self.get(f"/{level}/{place['hid']}/effective")
+        found["by_role"] = {one["role"]: one for one in found["contacts"]}
+        return found
+
     def totals(self, **params: Any) -> dict[str, Any]:
         return self.get("/reports/summary", **params)["totals"]
 

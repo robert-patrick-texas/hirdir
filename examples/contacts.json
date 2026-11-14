@@ -1,0 +1,10 @@
+{"schema": "hirdir/1", "entity": "contacts", "mode": "upsert", "records": [
+  {"name": "Dana Whitfield", "organization": "Infrastructure Operations", "email": "dana.whitfield@example.net", "phone": "+1 555 0100", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Facilities Help Desk", "organization": "Corporate Services", "email": "facilities@example.net", "phone": "+1 555 0150", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Lee Marchetti", "organization": "Infrastructure Operations", "email": "lee.marchetti@example.net", "phone": "+1 555 0102", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Network Operations Desk", "organization": "Infrastructure Operations", "email": "noc@example.net", "phone": "+1 555 0199", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Priya Raman", "organization": "Infrastructure Operations", "email": "priya.raman@example.net", "phone": "+1 555 0103", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Robin Achterberg", "organization": "Infrastructure Operations", "email": "robin.achterberg@example.net", "phone": "+1 555 0101", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Sam Okafor", "organization": "Corporate Services", "email": "sam.okafor@example.net", "phone": "+1 555 0110", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Tomas Lindqvist", "organization": "Infrastructure Operations", "email": "tomas.lindqvist@example.net", "phone": "+1 555 0104", "notes": null, "record_status": "active", "tags": []}
+]}

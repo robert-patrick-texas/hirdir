@@ -127,6 +127,7 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
         "row_version": 1,
         # A major item, in nothing and with nothing in it, in no group and with no address.
         "is_major": True,
+        "owner_exception": False,
         # Nothing is said of how it is doing, so its health is not known.
         "health": {
             "value": "unknown",

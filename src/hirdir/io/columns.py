@@ -33,7 +33,7 @@ class Unreadable(ValueError):
 class Column:
     """One column of a file.
 
-    `kind` is text, integer, boolean, date, money, number, list or timestamp. `limit`
+    `kind` is text, integer, boolean, date, money, number, degrees, list or timestamp. `limit`
     is the longest text the column takes, or the longest entry of a list. A column that
     is not `settable` is written by an export and passed over by an import. One that is
     not `listed` is taken by an import, and written by an export only when it is asked
@@ -130,6 +130,21 @@ def _amount(column: Column, value: Any) -> str:
     return decimal_text(column, number)
 
 
+def _degrees(value: Any) -> str:
+    expected = "decimal degrees with at most six decimal places"
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        raise Unreadable(expected)
+    try:
+        number = Decimal(str(value).strip())
+        if not number.is_finite() or abs(number) > 180:
+            raise Unreadable(expected)
+        if number != number.quantize(Decimal("0.000001")):
+            raise Unreadable(expected)
+    except InvalidOperation:
+        raise Unreadable(expected) from None
+    return format(number.normalize(), "f")
+
+
 def _entries(column: Column, value: Any) -> list[str]:
     parts = value.split(LIST_SEPARATOR) if isinstance(value, str) else value
     if not isinstance(parts, list) or not all(isinstance(part, str) for part in parts):
@@ -159,6 +174,8 @@ def read(column: Column, value: Any) -> Any:
         return _moment(value)
     if kind in ("money", "number"):
         return _amount(column, value)
+    if kind == "degrees":
+        return _degrees(value)
     if kind == "list":
         return _entries(column, value)
     if isinstance(value, bool) or not isinstance(value, str | int):
@@ -211,7 +228,7 @@ def typed(column: Column, value: Any) -> Any:
         return date.fromisoformat(value)
     if column.kind == "timestamp":
         return datetime.fromisoformat(value)
-    if column.kind in ("money", "number"):
+    if column.kind in ("money", "number", "degrees"):
         return Decimal(value)
     return value
 

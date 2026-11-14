@@ -205,7 +205,7 @@ def test_the_summary_is_of_the_view_the_list_shows(make: Maker) -> None:
 
     problem = make.get("/reports/summary", expect=422, filter="colour:eq:red")
     assert "not a field" in errors(problem)["filter"]
-    problem = make.get("/reports/summary", expect=422, by="site")
+    problem = make.get("/reports/summary", expect=422, by="contract")
     assert problem["status"] == 422
 
 

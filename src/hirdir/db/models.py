@@ -71,6 +71,10 @@ class Scaled(TypeDecorator):
 MONEY_PLACES = 2
 WEIGHT_PLACES = 2
 PERCENT_PLACES = 2
+DEGREE_PLACES = 6
+# The fields of an address. A shipping address is the same six with `ship_` before them.
+ADDRESS_FIELDS = ("address1", "address2", "city", "state", "postal_code", "country")
+SHIP_FIELDS = tuple(f"ship_{name}" for name in ADDRESS_FIELDS)
 
 
 class Base(DeclarativeBase):
@@ -252,8 +256,142 @@ class CatalogEntry(Bookkeeping, Base):
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
+class StreetAddress:
+    """Where a site or a location is."""
+
+    address1: Mapped[str | None] = mapped_column(String(200), default=None)
+    address2: Mapped[str | None] = mapped_column(String(200), default=None)
+    city: Mapped[str | None] = mapped_column(String(200), default=None)
+    state: Mapped[str | None] = mapped_column(String(200), default=None)
+    postal_code: Mapped[str | None] = mapped_column(String(200), default=None)
+    country: Mapped[str | None] = mapped_column(String(200), default=None)
+
+
+class ShippingAddress:
+    """Where deliveries for a place go, and what a carrier is to know."""
+
+    ship_address1: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_address2: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_city: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_state: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_postal_code: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_country: Mapped[str | None] = mapped_column(String(200), default=None)
+    ship_instructions: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class Region(Bookkeeping, ShippingAddress, Base):
+    """A part of the world that sites are in. Regions nest to any depth."""
+
+    __tablename__ = "regions"
+    __table_args__ = (UniqueConstraint("code_key", name="regions_code"),)
+
+    hid: Mapped[str] = _hid()
+    code: Mapped[str | None] = mapped_column(String(40), default=None)
+    code_key: Mapped[str | None] = mapped_column(String(40), default=None)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    parent_region_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("regions.hid"), default=None, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Site(Bookkeeping, StreetAddress, ShippingAddress, Base):
+    """A place the team works at: a campus, a building of its own, a colocation hall."""
+
+    __tablename__ = "sites"
+    __table_args__ = (
+        UniqueConstraint("code_key", name="sites_code"),
+        UniqueConstraint("region_hid", "name_key", name="sites_region_name"),
+    )
+
+    hid: Mapped[str] = _hid()
+    code: Mapped[str | None] = mapped_column(String(40), default=None)
+    code_key: Mapped[str | None] = mapped_column(String(40), default=None)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    region_hid: Mapped[str] = mapped_column(ForeignKey("regions.hid"), index=True)
+    latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Location(Bookkeeping, StreetAddress, ShippingAddress, Base):
+    """A place within a site: a building, a floor, a room, a rack. Locations nest."""
+
+    __tablename__ = "locations"
+    __table_args__ = (UniqueConstraint("site_hid", "code_key", name="locations_site_code"),)
+
+    hid: Mapped[str] = _hid()
+    code: Mapped[str | None] = mapped_column(String(40), default=None)
+    code_key: Mapped[str | None] = mapped_column(String(40), default=None)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    site_hid: Mapped[str] = mapped_column(ForeignKey("sites.hid"), index=True)
+    parent_location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
+    kind: Mapped[str | None] = mapped_column(String(40), default=None)
+    latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class Contact(Bookkeeping, Base):
+    """A person or a shared mailbox, to be assigned to places and to owners."""
+
+    __tablename__ = "contacts"
+    __table_args__ = (UniqueConstraint("email_key", name="contacts_email"),)
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200), index=True)
+    organization: Mapped[str | None] = mapped_column(String(200), default=None)
+    email: Mapped[str | None] = mapped_column(String(254), default=None)
+    email_key: Mapped[str | None] = mapped_column(String(254), default=None)
+    phone: Mapped[str | None] = mapped_column(String(50), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class ContactAssignment(Bookkeeping, Base):
+    """A contact of one region, site or location, in one role.
+
+    With no contact and `stop_inheritance` set it says: none here, and do not look
+    further up.
+    """
+
+    __tablename__ = "contact_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "(CASE WHEN region_hid IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN site_hid IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN location_hid IS NULL THEN 0 ELSE 1 END) = 1",
+            name="contact_assignments_one_place",
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    contact_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("contacts.hid"), default=None, index=True
+    )
+    region_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("regions.hid"), default=None, index=True
+    )
+    site_hid: Mapped[str | None] = mapped_column(ForeignKey("sites.hid"), default=None, index=True)
+    location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
+    role: Mapped[str] = mapped_column(String(40))
+    priority: Mapped[int] = mapped_column(Integer, default=1)
+    stop_inheritance: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Owner(Bookkeeping, Base):
-    """Who answers for an item. Its people arrive with contacts, in a later release."""
+    """Who answers for an item."""
 
     __tablename__ = "owners"
     __table_args__ = (UniqueConstraint("label_key", name="owners_label"),)
@@ -265,6 +403,19 @@ class Owner(Bookkeeping, Base):
     is_external: Mapped[bool] = mapped_column(Boolean, default=False)
     exception_reason: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class OwnerMember(Bookkeeping, Base):
+    """One of the people of an owner: its primary, or an alternate."""
+
+    __tablename__ = "owner_members"
+    __table_args__ = (UniqueConstraint("owner_hid", "contact_hid", name="owner_members_once"),)
+
+    hid: Mapped[str] = _hid()
+    owner_hid: Mapped[str] = mapped_column(ForeignKey("owners.hid"), index=True)
+    contact_hid: Mapped[str] = mapped_column(ForeignKey("contacts.hid"), index=True)
+    role: Mapped[str] = mapped_column(String(10))
+    priority: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class Item(Bookkeeping, Base):
@@ -302,6 +453,11 @@ class Item(Bookkeeping, Base):
     observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
+    )
+    # Why this item is with an owner outside the operations team.
+    owner_exception_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
     )
     parent_item_hid: Mapped[str | None] = mapped_column(
         ForeignKey("items.hid"), default=None, index=True
@@ -356,6 +512,9 @@ class DeviceGroup(Bookkeeping, Base):
     )
     owner_hid: Mapped[str | None] = mapped_column(
         ForeignKey("owners.hid"), default=None, index=True
+    )
+    location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
     )
     # How a cluster is managed: as one node, as its members, or as both.
     managed_as: Mapped[str | None] = mapped_column(String(20), default=None)

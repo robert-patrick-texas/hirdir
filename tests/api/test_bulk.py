@@ -160,7 +160,7 @@ def test_rows_the_rules_refuse_are_rejected_and_may_be_skipped(
         ({"all_rows": True, "set": {"serial_number": "S"}}, "set.serial_number"),
         ({"all_rows": True, "set": {"hostname": "h"}}, "set.hostname"),
         ({"all_rows": True, "set": {"tags": ["critical"]}}, "set.tags"),
-        ({"all_rows": True, "set": {"location": "x"}}, "set.location"),
+        ({"all_rows": True, "set": {"contract": "x"}}, "set.contract"),
         ({"all_rows": True, "set": {"model_name": "x"}}, "set.model_name"),
         ({"all_rows": True, "set": {"quantity": "many"}}, "set.quantity"),
         ({"all_rows": True, "set": {"comments": ""}}, "set.comments"),

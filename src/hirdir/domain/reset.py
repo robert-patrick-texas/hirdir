@@ -19,6 +19,8 @@ from hirdir.db.models import (
     AuditEvent,
     CatalogEntry,
     Choice,
+    Contact,
+    ContactAssignment,
     DeviceGroup,
     DeviceGroupMember,
     IdempotencyKey,
@@ -27,11 +29,15 @@ from hirdir.db.models import (
     Item,
     ItemReplacement,
     LifecycleRule,
+    Location,
     Network,
     Owner,
+    OwnerMember,
+    Region,
     RoleGrant,
     ServiceToken,
     Setting,
+    Site,
     Tag,
     TagLink,
     User,
@@ -56,7 +62,13 @@ CLEARED: tuple[Any, ...] = (
     ItemReplacement,
     Item,
     CatalogEntry,
+    OwnerMember,
     Owner,
+    ContactAssignment,
+    Contact,
+    Location,
+    Site,
+    Region,
     Vendor,
     Tag,
 )
@@ -84,6 +96,12 @@ RECORD_TYPES = (
     "catalog_entry",
     "vendor",
     "owner",
+    "owner_member",
+    "region",
+    "site",
+    "location",
+    "contact",
+    "contact_assignment",
     "tag",
     "import_job",
 )
@@ -104,11 +122,13 @@ def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str
     audit event says what was removed and names the backup that still holds it.
     """
     removed = counts(db)
-    # A catalog entry may name another as its successor, an item may be in another and a
-    # group within another, so no order empties those tables.
+    # A catalog entry may name another as its successor, an item may be in another, a
+    # group, a region and a location within another, so no order empties those tables.
     db.execute(update(CatalogEntry).values(successor_hid=None))
     db.execute(update(Item).values(parent_item_hid=None))
     db.execute(update(DeviceGroup).values(parent_group_hid=None))
+    db.execute(update(Region).values(parent_region_hid=None))
+    db.execute(update(Location).values(parent_location_hid=None))
     for model in CLEARED:
         db.execute(delete(model))
     removed["audit_events"] = (

@@ -90,7 +90,7 @@ def plan(
         )
     found = entity(which)
     listing = found.listing
-    where = [filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db))]
+    where = [filters.to_sql(filters.parse(filter_), listing.fields, settings.time_zone(db), db)]
     if hids is None:
         where += default_view(listing, include_archived, include_drafts)
     else:

@@ -258,3 +258,114 @@ def test_the_upgrade_to_0006_ends_a_membership_on_the_applications_day(
         left = connection.execute(text("SELECT left_on FROM device_group_members")).scalar()
     engine.dispose()
     assert str(left) in {before.isoformat(), after.isoformat()}
+
+
+def test_the_upgrade_to_0007_keeps_what_is_held_and_puts_nothing_anywhere(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0006")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO owners (hid, label, label_key, is_external, exception_reason,"
+                " record_status, created_at, updated_at, row_version)"
+                " VALUES ('o-out', 'Facilities', 'facilities', 1, 'Runs the plant rooms',"
+                " 'active', '2026-01-01', '2026-01-01', 3)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO items (hid, name, quantity, lifecycle_state, condition, owner_hid,"
+                " parent_item_hid, record_status, created_at, updated_at, row_version)"
+                " VALUES (:hid, :hid, 1, :state, 'good', :owner, :parent, 'active',"
+                " '2026-01-01', '2026-01-01', :version)"
+            ),
+            [
+                {"hid": "i-1", "state": "Prod", "owner": "o-out", "parent": None, "version": 7},
+                {"hid": "i-2", "state": None, "owner": None, "parent": "i-1", "version": 2},
+            ],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO device_groups (hid, type, name, name_key, owner_hid, managed_as,"
+                " observed_master_hid, record_status, created_at, updated_at, row_version)"
+                " VALUES ('g-1', 'stack', 'Stack', 'stack', 'o-out', NULL, 'i-1', 'active',"
+                " '2026-01-01', '2026-01-01', 4)"
+            )
+        )
+        # A role of the site's own, entered before the list had its defaults.
+        connection.execute(
+            text(
+                "INSERT INTO choices (hid, list, value, value_key, label, sort, active,"
+                " created_at, updated_at, row_version) VALUES ('c-1', 'contact_role',"
+                " 'technical', 'technical', 'Engineer on call', 5, 1, '2026-01-01',"
+                " '2026-01-01', 1)"
+            )
+        )
+        events = connection.execute(text("SELECT count(*) FROM audit_events")).scalar()
+    engine.dispose()
+
+    migrate.upgrade(url)
+
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        assert migrate.current(engine) == migrate.head(url)
+        # Every item and group is as it was, at the version it had, and is nowhere.
+        items = connection.execute(
+            text(
+                "SELECT hid, lifecycle_state, condition, owner_hid, parent_item_hid, row_version,"
+                " location_hid, owner_exception_reason FROM items ORDER BY hid"
+            )
+        ).all()
+        assert [tuple(row) for row in items] == [
+            ("i-1", "Prod", "good", "o-out", None, 7, None, None),
+            ("i-2", None, "good", None, "i-1", 2, None, None),
+        ]
+        groups = connection.execute(
+            text(
+                "SELECT hid, type, owner_hid, observed_master_hid, row_version, location_hid"
+                " FROM device_groups"
+            )
+        ).all()
+        assert [tuple(row) for row in groups] == [("g-1", "stack", "o-out", "i-1", 4, None)]
+        # The six tables are there, and empty; the upgrade wrote no event.
+        for table in (
+            "regions",
+            "sites",
+            "locations",
+            "contacts",
+            "contact_assignments",
+            "owner_members",
+        ):
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0  # noqa: S608
+        assert connection.execute(text("SELECT count(*) FROM audit_events")).scalar() == events
+        # The two lists have their defaults, beside the role the site had entered.
+        roles = dict(
+            connection.execute(
+                text("SELECT value, label FROM choices WHERE list = 'contact_role'")
+            ).all()
+        )
+        assert roles["technical"] == "Engineer on call"
+        assert set(roles) == {"shipping", "technical", "federal", "operational", "escalation"}
+        kinds = connection.execute(
+            text("SELECT value FROM choices WHERE list = 'location_kind' ORDER BY sort")
+        ).scalars()
+        assert list(kinds) == ["building", "floor", "room", "rack", "warehouse", "other"]
+        # The indexes of the two tables that were made anew are the ones they had, and more.
+        indexes = {row[1] for row in connection.execute(text("PRAGMA index_list(items)"))}
+        assert {"ix_items_owner_hid", "ix_items_condition", "ix_items_location_hid"} <= indexes
+        assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+    engine.dispose()
+    # And back: the schema of 0.4.2, with the rows still there.
+    command.downgrade(migrate.alembic_config(url), "0006")
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(items)"))}
+        assert "location_hid" not in columns
+        assert connection.execute(text("SELECT count(*) FROM items")).scalar() == 2
+        tables = {
+            row[0]
+            for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+        }
+        assert "regions" not in tables
+    engine.dispose()

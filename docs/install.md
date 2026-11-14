@@ -182,7 +182,13 @@ cd /usr/share/doc/hirdir
 hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
+hirdir import examples/regions.csv --entity regions --apply
+hirdir import examples/sites.csv --entity sites --apply
+hirdir import examples/locations.csv --entity locations --apply
+hirdir import examples/contacts.csv --entity contacts --apply
+hirdir import examples/contact-assignments.csv --entity contact_assignments --apply
 hirdir import examples/owners.csv --entity owners --apply
+hirdir import examples/owner-members.csv --entity owner_members --apply
 hirdir import examples/networks.csv --entity networks --apply
 hirdir import examples/items.csv --entity items --apply
 hirdir import examples/device-groups.csv --entity device_groups --apply
@@ -198,6 +204,11 @@ and the addresses of items and of groups. So are the minor items among the items
 it, a stack whose master is seen to be another switch than the one intended, clusters
 that say how they are managed, and an address that two routers share, which their
 cluster holds.
+
+Six of the files are new in 0.5.0: the regions, the sites and the locations within
+them, the contacts, who is the contact of which place in which role, and the people of
+each owner. The items and the device groups say where they are, and one item says why
+it is with an owner outside the team.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:
@@ -620,6 +631,55 @@ sudo apt install --allow-downgrades ./hirdir_0.4.1_amd64.deb
 The command goes through and starts the service, and that is all. What was entered
 with 0.4.2 stays, and a moment that 0.4.2 read from a time with no zone stays the
 moment it was read as.
+
+### From 0.4.2 to 0.5.0
+
+The schema goes from revision `0006` to `0007`. Six tables are added: `regions`,
+`sites`, `locations`, `contacts`, `contact_assignments` and `owner_members`. All of
+them are empty after the upgrade.
+
+The `items` table gains two columns, `location_hid` and `owner_exception_reason`, and
+the `device_groups` table one, `location_hid`. To add a column that refers to another
+table, SQLite makes each of the two tables anew and copies every row across, inside
+the one transaction that the whole upgrade runs in. Nothing you have is changed by it.
+Every item, device group, membership, network, address, owner and choice is as it was,
+field for field and at the `row_version` it had, and every item has its history. The
+audit trail holds no event of the upgrade.
+
+What is new is empty until somebody fills it in. No item and no group is anywhere:
+each has no location, the tree of places is empty, and every item is counted under
+"nowhere". An item that is already with an owner outside the team is marked as an
+exception from now on, with no reason given until somebody gives one: the reason is
+asked for the next time such an item is given an owner.
+`GET /api/v1/items?filter=owner_exception:eq:true` lists them.
+
+The lists of contact roles and of location kinds are filled with their defaults:
+`shipping`, `technical`, `federal`, `operational` and `escalation`, and `building`,
+`floor`, `room`, `rack`, `warehouse` and `other`. A value that a site had entered in
+either list is left as it is.
+
+Three things answer differently from now on, for a script that reads them:
+
+- `GET /reports/management` and `hirdir report management` with no `by` are by site:
+  the answer has one row for each site, and `by` says `site` where it was `null`.
+  Until items are given locations there is one row, of the items that are nowhere,
+  beside the totals, which are as they were.
+- The record of an owner lists its `tags` and its `members`, and the record of an item
+  and of a device group the `location` it is at.
+- A file of items or of device groups may have a `location` column, which 0.4.2
+  rejected as unknown. An export of the columns that can be set writes it.
+
+`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is
+the one 0.4.2 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+
+The package now carries fifteen example files, where it carried nine: see
+[Try it with the examples](#try-it-with-the-examples).
+
+Going back to 0.4.2 is as under
+[Going back to the release before](#going-back-to-the-release-before). The backup of
+this upgrade is at revision `0006`. 0.4.2 knows no region, site, location or contact,
+so whatever was entered of those with 0.5.0 is lost with the rest that was entered
+since the upgrade.
 
 ### If the upgrade stops
 

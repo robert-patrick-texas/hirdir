@@ -28,7 +28,17 @@ from sqlalchemy.orm import Session
 from hirdir.config import Config
 from hirdir.db import migrate
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.domain import addresses, audit, catalog, groups, items, owners, tags
+from hirdir.domain import (
+    addresses,
+    audit,
+    catalog,
+    contacts,
+    geography,
+    groups,
+    items,
+    owners,
+    tags,
+)
 from hirdir.io import exports, files
 from hirdir.io.entities import ENTITIES, LOAD_ORDER
 
@@ -437,6 +447,155 @@ OWNERS = (
 )
 
 
+# The regions, from the top down: name, code, the region it is in, and what else it has.
+REGIONS: tuple[tuple[str, str, str | None, dict[str, Any]], ...] = (
+    (
+        "Americas",
+        "AMER",
+        None,
+        {"ship_instructions": "Call the Network Operations Desk a day ahead of any delivery"},
+    ),
+    ("Central", "CEN", "Americas", {}),
+    ("East", "EAST", "Americas", {}),
+)
+# The sites: name, code, the path of its region, and what else it has.
+SITES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
+    (
+        "Site-1",
+        "S1",
+        "Americas > East",
+        {
+            "address1": "200 Sample Street",
+            "city": "Riverton",
+            "state": "NY",
+            "postal_code": "00000",
+            "country": "US",
+            "notes": "A small office: one equipment room",
+        },
+    ),
+    (
+        "Site-2",
+        "S2",
+        "Americas > Central",
+        {
+            "address1": "100 Example Way",
+            "city": "Springfield",
+            "state": "IL",
+            "postal_code": "00000",
+            "country": "US",
+            "ship_address1": "100 Example Way",
+            "ship_address2": "Dock B",
+            "ship_city": "Springfield",
+            "ship_state": "IL",
+            "ship_postal_code": "00000",
+            "ship_country": "US",
+            "latitude": Decimal("40.000000"),
+            "longitude": Decimal("-89.000000"),
+            "tags": ["critical"],
+        },
+    ),
+    (
+        "Site-3",
+        "S3",
+        "Americas > Central",
+        {"record_status": "draft", "notes": "Entered ahead of the build; opens next year"},
+    ),
+)
+# The locations, a location before the ones within it: its site, the location it is in,
+# from the site down, its name, its kind, and what else it has.
+LOCATIONS: tuple[tuple[str, str | None, str, str, dict[str, Any]], ...] = (
+    ("Site-1", None, "Comms Room", "room", {}),
+    ("Site-2", None, "Building 1", "building", {"code": "B1"}),
+    ("Site-2", "Building 1", "Floor 1", "floor", {}),
+    (
+        "Site-2",
+        "Building 1 > Floor 1",
+        "Room 102",
+        "room",
+        {"notes": "The main equipment room"},
+    ),
+    ("Site-2", "Building 1 > Floor 1 > Room 102", "Rack A1", "rack", {}),
+    ("Site-2", "Building 1", "Floor 2", "floor", {}),
+    ("Site-2", "Building 1 > Floor 2", "Room 201", "room", {}),
+    ("Site-2", "Building 1", "Lab", "room", {}),
+    (
+        "Site-2",
+        None,
+        "Store Room",
+        "warehouse",
+        {"ship_instructions": "Leave with the store keeper; a signature is needed"},
+    ),
+    ("Site-3", None, "Suite 300", "room", {"record_status": "draft"}),
+)
+SITE_PATHS = {name: f"{region} > {name}" for name, _, region, _ in SITES}
+# Where the examples are, by the start of the host name: the path from the site down.
+PLACED = (
+    ("site2-sw-core", "Site-2", "Building 1 > Floor 1 > Room 102 > Rack A1"),
+    ("site2-rtr-wan", "Site-2", "Building 1 > Floor 1 > Room 102"),
+    ("site2-fw-", "Site-2", "Building 1 > Floor 1 > Room 102"),
+    ("site2-wlc", "Site-2", "Building 1 > Floor 1 > Room 102"),
+    ("netconfig-", "Site-2", "Building 1 > Floor 1 > Room 102"),
+    ("netmon-", "Site-2", "Building 1 > Floor 1 > Room 102"),
+    ("site2-sw-access", "Site-2", "Building 1 > Floor 2 > Room 201"),
+    ("site2-sw-floor", "Site-2", "Building 1 > Floor 2 > Room 201"),
+    ("site2-ap-01", "Site-2", "Building 1 > Floor 1"),
+    ("site2-ap-02", "Site-2", "Building 1 > Floor 1"),
+    ("site2-ap", "Site-2", "Building 1 > Floor 2"),
+    ("site2-phone", "Site-2", "Building 1 > Floor 2"),
+    ("lab-", "Site-2", "Building 1 > Lab"),
+    ("site1-", "Site-1", "Comms Room"),
+    ("site3-", "Site-3", "Suite 300"),
+)
+STORE_ROOM = "Americas > Central > Site-2 > Store Room"
+# People and shared mailboxes: name, organization, email address, telephone number.
+# The numbers are from the range kept for fiction.
+CONTACTS = (
+    ("Dana Whitfield", "Infrastructure Operations", "dana.whitfield", "+1 555 0100"),
+    ("Robin Achterberg", "Infrastructure Operations", "robin.achterberg", "+1 555 0101"),
+    ("Lee Marchetti", "Infrastructure Operations", "lee.marchetti", "+1 555 0102"),
+    ("Priya Raman", "Infrastructure Operations", "priya.raman", "+1 555 0103"),
+    ("Tomas Lindqvist", "Infrastructure Operations", "tomas.lindqvist", "+1 555 0104"),
+    ("Sam Okafor", "Corporate Services", "sam.okafor", "+1 555 0110"),
+    ("Network Operations Desk", "Infrastructure Operations", "noc", "+1 555 0199"),
+    ("Facilities Help Desk", "Corporate Services", "facilities", "+1 555 0150"),
+)
+# Who answers for a place, in which role: the path of the place, the role and the
+# contact, in the order of their priority. A contact of None says: none here, and do
+# not look further up.
+ASSIGNMENTS: tuple[tuple[str, str, str | None], ...] = (
+    ("Americas", "technical", "Dana Whitfield"),
+    ("Americas", "technical", "Robin Achterberg"),
+    ("Americas", "operational", "Network Operations Desk"),
+    ("Americas", "escalation", "Robin Achterberg"),
+    ("Americas > Central > Site-2", "shipping", "Sam Okafor"),
+    # The building has a technician of its own, who is asked before the regional lead.
+    ("Americas > Central > Site-2 > Building 1", "technical", "Lee Marchetti"),
+    # Nothing is shipped to the small office: deliveries for it go to Site-2.
+    ("Americas > East > Site-1", "shipping", None),
+)
+# The people of each owner, the primary first.
+OWNER_MEMBERS = (
+    ("Network Engineering", ("Dana Whitfield", "Robin Achterberg", "Lee Marchetti")),
+    ("Security Operations", ("Priya Raman",)),
+    ("Voice Services", ("Tomas Lindqvist", "Dana Whitfield")),
+    ("Facilities Management", ("Facilities Help Desk",)),
+)
+
+
+def _placed(item: dict[str, Any]) -> str | None:
+    """Return the path of the location an example item is at, or None for nowhere."""
+    host = item.get("hostname") or ""
+    if not host.startswith("site2-") or (
+        item.get("disposition") != "Spare" and item.get("lifecycle_state") != "Assigned"
+    ):
+        for prefix, site, within in PLACED:
+            if host.startswith(prefix):
+                return f"{SITE_PATHS[site]} > {within}"
+        return None
+    # A spare on the shelf, and a switch that is parked until it is needed.
+    return STORE_ROOM
+
+
 def _mac(number: int) -> str:
     """Return a MAC address from the block reserved for documentation, 00-00-5E-00-53-xx."""
     return f"00005e0053{number:02x}"
@@ -603,7 +762,8 @@ def _items() -> list[dict[str, Any]]:
         lifecycle_state="Archived",
         state_reason="disposed",
         owner="Facilities Management",
-        comments="Traded in when Site-1 closed",
+        owner_exception_reason="Served the building management network of the small office",
+        comments="Traded in when the office was rewired",
     )
     planned = _hardware(
         "C9300-48P",
@@ -706,6 +866,67 @@ def build(db: Session) -> None:
         if "successor" in more:
             fields["successor_hid"] = entries[vendor, more["successor"]].hid
         entries[vendor, pid] = catalog.create_entry(db, SEED, fields)
+    regions: dict[str, Any] = {}
+    for name, code, parent, more in REGIONS:
+        path = f"{parent} > {name}" if parent else name
+        regions[path] = geography.create_place(
+            db,
+            SEED,
+            geography.REGION,
+            {
+                "name": name,
+                "code": code,
+                "parent_region_hid": regions[parent].hid if parent else None,
+                **more,
+            },
+        )
+    sites: dict[str, Any] = {}
+    for name, code, region, more in SITES:
+        sites[name] = geography.create_place(
+            db,
+            SEED,
+            geography.SITE,
+            {"name": name, "code": code, "region_hid": regions[region].hid, **more},
+        )
+    places: dict[str, Any] = {}
+    for site, parent, name, kind, more in LOCATIONS:
+        within = f"{SITE_PATHS[site]} > {parent}" if parent else SITE_PATHS[site]
+        places[f"{within} > {name}"] = geography.create_place(
+            db,
+            SEED,
+            geography.LOCATION,
+            {
+                "name": name,
+                "site_hid": sites[site].hid,
+                "parent_location_hid": places[within].hid if parent else None,
+                "kind": kind,
+                **more,
+            },
+        )
+    people = {}
+    for name, organization, mailbox, phone in CONTACTS:
+        people[name] = contacts.create_contact(
+            db,
+            SEED,
+            {
+                "name": name,
+                "organization": organization,
+                "email": f"{mailbox}@{DOMAIN}",
+                "phone": phone,
+            },
+        )
+    for path, role, contact in ASSIGNMENTS:
+        place = geography.the_place(db, path, "place")
+        contacts.create_assignment(
+            db,
+            SEED,
+            {
+                f"{place.level}_hid": place.hid,
+                "role": role,
+                "contact_hid": people[contact].hid if contact else None,
+                "stop_inheritance": contact is None,
+            },
+        )
     its_owners = {}
     for label, organization, is_external, reason in OWNERS:
         its_owners[label] = owners.create_owner(
@@ -718,11 +939,17 @@ def build(db: Session) -> None:
                 "exception_reason": reason,
             },
         )
+    for label, members in OWNER_MEMBERS:
+        for name in members:
+            owners.add_member(db, SEED, its_owners[label].hid, {"contact_hid": people[name].hid})
     for item in _items():
         fields = {name: value for name, value in item.items() if value is not None}
         fields["catalog_entry_hid"] = entries[fields.pop("vendor"), fields.pop("pid")].hid
         if "owner" in fields:
             fields["owner_hid"] = its_owners[fields.pop("owner")].hid
+        where = _placed(item)
+        if where is not None:
+            fields["location_hid"] = places[where].hid
         items.create_item(db, SEED, fields)
     db.flush()
 
@@ -749,6 +976,9 @@ def build(db: Session) -> None:
         if "seen_master" in fields:
             fields["observed_master_hid"] = item(fields.pop("seen_master")).hid
             fields["master_observed_at"] = SEEN
+        where = _placed({"hostname": name}) if type_ != "controller_domain" else None
+        if where is not None:
+            fields["location_hid"] = places[where].hid
         fields["members"] = [
             {
                 "item_hid": item(hostname).hid,

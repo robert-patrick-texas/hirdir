@@ -5,7 +5,7 @@ worked out by the database, in one statement for each answer, over the view that
 filter and the default view choose, so a summary always agrees with the list it is of.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -38,7 +38,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import choices, groups, health, records, settings
+from hirdir.domain import choices, geography, groups, health, records, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
@@ -52,7 +52,7 @@ HUNDREDTH = Decimal("0.01")
 # weight x quantity x (100% - discount) is exact in units of this size.
 WEIGHT_STEPS = Decimal(100 * 100 * 100)
 MONEY_STEPS = Decimal(100)
-SHARED = ("vendor", "kind", "type", "function", "owner")
+SHARED = ("vendor", "kind", "type", "function", "owner", "site", "region")
 SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
 MANAGEMENT_BY = (*SHARED, "tag")
 ONE_NODE = groups.MANAGED_AS[0]
@@ -203,7 +203,7 @@ class _Terms:
 
 def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bool) -> _Terms:
     where = (
-        filters.to_sql(filters.parse(filter_), ITEMS.fields, settings.time_zone(db)),
+        filters.to_sql(filters.parse(filter_), ITEMS.fields, settings.time_zone(db), db),
         *default_view(ITEMS, include_archived, include_drafts),
     )
     count_states = list(settings.value(db, "count_states"))
@@ -284,6 +284,17 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     if by == "owner":
         # The owner in force: a minor item is under the owner of the item it is in.
         return Owner.hid, Owner.label, None
+    if by == "site":
+        return fields.ITEM_SITE.hid, fields.ITEM_SITE.hid, None
+    if by == "region":
+        # Every region an item is within: its site's own, and each one above that. An
+        # item is so in the row of each, as an item with several tags is.
+        above = geography.region_ancestry()
+
+        def within(query: Any) -> Any:
+            return query.outerjoin(above, above.c.hid == fields.ITEM_SITE.region_hid)
+
+        return above.c.above, above.c.above, within
     if by in ("lifecycle_state", "disposition"):
         column = fields.standing(by)
         return column, column, None
@@ -306,8 +317,15 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
 LABELLED = {"type": "catalog_type", "function": "catalog_function", "condition": "item_condition"}
 
 
-def _labels(db: Session, by: str) -> dict[str, str]:
-    """Return what people call the values a report is by, where a list of choices says."""
+def _labels(db: Session, by: str, keys: Sequence[Any] = ()) -> dict[str, str]:
+    """Return what people call the values a report is by: as a list of choices labels
+    them, or, for a site and a region, by its path."""
+    if by in ("site", "region"):
+        atlas = geography.Atlas(db)
+        if by == "site":
+            atlas.read_sites(keys)
+            return {key: atlas.site_path(key) for key in keys if key}
+        return {key: atlas.region_path(key) for key in keys if key}
     if by not in LABELLED:
         return {}
     return {choice.value: choice.label for choice in choices.list_choices(db, LABELLED[by])}
@@ -455,14 +473,15 @@ def summary(
     if join is not None:
         counting = join(counting)
     sums = _sums(db, terms, terms.weight, key, join)
-    called = _labels(db, by)
+    found = _run(db, counting.group_by(key, label))
+    called = _labels(db, by, [row[0] for row in found])
     rows = [
         Row(
             key=row[0],
             label=called.get(row[1], row[1]),
             **_measures(row[2:], sums.get(row[0], [0, 0])),
         )
-        for row in _run(db, counting.group_by(key, label))
+        for row in found
     ]
     return Summary(by, totals, _in_order(rows))
 
@@ -478,30 +497,46 @@ def management(
     """Return the estimated value and the annual support cost of a view of the items.
 
     For the people who pay for the network: the whole inventory, and one row for each
-    value of `by`. Neither condition nor health is in it.
+    value of `by`, which is the site unless another is asked for. Neither condition nor
+    health is in it.
     """
     _checked_by(by, MANAGEMENT_BY)
+    by = by or "site"
     terms = _terms(db, filter_, include_archived, include_drafts)
     counts = (terms.items, terms.components)
     whole = _run(db, terms.source(select(*counts)))[0]
     totals = Money(**_money(whole, _sums(db, terms, terms.money).get(None, [0, 0])))
-    if by is None:
-        return Management(None, totals)
     key, label, join = _grouping(by)
     counting = terms.source(select(key, label, *counts))
     if join is not None:
         counting = join(counting)
     sums = _sums(db, terms, terms.money, key, join)
-    called = _labels(db, by)
+    found = _run(db, counting.group_by(key, label))
+    called = _labels(db, by, [row[0] for row in found])
     rows = [
         MoneyRow(
             key=row[0],
             label=called.get(row[1], row[1]),
             **_money(row[2:], sums.get(row[0], [0, 0])),
         )
-        for row in _run(db, counting.group_by(key, label))
+        for row in found
     ]
     return Management(by, totals, _in_order(rows))
+
+
+def by_location(
+    db: Session,
+    *,
+    filter_: Any = None,
+    include_archived: bool = False,
+    include_drafts: bool = False,
+) -> dict[str | None, tuple[int, int]]:
+    """Return the items and the components of a view at each location, by the location
+    in force, and under no key those that are nowhere."""
+    terms = _terms(db, filter_, include_archived, include_drafts)
+    where = fields.LOCATION_IN_FORCE
+    found = _run(db, terms.source(select(where, terms.items, terms.components)).group_by(where))
+    return {hid: (items, components) for hid, items, components in found}
 
 
 # --- addresses held more than once ---------------------------------------------------

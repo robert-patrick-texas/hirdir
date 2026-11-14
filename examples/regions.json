@@ -1,0 +1,5 @@
+{"schema": "hirdir/1", "entity": "regions", "mode": "upsert", "records": [
+  {"name": "Americas", "parent": null, "code": "AMER", "ship_address1": null, "ship_address2": null, "ship_city": null, "ship_state": null, "ship_postal_code": null, "ship_country": null, "ship_instructions": "Call the Network Operations Desk a day ahead of any delivery", "notes": null, "record_status": "active", "tags": []},
+  {"name": "Central", "parent": "Americas", "code": "CEN", "ship_address1": null, "ship_address2": null, "ship_city": null, "ship_state": null, "ship_postal_code": null, "ship_country": null, "ship_instructions": null, "notes": null, "record_status": "active", "tags": []},
+  {"name": "East", "parent": "Americas", "code": "EAST", "ship_address1": null, "ship_address2": null, "ship_city": null, "ship_state": null, "ship_postal_code": null, "ship_country": null, "ship_instructions": null, "notes": null, "record_status": "active", "tags": []}
+]}
