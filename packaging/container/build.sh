@@ -255,6 +255,10 @@ check_tree() {
 verify_units() {
     log "systemd-analyze verify"
     local out
+    # systemd-analyze looks for what a unit runs on the machine it is run on. The
+    # interpreter and the environment are built in place at /opt/hirdir. hirdir-setup,
+    # which the nightly upgrade runs, is put where the package will have it.
+    install -Dm755 "$STAGE/usr/sbin/hirdir-setup" /usr/sbin/hirdir-setup
     out=$(systemd-analyze verify --man=no --recursive-errors=no \
         "$STAGE"/usr/lib/systemd/system/hirdir.service \
         "$STAGE"/usr/lib/systemd/system/hirdir-backup.service \
