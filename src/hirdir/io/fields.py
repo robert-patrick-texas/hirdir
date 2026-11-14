@@ -344,6 +344,8 @@ ADDRESSES = Listing(
         **_bookkeeping(Address),
         **_columns(Address, "reference", "item_hid", "group_hid", "network_hid"),
         "address": Field("address", Address.address, convert=comparable),
+        # 4 or 6: an address with a colon in it is IPv6.
+        "family": Field("integer", case((Address.address.contains(":"), 6), else_=4)),
         "role": Field("choice", Address.role),
         "is_primary": Field("boolean", Address.is_primary),
         "network.label": Field("text", Network.label),

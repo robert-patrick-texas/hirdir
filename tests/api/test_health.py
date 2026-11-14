@@ -793,3 +793,86 @@ def test_the_management_report_holds_the_money_and_no_health(
     assert make.get("/reports/management", expect=422, by="health")["status"] == 422
     assert client.get(f"{API}/reports/management", headers=viewer).status_code == 200
     assert client.get(f"{API}/reports/management").status_code == 401
+
+
+# --- a site's own file finds the items it has (D-108) ------------------------------------
+
+
+def test_a_file_of_host_names_finds_the_items_that_have_serial_numbers(
+    make: Maker, files: Files
+) -> None:
+    entry = _entry(make)
+    first = make.item(
+        catalog_entry_hid=entry["hid"], serial_number="FCW0000X001", hostname="site2-sw-01"
+    )
+    # An item with a name of its own is found by its host name all the same.
+    second = make.item(
+        catalog_entry_hid=entry["hid"],
+        serial_number="FCW0000X002",
+        name="Core switch A",
+        hostname="site2-sw-02",
+    )
+    text = (
+        "hostname,observed_status,observed_at,IP_address\n"
+        f"site2-sw-01,online,{SEEN},192.0.2.11\n"
+        f"SITE2-SW-02,unreachable,{SEEN},192.0.2.12\n"
+        "site2-sw-99,present,,\n"
+    )
+
+    preview = files.preview("items", text)
+
+    # The two that are there are changed, and no second item is made beside either.
+    assert [row["outcome"] for row in preview["rows"]] == ["update", "update", "create"]
+    assert [row["record_hid"] for row in preview["rows"][:2]] == [first["hid"], second["hid"]]
+    files.apply(preview)
+    assert make.get("/items", limit=1)["total"] == 3
+    found = make.get(f"/items/{second['hid']}")
+    assert (found["name"], found["serial_number"], found["observed_status"]) == (
+        "Core switch A",
+        "FCW0000X002",
+        "unreachable",
+    )
+    assert [one["address"] for one in found["addresses"]] == ["192.0.2.12"]
+    # The same file again changes nothing.
+    assert counts(files.preview("items", text)["job"]) == (0, 0, 3, 0)
+
+
+def test_a_name_that_two_items_answer_to_is_never_a_guess(make: Maker, files: Files) -> None:
+    entry = _entry(make)
+    for serial in ("FCW0000X001", "FCW0000X002"):
+        make.item(catalog_entry_hid=entry["hid"], serial_number=serial, hostname="site2-sw-01")
+    make.item(name="spare shelf", hostname="shelf-1")
+
+    preview = files.preview("items", "hostname,condition\nsite2-sw-01,good\n")
+    row = preview["rows"][0]
+    assert row["outcome"] == "rejected"
+    assert "more than one item answers to this" in row["reasons"][0]["message"]
+    # A row that gives a name is matched on the name, and a retired item is not found.
+    by_name = files.preview("items", "name,condition\nspare shelf,good\n")
+    assert by_name["rows"][0]["outcome"] == "update"
+    shelf = make.get("/items", filter="name:eq:spare shelf")["items"][0]
+    make.post(f"/items/{shelf['hid']}/retire", {"row_version": shelf["row_version"]}, 200)
+    assert files.preview("items", "name,condition\nspare shelf,good\n")["rows"][0]["outcome"] == (
+        "create"
+    )
+    # A row with a serial number and its model is still told by those alone.
+    with_serial = "vendor,pid,serial_number,hostname\nCisco,C9300-48P,FCW0000X003,site2-sw-01\n"
+    assert files.preview("items", with_serial)["rows"][0]["outcome"] == "create"
+
+
+def test_addresses_are_listed_and_exported_with_their_family(make: Maker, files: Files) -> None:
+    switch = make.item(hostname="site2-sw-01")
+    make.address(switch, "192.0.2.10")
+    make.address(switch, "2001:db8::10")
+
+    six = make.get("/addresses", filter="family:eq:6")["items"]
+    assert [one["address"] for one in six] == ["2001:db8::10"]
+    assert [one["address"] for one in make.get("/addresses", sort="-family")["items"]] == [
+        "2001:db8::10",
+        "192.0.2.10",
+    ]
+    exported = table(files.export("addresses", columns=["address", "family"]))
+    assert [(row["address"], row["family"]) for row in exported] == [
+        ("192.0.2.10", "4"),
+        ("2001:db8::10", "6"),
+    ]

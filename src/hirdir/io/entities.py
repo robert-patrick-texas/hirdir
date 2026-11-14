@@ -875,8 +875,8 @@ class Items(Entity):
 
         The order is on the data model page under "Identity and matching": the vendor,
         PID and serial number; then the asset tag; then, for a row with neither a serial
-        number nor an asset tag, the name, among the items that are not retired. More
-        than one candidate is an error, never a guess.
+        number nor an asset tag, the name or the host name, among the items that are
+        not retired. More than one candidate is an error, never a guess.
         """
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
@@ -892,26 +892,39 @@ class Items(Entity):
             )
         if tag:
             return db.scalar(select(Item).where(Item.asset_tag_key == records.key(tag)))
-        name = values.get("name") or values.get("hostname")
-        if serial or not name:
+        if serial:
             return None
-        named = list(
-            db.scalars(
-                select(Item)
-                .where(
-                    dialect.equals_text(func.coalesce(Item.name, Item.hostname), name.strip()),
-                    Item.serial_key.is_(None),
-                    Item.record_status != "retired",
+        # By what it is called: its name, or its host name where it has no name, and
+        # for a row that gives only a host name, its host name. The item that answers
+        # may have a serial number of its own: a site's file of host names finds the
+        # switches it has.
+        called: Any = func.coalesce(Item.name, Item.hostname)
+        host: Any = Item.hostname
+        for given, column in (
+            (values.get("name"), called),
+            (values.get("hostname"), host),
+        ):
+            if not given:
+                continue
+            named = list(
+                db.scalars(
+                    select(Item)
+                    .where(
+                        dialect.equals_text(column, given.strip()),
+                        Item.record_status != "retired",
+                    )
+                    .limit(2)
                 )
-                .limit(2)
             )
-        )
-        if len(named) > 1:
-            raise Invalid(
-                f"more than one item is called {name}",
-                {"name": "more than one item has this name; give the HID of the one meant"},
-            )
-        return named[0] if named else None
+            if len(named) > 1:
+                field = "name" if column is called else "hostname"
+                raise Invalid(
+                    f"more than one item is called {given}",
+                    {field: "more than one item answers to this; give the HID of the one meant"},
+                )
+            if named:
+                return named[0]
+        return None
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         for names in (("vendor", "pid", "serial_number"), ("asset_tag",), ("name",), ("hostname",)):
@@ -1520,6 +1533,7 @@ class Addresses(Entity):
         Column("network", limit=100),
         Column("role", limit=12),
         Column("is_primary", "boolean"),
+        Column("family", "integer", settable=False),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -1616,6 +1630,7 @@ class Addresses(Entity):
                 else None,
                 "role": address.role,
                 "is_primary": address.is_primary,
+                "family": addresses.family(address.address),
             }
             for address in found
         ]
