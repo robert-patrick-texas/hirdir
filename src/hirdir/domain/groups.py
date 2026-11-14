@@ -22,7 +22,7 @@ from hirdir.db.models import (
     Operator,
     Owner,
 )
-from hirdir.domain import health, items, records, settings, tags
+from hirdir.domain import geography, health, items, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
@@ -52,6 +52,7 @@ FIELDS = (
     "parent_group_hid",
     "owner_hid",
     "location_hid",
+    "planned_location_hid",
     "operator_hid",
     "managed_as",
     "expected_members",
@@ -434,6 +435,19 @@ def _checked(
                     "the location is retired", {"location_hid": "this location is retired"}
                 )
         values["location_hid"] = hid
+    if "planned_location_hid" in fields:
+        hid = fields["planned_location_hid"] or None
+        if hid is not None and (group is None or group.planned_location_hid != hid):
+            geography.checked_plan(db, hid)
+        values["planned_location_hid"] = hid
+    going = values.get(
+        "planned_location_hid", group.planned_location_hid if group is not None else None
+    )
+    if going and going == values.get(
+        "location_hid", group.location_hid if group is not None else None
+    ):
+        # It is where it was going: there is nothing planned any more.
+        values["planned_location_hid"] = None
     if "operator_hid" in fields:
         hid = fields["operator_hid"] or None
         if hid is not None and (group is None or group.operator_hid != hid):

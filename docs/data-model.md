@@ -172,7 +172,10 @@ is given the planned location as its location. Giving the item another location 
 the meantime, another shelf in staging, leaves the plan standing. A retired item is
 not moved. A location is not retired while items are planned for it. A minor item
 with no plan of its own goes where the item above it goes, as it is where that item
-is. A device group has no planned location.
+is. A device group has a planned location in the same way, for itself: it is moved
+in by the same change, with its own entry in the audit trail. Its members are items
+with locations and plans of their own, and are planned for with it by one bulk edit
+of the members.
 
 **The operator.** The owner of an item is the part of the organization that answers
 for it. Its operator is one person: the member of the team who looks after it, and
@@ -238,6 +241,7 @@ files, arrive in 0.6.0.
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
 | `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
+| `planned_location_hid` | reference | optional. Where the group is going, in a place not in use yet, as on an item |
 | `operator_hid` | reference | optional. An operator, for the group and for each member that has none of its own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
 | `expected_members` | integer | optional: how many members the group is meant to have |
@@ -369,7 +373,7 @@ location that is retired is given to no further item.
 
 **Retiring.** A region, a site or a location is retired only when nothing that is not
 retired is in it: no region, site or location beneath it, and no item or device group
-placed there, and no item planned for it. An item that has left the team's hands, in Released or in Archived,
+placed there, and no item or device group planned for it. An item that has left the team's hands, in Released or in Archived,
 holds no location open. A place is not brought back while what it is in is retired:
 the building first, then the room. Nor is an item or a device group brought back
 into a location that was retired after it: it is given another location, or none,

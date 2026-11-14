@@ -556,6 +556,10 @@ class DeviceGroup(Bookkeeping, Base):
     location_hid: Mapped[str | None] = mapped_column(
         ForeignKey("locations.hid"), default=None, index=True
     )
+    # Where the group is going, when that place is not in use yet.
+    planned_location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
     # Who looks after the group, and after its members that have none of their own.
     operator_hid: Mapped[str | None] = mapped_column(
         ForeignKey("operators.hid"), default=None, index=True

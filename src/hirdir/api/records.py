@@ -503,6 +503,7 @@ class LocationOut(Model):
     locations: int = Field(description="How many locations are directly in it, retired aside.")
     items: int = Field(description="How many items have it as their own location.")
     planned_items: int = Field(description="How many items are planned for it, and not there yet.")
+    planned_groups: int = Field(description="How many device groups are planned for it.")
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -592,6 +593,7 @@ class GeographyNode(PlaceCount):
     path: str
     record_status: RecordStatus
     planned: int = Field(description="The items planned for it or for a place beneath it.")
+    planned_groups: int = Field(description="The device groups planned for it or beneath it.")
     children: list[GeographyNode]
 
 
@@ -1392,6 +1394,10 @@ class DeviceGroupOut(Model):
     owner_exception_reason: str | None = Field(description="That owner's reason.")
     location_hid: str | None
     location: LocationRef | None
+    planned_location_hid: str | None
+    planned_location: LocationRef | None = Field(
+        description="Where the group is going: a location that is not in use yet."
+    )
     operator_hid: str | None
     operator: OperatorRef | None = Field(
         description="Its own operator, which is that of its members that have none."
@@ -1442,6 +1448,7 @@ class DeviceGroupCreate(Model):
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    planned_location_hid: Hid | None = None
     operator_hid: Hid | None = None
     managed_as: ManagedAs | None = Field(default=None, description="A cluster only. Left out, one.")
     expected_members: int | None = Field(default=None, ge=1, le=10_000)
@@ -1467,6 +1474,7 @@ class DeviceGroupPatch(Model):
     parent_group_hid: Hid | None = None
     owner_hid: Hid | None = None
     location_hid: Hid | None = None
+    planned_location_hid: Hid | None = None
     operator_hid: Hid | None = None
     managed_as: ManagedAs | None = None
     expected_members: int | None = Field(default=None, ge=1, le=10_000)

@@ -208,3 +208,63 @@ def test_a_plan_travels_in_files_is_set_on_many_and_a_file_opens_a_site(
     assert make.get("/items", filter="planned_location:empty:false")["total"] == 0
     moves = make.audit(record_type="item", action="update", limit=3)
     assert {event["request_id"] for event in moves} == {moves[0]["request_id"]}
+
+
+def test_a_device_group_is_planned_for_and_moved_in_as_an_item_is(
+    make: Maker, files: Files
+) -> None:
+    places = make.layout()
+    plan = make.site("Site-3", places["central"], record_status="draft")
+    suite = make.location("Suite 300", plan)
+    switches = make.switches(make.entry(make.vendor()), "spare", 2)
+    for switch in switches:
+        _patch(make, f"/items/{switch['hid']}", location_hid=places["room"]["hid"])
+    stack = make.stack("site3-sw-stack1", switches, location_hid=places["room"]["hid"])
+    path = f"/device-groups/{stack['hid']}"
+
+    # The group is planned for the room of the draft site, and is where it was.
+    refused = _patch(make, path, 422, planned_location_hid=places["building"]["hid"])
+    assert "planned_location_hid" in errors(refused)
+    planned = _patch(make, path, planned_location_hid=suite["hid"])
+    assert (planned["location"]["name"], planned["planned_location"]["name"]) == (
+        "Room 102",
+        "Suite 300",
+    )
+    names = make.get("/device-groups", filter="planned_location:within:Americas > Central > Site-3")
+    assert [group["name"] for group in names["items"]] == ["site3-sw-stack1"]
+    node = make.get("/geography/tree", root=plan["hid"])["roots"][0]
+    assert (node["planned"], node["planned_groups"]) == (0, 1)
+    assert make.get(f"/locations/{suite['hid']}")["planned_groups"] == 1
+    kept = make.post(
+        f"/locations/{suite['hid']}/retire", {"row_version": suite["row_version"]}, 409
+    )
+    assert "1 device group planned for it" in kept["detail"]
+    # Its members are planned for with it by one bulk edit of the members.
+    edit = make.post(
+        "/items/bulk-update",
+        {
+            "filter": "group.name:eq:site3-sw-stack1",
+            "set": {"planned_location": "Americas > Central > Site-3 > Suite 300"},
+        },
+        201,
+    )
+    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    back = files.preview("device_groups", files.export("device_groups", own_values=True))
+    assert back["job"]["unchanged"] == back["job"]["row_count"] == 1
+    assert "Suite 300" in files.export("device_groups", columns=["name", "planned_location"])
+
+    # The site opens: the group and its members are there, each with its own entry.
+    _patch(make, f"/sites/{plan['hid']}", record_status="active")
+    moved = make.get(path)
+    assert (moved["location"]["name"], moved["planned_location_hid"]) == ("Suite 300", None)
+    assert make.found(filter="location:within:Americas > Central > Site-3") == [
+        "spare-01",
+        "spare-02",
+    ]
+    event = make.audit(record_type="device_group", record_hid=stack["hid"])[0]
+    assert [change["field"] for change in event["changes"]] == [
+        "location_hid",
+        "planned_location_hid",
+    ]
+    site_event = make.audit(record_type="site", record_hid=plan["hid"])[0]
+    assert event["request_id"] == site_event["request_id"]

@@ -418,18 +418,7 @@ def _checked_plan(db: Session, value: Any, item: Item | None) -> str | None:
     hid = value or None
     if hid is None or (item is not None and item.planned_location_hid == hid):
         return hid
-    field = "planned_location_hid"
-    # Checked against the place, which nobody may be opening or retiring meanwhile.
-    dialect.hold_other_writers(db)
-    _reference(db, Location, field, hid, item, "location")
-    atlas = geography.Atlas(db)
-    location = atlas.location(hid)
-    if location is not None and geography.in_use(atlas, location):
-        raise Invalid(
-            "the location is in use already",
-            {field: "this place is active: give it as the item's location, and it is there"},
-        )
-    return hid
+    return geography.checked_plan(db, hid)
 
 
 def _check_still_there(db: Session, location_hid: str | None) -> None:

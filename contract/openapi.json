@@ -2583,6 +2583,18 @@
             ],
             "title": "Parent Group Hid"
           },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Location Hid"
+          },
           "record_status": {
             "default": "active",
             "enum": [
@@ -2917,6 +2929,28 @@
             ],
             "title": "Parent Group Hid"
           },
+          "planned_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the group is going: a location that is not in use yet."
+          },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Location Hid"
+          },
           "record_status": {
             "enum": [
               "draft",
@@ -2996,6 +3030,8 @@
           "owner_exception_reason",
           "location_hid",
           "location",
+          "planned_location_hid",
+          "planned_location",
           "operator_hid",
           "operator",
           "effective",
@@ -3193,6 +3229,18 @@
               }
             ],
             "title": "Parent Group Hid"
+          },
+          "planned_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Location Hid"
           },
           "record_status": {
             "anyOf": [
@@ -4206,6 +4254,11 @@
             "title": "Planned",
             "type": "integer"
           },
+          "planned_groups": {
+            "description": "The device groups planned for it or beneath it.",
+            "title": "Planned Groups",
+            "type": "integer"
+          },
           "record_status": {
             "enum": [
               "draft",
@@ -4227,6 +4280,7 @@
           "path",
           "record_status",
           "planned",
+          "planned_groups",
           "children"
         ],
         "title": "GeographyNode",
@@ -7466,6 +7520,11 @@
             "title": "Path",
             "type": "string"
           },
+          "planned_groups": {
+            "description": "How many device groups are planned for it.",
+            "title": "Planned Groups",
+            "type": "integer"
+          },
           "planned_items": {
             "description": "How many items are planned for it, and not there yet.",
             "title": "Planned Items",
@@ -7643,6 +7702,7 @@
           "locations",
           "items",
           "planned_items",
+          "planned_groups",
           "row_version",
           "created_at",
           "updated_at"

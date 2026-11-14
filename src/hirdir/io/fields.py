@@ -417,6 +417,8 @@ _GROUP_LOCATION: Any = aliased(Location, name="group_location")
 _GROUP_SITE: Any = aliased(Site, name="group_site")
 _GROUP_REGION: Any = aliased(Region, name="group_region")
 _GROUP_OPERATOR: Any = aliased(Operator, name="group_operator")
+_GROUP_PLANNED: Any = aliased(Location, name="group_planned_location")
+_GROUP_PLANNED_SITE: Any = aliased(Site, name="group_planned_site")
 
 DEVICE_GROUPS = Listing(
     model=DeviceGroup,
@@ -436,6 +438,16 @@ DEVICE_GROUPS = Listing(
         "owner_exception": Field("boolean", func.coalesce(Owner.is_external, false())),
         "operator_hid": Field("reference", DeviceGroup.operator_hid),
         "operator.label": Field("text", _GROUP_OPERATOR.label),
+        "planned_location_hid": Field("reference", DeviceGroup.planned_location_hid),
+        "planned_location": Field(
+            "place",
+            DeviceGroup.planned_location_hid,
+            within=_within(
+                DeviceGroup.planned_location_hid,
+                _GROUP_PLANNED.site_hid,
+                _GROUP_PLANNED_SITE.region_hid,
+            ),
+        ),
         **_columns(DeviceGroup, "text", "name", "hostname", "fqdn"),
         **_columns(DeviceGroup, "choice", "type", "record_status", "managed_as", "observed_status"),
         "expected_members": Field("integer", DeviceGroup.expected_members),
@@ -471,6 +483,8 @@ DEVICE_GROUPS = Listing(
         .outerjoin(_GROUP_SITE, _GROUP_SITE.hid == _GROUP_LOCATION.site_hid)
         .outerjoin(_GROUP_REGION, _GROUP_REGION.hid == _GROUP_SITE.region_hid)
         .outerjoin(_GROUP_OPERATOR, _GROUP_OPERATOR.hid == DeviceGroup.operator_hid)
+        .outerjoin(_GROUP_PLANNED, _GROUP_PLANNED.hid == DeviceGroup.planned_location_hid)
+        .outerjoin(_GROUP_PLANNED_SITE, _GROUP_PLANNED_SITE.hid == _GROUP_PLANNED.site_hid)
     ),
     default_sort=("name",),
 )

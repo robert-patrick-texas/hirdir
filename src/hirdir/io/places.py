@@ -8,10 +8,10 @@ place, so the count of a region is the sum of what is in it.
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from hirdir.db.models import Location, Region, Site
+from hirdir.db.models import DeviceGroup, Location, Region, Site
 from hirdir.domain import geography, records
 from hirdir.domain.errors import Invalid
 from hirdir.io import reports
@@ -43,6 +43,7 @@ class Node(Count):
     record_status: str = "active"
     # The items planned for it or for a place beneath it, which are not there yet.
     planned: int = 0
+    planned_groups: int = 0
     children: list[Node] = field(default_factory=list)
 
 
@@ -179,6 +180,24 @@ def tree(
         while at is not None and at in nodes and at not in seen:
             seen.add(at)
             nodes[at].planned += count
+            at = above.get(at)
+
+    groups_view = [DeviceGroup.planned_location_hid.is_not(None)]
+    if not include_drafts:
+        groups_view.append(DeviceGroup.record_status != "draft")
+    if not include_archived:
+        groups_view.append(DeviceGroup.record_status != "retired")
+    groups_going = db.execute(
+        select(DeviceGroup.planned_location_hid, func.count())
+        .where(*groups_view)
+        .group_by(DeviceGroup.planned_location_hid)
+    )
+    for hid, count in groups_going:
+        at = hid
+        seen = set()
+        while at is not None and at in nodes and at not in seen:
+            seen.add(at)
+            nodes[at].planned_groups += count
             at = above.get(at)
 
     order = {geography.REGION: 0, geography.SITE: 1, geography.LOCATION: 2}
