@@ -47,7 +47,10 @@ adds no scenario. 0.2.1 followed 0.2.0 with the answers to its proposals: one ti
 for everybody, support weight to two places, and a skipped upgrade test that says so.
 0.4.1 follows 0.4.0 with the answers to its proposals, a stack that may be its master
 alone among them, and with the condition of an item, what is observed of it, and the
-health that follows for an item and for a stack (D-92).
+health that follows for an item and for a stack (D-92). 0.4.2 follows 0.4.1 with the
+answers to what its review found unsaid: a time that names no zone is in the
+application's time zone, where it is entered and where it is filtered by (D-109,
+D-110).
 
 ## Acceptance scenarios
 

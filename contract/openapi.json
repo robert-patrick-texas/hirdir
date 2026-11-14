@@ -7963,7 +7963,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.4.1"
+    "version": "0.4.2"
   },
   "openapi": "3.1.0",
   "paths": {

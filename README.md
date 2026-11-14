@@ -5,7 +5,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.4.1, structure. An item may be in another item: a power supply
+**Status:** release 0.4.2, structure. An item may be in another item: a power supply
 or a module has the owner and the lifecycle state of its switch unless it is given its
 own, and is not counted. Switches are grouped into stacks, controllers into clusters,
 and controllers with their access points or phones into controller domains, with the
