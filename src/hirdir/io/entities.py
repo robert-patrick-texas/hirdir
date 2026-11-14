@@ -759,6 +759,7 @@ class Items(Entity):
         "catalog.function": "function",
         "owner.label": "owner",
         "parent_item_hid": "parent",
+        "parent.name": "parent",
         **{f"effective.{name}": name for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": "owner",
         **{f"effective.{name}": name for name in inheritance.STANDING},

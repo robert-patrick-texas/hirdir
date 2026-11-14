@@ -280,8 +280,11 @@ def test_the_summary_by_what_items_share(make: Maker) -> None:
     assert rows("vendor") == [("Cisco", 2, 2), ("Juniper", 1, 1), (None, 1, 1)]
     # An item with no catalog entry is counted as hardware.
     assert rows("kind") == [("hardware", 3, 3), ("virtual_machine", 1, 1)]
-    assert rows("type") == [("router", 1, 1), ("switch", 1, 1), (None, 2, 2)]
-    assert rows("function") == [("access", 1, 1), ("wan", 1, 1), (None, 2, 2)]
+    # A type and a function are called what their lists of choices call them.
+    assert rows("type") == [("Router", 1, 1), ("Switch", 1, 1), (None, 2, 2)]
+    assert rows("function") == [("Access", 1, 1), ("WAN", 1, 1), (None, 2, 2)]
+    by_type = make.get("/reports/summary", by="type")["rows"]
+    assert [row["key"] for row in by_type] == ["router", "switch", None]
     assert rows("lifecycle_state") == [("Assigned", 1, 1), ("Prod", 2, 2), (None, 1, 1)]
     assert rows("disposition") == [
         ("Production", 1, 1),

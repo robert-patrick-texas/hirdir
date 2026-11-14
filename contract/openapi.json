@@ -228,7 +228,7 @@
           "group": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+                "$ref": "#/components/schemas/DeviceGroupRef"
               },
               {
                 "type": "null"
@@ -1731,7 +1731,7 @@
           "groups": {
             "description": "The groups nested directly in this one.",
             "items": {
-              "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+              "$ref": "#/components/schemas/DeviceGroupRef"
             },
             "title": "Groups",
             "type": "array"
@@ -1802,7 +1802,7 @@
           "parent": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/hirdir__api__records__GroupRef"
+                "$ref": "#/components/schemas/DeviceGroupRef"
               },
               {
                 "type": "null"
@@ -2016,6 +2016,31 @@
         "title": "DeviceGroupPatch",
         "type": "object"
       },
+      "DeviceGroupRef": {
+        "additionalProperties": false,
+        "description": "A device group, as named on another record.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "type"
+        ],
+        "title": "DeviceGroupRef",
+        "type": "object"
+      },
       "DuplicateOut": {
         "additionalProperties": false,
         "description": "An address that is held more than once under one network.",
@@ -2071,7 +2096,7 @@
       },
       "EffectiveReference": {
         "additionalProperties": false,
-        "description": "A record in force, and where it came from: `value` is its HID.",
+        "description": "A record in force, and where it came from.",
         "properties": {
           "label": {
             "anyOf": [
@@ -2116,20 +2141,18 @@
                 "type": "string"
               },
               {
-                "type": "boolean"
-              },
-              {
                 "type": "null"
               }
             ],
+            "description": "The HID of the record.",
             "title": "Value"
           }
         },
         "required": [
           "value",
+          "label",
           "source",
-          "source_hid",
-          "label"
+          "source_hid"
         ],
         "title": "EffectiveReference",
         "type": "object"
@@ -2571,6 +2594,26 @@
           "row_version"
         ],
         "title": "GroupPatch",
+        "type": "object"
+      },
+      "GroupRef": {
+        "additionalProperties": false,
+        "description": "A user group, as named on a user.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name"
+        ],
+        "title": "GroupRef",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -6810,7 +6853,7 @@
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/hirdir__api__schemas__GroupRef"
+              "$ref": "#/components/schemas/GroupRef"
             },
             "title": "Groups",
             "type": "array"
@@ -7160,51 +7203,6 @@
           "name"
         ],
         "title": "VendorRef",
-        "type": "object"
-      },
-      "hirdir__api__records__GroupRef": {
-        "additionalProperties": false,
-        "description": "A device group, as named on another record.",
-        "properties": {
-          "hid": {
-            "title": "Hid",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "hid",
-          "name",
-          "type"
-        ],
-        "title": "GroupRef",
-        "type": "object"
-      },
-      "hirdir__api__schemas__GroupRef": {
-        "additionalProperties": false,
-        "description": "A user group, as named on a user.",
-        "properties": {
-          "hid": {
-            "title": "Hid",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "hid",
-          "name"
-        ],
-        "title": "GroupRef",
         "type": "object"
       }
     }

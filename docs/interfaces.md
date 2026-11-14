@@ -96,9 +96,9 @@ allows (`catalog.pid`, `catalog.vendor`, `owner.label`, `contract.number`,
 `group.name`, `address`, `network.label`) and `effective.<field>` for inherited ones.
 `mac_address` and `address` accept any common notation and are normalized before
 comparison. On the item list `is_major` and `depth` tell major items from minor ones,
-`owner.label` is the label of the owner in force, and `group.name`, `group.type`,
-`address` and `network.label` find an item by any of its current groups and any of its
-addresses: `eq` is true when one of them matches, and `ne` and `empty` when none does.
+`parent.name` is the name of the item a minor item is in, `owner.label` is the label
+of the owner in force, and `group.name`, `group.type`, `group.hid`, `address` and
+`network.label` find an item by any of its current groups and any of its addresses: `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of cannot be sorted by. A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
@@ -272,7 +272,7 @@ when `by` is given, `rows`, one for each value, the blank among them:
 |---|---|
 | `items` | every item of the view, major and minor |
 | `component_count`, `managed_node_count` | as defined under "Counting and weight" on the [data model](data-model.md#counting-and-weight) page |
-| `support_weight`, `est_value`, `annual_support_cost` | the same; decimals, as text |
+| `support_weight`, `est_value`, `annual_support_cost` | the same; decimals, as text. A row of `type` or `function` is labelled as its list of choices labels the value |
 | `by_kind` | on `totals` only: items and components of each kind, so that software and services stand beside the headline count |
 
 A minor item is in the row of the owner, state and disposition in force for it. An item
@@ -365,18 +365,19 @@ fresh installation has it, with no account and an empty audit trail.
 | Page | Content |
 |---|---|
 | Sign in | Username, access code, a Sign in button |
-| Summary | Component count beside managed-node count, weight, value, by state and by site; end-of-life and coverage warnings |
+| Home | The headline totals: component count beside managed-node count, weight, value and cost. End-of-life and coverage warnings from 0.6.0 |
 | Items | The main grid. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, registrations, history |
 | Catalog | Entries by vendor; the items of each entry |
 | Vendors | The portfolio: everything from one vendor |
 | Groups | Stacks, clusters and controller domains, with members and roles |
+| Addresses | Every address, with the item or group that has it; the networks |
 | Geography | The region tree, sites, locations, effective contacts with their source |
 | Contacts, Owners | |
 | Contracts | Coverage lists, gaps, expiries |
 | Purchases | Requests and lines; receive a line |
 | Import | Upload, preview, apply, past jobs |
 | Capacity | Demand beside supply by category, the balance and coverage, with and without drafts; the lines, editable |
-| Reports | Summary, end of life, coverage, duplicates |
+| Reports | Summary, with the totals of a view and one row for each owner, state, vendor and the rest; duplicates. End of life and coverage from 0.6.0 |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 

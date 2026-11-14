@@ -109,7 +109,7 @@ D-70, D-74, D-75, D-77 and D-78 are decisions that the answers brought with them
 reset, the setup tool that upgrades and the nightly timer among them. P-48 is left as
 it is to be looked at again, and P-58 stands unanswered.
 
-P-60 to P-75 are the choices of release 0.4.0, made where the other pages were silent
+P-60 to P-76 are the choices of release 0.4.0, made where the other pages were silent
 or disagreed with the build plan. Each is built, and none is answered yet.
 
 | ID | Proposal | Why | Built in |
@@ -148,6 +148,7 @@ or disagreed with the build plan. Each is built, and none is answered yet.
 | P-73 | `GET /reports/duplicates` lists each address that is held more than once under one network, the unlabelled address space counting as one network, with the items and groups that hold it. A holder that a list leaves out by default is left out here, unless asked for in the same way. | The data model names the report and gives it no more than that. | 0.4.0 |
 | P-74 | Retiring an item ends its current memberships of groups that day, under the rules of leaving a group: the master of a stack that has other members, and one of the last two members of an active stack, is not retired until the stack is put right. A move in the lifecycle, to Archived as to any other state, leaves memberships as they are. | The review of 0.4.0 found a retired master still shown as the master of its stack, with the others still earning the discount. Nothing said what retiring a member does. | 0.4.0 |
 | P-75 | A change that is checked against other records takes the one writer's place before it looks: a membership, the item a minor item is in, a replacement, a group's status. Of two such requests at the same moment the second waits for the first, then sees what it stored and is answered accordingly. | The review of 0.4.0 put one item into two stacks by two requests at once. These rules are about several records, and no constraint of the database can hold them. | 0.4.0 |
+| P-76 | In the web UI the State, Disposition, Expected online and Owner columns of the item grid show, filter and sort by the value in force, so a minor item is found under what it has from the item above; the item's own state is a field of the filter box. The columns that arrive with 0.4.0 are hidden until asked for. The summary is under Reports, with its headline totals on the first page, and addresses with their networks have an entry of their own in the navigation. | The pages table named a Summary page and no place for addresses, and nothing said which of two values a column of the grid goes by. | 0.4.0 |
 
 ## Open
 

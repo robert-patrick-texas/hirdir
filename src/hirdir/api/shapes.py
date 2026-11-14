@@ -85,8 +85,8 @@ def item_refs(db: Session, items: list[Item]) -> dict[str, shapes.ItemRef]:
     }
 
 
-def _group_ref(group: DeviceGroup) -> shapes.GroupRef:
-    return shapes.GroupRef(hid=group.hid, name=group.name, type=group.type)
+def _group_ref(group: DeviceGroup) -> shapes.DeviceGroupRef:
+    return shapes.DeviceGroupRef(hid=group.hid, name=group.name, type=group.type)
 
 
 def _address_refs(db: Session, field: str, hids: list[str]) -> dict[str, list[shapes.AddressRef]]:
@@ -268,8 +268,10 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
                     owner_hid=shapes.EffectiveReference(
-                        **_effective("owner_hid", effective["owner_hid"]).model_dump(),
+                        value=effective["owner_hid"].value,
                         label=owner_in_force.label if owner_in_force is not None else None,
+                        source=effective["owner_hid"].source,
+                        source_hid=effective["owner_hid"].source_hid,
                     ),
                     **{
                         name: _effective(name, value)
@@ -325,7 +327,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     hids = [group.hid for group in found]
     owners = _by_hid(db, Owner, {group.owner_hid for group in found})
     parents = _by_hid(db, DeviceGroup, {group.parent_group_hid for group in found})
-    nested: dict[str, list[shapes.GroupRef]] = {hid: [] for hid in hids}
+    nested: dict[str, list[shapes.DeviceGroupRef]] = {hid: [] for hid in hids}
     if hids:
         inside = db.scalars(
             select(DeviceGroup)

@@ -2834,7 +2834,7 @@ export interface components {
       /** In canonical form, with no prefix length. */
       address: string;
       created_at: string;
-      group: components["schemas"]["hirdir__api__records__GroupRef"] | null;
+      group: components["schemas"]["DeviceGroupRef"] | null;
       group_hid: string | null;
       hid: string;
       is_primary: boolean;
@@ -3030,7 +3030,7 @@ export interface components {
       created_at: string;
       fqdn: string | null;
       /** The groups nested directly in this one. */
-      groups: components["schemas"]["hirdir__api__records__GroupRef"][];
+      groups: components["schemas"]["DeviceGroupRef"][];
       hid: string;
       hostname: string | null;
       master: components["schemas"]["ItemRef"] | null;
@@ -3041,7 +3041,7 @@ export interface components {
       name: string;
       owner: components["schemas"]["OwnerRef"] | null;
       owner_hid: string | null;
-      parent: components["schemas"]["hirdir__api__records__GroupRef"] | null;
+      parent: components["schemas"]["DeviceGroupRef"] | null;
       parent_group_hid: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
@@ -3063,6 +3063,12 @@ export interface components {
       tags?: string[] | null;
       type?: "stack" | "cluster" | "controller_domain" | "custom" | null;
     };
+    /** A device group, as named on another record. */
+    DeviceGroupRef: {
+      hid: string;
+      name: string;
+      type: string;
+    };
     /** An address that is held more than once under one network. */
     DuplicateOut: {
       address: string;
@@ -3072,13 +3078,14 @@ export interface components {
       network: string | null;
       network_hid: string | null;
     };
-    /** A record in force, and where it came from: `value` is its HID. */
+    /** A record in force, and where it came from. */
     EffectiveReference: {
       /** What people call the record. */
       label: string | null;
       source: "own" | "catalog" | "parent_item" | "location" | "site" | "region" | "setting" | "none";
       source_hid: string | null;
-      value: string | boolean | null;
+      /** The HID of the record. */
+      value: string | null;
     };
     /**
      * A value in force, and where it came from.
@@ -3158,6 +3165,11 @@ export interface components {
       description?: string | null;
       name?: string | null;
       row_version: number;
+    };
+    /** A user group, as named on a user. */
+    GroupRef: {
+      hid: string;
+      name: string;
     };
     HTTPValidationError: {
       detail?: components["schemas"]["ValidationError"][];
@@ -3839,7 +3851,7 @@ export interface components {
       disabled: boolean;
       display_name: string;
       email: string;
-      groups: components["schemas"]["hirdir__api__schemas__GroupRef"][];
+      groups: components["schemas"]["GroupRef"][];
       hid: string;
       is_service_account: boolean;
       last_sign_in_at: string | null;
@@ -3893,17 +3905,6 @@ export interface components {
     };
     /** A vendor, as named on another record. */
     VendorRef: {
-      hid: string;
-      name: string;
-    };
-    /** A device group, as named on another record. */
-    hirdir__api__records__GroupRef: {
-      hid: string;
-      name: string;
-      type: string;
-    };
-    /** A user group, as named on a user. */
-    hirdir__api__schemas__GroupRef: {
       hid: string;
       name: string;
     };

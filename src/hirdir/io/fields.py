@@ -161,6 +161,7 @@ ITEMS = Listing(
     fields={
         **_bookkeeping(Item),
         **_columns(Item, "reference", "catalog_entry_hid", "owner_hid", "parent_item_hid"),
+        "parent.name": Field("text", func.coalesce(ABOVE[0].name, ABOVE[0].hostname)),
         "is_major": Field("boolean", Item.parent_item_hid.is_(None)),
         "depth": Field("integer", DEPTH.cast(Integer)),
         **_columns(

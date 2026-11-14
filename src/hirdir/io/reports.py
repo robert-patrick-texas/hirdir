@@ -38,7 +38,7 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import records, settings
+from hirdir.domain import choices, records, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
@@ -247,6 +247,13 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
     return tag.hid, tag.label, tagged
 
 
+def _labels(db: Session, by: str) -> dict[str, str]:
+    """Return what people call the values a summary is by, where a list of choices says."""
+    if by not in ("type", "function"):
+        return {}
+    return {choice.value: choice.label for choice in choices.list_choices(db, f"catalog_{by}")}
+
+
 def _run(db: Session, statement: Any) -> list[Any]:
     """Run one statement of a report, refusing a filter that cannot be run."""
     with dialect.regex_budget() as budget:
@@ -315,8 +322,13 @@ def summary(
     sums: dict[Any, _Sums] = {}
     for row in _run(db, adding.group_by(key, *terms.amounts)):
         sums.setdefault(row[0], _Sums()).add(*row[1:])
+    called = _labels(db, by)
     rows = [
-        Row(key=row[0], label=row[1], **_measures(row[2:], sums.get(row[0], _Sums())))
+        Row(
+            key=row[0],
+            label=called.get(row[1], row[1]),
+            **_measures(row[2:], sums.get(row[0], _Sums())),
+        )
         for row in _run(db, counting.group_by(key, label))
     ]
     # By what people read, the blank one last.

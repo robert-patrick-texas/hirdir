@@ -209,6 +209,8 @@ def test_the_list_tells_major_items_from_minor_ones(make: Maker) -> None:
     assert make.found(filter="depth:gte:1", sort="-depth") == ["Slot 1", "Bay 1"]
     assert make.found(filter=f"parent_item_hid:eq:{chassis['hid']}") == ["Bay 1"]
     assert make.found(filter="position:prefix:slot") == ["Slot 1"]
+    assert make.found(filter="parent.name:eq:bay 1") == ["Slot 1"]
+    assert make.found(filter="parent.name:empty:false", sort="-parent.name") == ["Bay 1", "Slot 1"]
     assert make.found(sort="depth,name") == ["site2-sw-access-01", "Bay 1", "Slot 1"]
 
 

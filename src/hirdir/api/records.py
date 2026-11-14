@@ -101,10 +101,13 @@ class EffectiveValue(Model):
     source_hid: str | None
 
 
-class EffectiveReference(EffectiveValue):
-    """A record in force, and where it came from: `value` is its HID."""
+class EffectiveReference(Model):
+    """A record in force, and where it came from."""
 
+    value: str | None = Field(description="The HID of the record.")
     label: str | None = Field(description="What people call the record.")
+    source: Source
+    source_hid: str | None
 
 
 # --- vendors -------------------------------------------------------------------------
@@ -308,7 +311,7 @@ class ItemRef(Model):
     pid: str | None
 
 
-class GroupRef(Model):
+class DeviceGroupRef(Model):
     """A device group, as named on another record."""
 
     hid: str
@@ -638,8 +641,8 @@ class DeviceGroupOut(Model):
     hostname: str | None
     fqdn: str | None
     parent_group_hid: str | None
-    parent: GroupRef | None
-    groups: list[GroupRef] = Field(description="The groups nested directly in this one.")
+    parent: DeviceGroupRef | None
+    groups: list[DeviceGroupRef] = Field(description="The groups nested directly in this one.")
     owner_hid: str | None
     owner: OwnerRef | None
     members_disagree: list[str] = Field(
@@ -727,7 +730,7 @@ class AddressOut(Model):
     item_hid: str | None
     item: ItemRef | None
     group_hid: str | None
-    group: GroupRef | None
+    group: DeviceGroupRef | None
     address: str = Field(description="In canonical form, with no prefix length.")
     network_hid: str | None
     network: NetworkRef | None
