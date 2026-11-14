@@ -80,7 +80,7 @@ type Named = {
   is_open: boolean;
   contact: string | { name: string } | null;
   record_status?: string;
-} & ({ hid: string } | { value: string | null });
+} & ({ hid: string | null } | { value: string | null });
 
 /** A colour as the server stores it, and nothing else: it is put on the page as a style. */
 export function safeColour(colour: string | null | undefined): string | null {

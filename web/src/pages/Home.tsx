@@ -75,6 +75,12 @@ function Headline() {
       )}
       <Problem error={open.error} />
       <p>
+        <Link to="/reports/scoreboard" data-testid="scoreboard-link">
+          The scoreboard
+        </Link>
+        : who looks after how much, and where, by operator and by site.
+      </p>
+      <p>
         <Link to="/reports">The summary</Link>, by vendor, owner, state, health and more, for any
         filter of the items. Drafts, retired records and archived items are left out here. Estimated
         value and annual support cost are in the{" "}

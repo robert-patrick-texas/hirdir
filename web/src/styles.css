@@ -1348,3 +1348,26 @@ main:has(.geography) {
 .operator-mark + .operator-mark {
   margin-left: 0.9rem;
 }
+
+/* --- the scoreboard ------------------------------------------------------------------ */
+
+/* A share of the view: the number, and a plain bar that says the same. */
+.share {
+  white-space: nowrap;
+}
+
+.share-text {
+  display: inline-block;
+  min-width: 4.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.share meter {
+  width: 8rem;
+  vertical-align: middle;
+}
+
+/* The operators involved at a site, one to a line. */
+.involved li + li {
+  margin-top: 0.15rem;
+}

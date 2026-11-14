@@ -26,6 +26,7 @@ const pages = {
   owners: () => import("./pages/Owners"),
   reports: () => import("./pages/Reports"),
   roles: () => import("./pages/Roles"),
+  scoreboard: () => import("./pages/Scoreboard"),
   settings: () => import("./pages/Settings"),
   tags: () => import("./pages/Tags"),
   userDetail: () => import("./pages/UserDetail"),
@@ -70,6 +71,7 @@ const OperatorDetail = lazy(() =>
 const Operators = lazy(() => pages.operators().then((page) => ({ default: page.Operators })));
 const OwnerDetail = lazy(() => pages.owners().then((page) => ({ default: page.OwnerDetail })));
 const Owners = lazy(() => pages.owners().then((page) => ({ default: page.Owners })));
+const Scoreboard = lazy(() => pages.scoreboard().then((page) => ({ default: page.Scoreboard })));
 const Roles = lazy(() => pages.roles().then((page) => ({ default: page.Roles })));
 const Summary = lazy(() => pages.reports().then((page) => ({ default: page.Summary })));
 const Settings = lazy(() => pages.settings().then((page) => ({ default: page.Settings })));
@@ -194,6 +196,14 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <Summary />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="reports/scoreboard"
+              element={
+                <RequireRole needs="viewer">
+                  <Scoreboard />
                 </RequireRole>
               }
             />
