@@ -354,9 +354,10 @@ describe("groups and addresses in the item grid", () => {
   });
 });
 
-describe("the location and the site in the item grid", () => {
+describe("the location, the site and the region in the item grid", () => {
   const ROOM = "0193a1f4-0000-7000-8000-0000000000c1";
   const SITE = "0193a1f4-0000-7000-8000-0000000000c2";
+  const REGION = "0193a1f4-0000-7000-8000-0000000000c3";
   const PATH = "Americas > Central > Site-2 > Building 1 > Room 102";
   const placed = {
     ...chassis,
@@ -364,7 +365,14 @@ describe("the location and the site in the item grid", () => {
     owner_exception_reason: "In the plant room",
     effective: {
       ...chassis.effective,
-      location_hid: { ...from(ROOM, "own", SWITCH), label: PATH, site: "Site-2", site_hid: SITE },
+      location_hid: {
+        ...from(ROOM, "own", SWITCH),
+        label: PATH,
+        site: "Site-2",
+        site_hid: SITE,
+        region: "Central",
+        region_hid: REGION,
+      },
     },
   } as unknown as Item;
   const within = {
@@ -378,6 +386,8 @@ describe("the location and the site in the item grid", () => {
         label: PATH,
         site: "Site-2",
         site_hid: SITE,
+        region: "Central",
+        region_hid: REGION,
       },
     },
   } as unknown as Item;
@@ -387,9 +397,34 @@ describe("the location and the site in the item grid", () => {
     owner_exception_reason: null,
     effective: {
       ...chassis.effective,
-      location_hid: { ...none, label: null, site: null, site_hid: null },
+      location_hid: {
+        ...none,
+        label: null,
+        site: null,
+        site_hid: null,
+        region: null,
+        region_hid: null,
+      },
     },
   } as unknown as Item;
+
+  it("shows the region the site is in by its name, lighter where the location is inherited", () => {
+    expect(column("region").value(placed)).toBe("Central");
+    expect(column("region").value(within)).toBe("Central");
+    expect(column("region").value(nowhere) ?? "").toBe("");
+    expect(column("region").effective?.(within)?.source).toBe("parent_item");
+    expect(column("region").effective?.(placed)?.source).toBe("own");
+  });
+
+  it("filters, sorts and exports the region as `region`, and hides it until it is asked for", () => {
+    expect(asked("region")).toMatchObject({ field: "region", sortField: "region", kind: "text" });
+    expect(exportColumns(COLUMNS, [{ colId: "site" }, { colId: "region" }])).toEqual([
+      "hid",
+      "site",
+      "region",
+    ]);
+    expect(columnDefaults(COLUMNS).find((one) => one.id === "region")?.hide).toBe(true);
+  });
 
   it("shows the location in force by its name, and its site", () => {
     expect(column("location.name").value(placed)).toBe("Room 102");

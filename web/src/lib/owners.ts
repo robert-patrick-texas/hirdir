@@ -11,31 +11,31 @@ export type OwnerMember = Schemas["OwnerMemberOut"];
 /** The heading a form lists the owners outside the team under. */
 export const EXTERNAL_GROUP = "Outside the operations team";
 
-/** Owners as a form offers them, by label: those outside the team under a heading of their own. */
-export function ownerOptions(
-  owners: ReadonlyArray<Pick<Owner, "hid" | "label" | "is_external">>,
-): Option[] {
-  return owners.map((owner) => ({
+type Named = Pick<Owner, "hid" | "label" | "is_external">;
+
+/** One owner as a form offers it: by its label, under the heading of those outside the team if it is one. */
+export function ownerOption(owner: Named): Option {
+  return {
     value: owner.hid,
     label: owner.label,
     ...(owner.is_external ? { group: EXTERNAL_GROUP } : {}),
-  }));
+  };
+}
+
+/** Owners as a form offers them, by label: those outside the team under a heading of their own. */
+export function ownerOptions(owners: readonly Named[]): Option[] {
+  return owners.map(ownerOption);
 }
 
 /**
- * The owners that are outside the team, by HID: those a form offers as such, and any
- * other that is known to be, such as the owner an item has that is no longer offered.
+ * The owners that are outside the team, by HID, among those a form offers. The owner a
+ * record has is among them also when the list no longer brings it, as a retired one:
+ * the form offers it as the record names it, which says whether it is outside.
  */
-export function externalOwners(
-  options: readonly Option[] | undefined,
-  also: ReadonlyArray<string | null | undefined> = [],
-): Set<string> {
+export function externalOwners(options: readonly Option[] | undefined): Set<string> {
   const outside = new Set<string>();
   for (const option of options ?? []) {
     if (option.group === EXTERNAL_GROUP) outside.add(option.value);
-  }
-  for (const hid of also) {
-    if (hid) outside.add(hid);
   }
   return outside;
 }

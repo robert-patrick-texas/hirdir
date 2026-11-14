@@ -70,3 +70,26 @@ export function fieldErrors(error: ApiError | null, known: readonly string[]): F
   }
   return { shown, rest };
 }
+
+/** A sentence as it is shown: a capital first letter and a full stop. */
+export function sentence(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed === "") return "";
+  const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
+}
+
+/**
+ * What is wrong with a field that is not shown beside an input: the field as the page
+ * calls it, then the message; or the message alone, as a sentence, for a field the page
+ * names as blank. A field the page has no word for is named as the server names it.
+ */
+export function fieldLine(
+  field: string,
+  message: string,
+  labels: Readonly<Record<string, string>> = {},
+): string {
+  const label = labels[field];
+  if (label === "") return sentence(message);
+  return `${label ?? field}: ${message}`;
+}

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
+import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
@@ -49,7 +50,7 @@ import {
   RECORD_STATUSES,
   SETTABLE_STATUSES,
 } from "../lib/options";
-import { EXCEPTION_HINT, externalOwners } from "../lib/owners";
+import { EXCEPTION_HINT, externalOwners, ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
 import { placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
@@ -301,6 +302,13 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
           {location.site && location.site_hid && (
             <Link to={placePath("site", location.site_hid)} data-testid="site">
               {location.site}
+            </Link>
+          )}
+        </Fact>
+        <Fact label="Region">
+          {location.region && location.region_hid && (
+            <Link to={placePath("region", location.region_hid)} data-testid="region">
+              {location.region}
             </Link>
           )}
         </Fact>
@@ -799,8 +807,10 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
   const specs = useMemo<FieldSpec[]>(() => {
     const { catalog, owner } = item;
     const minor = !item.is_major;
-    // The owners outside the team: those the list marks, and the one the item has.
-    const outside = externalOwners(owners.data, [item.owner_exception ? item.owner_hid : null]);
+    // The owners to choose from, the item's own among them as the item names it, also
+    // when the list no longer brings it; and which of them are outside the team.
+    const offered = withCurrent(owners.data, owner && ownerOption(owner));
+    const outside = externalOwners(offered);
     return [
       {
         name: "catalog_entry_hid",
@@ -837,7 +847,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
         label: "Owner",
         kind: "choice",
         blank: minor ? "The owner of the item it is in" : "No owner",
-        options: withCurrent(owners.data, owner && { value: owner.hid, label: owner.label }),
+        options: offered,
       },
       {
         // Asked for only while the owner chosen is outside the team.
@@ -961,11 +971,16 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
     if (result.ok) onChanged("The item was retired.");
   }
 
-  async function bringBack() {
+  /** Bring the item back: as it was, or with another location, or none, in the same change. */
+  async function bringBack(location?: string | null) {
     const result = await action.run(() =>
       api.request("patch", "/api/v1/items/{hid}", {
         path: { hid: item.hid },
-        body: { row_version: item.row_version, record_status: "active" },
+        body: {
+          row_version: item.row_version,
+          record_status: "active",
+          ...(location === undefined ? {} : { location_hid: location }),
+        },
       }),
     );
     if (result.ok) onChanged("The item is active again.");
@@ -974,7 +989,7 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
   return (
     <section aria-labelledby="retire">
       <h2 id="retire">{item.record_status === "retired" ? "Retired" : "Retire"}</h2>
-      <Problem error={action.error} onReload={onReload} />
+      <Problem error={action.error} onReload={onReload} labels={{ record_status: "" }} />
       {item.record_status === "retired" ? (
         <>
           <p>
@@ -982,10 +997,18 @@ function RecordStatus({ item, onChanged, onReload }: RecordStatusProps) {
             history are kept.
           </p>
           <p className="actions">
-            <button type="button" onClick={bringBack} disabled={action.busy}>
+            <button type="button" onClick={() => bringBack()} disabled={action.busy}>
               Bring back as active
             </button>
           </p>
+          {refusedForItsPlace(action.error) && (
+            <BringBackElsewhere
+              what="item"
+              blank={item.is_major ? "No location" : "Where the item it is in is"}
+              busy={action.busy}
+              onBringBack={bringBack}
+            />
+          )}
         </>
       ) : (
         <>

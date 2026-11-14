@@ -17,7 +17,8 @@
 // On the way: the location half of S18, a minor item that is where the item it is in is;
 // the Location and Site columns of the item grid; a location chosen by searching, in the
 // form of an item, of a device group and of a bulk edit; the reports by site and by
-// region; the people of an owner; the six new kinds of record on the Import page.
+// region; the people of an owner; the six new kinds of record on the Import page; and,
+// last, a place and an item that are not brought back into what is retired.
 //
 // The file keeps the rules of support.ts. It signs in as an Admin of its own, and its
 // mark is in every name it gives a record: the regions, the site and its code, the
@@ -71,6 +72,14 @@ const nowhere = `${prefix}sw-03`;
 const fourth = `${prefix}sw-04`;
 const supply = `${prefix}sw-01-ps-a`;
 const group = `${prefix}closet`;
+const fifth = `${prefix}sw-05`;
+
+// What the last scenario retires: a region with a region in it, and a location with an
+// item in it, in the site where it is by then.
+const west = path(americas, `West ${id}`);
+const coast = path(west, `Coast ${id}`);
+const closetName = `Closet ${id}`;
+const closet = path(movedSite, closetName);
 
 // The people.
 const dana = `Dana Whitfield ${id}`;
@@ -226,6 +235,7 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await expect(page.getByTestId("location")).toContainText(room);
   await expect(page.getByTestId("location")).toHaveAttribute("data-source", "own");
   await expect(page.getByTestId("site")).toHaveText(siteName);
+  await expect(page.getByTestId("region")).toHaveText(centralName);
   await region(page, "Minor items").getByRole("button", { name: "Add a minor item" }).click();
   const minor = region(page, "New minor item");
   await minor.getByLabel("Hostname").fill(supply);
@@ -296,8 +306,19 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await expect(columns.getByLabel("Site", { exact: true })).not.toBeChecked();
   await columns.getByLabel("Location", { exact: true }).check();
   await columns.getByLabel("Site", { exact: true }).check();
+  await expect(columns.getByLabel("Region", { exact: true })).not.toBeChecked();
+  await columns.getByLabel("Region", { exact: true }).check();
   // The grid draws only the columns in view: room is made for the ones looked at here.
-  for (const column of ["Vendor", "PID", "Serial number", "Health", "Tags", "LDoS"]) {
+  for (const column of [
+    "Vendor",
+    "PID",
+    "Serial number",
+    "Disposition",
+    "Expected online",
+    "Health",
+    "Tags",
+    "LDoS",
+  ]) {
     await columns.getByLabel(column, { exact: true }).uncheck();
   }
   await page.getByText("Columns", { exact: true }).click();
@@ -307,6 +328,9 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
     /cell-inherited/,
   );
   await expect(gridRow(second).locator('[col-id="site"]')).toHaveText(siteName);
+  // The region is the one the site is in, by its name.
+  await expect(gridRow(second).locator('[col-id="region"]')).toHaveText(centralName);
+  await expect(gridRow(supply).locator('[col-id="region"]')).toHaveClass(/cell-inherited/);
   await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveText(roomName);
   await expect(gridRow(supply).locator('[col-id="location.name"]')).toHaveClass(/cell-inherited/);
   // The whole path, and where it came from, is what the cell says when it has the focus.
@@ -724,6 +748,7 @@ test("S27: the site is moved to another region, and the paths and the counts fol
   // contact of the region above Central, now has the one of East. The pages of the
   // places are where they were: a place is its HID, whatever its path.
   pages.set(movedRoom, pages.get(room) ?? "");
+  pages.set(movedSite, pages.get(site) ?? "");
   await geography(page, movedRoom);
   await expect(inForce(page, "technical")).toContainText(lee);
   await page.goto(`${pages.get(otherRoom)}?${new URLSearchParams({ filter }).toString()}`);
@@ -830,4 +855,84 @@ test("S28: an item is given to an owner outside the team only with a reason, and
   ).toBeVisible();
 
   await expectClean(page, seen, ["422 PATCH"]);
+});
+
+test("what is retired is not brought back into what is retired", async ({ page, account }) => {
+  test.setTimeout(180_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  /** Retire the place on show. */
+  async function retirePlace(what: "region" | "location") {
+    await page.getByRole("button", { name: `Retire ${what}` }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: `Retire ${what}` })
+      .click();
+    await expect(page.getByText(`The ${what} was retired.`)).toBeVisible();
+  }
+
+  // A region with a region in it. Both are retired, the inner one first.
+  await geography(page, americas);
+  await newPlace(page, "New region in it", "region", west);
+  await newPlace(page, "New region in it", "region", coast);
+  await retirePlace("region");
+  await geography(page, west);
+  await retirePlace("region");
+  // They have left the tree, and are still reached by their own addresses.
+  await expect(treeRow(page, west)).toHaveCount(0);
+
+  // The inner one is not brought back while the one it is in is retired: the refusal
+  // says which to bring back first, in words.
+  await geography(page, coast);
+  const retired = region(page, "Retired");
+  await retired.getByRole("button", { name: "Bring back as active" }).click();
+  await expect(retired.locator('.alert-error[data-status="422"]')).toBeVisible();
+  await expect(retired).toContainText(`Bring West ${id} back first: it is retired.`);
+  await expect(retired).not.toContainText("record_status");
+  await geography(page, west);
+  await region(page, "Retired").getByRole("button", { name: "Bring back as active" }).click();
+  await expect(page.getByText("The region is active again.")).toBeVisible();
+  await geography(page, coast);
+  await region(page, "Retired").getByRole("button", { name: "Bring back as active" }).click();
+  await expect(page.getByText("The region is active again.")).toBeVisible();
+  await expect(treeRow(page, coast)).toBeVisible();
+
+  // An item in a location, the item retired and then the location.
+  await geography(page, movedSite);
+  await newPlace(page, "New location in it", "location", closet, { kind: "Room" });
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = region(page, "New item");
+  await form.getByLabel("Hostname").fill(fifth);
+  await chooseLocation(form, `${siteCode} closet`, closet);
+  await form.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: fifth })).toBeVisible();
+  const itemPage = page.url();
+  await page.getByRole("button", { name: "Retire item" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retire item" }).click();
+  await expect(page.getByText("The item was retired.")).toBeVisible();
+  await geography(page, closet);
+  await retirePlace("location");
+
+  // The item is not brought back into the retired location. The refusal says what to
+  // do, and the page offers it: another location, or none, with the same change.
+  await page.goto(itemPage);
+  await expect(page.getByRole("heading", { level: 1, name: fifth })).toBeVisible();
+  const gone = region(page, "Retired");
+  await expect(page.getByTestId("bring-back-elsewhere")).toHaveCount(0);
+  await gone.getByRole("button", { name: "Bring back as active" }).click();
+  await expect(gone.locator('.alert-error[data-status="422"]')).toBeVisible();
+  await expect(gone).toContainText(`${closetName}, where the item was, is retired`);
+  await expect(gone).toContainText("Give the item another location, or none, with the change.");
+  const elsewhere = page.getByTestId("bring-back-elsewhere");
+  await expect(elsewhere.getByTestId("chosen-location_hid")).toHaveText("No location");
+  await chooseLocation(elsewhere, `${siteCode} 102`, movedRoom, "Another location");
+  await expect(elsewhere.getByTestId("chosen-location_hid")).toHaveText(movedRoom);
+  await elsewhere.getByRole("button", { name: "Bring back there" }).click();
+  await expect(page.getByText("The item is active again.")).toBeVisible();
+  await expect(page.getByTestId("location")).toContainText(movedRoom);
+  await expect(page.getByTestId("region")).toHaveText(eastName);
+
+  await expectClean(page, seen, ["422 PATCH", "422 PATCH"]);
 });

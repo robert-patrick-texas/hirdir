@@ -131,12 +131,14 @@ interface CreateFormProps<B, R> {
   onCreated: (record: R) => void;
   onCancel: () => void;
   submitLabel: string;
+  /** What to call a field of the request that the form has no input for, in a refusal. */
+  labels?: Readonly<Record<string, string>>;
   children?: ReactNode;
 }
 
 /** A form that makes a new record. A field left blank is not sent. */
 export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
-  const { title, specs, start, create, onCreated, onCancel, submitLabel, children } = props;
+  const { title, specs, start, create, onCreated, onCancel, submitLabel, labels, children } = props;
   const [values, setValues] = useState<FormValues>(() => ({ ...formOf(specs), ...start }));
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
@@ -172,7 +174,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
       <h2 id={headingId}>{title}</h2>
       {children}
       <form onSubmit={submit} className="stack" noValidate ref={form}>
-        <Problem error={action.error} shown={names} />
+        <Problem error={action.error} shown={names} {...(labels ? { labels } : {})} />
         <FormFields
           specs={specs}
           values={values}

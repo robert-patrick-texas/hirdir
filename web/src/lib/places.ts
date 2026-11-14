@@ -72,9 +72,11 @@ const MOST_WORDS = 8;
 
 /**
  * The filter that finds locations by what was typed. The list of locations is filtered
- * by the name of a location, of the location it is in and of its site, and by its code
- * and its site's, so each word typed has to be in one of those: `site-2 102` finds Room
- * 102 of Site-2.
+ * by the name of a location, of the location it is in, of its site and of the region
+ * the site is in, and by its code and its site's, so each word typed has to be in one of
+ * those: `site-2 102` finds Room 102 of Site-2, and a path that is pasted, from the
+ * region the site is in down, finds its location. The regions above that one are not
+ * searched: the list has no filter on the whole path.
  * A `>` between words, as in a path, separates them as a space does. Blank text is no
  * search.
  */
@@ -92,6 +94,7 @@ export function locationSearch(typed: string): FilterNode | null {
         { field: "site.name", op: "contains", value },
         { field: "code", op: "contains", value },
         { field: "site.code", op: "contains", value },
+        { field: "region.name", op: "contains", value },
       ),
     ),
   );

@@ -1,13 +1,5 @@
 import type { ApiError } from "../api/client";
-import { fieldErrors } from "../lib/problems";
-
-/** A sentence as it is shown: a capital first letter and a full stop. */
-function sentence(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed === "") return "";
-  const capital = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
-}
+import { fieldErrors, fieldLine, sentence } from "../lib/problems";
 
 interface ProblemProps {
   error: ApiError | null;
@@ -15,13 +7,19 @@ interface ProblemProps {
   shown?: readonly string[];
   /** Read the record again. Offered when the server says it has changed. */
   onReload?: () => void;
+  /**
+   * What to call a field that has no input on the page, in place of the name the server
+   * knows it by: `parent_region_hid` is "The region it is in". A field named as blank
+   * is not named at all, and its message stands as a sentence of its own.
+   */
+  labels?: Readonly<Record<string, string>>;
 }
 
 /**
  * What the server said went wrong. The region is always in the page, so that a screen
  * reader announces the message when it appears.
  */
-export function Problem({ error, shown = [], onReload }: ProblemProps) {
+export function Problem({ error, shown = [], onReload, labels = {} }: ProblemProps) {
   const visible = error && !error.aborted ? error : null;
   // A message about a field the form shows is shown beside its input, not here.
   const others = fieldErrors(visible, shown).rest;
@@ -47,9 +45,7 @@ export function Problem({ error, shown = [], onReload }: ProblemProps) {
           {others.length > 0 && (
             <ul>
               {others.map(([field, message]) => (
-                <li key={field}>
-                  {field}: {message}
-                </li>
+                <li key={field}>{fieldLine(field, message, labels)}</li>
               ))}
             </ul>
           )}

@@ -27,6 +27,8 @@ describe("the location in force", () => {
     label: ROOM,
     site: "Site-2",
     site_hid: ENTRY,
+    region: "Central",
+    region_hid: ENTRY,
     source: "own" as const,
     source_hid: ENTRY,
   };
@@ -48,6 +50,8 @@ describe("the location in force", () => {
         value: null,
         label: null,
         site: null,
+        region: null,
+        region_hid: null,
         site_hid: null,
         source: "none",
       }),
