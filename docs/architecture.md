@@ -395,16 +395,15 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement and the audit trail holds no event of the upgrade; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
 | `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0 and of 0.4.1; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
-**The inventory that is upgraded** is made for what a migration could harm, through
-the API of the previous release, so that it holds what that release could store.
-Migration `0006` adds three columns to `items`, and six to `device_groups`, which
-SQLite does by making that table anew and copying the rows; it says of every cluster
-that it is managed as one node, and it loads the `item_condition` list. So the two
-upgrade passes make, with 0.4.0:
+**The inventory that is upgraded** is made for what an upgrade could harm, through
+the API of the previous release, so that it holds what that release could store. The
+previous release is 0.4.1, and 0.4.2 has no migration: the schema stays at revision
+`0006`, and the upgrade is to change nothing that is held. So the two upgrade passes
+make, with 0.4.1, a record of every kind it can hold:
 
 - items with every kind of value between them: one with a value in every field a
   caller may set, serial number, asset tag, MAC address, dates, quantity, owner, two
@@ -413,72 +412,75 @@ upgrade passes make, with 0.4.0:
   draft that has an asset tag and no serial number; an item that has a name and nothing
   else; and a retired one;
 - minor items: a power supply and a module in a switch, and an optic in the module;
-- a stack of four switches with a master, an owner and a tag, of which one leaves
-  again and one is replaced, so that it has three members, two memberships that were
-  ended and a replacement;
-- a cluster of two; a controller domain with a controller, a cluster of two more
-  within it and two endpoints, one of them moved to Released, which 0.4.0 leaves a
-  member; a second stack, of two, whose second switch is moved to Released as well;
-  and a group that is a draft;
-- two networks and seven addresses, of items and of groups, of both families, three
-  of them primary, one address under two networks and twice under one of them;
-- choices of the site's own: a reason for a move, a reason for a replacement, and a
-  label of the site's for a default.
+- a stack of four switches with a master, an owner and a tag, which is to have four
+  members and is observed online, of which one leaves again and one is replaced, and
+  whose third switch is then seen to be master, at a moment written with no zone;
+- a cluster of two that is managed by its members; a controller domain with a
+  controller, a cluster of two more within it and two endpoints, one of which is moved
+  to Released and so leaves the domain; a stack that is one switch alone; and a group
+  that is a draft;
+- conditions and observations: a switch that is good and observed online at a moment
+  that names its zone, one that is degraded, a member of the cluster that is observed
+  unreachable and one that is observed present at a moment written with no zone, a
+  controller with a condition of the site's own, and an endpoint that is untested;
+- two networks and eight addresses, of items and of groups, of both families, one
+  address under two networks and twice under one of them, and on one switch a primary
+  management address of each family;
+- choices of the site's own: a reason for a move, a reason for a replacement, a
+  condition, and a label of the site's for a default reason and a default condition.
 
-0.4.0 has no list of conditions and refuses a choice in one, so no site can have
-entered a condition through it. The migration leaves alone what it finds in that list
-all the same, and the test shows the refusal and then writes two rows into the
-database, one of them `good` under a label of the site's: the one thing of this
-inventory that is not made through the API.
+Afterwards every item, group, membership, network, address and choice must be as it
+was, field for field and at the `row_version` it had, every item with its history
+event for event, and no choice may be added. The tables are read from the database
+file too: the eleven of the inventory must each have the columns, the indexes,
+uniquenesses and foreign keys, and the rows they had, the schema must be the same
+statement for statement at revision `0006`, and the audit trail, read before anything
+is asked of the new version, must hold the events it held and no other. A second item
+with a serial number of the same model, one with an asset tag that is taken, and a
+second group of a name that is taken must still be refused. The stack must say of
+itself what it said, the master that is seen and when among it, and the whole
+inventory, the cluster as two managed nodes and the stack of one switch with its whole
+support weight must be counted as 0.4.1 counted them.
 
-Afterwards every item, group, membership, network and address must be as it was,
-field for field and at the `row_version` it had, and every item with its history event
-for event, but for what the migration is meant to change: the two memberships of the
-items that are Released, the groups those two items say they are in, and the number of
-members of their two groups. Those are left out of the comparison by name and looked
-at by themselves, below. Each item must have no condition, nothing observed and a
-health of `unknown`. The tables are read from the database file too. `items` must have every
-column it had and the three new ones after them, with nothing in those, every row as
-it was in the old columns, and every index, uniqueness and foreign key it had, with the
-indexes of `condition` and `observed_status`. `device_groups` must have its columns and
-the six new ones, its rows as they were, `managed_as` of `one` on each cluster and on
-no other group, nothing in the other five, and its keys with the foreign key of
-`observed_master_hid`. The tables of replacements, networks and addresses, which the
-migration leaves alone, must be as they were in every column, key and row, and the
-table of members in its columns, its keys and every row but the two that are meant to
-change. A second item with a serial number of the same model, one with an asset tag that is
-taken, and a second group of a name that is taken must still be refused. The stack
-must still show the serial number of its master, as the one intended, with nothing
-seen. The cluster must be counted as it was, and so must the inventory but for the
-second stack: items, components, managed nodes and support weight from the summary,
-value and cost from the management report, against what the summary of 0.4.0 said.
-The two memberships that 0.4.0 let stand must be ended: each on the day of the
-upgrade, at its next `row_version`, with one event in the audit trail that the system
-made, of `left_on` from nothing to that day, and with its item in no group. The domain
-must have two current members where it had three. The second stack must be one switch
-alone and say that it is `degraded` for it, and its switch must have its whole support
-weight where it had half, with the same component, value and cost. Every choice
-must be the record it was, and `item_condition` must hold its six defaults and the
-site's two, with `good` once, under the site's label. Last, an item from before is
-given the site's own condition and an observation, and the cluster is said to be
-managed by its members and counts as two nodes.
+One thing that 0.4.2 says differently of what it holds is left out of that comparison
+by name and looked at by itself: the health of the two items whose condition is the
+site's own, or untested, is not known, as before, and its reason must now name the
+condition. And one thing that 0.4.2 reads differently is tried on what was carried
+over. 0.4.1 read a moment with no zone as UTC and stored that moment: the moment it
+stored for 09:00 must still be 09:00 in UTC after the upgrade, while the same words
+given to 0.4.2 must be 09:00 in the application's zone, 14:00 in UTC, for an item and
+for the moment a master was seen at. A filter for 09:00 with no zone must find the
+item that was told so after the upgrade, and one for 09:00 with `Z` the item from
+before.
 
-**A migration that fails** is made to fail in the database, never by changing the
-package. Where the new version creates a table, the table it creates last is put
-there beforehand, as `addresses` was for 0.4.0, so that everything else the migration
-does is done before it fails. 0.4.1 creates no table. For such a release a trigger is
-put on `alembic_version` that refuses any change to it. Writing the new revision into
-that table is the last thing a migration does, so the failure comes when the columns
-are added, the `device_groups` table is made anew, the clusters are marked, the
-conditions are loaded and the memberships of the items that are Released are ended,
-each with its audit event, and all of that has to be undone: the pass looks for the
-rows of the members as they were, and for an audit trail with no event more. The trigger disturbs nothing
-else: the previous release serves with it in place, and the backup that the upgrade
-takes holds it. A column of a name the migration adds, put there beforehand, was tried
-and does not serve. Where the column is added to the table as it stands, as on `items`,
-SQLite refuses it, but at the migration's first statement, with nothing yet to undo.
-Where the table is made anew, as `device_groups` is, the column that is already there
-is taken over without a word and the migration goes through.
+**Where there is no migration**, the failed-upgrade pass has nothing to make fail:
+nothing writes a revision into `alembic_version`, so neither a table in the way nor the
+trigger below would stop anything. It prints its `SKIP` line and tests what is left of
+it, without nginx. The upgrade must go through with its backup taken, the schema the
+same statement for statement, no audit event written, and every table and record of the
+inventory as it was. A user group is then entered with the new version, and the previous
+package is installed over it with `apt install --allow-downgrades` and nothing else: it
+must go through, where after a migration it stops at the database, start the service,
+and serve every record as the previous release gave it before, exactly, with that user
+group still there. That is the way back that
+[install.md](install.md#going-back-to-the-release-before) gives for such a release.
+
+**A migration that fails**, in a release that has one, is made to fail in the database,
+never by changing the package. Where the new version creates a table, the table it
+creates last is put there beforehand, as `addresses` was for 0.4.0, so that everything
+else the migration does is done before it fails. 0.4.1 creates no table. For such a
+release a trigger is put on `alembic_version` that refuses any change to it. Writing the
+new revision into that table is the last thing a migration does, so the failure comes
+when the columns are added, the `device_groups` table is made anew, the clusters are
+marked, the conditions are loaded and the memberships of the items that are Released are
+ended, each with its audit event, and all of that has to be undone: the pass looks for
+the rows of the members as they were, and for an audit trail with no event more. The
+trigger disturbs nothing else: the previous release serves with it in place, and the
+backup that the upgrade takes holds it. A column of a name the migration adds, put there
+beforehand, was tried and does not serve. Where the column is added to the table as it
+stands, as on `items`, SQLite refuses it, but at the migration's first statement, with
+nothing yet to undo. Where the table is made anew, as `device_groups` is, the column
+that is already there is taken over without a word and the migration goes through.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
 prefix. The nine files of `examples/` are sent in load order to `POST /imports/preview`
@@ -492,7 +494,9 @@ as many items of each condition as the file has; a router that is Down and obser
 unreachable is `degraded`, and a stack that is short of a member says so. The summary
 must hold no money and count every component once by health, and the components of
 each condition in its totals must be those of the rows when it is asked for by
-condition; the management report must hold the money and refuse `by=health`. Sent a
+condition; the management report must hold the money and refuse `by=health`. The
+examples must weigh and cost what `examples/` says, a support weight of 32 and an
+annual support cost of 67140.00 in all, with their one licence at quantity 1. Sent a
 second time, as CSV and as JSON, every row is
 unchanged. A filtered export is taken as CSV and as JSON: its rows are those the
 examples hold for the filter and those the list gives, and `hid` comes first. An export
@@ -535,32 +539,36 @@ minor items.
 
 **The records of 0.4.1** follow, in the same way. An item is given a condition, then an
 observation, then both: its health is `unknown`, `good`, `failed` when it is expected
-online and observed unreachable, and `degraded`, each time with its reason; a
-condition that the list does not offer is refused; the item is found by its health,
-and each change is in its history. An observation that is stated again as it is, with
-no moment, has its moment set to now, at the next `row_version`; the moment is not
-cleared by itself, one that is three days ahead is refused, and one with no zone is
-in the application's time zone. A stack of one switch with no master is `degraded`
-for being alone, has no serial number until its switch is seen to be master, and has
-the whole support weight of its switch; told to expect one member it is no longer
-degraded; with a second switch it earns the discount, and its value and cost in the
-management report are those of two; with that switch in Pending-Removal it is degraded
-again. A cluster of two is one managed node, then two when it is managed by its
-members, then three when it is managed as a cluster as well, with two components and
-the same support weight each time, and `managed_as` is refused on a stack. Four
-items that are failed, degraded, unknown and good are listed in that order when the
-item list is sorted by health. A member
-moved to Pending-Removal stays a member; moved on to Released it is in no group, and
-is refused when it is to join the cluster again or to take a member's place in a
-replacement; the other, moved straight to Archived, leaves too, and both memberships
-stay on record with the day they ended. Last, a file of `hostname` and `IP_address`
-columns is sent as it is: its three rows are created, each address is the primary
-management address of its family, and the same file a second time changes nothing; a
-second file with `ipv4`, `ipv6` and `observed_status` columns gives two of the items an
-address of the other family and a health of `good`, and sent again, stating what was
-observed with no moment, it changes nothing. A third file, of `hostname` and
-`observed_status` alone, names two switches that have serial numbers: each row finds
-its switch by the host name and updates it, and no second item is made.
+online and observed unreachable, and `degraded`, each time with its reason; a condition
+that the list does not offer is refused; the item is found by its health, and each
+change is in its history. An observation that is stated again as it is, with no moment,
+has its moment set to now, at the next `row_version`; the moment is not cleared by
+itself, one that is three days ahead is refused, and one with no zone is in the
+application's time zone: 09:00 comes back as 14:00 in UTC. A filter reads its value the
+same way: 09:00 with no zone finds the item, 09:00 with `Z` does not, and 14:00 with `Z`
+and 09:00 with `-05:00`, which are that moment, do. An item with a condition that the
+site added to the list has a health that is not known, with a reason that names the
+condition and says that it says nothing of health; `untested` is named likewise;
+observed present, the item is `good`. A stack of one switch with no master is `degraded`
+for being alone, has no serial number until its switch is seen to be master, and has the
+whole support weight of its switch; told to expect one member it is no longer degraded;
+with a second switch it earns the discount, and its value and cost in the management
+report are those of two; with that switch in Pending-Removal it is degraded again. A
+cluster of two is one managed node, then two when it is managed by its members, then
+three when it is managed as a cluster as well, with two components and the same support
+weight each time, and `managed_as` is refused on a stack. Four items that are failed,
+degraded, unknown and good are listed in that order when the item list is sorted by
+health. A member moved to Pending-Removal stays a member; moved on to Released it is in
+no group, and is refused when it is to join the cluster again or to take a member's
+place in a replacement; the other, moved straight to Archived, leaves too, and both
+memberships stay on record with the day they ended. Last, a file of `hostname` and
+`IP_address` columns is sent as it is: its three rows are created, each address is the
+primary management address of its family, and the same file a second time changes
+nothing; a second file with `ipv4`, `ipv6` and `observed_status` columns gives two of
+the items an address of the other family and a health of `good`, and sent again, stating
+what was observed with no moment, it changes nothing. A third file, of `hostname` and
+`observed_status` alone, names two switches that have serial numbers: each row finds its
+switch by the host name and updates it, and no second item is made.
 
 The examples are imported into an inventory that does not hold them, and the checks
 that follow make records of the same names by hand. So the pass takes a backup before

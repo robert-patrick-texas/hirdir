@@ -569,6 +569,58 @@ this upgrade is at revision `0005`. 0.4.0 knows no condition, no observation and
 `managed_as`, so whatever was entered of those with 0.4.1 is lost with the rest that
 was entered since the upgrade.
 
+### From 0.4.1 to 0.4.2
+
+The schema stays at revision `0006`: 0.4.2 has no migration. Nothing that is held is
+changed by the upgrade. Every item, device group, membership, network, address and
+choice is as it was, at the `row_version` it had, and the upgrade writes no audit
+event. It takes its backup and stops and starts the service all the same.
+`/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is the
+one 0.4.1 wrote, so the upgrade says nothing of either and nginx is not reloaded.
+
+One thing answers differently from now on. **A time that names no zone is in the
+application's time zone**, the `time_zone` setting, which is America/New_York until
+an Admin changes it. 0.4.1 read such a time as UTC. It holds wherever a time is given:
+
+- in a request: `observed_at` on an item or a device group, and `master_observed_at`
+  on a stack;
+- in a file: the columns `observed_at` and `master_observed_at`;
+- in a filter: `observed_at:gte:2026-11-02T10:00`.
+
+So `2026-11-03T09:00:00` is nine in the morning where the application is, as a person
+reads it on a page, and with the zone as it is installed that is
+`2026-11-03T14:00:00Z`. A time that names its zone, `2026-11-03T09:00:00Z` or
+`2026-11-03T09:00:00-05:00`, is that moment, as before. **A script that means UTC
+writes the `Z`.** One that has been sending times with no zone and meaning UTC adds
+it, or its times are read as local ones from this release on.
+
+The moments that are already stored are not changed. A moment that 0.4.1 took from a
+time with no zone was stored as that hour in UTC, and it stays that moment: the API
+gives every time in UTC with a `Z`, and a page shows it in the application's zone, as
+both did. Where such a time was meant as a local one, enter it again.
+
+Two smaller things read differently. The reason that an item gives for a health that
+is not known names the condition it has: `its condition is in-repair, which says
+nothing of its health, and nothing is observed` for a condition of your own, and `its
+condition is untested, and nothing is observed`. The health itself is as it was. And
+the item grid of the web UI shows Estimated value only when it is asked for, in the
+column chooser; a layout that a person has saved is as they saved it.
+
+In the examples, NetConfig Manager is one licence, of quantity 1, where it had 250,
+which multiplied its support cost. Where the examples of 0.4.1 are loaded, loading
+`examples/items.csv` again changes that one item.
+
+Going back to 0.4.1 needs no backup, because the schema is the same and 0.4.1 reads
+the database as 0.4.2 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.4.1_amd64.deb
+```
+
+The command goes through and starts the service, and that is all. What was entered
+with 0.4.2 stays, and a moment that 0.4.2 read from a time with no zone stays the
+moment it was read as.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -616,6 +668,10 @@ The first command stops with "the migration failed" and leaves the service stopp
 and the database untouched. That is the older version meeting the newer database, and
 it is expected. The second puts the backup in place, and the third finishes the
 installation and starts the service.
+
+A release that changed no schema is gone back from by the first command alone: it
+goes through, nothing is restored and nothing is lost. 0.4.2 is such a release. The
+section of each release above says what its upgrade changed.
 
 ## Remove
 
