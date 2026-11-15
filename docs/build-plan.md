@@ -35,7 +35,7 @@ reading; it does not settle a policy question in code.
 | **0.5.0** Places and people | Regions, sites, locations and paths. Contacts, assignments and inherited resolution. Shipping address inheritance. Owners and external-owner exceptions. Geography tree with roll-up totals. Moving a site. | S24–S28 |
 | **0.6.0** Money, time and capacity | Support agreements, the contracts grouped into them, and dated coverage; a contract renewed in one place. Estimated value and annual support cost. The vendor portfolio. End-of-life and coverage reports. Replacements in reports and in files. Purchase requests, lines and receiving. External systems and registrations. Draft records. Capacity lines and the capacity report. | S29–S35, S39–S40 |
 | **0.6.1** Corrections to 0.6.0 | What a contract overrides, said beside what it has in force. The dates of an earlier term of a contract that is co-termed with its agreement. The model of an item that is put on a purchase line, held to the line's. The contract that still counts an item out of service, as a field of the item list. Browser scenarios for the pages of 0.6.0 that only unit tests hold. `make upgrade` without a step the host refuses. The speed of the item filters of 0.6.0 on a large inventory, measured. | none new |
-| **0.7.0** Renewals in practice, and links | The renewal worklist. An agreement renewed with new numbers for its member contracts. A coverage marked as not to be renewed. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a dated record of the balance, a line that multiplies staff capacity, and the report for one region or site. Links, an address with its text, on locations and on catalog entries. | S41–S46 |
+| **0.7.0** Renewals in practice, and links | The renewal worklist. An agreement renewed with new numbers for its member contracts. The coverage report worked out once and kept until it changes. Imports applied in the background, in batches. A coverage marked as not to be renewed. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a dated record of the balance, a line that multiplies staff capacity, and the report for one region or site. Links, an address with its text, on locations and on catalog entries. | S41–S46 |
 | **0.8.0** Circuits | Telecommunication circuits beside the inventory: its name, description and notes, the enterprise's own circuit ID, the devices it connects, its A side and Z side, its carriers and the circuit numbers they give, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the cost by year, as support costs are reported. | S47–S50 |
 | **0.9.0** Reference files | Files attached to a location: photographs, maps, sketches and floor plans. Documents attached to a catalog entry and reached from every item of that model, such as an administration guide, served by `hirdir` itself where there is no internet access. Upload, link, download, limits, roles, audit, and the files in the backup. | S51–S53 |
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
@@ -107,6 +107,13 @@ showed. It adds no scenario and no kind of record.
 - **Contacts of an agreement and of a contract.** The account manager and the support
   contact may be contact records, as the contacts of a place are since 0.5.0, and
   are inherited from the agreement as the text is. Free text stays possible.
+- **The coverage report at speed.** Counted in one pass, what is in force for each
+  contract worked out once for a request, and the answer kept until a change or the
+  turn of the day makes it stale (P-115). The coverage filters of the grid gain from
+  the same work.
+- **Imports in the background.** Applying a file is a job that shows its progress and
+  applies a few dozen rows at a time, so that sign-ins and other changes go on beside
+  it; one that fails partway says what was applied and is resumed (P-116).
 - **Capacity over time.** A dated record of the balance, to show the trend (R14.7).
   A line that multiplies the capacity of chosen staff lines, for tools and services
   that make people more effective (R14.8). The capacity report for one region or
