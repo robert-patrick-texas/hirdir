@@ -121,6 +121,12 @@ showed. It adds no scenario and no kind of record.
 - **Imports in the background.** Applying a file is a job that shows its progress and
   applies a few dozen rows at a time, so that sign-ins and other changes go on beside
   it; one that fails partway says what was applied and is resumed (P-116).
+- **Purchase requests as procurement has them.** A line's model is corrected at any
+  time, and the items that arrived on it with it when the operator says so (P-120). A
+  line that is not network equipment, cable ties or a printer, is not tracked, keeps
+  the part number procurement gave it, and does not hold the request open; a file of
+  a request's lines matches each part number to the catalog and makes no catalog entry
+  (P-121).
 - **Capacity over time.** A dated record of the balance, to show the trend (R14.7).
   A line that multiplies the capacity of chosen staff lines, for tools and services
   that make people more effective (R14.8). The capacity report for one region or
