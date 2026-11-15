@@ -53,8 +53,13 @@ SKIP_DIRS = {
     "build",
     ".venv",
     "dev-data",
+    "fixture-data",
     "__pycache__",
     ".git",
+    # What a run of the browser scenarios leaves: its reports are Markdown too.
+    "test-results",
+    "playwright-report",
+    "blob-report",
 }
 
 # Navigation order and labels (None: the page's first heading). Pages not listed here sit

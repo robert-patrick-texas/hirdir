@@ -525,3 +525,13 @@ def test_every_release_so_far_can_be_given_to_github(docs: ModuleType) -> None:
                 starts_item = following.lstrip().startswith(("- ", "#", "|", "<", "`"))
                 assert not following or starts_item, f"{path.name}:{number + 1}"
         assert "](../" not in body, path.name
+
+
+def test_what_a_browser_run_leaves_is_no_page(docs: ModuleType, tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "page.md").write_text("# Page\n", encoding="utf-8")
+    for left in ("web/test-results/a-spec", "web/playwright-report"):
+        (tmp_path / left).mkdir(parents=True)
+        (tmp_path / left / "error-context.md").write_text("# Error\n", encoding="utf-8")
+    assert [str(path) for path in docs.discover(tmp_path)] == ["docs/page.md"]
+
