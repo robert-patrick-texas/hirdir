@@ -1,4 +1,5 @@
-hid,request,line,vendor,pid,quantity,destination_site,expected_on,notes
-,RITM0012345,1,Cisco,C9300-48P,4,Americas > Central > Site-3,2026-12-01,
-,RITM0012345,2,Cisco,PWR-C1-715WAC-P,4,Americas > Central > Site-3,2026-12-01,
-,RITM0012501,1,Juniper,EX4400-48P,2,Americas > Central > Site-2,,
+hid,request,line,vendor,pid,part_number,description,quantity,destination_site,expected_on,notes
+,RITM0012345,1,Cisco,C9300-48P,,,4,Americas > Central > Site-3,2026-12-01,
+,RITM0012345,2,Cisco,PWR-C1-715WAC-P,PWR-C1-715WAC-P=,"715W AC power supply, spare",4,Americas > Central > Site-3,2026-12-01,
+,RITM0012345,3,,,HLT-100,"Hook-and-loop tape, 100 per roll",20,Americas > Central > Site-3,,
+,RITM0012501,1,Juniper,EX4400-48P,,,2,Americas > Central > Site-2,,

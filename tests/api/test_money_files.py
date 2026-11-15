@@ -131,6 +131,7 @@ def test_purchases_and_the_items_that_arrived_load_from_files(
     files: Files, make: Maker, base: dict
 ) -> None:
     make.site("Site-3", make.region("Americas"))
+    make.entry(base["cisco"], "C9300-NM-8X")
     requests = "reference,requested_on,status,notes\nRITM0012345,2026-08-17,ordered,Switches\n"
     assert counts(files.load("purchase_requests", requests)) == (1, 0, 0, 0)
     lines = (
@@ -139,9 +140,7 @@ def test_purchases_and_the_items_that_arrived_load_from_files(
         "RITM0012345,,Cisco,C9300-NM-8X,1,,\n"
     )
     preview = files.preview("purchase_lines", lines)
-    assert (
-        "creates the catalog entry Cisco C9300-NM-8X, to be reviewed" in preview["rows"][1]["notes"]
-    )
+    assert [row["notes"] for row in preview["rows"]] == [[], []]
     files.apply(preview)
     assert [line["name"] for line in make.get("/purchase-lines")["items"]] == [
         "RITM0012345/1",
@@ -210,6 +209,109 @@ def test_purchases_and_the_items_that_arrived_load_from_files(
     assert exported[0]["purchase_line_mismatch"] == "false"
     lines_now = table(files.export("purchase_lines", columns=["line", "mismatched_items"]))
     assert [row["mismatched_items"] for row in lines_now] == ["0", "0"]
+
+
+def test_a_file_of_lines_matches_each_part_number_and_makes_no_catalog_entry(
+    files: Files, make: Maker, base: dict
+) -> None:
+    cisco = base["cisco"]
+    make.entry(cisco, "PWR-C1-715WAC-P")
+    make.entry(cisco, "SFP-10G-SR")
+    make.entry(make.vendor("Example Optics"), "SFP-10G-SR=")
+    entries = make.get("/catalog-entries")["total"]
+    vendors = make.get("/vendors")["total"]
+    assert counts(files.load("purchase_requests", "reference\nRITM0012345\n")) == (1, 0, 0, 0)
+    lines = (
+        "request,line,vendor,part_number,description,quantity\n"
+        "RITM0012345,1,,PWR-C1-715WAC-P=,Spare power supply,2\n"
+        "RITM0012345,2,, sfp-10g-sr ,10G optic,4\n"
+        "RITM0012345,3,Cisco,SFP-10G-SR=,10G optic,4\n"
+        'RITM0012345,4,,HLT-100,"Hook-and-loop tape, 100",20\n'
+        "RITM0012345,5,Nobody Inc,PWR-X,Power supply,1\n"
+        "RITM0012345,6,Cisco,C9300-24P,Switch,1\n"
+    )
+    preview = files.preview("purchase_lines", lines)
+    assert counts(preview["job"]) == (6, 0, 0, 0)
+    notes = [row["notes"] for row in preview["rows"]]
+    assert notes[0] == notes[2] == []
+    assert notes[1] == [
+        "the part number sfp-10g-sr matches 2 models, Cisco SFP-10G-SR, Example Optics "
+        "SFP-10G-SR=: the line is not tracked"
+    ]
+    assert notes[3] == ["the part number HLT-100 matches no model: the line is not tracked"]
+    assert notes[4] == [
+        "there is no vendor Nobody Inc, so the part number PWR-X matches no model: the line is "
+        "not tracked"
+    ]
+    assert notes[5] == [
+        "the part number C9300-24P matches no model of Cisco: the line is not tracked"
+    ]
+    files.apply(preview)
+    listed = {line["line"]: line for line in make.get("/purchase-lines")["items"]}
+    assert listed[1]["catalog"]["pid"] == "PWR-C1-715WAC-P"
+    assert listed[1]["part_number"] == "PWR-C1-715WAC-P="
+    assert (listed[2]["tracked"], listed[2]["part_number"]) == (False, "sfp-10g-sr")
+    assert (listed[3]["catalog"]["vendor"], listed[3]["catalog"]["pid"]) == ("Cisco", "SFP-10G-SR")
+    assert [listed[number]["tracked"] for number in (4, 5, 6)] == [False, False, False]
+    assert listed[4]["description"] == "Hook-and-loop tape, 100"
+    # Nothing was made of a line: no vendor, no catalog entry.
+    assert make.get("/catalog-entries")["total"] == entries
+    assert make.get("/vendors")["total"] == vendors
+    # An export says what is tracked, and loads back as it is.
+    columns = ["request", "line", "vendor", "pid", "part_number", "tracked"]
+    exported = table(files.export("purchase_lines", sort=["line"], columns=columns))
+    assert [row["tracked"] for row in exported] == [
+        "true",
+        "false",
+        "true",
+        "false",
+        "false",
+        "false",
+    ]
+    assert (exported[0]["pid"], exported[0]["part_number"]) == (
+        "PWR-C1-715WAC-P",
+        "PWR-C1-715WAC-P=",
+    )
+    assert counts(files.load("purchase_lines", files.export("purchase_lines"))) == (0, 0, 6, 0)
+    assert counts(
+        files.load("purchase_lines", files.export("purchase_lines", columns=columns))
+    ) == (
+        0,
+        0,
+        6,
+        0,
+    )
+
+    # A line matched by hand keeps its model when the file is loaded again.
+    tape = listed[4]
+    tape_model = make.entry(make.vendor("Example Supplies"), "HLT-100-ROLL")
+    make.patch(
+        f"/purchase-lines/{tape['hid']}",
+        {"row_version": tape["row_version"], "catalog_entry_hid": tape_model["hid"]},
+    )
+    again = files.preview("purchase_lines", lines)
+    assert counts(again["job"])[3] == 0
+    assert again["rows"][3]["outcome"] == "unchanged"
+    assert again["rows"][3]["notes"] == [
+        "the part number HLT-100 matches no model: the line keeps its model, "
+        "Example Supplies HLT-100-ROLL"
+    ]
+    # A row that would give a line on which items have arrived another model is
+    # rejected: that is corrected by hand, where what becomes of the items is said.
+    power = make.get("/purchase-lines", filter="line:eq:1")["items"][0]
+    make.post(
+        f"/purchase-lines/{power['hid']}/receive",
+        {"row_version": power["row_version"], "items": [{"serial_number": "LIT-1"}]},
+    )
+    other = make.entry(cisco, "PWR-C1-1100WAC-P")
+    changed = files.preview(
+        "purchase_lines",
+        f"request,line,vendor,pid\nRITM0012345,1,Cisco,{other['pid']}\n",
+    )
+    assert counts(changed["job"]) == (0, 0, 0, 1)
+    (reason,) = changed["rows"][0]["reasons"]
+    assert reason["field"] == "pid"
+    assert "correct it by hand" in reason["message"]
 
 
 def test_systems_registrations_capacity_and_replacements_load_from_files(

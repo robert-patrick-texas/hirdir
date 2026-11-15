@@ -11,10 +11,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hirdir.db import dialect
 
+# How long a change waits for the one writer before it is answered 503, to be sent
+# again: the `busy_timeout` of SQLite, and the `Retry-After` of the answer.
+WRITER_WAIT_SECONDS = 5
 SQLITE_PRAGMAS = {
     "journal_mode": "wal",
     "foreign_keys": 1,
-    "busy_timeout": 5000,
+    "busy_timeout": WRITER_WAIT_SECONDS * 1000,
     "synchronous": 1,
 }
 

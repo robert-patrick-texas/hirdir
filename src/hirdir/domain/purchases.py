@@ -4,13 +4,18 @@ A request and its lines are not inventory: a line is a model and a number, befor
 serial number is known. Receiving a line says which items arrived, and creates them.
 How many have arrived on a line is the number of items that name it, counted when it
 is read and stored nowhere, so it cannot drift from the items.
+
+A line keeps the part number and the description that procurement gave it. One with
+no model is not tracked (P-121): cable ties, a monitor. It takes no item, is in no
+count, and is not waited for. Its model is corrected at any time (P-120): where items
+have arrived on it, the change says whether they follow it (P-135).
 """
 
 from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -33,15 +38,22 @@ LINE_FIELDS = (
     "request_hid",
     "line",
     "catalog_entry_hid",
+    "part_number",
+    "description",
     "quantity",
     "destination_site_hid",
     "expected_on",
     "notes",
 )
 SEPARATOR = "/"
+# The longest part number a line keeps: as long as a PID.
+PART_NUMBER = 100
 MAX_QUANTITY = 100_000
-MAX_AT_ONCE = 1000
 RECEIVED_AS = "Delivered"
+# What becomes of the items that arrived on a line whose model is corrected: they are
+# given the corrected model too, or they stay as they are and are then reported.
+FOLLOW, STAY = "follow", "stay"
+ON_A_CORRECTION = (FOLLOW, STAY)
 # What tells one item that arrived from another, and what else a receipt may say of it.
 IDENTITY = ("serial_number", "asset_tag", "name")
 RECEIVABLE = (*IDENTITY, "hostname", "mac_address", "comments")
@@ -176,16 +188,49 @@ def the_line(db: Session, text: str, field: str) -> PurchaseLine:
     return found
 
 
-def of_another_model(item_model: str | None, line_model: str) -> bool:
-    """Say whether an item on a line is of another model than the line's, which 0.6.0
-    let in (D-161). An item with no model is of another. `another_model` is the same
-    test as SQL."""
-    return item_model != line_model
+def part_key(text: str) -> str:
+    """Return a part number as it is matched to a PID: without case, surrounding space,
+    or the `=` that ends the part number of a spare."""
+    return records.key(records.key(text).removesuffix("="))
+
+
+def models_of_part(db: Session, text: str, vendor_hid: str | None) -> list[CatalogEntry]:
+    """Return the models whose PID is the part number text, among the models of a
+    vendor where one is named and among all where none is (P-135). The `=` of a spare
+    is not looked at, on either side."""
+    wanted = part_key(text)
+    if not wanted:
+        return []
+    query = select(CatalogEntry).where(CatalogEntry.pid_key.in_([wanted, f"{wanted}="]))
+    if vendor_hid is not None:
+        query = query.where(CatalogEntry.vendor_hid == vendor_hid)
+    return list(db.scalars(query.order_by(CatalogEntry.vendor_hid, CatalogEntry.pid_key)))
+
+
+def tracked(line: PurchaseLine) -> bool:
+    """Say whether a line is tracked: whether it has a model (P-121)."""
+    return line.catalog_entry_hid is not None
+
+
+def pending(line: PurchaseLine, arrived: int) -> int:
+    """Return what is still to come on a line: nothing on one that is not tracked,
+    which is not waited for."""
+    return line.quantity - arrived if tracked(line) else 0
+
+
+def of_another_model(item_model: str | None, line_model: str | None) -> bool:
+    """Say whether an item on a line is of another model than the line's: what 0.6.0
+    let in (D-161), or an item left as it was when its line was corrected (P-120). An
+    item with no model is of another. `another_model` is the same test as SQL."""
+    return line_model is not None and item_model != line_model
 
 
 def another_model(item: Any, line: Any) -> ColumnElement[bool]:
     """Return the test that an item on a line is of another model than the line's."""
-    return or_(item.catalog_entry_hid.is_(None), item.catalog_entry_hid != line.catalog_entry_hid)
+    return and_(
+        line.catalog_entry_hid.is_not(None),
+        or_(item.catalog_entry_hid.is_(None), item.catalog_entry_hid != line.catalog_entry_hid),
+    )
 
 
 def received(db: Session, line_hids: Sequence[str]) -> dict[str, int]:
@@ -222,22 +267,53 @@ def _whole(name: str, value: Any, low: int, high: int) -> int:
     return value
 
 
+def _checked_model(
+    db: Session, value: Any, line: PurchaseLine | None, on_it: Any
+) -> tuple[str | None, str | None]:
+    """Return the model a line is given, and what becomes of the items that have
+    arrived on it: None where nothing has arrived or the model stays as it is."""
+    name = "catalog_entry_hid"
+    hid = records.linked(db, CatalogEntry, name, value, line, "catalog entry")
+    if line is None or hid == line.catalog_entry_hid:
+        return hid, None
+    arrived = received(db, [line.hid])[line.hid]
+    if not arrived:
+        return hid, None
+    if hid is None:
+        raise Invalid(
+            "items have arrived on this line",
+            {name: f"{arrived} items have arrived on this line, which keeps a model"},
+        )
+    if on_it not in ON_A_CORRECTION:
+        raise Invalid(
+            "items have arrived on this line",
+            {
+                "items": f"{arrived} items have arrived on this line: say whether they are "
+                f"given the corrected model too, {FOLLOW}, or stay as they are, {STAY}"
+            },
+        )
+    return hid, on_it
+
+
 def _checked_line(
     db: Session, fields: dict[str, Any], line: PurchaseLine | None, request_hid: str
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str | None]:
+    """Return the values of a line as they are to be stored, and what becomes of the
+    items on it where its model is corrected after they arrived."""
     values: dict[str, Any] = {}
+    corrected = None
     if "catalog_entry_hid" in fields:
-        name = "catalog_entry_hid"
-        hid = records.linked(db, CatalogEntry, name, fields[name], line, "catalog entry")
-        if hid is None:
-            raise Invalid("a line is of a model", {name: "must not be blank"})
-        changed = line is not None and hid != line.catalog_entry_hid
-        if line is not None and changed and received(db, [line.hid])[line.hid]:
-            raise Invalid(
-                "items have arrived on this line",
-                {name: "the model of a line is not changed once items have arrived on it"},
-            )
-        values["catalog_entry_hid"] = hid
+        values["catalog_entry_hid"], corrected = _checked_model(
+            db, fields["catalog_entry_hid"], line, fields.get("items")
+        )
+    for name in ("part_number", "description"):
+        if name in fields:
+            values[name] = records.clean(fields[name])
+    if len(values.get("part_number") or "") > PART_NUMBER:
+        raise Invalid(
+            "the part number is not acceptable",
+            {"part_number": f"at most {PART_NUMBER} characters"},
+        )
     if "quantity" in fields:
         quantity = _whole("quantity", fields["quantity"], 0, MAX_QUANTITY)
         arrived = received(db, [line.hid])[line.hid] if line is not None else 0
@@ -274,17 +350,30 @@ def _checked_line(
                     {"line": "another line of this request has this number"},
                 )
         values["line"] = number
-    return values
+
+    def final(name: str) -> Any:
+        return values.get(name, getattr(line, name) if line is not None else None)
+
+    if final("catalog_entry_hid") is None and final("part_number") is None:
+        raise Invalid(
+            "a line has a model or a part number",
+            {
+                "catalog_entry_hid": "a model of the catalog, or a part_number as procurement "
+                "gave it for what this inventory does not track"
+            },
+        )
+    return values, corrected
 
 
 def add_line(
     db: Session, context: AuditContext, request_hid: str, fields: dict[str, Any]
 ) -> PurchaseLine:
-    """Add a line to a request: a model and how many. Left out, its number is the next."""
+    """Add a line to a request: a model or a part number, and how many. Left out, its
+    number is the next. A line with no model is not tracked."""
     # The next number is read and then taken, so nobody else may be taking it meanwhile.
     dialect.hold_other_writers(db)
     request = get_request(db, request_hid)
-    values = _checked_line(
+    values, _ = _checked_line(
         db, {"catalog_entry_hid": None, "quantity": None, **fields}, None, request.hid
     )
     held = db.scalar(
@@ -310,21 +399,55 @@ def update_line(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> PurchaseLine:
     """Change a line. Its quantity is never below what has arrived on it: a line is
-    taken back by lowering it to that."""
+    taken back by lowering it to that.
+
+    Its model is corrected at any time. Where items have arrived on it, `items` says
+    what becomes of them: `follow` gives each that is not retired the corrected model,
+    in the same change and each with its audit event, and `stay` leaves them as they
+    are, to be reported as of another model than their line's. A line keeps a model
+    while anything has arrived on it.
+    """
     dialect.hold_other_writers(db)
     line = get_line(db, hid)
     if "request_hid" in fields and fields["request_hid"] != line.request_hid:
         raise Invalid(
             "a line stays with its request", {"request_hid": "add a line to the other request"}
         )
+    if fields.get("items") is not None and fields["items"] not in ON_A_CORRECTION:
+        raise Invalid(
+            "what becomes of the items is not acceptable", {"items": f"{FOLLOW} or {STAY}"}
+        )
     plain = {name: value for name, value in fields.items() if name != "request_hid"}
-    records.apply(
-        db, context, LINE_TYPE, line, row_version, _checked_line(db, plain, line, line.request_hid)
-    )
-    # Lowered to what has arrived, the line has arrived in full.
+    values, corrected = _checked_line(db, plain, line, line.request_hid)
+    records.apply(db, context, LINE_TYPE, line, row_version, values)
     db.flush()
+    if corrected == FOLLOW:
+        _follow(db, context, line)
+    # Lowered to what has arrived, or no longer tracked, the line is waited for no more.
     items.settle_request(db, context, line.request_hid)
     return line
+
+
+def _follow(db: Session, context: AuditContext, line: PurchaseLine) -> None:
+    """Give each item on a line that is not retired the line's model, each by a change
+    of its own. What an item holds as its own stays its own, and what it inherited it
+    has from the corrected model from then on: nothing inherited is held by an item."""
+    astray = db.scalars(
+        select(Item)
+        .where(
+            Item.purchase_line_hid == line.hid,
+            Item.record_status != "retired",
+            or_(
+                Item.catalog_entry_hid.is_(None),
+                Item.catalog_entry_hid != line.catalog_entry_hid,
+            ),
+        )
+        .order_by(Item.hid)
+    ).all()
+    for item in astray:
+        items.update_item(
+            db, context, item.hid, item.row_version, {"catalog_entry_hid": line.catalog_entry_hid}
+        )
 
 
 def receive(
@@ -353,6 +476,11 @@ def receive(
             f"the request is {request.status}",
             {"status": f"a request that is {request.status} receives nothing"},
         )
+    if not tracked(line):
+        raise Invalid(
+            "the line is not tracked",
+            {"items": "a line with no model takes no item: match it to a model first"},
+        )
     if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 0:
         raise Invalid("the quantity is not acceptable", {"quantity": "a whole number, 0 or more"})
     count = len(arrived) + quantity
@@ -360,8 +488,7 @@ def receive(
         raise Invalid(
             "nothing to receive", {"items": "say which items arrived, or how many, as quantity"}
         )
-    if count > MAX_AT_ONCE:
-        raise Invalid("too many at once", {"items": f"at most {MAX_AT_ONCE} items to a request"})
+    settings.check_items(db, count, "items")
     records.checked_day("delivered_on", delivered_on)
     if location_hid is not None:
         records.linked(db, Location, "location_hid", location_hid, None, "location")

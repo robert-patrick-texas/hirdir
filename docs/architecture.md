@@ -1232,5 +1232,22 @@ max_megabytes = 20                   # the largest file an import takes; nginx m
 proxy = ""                           # the proxy through which hirdir-setup reaches GitHub, if any
 ```
 
+Each key is named once in the code, in `config.py`, with its default and the comment
+that says what it is for. The defaults of the service are read from there, and so is
+the file that `hirdir admin config` writes: every key of every table, commented out at
+its default. That file is `packaging/config.toml`, the one the package ships for
+`hirdir-setup --settings`, and a test holds both it and the block above to what the
+command writes, so the three never disagree. `--current` writes the same file with
+what the file in force sets, set. `[upgrades] proxy` is read by `hirdir-setup` and not
+by the service.
+
 Installation-wide values that people change in the course of work, such as the stack
-discount, are settings in the database, edited in the web UI by an Admin.
+discount, are settings in the database, edited in the web UI by an Admin, each with a
+default and a description in `domain/settings.py`. What a site may not change is listed
+beside them by `GET /settings`, said to be fixed: what was decided, with the decision,
+and the limits that protect the service. Each fixed value is read from the module that
+uses it, so the value listed is the value in force, and a value that two parts of the
+code use is held in one: the application's time zone in `clock.py`, the wait for the
+one writer in `db/engine.py`, which is both SQLite's `busy_timeout` and the
+`Retry-After` of a `503`, and the size of a page and the length of a filter in
+`io/listing.py` and `io/filters.py`, which the API's parameters take.

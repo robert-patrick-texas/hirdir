@@ -90,6 +90,7 @@ from hirdir.domain import (
     owners,
     purchases,
     records,
+    settings,
     tags,
 )
 from hirdir.ids import new_hid
@@ -1231,12 +1232,14 @@ def plan_groups(dice: Dice, planned: list[Planned], shape: Shape) -> list[dict[s
 
 
 def make_groups(db: Session, planned_groups: list[dict[str, Any]]) -> None:
-    """Make the groups through the rules, a thousand members at a time."""
+    """Make the groups through the rules, as many members at a time as one request may
+    add."""
+    at_once = settings.max_items(db)
     for fields in planned_groups:
         members = fields.pop("members")
         group = groups.create_group(db, SEED, fields)
-        for start in range(0, len(members), groups.MAX_AT_ONCE):
-            groups.add_members(db, SEED, group.hid, members[start : start + groups.MAX_AT_ONCE])
+        for start in range(0, len(members), at_once):
+            groups.add_members(db, SEED, group.hid, members[start : start + at_once])
 
 
 # --- writing the items, their addresses and their coverage ----------------------------------

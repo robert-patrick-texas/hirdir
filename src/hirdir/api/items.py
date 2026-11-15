@@ -8,7 +8,7 @@ from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.api.lists import Limit, Listed, Offset
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
 from hirdir.domain import items, replacements
 from hirdir.domain.lifecycle import UNSET
@@ -147,7 +147,7 @@ def item_children(
     _: Viewer,
     db: Db,
     sort: Annotated[list[str] | None, lists.sort_of(tables.CHILDREN)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.ItemOut]:
     """List the minor items directly in one item, whatever their status: by position
@@ -185,7 +185,7 @@ def item_history(
     _: Viewer,
     db: Db,
     sort: Annotated[list[str] | None, lists.sort_of(tables.HISTORY)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[AuditEventOut]:
     """List every change made to one item, newest first unless a sort says otherwise.

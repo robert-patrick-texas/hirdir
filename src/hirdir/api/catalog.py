@@ -191,7 +191,7 @@ def retire_owner(hid: str, body: r.RowVersion, _: Inventory, context: Audit, db:
 
 @owner_routes.get("/{hid}/members")
 def list_owner_members(
-    hid: str, _: Viewer, db: Db, limit: lists.Limit = 100, offset: lists.Offset = 0
+    hid: str, _: Viewer, db: Db, limit: lists.Limit = lists.DEFAULT_LIMIT, offset: lists.Offset = 0
 ) -> Page[r.OwnerMemberOut]:
     """List the people of an owner: its primary first, then the alternates."""
     owners.get_owner(db, hid)

@@ -11,7 +11,7 @@ from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute, limited_body
-from hirdir.api.lists import Limit, Offset, sort_of
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.problems import problem
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
@@ -132,7 +132,7 @@ def list_imports(
         Literal["file", "bulk"], Query(description="Imports of files, or bulk edits.")
     ] = "file",
     sort: Annotated[list[str] | None, sort_of(tables.IMPORT_JOBS)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.ImportJobOut]:
     """List the stored previews and what became of them, newest first unless a sort
@@ -157,7 +157,7 @@ def list_import_rows(
     db: Db,
     outcome: Annotated[r.Outcome | None, Query(description="Only rows of this kind.")] = None,
     sort: Annotated[list[str] | None, sort_of(tables.IMPORT_ROWS)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.ImportRowOut]:
     """List the rows of a preview, in the order of the file unless a sort says otherwise."""

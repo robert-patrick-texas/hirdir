@@ -8,7 +8,7 @@ from hirdir.api import lists, shapes
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.api.lists import Limit, Listed, Offset
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import Page
 from hirdir.domain import groups
 from hirdir.io import fields, tables
@@ -89,7 +89,7 @@ def list_members(
         bool, Query(description="Show the memberships that have ended as well.")
     ] = False,
     sort: Annotated[list[str] | None, lists.sort_of(tables.GROUP_MEMBERS)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.MemberOut]:
     """List the members of a group by position, the current ones first, unless a sort

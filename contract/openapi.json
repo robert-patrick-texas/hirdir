@@ -5278,10 +5278,11 @@
         "description": "Items to put under a contract together: all of them, or none.",
         "properties": {
           "items": {
+            "description": "At most as many as the setting `max_items_per_request` says.",
             "items": {
               "$ref": "#/components/schemas/CoverageEntry"
             },
-            "maxItems": 1000,
+            "maxItems": 5000,
             "minItems": 1,
             "title": "Items",
             "type": "array"
@@ -5813,10 +5814,11 @@
           },
           "members": {
             "default": [],
+            "description": "At most as many as the setting `max_items_per_request` says.",
             "items": {
               "$ref": "#/components/schemas/MemberAdd"
             },
-            "maxItems": 1000,
+            "maxItems": 5000,
             "title": "Members",
             "type": "array"
           },
@@ -12409,10 +12411,11 @@
         "description": "Items to make members of a group together. The group is checked once all are in.",
         "properties": {
           "members": {
+            "description": "At most as many as the setting `max_items_per_request` says.",
             "items": {
               "$ref": "#/components/schemas/MemberAdd"
             },
-            "maxItems": 1000,
+            "maxItems": 5000,
             "minItems": 1,
             "title": "Members",
             "type": "array"
@@ -14971,12 +14974,33 @@
       },
       "PurchaseLineAdd": {
         "additionalProperties": false,
-        "description": "A new line of a purchase request.",
+        "description": "A new line of a purchase request: a model, or a part number for what is not\ntracked, or both.",
         "properties": {
           "catalog_entry_hid": {
-            "maxLength": 36,
-            "title": "Catalog Entry Hid",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model. Left out, the line is not tracked.",
+            "title": "Catalog Entry Hid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Description"
           },
           "destination_site_hid": {
             "anyOf": [
@@ -15028,6 +15052,19 @@
             ],
             "title": "Notes"
           },
+          "part_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Part Number"
+          },
           "quantity": {
             "maximum": 100000.0,
             "minimum": 1.0,
@@ -15036,7 +15073,6 @@
           }
         },
         "required": [
-          "catalog_entry_hid",
           "quantity"
         ],
         "title": "PurchaseLineAdd",
@@ -15044,19 +15080,46 @@
       },
       "PurchaseLineOut": {
         "additionalProperties": false,
-        "description": "One line of a purchase request: a model and how many.",
+        "description": "One line of a purchase request: a model or a part number, and how many.",
         "properties": {
           "catalog": {
-            "$ref": "#/components/schemas/CatalogRef"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "catalog_entry_hid": {
-            "title": "Catalog Entry Hid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model. A line with none is not tracked.",
+            "title": "Catalog Entry Hid"
           },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Description"
           },
           "destination_site": {
             "anyOf": [
@@ -15120,8 +15183,20 @@
             ],
             "title": "Notes"
           },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Part Number"
+          },
           "pending_quantity": {
-            "description": "What is still to come.",
+            "description": "What is still to come: nothing on a line that is not tracked.",
             "title": "Pending Quantity",
             "type": "integer"
           },
@@ -15158,6 +15233,11 @@
             "title": "Row Version",
             "type": "integer"
           },
+          "tracked": {
+            "description": "The line has a model. One that has none takes no item, is in no count and is not waited for.",
+            "title": "Tracked",
+            "type": "boolean"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -15173,6 +15253,9 @@
           "line",
           "catalog_entry_hid",
           "catalog",
+          "part_number",
+          "description",
+          "tracked",
           "quantity",
           "received_quantity",
           "pending_quantity",
@@ -15202,7 +15285,20 @@
                 "type": "null"
               }
             ],
+            "description": "The model, corrected at any time. Null takes it off, which leaves the line not tracked, only while nothing has arrived on it.",
             "title": "Catalog Entry Hid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "destination_site_hid": {
             "anyOf": [
@@ -15228,6 +15324,22 @@
             ],
             "title": "Expected On"
           },
+          "items": {
+            "anyOf": [
+              {
+                "enum": [
+                  "follow",
+                  "stay"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where items have arrived on the line and its model is corrected: `follow` gives each of them that is not retired the corrected model as well, in the same change, and `stay` leaves them as they are, to be found by `purchase_line_mismatch`. Required then, and a `422` without it.",
+            "title": "Items"
+          },
           "line": {
             "anyOf": [
               {
@@ -15252,6 +15364,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "part_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Number"
           },
           "quantity": {
             "anyOf": [
@@ -15283,9 +15407,16 @@
         "description": "The line of a purchase request an item arrived on.",
         "properties": {
           "catalog_entry_hid": {
-            "description": "The model of the line.",
-            "title": "Catalog Entry Hid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model of the line. A line with none takes no item, so an item's line has one.",
+            "title": "Catalog Entry Hid"
           },
           "hid": {
             "title": "Hid",
@@ -15418,7 +15549,7 @@
             "type": "integer"
           },
           "quantity": {
-            "description": "The items of all its lines.",
+            "description": "The items of all its lines that are tracked.",
             "title": "Quantity",
             "type": "integer"
           },
@@ -15593,10 +15724,11 @@
           },
           "items": {
             "default": [],
+            "description": "With `quantity`, at most as many as the setting `max_items_per_request` says.",
             "items": {
               "$ref": "#/components/schemas/Arrived"
             },
-            "maxItems": 1000,
+            "maxItems": 5000,
             "title": "Items",
             "type": "array"
           },
@@ -15616,7 +15748,7 @@
           "quantity": {
             "default": 0,
             "description": "How many more arrived that nothing is known of yet, each named for its line.",
-            "maximum": 1000.0,
+            "maximum": 5000.0,
             "minimum": 0.0,
             "title": "Quantity",
             "type": "integer"
@@ -15637,16 +15769,43 @@
         "description": "A line after a receipt, with the items the receipt created.",
         "properties": {
           "catalog": {
-            "$ref": "#/components/schemas/CatalogRef"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "catalog_entry_hid": {
-            "title": "Catalog Entry Hid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model. A line with none is not tracked.",
+            "title": "Catalog Entry Hid"
           },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Description"
           },
           "destination_site": {
             "anyOf": [
@@ -15717,8 +15876,20 @@
             ],
             "title": "Notes"
           },
+          "part_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the procurement system gave it.",
+            "title": "Part Number"
+          },
           "pending_quantity": {
-            "description": "What is still to come.",
+            "description": "What is still to come: nothing on a line that is not tracked.",
             "title": "Pending Quantity",
             "type": "integer"
           },
@@ -15755,6 +15926,11 @@
             "title": "Row Version",
             "type": "integer"
           },
+          "tracked": {
+            "description": "The line has a model. One that has none takes no item, is in no count and is not waited for.",
+            "title": "Tracked",
+            "type": "boolean"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -15770,6 +15946,9 @@
           "line",
           "catalog_entry_hid",
           "catalog",
+          "part_number",
+          "description",
+          "tracked",
           "quantity",
           "received_quantity",
           "pending_quantity",
@@ -17440,10 +17619,40 @@
       },
       "SettingOut": {
         "additionalProperties": false,
-        "description": "A setting: the value in force, its default, and what it means.",
+        "description": "A setting: the value in force, its default, what it means and what it takes. Or\na value that is fixed in the code, with `fixed` true: what it limits and why it is\nfixed, at its default always.",
         "properties": {
+          "accepts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The values a setting takes. Blank for a fixed value.",
+            "title": "Accepts"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The decision that fixed it, where one did: `D-142`.",
+            "title": "Decision"
+          },
           "default": {
             "title": "Default"
+          },
+          "fixed": {
+            "default": false,
+            "description": "Fixed in the code: listed, and not changed by any request.",
+            "title": "Fixed",
+            "type": "boolean"
           },
           "is_default": {
             "title": "Is Default",
@@ -17454,8 +17663,36 @@
             "type": "string"
           },
           "meaning": {
+            "description": "What the setting is for, or what a fixed value limits.",
             "title": "Meaning",
             "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The values to choose from, where a setting is of a list.",
+            "title": "Options"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a fixed value is fixed.",
+            "title": "Reason"
           },
           "row_version": {
             "description": "0 for a setting that has never been changed.",
@@ -29251,17 +29488,23 @@
             }
           },
           {
-            "description": "How far ahead cover that runs out is looked for.",
+            "description": "How far ahead cover that runs out is looked for. Left out, the setting `renewal_warning_days`.",
             "in": "query",
             "name": "within_days",
             "required": false,
             "schema": {
-              "default": 90,
-              "description": "How far ahead cover that runs out is looked for.",
-              "maximum": 36500,
-              "minimum": 0,
-              "title": "Within Days",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 36500,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How far ahead cover that runs out is looked for. Left out, the setting `renewal_warning_days`.",
+              "title": "Within Days"
             }
           },
           {
@@ -29497,35 +29740,47 @@
             }
           },
           {
-            "description": "Which of the four dates the lists are of.",
+            "description": "Which of the four dates the lists are of. Left out, the setting `end_of_life_date`.",
             "in": "query",
             "name": "date",
             "required": false,
             "schema": {
-              "default": "ldos",
-              "description": "Which of the four dates the lists are of.",
-              "enum": [
-                "end_of_sale",
-                "end_of_sw_support",
-                "end_of_hw_support",
-                "ldos"
+              "anyOf": [
+                {
+                  "enum": [
+                    "end_of_sale",
+                    "end_of_sw_support",
+                    "end_of_hw_support",
+                    "ldos"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Date",
-              "type": "string"
+              "description": "Which of the four dates the lists are of. Left out, the setting `end_of_life_date`.",
+              "title": "Date"
             }
           },
           {
-            "description": "How far ahead a date counts as approaching.",
+            "description": "How far ahead a date counts as approaching. Left out, the setting `end_of_life_within_days`.",
             "in": "query",
             "name": "within_days",
             "required": false,
             "schema": {
-              "default": 730,
-              "description": "How far ahead a date counts as approaching.",
-              "maximum": 36500,
-              "minimum": 0,
-              "title": "Within Days",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 36500,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How far ahead a date counts as approaching. Left out, the setting `end_of_life_within_days`.",
+              "title": "Within Days"
             }
           },
           {

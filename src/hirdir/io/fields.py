@@ -1482,9 +1482,14 @@ def mismatched_items(db: Session, line_hids: list[str]) -> dict[str, int]:
     return counts
 
 
+# What is ordered of a request: the quantities of the lines that are tracked. A line that
+# is not tracked is not waited for (P-121).
 _REQUEST_ORDERED = (
     select(func.coalesce(func.sum(_LINE_OF_REQUEST.quantity), 0))
-    .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)
+    .where(
+        _LINE_OF_REQUEST.request_hid == PurchaseRequest.hid,
+        _LINE_OF_REQUEST.catalog_entry_hid.is_not(None),
+    )
     .correlate(PurchaseRequest)
     .scalar_subquery()
 )
@@ -1529,6 +1534,9 @@ PURCHASE_LINES = Listing(
         **_columns(PurchaseLine, "integer", "line", "quantity"),
         "expected_on": Field("date", PurchaseLine.expected_on),
         "notes": Field("text", PurchaseLine.notes),
+        # As procurement gave them, and whether the line has a model (P-121).
+        **_columns(PurchaseLine, "text", "part_number", "description"),
+        "tracked": Field("boolean", PurchaseLine.catalog_entry_hid.is_not(None)),
         "request.reference": Field("text", PurchaseRequest.reference),
         "request.status": Field("choice", PurchaseRequest.status),
         "catalog.pid": Field("text", _LINE_ENTRY.pid),
@@ -1536,13 +1544,20 @@ PURCHASE_LINES = Listing(
         "catalog.vendor": Field("text", _LINE_VENDOR.name),
         "site": Field("text", _LINE_SITE.name),
         "received_quantity": Field("integer", RECEIVED.cast(Integer)),
-        "pending_quantity": Field("integer", (PurchaseLine.quantity - RECEIVED).cast(Integer)),
+        # Nothing is still to come on a line that is not tracked: it is not waited for.
+        "pending_quantity": Field(
+            "integer",
+            case(
+                (PurchaseLine.catalog_entry_hid.is_(None), 0),
+                else_=(PurchaseLine.quantity - RECEIVED),
+            ).cast(Integer),
+        ),
         "mismatched_items": Field("integer", MISMATCHED.cast(Integer)),
     },
     joined=lambda query: (
         query.join(PurchaseRequest, PurchaseRequest.hid == PurchaseLine.request_hid)
-        .join(_LINE_ENTRY, _LINE_ENTRY.hid == PurchaseLine.catalog_entry_hid)
-        .join(_LINE_VENDOR, _LINE_VENDOR.hid == _LINE_ENTRY.vendor_hid)
+        .outerjoin(_LINE_ENTRY, _LINE_ENTRY.hid == PurchaseLine.catalog_entry_hid)
+        .outerjoin(_LINE_VENDOR, _LINE_VENDOR.hid == _LINE_ENTRY.vendor_hid)
         .outerjoin(_LINE_SITE, _LINE_SITE.hid == PurchaseLine.destination_site_hid)
     ),
     default_sort=("request.reference", "line"),

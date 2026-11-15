@@ -872,7 +872,7 @@ setting. The renewal worklist and the alert after sign-in are built on them, on
 | `purchase_lines.destination_site_hid`, `expected_on` | reference, date | optional |
 | `purchase_lines.notes` | text | |
 | `purchase_lines.received_quantity` | integer | derived: the number of items that name this line |
-| `purchase_lines.pending_quantity` | integer | derived: `quantity` less `received_quantity` |
+| `purchase_lines.pending_quantity` | integer | derived: `quantity` less `received_quantity`. 0 on a line that is not tracked, which nothing is waited for on, so that the planning list and the totals of its request leave it out |
 | `purchase_lines.mismatched_items` | integer | derived: how many of the items that name this line are of another model, which 0.6.0 let in, counted as the item list counts: drafts, retired items and items in Archived are left out, so the number leads to as many rows. Zero once they are put right |
 
 A line is named by the reference of its request and its number: `RITM0012345/2`.

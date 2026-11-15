@@ -89,7 +89,8 @@ LOCATION_FIELDS = (
     "notes",
     "record_status",
 )
-# The states in which an item has left the team's hands, and is in no place any more.
+# The states in which an item has left the team's hands, and is in no place and no group
+# any more (D-103).
 OUT_OF_HANDS = ("Released", "Archived")
 DEGREES = {"latitude": Decimal(90), "longitude": Decimal(180)}
 

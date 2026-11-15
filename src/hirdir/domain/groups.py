@@ -43,7 +43,6 @@ PLAIN = "member"
 # of its own. See "Counting and weight" on the data model page.
 MANAGED_AS = ("one", "members", "members_and_cluster")
 MAX_NESTING = 8
-MAX_AT_ONCE = 1000
 TEXTS = ("hostname", "fqdn")
 FIELDS = (
     "type",
@@ -718,10 +717,7 @@ def add_members(
         )
     if not members:
         raise Invalid("there is nobody to add", {"members": "name at least one item"})
-    if len(members) > MAX_AT_ONCE:
-        raise Invalid(
-            "too many members at once", {"members": f"at most {MAX_AT_ONCE:,} in one request"}
-        )
+    settings.check_items(db, len(members), "members", "members")
     day = today(db)
     made = []
     for given in members:

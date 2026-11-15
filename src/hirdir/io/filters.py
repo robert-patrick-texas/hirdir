@@ -21,6 +21,8 @@ from hirdir import clock
 from hirdir.db import dialect
 from hirdir.domain.errors import Invalid
 
+# The longest filter in the address of a request: a longer one is the body of a query.
+MAX_FILTER_LENGTH = 8000
 MAX_DEPTH = 8
 MAX_CONDITIONS = 100
 MAX_LIST = 1000

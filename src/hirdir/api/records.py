@@ -11,7 +11,9 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, PlainSerializer, WithJsonSchema
 
 from hirdir.api.schemas import Model
+from hirdir.domain import purchases, settings
 from hirdir.domain.inheritance import Source
+from hirdir.io import listing
 
 
 def _plain(value: Decimal) -> str:
@@ -79,8 +81,8 @@ class ListQuery(Model):
         default=None, description="A filter tree. See contract/filter.schema.json."
     )
     sort: list[str] = Field(default=[], description="Field names, `-` in front for descending.")
-    limit: int = Field(default=100, ge=1, le=1000)
-    offset: int = Field(default=0, ge=0, le=10_000_000)
+    limit: int = Field(default=listing.DEFAULT_LIMIT, ge=1, le=listing.MAX_LIMIT)
+    offset: int = Field(default=0, ge=0, le=listing.MAX_OFFSET)
     include_archived: bool = False
     include_drafts: bool = False
     fields: list[ShortText] = Field(
@@ -1050,7 +1052,11 @@ class PurchaseLineRef(Model):
     request_hid: str
     reference: str
     line: int
-    catalog_entry_hid: str = Field(description="The model of the line.")
+    catalog_entry_hid: str | None = Field(
+        description=(
+            "The model of the line. A line with none takes no item, so an item's line has one."
+        )
+    )
 
 
 class DeviceGroupRef(Model):
@@ -1477,7 +1483,11 @@ class MemberAdd(Model):
 class MembersAdd(Model):
     """Items to make members of a group together. The group is checked once all are in."""
 
-    members: list[MemberAdd] = Field(min_length=1, max_length=1000)
+    members: list[MemberAdd] = Field(
+        min_length=1,
+        max_length=settings.MOST_ITEMS_PER_REQUEST,
+        description="At most as many as the setting `max_items_per_request` says.",
+    )
 
 
 class MemberPatch(Model):
@@ -1604,7 +1614,11 @@ class DeviceGroupCreate(Model):
     master_observed_at: datetime | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
-    members: list[MemberAdd] = Field(default=[], max_length=1000)
+    members: list[MemberAdd] = Field(
+        default=[],
+        max_length=settings.MOST_ITEMS_PER_REQUEST,
+        description="At most as many as the setting `max_items_per_request` says.",
+    )
 
 
 class DeviceGroupPatch(Model):
@@ -2034,7 +2048,11 @@ class CoverageEntry(Model):
 class CoverageAdd(Model):
     """Items to put under a contract together: all of them, or none."""
 
-    items: list[CoverageEntry] = Field(min_length=1, max_length=1000)
+    items: list[CoverageEntry] = Field(
+        min_length=1,
+        max_length=settings.MOST_ITEMS_PER_REQUEST,
+        description="At most as many as the setting `max_items_per_request` says.",
+    )
 
 
 class CoveragePatch(Model):
@@ -2055,7 +2073,7 @@ PurchaseStatus = Literal["draft", "pending", "ordered", "received", "cancelled"]
 
 
 class PurchaseLineOut(Model):
-    """One line of a purchase request: a model and how many."""
+    """One line of a purchase request: a model or a part number, and how many."""
 
     hid: str
     request_hid: str
@@ -2063,11 +2081,21 @@ class PurchaseLineOut(Model):
     request_status: PurchaseStatus
     name: str = Field(description="How the line is named: `RITM0012345/2`.")
     line: int
-    catalog_entry_hid: str
-    catalog: CatalogRef
+    catalog_entry_hid: str | None = Field(description="The model. A line with none is not tracked.")
+    catalog: CatalogRef | None
+    part_number: str | None = Field(description="As the procurement system gave it.")
+    description: str | None = Field(description="As the procurement system gave it.")
+    tracked: bool = Field(
+        description=(
+            "The line has a model. One that has none takes no item, is in no count and is "
+            "not waited for."
+        )
+    )
     quantity: int
     received_quantity: int = Field(description="The items that name this line.")
-    pending_quantity: int = Field(description="What is still to come.")
+    pending_quantity: int = Field(
+        description="What is still to come: nothing on a line that is not tracked."
+    )
     mismatched_items: int = Field(
         description=(
             "How many of the items that name this line are of another model, which 0.6.0 "
@@ -2091,11 +2119,22 @@ class ReceivedOut(PurchaseLineOut):
 
 
 class PurchaseLineAdd(Model):
-    """A new line of a purchase request."""
+    """A new line of a purchase request: a model, or a part number for what is not
+    tracked, or both."""
 
-    catalog_entry_hid: Hid
-    quantity: int = Field(ge=1, le=100_000)
-    line: int | None = Field(default=None, ge=1, le=100_000, description="Left out, the next.")
+    catalog_entry_hid: Hid | None = Field(
+        default=None, description="The model. Left out, the line is not tracked."
+    )
+    part_number: ShortText | None = Field(
+        default=None, description="As the procurement system gave it."
+    )
+    description: LongText | None = Field(
+        default=None, description="As the procurement system gave it."
+    )
+    quantity: int = Field(ge=1, le=purchases.MAX_QUANTITY)
+    line: int | None = Field(
+        default=None, ge=1, le=purchases.MAX_QUANTITY, description="Left out, the next."
+    )
     destination_site_hid: Hid | None = None
     expected_on: date | None = None
     notes: LongText | None = None
@@ -2105,11 +2144,28 @@ class PurchaseLinePatch(Model):
     """Fields of a purchase line to change, and the version they were read at."""
 
     row_version: int
-    catalog_entry_hid: Hid | None = None
-    quantity: int | None = Field(
-        default=None, ge=0, le=100_000, description="Never below what has arrived."
+    catalog_entry_hid: Hid | None = Field(
+        default=None,
+        description=(
+            "The model, corrected at any time. Null takes it off, which leaves the line not "
+            "tracked, only while nothing has arrived on it."
+        ),
     )
-    line: int | None = Field(default=None, ge=1, le=100_000)
+    items: Literal["follow", "stay"] | None = Field(
+        default=None,
+        description=(
+            "Where items have arrived on the line and its model is corrected: `follow` gives "
+            "each of them that is not retired the corrected model as well, in the same change, "
+            "and `stay` leaves them as they are, to be found by `purchase_line_mismatch`. "
+            "Required then, and a `422` without it."
+        ),
+    )
+    part_number: ShortText | None = None
+    description: LongText | None = None
+    quantity: int | None = Field(
+        default=None, ge=0, le=purchases.MAX_QUANTITY, description="Never below what has arrived."
+    )
+    line: int | None = Field(default=None, ge=1, le=purchases.MAX_QUANTITY)
     destination_site_hid: Hid | None = None
     expected_on: date | None = None
     notes: LongText | None = None
@@ -2124,7 +2180,7 @@ class PurchaseRequestOut(Model):
     status: PurchaseStatus
     notes: str | None
     lines: list[PurchaseLineOut]
-    quantity: int = Field(description="The items of all its lines.")
+    quantity: int = Field(description="The items of all its lines that are tracked.")
     received_quantity: int
     pending_quantity: int
     row_version: int
@@ -2139,7 +2195,7 @@ class PurchaseRequestCreate(Model):
     requested_on: date | None = None
     status: PurchaseStatus = "pending"
     notes: LongText | None = None
-    lines: list[PurchaseLineAdd] = Field(default=[], max_length=1000)
+    lines: list[PurchaseLineAdd] = Field(default=[], max_length=purchases.MAX_LINES)
 
 
 class PurchaseRequestPatch(Model):
@@ -2167,11 +2223,17 @@ class Receive(Model):
     """The items that arrived on a line, and when and where."""
 
     row_version: int
-    items: list[Arrived] = Field(default=[], max_length=1000)
+    items: list[Arrived] = Field(
+        default=[],
+        max_length=settings.MOST_ITEMS_PER_REQUEST,
+        description=(
+            "With `quantity`, at most as many as the setting `max_items_per_request` says."
+        ),
+    )
     quantity: int = Field(
         default=0,
         ge=0,
-        le=1000,
+        le=settings.MOST_ITEMS_PER_REQUEST,
         description="How many more arrived that nothing is known of yet, each named for its line.",
     )
     delivered_on: date | None = Field(default=None, description="Left out, today.")
@@ -2772,13 +2834,28 @@ class ChoicePatch(Model):
 
 
 class SettingOut(Model):
-    """A setting: the value in force, its default, and what it means."""
+    """A setting: the value in force, its default, what it means and what it takes. Or
+    a value that is fixed in the code, with `fixed` true: what it limits and why it is
+    fixed, at its default always."""
 
     key: str
     value: Any
     default: Any
     is_default: bool
-    meaning: str
+    meaning: str = Field(description="What the setting is for, or what a fixed value limits.")
+    accepts: str | None = Field(
+        default=None, description="The values a setting takes. Blank for a fixed value."
+    )
+    options: list[str] | None = Field(
+        default=None, description="The values to choose from, where a setting is of a list."
+    )
+    fixed: bool = Field(
+        default=False, description="Fixed in the code: listed, and not changed by any request."
+    )
+    reason: str | None = Field(default=None, description="Why a fixed value is fixed.")
+    decision: str | None = Field(
+        default=None, description="The decision that fixed it, where one did: `D-142`."
+    )
     row_version: int = Field(description="0 for a setting that has never been changed.")
     updated_at: datetime | None
     updated_by: str | None

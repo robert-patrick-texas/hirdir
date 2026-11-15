@@ -224,7 +224,7 @@ Nine of the files are new in 0.6.0: the external systems and what is registered 
 them; two support agreements, a Cisco one and a Juniper one, with the contracts
 grouped into them, a contract that stands by itself for switches bought lately, and
 what each contract covers; two purchase requests with their lines, on one of which two
-switches have arrived; the capacity lines of the worked example on the
+switches have arrived, and a line of tape beside them that is not tracked; the capacity lines of the worked example on the
 [data model](data-model.md#capacity-balance) page, one of them a draft; and one
 replacement. The dates of the contracts are fixed in the files, so what the coverage
 report says of them changes as the calendar moves on. The capacity report of the
@@ -255,6 +255,24 @@ way and changes nothing you set. Restart the service after a change:
 ```bash
 sudo systemctl restart hirdir
 ```
+
+To start again from a complete file, rather than from a copy kept somewhere, ask the
+application for one. `hirdir admin config` prints every key with its default and what
+it is for, each commented out; `--current` sets in it what the present file sets, as
+it sets it; and `--output` writes it to a file, which it does not write over without
+`--force`. Written with `--current`, the file has the mode and the group of the one it
+was read from, since it may hold the password of a proxy:
+
+```bash
+sudo hirdir admin config --current --output /etc/hirdir/config.toml.new
+sudo diff /etc/hirdir/config.toml /etc/hirdir/config.toml.new
+sudo mv /etc/hirdir/config.toml.new /etc/hirdir/config.toml && sudo systemctl restart hirdir
+```
+
+The settings of the inventory, the stack discount or the warning period of renewals,
+are in the database and not in this file. An Admin lists them with their defaults and
+changes them on the Settings page or by `PUT /settings/{key}`, and `null` returns one
+to its default.
 
 ## Backup and restore
 

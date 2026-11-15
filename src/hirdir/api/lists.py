@@ -13,11 +13,13 @@ from sqlalchemy.orm import Session
 from hirdir.api import records as shapes
 from hirdir.api.schemas import Page
 from hirdir.domain.errors import Invalid
-from hirdir.io import listing, tables
+from hirdir.io import filters, listing, tables
 from hirdir.io.fields import Listing
 
 Limit = Annotated[int, Query(ge=1, le=listing.MAX_LIMIT)]
 Offset = Annotated[int, Query(ge=0, le=listing.MAX_OFFSET)]
+# The rows of a page that names no limit.
+DEFAULT_LIMIT = listing.DEFAULT_LIMIT
 
 
 def sort_of(table: tables.Table) -> Any:
@@ -43,7 +45,7 @@ def _from_query(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description=(
                 "The short form, `field:op:value` conditions separated by spaces, or a "
                 "filter tree as JSON."
@@ -56,7 +58,7 @@ def _from_query(
             description="Field names, `-` in front for descending. Repeat or separate by commas."
         ),
     ] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
     include_archived: Annotated[
         bool, Query(description="Show retired records and items in Archived as well.")

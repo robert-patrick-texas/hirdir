@@ -553,10 +553,16 @@ EDITED = SETTINGS_OF_0_2_1.replace("# session_hours = 12", "session_hours = 11")
 )
 
 
+# 0.7.0 says what [database] url is for. A file that has the key already keeps its own
+# lines for it, comment and all, as it keeps every line of its own.
+URL_COMMENT = "# The database, as a SQLAlchemy URL. Left out, hirdir.db in the state directory.\n"
+
+
 def test_a_settings_file_nobody_edited_becomes_the_one_this_version_ships() -> None:
     merged, added = setup.with_new_settings(SETTINGS_OF_0_2_1, SETTINGS_NOW)
     assert added == ["files.max_megabytes", "upgrades.proxy"]
-    assert merged == SETTINGS_NOW
+    assert URL_COMMENT in SETTINGS_NOW
+    assert merged == SETTINGS_NOW.replace(URL_COMMENT, "")
 
 
 def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:

@@ -10,13 +10,14 @@ from sqlalchemy.orm.exc import StaleDataError
 from starlette.exceptions import HTTPException
 
 from hirdir.api import idempotent
-from hirdir.db import dialect
+from hirdir.db import dialect, engine
 from hirdir.domain import errors
 from hirdir.domain.accounts import NotSignedIn
 from hirdir.io import files
 
 MEDIA_TYPE = "application/problem+json"
-BUSY_RETRY_SECONDS = 5
+# A change that waited for the one writer as long as it may is sent again after as long.
+BUSY_RETRY_SECONDS = engine.WRITER_WAIT_SECONDS
 
 
 def problem(

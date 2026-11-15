@@ -61,6 +61,56 @@ and CLI's types are generated from it.
 | Users, groups, role grants, access codes, service tokens | | | yes |
 | Read audit events | yes | yes | yes |
 
+### Settings
+
+`GET /settings`, which every role reads, lists the settings of the inventory and then
+the values that are fixed in the code (P-136). A setting has its `key`, `value`, which
+is the value in force, `default`, `is_default`, `meaning`, which says what it is for,
+`accepts`, which says what values it takes, `options`, the values to choose from where
+it is one or more of a list, and `row_version`, `updated_at` and `updated_by`. A fixed
+value has `fixed` true, its `key` and `value`, `meaning`, which says what it limits,
+`reason`, which says why it is fixed, and `decision`, the decision that fixed it where
+one did, such as `D-142`. It is always at its default, at version 0.
+
+`PUT /settings/{key}` is for an Admin. It takes `row_version` and `value`, and is
+audited; `null` returns the setting to its default. A value the setting cannot take is
+a `422` that says what it takes, a fixed value refuses every change with a `422`, and a
+key that is neither is a `404`. What each setting means is on the
+[data model](data-model.md#choices-and-settings) page. Where a request leaves a value
+out, these decide it:
+
+| Setting | Where it decides |
+|---|---|
+| `renewal_warning_days` | `within_days` of `GET /reports/coverage`, how far ahead its list of what runs out soon looks; the renewal worklist and the alert after sign-in |
+| `renewal_pending_overdue_days` | when a pending renewal is overdue: the renewal worklist, the alert and the coverage report |
+| `end_of_life_date`, `end_of_life_within_days` | `date` and `within_days` of `GET /reports/end-of-life` |
+| `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
+
+The fixed values are these. What was decided:
+
+| Key | Value | Decision |
+|---|---|---|
+| `out_of_service_states` | Pending-Removal, Released, Archived: with a retired item, out of service | D-142 |
+| `out_of_hands_states` | Released, Archived: the item leaves its groups and its places | D-103 |
+| `received_state` | Delivered, the state of an item received on a purchase line | D-145 |
+| `condition_health` | failed and dead say failed, degraded and suspect degraded, good good; any other condition says nothing of health | D-112 |
+| `review_status_of_what_a_file_makes` | unreviewed | P-14 |
+
+And the limits that protect the service: `default_page_size` 100 and `max_page_size`
+1000, the rows of a page of a list, and `max_offset` 10,000,000; `max_filter_length`
+8000, the characters of a filter in the address of a request, `max_filter_depth` 8,
+`max_filter_conditions` 100, `max_filter_values` 1000 and `max_filter_value_length`
+1000; `max_pattern_length` 200 and `max_pattern_repeat` 100 of a regular expression,
+`pattern_match_seconds` 0.05 and `pattern_request_seconds` 1; `max_file_rows` 100,000,
+of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (P-134);
+`max_minor_item_depth` 3, `max_group_nesting` 8, `max_location_depth` 8 and
+`max_region_depth` 16; `max_request_lines` 1000 and `max_line_quantity` 100,000;
+`sign_in_max_delay_seconds` 300 and `sign_in_window_seconds` 3600;
+`idempotency_key_hours` 24, `max_idempotency_key_length` 200 and
+`max_kept_answer_bytes` 1,048,576; and `writer_wait_seconds` 5, how long a change waits
+for the one writer before it is answered `503`. Each is listed with the value the code
+uses, read from where it is used.
+
 ## Filter grammar
 
 One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
@@ -319,7 +369,7 @@ systems and registrations, capacity lines and replacements.
 | `contracts` | `number`, `vendor`, `agreement`, `reseller`, `starts_on`, `ends_on`, `status`, `support_level`, `purchase_reference`, `account_manager`, `support_contact`, `support_url`, `annual_cost`, `notes`, the five `next_` columns of an agreement, `record_status`, `tags` | `covered_items`, and a `_source` for each of the seven fields a contract may have from its agreement |
 | `contract_coverage` | `contract`, `vendor`, `item`, `starts_on`, `ends_on`, `left_service` | `in_force`, and `effective_starts_on` and `effective_ends_on`, the dates in force |
 | `purchase_requests` | `reference`, `requested_on`, `status`, `notes` | |
-| `purchase_lines` | `request`, `line`, `vendor`, `pid`, `quantity`, `destination_site`, `expected_on`, `notes` | `received_quantity`, `pending_quantity`, `mismatched_items` |
+| `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
 | `capacity_lines` | `side`, `category`, `name`, `quantity`, `units_each`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
 
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
@@ -366,7 +416,7 @@ are read there too.
 | Limits | 20 MB and 100,000 rows per file. A larger file is a `413`. A site may raise the 20 MB in its configuration file and in nginx; see [install.md](install.md#uploads). Behind the packaged nginx a body of more than 20 MB is refused by nginx itself, with a `413` that is nginx's own page and not a problem document |
 | Agreements | `agreement` on a contract is the name of the support agreement it is grouped into, and `!clear` takes it out of one. A row of a contract that holds the very value the contract has from its agreement leaves it inheriting; an export with `own_values` writes only what the contract says of its own |
 | Contracts and coverage | `contract` in a file of coverage is the number of a contract, and `vendor` beside it says which where two vendors use one number. A row covers one item, named as any column names an item. A row with no dates takes the contract's. An import does not remove a coverage: it is ended by a row that gives it `ends_on`. Under one contract an item has one coverage at most with no start of its own, so a row with no `starts_on` is that one; a row that finds one which has ended, and gives it nothing new, says so in its notes, since covering the item again takes a row with the day the new coverage starts. A file of contracts or of agreements holds the record as it is stored: the present term in `number`, `starts_on` and the rest, and a term that is still to begin in the `next_` columns |
-| Purchases | `request` of a line is the reference of its request, and `line` its number there: left out, a new line takes the next. `purchase_line` on an item names the line it arrived on, as `RITM0012345/2`, or by the HID of the line. A file of items with that column is how the serial numbers of a delivery are loaded: each new item is in whatever state its row says, and counts as received on its line. A row that would put more items on a line than its quantity is rejected, and so is one for a line of a request that is a draft or cancelled. A row with no `vendor` and `pid` that names a line takes the line's model, and one that names another model than its line's is rejected. What was received as a count is named for its line, `RITM0012345/2-003`, and a file that names it so gives it its serial number |
+| Purchases | `request` of a line is the reference of its request, and `line` its number there: left out, a new line takes the next. `part_number` and `description` are kept as procurement gave them. A row is matched to a model by its part number, `pid` where the row gives one and `part_number` where it does not, against the PIDs of the catalog without regard to case, surrounding space or the `=` that ends the part number of a spare, on either side: `PWR-C1-715WAC-P=` finds `PWR-C1-715WAC-P`. It is matched among the models of `vendor` where the row names one, and among all models where it does not. One model that answers is the line's. None, a vendor there is not, or two models or more, such as one PID of two vendors, leave a new line not tracked, and its notes in the preview say why, naming the models where there are several. A file of lines makes no vendor and no catalog entry. A row whose part number answers to no one model leaves a line the model it has, and a row that names `pid` and no part number gives a line that it cannot match that PID as its part number. A row that would give a line on which items have arrived another model is rejected: that is corrected by hand, where what becomes of the items is said. A line has a model or a part number, and a row that leaves it neither is rejected. `purchase_line` on an item names the line it arrived on, as `RITM0012345/2`, or by the HID of the line. A file of items with that column is how the serial numbers of a delivery are loaded: each new item is in whatever state its row says, and counts as received on its line. A row that would put more items on a line than its quantity is rejected, and so is one for a line of a request that is a draft or cancelled. A row with no `vendor` and `pid` that names a line takes the line's model, and one that names another model than its line's is rejected. What was received as a count is named for its line, `RITM0012345/2-003`, and a file that names it so gives it its serial number |
 | Registrations | A row names a `system` and one of `item` and `group`. A registration is not removed by an import: a row gives it the status `removed` |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
 | Load order | tags, vendors, catalog entries, contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
@@ -497,8 +547,8 @@ status, that is out of service and that a contract still counts: one that is ret
 or in Pending-Removal, Released or Archived and whose cover goes on, and one whose
 coverage was ended because it left while the term of its contract still runs. It is
 the list to send the vendor: cover that is paid for and no longer needed. `expiring`
-is the items in service whose cover runs out within `within_days`, 90 unless asked
-otherwise. `overlapping` is the items that more than one contract covers today: a
+is the items in service whose cover runs out within `within_days`, the setting
+`renewal_warning_days`, 90 unless changed, where it is not asked. `overlapping` is the items that more than one contract covers today: a
 list to look at before a renewal, and not a fault, since two contracts for one device
 are usually one too many and now and then are meant. `renewal_pending` is the items
 covered by a contract whose renewal is pending. `section` names one of the five, and
@@ -514,8 +564,9 @@ while their status still says active, with the filter that lists them on
 
 **The end-of-life report**, `GET /reports/end-of-life`, takes `filter`,
 `include_drafts` and `include_archived`, and `date`: `end_of_sale`,
-`end_of_sw_support`, `end_of_hw_support` or `ldos`, which it is unless asked
-otherwise. A date is the one in force for the item, its own or its model's.
+`end_of_sw_support`, `end_of_hw_support` or `ldos`: where it is not asked, the setting
+`end_of_life_date`, `ldos` unless changed. A date is the one in force for the item,
+its own or its model's.
 
 ```json
 { "as_of": "2026-11-14", "within_days": 730, "date": "ldos",
@@ -529,8 +580,8 @@ otherwise. A date is the one in force for the item, its own or its model's.
   "section": "approaching", "items": [ "..." ], "total": 40, "limit": 100, "offset": 0 }
 ```
 
-`past` is before today and `approaching` from today to `within_days` ahead, 730
-unless asked otherwise. `dates` counts both for each of the four dates.
+`past` is before today and `approaching` from today to `within_days` ahead: where it
+is not asked, the setting `end_of_life_within_days`, 730 unless changed. `dates` counts both for each of the four dates.
 `by_fiscal_year` has one row for each fiscal year that the chosen date of an item of
 the view falls in, past years among them: a fiscal year starts on the first day of the
 `fiscal_year_start_month` setting and is named for the calendar year it ends in.
@@ -777,8 +828,8 @@ hirdir capacity list                             # the lines of supply and of ot
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
 | Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts |
-| A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
-| A purchase | `hirdir purchases show` takes the HID or the reference of a request. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
+| A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. It sends them as many at a time as the setting `max_items_per_request` says. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
+| A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the four kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
 | Secrets | Never echoed, never in logs |
@@ -794,8 +845,21 @@ hirdir admin backup
 hirdir admin restore FILE
 hirdir admin reset                               # clear the inventory; --everything for all
 hirdir admin check                               # schema version, integrity, settings
+hirdir admin config                              # a complete configuration file, every key at its default
+hirdir admin config --current --output config.toml.new   # with what the present file sets, set
 hirdir admin serve                               # what the service runs
 ```
+
+`hirdir admin config` writes a complete configuration file from the application
+itself: every key of every table, each with its default and the comment that says what
+it is for, commented out at its default. It is the file the package ships for
+`hirdir-setup --settings`. With `--current` each key that the file in force sets
+(`/etc/hirdir/config.toml`, or `HIRDIR_CONFIG`) is set as it sets it, and what it sets
+that this version does not read is kept at the end of its table under a comment that
+says so. It writes to standard output, or to `--output PATH`, which it does not write
+over without `--force`; with `--current` that file has the mode and the group of the
+file in force, since it may hold the password of a proxy. It reads no database and
+changes nothing else.
 
 Run as root, an admin command first steps down to the user that owns the state
 directory, so it never leaves behind a file the service cannot write.
