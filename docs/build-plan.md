@@ -105,8 +105,9 @@ showed. It adds no scenario and no kind of record.
   member's next term and beginning with the agreement's new term. An earlier term of a
   contract that joined or left the agreement partway through is dated by the days it
   was a member (D-164).
-- **Not to be renewed.** A device is flagged as one whose coverage is not renewed, such
-  as an access point or a telephone whose support came with its purchase. A renewal
+- **Not to be renewed.** A model, or a single device, is flagged as one whose coverage
+  is not renewed, such as an access point or a telephone whose support came with its
+  purchase; a device inherits the flag from its model and may override it. A renewal
   leaves it behind, its lack of cover is no gap, and a list and a count by model show
   what is left out on purpose (P-118). Until then an item is left out by ending its
   coverage on an earlier day (D-156).
