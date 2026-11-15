@@ -44,7 +44,10 @@ After the MVP, in the order currently expected: RADIUS sign-in; access-code rule
 discovery observations and reconciliation; the observed status of items and groups
 written by monitoring tools, which until then is set by hand or by an import (D-92);
 outward change feed and host lists for monitoring tools; planning views for draft sites and items; cell-range selection and
-editing in the grid; PostgreSQL; a container image.
+editing in the grid; PostgreSQL; a container image; a colour theme for the web page that
+each person chooses, kept in the browser's local storage and never in a cookie, from the
+themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
+to reuse there first if they cannot be taken as they stand (P-144).
 
 A release whose last number is not zero carries corrections to the one before it and
 adds no scenario. One that is planned ahead has a row, as 0.6.1 has; the others came

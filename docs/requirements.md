@@ -278,6 +278,9 @@ later, for example a Last Day of Support date on its model.
   and returned to it by one change. A limit that protects the service MAY stay fixed,
   and is then listed as fixed. The application MUST be able to write a complete
   configuration file, every key with its default and description.
+- **R10.7** LATER: a person MAY choose the colour theme of the web page. One who has
+  chosen none sees the default. The choice is kept in the browser's local storage and
+  never in a cookie (P-144).
 
 ### R11 Import and export
 
