@@ -15,7 +15,7 @@ from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import AuditEvent, CapacityRecord
 from hirdir.domain import audit
 from hirdir.io import balance
-from hirdir.schedule import JOBS, Job, Scheduler, daily, weekly
+from hirdir.schedule import CAPACITY_RECORD, JOBS, Job, Scheduler, daily, weekly
 from tests.api.inventory import API, Maker, errors
 from tests.api.test_files import Files, counts, table
 
@@ -450,7 +450,7 @@ def test_the_records_are_the_oldest_week_first_and_sorted_by_any_column(
 
 def test_the_scheduler_records_each_monday_just_after_midnight(config: Config) -> None:
     sessions = make_sessions(make_engine(config.database_url))
-    scheduler = Scheduler(sessions)
+    scheduler = Scheduler(sessions, (CAPACITY_RECORD,))
     # The application's time zone is America/New_York: a Monday just after midnight
     # there is five hours later in UTC, in the winter.
     sunday = datetime(2027, 1, 10, 23, 30, tzinfo=UTC)
@@ -468,7 +468,7 @@ def test_the_scheduler_records_each_monday_just_after_midnight(config: Config) -
             ("create", "system", None)
         }
     # Started again in a week that has its record, it makes none.
-    again = Scheduler(sessions)
+    again = Scheduler(sessions, (CAPACITY_RECORD,))
     assert again.run_due(datetime(2027, 1, 12, 12, 0, tzinfo=UTC), starting=True) == [
         "capacity record"
     ]
@@ -505,7 +505,7 @@ def test_the_times_of_a_job_follow_the_time_zone() -> None:
     early = datetime(2027, 3, 28, 22, 0, 30, tzinfo=UTC)
     assert each_monday(early, zone) == datetime(2027, 3, 22, 0, 1, tzinfo=zone)
     assert daily()(wednesday, zone) == datetime(2027, 3, 31, 0, 1, tzinfo=zone)
-    assert [job.name for job in JOBS] == ["capacity record"]
+    assert [job.name for job in JOBS] == ["capacity record", "renewal alert"]
 
 
 def test_the_server_records_the_week_when_it_starts(config: Config) -> None:

@@ -19,7 +19,7 @@ import pytest
 
 from hirdir import config as config_module
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.schedule import Scheduler
+from hirdir.schedule import CAPACITY_RECORD, Scheduler
 from tests.acceptance.conftest import ADMIN, Server
 from tests.acceptance.test_item_scenarios import IVY
 from tests.acceptance.test_money_scenarios import Money
@@ -61,7 +61,7 @@ def test_s44_the_trend_shows_both_weeks_the_first_corrected_and_a_line_multiplie
     # Last Monday, just after midnight, the server recorded the week before.
     database = config_module.load(Path(server.env["HIRDIR_CONFIG"])).database_url
     engine = make_engine(database)
-    scheduler = Scheduler(make_sessions(engine))
+    scheduler = Scheduler(make_sessions(engine), (CAPACITY_RECORD,))
     scheduler.checked, due = _last_monday_just_after_midnight()
     assert scheduler.run_due(due) == ["capacity record"]
     engine.dispose()

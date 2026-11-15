@@ -5,13 +5,18 @@ leaves behind, and a contract's history across joining and leaving an agreement.
 import json
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from hirdir.config import Config
+from hirdir.db.engine import make_engine, make_sessions
 from hirdir.db.models import Agreement, AuditEvent, CatalogEntry, Contract, Item
+from hirdir.io import kept
+from hirdir.schedule import RENEWAL_ALERT, Scheduler
 from tests.api.inventory import API, errors
 from tests.api.test_contracts import Desk
 
@@ -486,3 +491,29 @@ def _event(db: Session, hid: str) -> AuditEvent:
     ).first()
     assert found is not None
     return found
+
+
+# --- worked out ahead of the first sign-in ----------------------------------------------
+
+
+def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
+    desk: Renewer, config: Config
+) -> None:
+    desk.contract("CON-LAP", starts_on=day(-400), ends_on=day(-10))
+    kept.drop()
+    sessions = make_sessions(make_engine(config.database_url))
+    scheduler = Scheduler(sessions, (RENEWAL_ALERT,))
+    start = datetime.now(UTC)
+    assert scheduler.run_due(start, starting=True) == ["renewal alert"]
+    with sessions() as db:
+        stamp = kept.stamp(db)
+    # The day's summary is kept, and the alert is answered from it.
+    assert any(key[0] == "renewal_alert" and key[2:] == stamp for key in kept._kept)
+    assert desk.get("/renewals/alert")["lapsed"]["count"] == 1
+    # It is due again just after the next midnight, and not before.
+    assert scheduler.run_due(start + timedelta(minutes=1)) == []
+    zone = ZoneInfo("America/New_York")
+    midnight = datetime.combine(
+        start.astimezone(zone).date() + timedelta(days=1), time(0, 2), tzinfo=zone
+    )
+    assert scheduler.run_due(midnight) == ["renewal alert"]
