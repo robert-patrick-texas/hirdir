@@ -25,6 +25,7 @@ export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
   { value: "external_systems", label: "External systems" },
   { value: "agreements", label: "Support agreements" },
   { value: "contracts", label: "Contracts" },
+  { value: "contract_contacts", label: "Contacts of agreements and contracts" },
   { value: "purchase_requests", label: "Purchase requests" },
   { value: "purchase_lines", label: "Lines of purchase requests" },
   { value: "items", label: "Items" },

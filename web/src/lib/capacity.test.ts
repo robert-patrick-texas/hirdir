@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
   balanceTone,
   balanceWords,
+  type CapacityLine,
+  type CapacityReport,
   type CapacityView,
   capacityLinePath,
+  EFFECTS,
+  lineForForm,
   MEASURES,
+  MULTIPLYING_CATEGORIES,
   measureText,
+  multiplies,
+  regionRows,
   SIDES,
+  staffLineOptions,
   supplyCategories,
+  targetsText,
 } from "./capacity";
 
 const choice = (value: string, label: string, active = true) => ({
@@ -125,5 +134,135 @@ describe("how a balance stands", () => {
 describe("capacityLinePath", () => {
   it("leads to a line by its HID", () => {
     expect(capacityLinePath("l-1")).toBe("/capacity/l-1");
+  });
+});
+
+function line(name: string, more: Partial<CapacityLine> = {}): CapacityLine {
+  return {
+    hid: `l-${name}`,
+    side: "supply",
+    category: "staff",
+    category_label: "Staff",
+    name,
+    effect: "add",
+    quantity: "1",
+    units_each: "1",
+    units: "1",
+    factor: null,
+    share: null,
+    applies_to: [],
+    in_date: true,
+    annual_cost: null,
+    vendor: null,
+    vendor_hid: null,
+    region: null,
+    region_hid: null,
+    site: null,
+    site_hid: null,
+    starts_on: null,
+    ends_on: null,
+    notes: null,
+    record_status: "active",
+    row_version: 1,
+    created_at: "2026-11-02T14:00:00Z",
+    updated_at: "2026-11-02T14:00:00Z",
+    ...more,
+  };
+}
+
+describe("a line that multiplies", () => {
+  const lines = [
+    line("Network engineer"),
+    line("Junior network engineer", { record_status: "draft" }),
+    line("Retired engineer", { record_status: "retired" }),
+    line("Escalation partner", { category: "professional_services" }),
+    line("AI assistant", { category: "tools", effect: "multiply" }),
+    line("Site consolidation project", { side: "demand", category: "other_work" }),
+  ];
+
+  it("is a tool or a service, and is told from a line that adds", () => {
+    expect(EFFECTS.map((effect) => effect.value)).toEqual(["add", "multiply"]);
+    expect(MULTIPLYING_CATEGORIES).toEqual(["tools", "services"]);
+    expect(multiplies(line("x", { effect: "multiply" }))).toBe(true);
+    expect(multiplies(line("x"))).toBe(false);
+  });
+
+  it("works on the staff lines that add and are not retired, drafts among them", () => {
+    expect(staffLineOptions(lines)).toEqual([
+      { value: "l-Network engineer", label: "Network engineer" },
+      { value: "l-Junior network engineer", label: "Junior network engineer (draft)" },
+    ]);
+  });
+
+  it("keeps the lines it works on already, whatever they are now", () => {
+    const assistant = line("AI assistant", {
+      effect: "multiply",
+      applies_to: [{ hid: "l-Retired engineer", name: "Retired engineer" }],
+    });
+    expect(staffLineOptions(lines, assistant).map((option) => option.label)).toContain(
+      "Retired engineer",
+    );
+    expect(lineForForm(assistant).applies_to).toEqual(["l-Retired engineer"]);
+  });
+
+  it("names the lines it works on with their units where they count", () => {
+    const multiplying = {
+      hid: "l-ai",
+      name: "AI assistant",
+      category: "services",
+      factor: "1.25",
+      share: "0.5",
+      base_units: "4.8",
+      units: "0.6",
+      applies_to: [
+        { hid: "l-1", name: "Network engineer", counted: true, units: "3" },
+        { hid: "l-2", name: "Retired engineer", counted: false, units: "0" },
+      ],
+    };
+    expect(targetsText(multiplying)).toBe("Network engineer (3), Retired engineer");
+  });
+});
+
+describe("the demand of each region", () => {
+  const region = (path: string | null, weight: string, parent: string | null = null) => ({
+    region_hid: path ? `r-${path}` : null,
+    parent_region_hid: parent,
+    path,
+    support_weight: weight,
+    infrastructure_demand: String(Number(weight) / 300),
+    share_pct: "25",
+  });
+  const report: CapacityReport = {
+    as_of: "2026-11-15",
+    weight_per_resource_unit: "300",
+    active: {
+      ...example,
+      demand_by_region: [region("Americas", "1800"), region(null, "120")],
+    },
+    with_drafts: {
+      ...example,
+      demand_by_region: [
+        region("Americas", "1800"),
+        region("Americas > Central", "600", "r-Americas"),
+        region("Europe", "480"),
+        region(null, "150"),
+      ],
+    },
+  };
+
+  it("is one row for each region of either view, by path, and what is nowhere last", () => {
+    const rows = regionRows(report);
+    expect(rows.map((row) => row.path)).toEqual(["Americas", "Americas > Central", "Europe", null]);
+    expect(rows.map((row) => row.depth)).toEqual([0, 1, 0, 0]);
+  });
+
+  it("holds each view's own figures, and none where a view has no such row", () => {
+    const [americas, central, , nowhere] = regionRows(report);
+    expect(americas?.active?.support_weight).toBe("1800");
+    expect(central?.active).toBeNull();
+    expect(central?.drafts?.support_weight).toBe("600");
+    expect(nowhere?.key).toBe("");
+    expect(nowhere?.active?.support_weight).toBe("120");
+    expect(nowhere?.drafts?.support_weight).toBe("150");
   });
 });

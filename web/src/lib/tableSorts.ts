@@ -33,14 +33,34 @@ export const IMPORTS_SORT: SortFields = {
   mode: "mode",
   status: "status",
   rows: "row_count",
+  worked: "rows_done",
+  applied: "applied",
+  stale: "stale",
   by: "created_by_name",
 };
 
-/** `GET /imports/{hid}/rows`: the rows of one preview. */
+/** `GET /imports/{hid}/rows`: the rows of one preview, and what the apply did with each. */
 export const PREVIEW_ROWS_SORT: SortFields = {
   row: "row",
   record: "key",
   outcome: "outcome",
+  applied: "applied_outcome",
+};
+
+/** `GET /capacity-records`: the balance week by week, of the view without the drafts. */
+export const CAPACITY_RECORDS_SORT: SortFields = {
+  week: "week_of",
+  recorded: "recorded_at",
+  demand: "active.demand",
+  supply: "active.supply",
+  balance: "active.balance",
+  coverage: "active.coverage_pct",
+  drafts_demand: "with_drafts.demand",
+  drafts_supply: "with_drafts.supply",
+  drafts_balance: "with_drafts.balance",
+  drafts_coverage: "with_drafts.coverage_pct",
+  adjusted: "adjusted",
+  note: "note",
 };
 
 /** `GET /reports/duplicates`. */

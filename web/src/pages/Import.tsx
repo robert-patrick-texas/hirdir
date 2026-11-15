@@ -1,10 +1,16 @@
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { type ApiError, api } from "../api";
 import { useAuth } from "../auth";
 import { SelectField } from "../components/Field";
 import { Pager } from "../components/Pager";
-import { ApplyPreview, JobCounts, PreviewRows } from "../components/Preview";
+import {
+  ApplyCounts,
+  ApplyPreview,
+  JobCounts,
+  LeftOutOf,
+  PreviewRows,
+} from "../components/Preview";
 import { Problem } from "../components/Problem";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -22,14 +28,24 @@ import {
   modeLabel,
   previewQuery,
 } from "../lib/imports";
-import { countsText, type Job, type Preview, type StaleRow, statusLabel } from "../lib/preview";
+import {
+  countsText,
+  isWorking,
+  type Job,
+  type Preview,
+  progressText,
+  statusLabel,
+} from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { IMPORTS_SORT } from "../lib/tableSorts";
 import type { Entity } from "../lib/transfer";
+import { POLL_MS, useJob } from "../lib/useJob";
 import { useServerSort } from "../lib/useServerSort";
 
 const JOBS_PAGE = 20;
+// How long the list of past imports waits to be read again while one of it is applying.
+const JOBS_POLL_MS = 2 * POLL_MS;
 
 /** A file as it was sent for a preview, kept while the page is open to send it again. */
 interface Sent {
@@ -227,30 +243,30 @@ interface OneJobProps {
   again: (() => void) | undefined;
 }
 
-/** One stored preview: what it is, what it would do or did, and the button to apply it. */
+/**
+ * One stored preview: what it is, what it would do or did, and the button to apply it.
+ * While it is being applied the page follows it, and once it has ended lists the rows it
+ * left out. It may be left and come back to: it is read afresh, and followed again.
+ */
 function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
   const [turn, setTurn] = useState(0);
-  const [stale, setStale] = useState<StaleRow[]>([]);
-  const loaded = useLoad(`import ${hid}`, (signal) =>
-    api.request("get", "/api/v1/imports/{hid}", { path: { hid }, signal }),
-  );
+  const followed = useJob(hid, {
+    onEnded: () => {
+      setTurn((count) => count + 1);
+      onChanged();
+    },
+  });
   // The answer of the preview is shown at once; the job as the server has it follows.
-  const job: Job | undefined = loaded.data ?? sent?.preview.job;
+  const job: Job | undefined = followed.job ?? sent?.preview.job;
   const bulk = job?.source === "bulk";
-
-  function changed() {
-    setTurn((count) => count + 1);
-    loaded.reload();
-    onChanged();
-  }
 
   return (
     <section aria-labelledby="import-job" data-testid="import-job" data-status={job?.status}>
       <h2 id="import-job">
         {job ? (bulk ? "Bulk edit" : `Preview of ${job.file_name ?? "a file"}`) : "Preview"}
       </h2>
-      <Problem error={loaded.error} />
-      {loaded.loading && !job && (
+      <Problem error={followed.job ? null : followed.error} />
+      {followed.loading && !job && (
         <p role="status" className="muted loading-late">
           Loading…
         </p>
@@ -280,14 +296,14 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
             <dd className="mono">{job.hid}</dd>
           </dl>
           <JobCounts job={job} />
+          <ApplyCounts job={job} />
           <ApplyPreview
             job={job}
             noun={bulk ? ["item", "items"] : ["row", "rows"]}
             busy={busy}
-            onApplied={changed}
-            onOutOfDate={(rows) => {
-              setStale(rows);
-              changed();
+            onStarted={(started) => {
+              followed.started(started);
+              onChanged();
             }}
             again={again}
             againHint={
@@ -296,7 +312,8 @@ function OneJob({ hid, sent, busy, onChanged, again }: OneJobProps) {
                 : "Choose the file again above to make a new preview."
             }
           />
-          <PreviewRows job={job} preview={sent?.preview} stale={stale} turn={turn} />
+          <LeftOutOf job={job} turn={turn} />
+          <PreviewRows job={job} preview={sent?.preview} turn={turn} />
         </>
       )}
     </section>
@@ -325,6 +342,15 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
   );
   const items = jobs.data?.items ?? [];
   const holdsAll = jobs.data ? jobs.data.total === items.length : false;
+  // A job of the list that is being applied is followed here too: the list is read again
+  // a moment after each answer, until none of those on show is under way.
+  const underWay = items.some(isWorking);
+  const { loading, reload } = jobs;
+  useEffect(() => {
+    if (!underWay || loading) return;
+    const timer = setTimeout(reload, JOBS_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [underWay, loading, reload]);
 
   return (
     <section aria-labelledby="import-jobs">
@@ -375,7 +401,16 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                     Status
                   </SortTh>
                   <SortTh sort={sort.header("rows", holdsAll)} column="rows">
-                    Rows
+                    Rows, as previewed
+                  </SortTh>
+                  <SortTh sort={sort.header("worked", holdsAll)} column="worked">
+                    Worked
+                  </SortTh>
+                  <SortTh sort={sort.header("applied", holdsAll)} column="applied">
+                    Applied
+                  </SortTh>
+                  <SortTh sort={sort.header("stale", holdsAll)} column="stale">
+                    Changed since the preview
                   </SortTh>
                   <SortTh sort={sort.header("by", holdsAll)} column="by">
                     By
@@ -384,7 +419,11 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
               </thead>
               <tbody>
                 {sort.arrange(items, holdsAll).map((job) => (
-                  <tr key={job.hid} aria-current={job.hid === current ? "true" : undefined}>
+                  <tr
+                    key={job.hid}
+                    data-status={job.status}
+                    aria-current={job.hid === current ? "true" : undefined}
+                  >
                     <td className="nowrap">
                       <Time at={job.created_at} />
                     </td>
@@ -396,14 +435,40 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
                     </th>
                     <td>{entityLabel(job.entity)}</td>
                     <td>{modeLabel(job.mode)}</td>
-                    <td>{statusLabel(job)}</td>
+                    <td>
+                      {statusLabel(job)}
+                      {isWorking(job) && (
+                        <>
+                          {" "}
+                          <progress
+                            className="job-progress"
+                            max={Math.max(job.row_count, 1)}
+                            value={job.rows_done}
+                            aria-label={progressText(job)}
+                          />
+                        </>
+                      )}
+                    </td>
                     <td>{countsText(job)}</td>
+                    <td className="number nowrap" data-testid="job-worked">
+                      {job.status === "previewed" ? (
+                        <span className="muted">—</span>
+                      ) : (
+                        `${job.rows_done} of ${job.row_count}`
+                      )}
+                    </td>
+                    <td className="number">
+                      {job.status === "previewed" ? <span className="muted">—</span> : job.applied}
+                    </td>
+                    <td className="number">
+                      {job.status === "previewed" ? <span className="muted">—</span> : job.stale}
+                    </td>
                     <td>{job.created_by_name ?? <span className="muted">—</span>}</td>
                   </tr>
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="muted">
+                    <td colSpan={10} className="muted">
                       {source === "bulk"
                         ? "No bulk edit has been previewed."
                         : "No file has been previewed."}

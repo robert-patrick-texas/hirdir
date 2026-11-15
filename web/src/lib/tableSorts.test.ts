@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sortParam } from "./sort";
 import {
   AUDIT_SORT,
+  CAPACITY_RECORDS_SORT,
   CHILDREN_SORT,
   DUPLICATES_SORT,
   HISTORY_SORT,
@@ -14,6 +15,7 @@ import {
 const ALL = {
   USERS_SORT,
   AUDIT_SORT,
+  CAPACITY_RECORDS_SORT,
   IMPORTS_SORT,
   PREVIEW_ROWS_SORT,
   DUPLICATES_SORT,
@@ -40,7 +42,22 @@ describe("the sort fields of the paged tables", () => {
       mode: "mode",
       status: "status",
       rows: "row_count",
+      worked: "rows_done",
+      applied: "applied",
+      stale: "stale",
       by: "created_by_name",
+    });
+    expect(PREVIEW_ROWS_SORT).toEqual({
+      row: "row",
+      record: "key",
+      outcome: "outcome",
+      applied: "applied_outcome",
+    });
+    expect(CAPACITY_RECORDS_SORT).toMatchObject({
+      week: "week_of",
+      balance: "active.balance",
+      drafts_coverage: "with_drafts.coverage_pct",
+      adjusted: "adjusted",
     });
     expect(DUPLICATES_SORT).toEqual({
       address: "address",
@@ -84,7 +101,6 @@ describe("the sort fields of the paged tables", () => {
 
   it("has no field for what a page composes from a list: those are not sorted by the server", () => {
     expect(AUDIT_SORT.changes).toBeUndefined();
-    expect(PREVIEW_ROWS_SORT).toEqual({ row: "row", record: "key", outcome: "outcome" });
     expect(PREVIEW_ROWS_SORT.changes).toBeUndefined();
     expect(PREVIEW_ROWS_SORT.reasons).toBeUndefined();
   });
