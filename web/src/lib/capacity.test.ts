@@ -47,6 +47,8 @@ const example: CapacityView = {
   outside_units: "3",
   annual_cost: "57000.00",
   by_category: [],
+  multiplying_lines: [],
+  demand_by_region: [],
 };
 
 describe("the categories of a supply line", () => {
@@ -74,7 +76,7 @@ describe("the measures of a view of the balance", () => {
   it("are every number the server answers for a view, each once", () => {
     const keys = MEASURES.map((measure) => measure.key).sort();
     const answered = Object.keys(example)
-      .filter((key) => key !== "by_category")
+      .filter((key) => !["by_category", "multiplying_lines", "demand_by_region"].includes(key))
       .sort();
     expect(keys).toEqual(answered);
   });

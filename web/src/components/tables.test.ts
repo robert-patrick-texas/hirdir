@@ -261,6 +261,8 @@ function view(more: Partial<CapacityView>): CapacityView {
       { category: "tools", label: "Tools", lines: 1, units: "1.5", annual_cost: "0.00" },
       { category: "services", label: "Services", lines: 0, units: "0", annual_cost: "0.00" },
     ],
+    multiplying_lines: [],
+    demand_by_region: [],
     ...more,
   };
 }
@@ -432,9 +434,13 @@ const portfolio: Portfolio = {
       category: "professional_services",
       category_label: "Professional services",
       name: "Escalation partner",
+      effect: "add",
       quantity: "1",
       units_each: "1",
       units: "1",
+      factor: null,
+      share: null,
+      applies_to: [],
       annual_cost: "48000.00",
       vendor_hid: VENDOR,
       vendor: { hid: VENDOR, name: "Cisco" },
