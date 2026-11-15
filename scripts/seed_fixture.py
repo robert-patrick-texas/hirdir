@@ -36,6 +36,14 @@ from 2001:db8::/32, MAC addresses are locally administered ones (02-5E-...) that
 manufacturer has, and serial numbers, asset tags, contract and agreement numbers and
 request numbers are counted up from one. Manufacturer and model names are real, as in
 `seed_examples.py`; the variants of a model, `-V01` and on, are not.
+
+What 0.7.0 added is there too: some of the older models are not to be renewed, and a
+few items say otherwise of themselves; a few contracts in agreements are marked to end
+with their present term, and a few that share an agreement's period still say their
+renewal is pending or that they have expired, which puts them on the list to review;
+and the operations team has capacity lines, by region and by site, some that multiply
+the staff lines, a draft or two and one that has ended, with the balance recorded for
+each of the last four weeks.
 """
 
 import argparse
@@ -64,6 +72,8 @@ from hirdir.db.models import (
     Address,
     Agreement,
     AuditEvent,
+    CapacityLine,
+    CapacityRecord,
     CatalogEntry,
     Contract,
     ContractCoverage,
@@ -73,12 +83,14 @@ from hirdir.db.models import (
     LifecycleRule,
     PurchaseLine,
     PurchaseRequest,
+    Region,
     TagLink,
 )
 from hirdir.domain import (
     accounts,
     addresses,
     audit,
+    capacity,
     catalog,
     contacts,
     contracts,
@@ -94,6 +106,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.ids import new_hid
+from hirdir.io import balance
 
 ROOT = Path(__file__).resolve().parent.parent
 FOLDER = ROOT / "fixture-data"
@@ -479,11 +492,13 @@ class Made:
     tags: dict[str, str]
     contracts: dict[str, list[Contract]]
     spans: dict[str, contracts.Span]
+    # The models that are not to be renewed.
+    flagged: set[str] = field(default_factory=set)
 
 
 def _catalog(
     db: Session, dice: Dice
-) -> tuple[dict[str, str], dict[str, list[str]], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, list[str]], dict[str, str], set[str]]:
     vendors = {
         name: catalog.create_vendor(
             db, SEED, {"name": name, "aliases": aliases, "notes": notes}
@@ -492,6 +507,7 @@ def _catalog(
     }
     entries: dict[str, list[str]] = defaultdict(list)
     maker_of: dict[str, str] = {}
+    flagged: set[str] = set()
     today = clock.today()
     for use, type_, models in FAMILIES:
         for vendor, pid, model, function, value, weight, cost in models:
@@ -513,10 +529,16 @@ def _catalog(
                     fields["end_of_sw_support"] = gone + timedelta(days=3 * 365)
                     fields["end_of_hw_support"] = gone + timedelta(days=5 * 365)
                     fields["ldos"] = gone + timedelta(days=5 * 365)
+                    # Some of the older models are to be let go: their support is not
+                    # to be renewed.
+                    if dice.chance(0.25, "not renewed", pid, variant):
+                        fields["do_not_renew"] = True
                 entry = catalog.create_entry(db, SEED, fields)
                 entries[f"{vendor}/{use}"].append(entry.hid)
                 maker_of[entry.hid] = vendor
-    return vendors, entries, maker_of
+                if fields.get("do_not_renew"):
+                    flagged.add(entry.hid)
+    return vendors, entries, maker_of, flagged
 
 
 def _location(
@@ -747,6 +769,14 @@ def _contract_fields(
         fields["next_starts_on"] = begins
         fields["next_ends_on"] = begins + timedelta(days=364)
         co_termed = False
+    elif agreement is not None and not co_termed and dice.chance(0.3, "let go", number):
+        # The team marked it not to renew: it ends with its present term, soon (P-129).
+        fields["ends_with_term"] = True
+        ends = today + timedelta(days=dice.between(5, 200, "let go on", number))
+    elif co_termed and dice.chance(0.15, "to review", number):
+        # It shares its agreement's period and still says what it said before the
+        # agreement was renewed: a person is to look at it.
+        fields["status"] = dice.pick(contracts.ENDED_BY_A_TERM, "review status", number)
     if starts > ends:
         starts = ends - timedelta(days=364)
     if not co_termed:
@@ -780,7 +810,7 @@ def _contracts(
 
 def build_small(db: Session, dice: Dice, shape: Shape) -> Made:
     """Make what there are few of, through the rules."""
-    vendors, entries, maker_of = _catalog(db, dice)
+    vendors, entries, maker_of, flagged = _catalog(db, dice)
     places = _places(db, dice, shape)
     weighted, team_owner = _owners(db, dice, shape)
     marks = _operators(db, dice, places)
@@ -798,7 +828,9 @@ def build_small(db: Session, dice: Dice, shape: Shape) -> Made:
         for contract in listed
     }
     db.flush()
-    return Made(entries, maker_of, places, weighted, team_owner, marks, labels, made, spans)
+    return Made(
+        entries, maker_of, places, weighted, team_owner, marks, labels, made, spans, flagged
+    )
 
 
 # --- the items, written in bulk ------------------------------------------------------------
@@ -956,6 +988,11 @@ def _major(
         )
     if dice.chance(0.04, "override", use, number):
         row["ldos"] = today + timedelta(days=dice.between(200, 2500, "own ldos", number))
+    # An item's own word on renewing its support, against its model's: one to be let go
+    # of a model that is renewed, or one to be kept of a model that is not.
+    flagged = row["catalog_entry_hid"] in made.flagged
+    if dice.chance(0.15 if flagged else 0.01, "own flag", use, number):
+        row["do_not_renew"] = not flagged
     if state == "Purchased" and dice.chance(0.1, "draft", use, number):
         row["record_status"] = "draft"
     planned = Planned(row, use, place)
@@ -1242,6 +1279,127 @@ def make_groups(db: Session, planned_groups: list[dict[str, Any]]) -> None:
             groups.add_members(db, SEED, group.hid, members[start : start + at_once])
 
 
+# --- the capacity of the operations team, made through the rules ---------------------------
+
+# The staff lines of each region: the position, how many units one gives, and how many
+# there are at most.
+STAFF_LINES = (
+    ("Network engineer", "1", 6),
+    ("Senior network engineer", "1.8", 2),
+    ("Junior network engineer", "0.6", 3),
+)
+# Other work that calls on the team beside the infrastructure: name, units, and whether
+# it is only a draft, a what-if.
+OTHER_WORK = (
+    ("Site consolidation project", "1.5", False),
+    ("Refresh 2028 planning", "0.8", False),
+    ("Security audit remediation", "0.6", False),
+    ("Data center move", "2", True),
+)
+WEEKS_RECORDED = 4
+
+
+def make_capacity(db: Session, dice: Dice, places: list[Place]) -> None:
+    """Make the capacity lines of the operations team, and record the balance of each of
+    the last four weeks, as the server records it each Monday.
+
+    Each top region has its staff lines. Partners and smart hands at a few sites add to
+    them, an automation platform and a monitoring service multiply some of them, an
+    assistant that would multiply them more is a draft, and a contract engineer's line
+    has ended. Some lines began in the last weeks, so the weeks recorded differ.
+    """
+    today = clock.today()
+    tops = db.scalars(
+        select(Region).where(Region.parent_region_hid.is_(None)).order_by(Region.code_key)
+    ).all()
+    staff: dict[str, list[str]] = defaultdict(list)
+    for region in tops:
+        for name, each, most in STAFF_LINES:
+            began = today - timedelta(days=dice.between(1, 4, "began", region.code, name) * 7)
+            line = capacity.create_line(
+                db,
+                SEED,
+                {
+                    "side": capacity.SUPPLY,
+                    "category": capacity.STAFF,
+                    "name": f"{name}, {region.name}",
+                    "quantity": Decimal(dice.between(1, most, "staff", region.code, name)),
+                    "units_each": Decimal(each),
+                    "region_hid": region.hid,
+                    # Most were there before the weeks recorded; a few joined since.
+                    "starts_on": began if dice.chance(0.3, "joined", region.code, name) else None,
+                },
+            )
+            staff[name].append(line.hid)
+    # Partners, by contract, and smart hands at the largest sites. The contract
+    # engineer's line ended a month ago.
+    adding: list[dict[str, Any]] = [
+        {"category": "professional_services", "name": "Escalation partner", "cost": 48000},
+        {
+            "category": "professional_services",
+            "name": "Contract engineer",
+            "cost": 60000,
+            "starts_on": today - timedelta(days=180),
+            "ends_on": today - timedelta(days=30),
+        },
+    ]
+    adding += [
+        {
+            "category": "smart_hands",
+            "name": f"Smart hands, {place.code}",
+            "cost": 9000,
+            "units_each": Decimal("0.5"),
+            "site_hid": place.hid,
+        }
+        for place in sorted(places, key=lambda one: -one.weight)[:6]
+    ]
+    for fields in adding:
+        cost = Decimal(fields.pop("cost"))
+        capacity.create_line(
+            db,
+            SEED,
+            {"side": capacity.SUPPLY, "units_each": Decimal(1), "annual_cost": cost, **fields},
+        )
+    engineers = [*staff["Network engineer"], *staff["Senior network engineer"]]
+    multiplying = (
+        ("tools", "Automation platform", "1.25", "0.6", engineers, 17, "active"),
+        ("services", "Monitoring service", "1.1", "1", staff["Network engineer"], None, "active"),
+        ("services", "AI assistant", "1.15", "0.5", engineers, None, "draft"),
+    )
+    for category, name, factor, share, targets, days, status in multiplying:
+        capacity.create_line(
+            db,
+            SEED,
+            {
+                "side": capacity.SUPPLY,
+                "category": category,
+                "name": name,
+                "effect": capacity.MULTIPLY,
+                "factor": Decimal(factor),
+                "share": Decimal(share),
+                "applies_to": targets,
+                "annual_cost": Decimal(24000),
+                "starts_on": None if days is None else today - timedelta(days=days),
+                "record_status": status,
+            },
+        )
+    for name, units, draft in OTHER_WORK:
+        capacity.create_line(
+            db,
+            SEED,
+            {
+                "side": capacity.DEMAND,
+                "name": name,
+                "units_each": Decimal(units),
+                "record_status": "draft" if draft else "active",
+            },
+        )
+    db.flush()
+    now = clock.now()
+    for weeks in range(WEEKS_RECORDED, 0, -1):
+        balance.record(db, SEED, now - timedelta(days=7 * weeks))
+
+
 # --- writing the items, their addresses and their coverage ----------------------------------
 
 
@@ -1430,6 +1588,10 @@ def counts(db: Session) -> dict[str, int]:
         "contracts in agreements": of(Contract, Contract.agreement_hid.is_not(None)),
         "contracts pending renewal": of(Contract, Contract.status == contracts.RENEWAL_PENDING),
         "contracts with a next term": of(Contract, Contract.next_starts_on.is_not(None)),
+        "contracts to end with their term": of(Contract, Contract.ends_with_term.is_(True)),
+        "contracts to review": of(Contract, contracts.to_review_value()),
+        "catalog entries not to be renewed": of(CatalogEntry, CatalogEntry.do_not_renew.is_(True)),
+        "items with their own word on renewing": of(Item, Item.do_not_renew.is_not(None)),
         "purchase requests": of(PurchaseRequest),
         "purchase lines": of(PurchaseLine),
         "items on a purchase line": of(Item, Item.purchase_line_hid.is_not(None)),
@@ -1446,6 +1608,9 @@ def counts(db: Session) -> dict[str, int]:
         "coverages ended on leaving service": of(
             ContractCoverage, ContractCoverage.left_service.is_(True)
         ),
+        "capacity lines": of(CapacityLine),
+        "capacity lines that multiply": of(CapacityLine, CapacityLine.effect == capacity.MULTIPLY),
+        "capacity records": of(CapacityRecord),
         "audit events": of(AuditEvent),
     }
 
@@ -1473,6 +1638,7 @@ def build(folder: Path, items_wanted: int = ITEMS, seed: str = "hirdir") -> dict
             write_coverage(writer, dice, made, planned)
             writer.write_events()
             make_groups(db, planned_groups)
+            make_capacity(db, dice, made.places)
             db.commit()
             facts = {
                 "made_by": "scripts/seed_fixture.py",

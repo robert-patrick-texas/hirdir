@@ -1,7 +1,8 @@
-"""The timing fixture and the timing of the item filters: scripts/seed_fixture.py and
-scripts/time_filters.py."""
+"""The timing fixture, the timing of the item filters and the reports, and the timing of
+an import: scripts/seed_fixture.py, scripts/time_filters.py and scripts/time_import.py."""
 
 import importlib.util
+import json
 import sys
 from collections import Counter
 from pathlib import Path
@@ -21,8 +22,8 @@ from hirdir.db.models import (
     DeviceGroupMember,
     Item,
 )
-from hirdir.io import filters
-from hirdir.io.fields import ITEMS
+from hirdir.io import filters, imports
+from hirdir.io.fields import CONTRACTS, ITEMS
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
@@ -39,6 +40,7 @@ def _load(name: str) -> ModuleType:
 
 seed_fixture = _load("seed_fixture")
 time_filters = _load("time_filters")
+time_import = _load("time_import")
 PICKED = time_filters.Picked("CN-000001", "CN-000002", "01a1dcb2-60a7-7292-bd11-8593568637df")
 
 
@@ -87,6 +89,40 @@ def test_every_request_timed_is_one_the_item_list_takes() -> None:
         assert case.params["limit"] == time_filters.PAGE
 
 
+def test_every_contract_list_timed_is_one_the_contract_list_takes() -> None:
+    timed = [case for case in time_filters.cases(PICKED) if case.path.endswith("/contracts")]
+    assert {case.params.get("filter") for case in timed} == {
+        None,
+        "to_review:eq:true",
+        "renewal_overdue:eq:true",
+    }
+    for case in timed:
+        filters.to_sql(filters.parse(case.params.get("filter", "")), CONTRACTS.fields)
+        assert case.params["limit"] == time_filters.PAGE
+
+
+def test_each_kept_report_is_timed_anew_and_kept() -> None:
+    lists = ("/items", "/contracts")
+    reports = [case for case in time_filters.cases(PICKED) if not case.path.endswith(lists)]
+    anew = {(case.path, json.dumps(case.params)) for case in reports if case.anew}
+    kept = {(case.path, json.dumps(case.params)) for case in reports if not case.anew}
+    assert anew
+    assert anew <= kept
+    assert {path.rpartition("/v1")[2] for path, _ in kept} == {
+        "/reports/coverage",
+        "/reports/renewals",
+        "/renewals/alert",
+        "/reports/capacity",
+    }
+
+
+def test_the_target_bounds_the_median_and_the_95th_percentile() -> None:
+    case = time_filters.Case("one", "/", {})
+    assert not time_filters.over_target(time_filters.Timed(case, [250.0] * 15))
+    assert time_filters.over_target(time_filters.Timed(case, [310.0] * 15))
+    assert time_filters.over_target(time_filters.Timed(case, [250.0] * 14 + [700.0]))
+
+
 def test_a_folder_that_is_not_a_fixture_is_left_alone(tmp_path: Path) -> None:
     (tmp_path / "hirdir.db").write_text("not a fixture", encoding="utf-8")
     with pytest.raises(SystemExit, match="not a fixture"):
@@ -118,6 +154,12 @@ def test_a_small_fixture_has_every_kind_of_thing(small: tuple[Path, dict]) -> No
         "coverages ended on leaving service",
         "purchase lines",
         "items on a purchase line",
+        "contracts to end with their term",
+        "contracts to review",
+        "catalog entries not to be renewed",
+        "items with their own word on renewing",
+        "capacity lines that multiply",
+        "capacity records",
     ):
         assert counts[name] > 0, name
     engine = make_engine(Config(state_dir=folder).database_url)
@@ -167,7 +209,38 @@ def test_every_request_is_answered_on_the_fixture(small: tuple[Path, dict]) -> N
     for timed in results:
         assert len(timed.runs) == 1
         assert timed.total is not None
-    report = results[-1].total
-    assert report["out_of_service"] > 0
+    found = {timed.case.label: timed.total for timed in results}
+    # Worked out anew or kept, a report answers the same.
+    for label, anew in found.items():
+        if label.endswith(", anew"):
+            assert found[label.removesuffix(", anew") + ", kept"] == anew, label
+    assert found["GET /reports/coverage, kept"]["out_of_service"] > 0
+    assert found["GET /reports/coverage, kept"]["not_renewed"] > 0
+    assert found["GET /renewals/alert, kept"]["lapsed"] > 0
+    assert found["GET /reports/capacity, with the demand of each region"]["regions"] > 1
+    assert found["contracts, to_review:eq:true"] > 0
     assert len(time_filters.table(results).splitlines()) == len(results) + 1
     assert said[0].startswith("contract.number is CN-")
+
+
+def test_an_import_is_timed_on_a_copy_and_the_fixture_is_left_as_it_was(
+    small: tuple[Path, dict], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder, facts = small
+    held = {name: getattr(imports, name) for name in time_import.PARTS}
+    saved = tmp_path / "import.json"
+    rows = 2 * imports.BATCH_ROWS + 20
+    assert time_import.main([str(folder), "--rows", str(rows), "--save", str(saved)]) == 0
+    said = capsys.readouterr().out
+    assert "3 batches" in said
+    assert "2 pauses between them" in said
+    found = json.loads(saved.read_text(encoding="utf-8"))
+    assert found["job"]["applied"] == rows
+    assert len(found["batches"]) == 3
+    assert found["sign_ins_ms"] is not None
+    # The parts of an apply are as they were, and the fixture holds what it held.
+    assert {name: getattr(imports, name) for name in time_import.PARTS} == held
+    engine = make_engine(Config(state_dir=folder).database_url)
+    with make_sessions(engine)() as db:
+        assert db.scalar(select(func.count()).select_from(Item)) == facts["counts"]["items"]
+    engine.dispose()
