@@ -109,7 +109,7 @@ FIELDS = (
     "ends_with_term",
     "next_with_agreement",
 )
-# What a renewal of an agreement does with each contract that shares its period (P-129).
+# What a renewal of an agreement does with each contract that shares its period (D-180).
 MEMBER_CHOICES = ("same", "new_number", "ends")
 COVERAGE_FIELDS = ("contract_hid", "item_hid", "starts_on", "ends_on", "left_service")
 # An item has left service when it is retired or in one of these states (D-142).
@@ -127,7 +127,7 @@ def today(db: Session) -> date:
 
 def tied(record: Any) -> bool:
     """Say whether the next term of a contract is a new number that waits on its
-    agreement's next term, with no dates of its own (P-129)."""
+    agreement's next term, with no dates of its own (D-180)."""
     return bool(getattr(record, "next_with_agreement", False))
 
 
@@ -198,7 +198,7 @@ def status_of(record: Any, day: date) -> str:
     """Return the status in force: a renewal that was pending is no longer, and a
     contract that had expired is active again, once the term to come has begun. A new
     number that waited on the agreement's term changes no status when it begins: only a
-    person moves a member's status (P-129)."""
+    person moves a member's status (D-180)."""
     if record.status in ENDED_BY_A_TERM and next_started(record, day) and not tied(record):
         return ACTIVE
     return record.status
@@ -578,8 +578,8 @@ class MemberRenewed:
 @dataclass
 class Renewed:
     """A renewal and what it did besides: the coverages it ended because their items
-    are not to be renewed (P-131), and, for an agreement, what it did with each
-    contract that shares its period (P-129)."""
+    are not to be renewed (D-182), and, for an agreement, what it did with each
+    contract that shares its period (D-180)."""
 
     record: Any
     left_behind: int = 0
@@ -589,7 +589,7 @@ class Renewed:
 def members_of(db: Session, agreement_hid: str) -> list[Contract]:
     """Return the contracts that share an agreement's period: those in it that are not
     retired and whose end is the agreement's, having none of their own, whatever their
-    start (P-129)."""
+    start (D-180)."""
     return list(
         db.scalars(
             select(Contract)
@@ -720,7 +720,7 @@ def _renew_member(
     end = present["ends_on"]
     if asked.get("status") is not None and asked["status"] != member.status:
         # The status the operator gave this member in the renewal: the one way a
-        # renewal moves it (P-129).
+        # renewal moves it (D-180).
         _fold(db, context, member, RECORD_TYPE)
         records.apply(db, context, RECORD_TYPE, member, None, {"status": asked["status"]})
     if choice != "same":
@@ -771,7 +771,7 @@ def _renew_member(
 def _to_review(member: Contract, day: date) -> bool:
     """Say whether a member that a renewal of its agreement carries into the new term
     is one a person must look at: it says its renewal is pending or that it has
-    expired, which no renewal of the agreement changes (P-129), or it is marked not to
+    expired, which no renewal of the agreement changes (D-180), or it is marked not to
     be renewed."""
     return member.ends_with_term or status_of(member, day) in ENDED_BY_A_TERM
 
@@ -786,7 +786,7 @@ def renew_agreement(
 ) -> Renewed:
     """Renew an agreement: its new period, in one change. The contracts that share its
     period follow it, each as the renewal says: under its number, with a new number
-    that begins with the new term, or let go with the present term (P-129). The items
+    that begins with the new term, or let go with the present term (D-180). The items
     under them follow too, but those that are not to be renewed, whose coverage ends
     with the present term. A period that begins after today is kept as the next term,
     and the present one runs on until then."""
@@ -1131,8 +1131,8 @@ def renew_contract(
     until that day, so the items are covered throughout. The contract is active after
     a renewal that is in force at once, unless the renewal says another status. An
     item that is not to be renewed is left behind: its coverage ends with the present
-    term (P-131). The renewal keeps the team's mark not to renew, and replaces a new
-    number that waited on the agreement (P-129).
+    term (D-182). The renewal keeps the team's mark not to renew, and replaces a new
+    number that waited on the agreement (D-180).
     """
     dialect.hold_other_writers(db)
     contract = get_contract(db, hid)
@@ -1187,7 +1187,7 @@ def renew_contract(
 
 TermSource = Literal["own", "agreement", "none"]
 # What began a part of a contract's history: it was made, a renewal took effect, or it
-# joined, left or moved between agreements, a move being a join (P-130).
+# joined, left or moved between agreements, a move being a join (D-181).
 PartBegun = Literal["created", "renewal", "joined", "left"]
 
 
@@ -1210,7 +1210,7 @@ class Term:
     agreement_hid: str | None = None
     starts_on_source: TermSource = "own"
     ends_on_source: TermSource = "own"
-    # The days of this part of the history, and what began it (P-130).
+    # The days of this part of the history, and what began it (D-181).
     began_on: date | None = None
     ended_on: date | None = None
     began_by: PartBegun = "created"
@@ -1219,7 +1219,7 @@ class Term:
 @dataclass(frozen=True)
 class History:
     """The parts of a contract's or an agreement's history before the present one, the
-    latest first, and when and how the present part began (P-130)."""
+    latest first, and when and how the present part began (D-181)."""
 
     earlier: list[Term]
     began_on: date
@@ -1323,7 +1323,7 @@ def history(db: Session, record: Any, record_type: str = RECORD_TYPE) -> History
     They are read from the audit trail and stored nowhere else: every change of the
     record is undone in turn, from what it is now. A part ends where a renewal that
     gave another number or period took effect, and, for a contract, where it joined,
-    left or moved between agreements (P-130). `renewed_at` and `renewed_by` are when
+    left or moved between agreements (D-181). `renewed_at` and `renewed_by` are when
     the change that ended a part was entered, and by whom: for a renewal entered
     early, that is not the day its term began. A part of a contract has the dates it
     had in force, its agreement's term's where it had none of its own (D-163). A part
@@ -1570,7 +1570,7 @@ def still_counts(coverage: ContractCoverage, contract: Contract, day: date) -> b
 
 
 def overdue_after(db: Session) -> int:
-    """Return how many days a renewal may be pending before it is overdue (P-125)."""
+    """Return how many days a renewal may be pending before it is overdue (D-176)."""
     return int(settings.value(db, "renewal_pending_overdue_days"))
 
 
@@ -1592,7 +1592,7 @@ def renewal_overdue(contract: Contract, day: date, after: int) -> bool:
 def lapsed(record: Any, ends_on: date | None, day: date) -> bool:
     """Say whether an agreement or a contract has lapsed: its period in force has
     ended, and it still says that it is active. A contract that the team has marked not
-    to be renewed has not lapsed: it is on the list of what is let go (P-129)."""
+    to be renewed has not lapsed: it is on the list of what is let go (D-180)."""
     return (
         record.record_status != "retired"
         and not getattr(record, "ends_with_term", False)
@@ -1701,7 +1701,7 @@ def next_on_value(model: Any) -> ColumnElement[Any]:
 
 def to_review_value(contract: Any = Contract) -> ColumnElement[bool]:
     """Return whether a contract that shares its agreement's period is one a person
-    must look at since the agreement was renewed (P-129): it still says its renewal is
+    must look at since the agreement was renewed (D-180): it still says its renewal is
     pending or that it has expired, while its agreement is active and its period, the
     term to come among them, runs on. No renewal of an agreement changes its members'
     status."""
@@ -1998,7 +1998,7 @@ def add_coverage(
         ):
             # The end a renewal gave an item not to be renewed is the last day of the
             # term then, which is the contract's own end while its next term waits, and
-            # only then: it is kept, so that a file carries it out and back (P-131).
+            # only then: it is kept, so that a file carries it out and back (D-182).
             ends_on = given_end
         _check_span(db, contract, item.hid, starts_on, ends_on, None, f"{where}ends_on")
         coverage = ContractCoverage(
@@ -2041,7 +2041,7 @@ def update_coverage(
         if name in fields:
             given = records.checked_day(name, fields[name])
             # A date that is the coverage's own already stays its own, also where it is
-            # the contract's: the end a renewal gave an item not to be renewed (P-131).
+            # the contract's: the end a renewal gave an item not to be renewed (D-182).
             values[name] = (
                 given if given == getattr(coverage, name) else _own(given, getattr(its, name))
             )

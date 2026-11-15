@@ -75,7 +75,7 @@ ROUTES = {
 }
 IVY = ("ivy", "acceptance-inventory")
 IAN = ("ian", "acceptance-second")
-# An apply is worked by the server in the background (P-134). A scenario waits for it as
+# An apply is worked by the server in the background (D-185). A scenario waits for it as
 # a person would, looking at the job, for this long at the most, in seconds.
 WAIT_FOR_JOB = 120.0
 

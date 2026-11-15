@@ -6506,7 +6506,7 @@ export interface components {
       hid: string;
       /** Its period has ended, and it still says it is active. */
       lapsed: boolean;
-      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129). */
+      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (D-180). */
       members_to_review: components["schemas"]["ContractRef"][];
       name: string;
       /** The term that begins on a day to come. Until then the present one runs on. */
@@ -6601,7 +6601,7 @@ export interface components {
       lapsed: boolean;
       left_behind: number;
       members: components["schemas"]["MemberRenewedOut"][];
-      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129). */
+      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (D-180). */
       members_to_review: components["schemas"]["ContractRef"][];
       name: string;
       /** The term that begins on a day to come. Until then the present one runs on. */

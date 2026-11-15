@@ -6,7 +6,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 API = "/api/v1"
-# An apply is worked by the server's worker in the background (P-134). A test waits for
+# An apply is worked by the server's worker in the background (D-185). A test waits for
 # it as a person would, looking at the job, for this long at the most, in seconds.
 WAIT_FOR_JOB = 60.0
 

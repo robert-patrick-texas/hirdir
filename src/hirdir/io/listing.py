@@ -14,7 +14,7 @@ from hirdir.io import filters
 from hirdir.io.fields import Listing, default_view
 
 # The rows of a page where none is asked for, the most of one page, and the furthest
-# a page may start: limits that protect the service (P-136).
+# a page may start: limits that protect the service (D-187).
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 1000
 MAX_OFFSET = 10_000_000

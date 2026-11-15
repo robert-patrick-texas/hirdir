@@ -1,4 +1,4 @@
-"""Imports and bulk edits applied in the background, 50 rows to a batch (P-134).
+"""Imports and bulk edits applied in the background, 50 rows to a batch (D-185).
 
 These run the server's own worker, in its thread, as the server does: a test asks for an
 apply and waits for the job as a person would. What happens between two batches is

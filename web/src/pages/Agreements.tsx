@@ -777,7 +777,7 @@ interface AgreementRenewProps {
 /**
  * Renew an agreement, with what the renewal does with each contract that shares its
  * period: keep its number, the default, take a new number that begins with the new
- * term, or end with this term (P-122, P-129). The answer says what was done with each,
+ * term, or end with this term (D-173, D-180). The answer says what was done with each,
  * and how many coverages of items not to be renewed were left behind.
  */
 function AgreementRenew(props: AgreementRenewProps) {
@@ -1142,7 +1142,7 @@ interface MembersToReviewProps {
 
 /**
  * The members of the agreement to review, as its record lists them: those that still say
- * their renewal is pending or that they have expired while it runs on (P-129). Each is
+ * their renewal is pending or that they have expired while it runs on (D-180). Each is
  * made active, taken out of the agreement, or retired, by a person. The table holds all
  * of its rows, so it is sorted by its headers in the browser.
  */

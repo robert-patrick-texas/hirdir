@@ -96,7 +96,7 @@ const INHERITED: ReadonlyArray<[field: Inherited, label: string]> = [
 
 /**
  * What the page lists among the values in force: those above, and the flag not to renew,
- * which is yes or no, the item's own word or its model's (P-118, P-131).
+ * which is yes or no, the item's own word or its model's (D-169, D-182).
  */
 type InForceField = Inherited | "do_not_renew";
 const IN_FORCE: ReadonlyArray<[field: InForceField, label: string]> = [
@@ -314,7 +314,7 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
           )}
         </Fact>
         {catalog && catalog.links.length > 0 && (
-          // The links of its model: an item has none of its own (P-138).
+          // The links of its model: an item has none of its own (D-189).
           <Fact label="Links of its model">
             <div className="inherited" data-testid="model-links" data-source="catalog">
               <LinkList links={catalog.links} testId="model-links-list" />
@@ -1029,7 +1029,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       { name: "end_of_hw_support", label: "End of hardware support", kind: "date" },
       { name: "ldos", label: "Last day of support (LDoS)", kind: "date" },
       {
-        // Its own word on renewing its support: blank has its model's (P-131).
+        // Its own word on renewing its support: blank has its model's (D-182).
         name: "do_not_renew",
         label: "Not to be renewed",
         kind: "tristate",

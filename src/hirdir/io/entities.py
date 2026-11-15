@@ -170,7 +170,7 @@ class Run:
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
-        # --- an apply in batches (P-134) ---
+        # --- an apply in batches (D-185) ---
         # What the rows of the batch being applied have taught, to be forgotten again
         # if the batch is undone. None outside an apply.
         self._batch: list[Callable[[], None]] | None = None
@@ -584,7 +584,7 @@ class Entity:
         """
         return {}
 
-    # --- an apply in batches (P-134) ---
+    # --- an apply in batches (D-185) ---
 
     def together(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[Any]:
         """Return, for each row, what it is checked together with, or None.
@@ -2633,7 +2633,7 @@ class Contracts(Entity):
         Column("vendor"),
         Column("agreement"),
         *_TERMS,
-        # Let go with its present term (P-129), and a new number that waits on the
+        # Let go with its present term (D-180), and a new number that waits on the
         # agreement's next term with no dates of its own.
         Column("ends_with_term", "boolean"),
         Column("next_with_agreement", "boolean"),
@@ -2692,7 +2692,7 @@ class Contracts(Entity):
                 **contracts.term(within, contracts.today(db)),
             }
             # A member let go with its agreement's term holds that term's dates as its own
-            # (P-129), and they are the agreement's while the agreement's renewal waits:
+            # (D-180), and they are the agreement's while the agreement's renewal waits:
             # then, and only then, a marked row's dates are kept as its own, so that a file
             # carries it out and back. A member marked by hand follows its agreement, and
             # its dates, once the renewal has begun or where none waits, are inherited.
@@ -3077,7 +3077,7 @@ def _model_name(db: Session, entry: CatalogEntry) -> str:
 class PurchaseLines(Entity):
     """The lines of purchase requests, as procurement has them.
 
-    A row's part number is matched to the catalog (P-135): by `pid` where the row gives
+    A row's part number is matched to the catalog (D-186): by `pid` where the row gives
     one, and by `part_number` where it does not, among the models of `vendor` where it
     names one. One model that answers is the line's. None, or more than one, leaves the
     line untracked, or with the model a person gave it, and says why; a file of lines
@@ -3176,7 +3176,7 @@ class PurchaseLines(Entity):
         if pid and not part and len(found) != 1 and not (record and record.part_number):
             # What the row gave is kept as the part number of a line it cannot match. A
             # line it matches keeps none: it takes the PID it is corrected from when a
-            # person corrects its model (P-135), which is what a reload compares.
+            # person corrects its model (D-186), which is what a reload compares.
             given["part_number"] = pid
         if len(found) == 1:
             (entry,) = found
@@ -3668,7 +3668,7 @@ class DeviceGroupMembers(Entity):
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return " ".join(str(values[name]) for name in ("group", "item") if values.get(name))
 
-    # --- an apply in batches (P-134) ---
+    # --- an apply in batches (D-185) ---
 
     def together(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[Any]:
         """Keep the members of one group in one batch: they are checked together (D-91)."""

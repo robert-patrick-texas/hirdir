@@ -33,7 +33,7 @@ CATEGORY_LIST = "capacity_category"
 OTHER_WORK = "other_work"
 STAFF = "staff"
 # A line adds a fixed amount, or multiplies the staff lines it applies to. Only a tool
-# or a service multiplies: it makes the people who use it do more (R14.8, P-137).
+# or a service multiplies: it makes the people who use it do more (R14.8, D-188).
 EFFECTS = ("add", "multiply")
 ADD, MULTIPLY = EFFECTS
 MULTIPLYING_CATEGORIES = ("tools", "services")

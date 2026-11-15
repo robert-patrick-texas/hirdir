@@ -84,14 +84,14 @@ def record_balance(db: Session, moment: datetime) -> None:
 
 def warm_alert(db: Session, moment: datetime) -> None:
     """Work out the day's summary of the renewal alert and keep it, so that the first
-    sign-in of the day is not kept waiting (P-128). It writes nothing."""
+    sign-in of the day is not kept waiting (D-179). It writes nothing."""
     alerts.summary(db)
 
 
 # R14.7: the balance of each week, each Monday just after midnight, and when the server
 # starts in a week that has none.
 CAPACITY_RECORD = Job("capacity record", weekly(MONDAY), record_balance, at_start=True)
-# P-128: the renewal alert of the day, just after midnight and when the server starts.
+# D-179: the renewal alert of the day, just after midnight and when the server starts.
 # It runs after the record, whose audit event would otherwise leave it stale.
 RENEWAL_ALERT = Job("renewal alert", daily(), warm_alert, at_start=True)
 JOBS: tuple[Job, ...] = (CAPACITY_RECORD, RENEWAL_ALERT)

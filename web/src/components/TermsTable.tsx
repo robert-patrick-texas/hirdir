@@ -1,5 +1,5 @@
 // The table of the terms a contract or an agreement had before it was renewed: its
-// purchase history, each a part of the history with its days and what began it (P-130):
+// purchase history, each a part of the history with its days and what began it (D-181):
 // a renewal, joining an agreement or leaving one, and the agreement it was in. An earlier term of a contract has the dates it had in force: where
 // the contract had none of its own, those of the agreement's term it began in, as the
 // agreement stood then, which are shown as an inherited value is shown everywhere,

@@ -724,7 +724,7 @@ purchase history.
 **An agreement renewed with its members.** The contracts of an agreement that share
 its period, those in it that are not retired and whose end is the agreement's, having
 no end of their own whatever their start, are its members. A renewal of the agreement says for each of them one of three things
-(P-129). `same`: it follows the agreement into its new period under its number, as a
+(D-180). `same`: it follows the agreement into its new period under its number, as a
 contract with no dates of its own always has. `new_number`: the vendor gives it a new
 number for the new term. The number begins with the agreement's new term and has no
 dates of its own: where that term is in force at once, the member is renewed at once,
@@ -761,7 +761,7 @@ in the alert. The mark is given and taken off by hand, also to a contract that s
 its agreement's dates, which then still follows its agreement; it is given by a renewal
 of the agreement that lets the member go, as above. It stays through a renewal, and
 goes when a person takes it off or the contract is taken out of its agreement or moved
-to another (P-129).
+to another (D-180).
 
 **A contract's history across an agreement.** A contract's history is in parts. A
 part begins when the contract is made, when a renewal takes effect, and when it joins
@@ -774,7 +774,7 @@ the agreement it was in. A part in an agreement with no dates of its own has the
 of the agreement's term in force when the part began. A part that a join or a leave
 ended on the day it began lasted no day and is not listed; one that a renewal ended on
 its first day is listed as of that day, so that no number goes missing. The record of a contract says when its present part began,
-`part_began_on`, and how, `part_began_by` (P-130).
+`part_began_on`, and how, `part_began_by` (D-181).
 
 **Contacts of an agreement and of a contract.** `contract_contacts` names contact
 records for an agreement or a contract, in one of two roles:
@@ -794,7 +794,7 @@ telephone number on every record that names it and on every contract that has it
 its agreement. A retired contact is still listed, marked as retired. A naming that was
 a mistake is removed outright, with an audit event that holds what it was. The free
 text of `account_manager` and `support_contact` stays beside them, and is inherited by
-itself as before (P-132).
+itself as before (D-183).
 
 Rules, checked on every write:
 
@@ -863,14 +863,14 @@ the one exception, and only a renewal makes it. The item is covered to the end o
 present term, also when the renewal was entered early, and the end is kept when a file
 carries the coverage out and back. An item in service whose flag is
 in force and that no contract covers is no gap: it is on no list of what is uncovered
-or runs out soon, and the coverage report counts it by itself, by model (P-131).
+or runs out soon, and the coverage report counts it by itself, by model (D-182).
 
 **Renewals to act on.** On a contract, and on the contract list, derived when read:
 `renewal_pending_days`, the days since the end of the term a pending renewal is for,
 blank unless the status in force is `renewal_pending` and zero before that end; and
 `renewal_overdue`, true when that is more than the `renewal_pending_overdue_days`
 setting. The renewal worklist and the alert after sign-in are built on them, on
-`lapsed` and on the `renewal_warning_days` setting (P-127, P-128).
+`lapsed` and on the `renewal_warning_days` setting (D-178, D-179).
 
 ### `purchase_requests` and `purchase_lines`
 
@@ -904,14 +904,14 @@ arrived on it. In a file of lines the part number is matched to the catalog by t
 PID, without regard to case, surrounding space or the `=` that ends the part number of
 a spare, among the models of the row's vendor where it names one and among all models
 where it does not; none, or more than one, leaves the line untracked with a note that
-says why, and a file of lines makes no catalog entry (P-135).
+says why, and a file of lines makes no catalog entry (D-186).
 
 **A line's model corrected.** The model of a line is corrected at any time by an
 operator with the Inventory role. Where items have arrived on it, the correction says
 what becomes of them, `items` of `follow` or `stay`, and is refused without it:
 `follow` gives every item on the line that is not retired the corrected model, in the
 same change, each with its audit event; `stay` leaves them, and each is then of
-another model than its line's, reported to be looked at (P-120).
+another model than its line's, reported to be looked at (D-171).
 
 A request and its lines are not inventory. Nothing of them is in any count, and no
 serial number is known yet. **Receiving** a line, `POST /purchase-lines/{hid}/receive`,
@@ -1020,11 +1020,11 @@ deleted: it is retired, or given an end date.
   and a cut in the staff lines shrinks the gain with it. Its units are counted in its
   own category, so the team's own share stays that of its positions. A line it
   applies to is a supply line of the category `staff` that adds; a line that is
-  retired or out of date gives it nothing to work on (R14.8, P-137).
+  retired or out of date gives it nothing to work on (R14.8, D-188).
 
 ### `capacity_records`
 
-The balance as it was in a week, kept to show the trend (R14.7, P-137).
+The balance as it was in a week, kept to show the trend (R14.7, D-188).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1055,7 +1055,7 @@ refused. The text is at most 200 characters, holds neither `<` nor `>`, and may 
 blank, when the address itself is shown. The list is a field of the record, changed
 whole, and audited as one change of it. An item has the links of its model,
 `catalog.links`, read with it; a place has its own, and none from the places above it
-(P-138).
+(D-189).
 
 ### `tags` and `tag_links`
 
@@ -1101,7 +1101,7 @@ and is refused, not rounded, when it has more.
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
 in which an item is out of service (D-142), and the limits that protect the service,
-such as the size of a page or the length of a pattern (P-136).
+such as the size of a page or the length of a pattern (D-187).
 
 The life of a session token, `session_hours`, is in the configuration file and not
 here, because it is needed before the database can be asked. See
@@ -1172,13 +1172,13 @@ rows that are checked together, the members of one group, are one batch however 
 A row whose record is not at the version previewed, or that would no longer do what
 was previewed, is not applied and is `stale`; the rest go on. A job that stops partway
 keeps the batches it applied, undoes the one it had not finished, and is resumed from
-the first row it had not applied (P-134).
+the first row it had not applied (D-185).
 
 Jobs and their rows are kept without expiry, like audit events.
 
 ### `renewal_alert_views`
 
-What a person last saw of the renewal alert (P-128): `user_hid`, unique, `seen_at`,
+What a person last saw of the renewal alert (D-179): `user_hid`, unique, `seen_at`,
 `as_of`, the day they dismissed it, and `lapsed`, `renewal_pending` and `ending`, each
 the list of the HIDs of the contracts that were on that list then. A person is shown
 the alert again the next day, in the application's time zone, while any of its counts
@@ -1434,7 +1434,7 @@ each region with the support weight of the items at or beneath it, by their loca
 in force, the infrastructure demand that is, and its share of the whole, and a row for
 the items that are nowhere. A row of a region holds what is beneath it, so the regions
 at the top and the row of what is nowhere add up to the whole. No supply is divided
-among regions (P-137).
+among regions (D-188).
 
 A line that multiplies adds (`factor` − 1) × `share` × the units of the staff lines it
 applies to that are counted in the same result: in `active` those that are active and

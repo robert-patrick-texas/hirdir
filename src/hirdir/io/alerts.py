@@ -1,4 +1,4 @@
-"""The renewal alert after sign-in (P-117, P-128).
+"""The renewal alert after sign-in (D-168, D-179).
 
 A person with the Inventory or the Admin role is shown how many contracts have lapsed,
 have a renewal pending, of which overdue, and end within the warning period, and the
@@ -71,7 +71,7 @@ def _worked_out(db: Session) -> Summary:
 
 def summary(db: Session) -> Summary:
     """Return the day's lists of the alert, kept until a change or the day makes them
-    stale (P-133)."""
+    stale (D-184)."""
     return kept.answer(db, "renewal_alert", kept.asked(), lambda: _worked_out(db))
 
 

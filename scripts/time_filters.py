@@ -19,7 +19,7 @@ members to review and the overdue renewals on the contract list; and the reports
 0.7.0: the coverage report, the renewal worklist and the renewal alert, each worked out
 anew and kept, and the capacity balance with the demand of each region.
 
-An answer that is kept (P-133) is timed twice. "anew" drops every kept answer,
+An answer that is kept (D-184) is timed twice. "anew" drops every kept answer,
 `hirdir.io.kept.drop()`, before each run, outside what is timed, so that each run works
 it out from the records as the first request after a change does; "kept" asks the same
 again unchanged, as every request after the first does until something changes. With
@@ -72,7 +72,7 @@ SHOWN = 400
 
 @dataclass(frozen=True)
 class Case:
-    """One request to time. `anew` drops the kept answers before each run (P-133)."""
+    """One request to time. `anew` drops the kept answers before each run (D-184)."""
 
     label: str
     path: str
@@ -252,7 +252,7 @@ def ask(client: httpx2.Client, case: Case) -> dict[str, Any]:
 
 
 def drop_kept() -> None:
-    """Drop every answer that the application in this process keeps (P-133)."""
+    """Drop every answer that the application in this process keeps (D-184)."""
     from hirdir.io import kept
 
     kept.drop()

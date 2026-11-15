@@ -325,7 +325,7 @@ def coverage(
     in_service = filters.both(where(STATE, "in", states), where("is_major", "eq", True))
     covered = filters.both(in_service, where("covered", "eq", True))
     # An item not to be renewed that no contract covers, or whose cover runs out, is no
-    # gap: it is left out of those two, and counted by itself (P-131).
+    # gap: it is left out of those two, and counted by itself (D-182).
     flagged = where(NOT_RENEWED, "eq", True)
     renewed = where(NOT_RENEWED, "ne", True)
     uncovered = filters.both(in_service, where("covered", "eq", False))
@@ -434,7 +434,7 @@ def _renewal_conditions(today: date, within_days: int) -> dict[str, dict[str, An
             where("ends_with_term", "eq", False),
         ),
         "lapsed": where("lapsed", "eq", True),
-        # A contract the team marked not to renew is on its own list alone (P-129).
+        # A contract the team marked not to renew is on its own list alone (D-180).
         "renewal_pending": filters.both(
             where("status", "eq", contracts.RENEWAL_PENDING),
             where("ends_with_term", "eq", False),
@@ -444,7 +444,7 @@ def _renewal_conditions(today: date, within_days: int) -> dict[str, dict[str, An
         ),
         # What the team marked not to renew, to be seen and never alerted: from when
         # it ends within the horizon, and also once it has ended, until a person says
-        # it has expired or retires it. The mark changes nothing by itself (P-129).
+        # it has expired or retires it. The mark changes nothing by itself (D-180).
         "ends_with_term": filters.both(
             where("ends_with_term", "eq", True),
             where("status", "in", [contracts.ACTIVE, contracts.RENEWAL_PENDING]),
@@ -512,7 +512,7 @@ def renewals(
     limit: int = 100,
     offset: int = 0,
 ) -> Renewals:
-    """Return the renewal worklist (P-127): the contracts that end within the warning
+    """Return the renewal worklist (D-178): the contracts that end within the warning
     period, those that have lapsed, those whose renewal is pending and of them those
     that are overdue, those let go with their term, and the items that more than one
     contract covers, each under its vendor and its agreement, each count with the
@@ -688,7 +688,7 @@ def renewals(
 def _lapsed_in_view(db: Session, asked: Any, include_drafts: bool) -> Lapsed:
     """Count the contracts that have lapsed, of the view the coverage report is of: with
     no filter all of them, and with one those that have a coverage of an item in the
-    view that follows the contract, as a lapsed contract covers nothing today (P-117)."""
+    view that follows the contract, as a lapsed contract covers nothing today (D-168)."""
     lapsed = filters.where("lapsed", "eq", True)
     if filters.to_tree(filters.parse(asked)) is None:
         return Lapsed(listing.count(db, fields.CONTRACTS, filter_=lapsed), lapsed)

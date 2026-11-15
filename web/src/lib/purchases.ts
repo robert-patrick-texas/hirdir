@@ -161,7 +161,7 @@ export function lineModel(line: Pick<PurchaseLine, "catalog" | "part_number">): 
 
 /**
  * What is said of a line that is not tracked: one with no model, as procurement buys
- * cable ties or a monitor beside the network equipment (P-121).
+ * cable ties or a monitor beside the network equipment (D-172).
  */
 export const NOT_TRACKED_NOTE =
   "Not tracked: the line has no model of the catalog. It takes no item, is in no count, and the request is not kept waiting for it. Give it a model to track it.";
@@ -175,7 +175,7 @@ export function lineWhat(
   return `${named}, not tracked`;
 }
 
-/** What becomes of the items that have arrived on a line whose model is corrected (P-120). */
+/** What becomes of the items that have arrived on a line whose model is corrected (D-171). */
 export type OnCorrection = "follow" | "stay";
 
 export const ON_CORRECTION: ReadonlyArray<Option & { value: OnCorrection }> = [

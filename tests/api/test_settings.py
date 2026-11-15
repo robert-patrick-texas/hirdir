@@ -1,4 +1,4 @@
-"""Settings rather than constants (P-126, P-136): the five settings of 0.7.0 and what
+"""Settings rather than constants (D-177, D-187): the five settings of 0.7.0 and what
 each decides, and the values that are fixed, listed beside them."""
 
 from datetime import date, timedelta

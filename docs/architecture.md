@@ -284,7 +284,7 @@ rendered as text, never as HTML.
 ### Answers that are kept
 
 The coverage report, the renewal worklist and the summary of the renewal alert are
-worked out once and given again while nothing could have changed them (P-133). Each
+worked out once and given again while nothing could have changed them (D-184). Each
 answer is kept in the memory of the server process with the database it is of, the
 newest audit event there is, the day in the application's time zone and the request
 whole: filter, view, section, sort and page. Every change writes an audit event, a
@@ -292,7 +292,7 @@ setting's among them, so a newer event, or the turn of the day, leaves a kept an
 unused, and one that a change has made wrong is never given. At most 64 answers are
 kept, the least used dropped first, and a restart drops them all. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
-The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as P-133 first had it, was measured at three times as long on the fixture. The summary of
+The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. The summary of
 the renewal alert is worked out just after midnight in the application's time zone,
 and when the server starts, so that the first sign-in of the day is not kept waiting.
 `src/hirdir/io/kept.py` keeps them.
@@ -970,7 +970,7 @@ through it, by the reseller in force; and the summary by contract has a row for 
 contract that covers something. The dates of the contracts are fixed in the files, so
 what the coverage and the end-of-life reports must count is worked out from the files
 for the day the report says it is of, by the rules of D-140 to D-142, D-149, D-150 and
-P-131, and never written into the test: the major items in Assigned, Test, Prod or Down,
+D-182, and never written into the test: the major items in Assigned, Test, Prod or Down,
 those of them that are covered and that are not, those that no contract covers and that
 are not to be renewed, by their own flag or their model's, which are left off what is
 not covered and what runs out soon, those out of service that a contract still counts,
@@ -1415,14 +1415,14 @@ thirds: on the fixture as 0.6.1 made it, before what 0.7.0 added, it took 350 / 
 0.7.0, and the fixture of 0.7.0 has more items under a renewal pending, 2,417 against
 2,048.
 
-The coverage report worked out anew took 4.2 s with the one pass of P-133 as first
+The coverage report worked out anew took 4.2 s with the one pass of D-184 as first
 built, where 0.6.1 took 0.8 s: one statement of 140 KB that worked out every condition
 of every section for each of the 50,000 items, the terms of each contract again for each
 coverage of each item, 3.5 s of it. Counted section by section, as it now is, it takes
 1432 / 1624 whole, 1819 / 2008 for the page of `uncovered` and 1837 / 2147 narrowed to a
 region, with the same answers (load 0.8 to 1.2): still slower than at 0.6.1, for the
 sections and the flag not to renew that 0.7.0 adds. What is in force for each contract,
-worked out once for a request in a table of its own, which P-133 also says, is not
+worked out once for a request in a table of its own, which D-184 also says, is not
 built: each coverage of each item reads the terms of its contract and its agreement
 anew. The capacity balance took 2.5 s, summing the support weight of the inventory four
 times; it now takes the whole from the demand of each region, which leaves two sums of
@@ -1454,16 +1454,16 @@ A sign-in takes 92 ms at the median with nothing else going on, and 124 ms at th
 percentile. During the apply 164 sign-ins took 467 ms at the median, 832 ms at the 95th
 percentile and 970 ms at the longest: they waited beyond the idle median 374 ms, 740 ms
 and 877 ms. A sign-in waits for the batch that holds the one writer to end, so how long
-it waits is how long a batch takes, under a second (P-134: "a fraction of a second at
+it waits is how long a batch takes, under a second (D-185: "a fraction of a second at
 most") only while 50 rows take under a second.
 
 **Left for the timing of 1.0.0**, with what each costs now:
 
 - The coverage report anew, 1.4 s whole and 1.8 s narrowed to a region, counted
-  section by section. Under a second needs what P-133 says of the terms of each
+  section by section. Under a second needs what D-184 says of the terms of each
   contract, worked out once for a request and read by every item.
 - The capacity balance anew, 1.3 s, which is not kept: keeping it as the coverage
-  report is kept would be a change of P-133.
+  report is kept would be a change of D-184.
 - An import of 10,000 rows: 122 s to preview and 168 s to apply, against 30 s and 60
   s. The apply cannot meet the minute while a row costs 13.6 ms: after the pauses, 23.9
   s, and the order of the rows, 3.4 s, a row would have to take under 3.3 ms. What a

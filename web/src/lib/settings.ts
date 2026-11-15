@@ -2,7 +2,7 @@
 // its default is: a number, a word or a list. The server checks every value it is sent.
 //
 // `GET /settings` lists the settings of the inventory, which an Admin changes, and after
-// them the values that are fixed in the code (P-136): each with `fixed` true, what it
+// them the values that are fixed in the code (D-187): each with `fixed` true, what it
 // limits and why it is fixed. A fixed value is listed and never changed.
 
 interface Setting {

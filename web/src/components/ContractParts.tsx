@@ -99,7 +99,7 @@ export function StatusMarks({ record, always = false }: StatusMarksProps) {
   );
 }
 
-/** What is said of a contract the team marked not to renew (P-129). */
+/** What is said of a contract the team marked not to renew (D-180). */
 export const ENDS_WITH_TERM_NOTE =
   "Marked not to renew: the team's own note, which may not have reached procurement or the vendor. It changes no date, no status and no coverage by itself: it is not lapsed, and it stays on the worklist's list of what is let go, also once its period has passed, until a person says it has expired or retires it. It stays through a renewal, and goes when it is taken off or the contract leaves its agreement.";
 

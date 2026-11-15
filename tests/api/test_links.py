@@ -1,4 +1,4 @@
-"""Links (P-138): an address with its text, on regions, sites, locations and catalog
+"""Links (D-189): an address with its text, on regions, sites, locations and catalog
 entries; an item answers those of its model; a file carries them out and back."""
 
 import json

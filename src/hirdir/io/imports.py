@@ -6,7 +6,7 @@ file on a copy of the database, so that nobody waits for it. What it reports is
 therefore what an apply will do, and no rule is written twice.
 
 An apply is worked in the background by the server's worker (`hirdir.io.background`),
-one job at a time, 50 rows to a batch and each batch a transaction of its own (P-134).
+one job at a time, 50 rows to a batch and each batch a transaction of its own (D-185).
 It works every row again, compares it with what was previewed, and keeps each row that
 agrees. A row whose record has moved on since the preview is left out as stale, and the
 rest go on.
@@ -48,7 +48,7 @@ LET_GO_EVERY = 500
 # A preview of more rows than this is worked on a copy of the database, so that it
 # holds nobody up while it works. See `engine.trial`.
 IN_PLACE_UP_TO = 100
-# An apply in the background works this many rows to a transaction (P-134).
+# An apply in the background works this many rows to a transaction (D-185).
 BATCH_ROWS = 50
 # Between two batches the one writer's place is left free this long, in seconds. A
 # change that waits for it is told by SQLite to try again every tenth of a second at
@@ -385,7 +385,7 @@ def list_rows(
     return list(db.scalars(query.order_by(ImportRow.row).limit(limit).offset(offset))), total
 
 
-# --- an apply in the background (P-134) -----------------------------------------------
+# --- an apply in the background (D-185) -----------------------------------------------
 
 
 def _being_applied(db: Session, hid: str) -> bool:

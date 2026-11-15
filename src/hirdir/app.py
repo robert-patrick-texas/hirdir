@@ -49,7 +49,7 @@ ROUTERS = (
     *addresses.ROUTERS,
     *geography.ROUTERS,
     *contracts.ROUTERS,
-    # The contacts of agreements and contracts (P-132).
+    # The contacts of agreements and contracts (D-183).
     *contract_contacts.ROUTERS,
     *purchases.ROUTERS,
     *systems.ROUTERS,
@@ -186,7 +186,7 @@ def bind(app: FastAPI, config: Config) -> None:
 def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
     """Return what works beside the requests for as long as the server is up.
 
-    That is the worker that applies imports and bulk edits in the background (P-134),
+    That is the worker that applies imports and bulk edits in the background (D-185),
     started once the application is bound to its database and stopped, after the batch
     it is in, when the server stops; and, for the server, what it does by itself at set
     times (`hirdir.schedule`), which a test drives itself.

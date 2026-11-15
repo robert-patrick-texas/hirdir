@@ -155,7 +155,7 @@ IMPORT_JOBS = Table(
         "unchanged": Field("integer", ImportJob.unchanged),
         "rejected": Field("integer", ImportJob.rejected),
         "created_by_name": Field("text", _username(ImportJob.created_by, ImportJob)),
-        # How far an apply in the background has got, and what it did (P-134).
+        # How far an apply in the background has got, and what it did (D-185).
         "rows_done": Field("integer", ImportJob.rows_done),
         "applied": Field("integer", ImportJob.applied),
         "stale": Field("integer", ImportJob.stale),

@@ -495,7 +495,7 @@ job_counts() {
 }
 
 # apply_job PATH [curl options]: POST the apply of a stored preview, which answers 202 at
-# once while the server applies it in the background (P-134), then look at the job
+# once while the server applies it in the background (D-185), then look at the job
 # until it is no longer queued or applying, two minutes at the most. $status is the
 # answer to the POST, and the body is the job as it ended, for job_counts to read. With
 # curl options the POST goes through nginx with them, as `authorized` sends it.
@@ -823,7 +823,7 @@ table_rows() {
 # are and one checksum of what they hold, as table_rows prints it of them all; then
 # how many events there are since that the started service did not write by itself,
 # and how many it did. From 0.7.0 the service records the capacity balance of the
-# week when it starts in a week that has no record (P-137): one event, which the system
+# week when it starts in a week that has no record (D-188): one event, which the system
 # makes and nobody, of the action create on a capacity_record. No upgrade writes an
 # event, and a check that one wrote none allows for that event by name, and for no
 # other.
@@ -3092,7 +3092,7 @@ upgrade() {
     expect "pkg run again, hirdir-setup --settings finds nothing to change" \
         "$(inside hirdir-setup --settings --yes 2>&1)" \
         "Nothing to change: /etc/hirdir/config.toml has every setting of this version of hirdir."
-    # From 0.7.0 the application writes a complete file of its own (P-136): from the
+    # From 0.7.0 the application writes a complete file of its own (D-187): from the
     # file the operator edited, it sets what that file sets, and nothing else.
     if inside hirdir admin config --help >/dev/null 2>&1; then
         expect "pkg hirdir admin config --current writes a complete file that sets what the one the operator edited sets, session_hours = 11, and nothing else, with every other key of this version commented out at its default" \
@@ -3277,7 +3277,7 @@ install_fresh() {
         "644 root:root
 0"
     # From 0.7.0 the file that the package ships is the one the application writes
-    # (P-136), and with --current the application sets in it what the file sets.
+    # (D-187), and with --current the application sets in it what the file sets.
     if inside hirdir admin config --help >/dev/null 2>&1; then
         expect "pkg hirdir admin config writes the very file that the package ships, every key at its default and commented out, and with --current it sets in it what the file in force sets, which is nothing" \
             "$(inside bash -c 'hirdir admin config | cmp - /usr/share/hirdir/config.toml && hirdir admin config --current | cmp - /etc/hirdir/config.toml && echo same' 2>&1)" same
@@ -5056,7 +5056,7 @@ client_cover() {
     # The day of the application, which is the day the contract left the agreement and
     # was renewed.
     api GET '/reports/coverage?limit=1'
-    expect "pkg hirdir contracts show finds it by its new number, with the earlier term beneath what it says now: the part of its history that began when it left the agreement today, which the renewal ended on its first day, and is listed as of that day, while the parts that a join and a leave ended on the day they began are not (P-130); a renewal that gives neither a number nor a period exits with 4, and so does a number that no contract has any more" \
+    expect "pkg hirdir contracts show finds it by its new number, with the earlier term beneath what it says now: the part of its history that began when it left the agreement today, which the renewal ended on its first day, and is listed as of that day, while the parts that a join and a leave ended on the day they began are not (D-181); a renewal that gives neither a number nor a period exits with 4, and so does a number that no contract has any more" \
         "$made" \
         "0 | RITM0019999 | 2600.00 | CON-2026-0107, 2026-09-01 to 2027-08-31, RITM0012345; $(json_field as_of) to $(json_field as_of), began by left, by itself | 4 4"
 
@@ -5450,7 +5450,7 @@ records_of() {
 # contract still counts, the items in service whose cover runs out within so many
 # days, the items that more than one contract covers, and the items under a contract
 # whose renewal is pending, and the items in service that no contract covers and that
-# are not to be renewed (P-131), which are left off what is not covered and what runs
+# are not to be renewed (D-182), which are left off what is not covered and what runs
 # out soon.
 #
 # A contract covers on a day within its period when its status is active, and from
@@ -5633,7 +5633,7 @@ examples_cover() {
         '200 [["AT-000107", "RITM0012345/1", "JAE0000X003", null, [["CON-2026-0107", "2027-08-31", false]], []], ["AT-000133", null, null, "FCW0000X007", [["CON-2025-0001", "2026-06-30", false]], [["NetWatch", "removed"]]]] [[false, 0]]'
     received=$(table 'sum(r["purchase_line"] == "RITM0012345/1" for r in rows)' examples/items.csv)
     api GET '/purchase-lines?filter=request.reference:eq:RITM0012345&sort=line'
-    expect "S32 the first line of a purchase request of the examples is for four switches: the $received that examples/items.csv says arrived on it are received and the rest are still to come, and nothing has arrived on its second line, which has its part number as procurement gave it; the third, of tape, has no model, is not tracked and waits for nothing (P-135)" \
+    expect "S32 the first line of a purchase request of the examples is for four switches: the $received that examples/items.csv says arrived on it are received and the rest are still to come, and nothing has arrived on its second line, which has its part number as procurement gave it; the third, of tape, has no model, is not tracked and waits for nothing (D-186)" \
         "$status $(json '[[l["name"], (l["catalog"] or {}).get("pid"), l["part_number"], l["tracked"], l["quantity"], l["received_quantity"], l["pending_quantity"], l["destination_site"]["path"]] for l in d["items"]]')" \
         "200 [[\"RITM0012345/1\", \"C9300-48P\", null, true, 4, $received, $((4 - received)), \"Americas > Central > Site-3\"], [\"RITM0012345/2\", \"PWR-C1-715WAC-P\", \"PWR-C1-715WAC-P=\", true, 4, 0, 4, \"Americas > Central > Site-3\"], [\"RITM0012345/3\", null, \"HLT-100\", false, 20, 0, 0, \"Americas > Central > Site-3\"]]"
     api GET '/reports/replacements?filter=reference:eq:CHG0031877'
@@ -5843,7 +5843,7 @@ cover_and_purchases() {
     made="$made $status $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], [[i["serial_number"], i["covered"], [c["contract"]["status"] for c in i["coverage"]]] for i in d["items"]]]')"
     api PATCH "/contracts/$other" '{"row_version": 4, "status": "active"}'
     made="$made | $status $(json '[d["status"], d["covers_today"], d["lapsed"]]')"
-    # The count of lapsed contracts follows the report's filter (P-117): asked for these
+    # The count of lapsed contracts follows the report's filter (D-168): asked for these
     # items alone, it is of the one contract that is in their scope, and its filter names
     # it; the report of everything counts every lapsed contract there is.
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
@@ -6123,8 +6123,8 @@ cover_and_purchases() {
 
 # multiplied_and_seen: two records of 0.7.0 that the examples do not hold, made beside
 # them for hirdir admin reset to clear with them: a line that multiplies the network
-# engineers of the examples (P-137), which is a target of a capacity line, and the
-# renewal alert as this Admin has seen it (P-128).
+# engineers of the examples (D-188), which is a target of a capacity line, and the
+# renewal alert as this Admin has seen it (D-179).
 multiplied_and_seen() {
     local engineers before made
     api GET '/capacity-lines?limit=1000'
@@ -6485,7 +6485,7 @@ state() {
     done
     expect "S01 nothing under /var/lib/hirdir is readable by other users" \
         "$(inside find /var/lib/hirdir -perm /o=rwx 2>&1)" ""
-    # From 0.7.0 one server runs on one state directory, which it holds a lock on (P-134),
+    # From 0.7.0 one server runs on one state directory, which it holds a lock on (D-185),
     # so that a second could not take for stopped an import that the first is applying.
     if inside test -e /var/lib/hirdir/server.lock; then
         code=0

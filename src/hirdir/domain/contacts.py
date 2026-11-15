@@ -41,7 +41,7 @@ USED_BY: tuple[Any, ...] = (
     ContactAssignment.contact_hid,
     OwnerMember.contact_hid,
     Operator.contact_hid,
-    # Named for an agreement or a contract (P-132): counted, so that a person about to
+    # Named for an agreement or a contract (D-183): counted, so that a person about to
     # retire a contact sees every place it is named.
     ContractContact.contact_hid,
 )

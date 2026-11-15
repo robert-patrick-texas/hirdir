@@ -65,7 +65,7 @@ and CLI's types are generated from it.
 ### Settings
 
 `GET /settings`, which every role reads, lists the settings of the inventory and then
-the values that are fixed in the code (P-136). A setting has its `key`, `value`, which
+the values that are fixed in the code (D-187). A setting has its `key`, `value`, which
 is the value in force, `default`, `is_default`, `meaning`, which says what it is for,
 `accepts`, which says what values it takes, `options`, the values to choose from where
 it is one or more of a list, and `row_version`, `updated_at` and `updated_by`. A fixed
@@ -103,7 +103,7 @@ And the limits that protect the service: `default_page_size` 100 and `max_page_s
 `max_filter_conditions` 100, `max_filter_values` 1000 and `max_filter_value_length`
 1000; `max_pattern_length` 200 and `max_pattern_repeat` 100 of a regular expression,
 `pattern_match_seconds` 0.05 and `pattern_request_seconds` 1; `max_file_rows` 100,000,
-of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (P-134);
+of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (D-185);
 `max_minor_item_depth` 3, `max_group_nesting` 8, `max_location_depth` 8 and
 `max_region_depth` 16; `max_request_lines` 1000 and `max_line_quantity` 100,000;
 `sign_in_max_delay_seconds` 300 and `sign_in_window_seconds` 3600;
@@ -595,7 +595,7 @@ was asked with is already as large as a filter may be; its items are then read w
 while their status still says active, with the filter that lists them on
 `GET /contracts`: with no filter all of them, and with one those that have a coverage
 of an item of the view that follows the contract, as a lapsed contract covers nothing
-today (P-117). Its filter is blank where they are more than a filter can name.
+today (D-168). Its filter is blank where they are more than a filter can name.
 
 The coverage report, the renewal worklist and the summary of the renewal alert are
 kept once they are worked out, and given again while nothing could have changed them:
@@ -607,7 +607,7 @@ over the items. See "Answers that are kept" in
 [architecture.md](architecture.md#answers-that-are-kept).
 
 **The renewal worklist**, `GET /reports/renewals`, is what a person must act on to
-keep the cover going, as of today (P-127). It takes `filter`, `include_drafts` and
+keep the cover going, as of today (D-178). It takes `filter`, `include_drafts` and
 `include_archived` as `GET /contracts` does, and `within_days`, how far ahead a
 contract counts as ending: the `renewal_warning_days` setting, 90, unless asked
 otherwise.
@@ -661,7 +661,7 @@ by. A filter of a section that would have to name more records than a filter tak
 blank, never wider: its rows are then read with `section`.
 
 **The renewal alert**, `GET /renewals/alert`, answers for the person signed in
-(P-128):
+(D-179):
 
 ```json
 { "as_of": "2026-11-15", "within_days": 90, "overdue_after": 60, "show": true,

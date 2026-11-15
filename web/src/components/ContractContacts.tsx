@@ -1,5 +1,5 @@
 // The contacts of an agreement and of a contract: the account managers and the support
-// contacts, each a contact record named in a role with a priority (P-119, P-132). For
+// contacts, each a contact record named in a role with a priority (D-170, D-183). For
 // each role by itself, a contract that names nobody of its own has those its agreement
 // names, with that source; one that names anybody has its own, all of them, in place of
 // the agreement's. The server resolves that when the record is read: nothing is copied,

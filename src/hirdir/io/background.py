@@ -1,4 +1,4 @@
-"""The worker that applies imports and bulk edits beside the requests (P-134).
+"""The worker that applies imports and bulk edits beside the requests (D-185).
 
 It is a thread of the server's one process, with a database session of its own, and it
 applies one job at a time: the one applying, then the queued ones in the order they were

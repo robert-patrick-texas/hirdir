@@ -96,11 +96,11 @@ showed. It adds no scenario and no kind of record.
   contract covers, each under its vendor and its agreement, and each count leading
   to its rows. Its horizon is the site's warning period, 90 days unless changed, and a
   renewal pending for longer than 60 days, unless changed, is flagged as overdue
-  (P-125).
+  (D-176).
 - **A renewal alert after sign-in.** A person with the Inventory or the Admin role is
   shown, once until something new comes onto it, how many contracts have lapsed, are
   pending renewal, or end within the warning period, each leading to the worklist.
-  The coverage report's count of lapsed contracts follows its filter (P-117).
+  The coverage report's count of lapsed contracts follows its filter (D-168).
 - **An agreement renewed with its members.** Where the contracts of an agreement share
   its period, renewing the agreement gives each member contract its new number in the
   same change, as a replacement of the old numbers by new ones, each waiting as the
@@ -111,31 +111,31 @@ showed. It adds no scenario and no kind of record.
   is not renewed, such as an access point or a telephone whose support came with its
   purchase; a device inherits the flag from its model and may override it. A renewal
   leaves it behind, its lack of cover is no gap, and a list and a count by model show
-  what is left out on purpose (P-118). Until then an item is left out by ending its
+  what is left out on purpose (D-169). Until then an item is left out by ending its
   coverage on an earlier day (D-156).
 - **Contacts of an agreement and of a contract.** The account managers and the support
   contacts, any number of each, may be contact records, as the contacts of a place are
   since 0.5.0, and are inherited from the agreement as the text is. Free text stays
-  possible (P-119).
+  possible (D-170).
 - **The coverage report at speed.** Counted section by section, what is in force for each
   contract worked out once for a request, and the answer kept until a change or the
-  turn of the day makes it stale (P-115). The coverage filters of the grid gain from
+  turn of the day makes it stale (D-166). The coverage filters of the grid gain from
   the same work.
 - **Imports in the background.** Applying a file is a job that shows its progress and
   applies a few dozen rows at a time, so that sign-ins and other changes go on beside
-  it; one that fails partway says what was applied and is resumed (P-116).
+  it; one that fails partway says what was applied and is resumed (D-167).
 - **Purchase requests as procurement has them.** A line's model is corrected at any
-  time, and the items that arrived on it with it when the operator says so (P-120). A
+  time, and the items that arrived on it with it when the operator says so (D-171). A
   line that is not network equipment, cable ties or a printer, is not tracked, keeps
   the part number procurement gave it, and does not hold the request open; a file of
   a request's lines matches each part number to the catalog and makes no catalog entry
-  (P-121).
+  (D-172).
 - **Settings rather than constants.** Every value of a business rule held in the code
   that a site could reasonably want otherwise becomes a setting with a default built
   in, and one that protects the service is said to be fixed. A command writes a
   complete configuration file from the application, every key with its default and a
   description, and the settings of the inventory are listed with their defaults and
-  returned to them by one change (P-126).
+  returned to them by one change (D-177).
 - **Capacity over time.** A record of the balance each week, to show the trend as a
   graph, taken by the server each Monday and again by hand, with a week's figures
   correctable (R14.7). A line that multiplies the capacity of chosen staff lines, for
@@ -143,11 +143,11 @@ showed. It adds no scenario and no kind of record.
   balance for the whole operations team, whose tools and services are shared by
   every region, and shows beside it how the demand splits by region; the report for
   one region or one site, which D-147 left until the report of the whole had been
-  used, is not built (P-137).
+  used, is not built (D-188).
 - **Links.** A location and a catalog entry take one link or more, each an address
   and the text to show for it: the web page of a site, the data sheet of a model.
   They are optional, are shown where the record is shown, an item shows those of its
-  model, and they travel in files. A site and a region take them too (P-138).
+  model, and they travel in files. A site and a region take them too (D-189).
 
 ### 0.8.0, circuits
 

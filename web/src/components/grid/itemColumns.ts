@@ -450,7 +450,7 @@ export function itemColumns(
       }),
     ),
     {
-      // Not to be renewed: its own word, or its model's, shown lighter (P-131). A renewal
+      // Not to be renewed: its own word, or its model's, shown lighter (D-182). A renewal
       // leaves such an item behind, and with no cover it is no gap.
       id: "effective.do_not_renew",
       header: "Not to be renewed",

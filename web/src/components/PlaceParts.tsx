@@ -471,7 +471,7 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 ))}
             </p>
             <PlaceFacts place={record} choices={choices} to={to} />
-            {/* The place's own links: it has none from the places above it (P-138). */}
+            {/* The place's own links: it has none from the places above it (D-189). */}
             <Links
               key={`links ${record.hid} ${record.row_version}`}
               links={record.links}

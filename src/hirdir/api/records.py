@@ -1921,7 +1921,7 @@ class AgreementOut(Model):
         description=(
             "Its members that still say their renewal is pending or that they have expired "
             "while it runs on: no renewal of an agreement changes them, and a person "
-            "makes each active, takes it out, or retires it (P-129)."
+            "makes each active, takes it out, or retires it (D-180)."
         )
     )
     row_version: int
@@ -2974,7 +2974,7 @@ class CoverageReport(Model):
     offset: int
 
 
-# --- the renewal worklist and the alert (P-127, P-128) --------------------------------
+# --- the renewal worklist and the alert (D-178, D-179) --------------------------------
 
 RenewalSection = Literal[
     "ending", "lapsed", "renewal_pending", "overdue", "ends_with_term", "to_review", "overlapping"
@@ -3534,7 +3534,7 @@ EntityName = Literal[
     "capacity_lines",
 ]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
-# What an apply in the background did with a row (P-134).
+# What an apply in the background did with a row (D-185).
 AppliedOutcome = Literal["create", "update", "unchanged", "stale", "rejected"]
 
 

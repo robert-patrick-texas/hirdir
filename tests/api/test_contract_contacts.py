@@ -1,4 +1,4 @@
-"""The contacts of an agreement and of a contract (P-119, P-132): contact records named
+"""The contacts of an agreement and of a contract (D-170, D-183): contact records named
 in a role, account manager or support contact, and what a contract has in force from
 its agreement."""
 

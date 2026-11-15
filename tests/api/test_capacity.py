@@ -1,4 +1,4 @@
-"""Capacity over time (R14.7, R14.8, R14.9, P-137): a line that multiplies staff lines,
+"""Capacity over time (R14.7, R14.8, R14.9, D-188): a line that multiplies staff lines,
 the demand of each region beside the balance of the whole, and the balance kept week
 by week, recorded by hand, corrected, removed, and recorded by the server by itself."""
 

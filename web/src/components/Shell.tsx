@@ -109,7 +109,7 @@ export function Shell() {
           Sign out
         </button>
       </header>
-      {/* The renewal alert of 0.7.0 (P-128), under the header of every page. */}
+      {/* The renewal alert of 0.7.0 (D-179), under the header of every page. */}
       <RenewalAlert />
       <main ref={main} tabIndex={-1}>
         {/* A page whose code is still on its way. It says so only if that takes a while. */}

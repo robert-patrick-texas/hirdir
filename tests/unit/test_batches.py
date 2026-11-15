@@ -1,4 +1,4 @@
-"""How an apply in the background cuts the rows of a file into batches (P-134)."""
+"""How an apply in the background cuts the rows of a file into batches (D-185)."""
 
 from hirdir.io import imports
 from hirdir.io.imports import BATCH_ROWS, batches

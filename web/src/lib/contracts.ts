@@ -39,7 +39,7 @@ export const LAPSED_NOTE =
 /** The contracts that have lapsed, in the grid of contracts. */
 export const LAPSED = "lapsed:eq:true";
 
-/** What began a part of the history of a contract or an agreement (P-130). */
+/** What began a part of the history of a contract or an agreement (D-181). */
 export type BeganBy = Schemas["ContractTerm"]["began_by"];
 
 const BEGAN_BY: Readonly<Record<BeganBy, string>> = {

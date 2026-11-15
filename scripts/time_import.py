@@ -13,7 +13,7 @@ folder of its own that is thrown away at the end, and an account with the Invent
 role is made in the copy alone. The application is built on the copy as `hirdir admin
 serve` builds it, with `hirdir.app.create_app`, and served by uvicorn on a free port of
 127.0.0.1 in a thread of this process: the worker that applies imports runs beside the
-requests as it does in the service (P-134), and the requests are sent over HTTP, some
+requests as it does in the service (D-185), and the requests are sent over HTTP, some
 at once.
 
 The file is of new items made from what the fixture holds: switches and access points

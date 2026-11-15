@@ -159,7 +159,7 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
     # The owner is the item's own, and nothing else is in force from anywhere.
     effective = item["effective"]
     assert effective.pop("owner_hid")["source"] == "own"
-    # But the flag not to renew, which a model always says, false unless said (P-131).
+    # But the flag not to renew, which a model always says, false unless said (D-182).
     flag = effective.pop("do_not_renew")
     assert (flag["value"], flag["source"], flag["source_hid"]) == (False, "catalog", entry["hid"])
     assert all(value["source"] == "none" for value in effective.values())

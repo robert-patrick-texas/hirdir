@@ -1,4 +1,4 @@
-"""A model or a device whose support is not to be renewed (P-118, P-131): the flag, how an
+"""A model or a device whose support is not to be renewed (D-169, D-182): the flag, how an
 item inherits it, the lists and files that carry it, and the coverage report that counts
 what is left out on purpose. What a renewal does with a flagged item is tested with the
 renewals."""

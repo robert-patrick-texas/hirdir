@@ -1379,7 +1379,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
 def _members_to_review(
     db: Session, agreement_hids: list[str], today: date
 ) -> dict[str, list[shapes.ContractRef]]:
-    """Return, for each agreement, its members that a person must look at (P-129)."""
+    """Return, for each agreement, its members that a person must look at (D-180)."""
     if not agreement_hids:
         return {}
     found = list(
@@ -1682,7 +1682,7 @@ def requests_out(db: Session, found: list[PurchaseRequest]) -> list[shapes.Purch
     out = []
     for request in found:
         lines = by_request[request.hid]
-        # What is not tracked is in no count (P-121).
+        # What is not tracked is in no count (D-172).
         counted = [line for line in lines if line.tracked]
         out.append(
             shapes.PurchaseRequestOut(

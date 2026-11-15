@@ -6,9 +6,9 @@ How many have arrived on a line is the number of items that name it, counted whe
 is read and stored nowhere, so it cannot drift from the items.
 
 A line keeps the part number and the description that procurement gave it. One with
-no model is not tracked (P-121): cable ties, a monitor. It takes no item, is in no
-count, and is not waited for. Its model is corrected at any time (P-120): where items
-have arrived on it, the change says whether they follow it (P-135).
+no model is not tracked (D-172): cable ties, a monitor. It takes no item, is in no
+count, and is not waited for. Its model is corrected at any time (D-171): where items
+have arrived on it, the change says whether they follow it (D-186).
 """
 
 from collections.abc import Sequence
@@ -196,7 +196,7 @@ def part_key(text: str) -> str:
 
 def models_of_part(db: Session, text: str, vendor_hid: str | None) -> list[CatalogEntry]:
     """Return the models whose PID is the part number text, among the models of a
-    vendor where one is named and among all where none is (P-135). An exact PID is
+    vendor where one is named and among all where none is (D-186). An exact PID is
     looked for first; only where none matches exactly is the `=` of a spare left out,
     on either side, so that a model and its spare twin each find their own."""
     exact = records.key(text)
@@ -214,7 +214,7 @@ def models_of_part(db: Session, text: str, vendor_hid: str | None) -> list[Catal
 
 
 def tracked(line: PurchaseLine) -> bool:
-    """Say whether a line is tracked: whether it has a model (P-121)."""
+    """Say whether a line is tracked: whether it has a model (D-172)."""
     return line.catalog_entry_hid is not None
 
 
@@ -226,7 +226,7 @@ def pending(line: PurchaseLine, arrived: int) -> int:
 
 def of_another_model(item_model: str | None, line_model: str | None) -> bool:
     """Say whether an item on a line is of another model than the line's: what 0.6.0
-    let in (D-161), or an item left as it was when its line was corrected (P-120). An
+    let in (D-161), or an item left as it was when its line was corrected (D-171). An
     item with no model is of another. `another_model` is the same test as SQL."""
     return line_model is not None and item_model != line_model
 

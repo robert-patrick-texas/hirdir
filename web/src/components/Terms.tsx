@@ -47,7 +47,7 @@ interface ContractTermsProps {
 
 /**
  * The parts of the contract's history before the present one, the latest first: each
- * began when it was made, renewed, or joined or left an agreement (P-130). Its purchase
+ * began when it was made, renewed, or joined or left an agreement (D-181). Its purchase
  * history. A renewal of its agreement is not among them: that is a term of the agreement.
  */
 export function ContractTerms({ contract, turn }: ContractTermsProps) {

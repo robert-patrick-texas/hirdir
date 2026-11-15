@@ -809,7 +809,7 @@ def _finish(
     _apply_job(target, apply_path.format(hid=job["hid"]), skip_rejected, as_json=as_json, wait=wait)
 
 
-# --- an apply in the background (P-134) ---
+# --- an apply in the background (D-185) ---
 
 NoWait = Annotated[
     bool,

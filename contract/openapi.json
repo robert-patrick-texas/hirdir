@@ -757,7 +757,7 @@
             "type": "boolean"
           },
           "members_to_review": {
-            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129).",
+            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (D-180).",
             "items": {
               "$ref": "#/components/schemas/ContractRef"
             },
@@ -1446,7 +1446,7 @@
             "type": "array"
           },
           "members_to_review": {
-            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129).",
+            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (D-180).",
             "items": {
               "$ref": "#/components/schemas/ContractRef"
             },

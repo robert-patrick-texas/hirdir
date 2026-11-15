@@ -404,7 +404,7 @@ export function CatalogEntryDetail() {
       {record && (
         <>
           <EntryFacts entry={record} choices={choices.data} />
-          {/* The links of the model, which every item of it shows (P-138). */}
+          {/* The links of the model, which every item of it shows (D-189). */}
           <Links
             key={`links ${record.hid} ${record.row_version}`}
             links={record.links}

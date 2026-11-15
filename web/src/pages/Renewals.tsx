@@ -143,7 +143,7 @@ const COLUMNS: GridColumn<Contract>[] = [
     width: 130,
   },
   {
-    // Marked by the team not to renew, as when a site closes: a note (P-129).
+    // Marked by the team not to renew, as when a site closes: a note (D-180).
     id: "ends_with_term",
     header: "Not to be renewed",
     kind: "boolean",

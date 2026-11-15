@@ -1401,15 +1401,15 @@ CONTRACTS = Listing(
         },
         # It covers today: active in both senses, and in date.
         "covers_today": Field("boolean", contracts.contract_covers()),
-        # Not to be renewed: it ends with its present term (P-129).
+        # Not to be renewed: it ends with its present term (D-180).
         "ends_with_term": Field("boolean", Contract.ends_with_term),
-        # A renewal that is pending: for how long, and whether for too long (P-127).
+        # A renewal that is pending: for how long, and whether for too long (D-178).
         "renewal_pending_days": Field("integer", contracts.renewal_pending_days_value()),
         "renewal_overdue": Field("boolean", contracts.renewal_overdue_value()),
         # A renewal is entered that is still to begin: its own, or its agreement's.
         "renewal_waiting": Field("boolean", contracts.renewal_waiting_value()),
         # A member of an agreement that was renewed that still says it is pending or has
-        # expired: a person looks at it (P-129).
+        # expired: a person looks at it (D-180).
         "to_review": Field("boolean", contracts.to_review_value()),
         "tags": _tags("contract", Contract),
         # A contract is found by an item it covers, at any time.
@@ -1529,7 +1529,7 @@ def mismatched_items(db: Session, line_hids: list[str]) -> dict[str, int]:
 
 
 # What is ordered of a request: the quantities of the lines that are tracked. A line that
-# is not tracked is not waited for (P-121).
+# is not tracked is not waited for (D-172).
 _REQUEST_ORDERED = (
     select(func.coalesce(func.sum(_LINE_OF_REQUEST.quantity), 0))
     .where(
@@ -1580,7 +1580,7 @@ PURCHASE_LINES = Listing(
         **_columns(PurchaseLine, "integer", "line", "quantity"),
         "expected_on": Field("date", PurchaseLine.expected_on),
         "notes": Field("text", PurchaseLine.notes),
-        # As procurement gave them, and whether the line has a model (P-121).
+        # As procurement gave them, and whether the line has a model (D-172).
         **_columns(PurchaseLine, "text", "part_number", "description"),
         "tracked": Field("boolean", PurchaseLine.catalog_entry_hid.is_not(None)),
         "request.reference": Field("text", PurchaseRequest.reference),
@@ -1714,7 +1714,7 @@ UNITS: ColumnElement[Any] = type_coerce(
     Scaled(4),
 )
 
-# The staff lines a line that multiplies works on (P-137), found by one of their names
+# The staff lines a line that multiplies works on (D-188), found by one of their names
 # and sorted by the first of them.
 _TARGET: Any = aliased(CapacityLine, name="target_line")
 _ITS_TARGETS = (CapacityLineTarget.line_hid == CapacityLine.hid,)

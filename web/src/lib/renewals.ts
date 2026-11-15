@@ -267,7 +267,7 @@ export function freshText(fresh: number): string {
   return fresh > 0 ? `${fresh} new` : "";
 }
 
-// --- an agreement renewed with its members (P-122, P-129) -------------------------------
+// --- an agreement renewed with its members (D-173, D-180) -------------------------------
 
 export type MemberChoice = "same" | "new_number" | "ends";
 type MemberRenewal = Schemas["MemberRenewal"];
@@ -316,7 +316,7 @@ export const TO_CONFIRM: readonly ContractStatus[] = ["renewal_pending", "expire
 /**
  * Whether a contract shares its agreement's period, and so is a member that a renewal of
  * the agreement asks about: it is not retired and its end is the agreement's, having no
- * end of its own, whatever its start (P-129).
+ * end of its own, whatever its start (D-180).
  */
 export function sharesPeriod(contract: MemberOf): boolean {
   return contract.record_status !== "retired" && !contract.ends_on;

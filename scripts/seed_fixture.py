@@ -770,7 +770,7 @@ def _contract_fields(
         fields["next_ends_on"] = begins + timedelta(days=364)
         co_termed = False
     elif agreement is not None and not co_termed and dice.chance(0.3, "let go", number):
-        # The team marked it not to renew: it ends with its present term, soon (P-129).
+        # The team marked it not to renew: it ends with its present term, soon (D-180).
         fields["ends_with_term"] = True
         ends = today + timedelta(days=dice.between(5, 200, "let go on", number))
     elif co_termed and dice.chance(0.15, "to review", number):

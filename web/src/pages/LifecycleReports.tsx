@@ -223,7 +223,7 @@ export function CoverageReport() {
   const [params, setParams] = useSearchParams();
   const view = viewOf(params);
   const asked = params.get("section");
-  // The counts come first, and no list is read until one is opened (P-133).
+  // The counts come first, and no list is read until one is opened (D-184).
   const shown: CoverageSection | null = isCoverageSection(asked) ? asked : null;
   const days = daysOf(view.days);
   const query = {

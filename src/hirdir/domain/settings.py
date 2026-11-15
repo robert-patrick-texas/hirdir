@@ -4,7 +4,7 @@ Each setting has a default written here. The database keeps a row only for a set
 that has been given a value, so a default that a later release changes is not held back
 by a copy made at install time.
 
-What a site may not change is listed beside them, said to be fixed (P-136): what was
+What a site may not change is listed beside them, said to be fixed (D-187): what was
 decided, with the decision, and the limits that protect the service. Each is the very
 value that is used, read from where it lives.
 """

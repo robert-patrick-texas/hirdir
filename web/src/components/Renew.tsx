@@ -35,7 +35,7 @@ export type RenewBody = ContractRenew & { members?: Schemas["MemberRenewal"][] }
 
 /**
  * More that a renewal asks for than its number and its period, given by the page: the
- * members of an agreement, each with what the renewal does with it (P-129).
+ * members of an agreement, each with what the renewal does with it (D-180).
  */
 export interface RenewMore {
   /** Shown in the form, beneath the fields of the new term. */
