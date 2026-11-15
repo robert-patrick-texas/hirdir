@@ -1129,8 +1129,9 @@ first rule that applies decides, and no later rule is tried:
 1. `hid` is given: that record, or an error if there is none.
 2. Vendor, PID and serial number are given: the item with that triple. A row that
    gives a serial number and `purchase_line` and no vendor or PID is of the line's
-   model, and its serial number finds the item of that model; where that finds none,
-   the rules that follow are tried, as for any row with no model.
+   model, and its serial number finds the item of that model, or else the item on that
+   line with that serial number, of whatever model 0.6.0 let onto it; where that finds
+   none, the rules that follow are tried, as for any row with no model.
 3. `asset_tag` is given: the item with that tag.
 4. Neither serial number nor asset tag is given: the one item, not retired, that has
    that name or that host name, whether or not it has a serial number of its own. A

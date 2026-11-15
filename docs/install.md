@@ -782,9 +782,10 @@ that reads otherwise is the dates of an earlier term:
 
 - **An earlier term of a contract has the dates it had.** A contract with no dates of
   its own takes its period from its agreement, and 0.6.0 gave an earlier term of such
-  a contract, in `GET /contracts/{hid}/terms`, with blank dates. 0.6.1 gives the
-  agreement's, as the agreement stood on the last day of that term, read from its
-  audit trail: a renewal of the agreement entered afterwards does not change them.
+  a contract, in `GET /contracts/{hid}/terms`, with blank dates. 0.6.1 gives those of
+  the agreement's term that was in force when the contract's term began, as the
+  agreement stood then, read from its audit trail: a renewal of the agreement entered
+  afterwards does not change them (D-163).
   Each date says where it came from, `starts_on_source` and `ends_on_source`, `own`,
   `agreement` or `none`, and the term names the agreement the contract was in,
   `agreement_hid`. This holds for the renewals entered with 0.6.0 as well.

@@ -167,11 +167,11 @@ changed_0_6_1() {
     local when=$1 found
     [ -n "$coterm_contract" ] || return 0
 
-    # The earlier terms (D-160).
+    # The earlier terms (D-160, D-163).
     api GET "/contracts/$coterm_contract/terms"
     found=$(json '[[t[k] for k in ("number", "starts_on", "starts_on_source", "ends_on", "ends_on_source", "agreement_hid")] for t in d]')
     api GET "/agreements/$coterm_agreement/terms"
-    expect "pkg $when the earlier term of the contract with no dates of its own, which $previous_version gave with none, has those of its agreement as it stood when the contract was renewed, and not as its renewal left it, each from the agreement, and names the agreement; and the agreement lists its own earlier term, from what $previous_version wrote of its renewal: number, period, cost, purchase reference, and when and by whom it was renewed" \
+    expect "pkg $when the earlier term of the contract with no dates of its own, which $previous_version gave with none, has those of the agreement's term in force when the contract's term began, as the agreement stood then, and not as its renewal left it, each from the agreement, and names the agreement; and the agreement lists its own earlier term, from what $previous_version wrote of its renewal: number, period, cost, purchase reference, and when and by whom it was renewed" \
         "$found $status $(json '[[t[k] for k in ("number", "starts_on", "ends_on", "annual_cost", "purchase_reference", "renewed_at", "renewed_by_name")] for t in d]')" \
         "[[\"UW-CON-1006\", \"$coterm_first\", \"agreement\", \"$coterm_last\", \"agreement\", \"$coterm_agreement\"]] 200 $coterm_term"
     api GET "/contracts/$money_alone/terms"

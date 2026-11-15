@@ -432,8 +432,11 @@ so each has of its own what another could disturb:
   looks at its own rows: the past imports that its account made, the user it searched
   for.
 
-No file changes what the others read: a setting, a list of choices or a lifecycle rule.
-So no test is kept from running beside those of another file. The rules a new spec file
+No file changes what the others read, a setting, a list of choices or a lifecycle rule,
+but one: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
+Playwright project of its own after all the others, puts the setting back, and is run
+by itself with `--no-deps`. So no other test is kept from running beside those of
+another file. The rules a new spec file
 keeps to are at the top of `web/e2e/support.ts`.
 
 A run is as long as its longest file, so a file holds only scenarios that build on one
@@ -726,8 +729,9 @@ of its earlier terms. It puts an item by hand on a purchase line of another mode
 which 0.6.0 lets in and says nothing of, and takes an item that two contracts cover to
 Archived, which ends both coverages as having left service. It sees that 0.6.0 refuses
 a file of items with the columns that 0.6.1 adds. The earlier term is kept as an answer
-without its dates. After the upgrade the dates are those of the agreement as it stood
-when the contract was renewed, and not as its renewal left it, each marked as the
+without its dates. After the upgrade the dates are those of the agreement's term that
+was in force when the contract's term began, as the agreement stood then, and not as
+its renewal left it, each marked as the
 agreement's; the agreement lists the term that its renewal ended, as 0.6.0 wrote it in
 the audit trail; a contract says beside each override what the agreement gives; the
 item on the line of another model is reported on its record, in the item list and by
@@ -1148,6 +1152,54 @@ several times after a warm-up, and the median and the 95th percentile are printe
 the load of the host before and after, because a busy host is slower than the host can
 be. `--explain FILE` writes every statement of each request with how long it took and
 the plan SQLite made for it, and `--url` asks a server that is running instead.
+
+What the target is, and how it is read, is D-165: the median of 15 requests after 2
+warm-ups under 300 ms, and the 95th percentile under 600 ms, on this fixture and an
+otherwise idle host.
+
+**Measured at 0.6.1.** On the four-core build host, page of 100 with the total
+counted, median and 95th percentile in milliseconds, on a quiet host (load average 0.4
+to 1.2), before and after the four changes that 0.6.1 made for it:
+
+| Request | 0.6.0 | 0.6.1 |
+|---|--:|--:|
+| No filter, by name | 645 / 781 | 216 / 377 |
+| The grid's first page, major items | 458 / 641 | 173 / 401 |
+| `covered:eq:true`, by name | 618 / 794 | 315 / 447 |
+| `covered:eq:false`, by `covered_until` | 1124 / 1175 | 473 / 522 |
+| `contract_count:gt:1`, by `-contract_count` | 680 / 750 | 414 / 624 |
+| No filter, by `contract.number` | 931 / 989 | 331 / 412 |
+| `out_of_service_cover:eq:true` | 335 / 431 | 273 / 464 |
+| `contract.status:eq:renewal_pending` | 395 / 590 | 256 / 284 |
+| `GET /reports/coverage` | 2774 / 3074 | 783 / 915 |
+
+The four changes: a list is counted from its matched rows alone,
+`dialect.count_of`, because SQLite leaves out of a statement the joins that nothing in
+it reads but not out of a count; a section of the coverage report is counted without
+reading a page of it, `listing.count`; blank values sort last by `NULLS LAST` in one
+term, so that a value worked out for each row is worked out once; and the agreements of
+a page of items are read once. The list with no filter and the grid's first page meet
+the target. The coverage filters and the sorts by a coverage column do not, and the
+coverage report, which is not a page of the grid, takes most of a second.
+
+**Left for the timing of 1.0.0**, with what each costs now:
+
+- Each filter is worked out twice, once for the count and once for the page: 60 to 170
+  ms each for the coverage filters. Counting and paging one set of matched rows needs
+  `listing.page` made anew.
+- Shaping a page of 100 items in Python takes about 95 ms.
+- The coverage columns cost much for each row: `covered` over every item takes 80 ms,
+  against 14 ms for a bare test. What is in force for a contract would have to be held
+  where it is read, or worked out once for a request.
+- The sort by name calls a Python function for each row; a column of the folded name,
+  with an index, would not.
+- The coverage report runs eight counts; one pass with a sum for each might take it to
+  about 0.2 s (an estimate).
+- About one run in fifteen is some 200 ms slower, which looks like the collector of
+  Python's memory: suggestive only, measured on a busy host.
+
+A run on a host that other work shares is not a measurement: S36 at 1.0.0 is run with
+the host to itself.
 
 ## Configuration
 

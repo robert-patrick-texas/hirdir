@@ -450,10 +450,7 @@ CONTRACT_COUNT: ColumnElement[Any] = (
 # The last day a coverage runs to: its own, or the end of the last term of its contract
 # that is known. Under a contract whose renewal is pending no day is known to end it.
 _LAST_STATUS = contracts.last_status_value(_COVERING)
-_COVER_END = case(
-    (_LAST_STATUS == contracts.RENEWAL_PENDING, _COVER.ends_on),
-    else_=contracts._least(_COVER.ends_on, contracts.last_end_of(_COVERING)),
-)
+_COVER_END = contracts.last_day_value(_COVER, _COVERING)
 COVERED_UNTIL: ColumnElement[Any] = type_coerce(
     select(
         case((func.count(case((_COVER_END.is_(None), 1))) > 0, None), else_=func.max(_COVER_END))
@@ -486,7 +483,7 @@ _COUNTING = (
     or_(
         and_(
             contracts.coverage_in_force(_COVER, _COVERING),
-            or_(_COVER.ends_on.is_(None), dialect.today() < _COVER.ends_on),
+            or_(_COVER_END.is_(None), dialect.today() < _COVER_END),
         ),
         contracts.left_while_running(_COVER, _COVERING),
     ),

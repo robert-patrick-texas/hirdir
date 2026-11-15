@@ -71,7 +71,8 @@ def _latest(name: str) -> str | None:
 
 
 def main() -> int:
-    """Ask the registry for each package's latest release and install those behind."""
+    """Ask the registry for each package's latest release, and write those that are
+    behind into `web/package.json`."""
     manifest = json.loads((WEB / "package.json").read_text(encoding="utf-8"))
     names = sorted({name for section in SECTIONS for name in manifest.get(section, {})})
     latest: dict[str, str] = {}

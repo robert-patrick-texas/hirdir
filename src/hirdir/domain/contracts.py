@@ -813,8 +813,9 @@ class Term:
     """A term an agreement or a contract had before it was renewed, and when that was.
 
     For a contract, the dates are those it had in force: where it had none of its own,
-    those of the agreement it was in, as the agreement stood on the last day of the
-    term. Each says where it came from, and `agreement_hid` is that agreement."""
+    those of the agreement's term that was in force when the contract's term began, as
+    the agreement stood then (D-163). Each says where it came from, and `agreement_hid`
+    is that agreement."""
 
     number: str | None
     starts_on: date | None
@@ -965,7 +966,7 @@ def terms(db: Session, record: Any, record_type: str = RECORD_TYPE) -> list[Term
     if not of_contract or not found:
         return [one for one, _ in found]
     # A term began when the one before it ended, and the first when the record was made.
-    made_at = events[-1].at if events else clock.now()
+    made_at = record.created_at
     began = [ended for _, ended in found[1:]] + [made_at]
     return [
         _with_dates_in_force(db, one, start, zone)
@@ -1100,11 +1101,14 @@ def out_of_service(record_status: str, state: str | None) -> bool:
 
 def still_counts(coverage: ContractCoverage, contract: Contract, day: date) -> bool:
     """Say whether a contract still counts the item of a coverage once it is out of
-    service: the cover goes on past today, or it was ended because the item left, in
-    a term of the contract that still runs. `left_while_running` is the same test as
-    SQL."""
-    if in_force(coverage, contract, day) and (coverage.ends_on is None or day < coverage.ends_on):
-        return True
+    service: the cover goes on past today, by the end in force of the coverage, or it
+    was ended because the item left, in a term of the contract that still runs. A
+    coverage that ends today, by its own end or its contract's, asks nothing more of the
+    vendor (D-162). `_COUNTING` of `hirdir.io.fields` is the same test as SQL."""
+    if in_force(coverage, contract, day):
+        end = last_day(coverage, contract)
+        if end is None or day < end:
+            return True
     starts_on = period(contract, day).starts_on
     return (
         coverage.left_service
@@ -1124,6 +1128,16 @@ def lapsed(record: Any, ends_on: date | None, day: date) -> bool:
     )
 
 
+def last_day(coverage: ContractCoverage, contract: Contract) -> date | None:
+    """Return the last day a coverage runs to that is known: its own end, or the end of
+    the last term of its contract that is known. Under a contract whose renewal is
+    pending no day is known to end it but its own. `last_day_value` is the same as SQL."""
+    if last_status(contract) == RENEWAL_PENDING:
+        # Past its period, with no term to come: no day is known to end it.
+        return coverage.ends_on
+    return _sooner(coverage.ends_on, last_period(contract).ends_on)
+
+
 def covered_until(found: Sequence[tuple[ContractCoverage, Contract]], day: date) -> date | None:
     """Return the last day the cover of an item runs to: of its coverages that have
     not ended, under contracts that cover or are to cover, to the end of the last term
@@ -1133,11 +1147,7 @@ def covered_until(found: Sequence[tuple[ContractCoverage, Contract]], day: date)
         status = last_status(contract)
         if contract.record_status != "active" or status not in COVERING:
             continue
-        if status == RENEWAL_PENDING:
-            # Past its period, with no term to come: no day is known to end it.
-            end = coverage.ends_on
-        else:
-            end = _sooner(coverage.ends_on, last_period(contract).ends_on)
+        end = last_day(coverage, contract)
         if end is None:
             return None
         if end >= day:
@@ -1294,6 +1304,14 @@ def lapsed_test(model: Any, ends_on: Any) -> ColumnElement[bool]:
         status_value(model) == ACTIVE,
         ends_on.is_not(None),
         ends_on < dialect.today(),
+    )
+
+
+def last_day_value(coverage: Any, contract: Any) -> ColumnElement[Any]:
+    """Return the last day a coverage runs to that is known, as `last_day` works it out."""
+    return case(
+        (last_status_value(contract) == RENEWAL_PENDING, coverage.ends_on),
+        else_=_least(coverage.ends_on, last_end_of(contract)),
     )
 
 

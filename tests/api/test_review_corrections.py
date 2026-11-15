@@ -90,6 +90,8 @@ def _timeline(desk: Desk, db: Session, fold: bool) -> tuple[list[dict[str, Any]]
     a_events[-1].at = moment(-2)
     c_events[0].at = moment(-800)
     c_events[-1].at = moment(-100)
+    # The record was made when its first event says.
+    db.get_one(Contract, contract["hid"]).created_at = moment(-800)
     db.commit()
     if fold:
         desk.change(f"/contracts/{contract['hid']}", notes="written down")
@@ -304,6 +306,7 @@ def test_a_late_renewal_at_once_leaves_the_earlier_term_its_own_period(
     c_events = _events(db, "contract", contract["hid"])
     a_events[0].at, a_events[-1].at = moment(-800), moment(-3)
     c_events[0].at, c_events[-1].at = moment(-800), moment(-1)
+    db.get_one(Contract, contract["hid"]).created_at = moment(-800)
     db.commit()
     (earlier,) = desk.get(f"/contracts/{contract['hid']}/terms")
     # CON-1 began when the agreement ran from day(-700) to day(-30), and that is its
@@ -331,3 +334,50 @@ def test_the_count_of_another_model_leads_to_as_many_rows(make: Maker, db: Sessi
     )
     assert make.get(f"/purchase-lines/{line['hid']}")["mismatched_items"] == listed["total"] == 1
     assert make.get("/purchase-lines", filter="mismatched_items:eq:1")["total"] == 1
+
+
+def test_a_coverage_that_ends_today_with_its_contract_asks_nothing_more(desk: Desk) -> None:
+    entry = desk.catalog()
+    # The contract's period ends today, and no renewal is entered.
+    contract = desk.contract("CON-1", starts_on=day(-300), ends_on=day(0))
+    switch = desk.switch(entry, "FCW-1")
+    desk.cover(contract, switch)
+    moved = desk.move(desk.get(f"/items/{switch['hid']}"), "Pending-Removal")
+    record = desk.get(f"/items/{moved['hid']}")
+    assert record["covered"] is True
+    # Its coverage ends today by its contract's end, as surely as by its own (D-162).
+    assert record["out_of_service_contracts"] == []
+    assert desk.get("/items", filter="out_of_service_cover:eq:true")["total"] == 0
+    # A renewal to come carries the cover on, and the vendor counts the item again.
+    now = desk.get(f"/contracts/{contract['hid']}")
+    desk.post(
+        f"/contracts/{contract['hid']}/renew",
+        {
+            "row_version": now["row_version"],
+            "number": "CON-2",
+            "starts_on": day(1),
+            "ends_on": day(366),
+        },
+        200,
+    )
+    record = desk.get(f"/items/{moved['hid']}")
+    assert [ref["number"] for ref in record["out_of_service_contracts"]] == ["CON-1"]
+    assert desk.get("/items", filter="out_of_service_cover:eq:true")["total"] == 1
+
+
+def test_a_delivery_row_finds_the_device_060_left_on_its_line(
+    make: Maker, files: Files, db: Session
+) -> None:
+    cisco = make.vendor("Cisco")
+    entry = make.entry(cisco, "C9300-48P", support_weight="1")
+    line = _line(make, entry, quantity=4)
+    # 0.6.0 let it onto the line with no model.
+    probe = make.item(name="probe-1", serial_number="FCW-9")
+    held = db.get_one(Item, probe["hid"])
+    held.purchase_line_hid = line["hid"]
+    db.commit()
+    row = "serial_number,purchase_line,comments\nFCW-9,RITM0012345/1,seen\n"
+    assert counts(files.load("items", row)) == (0, 1, 0, 0)
+    on_line = make.get("/items", filter=f"purchase_line_hid:eq:{line['hid']}")
+    assert [one["hid"] for one in on_line["items"]] == [probe["hid"]]
+    assert on_line["items"][0]["comments"] == "seen"

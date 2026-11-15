@@ -1673,6 +1673,26 @@ class Items(Entity):
             found = self._by_serial(db, line_model, serial, values)
             if found is not None:
                 return found
+            # What 0.6.0 let onto the line, of another model or of none, with that
+            # serial number: the same device, and not a second one.
+            line = purchases.the_line(db, values["purchase_line"], "purchase_line")
+            astray = list(
+                db.scalars(
+                    select(Item)
+                    .where(
+                        Item.purchase_line_hid == line.hid,
+                        Item.serial_key == records.key(serial),
+                    )
+                    .limit(2)
+                )
+            )
+            if len(astray) > 1:
+                raise Invalid(
+                    f"more than one item on the line has the serial number {serial}",
+                    {"serial_number": "more than one item answers to this; give the HID"},
+                )
+            if astray:
+                return astray[0]
         if tag:
             return db.scalar(
                 select(Item).where(Item.asset_tag_key == records.key(tag))

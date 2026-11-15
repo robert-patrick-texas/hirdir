@@ -97,7 +97,10 @@ showed. It adds no scenario and no kind of record.
   to its rows.
 - **An agreement renewed with its members.** Where the contracts of an agreement share
   its period, renewing the agreement gives each member contract its new number in the
-  same change, as a replacement of the old numbers by new ones (D-164).
+  same change, as a replacement of the old numbers by new ones, each waiting as the
+  member's next term and beginning with the agreement's new term. An earlier term of a
+  contract that joined or left the agreement partway through is dated by the days it
+  was a member (D-164).
 - **Not to be renewed.** A coverage is marked as one that ends with the present term.
   The worklist shows the mark, and a renewal leaves the item behind. Until then an
   item is left out by ending its coverage on an earlier day (D-156).
