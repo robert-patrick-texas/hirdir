@@ -103,7 +103,6 @@ MEMBER_CHOICES = ("same", "new_number", "ends")
 COVERAGE_FIELDS = ("contract_hid", "item_hid", "starts_on", "ends_on", "left_service")
 # An item has left service when it is retired or in one of these states (D-142).
 OUT_OF_SERVICE = ("Pending-Removal", "Released", "Archived")
-MAX_AT_ONCE = 1000
 MAX_NAMED = 20
 
 
@@ -1897,8 +1896,7 @@ def add_coverage(
         raise Invalid("the contract is retired", {"contract_hid": "this contract is retired"})
     if not entries:
         raise Invalid("nothing to cover", {"items": "name one item or more"})
-    if len(entries) > MAX_AT_ONCE:
-        raise Invalid("too many at once", {"items": f"at most {MAX_AT_ONCE} items to a request"})
+    settings.check_items(db, len(entries), "items")
     its = period(contract, today(db))
     made: list[ContractCoverage] = []
     for place, entry in enumerate(entries):

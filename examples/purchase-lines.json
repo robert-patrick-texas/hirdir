@@ -1,5 +1,6 @@
 {"schema": "hirdir/1", "entity": "purchase_lines", "mode": "upsert", "records": [
-  {"request": "RITM0012345", "line": 1, "vendor": "Cisco", "pid": "C9300-48P", "quantity": 4, "destination_site": "Americas > Central > Site-3", "expected_on": "2026-12-01", "notes": null},
-  {"request": "RITM0012345", "line": 2, "vendor": "Cisco", "pid": "PWR-C1-715WAC-P", "quantity": 4, "destination_site": "Americas > Central > Site-3", "expected_on": "2026-12-01", "notes": null},
-  {"request": "RITM0012501", "line": 1, "vendor": "Juniper", "pid": "EX4400-48P", "quantity": 2, "destination_site": "Americas > Central > Site-2", "expected_on": null, "notes": null}
+  {"request": "RITM0012345", "line": 1, "vendor": "Cisco", "pid": "C9300-48P", "part_number": null, "description": null, "quantity": 4, "destination_site": "Americas > Central > Site-3", "expected_on": "2026-12-01", "notes": null},
+  {"request": "RITM0012345", "line": 2, "vendor": "Cisco", "pid": "PWR-C1-715WAC-P", "part_number": "PWR-C1-715WAC-P=", "description": "715W AC power supply, spare", "quantity": 4, "destination_site": "Americas > Central > Site-3", "expected_on": "2026-12-01", "notes": null},
+  {"request": "RITM0012345", "line": 3, "vendor": null, "pid": null, "part_number": "HLT-100", "description": "Hook-and-loop tape, 100 per roll", "quantity": 20, "destination_site": "Americas > Central > Site-3", "expected_on": null, "notes": null},
+  {"request": "RITM0012501", "line": 1, "vendor": "Juniper", "pid": "EX4400-48P", "part_number": null, "description": null, "quantity": 2, "destination_site": "Americas > Central > Site-2", "expected_on": null, "notes": null}
 ]}

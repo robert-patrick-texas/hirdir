@@ -237,7 +237,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     header: "Vendor",
     kind: "text",
     column: "vendor",
-    value: (line) => line.catalog.vendor,
+    value: (line) => line.catalog?.vendor ?? null,
     width: 130,
   },
   {
@@ -245,7 +245,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     header: "PID",
     kind: "text",
     column: "pid",
-    value: (line) => line.catalog.pid,
+    value: (line) => line.catalog?.pid ?? null,
     width: 170,
   },
   {
@@ -253,7 +253,7 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     header: "Model",
     kind: "text",
     column: null,
-    value: (line) => line.catalog.model_name,
+    value: (line) => line.catalog?.model_name ?? null,
     hide: true,
   },
   {
@@ -609,10 +609,16 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                 >
                   <th scope="row">{row.name}</th>
                   <td>
-                    <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
-                      {lineModel(row)}
-                    </Link>
-                    {row.catalog.model_name && (
+                    {row.catalog_entry_hid === null ? (
+                      <span>
+                        {lineModel(row)} <span className="muted">· not tracked</span>
+                      </span>
+                    ) : (
+                      <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
+                        {lineModel(row)}
+                      </Link>
+                    )}
+                    {row.catalog?.model_name && (
                       <span className="muted"> · {row.catalog.model_name}</span>
                     )}
                     {row.notes && <div className="muted">{row.notes}</div>}

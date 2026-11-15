@@ -11,14 +11,12 @@ import hirdir
 from hirdir.api import schemas, views
 from hirdir.api.deps import Admin, Audit, Db, SignedIn, Viewer, request_id, via
 from hirdir.api.idempotent import refused
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
 from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
 from hirdir.domain import accounts
 from hirdir.io import tables
-
-Limit = Annotated[int, Query(ge=1, le=1000)]
-Offset = Annotated[int, Query(ge=0, le=10_000_000)]
 
 health = APIRouter(prefix="/health", tags=["Health"])
 # The answer of an account route may hold an access code or a token. Neither is kept
@@ -105,7 +103,7 @@ def list_users(
     db: Db,
     q: str = "",
     sort: Annotated[list[str] | None, Query(description=tables.USERS.help)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
     """List users, by username unless a sort says otherwise. `q` matches part of a
@@ -278,7 +276,7 @@ def list_audit_events(
     actor_hid: str = "",
     request: str = Query(default="", alias="request_id"),
     sort: Annotated[list[str] | None, Query(description=tables.AUDIT_EVENTS.help)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> schemas.Page[schemas.AuditEventOut]:
     """List audit events, newest first unless a sort says otherwise."""

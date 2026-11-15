@@ -1569,6 +1569,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
         "request_status",
         "name",
         "catalog",
+        "tracked",
         "received_quantity",
         "pending_quantity",
         "mismatched_items",
@@ -1583,9 +1584,10 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
                 reference=request.reference,
                 request_status=request.status,
                 name=purchases.line_name(request, line),
-                catalog=models[line.catalog_entry_hid or ""],
+                catalog=models.get(line.catalog_entry_hid or ""),
+                tracked=purchases.tracked(line),
                 received_quantity=arrived[line.hid],
-                pending_quantity=line.quantity - arrived[line.hid],
+                pending_quantity=purchases.pending(line, arrived[line.hid]),
                 mismatched_items=astray[line.hid],
                 destination_site=sites.get(line.destination_site_hid or ""),
             )
@@ -1611,6 +1613,8 @@ def requests_out(db: Session, found: list[PurchaseRequest]) -> list[shapes.Purch
     out = []
     for request in found:
         lines = by_request[request.hid]
+        # What is not tracked is in no count (P-121).
+        counted = [line for line in lines if line.tracked]
         out.append(
             shapes.PurchaseRequestOut(
                 **_own(
@@ -1619,9 +1623,9 @@ def requests_out(db: Session, found: list[PurchaseRequest]) -> list[shapes.Purch
                     ("lines", "quantity", "received_quantity", "pending_quantity"),
                 ),
                 lines=lines,
-                quantity=sum(line.quantity for line in lines),
-                received_quantity=sum(line.received_quantity for line in lines),
-                pending_quantity=sum(line.pending_quantity for line in lines),
+                quantity=sum(line.quantity for line in counted),
+                received_quantity=sum(line.received_quantity for line in counted),
+                pending_quantity=sum(line.pending_quantity for line in counted),
             )
         )
     return out

@@ -128,6 +128,11 @@ def _counted(count: int, what: str) -> str:
     return f"{count} {what}" if count == 1 else f"{count} {what}s"
 
 
+# What a vendor or a catalog entry that a file names and that is not known yet is made
+# as: to be reviewed (P-14).
+MADE_BY_A_FILE = "unreviewed"
+
+
 class Run:
     """One pass through the rows of a file: who is importing, and what it has met so far.
 
@@ -233,7 +238,7 @@ class Run:
         if not create:
             return None
         vendor = catalog.create_vendor(
-            self.db, self.context, {"name": text, "review_status": "unreviewed"}
+            self.db, self.context, {"name": text, "review_status": MADE_BY_A_FILE}
         )
         self._learn(self._vendors, key, vendor.hid)
         self._stub(vendor.hid, f"creates the vendor {vendor.name}, to be reviewed")
@@ -261,7 +266,7 @@ class Run:
         entry = catalog.create_entry(
             self.db,
             self.context,
-            {"vendor_hid": vendor.hid, "pid": pid, "review_status": "unreviewed"},
+            {"vendor_hid": vendor.hid, "pid": pid, "review_status": MADE_BY_A_FILE},
         )
         self._learn(self._entries, key, entry.hid)
         self._stub(
@@ -2865,8 +2870,22 @@ class PurchaseRequests(Entity):
         ]
 
 
+def _model_name(db: Session, entry: CatalogEntry) -> str:
+    """Return a model as people name it: its vendor and its PID."""
+    return f"{db.get_one(Vendor, entry.vendor_hid).name} {entry.pid}"
+
+
 class PurchaseLines(Entity):
-    """The lines of purchase requests."""
+    """The lines of purchase requests, as procurement has them.
+
+    A row's part number is matched to the catalog (P-135): by `pid` where the row gives
+    one, and by `part_number` where it does not, among the models of `vendor` where it
+    names one. One model that answers is the line's. None, or more than one, leaves the
+    line untracked, or with the model a person gave it, and says why; a file of lines
+    makes no vendor and no catalog entry. A row that would give a line on which items
+    have arrived another model is rejected: that is put right by hand, where what
+    becomes of the items is said.
+    """
 
     name = "purchase_lines"
     record_type = "purchase_line"
@@ -2878,10 +2897,13 @@ class PurchaseLines(Entity):
         Column("line", "integer"),
         Column("vendor"),
         Column("pid", limit=100),
+        Column("part_number", limit=purchases.PART_NUMBER),
+        Column("description", limit=LONG),
         Column("quantity", "integer"),
         Column("destination_site", limit=LONG),
         Column("expected_on", "date"),
         NOTES,
+        Column("tracked", "boolean", settable=False),
         Column("received_quantity", "integer", settable=False),
         Column("pending_quantity", "integer", settable=False),
         Column("mismatched_items", "integer", settable=False),
@@ -2922,16 +2944,69 @@ class PurchaseLines(Entity):
             return f"{request}{purchases.SEPARATOR}{number}"
         return str(request or "")
 
+    @staticmethod
+    def _model(run: Run, record: Any | None, values: Mapping[str, Any]) -> dict[str, Any]:
+        """Return what a row's part number makes of a line's model, noting why where no
+        one model answers to it."""
+        pid, part, vendor = values.get("pid"), values.get("part_number"), values.get("vendor")
+        if not pid and not part:
+            if vendor:
+                raise Invalid(
+                    "a vendor goes with a part number",
+                    {"pid": "a vendor goes with a pid or a part_number"},
+                )
+            return {}
+        text, field = (str(pid), "pid") if pid else (str(part), "part_number")
+        maker = run.vendor(vendor) if vendor else None
+        found = (
+            []
+            if vendor and maker is None
+            else purchases.models_of_part(run.db, text, maker.hid if maker else None)
+        )
+        given: dict[str, Any] = {}
+        if pid and not part and len(found) != 1 and not (record and record.part_number):
+            # What the row gave is kept as the part number of a line it cannot match.
+            given["part_number"] = pid
+        if len(found) == 1:
+            (entry,) = found
+            if record is not None and record.catalog_entry_hid != entry.hid:
+                arrived = purchases.received(run.db, [record.hid])[record.hid]
+                if arrived:
+                    raise Invalid(
+                        "items have arrived on this line",
+                        {
+                            field: f"{arrived} items have arrived on this line, which is of "
+                            f"another model: correct it by hand, where what becomes of them "
+                            "is said"
+                        },
+                    )
+            given["catalog_entry_hid"] = entry.hid
+            return given
+        if vendor and maker is None:
+            why = f"there is no vendor {vendor}, so the part number {text} matches no model"
+        elif not found:
+            of = f" of {maker.name}" if maker is not None else ""
+            why = f"the part number {text} matches no model{of}"
+        else:
+            names = ", ".join(sorted(_model_name(run.db, one) for one in found))
+            why = f"the part number {text} matches {len(found)} models, {names}"
+        kept = (
+            run.db.get(CatalogEntry, record.catalog_entry_hid)
+            if record is not None and record.catalog_entry_hid
+            else None
+        )
+        if kept is not None:
+            run.notes.append(f"{why}: the line keeps its model, {_model_name(run.db, kept)}")
+        else:
+            run.notes.append(f"{why}: the line is not tracked")
+        return given
+
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         db = run.db
-        given = _plain_fields(values, ("line", "quantity", "expected_on", "notes"))
-        if values.get("vendor") or values.get("pid"):
-            vendor, pid = values.get("vendor"), values.get("pid")
-            if not vendor or not pid:
-                missing = "vendor" if not vendor else "pid"
-                raise Invalid("a model is a vendor and a PID", {missing: "must not be blank"})
-            entry = run.entry(vendor, pid, create=True)
-            given["catalog_entry_hid"] = entry.hid if entry is not None else None
+        given = _plain_fields(
+            values, ("line", "quantity", "expected_on", "notes", "part_number", "description")
+        )
+        given.update(self._model(run, record, values))
         if "destination_site" in values:
             named = values["destination_site"]
             given["destination_site_hid"] = (
@@ -2958,20 +3033,23 @@ class PurchaseLines(Entity):
         astray = fields.mismatched_items(db, [line.hid for line in found])
         rows = []
         for line in found:
-            entry = entries[line.catalog_entry_hid]
+            entry = entries.get(line.catalog_entry_hid or "")
             rows.append(
                 {
                     **_kept(line),
                     "request": requests[line.request_hid].reference,
                     "line": line.line,
-                    "vendor": vendors[entry.vendor_hid].name,
-                    "pid": entry.pid,
+                    "vendor": vendors[entry.vendor_hid].name if entry is not None else None,
+                    "pid": entry.pid if entry is not None else None,
+                    "part_number": line.part_number,
+                    "description": line.description,
                     "quantity": line.quantity,
                     "destination_site": atlas.site_path(line.destination_site_hid) or None,
                     "expected_on": line.expected_on,
                     "notes": line.notes,
+                    "tracked": purchases.tracked(line),
                     "received_quantity": arrived[line.hid],
-                    "pending_quantity": line.quantity - arrived[line.hid],
+                    "pending_quantity": purchases.pending(line, arrived[line.hid]),
                     "mismatched_items": astray[line.hid],
                 }
             )

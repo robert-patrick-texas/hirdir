@@ -7,9 +7,9 @@ from fastapi import APIRouter, Query
 from hirdir.api import records as r
 from hirdir.api import shapes
 from hirdir.api.deps import Audit, Db, Viewer
-from hirdir.api.lists import Limit, Offset, sort_of
+from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Page
-from hirdir.io import alerts, balance, kept, planning, reports, tables
+from hirdir.io import alerts, balance, filters, kept, planning, reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 renewals_ = APIRouter(prefix="/renewals", tags=["Reports"])
@@ -28,7 +28,7 @@ def summary(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the item list, in the short form or as JSON.",
         ),
     ] = "",
@@ -64,7 +64,7 @@ def management(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the item list, in the short form or as JSON.",
         ),
     ] = "",
@@ -96,7 +96,7 @@ def duplicates(
     include_archived: Archived = False,
     include_drafts: Drafts = False,
     sort: Annotated[list[str] | None, sort_of(tables.DUPLICATES)] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.DuplicateOut]:
     """List each address that is held more than once under one network.
@@ -129,20 +129,28 @@ def coverage(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the item list, in the short form or as JSON.",
         ),
     ] = "",
     within_days: Annotated[
-        int, Query(ge=0, le=36_500, description="How far ahead cover that runs out is looked for.")
-    ] = planning.EXPIRING_WITHIN,
+        int | None,
+        Query(
+            ge=0,
+            le=36_500,
+            description=(
+                "How far ahead cover that runs out is looked for. Left out, the setting "
+                "`renewal_warning_days`."
+            ),
+        ),
+    ] = None,
     section: Annotated[
         r.CoverageSection | None, Query(description="The list to return a page of.")
     ] = None,
     sort: Annotated[
         list[str] | None, Query(description="As the item list is sorted. For a section.")
     ] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
     include_drafts: Drafts = False,
 ) -> r.CoverageReport:
@@ -183,7 +191,7 @@ def renewals(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the contract list, in the short form or as JSON.",
         ),
     ] = "",
@@ -203,7 +211,7 @@ def renewals(
         list[str] | None,
         Query(description="As the contract list is sorted, or the item list for `overlapping`."),
     ] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
     include_drafts: Drafts = False,
 ) -> r.RenewalsReport:
@@ -264,23 +272,37 @@ def end_of_life(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the item list, in the short form or as JSON.",
         ),
     ] = "",
     date: Annotated[
-        r.EndOfLifeDate, Query(description="Which of the four dates the lists are of.")
-    ] = "ldos",
+        r.EndOfLifeDate | None,
+        Query(
+            description=(
+                "Which of the four dates the lists are of. Left out, the setting "
+                "`end_of_life_date`."
+            )
+        ),
+    ] = None,
     within_days: Annotated[
-        int, Query(ge=0, le=36_500, description="How far ahead a date counts as approaching.")
-    ] = planning.APPROACHING_WITHIN,
+        int | None,
+        Query(
+            ge=0,
+            le=36_500,
+            description=(
+                "How far ahead a date counts as approaching. Left out, the setting "
+                "`end_of_life_within_days`."
+            ),
+        ),
+    ] = None,
     section: Annotated[
         r.EndOfLifeSection | None, Query(description="The list to return a page of.")
     ] = None,
     sort: Annotated[
         list[str] | None, Query(description="As the item list is sorted. For a section.")
     ] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
@@ -310,7 +332,7 @@ def replacements(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the replacements, in the short form or as JSON.",
         ),
     ] = "",
@@ -318,7 +340,7 @@ def replacements(
         list[str] | None,
         Query(description="Field names, `-` in front for descending. The newest first."),
     ] = None,
-    limit: Limit = 100,
+    limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> r.ReplacementsReport:
     """List the replacements: the item that left and the item that took its place,

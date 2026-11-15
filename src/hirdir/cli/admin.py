@@ -4,10 +4,13 @@ They exist because they must work before any account does. Everything else the C
 goes through the API.
 """
 
+import contextlib
 import os
 import shutil
 import socket
 import sqlite3
+import stat
+import tomllib
 from pathlib import Path
 from typing import Annotated
 
@@ -339,3 +342,57 @@ def check() -> None:
                 healthy = healthy and str(value) == str(expected)
     if not healthy:
         raise typer.Exit(1)
+
+
+@admin.command("config")
+def write_config(
+    current: Annotated[
+        bool,
+        typer.Option(
+            "--current", help="Set what the configuration file in force sets, as it sets it."
+        ),
+    ] = False,
+    output: Annotated[
+        Path | None, typer.Option("--output", help="Write to this file, not to standard output.")
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="With --output, write over a file that is there.")
+    ] = False,
+) -> None:
+    """Write a complete configuration file: every key, with its default and what it is
+    for, commented out at its default."""
+    given, source = None, None
+    if current:
+        source = config_module.config_path()
+        try:
+            given = config_module.read(source)
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            raise _fail(f"{source} cannot be read: {error}") from None
+    text = config_module.written(given)
+    if output is None:
+        typer.echo(text, nl=False)
+        return
+    if output.exists() and not force:
+        raise _fail(f"{output} is there already: add --force to write over it")
+    try:
+        if source is not None and source.is_file():
+            _write_as(output, text, source)
+        else:
+            output.write_text(text, encoding="utf-8")
+    except OSError as error:
+        raise _fail(f"{output} cannot be written: {error}") from None
+    typer.echo(f"wrote {output}", err=True)
+
+
+def _write_as(path: Path, text: str, like: Path) -> None:
+    """Write text to a file that may be read by whoever may read the file `like` and by
+    nobody else: what that file sets, the password of a proxy among it, is in text."""
+    held = like.stat()
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        handle.write(text)
+    with contextlib.suppress(OSError):
+        # Only root gives a file to another group; anybody else keeps their own.
+        os.chown(path, -1, held.st_gid)
+    path.chmod(stat.S_IMODE(held.st_mode))

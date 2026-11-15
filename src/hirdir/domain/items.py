@@ -71,7 +71,7 @@ MAX_DEPTH = 3
 # The types of group whose members are major items.
 MAJOR_ONLY = ("stack", "cluster")
 # The states in which an item has left the team's hands, and is in no group any more.
-OUT_OF_HANDS = ("Released", "Archived")
+OUT_OF_HANDS = geography.OUT_OF_HANDS
 
 
 def mac_digits(value: str) -> str:
@@ -463,6 +463,14 @@ def _check_line(db: Session, line_hid: str) -> None:
             f"the request is {request.status}",
             {"purchase_line_hid": f"a request that is {request.status} receives nothing"},
         )
+    if line.catalog_entry_hid is None:
+        raise Invalid(
+            "the line is not tracked",
+            {
+                "purchase_line_hid": f"line {request.reference}/{line.line} has no model and "
+                "takes no item: match it to a model first"
+            },
+        )
     arrived = (
         db.scalar(select(func.count()).select_from(Item).where(Item.purchase_line_hid == line.hid))
         or 0
@@ -487,7 +495,8 @@ def _check_line_model(
     if not line_hid or not isinstance(line_hid, str):
         return
     line = db.get(PurchaseLine, line_hid)
-    if line is None:
+    if line is None or line.catalog_entry_hid is None:
+        # No item is put on a line that is not tracked: `_check_line` refuses it.
         return
     put_on = item is None or item.purchase_line_hid != line_hid
     remodelled = "catalog_entry_hid" in values and (
@@ -512,13 +521,22 @@ def _check_line_model(
 
 
 def settle_request(db: Session, context: AuditContext, request_hid: str) -> None:
-    """Say that a purchase request has been received, once every line of it has
-    arrived in full. Only a request that is under way is changed: what a person said
-    of one that is a draft, cancelled or received already stands."""
+    """Say that a purchase request has been received, once every line of it that is
+    tracked has arrived in full. Only a request that is under way is changed: what a
+    person said of one that is a draft, cancelled or received already stands. A line
+    that is not tracked is not waited for, and a request of none but such lines is
+    received when a person says so."""
     request = db.get_one(PurchaseRequest, request_hid)
     if request.status not in UNDER_WAY:
         return
-    lines = list(db.scalars(select(PurchaseLine).where(PurchaseLine.request_hid == request.hid)))
+    lines = list(
+        db.scalars(
+            select(PurchaseLine).where(
+                PurchaseLine.request_hid == request.hid,
+                PurchaseLine.catalog_entry_hid.is_not(None),
+            )
+        )
+    )
     if not lines:
         return
     arrived = dict(

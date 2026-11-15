@@ -146,7 +146,11 @@ export function notReceivable(
   return "";
 }
 
-/** A model as a line names it: the vendor, then the PID. */
-export function lineModel(line: Pick<PurchaseLine, "catalog">): string {
+/** A model as a line names it: the vendor, then the PID. A line with no model is not
+ * tracked, and is named by the part number procurement gave it. */
+export function lineModel(line: Pick<PurchaseLine, "catalog" | "part_number">): string {
+  if (line.catalog === null) {
+    return line.part_number ?? "";
+  }
   return [line.catalog.vendor, line.catalog.pid].filter(Boolean).join(" ");
 }

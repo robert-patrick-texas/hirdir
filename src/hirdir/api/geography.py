@@ -12,7 +12,7 @@ from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
 from hirdir.domain import contacts, geography, moves, operators
-from hirdir.io import fields, places
+from hirdir.io import fields, filters, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
 sites = APIRouter(prefix="/sites", tags=["Geography"], route_class=IdempotentRoute)
@@ -252,7 +252,7 @@ def geography_tree(
         str,
         Query(
             alias="filter",
-            max_length=8000,
+            max_length=filters.MAX_FILTER_LENGTH,
             description="A filter of the item list, in the short form or as JSON.",
         ),
     ] = "",

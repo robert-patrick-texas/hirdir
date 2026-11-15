@@ -762,7 +762,8 @@ COVERAGE: tuple[tuple[str, tuple[str, ...], str | None], ...] = (
     ("PAN-2026-0042", ("site2-fw-edge-01", "site2-fw-edge-02"), None),
 )
 # The purchase requests: reference, day, status, notes, and the lines of each as
-# vendor, PID, quantity, destination site and the day it is expected.
+# vendor, PID, quantity, destination site, the day it is expected, and the part number
+# and the description procurement gave it. A line with no model is not tracked.
 PURCHASES = (
     (
         "RITM0012345",
@@ -770,8 +771,17 @@ PURCHASES = (
         "ordered",
         "Access switches for Site-3",
         (
-            ("Cisco", "C9300-48P", 4, "Site-3", "2026-12-01"),
-            ("Cisco", "PWR-C1-715WAC-P", 4, "Site-3", "2026-12-01"),
+            ("Cisco", "C9300-48P", 4, "Site-3", "2026-12-01", None, None),
+            (
+                "Cisco",
+                "PWR-C1-715WAC-P",
+                4,
+                "Site-3",
+                "2026-12-01",
+                "PWR-C1-715WAC-P=",
+                "715W AC power supply, spare",
+            ),
+            (None, None, 20, "Site-3", None, "HLT-100", "Hook-and-loop tape, 100 per roll"),
         ),
     ),
     (
@@ -779,7 +789,7 @@ PURCHASES = (
         "2026-10-26",
         "pending",
         "Two more switches for the lab",
-        (("Juniper", "EX4400-48P", 2, "Site-2", None),),
+        (("Juniper", "EX4400-48P", 2, "Site-2", None, None, None),),
     ),
 )
 # The items that arrived on a line already.
@@ -1250,13 +1260,15 @@ def build(db: Session) -> None:
                 "notes": notes,
             },
         )
-        for vendor, pid, quantity, site, expected in lines:
+        for vendor, pid, quantity, site, expected, part_number, description in lines:
             purchases.add_line(
                 db,
                 SEED,
                 request.hid,
                 {
-                    "catalog_entry_hid": entries[vendor, pid].hid,
+                    "catalog_entry_hid": entries[vendor, pid].hid if vendor and pid else None,
+                    "part_number": part_number,
+                    "description": description,
                     "quantity": quantity,
                     "destination_site_hid": sites[site].hid,
                     "expected_on": date.fromisoformat(expected) if expected else None,

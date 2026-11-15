@@ -876,3 +876,48 @@ def test_systems_and_registrations_are_listed(run, make: Maker, switches: list) 
     assert [(row["system"], row["item"], row["external_id"]) for row in rows] == [
         ("NetWatch", "FCW0000X001", "node-1")
     ]
+
+
+# --- the settings of 0.7.0 ------------------------------------------------------------
+
+
+def test_items_are_covered_in_pieces_as_large_as_the_setting_says(
+    run, make: Maker, client: TestClient, admin: dict
+) -> None:
+    setting = {"row_version": 0, "value": 100}
+    put = client.put("/api/v1/settings/max_items_per_request", json=setting, headers=admin)
+    assert put.status_code == 200, put.text
+    cisco = make.vendor()
+    entry = make.entry(cisco)
+    request = make.post(
+        "/purchase-requests",
+        {
+            "reference": "RITM0012345",
+            "lines": [
+                {"catalog_entry_hid": entry["hid"], "quantity": 150},
+                {"part_number": "HLT-100", "description": "Hook-and-loop tape", "quantity": 20},
+            ],
+        },
+    )
+    line = request["lines"][0]
+    path = f"/purchase-lines/{line['hid']}/receive"
+    first = make.post(path, {"row_version": line["row_version"], "quantity": 100})
+    make.post(path, {"row_version": first["row_version"], "quantity": 50})
+    make.post("/contracts", {"number": "CON-1", "vendor_hid": cisco["hid"]})
+    # One request of 150 would be refused: the command sends two.
+    done = run(
+        "contracts", "cover", "CON-1", "--filter", "purchase_line_hid:empty:false", "--apply"
+    )
+    assert "150 items are covered by CON-1" in done.stdout
+    # A line that is not tracked is shown with the part number procurement gave it.
+    shown = run("purchases", "show", "RITM0012345").stdout
+    assert "still to come:       0 of 150" in shown
+    assert shown.splitlines()[-1].split() == [
+        "RITM0012345/2",
+        "(not",
+        "tracked)",
+        "HLT-100",
+        "20",
+        "0",
+        "0",
+    ]

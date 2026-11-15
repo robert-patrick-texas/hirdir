@@ -2,6 +2,7 @@
 the balance of demand against supply."""
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -139,8 +140,10 @@ def test_receiving_creates_the_items_that_arrived_and_never_more_than_the_line(
     assert make.get(f"/purchase-requests/{request['hid']}")["pending_quantity"] == 0
     # A line is never below what has arrived on it, and is taken back by lowering it.
     assert "quantity" in errors(_change(make, f"/purchase-lines/{line['hid']}", 422, quantity=4))
+    # The model of a line is corrected at any time, but where items have arrived on it,
+    # the change says what becomes of them.
     other = make.entry(make.vendor("Juniper"), "EX4400-48P")
-    assert "catalog_entry_hid" in errors(
+    assert "items" in errors(
         _change(make, f"/purchase-lines/{line['hid']}", 422, catalog_entry_hid=other["hid"])
     )
     # Every line has arrived in full: the request says so by itself, and it is on record.
@@ -306,6 +309,129 @@ def test_an_item_on_a_line_is_of_the_lines_model(make: Maker, entry: dict, db: S
     _change(make, f"/items/{astray['hid']}", catalog_entry_hid=entry["hid"])
     assert make.get("/items", filter="purchase_line_mismatch:eq:true")["total"] == 0
     assert make.get(f"/purchase-lines/{line['hid']}")["mismatched_items"] == 0
+
+
+def test_a_line_that_is_not_tracked_takes_no_item_and_is_waited_for_by_nobody(
+    make: Maker, entry: dict
+) -> None:
+    request = make.post(
+        "/purchase-requests",
+        {
+            "reference": "RITM0012345",
+            "lines": [
+                {"catalog_entry_hid": entry["hid"], "quantity": 2},
+                {"part_number": "HLT-100", "description": "Cable ties, 100", "quantity": 50},
+            ],
+        },
+    )
+    switches, ties = request["lines"]
+    assert (switches["tracked"], ties["tracked"]) == (True, False)
+    assert (ties["catalog_entry_hid"], ties["catalog"], ties["part_number"]) == (
+        None,
+        None,
+        "HLT-100",
+    )
+    assert (ties["description"], ties["quantity"], ties["pending_quantity"]) == (
+        "Cable ties, 100",
+        50,
+        0,
+    )
+    # It is in no count of its request, and not on the list of what is still to come.
+    assert (request["quantity"], request["pending_quantity"]) == (2, 2)
+    assert make.get("/purchase-requests", filter="pending_quantity:eq:2")["total"] == 1
+    assert make.get("/purchase-lines", filter="tracked:eq:false")["total"] == 1
+    assert make.get("/purchase-lines", filter="part_number:eq:hlt-100")["total"] == 1
+    assert make.get("/purchase-lines", filter="pending_quantity:gt:0")["total"] == 1
+    listed = make.get("/purchase-lines", sort="-tracked,catalog.pid")["items"]
+    assert [line["name"] for line in listed] == ["RITM0012345/1", "RITM0012345/2"]
+    # It takes no item, by a receipt or by hand.
+    refused = _receive(make, ties, "TIE-1", expect=422)
+    assert "match it to a model" in errors(refused)["items"]
+    by_hand = {"name": "ties", "purchase_line_hid": ties["hid"]}
+    assert "purchase_line_hid" in errors(make.post("/items", by_hand, 422))
+    # A line has a model or a part number.
+    lines = f"/purchase-requests/{request['hid']}/lines"
+    assert "catalog_entry_hid" in errors(make.post(lines, {"quantity": 1}, 422))
+    assert "catalog_entry_hid" in errors(
+        _change(make, f"/purchase-lines/{ties['hid']}", 422, part_number=None)
+    )
+    # Every line that is tracked has arrived: the request is received.
+    _receive(make, switches, "FCW-1", "FCW-2")
+    assert make.get(f"/purchase-requests/{request['hid']}")["status"] == "received"
+
+    # A line that is not tracked is matched to a model at any time, which makes it
+    # tracked, and its model is taken off while nothing has arrived on it.
+    other = make.post(
+        "/purchase-requests",
+        {"reference": "RITM0012400", "lines": [{"part_number": "C9300-48P=", "quantity": 1}]},
+    )
+    (late,) = other["lines"]
+    matched = _change(make, f"/purchase-lines/{late['hid']}", catalog_entry_hid=entry["hid"])
+    assert (matched["tracked"], matched["pending_quantity"], matched["part_number"]) == (
+        True,
+        1,
+        "C9300-48P=",
+    )
+    assert make.get(f"/purchase-requests/{other['hid']}")["pending_quantity"] == 1
+    off = _change(make, f"/purchase-lines/{late['hid']}", catalog_entry_hid=None)
+    assert (off["tracked"], off["pending_quantity"]) == (False, 0)
+    # Not tracked any more, it is waited for no more: nothing of the request is.
+    assert make.get(f"/purchase-requests/{other['hid']}")["status"] == "pending"
+    assert "catalog_entry_hid" in errors(
+        _change(make, f"/purchase-lines/{switches['hid']}", 422, catalog_entry_hid=None)
+    )
+
+
+def test_a_line_corrected_after_items_arrived_says_what_becomes_of_them(
+    make: Maker, entry: dict
+) -> None:
+    right = make.entry({"hid": entry["vendor_hid"]}, "C9300-48T", support_weight="3")
+    follow = _request(make, entry, quantity=3)["lines"][0]
+    kept, plain, gone = _receive(make, follow, "FCW-1", "FCW-2", "FCW-3")["items"]
+    _change(make, f"/items/{kept['hid']}", support_weight="7")
+    now = make.get(f"/items/{gone['hid']}")
+    make.post(f"/items/{gone['hid']}/retire", {"row_version": now["row_version"]}, 200)
+    path = f"/purchase-lines/{follow['hid']}"
+    assert "follow" in errors(_change(make, path, 422, catalog_entry_hid=right["hid"]))["items"]
+    assert "items" in errors(
+        _change(make, path, 422, catalog_entry_hid=right["hid"], items="maybe")
+    )
+    corrected = _change(make, path, catalog_entry_hid=right["hid"], items="follow")
+    assert (corrected["catalog"]["pid"], corrected["mismatched_items"]) == ("C9300-48T", 0)
+    # Each item that is not retired has the corrected model, with an event of its own.
+    for item, weight, source in ((kept, "7", "own"), (plain, "3", "catalog")):
+        now = make.get(f"/items/{item['hid']}")
+        assert (now["catalog_entry_hid"], now["purchase_line_mismatch"]) == (right["hid"], False)
+        assert Decimal(now["effective"]["support_weight"]["value"]) == Decimal(weight)
+        assert now["effective"]["support_weight"]["source"] == source
+        (event, *_) = make.audit(record_type="item", record_hid=item["hid"])
+        assert {"field": "catalog_entry_hid", "old": entry["hid"], "new": right["hid"]} in event[
+            "changes"
+        ]
+    assert make.get(f"/items/{gone['hid']}")["catalog_entry_hid"] == entry["hid"]
+    line_events = make.audit(record_type="purchase_line", record_hid=follow["hid"])
+    assert line_events[0]["changes"] == [
+        {"field": "catalog_entry_hid", "old": entry["hid"], "new": right["hid"]}
+    ]
+
+    # Left as they are, they are reported, one by one.
+    stay = _request(make, entry, quantity=2, reference="RITM0012400")["lines"][0]
+    left = _receive(make, stay, "FCW-11", "FCW-12")["items"]
+    stayed = _change(
+        make, f"/purchase-lines/{stay['hid']}", catalog_entry_hid=right["hid"], items="stay"
+    )
+    assert stayed["mismatched_items"] == 2
+    for item in left:
+        now = make.get(f"/items/{item['hid']}")
+        assert (now["catalog_entry_hid"], now["purchase_line_mismatch"]) == (entry["hid"], True)
+    # An item on a line is still not given another model by itself (D-161).
+    alone = make.get(f"/items/{left[0]['hid']}")
+    other = make.entry(make.vendor("Juniper"), "EX4400-48P")
+    remodel = {"row_version": alone["row_version"], "catalog_entry_hid": other["hid"]}
+    assert "catalog_entry_hid" in errors(make.patch(f"/items/{alone['hid']}", remodel, 422))
+    # Put right by its line's model, it is no longer reported.
+    _change(make, f"/items/{alone['hid']}", catalog_entry_hid=right["hid"])
+    assert make.get(f"/purchase-lines/{stay['hid']}")["mismatched_items"] == 1
 
 
 # --- external systems ----------------------------------------------------------------

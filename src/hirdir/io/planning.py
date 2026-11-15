@@ -31,8 +31,6 @@ from hirdir.io.fields import ITEMS, REPLACEMENTS
 
 COVERAGE_SECTIONS = ("uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending")
 END_OF_LIFE_SECTIONS = ("past", "approaching")
-EXPIRING_WITHIN = 90
-APPROACHING_WITHIN = 730
 MAX_DAYS = 36_500
 STATE = "effective.lifecycle_state"
 
@@ -229,7 +227,7 @@ def coverage(
     *,
     filter_: Any = None,
     include_drafts: bool = False,
-    within_days: int = EXPIRING_WITHIN,
+    within_days: int | None = None,
     section: str | None = None,
     sort: list[str] | None = None,
     limit: int = 100,
@@ -237,8 +235,11 @@ def coverage(
 ) -> Coverage:
     """Return what is in service with no cover, what is out of service and still
     counted by a contract, what runs out of cover within some days, what more than one
-    contract covers, and what is covered while a renewal is pending."""
+    contract covers, and what is covered while a renewal is pending. What runs out
+    soon is within `within_days`, the setting `renewal_warning_days` unless asked."""
     _checked_section(section, COVERAGE_SECTIONS)
+    if within_days is None:
+        within_days = int(settings.value(db, "renewal_warning_days"))
     within_days = _checked_days(within_days)
     today = contracts.today(db)
     states = list(settings.value(db, "service_states"))
@@ -615,8 +616,8 @@ def end_of_life(
     db: Session,
     *,
     filter_: Any = None,
-    date_: str = "ldos",
-    within_days: int = APPROACHING_WITHIN,
+    date_: str | None = None,
+    within_days: int | None = None,
     section: str | None = None,
     sort: list[str] | None = None,
     limit: int = 100,
@@ -624,8 +625,15 @@ def end_of_life(
     include_archived: bool = False,
     include_drafts: bool = False,
 ) -> EndOfLife:
-    """Count the items past and approaching each end-of-life date, and list those of one."""
+    """Count the items past and approaching each end-of-life date, and list those of one.
+
+    The date is `end_of_life_date` and the window `end_of_life_within_days`, settings
+    both, unless asked."""
     _checked_section(section, END_OF_LIFE_SECTIONS)
+    if date_ is None:
+        date_ = str(settings.value(db, "end_of_life_date"))
+    if within_days is None:
+        within_days = int(settings.value(db, "end_of_life_within_days"))
     within_days = _checked_days(within_days)
     if date_ not in catalog.DATES:
         raise Invalid("the date is not acceptable", {"date": f"one of {', '.join(catalog.DATES)}"})

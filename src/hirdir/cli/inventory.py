@@ -18,6 +18,7 @@ import typer
 from hirdir import clock
 from hirdir.cli import client
 from hirdir.cli.client import Target
+from hirdir.domain import settings
 from hirdir.io.columns import unguarded
 
 Url = Annotated[str | None, typer.Option(help="The server, such as https://host/hirdir.")]
@@ -306,12 +307,17 @@ def _observed(target: Target, record: dict[str, Any], zone: str) -> str | None:
     return f"{record['observed_status']}, seen {seen}"
 
 
+def _setting(target: Target, key: str, otherwise: Any) -> Any:
+    """Return the value of a setting as the server has it, or otherwise where it has none."""
+    for setting in client.call(target, "GET", "/settings"):
+        if setting["key"] == key:
+            return setting["value"]
+    return otherwise
+
+
 def _zone(target: Target) -> str:
     """Return the application's time zone, as the server has it set."""
-    for setting in client.call(target, "GET", "/settings"):
-        if setting["key"] == "time_zone":
-            return setting["value"]
-    return clock.DEFAULT_ZONE
+    return _setting(target, "time_zone", clock.DEFAULT_ZONE)
 
 
 @items.command("show")
@@ -1223,7 +1229,8 @@ def release_operator(
 
 Day = Annotated[str | None, typer.Option(help="A day, as YYYY-MM-DD.")]
 COVER_AT_ONCE = 10_000
-COVER_IN_ONE_REQUEST = 1000
+# The setting that says how many items one request may cover.
+ONE_REQUEST = "max_items_per_request"
 CONTRACT_TEXTS = (
     "number",
     "starts_on",
@@ -1733,21 +1740,17 @@ def cover(
         return
     dates = {name: value for name, value in (("starts_on", from_), ("ends_on", to)) if value}
     covered = 0
-    # A request covers so many at once, and each request is whole or not at all: so
-    # where a later one is refused, what the earlier ones covered stays covered, and
-    # that is said, with how to go on.
-    for start in range(0, len(hids), COVER_IN_ONE_REQUEST):
+    # A request covers as many as the setting max_items_per_request says, and each
+    # request is whole or not at all: so where a later one is refused, what the earlier
+    # ones covered stays covered, and that is said, with how to go on.
+    in_one = int(_setting(target, ONE_REQUEST, settings.SPECS[ONE_REQUEST].default))
+    for start in range(0, len(hids), in_one):
         try:
             made = client.call(
                 target,
                 "POST",
                 f"/contracts/{found['hid']}/coverage",
-                {
-                    "items": [
-                        {"item_hid": hid, **dates}
-                        for hid in hids[start : start + COVER_IN_ONE_REQUEST]
-                    ]
-                },
+                {"items": [{"item_hid": hid, **dates} for hid in hids[start : start + in_one]]},
                 timeout=SLOW,
             )
         except typer.Exit:
@@ -1818,6 +1821,7 @@ def show_purchase(
                 "line",
                 "vendor",
                 "pid",
+                "part_number",
                 "quantity",
                 "received",
                 "pending",
@@ -1827,11 +1831,14 @@ def show_purchase(
         ]
         for line in found["lines"]:
             site = line["destination_site"]
+            # A line with no model is not tracked: what procurement gave is all there is.
+            model = line["catalog"] or {"vendor": "", "pid": "(not tracked)"}
             rows.append(
                 [
                     line["name"],
-                    line["catalog"]["vendor"],
-                    line["catalog"]["pid"],
+                    model["vendor"],
+                    model["pid"],
+                    line["part_number"] or "",
                     str(line["quantity"]),
                     str(line["received_quantity"]),
                     str(line["pending_quantity"]),
@@ -2168,9 +2175,13 @@ def renewals_worklist(
 def end_of_life_report(
     filter_: Filter = None,
     date_: Annotated[
-        str,
-        typer.Option("--date", help="end_of_sale, end_of_sw_support, end_of_hw_support or ldos."),
-    ] = "ldos",
+        str | None,
+        typer.Option(
+            "--date",
+            help="end_of_sale, end_of_sw_support, end_of_hw_support or ldos. Left out, the "
+            "setting end_of_life_date.",
+        ),
+    ] = None,
     section: Annotated[
         str | None, typer.Option(help="List the items of one: past or approaching.")
     ] = None,
@@ -2201,7 +2212,7 @@ def end_of_life_report(
         typer.echo(json.dumps(found, indent=2))
         return
     if section is not None:
-        _rows(format_, output, _section_rows(found, date_))
+        _rows(format_, output, _section_rows(found, found["date"]))
         return
     rows = [["date", "past", "past_components", "approaching", "approaching_components"]]
     for name, counted in found["dates"].items():

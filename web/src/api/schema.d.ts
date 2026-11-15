@@ -4656,8 +4656,8 @@ export interface paths {
         query?: {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
-          /** How far ahead cover that runs out is looked for. */
-          within_days?: number;
+          /** How far ahead cover that runs out is looked for. Left out, the setting `renewal_warning_days`. */
+          within_days?: number | null;
           /** The list to return a page of. */
           section?: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | null;
           /** As the item list is sorted. For a section. */
@@ -4737,10 +4737,10 @@ export interface paths {
         query?: {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
-          /** Which of the four dates the lists are of. */
-          date?: "end_of_sale" | "end_of_sw_support" | "end_of_hw_support" | "ldos";
-          /** How far ahead a date counts as approaching. */
-          within_days?: number;
+          /** Which of the four dates the lists are of. Left out, the setting `end_of_life_date`. */
+          date?: "end_of_sale" | "end_of_sw_support" | "end_of_hw_support" | "ldos" | null;
+          /** How far ahead a date counts as approaching. Left out, the setting `end_of_life_within_days`. */
+          within_days?: number | null;
           /** The list to return a page of. */
           section?: "past" | "approaching" | null;
           /** As the item list is sorted. For a section. */
@@ -6845,6 +6845,7 @@ export interface components {
     };
     /** Items to put under a contract together: all of them, or none. */
     CoverageAdd: {
+      /** At most as many as the setting `max_items_per_request` says. */
       items: components["schemas"]["CoverageEntry"][];
     };
     /** One item to put under a contract. */
@@ -6947,6 +6948,7 @@ export interface components {
       /** A cluster only. Left out, one. */
       managed_as?: "one" | "members" | "members_and_cluster" | null;
       master_observed_at?: string | null;
+      /** At most as many as the setting `max_items_per_request` says. */
       members?: components["schemas"]["MemberAdd"][];
       name: string;
       observed_at?: string | null;
@@ -7901,6 +7903,7 @@ export interface components {
     };
     /** Items to make members of a group together. The group is checked once all are in. */
     MembersAdd: {
+      /** At most as many as the setting `max_items_per_request` says. */
       members: components["schemas"]["MemberAdd"][];
     };
     /** A group an item is a current member of, and as what. */
@@ -8360,21 +8363,32 @@ export interface components {
       field: string;
       message: string;
     };
-    /** A new line of a purchase request. */
+    /**
+     * A new line of a purchase request: a model, or a part number for what is not
+     * tracked, or both.
+     */
     PurchaseLineAdd: {
-      catalog_entry_hid: string;
+      /** The model. Left out, the line is not tracked. */
+      catalog_entry_hid?: string | null;
+      /** As the procurement system gave it. */
+      description?: string | null;
       destination_site_hid?: string | null;
       expected_on?: string | null;
       /** Left out, the next. */
       line?: number | null;
       notes?: string | null;
+      /** As the procurement system gave it. */
+      part_number?: string | null;
       quantity: number;
     };
-    /** One line of a purchase request: a model and how many. */
+    /** One line of a purchase request: a model or a part number, and how many. */
     PurchaseLineOut: {
-      catalog: components["schemas"]["CatalogRef"];
-      catalog_entry_hid: string;
+      catalog: components["schemas"]["CatalogRef"] | null;
+      /** The model. A line with none is not tracked. */
+      catalog_entry_hid: string | null;
       created_at: string;
+      /** As the procurement system gave it. */
+      description: string | null;
       destination_site: components["schemas"]["PlaceRef"] | null;
       destination_site_hid: string | null;
       expected_on: string | null;
@@ -8385,7 +8399,9 @@ export interface components {
       /** How the line is named: `RITM0012345/2`. */
       name: string;
       notes: string | null;
-      /** What is still to come. */
+      /** As the procurement system gave it. */
+      part_number: string | null;
+      /** What is still to come: nothing on a line that is not tracked. */
       pending_quantity: number;
       quantity: number;
       /** The items that name this line. */
@@ -8395,23 +8411,30 @@ export interface components {
       request_hid: string;
       request_status: "draft" | "pending" | "ordered" | "received" | "cancelled";
       row_version: number;
+      /** The line has a model. One that has none takes no item, is in no count and is not waited for. */
+      tracked: boolean;
       updated_at: string;
     };
     /** Fields of a purchase line to change, and the version they were read at. */
     PurchaseLinePatch: {
+      /** The model, corrected at any time. Null takes it off, which leaves the line not tracked, only while nothing has arrived on it. */
       catalog_entry_hid?: string | null;
+      description?: string | null;
       destination_site_hid?: string | null;
       expected_on?: string | null;
+      /** Where items have arrived on the line and its model is corrected: `follow` gives each of them that is not retired the corrected model as well, in the same change, and `stay` leaves them as they are, to be found by `purchase_line_mismatch`. Required then, and a `422` without it. */
+      items?: "follow" | "stay" | null;
       line?: number | null;
       notes?: string | null;
+      part_number?: string | null;
       /** Never below what has arrived. */
       quantity?: number | null;
       row_version: number;
     };
     /** The line of a purchase request an item arrived on. */
     PurchaseLineRef: {
-      /** The model of the line. */
-      catalog_entry_hid: string;
+      /** The model of the line. A line with none takes no item, so an item's line has one. */
+      catalog_entry_hid: string | null;
       hid: string;
       line: number;
       /** The reference of the request and the number of the line. */
@@ -8434,7 +8457,7 @@ export interface components {
       lines: components["schemas"]["PurchaseLineOut"][];
       notes: string | null;
       pending_quantity: number;
-      /** The items of all its lines. */
+      /** The items of all its lines that are tracked. */
       quantity: number;
       received_quantity: number;
       reference: string;
@@ -8461,6 +8484,7 @@ export interface components {
     Receive: {
       /** Left out, today. */
       delivered_on?: string | null;
+      /** With `quantity`, at most as many as the setting `max_items_per_request` says. */
       items?: components["schemas"]["Arrived"][];
       /** Where they were put. */
       location_hid?: string | null;
@@ -8470,9 +8494,12 @@ export interface components {
     };
     /** A line after a receipt, with the items the receipt created. */
     ReceivedOut: {
-      catalog: components["schemas"]["CatalogRef"];
-      catalog_entry_hid: string;
+      catalog: components["schemas"]["CatalogRef"] | null;
+      /** The model. A line with none is not tracked. */
+      catalog_entry_hid: string | null;
       created_at: string;
+      /** As the procurement system gave it. */
+      description: string | null;
       destination_site: components["schemas"]["PlaceRef"] | null;
       destination_site_hid: string | null;
       expected_on: string | null;
@@ -8484,7 +8511,9 @@ export interface components {
       /** How the line is named: `RITM0012345/2`. */
       name: string;
       notes: string | null;
-      /** What is still to come. */
+      /** As the procurement system gave it. */
+      part_number: string | null;
+      /** What is still to come: nothing on a line that is not tracked. */
       pending_quantity: number;
       quantity: number;
       /** The items that name this line. */
@@ -8494,6 +8523,8 @@ export interface components {
       request_hid: string;
       request_status: "draft" | "pending" | "ordered" | "received" | "cancelled";
       row_version: number;
+      /** The line has a model. One that has none takes no item, is in no count and is not waited for. */
+      tracked: boolean;
       updated_at: string;
     };
     /** A new region. */
@@ -8819,12 +8850,27 @@ export interface components {
       token: string;
       user: components["schemas"]["UserOut"];
     };
-    /** A setting: the value in force, its default, and what it means. */
+    /**
+     * A setting: the value in force, its default, what it means and what it takes. Or
+     * a value that is fixed in the code, with `fixed` true: what it limits and why it is
+     * fixed, at its default always.
+     */
     SettingOut: {
+      /** The values a setting takes. Blank for a fixed value. */
+      accepts?: string | null;
+      /** The decision that fixed it, where one did: `D-142`. */
+      decision?: string | null;
       default: unknown;
+      /** Fixed in the code: listed, and not changed by any request. */
+      fixed?: boolean;
       is_default: boolean;
       key: string;
+      /** What the setting is for, or what a fixed value limits. */
       meaning: string;
+      /** The values to choose from, where a setting is of a list. */
+      options?: string[] | null;
+      /** Why a fixed value is fixed. */
+      reason?: string | null;
       /** 0 for a setting that has never been changed. */
       row_version: number;
       updated_at: string | null;
