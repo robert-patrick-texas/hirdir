@@ -175,7 +175,11 @@ whatever is its own: what it inherited stays with the parent it left.
 
 `purchase_line_hid` arrives in release 0.6.0, with the purchase requests. An item that
 is received on a line is created with it; it may also be set by hand, on an item that
-was entered before its request was.
+was entered before its request was. An item on a line is of the line's model: one that
+is put on a line and names no model takes the line's, one that names another is
+refused, and the model of an item is not changed while it is on a line. What 0.6.0 let
+in is left as it is, and `purchase_line_mismatch`, true on the record and in the item
+list where an item is on a line of another model, finds it to be put right.
 
 **Coverage and registrations.** An item's record lists the coverages it has under
 contracts, with `covered`, true when one of them is in force today, and
@@ -577,7 +581,11 @@ agreement has the agreement's reseller, support level, account manager, support
 contact, support address and period, each by itself, and overrides any of them by
 saying its own. Its number, its status, its purchase reference, its cost and its notes
 are its own. The record answers the contract's own value and, in `effective`, the
-value in force with where it came from: `own`, `agreement` or `none`. Nothing is
+value in force with where it came from: `own`, `agreement` or `none`, and beside them
+`from_agreement`, what the agreement gives for the field today, whether the contract
+overrides it or not, so that an override says what it is in place of. It is blank for
+a contract in no agreement and where the agreement has nothing. An own value that is
+the same as the agreement's is still an override. Nothing is
 copied down: giving the agreement another account manager, or another period, changes
 what every contract in it shows that has none of its own, and what every item under
 those contracts shows, and writes to none of them. A contract with no dates of its own
@@ -689,7 +697,16 @@ its cost, the purchase reference it was bought under, and when the renewal that
 ended it was entered and by whom,
 are answered by `GET /contracts/{hid}/terms` from the audit trail, and are stored
 nowhere else. They are the purchase history of the contract: a renewal gives the new
-term its own `purchase_reference`, and may name another reseller.
+term its own `purchase_reference`, and may name another reseller. Each earlier term
+has the dates it had in force: a contract that had no date of its own was co-termed
+with its agreement, and the term then has the agreement's date as it stood on the last
+day of that term, read from the agreement's audit trail. Each date says where it came
+from, `starts_on_source` and `ends_on_source`, `own`, `agreement` or `none`, and the
+term names the agreement the contract was in, `agreement_hid`. A renewal of the
+agreement is not a term of the contracts that follow it: it is a term of the
+agreement. An agreement's own earlier terms are answered in the same way by
+`GET /agreements/{hid}/terms`, with the same fields but the sources, and are its
+purchase history.
 
 Rules, checked on every write:
 
@@ -727,10 +744,12 @@ On an item, derived when it is read and stored nowhere:
 | `covered_until` | the last day any of its coverages runs to, among those that have not ended and whose contract covers or is to cover, to the end of the last term that is known. Blank when one of them names no end, or is under a contract whose renewal is pending with no term to come, and when there is none. A gap between two of them is not looked for |
 | `contract_count` | how many contracts cover it today. More than one is worth a look before a renewal: two contracts for one device are usually one too many |
 | `coverage` | its coverages, each with the contract, the dates in force, whether it is in force today and whether it was ended because the item left |
+| `out_of_service_contracts` | for an item that is out of service, the contracts that still count it: each that covers it today, and each whose coverage of it was ended because it left while the term of the contract still runs. The list to send the vendor. Blank for an item in service |
 
 `covered`, `covered_until`, `contract_count`, and `contract.number` and
 `contract.status`, those of a contract that covers it today, are fields of the item
-list. How many items a contract covers, `covered_items`, is a count like every
+list, and so are `out_of_service_contract.number` and `out_of_service_contract.hid`,
+those of a contract that still counts it when it is out of service. How many items a contract covers, `covered_items`, is a count like every
 other: drafts, retired items and items in Archived are left out, so the number on a
 contract is the number of rows of the item list for it.
 
@@ -756,6 +775,7 @@ yet. The coverage report is built on the two.
 | `purchase_lines.notes` | text | |
 | `purchase_lines.received_quantity` | integer | derived: the number of items that name this line |
 | `purchase_lines.pending_quantity` | integer | derived: `quantity` less `received_quantity` |
+| `purchase_lines.mismatched_items` | integer | derived: how many of the items that name this line are of another model, which 0.6.0 let in. Zero once they are put right |
 
 A line is named by the reference of its request and its number: `RITM0012345/2`.
 

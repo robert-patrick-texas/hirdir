@@ -79,19 +79,28 @@ def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
     return {record.hid: record for record in db.scalars(select(model).where(model.hid.in_(wanted)))}
 
 
-def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
-    value = effective.value
-    shown: str | bool | None
+def _shown(name: str, value: Any) -> str | bool | None:
+    """Return a value as a record answers it: a decimal and a date as text."""
     if isinstance(value, Decimal):
-        shown = records.decimal_text(name, value)
-    elif isinstance(value, date):
-        shown = value.isoformat()
-    elif isinstance(value, str | bool):
-        shown = value
-    else:
-        shown = None
+        return records.decimal_text(name, value)
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str | bool):
+        return value
+    return None
+
+
+def _text(name: str, value: Any) -> str | None:
+    """Return a value that is never a truth value as a record answers it."""
+    shown = _shown(name, value)
+    return shown if isinstance(shown, str) else None
+
+
+def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
     return shapes.EffectiveValue(
-        value=shown, source=effective.source, source_hid=effective.source_hid
+        value=_shown(name, effective.value),
+        source=effective.source,
+        source_hid=effective.source_hid,
     )
 
 
@@ -702,19 +711,24 @@ def _contract_refs(
 
 def _cover(
     db: Session, item_hids: list[str], today: date
-) -> dict[str, tuple[list[shapes.CoverageRef], date | None, int]]:
-    """Return the coverages of each item, the last day its cover runs to, and how many
-    contracts cover it today."""
+) -> dict[str, tuple[list[shapes.CoverageRef], date | None, int, list[shapes.ContractRef]]]:
+    """Return the coverages of each item, the last day its cover runs to, how many
+    contracts cover it today, and the contracts that would still count it once it is
+    out of service."""
     found = contracts.of_items(db, item_hids)
     refs = _contract_refs(
         db,
         list({contract.hid: contract for its in found.values() for _, contract in its}.values()),
         today,
     )
-    out: dict[str, tuple[list[shapes.CoverageRef], date | None, int]] = {}
+    out: dict[str, tuple[list[shapes.CoverageRef], date | None, int, list[shapes.ContractRef]]]
+    out = {}
     for hid, its in found.items():
         listed = []
+        counting: dict[str, shapes.ContractRef] = {}
         for coverage, contract in its:
+            if contracts.still_counts(coverage, contract, today):
+                counting.setdefault(contract.hid, refs[contract.hid])
             span = contracts.span(coverage, contract, today)
             listed.append(
                 shapes.CoverageRef(
@@ -728,7 +742,8 @@ def _cover(
                 )
             )
         covering = {one.contract_hid for one in listed if one.in_force}
-        out[hid] = (listed, contracts.covered_until(its, today), len(covering))
+        ordered = sorted(counting.values(), key=lambda ref: (records.key(ref.number), ref.hid))
+        out[hid] = (listed, contracts.covered_until(its, today), len(covering), ordered)
     return out
 
 
@@ -792,6 +807,7 @@ def _line_refs(db: Session, hids: set[str | None]) -> dict[str, shapes.PurchaseL
             request_hid=line.request_hid,
             reference=requests[line.request_hid].reference,
             line=line.line,
+            catalog_entry_hid=line.catalog_entry_hid,
         )
         for line in lines.values()
     }
@@ -922,6 +938,12 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 covered_until=cover[item.hid][1],
                 contract_count=cover[item.hid][2],
                 coverage=cover[item.hid][0],
+                out_of_service_contracts=cover[item.hid][3]
+                if contracts.out_of_service(item.record_status, effective["lifecycle_state"].value)
+                else [],
+                purchase_line_mismatch=item.purchase_line_hid is not None
+                and item.purchase_line_hid in arrived_on
+                and arrived_on[item.purchase_line_hid].catalog_entry_hid != item.catalog_entry_hid,
                 registrations=registered[item.hid],
                 group_registrations=through_groups[item.hid],
                 tags=labels[item.hid],
@@ -965,10 +987,12 @@ _ITEM_SHAPED = (
     "replaces",
     "replaced_by",
     "purchase_line",
+    "purchase_line_mismatch",
     "covered",
     "covered_until",
     "contract_count",
     "coverage",
+    "out_of_service_contracts",
     "registrations",
     "group_registrations",
     "tags",
@@ -1312,12 +1336,14 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
     hids = [contract.hid for contract in found]
     today = contracts.today(db)
     in_force = {contract.hid: contracts.effective(contract, today) for contract in found}
+    above = {contract.hid: contracts.agreement_gives(contract, today) for contract in found}
     vendors = _by_hid(
         db,
         Vendor,
         {contract.vendor_hid for contract in found}
         | {contract.reseller_hid for contract in found}
-        | {its["reseller_hid"].value for its in in_force.values()},
+        | {its["reseller_hid"].value for its in in_force.values()}
+        | {gives["reseller_hid"] for gives in above.values()},
     )
     labels = tags.labels_of(db, contracts.RECORD_TYPE, hids)
     covered = fields.covered_items(db, hids)
@@ -1340,8 +1366,10 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
     out = []
     for contract in found:
         its = in_force[contract.hid]
+        gives = above[contract.hid]
         within = contracts.agreement_of(contract)
         through = vendors.get(its["reseller_hid"].value or "")
+        theirs = vendors.get(gives["reseller_hid"] or "")
         out.append(
             shapes.ContractOut.model_validate(
                 {
@@ -1358,14 +1386,21 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
                         number=contracts.term(within, today)["number"],
                     ),
                     "effective": shapes.ContractEffective(
-                        reseller_hid=shapes.EffectiveReference(
+                        reseller_hid=shapes.ContractEffectiveReference(
                             value=its["reseller_hid"].value,
                             label=through.name if through is not None else None,
                             source=its["reseller_hid"].source,
                             source_hid=its["reseller_hid"].source_hid,
+                            from_agreement=gives["reseller_hid"],
+                            from_agreement_label=theirs.name if theirs is not None else None,
                         ),
                         **{
-                            name: _effective(name, value)
+                            name: shapes.ContractEffectiveValue(
+                                value=_shown(name, value.value),
+                                source=value.source,
+                                source_hid=value.source_hid,
+                                from_agreement=_text(name, gives[name]),
+                            )
                             for name, value in its.items()
                             if name != "reseller_hid"
                         },
@@ -1392,23 +1427,40 @@ def contract_out(db: Session, contract: Contract) -> shapes.ContractOut:
     return contracts_out(db, [contract])[0]
 
 
+def _term(term: contracts.Term, users: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "number": term.number,
+        "starts_on": term.starts_on,
+        "ends_on": term.ends_on,
+        "annual_cost": term.annual_cost,
+        "purchase_reference": term.purchase_reference,
+        "renewed_at": term.renewed_at,
+        "renewed_by": term.renewed_by,
+        "renewed_by_name": users[term.renewed_by].username if term.renewed_by in users else None,
+    }
+
+
 def terms_out(db: Session, contract: Contract) -> list[shapes.ContractTerm]:
-    """Return the terms a contract had before, each with who renewed it."""
+    """Return the terms a contract had before, each with who renewed it and the dates it
+    had in force, with where each came from."""
     found = contracts.terms(db, contract)
     users = _by_hid(db, User, {term.renewed_by for term in found})
     return [
         shapes.ContractTerm(
-            number=term.number,
-            starts_on=term.starts_on,
-            ends_on=term.ends_on,
-            annual_cost=term.annual_cost,
-            purchase_reference=term.purchase_reference,
-            renewed_at=term.renewed_at,
-            renewed_by=term.renewed_by,
-            renewed_by_name=users[term.renewed_by].username if term.renewed_by in users else None,
+            **_term(term, users),
+            starts_on_source=term.starts_on_source,
+            ends_on_source=term.ends_on_source,
+            agreement_hid=term.agreement_hid,
         )
         for term in found
     ]
+
+
+def agreement_terms_out(db: Session, agreement: Agreement) -> list[shapes.AgreementTerm]:
+    """Return the terms an agreement had before, each with who renewed it."""
+    found = contracts.terms(db, agreement, contracts.AGREEMENT_TYPE)
+    users = _by_hid(db, User, {term.renewed_by for term in found})
+    return [shapes.AgreementTerm(**_term(term, users)) for term in found]
 
 
 def coverage_out(db: Session, found: list[ContractCoverage]) -> list[shapes.CoverageOut]:
@@ -1497,6 +1549,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
     models = _catalog_refs(db, {line.catalog_entry_hid for line in found})
     sites = _site_refs(db, {line.destination_site_hid for line in found})
     arrived = purchases.received(db, [line.hid for line in found])
+    astray = purchases.mismatched(db, [line.hid for line in found])
     shaped = (
         "reference",
         "request_status",
@@ -1504,6 +1557,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
         "catalog",
         "received_quantity",
         "pending_quantity",
+        "mismatched_items",
         "destination_site",
     )
     out = []
@@ -1518,6 +1572,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
                 catalog=models[line.catalog_entry_hid],
                 received_quantity=arrived[line.hid],
                 pending_quantity=line.quantity - arrived[line.hid],
+                mismatched_items=astray[line.hid],
                 destination_site=sites.get(line.destination_site_hid or ""),
             )
         )

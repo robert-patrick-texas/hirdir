@@ -50,6 +50,7 @@ def test_agreements_contracts_and_coverage_load_from_files(
         "value": "24x7",
         "source": "agreement",
         "source_hid": listed["CON-1"]["agreement_hid"],
+        "from_agreement": "24x7",
     }
     assert listed["CON-2"]["effective"]["support_level"]["source"] == "own"
     assert (listed["CON-3"]["agreement"], listed["CON-1"]["annual_cost"]) == (None, "61000.00")
@@ -184,6 +185,31 @@ def test_purchases_and_the_items_that_arrived_load_from_files(
     assert "purchase_line" in errors_of(
         files.preview("items", "name,purchase_line\nx,RITM0099999/1\n")
     )
+    # A row that names a line and no model is of the line's model; one of another model
+    # is rejected, and says the line's.
+    other = (
+        "vendor,pid,serial_number,lifecycle_state,purchase_line\n"
+        "Cisco,C9300-48P,FCW-201,Delivered,RITM0012345/2\n"
+    )
+    rejected = files.preview("items", other)
+    assert counts(rejected["job"]) == (0, 0, 0, 1)
+    (reason,) = rejected["rows"][0]["reasons"]
+    assert "C9300-NM-8X" in reason["message"]
+    bare = "serial_number,lifecycle_state,purchase_line\nNM-201,Delivered,RITM0012345/2\n"
+    assert counts(files.load("items", bare)) == (1, 0, 0, 0)
+    (module,) = make.get("/items", filter="serial_number:eq:NM-201")["items"]
+    assert (module["catalog"]["pid"], module["purchase_line_mismatch"]) == ("C9300-NM-8X", False)
+    assert counts(files.load("items", bare)) == (0, 0, 1, 0)
+    exported = table(
+        files.export(
+            "items",
+            filter="serial_number:eq:NM-201",
+            columns=["serial_number", "purchase_line_mismatch"],
+        )
+    )
+    assert exported[0]["purchase_line_mismatch"] == "false"
+    lines_now = table(files.export("purchase_lines", columns=["line", "mismatched_items"]))
+    assert [row["mismatched_items"] for row in lines_now] == ["0", "0"]
 
 
 def test_systems_registrations_capacity_and_replacements_load_from_files(

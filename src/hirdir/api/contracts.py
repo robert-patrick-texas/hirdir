@@ -77,6 +77,13 @@ def renew_agreement(
     return shapes.agreements_out(db, [renewed])[0]
 
 
+@agreements.get("/{hid}/terms")
+def agreement_terms(hid: str, _: Viewer, db: Db) -> list[r.AgreementTerm]:
+    """List the terms an agreement had before it was renewed, the latest first: its
+    purchase history."""
+    return shapes.agreement_terms_out(db, contracts.get_agreement(db, hid))
+
+
 @agreements.post("/{hid}/retire")
 def retire_agreement(
     hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
@@ -139,7 +146,8 @@ def renew_contract(
 @router.get("/{hid}/terms")
 def contract_terms(hid: str, _: Viewer, db: Db) -> list[r.ContractTerm]:
     """List the terms a contract had before it was renewed, the latest first: its
-    purchase history."""
+    purchase history. Each has the dates it had in force: where the contract had none
+    of its own, its agreement's as they stood on the last day of the term."""
     return shapes.terms_out(db, contracts.get_contract(db, hid))
 
 

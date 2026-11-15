@@ -1289,12 +1289,26 @@ def _in_force_period(contract: dict[str, Any]) -> str:
 
 
 def _from_agreement(contract: dict[str, Any], name: str) -> str | None:
-    """Return what a contract has in force in a field, and says so where it is not its own."""
+    """Return what a contract has in force in a field, and says so where it is not its
+    own, or what its own is in place of."""
     found = contract["effective"][name]
     value = found.get("label") or found["value"]
-    if value is None or found["source"] == "own":
+    if value is None:
         return value
-    return f"{value} ({found['source']})"
+    if found["source"] != "own":
+        return f"{value} ({found['source']})"
+    theirs = found.get("from_agreement_label") or found.get("from_agreement")
+    return value if theirs is None else f"{value} (in place of the agreement's {theirs})"
+
+
+def _term_period(term: dict[str, Any]) -> str:
+    """Return the period of an earlier term, saying which of its dates were the agreement's."""
+
+    def one(name: str, blank: str) -> str:
+        value = term[name] or blank
+        return f"{value} (agreement)" if term.get(f"{name}_source") == "agreement" else value
+
+    return f"{one('starts_on', 'the beginning')} to {one('ends_on', 'further notice')}"
 
 
 @contracts.command("show")
@@ -1352,8 +1366,7 @@ def show_contract(
             typer.echo(f"{name + ':':<21}{value}")
     for term in terms:
         typer.echo(
-            f"{'earlier term:':<21}{term['number']}, "
-            f"{_period(term['starts_on'], term['ends_on'])}"
+            f"{'earlier term:':<21}{term['number']}, {_term_period(term)}"
             + (f", {term['purchase_reference']}" if term["purchase_reference"] else "")
         )
     if covered["items"]:
@@ -1508,6 +1521,54 @@ def renew_contract(
         f"{_in_force_period(renewed)}; {scope} {'item follows' if scope == 1 else 'items follow'}"
     )
     _renewed(found, renewed, found["number"], follow)
+
+
+@agreements.command("show")
+def show_agreement(
+    agreement: Annotated[str, typer.Argument(help="A name or an HID.")],
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show a support agreement: what it says, how many contracts it groups, and the
+    terms it had before, its purchase history."""
+    target = client.load_target(url, token)
+    found = _one_named(target, "/agreements", "name", agreement, "agreement")
+    terms = client.call(target, "GET", f"/agreements/{found['hid']}/terms")
+    if format_ == "json":
+        typer.echo(json.dumps({**found, "terms": terms}, indent=2))
+        return
+    lines = [
+        ("hid", found["hid"]),
+        ("name", found["name"]),
+        ("number", found["number"]),
+        ("vendor", found["vendor"]["name"]),
+        ("period", _period(found["starts_on"], found["ends_on"])),
+        ("status", found["status"] + (", lapsed" if found["lapsed"] else "")),
+        (
+            "next term",
+            None
+            if found["next_term"] is None
+            else (f"{found['next_term']['number']}, " if found["next_term"]["number"] else "")
+            + _period(found["next_term"]["starts_on"], found["next_term"]["ends_on"]),
+        ),
+        ("support_level", found["support_level"]),
+        ("purchase_reference", found["purchase_reference"]),
+        ("account_manager", found["account_manager"]),
+        ("support_contact", found["support_contact"]),
+        ("support_url", found["support_url"]),
+        ("annual_cost", found["annual_cost"]),
+        ("contracts", str(found["contracts"])),
+    ]
+    for name, value in lines:
+        if value not in (None, ""):
+            typer.echo(f"{name + ':':<21}{value}")
+    for term in terms:
+        typer.echo(
+            f"{'earlier term:':<21}{term['number'] or '(no number)'}, "
+            f"{_period(term['starts_on'], term['ends_on'])}"
+            + (f", {term['purchase_reference']}" if term["purchase_reference"] else "")
+        )
 
 
 @agreements.command("renew")

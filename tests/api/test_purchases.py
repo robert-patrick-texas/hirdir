@@ -6,7 +6,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from hirdir.db.models import Item
 from tests.api.inventory import API, Maker, errors
 
 TODAY = date.today()
@@ -114,6 +116,7 @@ def test_receiving_creates_the_items_that_arrived_and_never_more_than_the_line(
             "request_hid": request["hid"],
             "reference": "RITM0012345",
             "line": 1,
+            "catalog_entry_hid": entry["hid"],
         }
         assert item["location"]["path"].endswith("Room 102")
         (created,) = make.audit(record_type="item", record_hid=item["hid"])
@@ -258,6 +261,51 @@ def test_an_item_is_put_on_a_line_by_hand_and_the_line_counts_it(make: Maker, en
     )
     assert cleared["purchase_line"] is None
     assert make.get(f"/purchase-lines/{line['hid']}")["pending_quantity"] == 1
+
+
+def test_an_item_on_a_line_is_of_the_lines_model(make: Maker, entry: dict, db: Session) -> None:
+    (line,) = _request(make, entry, quantity=4)["lines"]
+    other = make.entry(make.vendor("Juniper"), "EX4400-48P")
+    # One that names no model takes the line's.
+    taken = make.post("/items", {"serial_number": "FCW-1", "purchase_line_hid": line["hid"]})
+    assert (taken["catalog_entry_hid"], taken["purchase_line_mismatch"]) == (entry["hid"], False)
+    # One that names another is refused, and the answer says the line's model.
+    refused = make.post(
+        "/items",
+        {
+            "catalog_entry_hid": other["hid"],
+            "serial_number": "X-2",
+            "purchase_line_hid": line["hid"],
+        },
+        422,
+    )
+    assert "C9300-48P" in errors(refused)["catalog_entry_hid"]
+    early = make.item(catalog_entry_hid=other["hid"], serial_number="X-3")
+    put_on = {"row_version": early["row_version"], "purchase_line_hid": line["hid"]}
+    assert "catalog_entry_hid" in errors(make.patch(f"/items/{early['hid']}", put_on, 422))
+    # While it is on the line its model is not changed; taken off, it may be.
+    remodel = {"row_version": taken["row_version"], "catalog_entry_hid": other["hid"]}
+    assert "catalog_entry_hid" in errors(make.patch(f"/items/{taken['hid']}", remodel, 422))
+    off = make.patch(f"/items/{taken['hid']}", {**remodel, "purchase_line_hid": None})
+    assert (off["catalog_entry_hid"], off["purchase_line"]) == (other["hid"], None)
+    assert make.get(f"/purchase-lines/{line['hid']}")["mismatched_items"] == 0
+
+    # What 0.6.0 let in is left as it is, is not held against another change, and is
+    # reported to be put right.
+    astray = make.post("/items", {"serial_number": "FCW-4", "purchase_line_hid": line["hid"]})
+    held = db.get_one(Item, astray["hid"])
+    held.catalog_entry_hid = other["hid"]
+    db.commit()
+    renamed = _change(make, f"/items/{astray['hid']}", name="site2-sw4")
+    assert (renamed["name"], renamed["purchase_line_mismatch"]) == ("site2-sw4", True)
+    assert make.get(f"/purchase-lines/{line['hid']}")["mismatched_items"] == 1
+    found = make.get("/items", filter="purchase_line_mismatch:eq:true")["items"]
+    assert [one["hid"] for one in found] == [astray["hid"]]
+    assert make.get("/purchase-lines", filter="mismatched_items:gt:0")["total"] == 1
+    # Put right by giving it the line's model.
+    _change(make, f"/items/{astray['hid']}", catalog_entry_hid=entry["hid"])
+    assert make.get("/items", filter="purchase_line_mismatch:eq:true")["total"] == 0
+    assert make.get(f"/purchase-lines/{line['hid']}")["mismatched_items"] == 0
 
 
 # --- external systems ----------------------------------------------------------------

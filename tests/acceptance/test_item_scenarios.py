@@ -142,6 +142,9 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
         "covered": False,
         "contract_count": 0,
         "coverage": [],
+        "out_of_service_contracts": [],
+        # On no purchase line, so on none of another model.
+        "purchase_line_mismatch": False,
         "registrations": [],
         "group_registrations": [],
     }

@@ -555,18 +555,28 @@ def test_a_contract_has_from_its_agreement_what_it_leaves_blank(desk: Desk) -> N
             "value": value,
             "source": "agreement",
             "source_hid": agreement["hid"],
+            "from_agreement": value,
         }
     assert in_force["reseller_hid"] == {
         "value": reseller["hid"],
         "label": "Example Reseller",
         "source": "agreement",
         "source_hid": agreement["hid"],
+        "from_agreement": reseller["hid"],
+        "from_agreement_label": "Example Reseller",
     }
+    # An override says what it is in place of: the server says it, not the page.
     assert wireless["effective"]["support_level"] == {
         "value": "8x5",
         "source": "own",
         "source_hid": wireless["hid"],
+        "from_agreement": "24x7",
     }
+    # The same value as the agreement's, said of its own, is still an override.
+    same = desk.change(f"/contracts/{wireless['hid']}", support_url=agreement["support_url"])
+    assert same["effective"]["support_url"]["source"] == "own"
+    assert same["effective"]["support_url"]["from_agreement"] == agreement["support_url"]
+    desk.change(f"/contracts/{wireless['hid']}", support_url=None)
     assert campus["covers_today"] is True
     switch = desk.switch(entry, "FCW-1")
     desk.cover(campus, switch)
@@ -594,6 +604,10 @@ def test_a_contract_has_from_its_agreement_what_it_leaves_blank(desk: Desk) -> N
     assert desk.covered(switch)[1] == day(500)
     after = (campus_now["row_version"], desk.get(f"/items/{switch['hid']}")["row_version"])
     assert after == before
+    assert (
+        desk.get(f"/contracts/{wireless['hid']}")["effective"]["support_level"]["from_agreement"]
+        == "24x7, four-hour response"
+    )
     # An override is cleared, and the agreement speaks again.
     cleared = desk.change(f"/contracts/{wireless['hid']}", support_level=None)
     assert cleared["effective"]["support_level"]["source"] == "agreement"
@@ -601,6 +615,130 @@ def test_a_contract_has_from_its_agreement_what_it_leaves_blank(desk: Desk) -> N
     desk.change(f"/agreements/{agreement['hid']}", ends_on=day(-3))
     assert desk.covered(switch)[0] is False
     assert desk.get("/items", filter="covered:eq:true")["total"] == 0
+    # A contract in no agreement has nothing from one.
+    alone = desk.contract("CON-3", support_level="8x5")
+    assert {its["from_agreement"] for its in alone["effective"].values()} == {None}
+    assert alone["effective"]["reseller_hid"]["from_agreement_label"] is None
+
+
+def test_the_contracts_that_still_count_an_item_out_of_service_are_a_field(
+    desk: Desk, client: TestClient, inventory: dict[str, str]
+) -> None:
+    entry = desk.catalog()
+    first = desk.contract("CON-B-1", starts_on=LAST_YEAR, ends_on=NEXT_YEAR)
+    second = desk.contract("CON-A-2", starts_on=LAST_YEAR, ends_on=NEXT_YEAR)
+    leaving = desk.switch(entry, "FCW-1")
+    archived = desk.switch(entry, "FCW-2")
+    staying = desk.switch(entry, "FCW-3")
+    desk.cover(first, leaving, archived, staying)
+    desk.cover(second, leaving)
+    desk.move(leaving, "Pending-Removal")
+    desk.move(desk.move(desk.move(archived, "Pending-Removal"), "Released"), "Archived")
+    # Pending-Removal ends nothing: both still cover it. Archived ended its coverage, and
+    # the vendor still counts it while the term runs.
+    record = desk.get(f"/items/{leaving['hid']}")
+    assert [ref["number"] for ref in record["out_of_service_contracts"]] == ["CON-A-2", "CON-B-1"]
+    gone = desk.get(f"/items/{archived['hid']}")
+    assert [ref["number"] for ref in gone["out_of_service_contracts"]] == ["CON-B-1"]
+    assert desk.get(f"/items/{staying['hid']}")["out_of_service_contracts"] == []
+    found = desk.get(
+        "/items", filter="out_of_service_contract.number:eq:con-b-1", include_archived="true"
+    )
+    assert {one["hid"] for one in found["items"]} == {leaving["hid"], archived["hid"]}
+    found = desk.get(
+        "/items", filter=f"out_of_service_contract.hid:eq:{second['hid']}", include_archived="true"
+    )
+    assert [one["hid"] for one in found["items"]] == [leaving["hid"]]
+    ordered = desk.get(
+        "/items", sort="out_of_service_contract.number,serial_number", include_archived="true"
+    )
+    assert [one["serial_number"] for one in ordered["items"]] == ["FCW-1", "FCW-2", "FCW-3"]
+    # The vendor is told: the archived item is no longer counted.
+    (ended,) = [one for one in gone["coverage"] if one["left_service"]]
+    held = desk.get("/contract-coverage", filter=f"hid:eq:{ended['hid']}")["items"][0]
+    desk.patch(
+        f"/contracts/{first['hid']}/coverage/{ended['hid']}",
+        {"row_version": held["row_version"], "left_service": False},
+    )
+    assert desk.get(f"/items/{archived['hid']}")["out_of_service_contracts"] == []
+    # In a file, as the numbers, and not loaded.
+    response = client.post(
+        f"{API}/exports",
+        json={
+            "entity": "items",
+            "columns": ["serial_number", "out_of_service_contracts"],
+            "sort": ["serial_number"],
+            "include_archived": True,
+        },
+        headers=desk.headers,
+    )
+    assert response.status_code == 200, response.text
+    lines = response.text.strip().splitlines()
+    assert lines[0] == "hid,serial_number,out_of_service_contracts"
+    assert [line.split(",", 2)[2] for line in lines[1:]] == ["CON-A-2;CON-B-1", "", ""]
+
+
+def test_an_earlier_term_of_a_co_termed_contract_has_the_dates_it_had(
+    desk: Desk, db: Session
+) -> None:
+    desk.catalog()
+    agreement = desk.agreement(number="EA-1", starts_on=day(-700), ends_on=day(-340))
+    path = f"/agreements/{agreement['hid']}"
+    co_termed = desk.contract("CON-10", agreement_hid=agreement["hid"])
+    half = desk.contract("CON-11", agreement_hid=agreement["hid"], starts_on=day(-650))
+    # The agreement is renewed, and the contracts with it: each takes a new number.
+    renewed = desk.post(
+        f"{path}/renew",
+        {
+            "row_version": agreement["row_version"],
+            "number": "EA-2",
+            "starts_on": day(-339),
+            "ends_on": day(20),
+        },
+        200,
+    )
+    assert renewed["starts_on"] == day(-339)
+    for contract, number in ((co_termed, "CON-20"), (half, "CON-21")):
+        now = desk.get(f"/contracts/{contract['hid']}")
+        body = {"row_version": now["row_version"], "number": number}
+        desk.post(f"/contracts/{contract['hid']}/renew", body, 200)
+    # The agreement is changed again after: what the term had is what stood then.
+    desk.change(path, starts_on=day(-330))
+    (earlier,) = desk.get(f"/contracts/{co_termed['hid']}/terms")
+    assert (earlier["number"], earlier["agreement_hid"]) == ("CON-10", agreement["hid"])
+    assert (earlier["starts_on"], earlier["starts_on_source"]) == (day(-339), "agreement")
+    assert (earlier["ends_on"], earlier["ends_on_source"]) == (day(20), "agreement")
+    # Each date by itself: its own where it had one, the agreement's where it had none.
+    (other,) = desk.get(f"/contracts/{half['hid']}/terms")
+    assert (other["starts_on"], other["starts_on_source"]) == (day(-650), "own")
+    assert (other["ends_on"], other["ends_on_source"]) == (day(20), "agreement")
+    # A contract that stands by itself has nothing from an agreement.
+    alone = desk.contract("CON-30", starts_on=day(-100))
+    desk.post(f"/contracts/{alone['hid']}/renew", {"row_version": 1, "number": "CON-31"}, 200)
+    (its,) = desk.get(f"/contracts/{alone['hid']}/terms")
+    assert (its["agreement_hid"], its["starts_on_source"], its["ends_on_source"]) == (
+        None,
+        "own",
+        "none",
+    )
+    # The agreement has a purchase history of its own.
+    (term,) = desk.get(f"{path}/terms")
+    assert (term["number"], term["starts_on"], term["ends_on"]) == ("EA-1", day(-700), day(-340))
+    assert term["renewed_by_name"] == "ivy"
+    assert "starts_on_source" not in term
+    assert desk.client.get(f"{API}/agreements/AGR-0/terms", headers=desk.headers).status_code == 404
+
+
+def test_an_agreement_with_no_number_has_its_terms_too(desk: Desk) -> None:
+    desk.catalog()
+    agreement = desk.agreement(starts_on=day(-400), ends_on=day(-35))
+    desk.post(
+        f"/agreements/{agreement['hid']}/renew",
+        {"row_version": agreement["row_version"], "starts_on": day(-34), "ends_on": day(330)},
+        200,
+    )
+    (term,) = desk.get(f"/agreements/{agreement['hid']}/terms")
+    assert (term["number"], term["starts_on"], term["ends_on"]) == (None, day(-400), day(-35))
 
 
 def test_a_standalone_contract_is_rolled_into_an_agreement_by_one_change(desk: Desk) -> None:
@@ -622,6 +760,7 @@ def test_a_standalone_contract_is_rolled_into_an_agreement_by_one_change(desk: D
         "value": day(200),
         "source": "own",
         "source_hid": alone["hid"],
+        "from_agreement": NEXT_YEAR,
     }
     assert desk.covered(switch)[1] == day(200)
     # Cleared, it is co-termed with the agreement.
@@ -879,6 +1018,38 @@ def test_the_database_and_the_record_agree_on_what_is_in_force(desk: Desk, db: S
     for hid, one in listed_contracts.items():
         by_number = desk.get("/contracts", filter=f"number:eq:{one['number']}")["items"]
         assert [found["hid"] for found in by_number] == [hid]
+    # And for an item that is out of service: the contracts that still count it, those
+    # whose cover goes on and those whose coverage ended because it left.
+    for place, item in enumerate(db.scalars(select(Item).order_by(Item.hid))):
+        item.lifecycle_state = ("Pending-Removal", "Archived", "Prod")[place % 3]
+    for place, coverage in enumerate(db.scalars(select(ContractCoverage))):
+        if place % 4 == 1:
+            coverage.left_service = True
+            coverage.ends_on = TODAY - timedelta(days=place % 7)
+        elif place % 4 == 2:
+            coverage.ends_on = TODAY
+    db.commit()
+
+    def every(**more: Any) -> list[dict[str, Any]]:
+        return desk.get(
+            "/items", limit=1000, include_archived="true", include_drafts="true", **more
+        )["items"]
+
+    records = {one["hid"]: one for one in every()}
+    counted = {hid for hid, one in records.items() if one["out_of_service_contracts"]}
+    assert 10 < len(counted) < len(records)
+    found = every(filter="out_of_service_cover:eq:true")
+    assert {one["hid"] for one in found} == counted
+    for contract_hid in listed_contracts:
+        found = every(filter=f"out_of_service_contract.hid:eq:{contract_hid}")
+        assert {one["hid"] for one in found} == {
+            hid
+            for hid, one in records.items()
+            if contract_hid in [ref["hid"] for ref in one["out_of_service_contracts"]]
+        }, contract_hid
+    in_service = {hid for hid, one in records.items() if one["lifecycle_state"] == "Prod"}
+    assert in_service
+    assert not counted & in_service
 
 
 WRITES = (

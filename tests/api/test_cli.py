@@ -715,6 +715,10 @@ def test_contracts_are_shown_covered_rolled_in_and_renewed(
         "--to", "2100-12-31",
     )  # fmt: skip
     assert "Cisco Enterprise Agreement renews on 2100-01-01, to 2100-12-31" in of_agreement.stdout
+    shown = run("agreements", "show", "Cisco Enterprise Agreement").stdout
+    assert "next term:           2100-01-01 to 2100-12-31" in shown
+    assert "contracts:           " in shown
+    assert "earlier term:" not in shown
 
     by_contract = run("report", "summary", "--by", "contract", "--format", "csv").stdout
     rows = list(csv.reader(io.StringIO(by_contract)))

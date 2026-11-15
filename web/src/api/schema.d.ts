@@ -410,6 +410,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/agreements/{hid}/terms": {
+    /**
+     * List the terms an agreement had before it was renewed, the latest first: its
+     * purchase history.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AgreementTerm"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/audit-events": {
     /** List audit events, newest first unless a sort says otherwise. */
     get: {
@@ -1694,7 +1724,8 @@ export interface paths {
   "/api/v1/contracts/{hid}/terms": {
     /**
      * List the terms a contract had before it was renewed, the latest first: its
-     * purchase history.
+     * purchase history. Each has the dates it had in force: where the contract had none
+     * of its own, its agreement's as they stood on the last day of the term.
      */
     get: {
       parameters: {
@@ -5990,6 +6021,18 @@ export interface components {
       name: string;
       number: string | null;
     };
+    /** A term an agreement had before it was renewed. */
+    AgreementTerm: {
+      annual_cost: string | null;
+      ends_on: string | null;
+      number: string | null;
+      purchase_reference: string | null;
+      /** When the renewal that ended this term was made. */
+      renewed_at: string;
+      renewed_by: string | null;
+      renewed_by_name: string | null;
+      starts_on: string | null;
+    };
     /** One item that arrived on a line: something to know it by. */
     Arrived: {
       asset_tag?: string | null;
@@ -6353,15 +6396,43 @@ export interface components {
       /** Left out, the vendor of the agreement it is put into. */
       vendor_hid?: string | null;
     };
-    /** What a contract has in force of the fields it may have from its agreement. */
+    /**
+     * What a contract has in force of the fields it may have from its agreement, each
+     * with what the agreement gives for it, so that an override says what it is in place
+     * of.
+     */
     ContractEffective: {
-      account_manager: components["schemas"]["EffectiveValue"];
-      ends_on: components["schemas"]["EffectiveValue"];
-      reseller_hid: components["schemas"]["EffectiveReference"];
-      starts_on: components["schemas"]["EffectiveValue"];
-      support_contact: components["schemas"]["EffectiveValue"];
-      support_level: components["schemas"]["EffectiveValue"];
-      support_url: components["schemas"]["EffectiveValue"];
+      account_manager: components["schemas"]["ContractEffectiveValue"];
+      ends_on: components["schemas"]["ContractEffectiveValue"];
+      reseller_hid: components["schemas"]["ContractEffectiveReference"];
+      starts_on: components["schemas"]["ContractEffectiveValue"];
+      support_contact: components["schemas"]["ContractEffectiveValue"];
+      support_level: components["schemas"]["ContractEffectiveValue"];
+      support_url: components["schemas"]["ContractEffectiveValue"];
+    };
+    /** The reseller a contract has in force, where it came from, and the agreement's. */
+    ContractEffectiveReference: {
+      /** The HID of the reseller the agreement gives, whether overridden or not. */
+      from_agreement: string | null;
+      /** That reseller's name. */
+      from_agreement_label: string | null;
+      /** What people call the record. */
+      label: string | null;
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source_hid: string | null;
+      /** The HID of the record. */
+      value: string | null;
+    };
+    /**
+     * A value a contract has in force, where it came from, and what its agreement
+     * gives for it.
+     */
+    ContractEffectiveValue: {
+      /** What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing. */
+      from_agreement: string | null;
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source_hid: string | null;
+      value: string | boolean | null;
     };
     /**
      * A support contract. It is one record for every item it covers: what it says is
@@ -6465,17 +6536,23 @@ export interface components {
       /** Withdraw the term that is still to begin. Nothing else is sent with it. */
       withdraw?: boolean;
     };
-    /** A term a contract had before it was renewed. */
+    /** A term a contract had before it was renewed, with the dates it had in force. */
     ContractTerm: {
+      /** The agreement the contract was in then. */
+      agreement_hid: string | null;
       annual_cost: string | null;
+      /** The last day of the term in force, in the same way. */
       ends_on: string | null;
+      ends_on_source: "own" | "agreement" | "none";
       number: string;
       purchase_reference: string | null;
       /** When the renewal that ended this term was made. */
       renewed_at: string;
       renewed_by: string | null;
       renewed_by_name: string | null;
+      /** The first day of the term in force: the contract's own, or, where it had none, its agreement's as it stood on the last day of the term. */
       starts_on: string | null;
+      starts_on_source: "own" | "agreement" | "none";
     };
     /** A controller of an endpoint, with the cluster it is in. */
     ControllerRef: {
@@ -7194,6 +7271,8 @@ export interface components {
       /** Its own operator: the label of who of the team looks after it. */
       operator: components["schemas"]["OperatorRef"] | null;
       operator_hid: string | null;
+      /** For an item out of service, the contracts that still count it: those that cover it past today, and those whose coverage of it was ended because it left while their term still runs. The list to send the vendor. Empty for an item in service. */
+      out_of_service_contracts: components["schemas"]["ContractRef"][];
       owner: components["schemas"]["OwnerRef"] | null;
       /** The owner in force is outside the operations team. */
       owner_exception: boolean;
@@ -7212,6 +7291,8 @@ export interface components {
       /** The line of a purchase request it arrived on. */
       purchase_line: components["schemas"]["PurchaseLineRef"] | null;
       purchase_line_hid: string | null;
+      /** It is on a line of another model, which 0.6.0 let in: it is to be put right. An item put on a line now is of the line's model. */
+      purchase_line_mismatch: boolean;
       quantity: number;
       record_status: "draft" | "active" | "retired";
       /** The external systems it is registered with. */
@@ -8008,6 +8089,8 @@ export interface components {
       expected_on: string | null;
       hid: string;
       line: number;
+      /** How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list. */
+      mismatched_items: number;
       /** How the line is named: `RITM0012345/2`. */
       name: string;
       notes: string | null;
@@ -8036,6 +8119,8 @@ export interface components {
     };
     /** The line of a purchase request an item arrived on. */
     PurchaseLineRef: {
+      /** The model of the line. */
+      catalog_entry_hid: string;
       hid: string;
       line: number;
       /** The reference of the request and the number of the line. */
@@ -8103,6 +8188,8 @@ export interface components {
       hid: string;
       items: components["schemas"]["ItemRef"][];
       line: number;
+      /** How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list. */
+      mismatched_items: number;
       /** How the line is named: `RITM0012345/2`. */
       name: string;
       notes: string | null;

@@ -60,8 +60,9 @@ const fromAgreement = (value: string) => ({
   value,
   source: "agreement" as const,
   source_hid: AGREEMENT,
+  from_agreement: value,
 });
-const none = { value: null, source: "none" as const, source_hid: null };
+const none = { value: null, source: "none" as const, source_hid: null, from_agreement: null };
 
 function contract(number: string, more: Partial<Contract> = {}): Contract {
   const hid = `0193a1f4-0000-7000-8000-0000000${number.slice(-5)}`;
@@ -73,7 +74,11 @@ function contract(number: string, more: Partial<Contract> = {}): Contract {
     agreement_hid: AGREEMENT,
     agreement: { hid: AGREEMENT, name: agreement.name, number: agreement.number },
     effective: {
-      reseller_hid: { ...fromAgreement(RESELLER), label: "Example Reseller" },
+      reseller_hid: {
+        ...fromAgreement(RESELLER),
+        label: "Example Reseller",
+        from_agreement_label: "Example Reseller",
+      },
       starts_on: fromAgreement("2025-01-01"),
       ends_on: fromAgreement("2027-12-31"),
       support_level: fromAgreement("24x7, four-hour response"),
@@ -116,7 +121,12 @@ const overriding = contract("CON-2025-00002", {
   record_status: "retired",
   effective: {
     ...coTermed.effective,
-    support_level: { value: "8x5, next business day", source: "own", source_hid: "c-2" },
+    support_level: {
+      value: "8x5, next business day",
+      source: "own",
+      source_hid: "c-2",
+      from_agreement: "24x7, four-hour response",
+    },
   },
 });
 /** One that stands by itself, with a start of its own and no end. */
@@ -126,8 +136,8 @@ const alone = contract("CON-2026-00107", {
   starts_on: "2026-07-01",
   covered_items: 2,
   effective: {
-    reseller_hid: { ...none, label: null },
-    starts_on: { value: "2026-07-01", source: "own", source_hid: "c-3" },
+    reseller_hid: { ...none, label: null, from_agreement_label: null },
+    starts_on: { value: "2026-07-01", source: "own", source_hid: "c-3", from_agreement: null },
     ends_on: none,
     support_level: none,
     account_manager: none,
