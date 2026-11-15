@@ -140,6 +140,11 @@ export function Balance({ report, money }: BalanceProps) {
 function Multiplying({ report }: { report: CapacityReport }) {
   const any =
     report.active.multiplying_lines.length > 0 || report.with_drafts.multiplying_lines.length > 0;
+  // A category by the name the report gives it: every category of supply is among them.
+  const labels = useMemo(
+    () => new Map(report.active.by_category.map((row) => [row.category, row.label])),
+    [report],
+  );
   return (
     <section aria-labelledby="capacity-multiplying" data-testid="capacity-multiplying">
       <h3 id="capacity-multiplying">Lines that multiply</h3>
@@ -154,11 +159,13 @@ function Multiplying({ report }: { report: CapacityReport }) {
             title="Without the drafts"
             which="active"
             lines={report.active.multiplying_lines}
+            labels={labels}
           />
           <MultiplyingTable
             title="With the drafts"
             which="with_drafts"
             lines={report.with_drafts.multiplying_lines}
+            labels={labels}
           />
         </>
       ) : (
@@ -174,11 +181,13 @@ function MultiplyingTable(props: {
   title: string;
   which: "active" | "with_drafts";
   lines: readonly MultiplyingLine[];
+  labels: ReadonlyMap<string, string>;
 }) {
-  const { title, which, lines } = props;
+  const { title, which, lines, labels } = props;
+  const label = (line: MultiplyingLine) => labels.get(line.category) ?? line.category;
   const sorting = useSorting(lines, {
     name: (line) => line.name,
-    category: (line) => line.category,
+    category: label,
     factor: (line) => decimalValue(line.factor),
     share: (line) => decimalValue(line.share),
     targets: (line) => targetsText(line),
@@ -220,7 +229,7 @@ function MultiplyingTable(props: {
               <th scope="row">
                 <Link to={capacityLinePath(line.hid)}>{line.name}</Link>
               </th>
-              <td>{line.category}</td>
+              <td>{label(line)}</td>
               <td className="number">{measureText(line.factor, "units")}</td>
               <td className="number">{measureText(line.share, "units")}</td>
               <td>

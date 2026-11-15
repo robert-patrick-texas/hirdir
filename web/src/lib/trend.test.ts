@@ -3,6 +3,7 @@ import {
   axisTicks,
   balanceBands,
   type CapacityRecord,
+  linesSpan,
   namedWeeks,
   pathThrough,
   shapeThrough,
@@ -137,6 +138,26 @@ describe("the axes", () => {
     expect(axisTicks(9.6)).toEqual([0, 2, 4, 6, 8, 10]);
     expect(axisTicks(0.4)).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
     expect(axisTicks(0)).toEqual([0, 0.2, 0.4, 0.6, 0.8, 1]);
+  });
+
+  it("start a round step below the bottom asked for, and never below nothing", () => {
+    expect(axisTicks(12, 5, 8.6)).toEqual([8, 9, 10, 11, 12]);
+    expect(axisTicks(12, 5, -3)).toEqual([0, 5, 10, 15]);
+  });
+
+  it("hold the two lines with room above and below, and the balance at its size", () => {
+    const points = trendPoints(
+      [record("2026-11-02", "10", "9"), record("2026-11-09", "11", "12")],
+      "active",
+    );
+    const span = linesSpan(points);
+    expect(span.bottom).toBeCloseTo(8.1);
+    expect(span.top).toBeCloseTo(12.45);
+    // One week where the two are even still has room around it.
+    const even = linesSpan(trendPoints([record("2026-11-02", "10", "10")], "active"));
+    expect(even.bottom).toBeLessThan(10);
+    expect(even.top).toBeGreaterThan(10);
+    expect(linesSpan([])).toEqual({ bottom: 0, top: 1 });
   });
 
   it("name every week while there is room, and otherwise every so many, the last among them", () => {

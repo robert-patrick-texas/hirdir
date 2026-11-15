@@ -14,6 +14,7 @@ import {
   axisTicks,
   balanceBands,
   type CapacityRecord,
+  linesSpan,
   namedWeeks,
   pathThrough,
   shapeThrough,
@@ -65,13 +66,17 @@ export function TrendGraph({ records }: TrendGraphProps) {
   const layers = useMemo(() => stackedSupply(points, categories), [points, categories]);
   const bands = useMemo(() => balanceBands(points), [points]);
 
-  const ticks = axisTicks(trendTop(points) * 1.05);
+  // The parts are stacked from nothing; the two lines alone are shown at their own span.
+  const span = linesSpan(points);
+  const ticks = parts ? axisTicks(trendTop(points) * 1.05) : axisTicks(span.top, 5, span.bottom);
+  const lowest = ticks[0] ?? 0;
   const highest = ticks.at(-1) ?? 1;
   const x = (place: number) =>
     points.length <= 1
       ? MARGIN.left + PLOT_WIDTH / 2
       : MARGIN.left + (place * PLOT_WIDTH) / (points.length - 1);
-  const y = (amount: number) => MARGIN.top + PLOT_HEIGHT - (amount / highest) * PLOT_HEIGHT;
+  const y = (amount: number) =>
+    MARGIN.top + PLOT_HEIGHT - ((amount - lowest) / (highest - lowest || 1)) * PLOT_HEIGHT;
   const at = ([place, amount]: At): At => [x(place), y(amount)];
   const line = (amount: (point: TrendPoint) => number) =>
     pathThrough(points.map((point, place) => at([place, amount(point)])));

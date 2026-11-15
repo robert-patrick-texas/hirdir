@@ -92,23 +92,38 @@ export function trendCategories(records: readonly CapacityRecord[], view: TrendV
 }
 
 /**
- * Round steps for an axis from 0 to at least `top`: 1, 2 or 5 times a power of ten, so
- * that there are about `count` of them.
+ * Round steps for an axis from `bottom` or a little below, 0 unless said, to at least
+ * `top`: 1, 2 or 5 times a power of ten, so that there are about `count` of them.
  */
-export function axisTicks(top: number, count = 5): number[] {
-  const highest = Number.isFinite(top) && top > 0 ? top : 1;
-  const rough = highest / Math.max(1, count);
+export function axisTicks(top: number, count = 5, bottom = 0): number[] {
+  const lowest = Number.isFinite(bottom) && bottom > 0 ? bottom : 0;
+  const highest = Number.isFinite(top) && top > lowest ? top : lowest + 1;
+  const rough = (highest - lowest) / Math.max(1, count);
   const power = 10 ** Math.floor(Math.log10(rough));
   const step =
     [1, 2, 5, 10].map((times) => times * power).find((size) => size >= rough) ?? 10 * power;
   // Each kept to the digits of the step, so that three steps of 0.1 are 0.3.
   const digits = Math.max(0, -Math.floor(Math.log10(step)));
   const ticks: number[] = [];
-  for (let place = 0; ; place += 1) {
+  for (let place = Math.floor(lowest / step); ; place += 1) {
     const at = Number((place * step).toFixed(digits));
     ticks.push(at);
     if (at >= highest) return ticks;
   }
+}
+
+/**
+ * The span the plot of the two lines holds: from a little below the lower of them to a
+ * little above the higher. Only the lines and the band between them are drawn there, so
+ * the axis need not start at nothing, and the balance shows at its size.
+ */
+export function linesSpan(points: readonly TrendPoint[]): { bottom: number; top: number } {
+  if (points.length === 0) return { bottom: 0, top: 1 };
+  const amounts = points.flatMap((point) => [point.demand, point.supply]);
+  const low = Math.min(...amounts);
+  const high = Math.max(...amounts);
+  const room = Math.max((high - low) * 0.3, high * 0.05, 0.1);
+  return { bottom: Math.max(0, low - room), top: high + room / 2 };
 }
 
 /** A point of the plot, in the units of the data: the week's place, and an amount. */

@@ -238,7 +238,7 @@ interface OneJobProps {
   /** The file this preview was made from, when it was made on this page. */
   sent: Sent | null;
   busy: boolean;
-  /** The job was applied, or failed: the list of jobs is out of date. */
+  /** An apply began or ended: the list of jobs is out of date. */
   onChanged: () => void;
   again: (() => void) | undefined;
 }
