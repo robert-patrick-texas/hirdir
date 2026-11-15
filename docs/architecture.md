@@ -1291,7 +1291,13 @@ major items: some under two contracts, some ended, some ended because the item l
 service and marked so. Some items are in Pending-Removal, Released and Archived, and
 some are retired. Many of the items bought in the last two years arrived on the lines
 of purchase requests, and a few of those are of another model than their line's, as
-0.6.0 let in. It takes under a minute. `--items` makes a smaller one of the same
+0.6.0 let in. What 0.7.0 added is there too: some of the older models are not to be
+renewed, and some 470 items say otherwise of themselves; a few contracts in agreements
+are marked to end with their term, and a few that share an agreement's period still
+say their renewal is pending or that they have expired, so are to review; and the
+operations team has 24 capacity lines, by region and by site, three of them lines that
+multiply, two drafts and one that has ended, with the balance recorded for each of the
+last four weeks. It takes about a minute. `--items` makes a smaller one of the same
 shape, and a folder that the script did not make is left alone.
 
 The fixture is for timing and bypasses the rules. What there are few of is made through
@@ -1308,12 +1314,33 @@ it and the account to sign in with, and a `config.toml`, so that
 the first page the grid asks for, 100 items with the total counted, under each of the
 filters and sorts that the coverage of 0.6.0 added and those of 0.6.1, the contracts
 that still count an item out of service and the items on a line of another model,
-beside the list with no filter; and for the coverage report, which counts each of its
-sections. Each request is asked
-several times after a warm-up, and the median and the 95th percentile are printed with
-the load of the host before and after, because a busy host is slower than the host can
-be. `--explain FILE` writes every statement of each request with how long it took and
-the plan SQLite made for it, and `--url` asks a server that is running instead.
+beside the list with no filter; the flag not to renew in force, `effective.do_not_renew`;
+the first page of the contract list, with no filter, `to_review` and `renewal_overdue`;
+the coverage report, whole, narrowed to a region and a page of a section, the renewal
+worklist, whole and a page of a section, and the renewal alert, each of the three
+worked out anew, with every kept answer dropped (`hirdir.io.kept.drop()`) before each
+run and outside what is timed, and kept, asked again unchanged; and the capacity
+balance with the demand of each region. Each request is asked 15 times after 2
+warm-ups, and the median and the 95th percentile are printed, each with the load
+average of the host over the minute its runs ended in, because a busy host is slower
+than the host can be. `--explain FILE` writes every statement of each request with how
+long it took and the plan SQLite made for it, and `--url` asks a server that is running
+instead, without the requests anew, whose kept answers are in the other process.
+
+`make time-import` runs `scripts/time_import.py`, which holds the import quality of
+[requirements.md](requirements.md#qualities) against the fixture: 10,000 rows preview
+in under 30 s and apply in under 60 s. It copies the fixture's database into a folder
+of its own, which it throws away at the end, makes an account with the Inventory role
+in the copy, and serves the copy as `hirdir admin serve` does, with uvicorn on a free
+port of 127.0.0.1 and the worker that applies imports beside the requests. It makes a
+file of 10,000 new switches and access points of the fixture's models, places and
+owners, previews it, applies it and asks the job how far it has got until it is
+applied, while a person signs in every second. The parts of the apply are timed by
+wrapping, in that process only, the parts of `hirdir.io.imports.work_job`: taking the
+job, working out the order of the rows, each batch, and the end; the time between two
+batches is the pause in which the one writer's place is let go. A sign-in is timed
+with nothing else going on first, and each sign-in during the apply is told against
+it.
 
 What the target is, and how it is read, is D-165: the median of 15 requests after 2
 warm-ups under 300 ms, and the 95th percentile under 600 ms, on this fixture and an
@@ -1344,21 +1371,124 @@ a page of items are read once. The list with no filter and the grid's first page
 the target. The coverage filters and the sorts by a coverage column do not, and the
 coverage report, which is not a page of the grid, takes most of a second.
 
+**Measured at 0.7.0.** On the same host, median and 95th percentile in milliseconds of
+15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the
+minute of each request was 1.0 to 1.3, of which about 1 is the timing itself. The
+fixture holds what 0.7.0 added, which moves some totals: 1,066 items run out of cover
+soon, 484 in service with no cover are not to be renewed and so no gap. The item list,
+against 0.6.1:
+
+| Request | 0.6.1 | 0.7.0 |
+|---|--:|--:|
+| No filter, by name | 216 / 377 | 271 / 454 |
+| The grid's first page, major items | 173 / 401 | 180 / 234 |
+| `covered:eq:true`, by name | 315 / 447 | 376 / 582 |
+| `covered:eq:false`, by `covered_until` | 473 / 522 | 575 / 752 |
+| `contract_count:gt:1`, by `-contract_count` | 414 / 624 | 488 / 714 |
+| No filter, by `contract.number` | 331 / 412 | 356 / 590 |
+| `out_of_service_cover:eq:true` | 273 / 464 | 280 / 487 |
+| `contract.status:eq:renewal_pending` | 256 / 284 | 429 / 614 |
+| `effective.do_not_renew:eq:true`, by name | | 242 / 259 |
+| `covered:eq:false effective.do_not_renew:eq:true`, by name | | 462 / 670 |
+
+The contract list, a page of 100 with the total counted: no filter 137 / 152, 314
+contracts; `to_review:eq:true` 27 / 30, 6 of them; `renewal_overdue:eq:true` 35 / 39,
+15 of them.
+
+The reports, worked out anew and kept:
+
+| Request | Anew | Kept |
+|---|--:|--:|
+| `GET /reports/coverage` | 4214 / 4392 | 13 / 15 |
+| `GET /reports/coverage`, `location:within:Americas` | 1927 / 2216 | 14 / 16 |
+| `GET /reports/coverage`, a page of `uncovered` | 4682 / 4857 | 34 / 37 |
+| `GET /reports/renewals` | 203 / 239 | 14 / 15 |
+| `GET /reports/renewals`, a page of `ending` | 227 / 299 | 17 / 20 |
+| `GET /renewals/alert` | 189 / 467 | 10 / 14 |
+| `GET /reports/capacity`, which is not kept | 2470 / 2756 | |
+
+What meets the target: the grid's first page, the list with no filter, the flag not to
+renew by itself, every page of the contract list, the renewal worklist and the alert
+anew, and every kept answer, which is what each request after the first is given until
+a change. The coverage filters and the sorts by a coverage column still do not, and at
+0.7.0 they are 3 to 25 per cent slower than at 0.6.1, and `contract.status` by two
+thirds: on the fixture as 0.6.1 made it, before what 0.7.0 added, it took 350 / 603 at
+0.7.0, and the fixture of 0.7.0 has more items under a renewal pending, 2,417 against
+2,048.
+
+The coverage report worked out anew takes 4.2 s, where 0.6.1 took 0.8 s. Its one pass
+(P-133) is one statement of 140 KB that works out every condition of every section for
+each of the 50,000 items, the terms of each contract again for each coverage of each
+item: 3.5 s of it. Each section's condition in a pass of its own takes 82 to 282 ms,
+1.3 s for the eight, and a count of each, as 0.6.1 counted, 1.06 s. What is in force
+for each contract, worked out once for a request in a table of its own, which P-133
+also says, is not built: the statement reads the agreement of each contract anew for
+each coverage of each item. Narrowed to a region the report takes 1.9 s, in one pass or
+with a count to each section alike. The capacity balance takes 2.5 s: it sums the
+support weight of the inventory four times, for the whole and for each region, without
+the drafts and with them, about 0.55 s each.
+
+**An import at 0.7.0**, by `make time-import`: 10,000 new items, 1.9 MB of CSV, on a
+copy of the fixture, the host's load average 0.9 to 1.4 throughout.
+
+| Step | Took | Quality |
+|---|--:|--:|
+| Preview | 121.7 s | 30 s |
+| Apply, from the request to the job applied | 167.5 s | 60 s |
+| of which: taken up by the worker | 0.02 s | |
+| the order of the rows worked out | 3.4 s | |
+| 200 batches of 50 rows | 140.1 s | |
+| 199 pauses of 0.12 s between them | 23.9 s | |
+| the end of the job | 0.02 s | |
+
+Both miss their quality. A batch takes 679 ms at the median, 831 ms at the 95th
+percentile and 980 ms at the longest, the same at the end of the file as at its start:
+a row costs about 13.6 ms to apply and 12.2 ms to preview, whatever has come before it.
+The pauses alone are 40 per cent of the minute the apply is given. A preview's copy of
+the database takes 0.2 s; the rest is the rows. Profiled over 400 rows, a row sends
+about 34 statements, which take some 7 per cent of its time; the rest is Python, half
+of it in reading the record back as a file would hold it, to say what the row changes,
+which builds the places and the operators in force again for each row.
+
+A sign-in takes 92 ms at the median with nothing else going on, and 124 ms at the 95th
+percentile. During the apply 164 sign-ins took 467 ms at the median, 832 ms at the 95th
+percentile and 970 ms at the longest: they waited beyond the idle median 374 ms, 740 ms
+and 877 ms. A sign-in waits for the batch that holds the one writer to end, so how long
+it waits is how long a batch takes, under a second (P-134: "a fraction of a second at
+most") only while 50 rows take under a second.
+
 **Left for the timing of 1.0.0**, with what each costs now:
 
+- The coverage report anew, 4.2 s whole and 1.9 s narrowed to a region. A count of
+  each section in place of the one pass takes it to 1432 / 1624 whole, 1819 / 2008 for
+  the page of `uncovered` and 1837 / 2147 narrowed to a region, with the same answers
+  (load 0.8 to 1.2); that is a change of what P-133 says. Under a second needs what
+  P-133 says of the terms of each contract, worked out once for a request and read by
+  every item.
+- The capacity balance, 2.5 s, not kept. The whole is the sum of the top regions' rows
+  and the row of no region, so working it out from the demand of each region leaves two
+  sums of four: 1305 / 1564, with the same answer. Keeping it as the coverage report is
+  kept would be a change of P-133.
+- An import of 10,000 rows: 122 s to preview and 168 s to apply, against 30 s and 60
+  s. The apply cannot meet the minute while a row costs 13.6 ms: after the pauses, 23.9
+  s, and the order of the rows, 3.4 s, a row would have to take under 3.3 ms. What a
+  row reads, the record in its file shape and the places and operators in force, would
+  have to be read for a batch at once, or for the file, as the order of the rows
+  already is. A batch of 50 rows at 13.6 ms is also how long a sign-in waits behind it,
+  up to 0.9 s.
 - Each filter is worked out twice, once for the count and once for the page: 60 to 170
-  ms each for the coverage filters. Counting and paging one set of matched rows needs
-  `listing.page` made anew.
-- Shaping a page of 100 items in Python takes about 95 ms.
+  ms each for the coverage filters at 0.6.1. Counting and paging one set of matched
+  rows needs `listing.page` made anew.
+- Shaping a page of 100 items in Python takes about 95 ms. A page of 100 contracts
+  takes 137 ms against 27 ms for a page of 6, most of it shaping.
 - The coverage columns cost much for each row: `covered` over every item takes 80 ms,
   against 14 ms for a bare test. What is in force for a contract would have to be held
-  where it is read, or worked out once for a request.
+  where it is read, or worked out once for a request, as for the report.
 - The sort by name calls a Python function for each row; a column of the folded name,
   with an index, would not.
-- The coverage report runs eight counts; one pass with a sum for each might take it to
-  about 0.2 s (an estimate).
 - About one run in fifteen is some 200 ms slower, which looks like the collector of
-  Python's memory: suggestive only, measured on a busy host.
+  Python's memory: the 95th percentile of 15 runs is the slowest of them, so it is that
+  run. At 0.7.0 the alert anew shows it, 189 ms at the median and 467 ms at the 95th.
 
 A run on a host that other work shares is not a measurement: S36 at 1.0.0 is run with
 the host to itself.
