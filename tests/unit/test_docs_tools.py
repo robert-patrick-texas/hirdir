@@ -534,4 +534,3 @@ def test_what_a_browser_run_leaves_is_no_page(docs: ModuleType, tmp_path: Path) 
         (tmp_path / left).mkdir(parents=True)
         (tmp_path / left / "error-context.md").write_text("# Error\n", encoding="utf-8")
     assert [str(path) for path in docs.discover(tmp_path)] == ["docs/page.md"]
-
