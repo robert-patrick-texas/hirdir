@@ -36,7 +36,7 @@ reading; it does not settle a policy question in code.
 | **0.6.0** Money, time and capacity | Support agreements, the contracts grouped into them, and dated coverage; a contract renewed in one place. Estimated value and annual support cost. The vendor portfolio. End-of-life and coverage reports. Replacements in reports and in files. Purchase requests, lines and receiving. External systems and registrations. Draft records. Capacity lines and the capacity report. | S29–S35, S39–S40 |
 | **0.6.1** Corrections to 0.6.0 | What a contract overrides, said beside what it has in force. The dates of an earlier term of a contract that is co-termed with its agreement. The model of an item that is put on a purchase line, held to the line's. The contract that still counts an item out of service, as a field of the item list. Browser scenarios for the pages of 0.6.0 that only unit tests hold. `make upgrade` without a step the host refuses. The speed of the item filters of 0.6.0 on a large inventory, measured. | none new |
 | **0.7.0** Renewals in practice, and links | The renewal worklist. A coverage marked as not to be renewed. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a dated record of the balance, a line that multiplies staff capacity, and the report for one region or site. Links, an address with its text, on locations and on catalog entries. | S41–S46 |
-| **0.8.0** Circuits | Telecommunication circuits beside the inventory: the devices each connects, its A side and Z side, its carriers and their circuit numbers, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the monthly cost. | S47–S50 |
+| **0.8.0** Circuits | Telecommunication circuits beside the inventory: its name, description and notes, the enterprise's own circuit ID, the devices it connects, its A side and Z side, its carriers and the circuit numbers they give, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the cost by year, as support costs are reported. | S47–S50 |
 | **0.9.0** Reference files | Files attached to a location: photographs, maps, sketches and floor plans. Documents attached to a catalog entry and reached from every item of that model, such as an administration guide, served by `hirdir` itself where there is no internet access. Upload, link, download, limits, roles, audit, and the files in the backup. | S51–S53 |
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
 
@@ -117,23 +117,34 @@ A first way to track telecommunication circuits beside the device inventory. A
 circuit is a record of its own, referenced by HID, audited, role-checked, retired and
 never deleted, and may be a draft, as every record is. It holds:
 
+- a name, a description and notes;
+- the enterprise's own circuit ID, assigned locally, as an item has an asset tag
+  beside its serial number. Every circuit can have one, also one that no carrier
+  numbers: dark fiber between two buildings that a business partner lets the
+  enterprise use has no carrier's circuit number, and is still a circuit to track.
+  It is unique where it is given, as an asset tag is;
 - the device or devices it connects, matched from the inventory, and shown on each
   of them;
 - its A side, the source, and its Z side, the destination, each a location;
-- its primary carrier, and any number of additional carriers, each with its part:
-  a local exchange carrier, the provider of a cross-connect in a co-location, and
-  the like;
-- its circuit numbers, one for each carrier that gives it one;
+- its primary carrier, or the other party that provides it, and any number of
+  additional carriers, each with its part: a local exchange carrier, the provider
+  of a cross-connect in a co-location, and the like;
+- the circuit numbers the carriers give it, one for each carrier that gives one,
+  and none where none is given;
 - the billing account number and the reference of the billing contract;
 - the number and the address of technical support;
 - the contacts of the carrier's account team, for escalation;
 - the site contacts of the A side and of the Z side, which follow from the two
   locations as 0.5.0 resolves them, with any that are the circuit's own;
-- its monthly recurring cost, as lines that add up;
+- its monthly recurring cost, as lines that add up, which is how a carrier bills
+  it, and its annual cost, twelve times that, worked out when it is read;
 - its owner, and what every record has: status, dates, notes and tags.
 
-Circuits are listed, filtered, sorted and exported as items are, load from files,
-and have a report of the monthly cost by carrier and by site. What is not in scope
+Circuits are listed, filtered, sorted and exported as items are, and load from
+files, where a row finds its circuit by the enterprise's circuit ID. The report of
+their cost is by year, by carrier and by site, with the monthly figure beside it:
+support agreements, renewals and support costs are tracked as annual numbers, and
+the cost of circuits is read beside them in the same terms. What is not in scope
 stays so: cabling inside a building, the interfaces of a device, and the accounting
 of what was paid.
 
@@ -208,8 +219,8 @@ written as a failing test at the start of its release.
 | S44 | Record the capacity balance on two days with a line added between them, then add a line that multiplies two staff lines | The trend shows both records; the supply of the two staff lines is multiplied and no other is |
 | S45 | Capacity lines and items in two regions; ask for the report of one | Demand, supply and balance are of that region alone |
 | S46 | Give a location two links and a catalog entry one, each an address and its text | Each shows on its record, an item shows the link of its model, a file carries them out and back unchanged, and an address that is no web address is refused |
-| S47 | Enter a circuit between two locations with a primary carrier, a local exchange carrier, a circuit number for each, and a router at each end | The circuit shows both sides, both carriers and both devices; each router and each location shows the circuit |
-| S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier | The monthly cost of each is the sum of its lines, and the report totals both by carrier and by site |
+| S47 | Enter a circuit between two locations with a name, an enterprise circuit ID, a primary carrier, a local exchange carrier, a circuit number for each, and a router at each end; then a dark fiber between two buildings that has an enterprise circuit ID and no carrier's number | The first shows both sides, both carriers and both devices, and each router and each location shows it; the second is accepted, is found by its enterprise circuit ID, and that ID is refused for another circuit |
+| S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier | The monthly cost of each is the sum of its lines and its annual cost twelve times that; the report totals the annual cost of both by carrier and by site, with the monthly figure beside it |
 | S49 | The A side's site has a site contact; the circuit has a carrier account manager | The circuit shows the site contacts of each side, resolved from its locations with their source, and the carrier's escalation contacts |
 | S50 | Export the circuits to a file, load it into an empty inventory, and load it again | Every circuit is created with its sides, carriers, numbers and cost lines, and the second load changes nothing |
 | S51 | Upload a photograph and a floor plan to a location, and download each | Each is listed with its title and kind, comes back byte for byte, and a View-only user downloads and cannot upload |
