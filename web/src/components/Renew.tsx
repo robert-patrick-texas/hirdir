@@ -67,6 +67,8 @@ interface RenewProps<R extends Renewed, A extends R = R> {
   afterword?: (record: A) => string;
   /** More that the form asks for: the members of an agreement. */
   more?: RenewMore;
+  /** Told the answer of a renewal, whether in force at once or kept as the next term. */
+  onRenewed?: (record: A) => void;
   onChanged: (text: string) => void;
   onReload: () => void;
 }
@@ -75,7 +77,7 @@ interface RenewProps<R extends Renewed, A extends R = R> {
 export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A>) {
   const { record, name, what, follows, submitLabel, note, send, renewed, onChanged, onReload } =
     props;
-  const { afterword, more } = props;
+  const { afterword, more, onRenewed } = props;
   const [open, setOpen] = useState(false);
   const stored = record as R & Readonly<Record<string, unknown>>;
   const [values, setValues] = useState<FormValues>(() => formOf(RENEW_SPECS, stored));
@@ -125,6 +127,7 @@ export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A
       ? `The renewal is kept as the next term. ${nextTermText(after.next_term)}. Until then ${name} keeps its present number and period.`
       : renewed(after);
     const besides = afterword?.(after) ?? "";
+    onRenewed?.(after);
     onChanged(besides ? `${said} ${besides}` : said);
   }
 

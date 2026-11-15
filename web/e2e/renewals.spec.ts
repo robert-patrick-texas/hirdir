@@ -3,8 +3,10 @@
 //   P-129  An agreement renewed with its members: each contract that shares its period is
 //          listed in the form of the renewal, one kept under its number, one given a new
 //          number that begins with the new term, and one let go with this term, which
-//          keeps the dates of the present term as its own and is marked so. The answer
-//          says what was done with each.
+//          takes the present term's dates as its own and is marked not to renew. The
+//          answer says what was done with each. No member's status is changed: one that
+//          still says Renewal pending is listed to review in the answer, on the agreement
+//          and on the worklist, and is made active there by a person.
 //   P-130  A contract's history in parts: an earlier part with its days, what began it and
 //          the agreement it was in, and the present part with the day it began and how,
 //          by a renewal, by joining an agreement and by leaving it.
@@ -42,6 +44,8 @@ const kept = `CON-${upper}-K1`;
 const renumbered = `CON-${upper}-N1`;
 const newNumber = `CON-${upper}-N2`;
 const letGo = `CON-${upper}-E1`;
+// A member whose renewal is pending: the renewal of the agreement leaves it to review.
+const stillPending = `CON-${upper}-P1`;
 
 // A contract that stands by itself, renewed, then rolled into the agreement and out.
 const history = `CON-${upper}-H1`;
@@ -71,7 +75,7 @@ async function makeContract(page: Page, made: Made) {
   if (made.status) await form.getByLabel("Status", { exact: true }).selectOption(made.status);
   await form.getByLabel("Starts on").fill(made.starts);
   await form.getByLabel("Ends on").fill(made.ends);
-  if (made.endsWithTerm) await form.getByLabel("Not to be renewed: ends with this term").check();
+  if (made.endsWithTerm) await form.getByLabel("Not to be renewed: the team's note").check();
   await form.getByRole("button", { name: "Create contract" }).click();
   await expect(page.getByRole("heading", { level: 1, name: made.number })).toBeVisible();
 }
@@ -96,12 +100,16 @@ test("P-129: an agreement renewed, with a member given a new number and one let 
   await made.getByRole("button", { name: "Create agreement" }).click();
   await expect(page.getByRole("heading", { level: 1, name: agreement })).toBeVisible();
 
-  // Three contracts in it that say nothing of their dates: each shares its period.
-  for (const number of [kept, renumbered, letGo]) {
+  // Four contracts in it that say nothing of their dates: each shares its period. One
+  // says that its renewal is pending.
+  for (const number of [kept, renumbered, letGo, stillPending]) {
     await openAgreement(page, agreement);
     await page.getByRole("button", { name: "New contract in this agreement" }).click();
     const form = region(page, `New contract in ${agreement}`);
     await form.getByLabel("Number (required)").fill(number);
+    if (number === stillPending) {
+      await form.getByLabel("Status", { exact: true }).selectOption("renewal_pending");
+    }
     await form.getByRole("button", { name: "Create contract" }).click();
     await expect(page.getByRole("heading", { level: 1, name: number })).toBeVisible();
   }
@@ -111,7 +119,7 @@ test("P-129: an agreement renewed, with a member given a new number and one let 
   await region(page, "Renew").getByRole("button", { name: "Renew", exact: true }).click();
   const form = page.getByTestId("renew-form");
   const members = form.getByTestId("renew-members-table");
-  for (const number of [kept, renumbered, letGo]) {
+  for (const number of [kept, renumbered, letGo, stillPending]) {
     await expect(members.locator(`tr[data-member="${number}"]`)).toHaveAttribute(
       "data-choice",
       "same",
@@ -146,6 +154,38 @@ test("P-129: an agreement renewed, with a member given a new number and one let 
     `${renewedStarts} to ${renewedEnds}`,
   );
 
+  // The renewal changed no member's status: the one still pending is to be reviewed, in
+  // the answer, on the agreement, and on the worklist.
+  await expect(page.getByTestId("renewal-to-review")).toContainText(
+    "1 member still says renewal pending or expired",
+  );
+  await expect(
+    page.getByTestId("renewal-to-review").getByRole("link", { name: stillPending, exact: true }),
+  ).toBeVisible();
+  const review = page.getByTestId("members-to-review");
+  await expect(review.locator(`tr[data-contract="${stillPending}"]`)).toHaveAttribute(
+    "data-status",
+    "renewal_pending",
+  );
+  await page.goto(
+    `./contracts/renewals?${new URLSearchParams({ filter: `vendor:eq:${vendor}` }).toString()}`,
+  );
+  await expect(page.getByTestId("renewals-count-to_review")).toHaveAttribute("data-count", "1");
+  await page.getByTestId("renewals-count-to_review").getByRole("link").click();
+  await expect(gridRow(page, "grid-renewals-to_review", stillPending)).toBeVisible();
+
+  // Made active by a person, on the agreement's page, it is reviewed.
+  await openAgreement(page, agreement);
+  await page
+    .getByTestId("members-to-review")
+    .locator(`tr[data-contract="${stillPending}"]`)
+    .getByRole("button", { name: /^Make active/ })
+    .click();
+  await expect(
+    page.getByText(`${stillPending} is Active again, under ${agreement}.`),
+  ).toBeVisible();
+  await expect(page.getByTestId("members-to-review")).toHaveCount(0);
+
   // The one let go stays in the agreement, marked, with the present term as its own.
   const table = page.getByTestId("agreement-contracts");
   await expect(
@@ -159,13 +199,15 @@ test("P-129: an agreement renewed, with a member given a new number and one let 
   await openContract(page, letGo);
   await expect(
     page.getByRole("heading", { level: 1, name: letGo }).locator('[data-mark="ends-with-term"]'),
-  ).toHaveText("Ends with this term");
-  await expect(page.getByTestId("ends-with-term")).toContainText("Not to be renewed");
+  ).toHaveText("Not to be renewed");
+  await expect(page.getByTestId("ends-with-term")).toContainText("Marked not to renew");
+  // A note of the team: it changes no status.
+  await expect(page.getByTestId("contract-status")).toHaveAttribute("data-status", "active");
   await expect(inForce(page, "ends_on")).toContainText(ends);
   await expect(inForce(page, "ends_on")).toHaveAttribute("data-standing", "override");
   // Its form says so, to be taken off by hand.
   await expect(
-    region(page, "Details").getByLabel("Not to be renewed: ends with this term"),
+    region(page, "Details").getByLabel("Not to be renewed: the team's note"),
   ).toBeChecked();
 
   // The one given a new number was renewed at once, as the agreement's new term is in

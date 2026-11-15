@@ -143,14 +143,14 @@ const COLUMNS: GridColumn<Contract>[] = [
     width: 130,
   },
   {
-    // Let go with its term, as when a site closes.
+    // Marked by the team not to renew, as when a site closes: a note (P-129).
     id: "ends_with_term",
-    header: "Ends with its term",
+    header: "Not to be renewed",
     kind: "boolean",
     value: (contract) => (contract.ends_with_term ? "Yes" : ""),
     choices: [
-      { value: "true", label: "Not to be renewed: ends with its term" },
-      { value: "false", label: "To be renewed" },
+      { value: "true", label: "Marked not to renew" },
+      { value: "false", label: "Not marked" },
     ],
     width: 160,
   },
@@ -209,6 +209,7 @@ interface ReportQuery {
   filter?: string;
   within_days?: number;
   include_drafts?: boolean;
+  include_archived?: boolean;
 }
 
 /** What the address of the worklist asks for: its view, and the list that is open. */
@@ -216,6 +217,7 @@ interface View {
   filter: string;
   days: string;
   includeDrafts: boolean;
+  includeArchived: boolean;
 }
 
 function viewOf(params: URLSearchParams): View {
@@ -223,6 +225,7 @@ function viewOf(params: URLSearchParams): View {
     filter: params.get("filter") ?? "",
     days: params.get("days") ?? "",
     includeDrafts: params.get("drafts") === "1",
+    includeArchived: params.get("archived") === "1",
   };
 }
 
@@ -232,6 +235,7 @@ function viewParams(view: View): Record<string, string> {
     ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
     ...(daysOf(view.days) === null ? {} : { days: view.days.trim() }),
     ...(view.includeDrafts ? { drafts: "1" } : {}),
+    ...(view.includeArchived ? { archived: "1" } : {}),
   };
 }
 
@@ -261,6 +265,7 @@ export function Renewals() {
     ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
     ...(days === null ? {} : { within_days: days }),
     ...(view.includeDrafts ? { include_drafts: true } : {}),
+    ...(view.includeArchived ? { include_archived: true } : {}),
   };
   // The counts alone: no list is asked for until one is opened.
   const report = useLoad(`renewals ${JSON.stringify(query)}`, (signal) =>
@@ -286,8 +291,9 @@ export function Renewals() {
       <p>
         What must be acted on to keep the cover going, as of today: the contracts that have lapsed,
         those whose renewal is pending and of them those pending too long, those that end soon with
-        no renewal entered, those let go with their term, and the items under more than one
-        contract. Each count leads to its rows, which are read when the list is opened.
+        no renewal entered, those the team marked not to renew, the members to review after a
+        renewal of their agreement, and the items under more than one contract. Each count leads to
+        its rows, which are read when the list is opened.
       </p>
       <ViewForm
         key={`${view.filter} ${view.days}`}
@@ -380,6 +386,12 @@ function ViewForm({ view, defaultDays, filterRefused, daysRefused, onShow }: Vie
         />
       </div>
       <div className="inline">
+        <CheckField
+          label="Include archived"
+          name="include_archived"
+          checked={view.includeArchived}
+          onChange={(on) => onShow({ ...view, includeArchived: on })}
+        />
         <CheckField
           label="Include drafts"
           name="include_drafts"

@@ -50,14 +50,21 @@ export const RENEWAL_SECTIONS: readonly SectionInfo[] = [
     value: "ending",
     label: "Ending soon",
     about:
-      "They cover today and their period ends within the days asked for, with no renewal entered, their own or their agreement's, and they are not let go with their term.",
+      "They cover today and their period ends within the days asked for, with no renewal entered that is still to begin, their own or their agreement's, and the team has not marked them not to renew.",
     of: "contracts",
   },
   {
     value: "ends_with_term",
-    label: "Let go with their term",
+    label: "Marked not to renew",
     about:
-      "Marked to end with their term, as when a site closes, and ending within the days asked for: shown so that what is let go is seen. The alert never counts them.",
+      "The team marked them not to renew, as when a site closes, and they end within the days asked for or have ended: listed until a person says they have expired or retires them, so that what is let go is seen. The mark changes nothing by itself, and the alert never counts them.",
+    of: "contracts",
+  },
+  {
+    value: "to_review",
+    label: "To review after a renewal",
+    about:
+      "Members of an agreement that was renewed and runs on that still say their renewal is pending or that they have expired: no renewal of an agreement changes them. Make each active, take it out of the agreement, or retire it.",
     of: "contracts",
   },
   {
@@ -162,14 +169,20 @@ export function pendingText(days: number | null | undefined): string {
 /** One count of the alert, with the list of the worklist it leads to. */
 export interface AlertLine {
   section: RenewalSection;
+  /** How many contracts are on the list. */
   count: number;
-  /** How many of them were not on the list when the person last said they had seen it. */
+  /** How many of them were not on the list when the person last dismissed the alert. */
   fresh: number;
-  /** The count as a sentence, for its link. */
+  /** The count of contracts as a sentence, for its link: blank where there are none. */
   text: string;
   /** Of a renewal pending: how many of them are overdue, which leads to its own list. */
   overdue?: { count: number; text: string };
+  /** The agreements on the same list, beside the contracts, where there are any. */
+  agreements?: { count: number; text: string };
 }
+
+/** Where the counts of the agreements lead: their part of the worklist. */
+export const AGREEMENTS_PATH = "/contracts/renewals#renewal-agreements";
 
 /** Whether a person is shown the alert: Inventory and Admin, when the server says to. */
 export function alertShown(alert: RenewalAlert | undefined, role: string | null | undefined) {
@@ -181,28 +194,44 @@ export function asksForAlert(role: string | null | undefined): boolean {
   return allows(role, "inventory");
 }
 
+/** How many agreements the alert counts on a list: none where it says nothing of them. */
+function agreementsOn(alert: RenewalAlert, list: string): number {
+  const count = alert.agreements?.[list];
+  return typeof count === "number" && count > 0 ? count : 0;
+}
+
 /**
- * The counts of the alert, each as a sentence and with the list it leads to: those that
- * have lapsed, have a renewal pending, of which overdue, and end within the warning
- * period. A list with nothing on it is left out.
+ * The counts of the alert, each as a sentence and with the list it leads to: the
+ * contracts and the agreements that have lapsed, that have a renewal pending, of which
+ * overdue, and that end within the warning period. A list with nothing on it is left out.
  */
 export function alertLines(alert: RenewalAlert): AlertLine[] {
   const lines: AlertLine[] = [];
   const { lapsed, renewal_pending: pending, ending } = alert;
-  if (lapsed.count > 0) {
+  const days = plural(alert.within_days, "day");
+  const of = (list: string, one: string, many: string) => {
+    const count = agreementsOn(alert, list);
+    return count > 0 ? { agreements: { count, text: plural(count, one, many) } } : {};
+  };
+  if (lapsed.count > 0 || agreementsOn(alert, "lapsed") > 0) {
     lines.push({
       section: lapsed.section,
       count: lapsed.count,
       fresh: lapsed.new,
-      text: `${plural(lapsed.count, "contract has", "contracts have")} lapsed`,
+      text:
+        lapsed.count > 0 ? `${plural(lapsed.count, "contract has", "contracts have")} lapsed` : "",
+      ...of("lapsed", "agreement has lapsed", "agreements have lapsed"),
     });
   }
-  if (pending.count > 0) {
+  if (pending.count > 0 || agreementsOn(alert, "renewal_pending") > 0) {
     lines.push({
       section: pending.section,
       count: pending.count,
       fresh: pending.new,
-      text: `${plural(pending.count, "contract has its", "contracts have their")} renewal pending`,
+      text:
+        pending.count > 0
+          ? `${plural(pending.count, "contract has its", "contracts have their")} renewal pending`
+          : "",
       ...(alert.overdue > 0
         ? {
             overdue: {
@@ -211,14 +240,23 @@ export function alertLines(alert: RenewalAlert): AlertLine[] {
             },
           }
         : {}),
+      ...of(
+        "renewal_pending",
+        "agreement has its renewal pending",
+        "agreements have their renewal pending",
+      ),
     });
   }
-  if (ending.count > 0) {
+  if (ending.count > 0 || agreementsOn(alert, "ending") > 0) {
     lines.push({
       section: ending.section,
       count: ending.count,
       fresh: ending.new,
-      text: `${plural(ending.count, "contract ends", "contracts end")} within ${plural(alert.within_days, "day")}`,
+      text:
+        ending.count > 0
+          ? `${plural(ending.count, "contract ends", "contracts end")} within ${days}`
+          : "",
+      ...of("ending", `agreement ends within ${days}`, `agreements end within ${days}`),
     });
   }
   return lines;
@@ -253,7 +291,7 @@ export const MEMBER_CHOICES: ReadonlyArray<{ value: MemberChoice; label: string;
       value: "ends",
       label: "End with this term",
       about:
-        "It is let go, as when a site closes: it keeps the dates of the present term as its own, covers to their end, stays in the agreement, and the new term does not carry it.",
+        "It is let go, as when a site closes: it takes the agreement's present end as its own, and its start where it has none, stays in the agreement, and is marked not to renew; the new term does not carry it.",
     },
   ];
 
@@ -270,10 +308,11 @@ export interface MemberOf {
 
 /**
  * Whether a contract shares its agreement's period, and so is a member that a renewal of
- * the agreement asks about: it is not retired and has neither date of its own.
+ * the agreement asks about: it is not retired and its end is the agreement's, having no
+ * end of its own, whatever its start (P-129).
  */
 export function sharesPeriod(contract: MemberOf): boolean {
-  return contract.record_status !== "retired" && !contract.starts_on && !contract.ends_on;
+  return contract.record_status !== "retired" && !contract.ends_on;
 }
 
 /** One member on the form of a renewal: what is to be done with it, and its new term. */
@@ -281,6 +320,8 @@ export interface MemberDraft {
   hid: string;
   number: string;
   covered: number;
+  /** The team marked it not to renew: carried into the new term, it is to be reviewed. */
+  marked: boolean;
   choice: MemberChoice;
   /** For a new number: the number, its annual cost and what it was bought under. */
   newNumber: string;
@@ -289,15 +330,17 @@ export interface MemberDraft {
 }
 
 /**
- * The members of an agreement on the form of its renewal, each with what the server
- * would do were it left out: keep its number, or end where it is marked so already.
+ * The members of an agreement on the form of its renewal, each with what the server does
+ * with one left out: keep its number. One the team marked not to renew says so, as it
+ * is then among those to review.
  */
 export function memberDrafts(contracts: readonly MemberOf[]): MemberDraft[] {
   return contracts.filter(sharesPeriod).map((contract) => ({
     hid: contract.hid,
     number: contract.number,
     covered: contract.covered_items,
-    choice: contract.ends_with_term ? "ends" : "same",
+    marked: contract.ends_with_term,
+    choice: "same",
     newNumber: "",
     annualCost: "",
     purchaseReference: "",
@@ -383,4 +426,23 @@ export function membersText(
       return `${was} keeps its number.`;
     })
     .join(" ");
+}
+
+/**
+ * What is said of the members a renewal of an agreement left to be reviewed: those that
+ * still say their renewal is pending or that they have expired, which no renewal of an
+ * agreement changes, and those marked not to renew that it carried on. Blank for none.
+ */
+export function toReviewText(count: number): string {
+  if (count <= 0) return "";
+  return `${plural(count, "member still says", "members still say")} renewal pending or expired, or ${count === 1 ? "is" : "are"} marked not to renew: review ${count === 1 ? "it" : "them"}.`;
+}
+
+/**
+ * What is said of the members of an agreement to review, as its record lists them: those
+ * that still say their renewal is pending or that they have expired while it runs on.
+ */
+export function membersToReviewText(count: number): string {
+  if (count <= 0) return "";
+  return `${plural(count, "member still says", "members still say")} renewal pending or expired while the agreement runs on: make each active, take it out of the agreement, or retire it.`;
 }

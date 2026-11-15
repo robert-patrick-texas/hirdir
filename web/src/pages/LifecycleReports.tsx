@@ -326,13 +326,20 @@ export function CoverageReport() {
             >
               {data.lapsed_contracts.count > 0 ? (
                 <>
-                  <Link
-                    to={`/contracts?filter=${encodeURIComponent(
-                      filterText(viewFilter(data.lapsed_contracts.filter)),
-                    )}`}
-                  >
-                    {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
-                  </Link>
+                  {/* Its filter is blank where they are more than a filter can name. */}
+                  {data.lapsed_contracts.filter ? (
+                    <Link
+                      to={`/contracts?filter=${encodeURIComponent(
+                        filterText(viewFilter(data.lapsed_contracts.filter)),
+                      )}`}
+                    >
+                      {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
+                    </Link>
+                  ) : (
+                    <>
+                      {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
+                    </>
+                  )}
                   : the period has ended and the status still says Active. A lapsed contract covers
                   nothing, so its items are among those with no cover: renew it, or say that it has
                   expired or that its renewal is pending.

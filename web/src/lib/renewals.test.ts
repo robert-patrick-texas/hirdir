@@ -15,12 +15,14 @@ import {
   memberLabels,
   membersBody,
   membersText,
+  membersToReviewText,
   pendingText,
   RENEWAL_SECTIONS,
   type RenewalAlert,
   type RenewalGroup,
   renewalsPath,
   sharesPeriod,
+  toReviewText,
 } from "./renewals";
 
 const counts = {
@@ -29,6 +31,7 @@ const counts = {
   renewal_pending: 0,
   overdue: 0,
   ends_with_term: 0,
+  to_review: 0,
   overlapping: 0,
 };
 
@@ -43,6 +46,7 @@ function alert(over: Partial<RenewalAlert> = {}): RenewalAlert {
     renewal_pending: { count: 3, new: 0, section: "renewal_pending" },
     overdue: 1,
     ending: { count: 4, new: 2, section: "ending" },
+    agreements: { ending: 0, lapsed: 0, renewal_pending: 0 },
     ...over,
   };
 }
@@ -67,6 +71,7 @@ describe("the lists of the worklist", () => {
       "overdue",
       "ending",
       "ends_with_term",
+      "to_review",
       "overlapping",
     ]);
     expect(RENEWAL_SECTIONS.filter((one) => one.of === "items").map((one) => one.value)).toEqual([
@@ -78,6 +83,7 @@ describe("the lists of the worklist", () => {
   it("are known by their names, and nothing else is", () => {
     expect(isRenewalSection("ending")).toBe(true);
     expect(isRenewalSection("overdue")).toBe(true);
+    expect(isRenewalSection("to_review")).toBe(true);
     expect(isRenewalSection("uncovered")).toBe(false);
     expect(isRenewalSection(null)).toBe(false);
   });
@@ -167,6 +173,20 @@ describe("the alert after sign-in", () => {
     expect(freshText(0)).toBe("");
   });
 
+  it("counts the agreements on each list beside the contracts", () => {
+    const lines = alertLines(
+      alert({
+        lapsed: { count: 0, new: 0, section: "lapsed" },
+        agreements: { ending: 1, lapsed: 2, renewal_pending: 0 },
+      }),
+    );
+    expect(lines.map((line) => [line.section, line.text, line.agreements?.text])).toEqual([
+      ["lapsed", "", "2 agreements have lapsed"],
+      ["renewal_pending", "3 contracts have their renewal pending", undefined],
+      ["ending", "4 contracts end within 90 days", "1 agreement ends within 90 days"],
+    ]);
+  });
+
   it("leaves out a list with nothing on it", () => {
     const lines = alertLines(
       alert({
@@ -193,23 +213,26 @@ describe("an agreement renewed with its members", () => {
     ...over,
   });
 
-  it("asks about the contracts that share its period: not retired, with no dates of their own", () => {
+  it("asks about the contracts that share its period: not retired, with no end of their own", () => {
     expect(sharesPeriod(contract({}))).toBe(true);
     expect(sharesPeriod(contract({ ends_on: "2027-06-30" }))).toBe(false);
-    expect(sharesPeriod(contract({ starts_on: "2026-01-01" }))).toBe(false);
+    // Its end is the agreement's, whatever its start.
+    expect(sharesPeriod(contract({ starts_on: "2026-01-01" }))).toBe(true);
     expect(sharesPeriod(contract({ record_status: "retired" }))).toBe(false);
     expect(sharesPeriod(contract({ record_status: "draft" }))).toBe(true);
   });
 
-  it("starts each as the server would have it left out: its number kept, or ended where marked", () => {
+  it("starts each as the server has one left out: its number kept, the mark said", () => {
     const drafts = memberDrafts([
       contract({}),
       contract({ hid: "c-2", number: "CON-2", ends_with_term: true }),
       contract({ hid: "c-3", number: "CON-3", ends_on: "2027-06-30" }),
     ]);
-    expect(drafts.map((draft) => [draft.number, draft.choice, draft.covered])).toEqual([
-      ["CON-1", "same", 2],
-      ["CON-2", "ends", 2],
+    expect(
+      drafts.map((draft) => [draft.number, draft.choice, draft.covered, draft.marked]),
+    ).toEqual([
+      ["CON-1", "same", 2, false],
+      ["CON-2", "same", 2, true],
     ]);
   });
 
@@ -265,9 +288,27 @@ describe("an agreement renewed with its members", () => {
     expect(
       membersText(
         [
-          { contract_hid: "c-1", number: "CON-1", renewal: "same", left_behind: 0 },
-          { contract_hid: "c-2", number: "CON-2B", renewal: "new_number", left_behind: 1 },
-          { contract_hid: "c-3", number: "CON-3", renewal: "ends", left_behind: 0 },
+          {
+            contract_hid: "c-1",
+            number: "CON-1",
+            renewal: "same",
+            left_behind: 0,
+            to_review: true,
+          },
+          {
+            contract_hid: "c-2",
+            number: "CON-2B",
+            renewal: "new_number",
+            left_behind: 1,
+            to_review: false,
+          },
+          {
+            contract_hid: "c-3",
+            number: "CON-3",
+            renewal: "ends",
+            left_behind: 0,
+            to_review: false,
+          },
         ],
         { "c-1": "CON-1", "c-2": "CON-2", "c-3": "CON-3" },
       ),
@@ -281,5 +322,17 @@ describe("an agreement renewed with its members", () => {
     expect(leftBehindText(3)).toBe(
       "3 coverages of items not to be renewed were ended with the present term.",
     );
+  });
+
+  it("says how many members are to be reviewed after it, and on the agreement", () => {
+    expect(toReviewText(0)).toBe("");
+    expect(toReviewText(1)).toBe(
+      "1 member still says renewal pending or expired, or is marked not to renew: review it.",
+    );
+    expect(toReviewText(2)).toBe(
+      "2 members still say renewal pending or expired, or are marked not to renew: review them.",
+    );
+    expect(membersToReviewText(0)).toBe("");
+    expect(membersToReviewText(2)).toContain("2 members still say renewal pending or expired");
   });
 });

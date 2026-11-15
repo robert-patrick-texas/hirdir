@@ -1,7 +1,7 @@
 // The renewal alert: a banner under the header of every page, after signing in, while
 // the server says to show it. It says how many contracts have lapsed, have a renewal
 // pending, of which overdue, and end within the warning period, each leading to its
-// list of the worklist. It is shown while the server says so, which is once a day to each
+// list of the worklist, and beside them how many agreements are on the same lists. It is shown while the server says so, which is once a day to each
 // person: dismissed, it is not shown again that day, and what was dismissed is kept on
 // the server, so another browser does not show it again. A View-only person is never
 // shown it, and is not asked for it.
@@ -12,6 +12,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useReloadOn } from "../lib/hooks";
 import {
+  AGREEMENTS_PATH,
   type RenewalAlert as Alert,
   alertLines,
   alertShown,
@@ -107,7 +108,7 @@ export function RenewalAlert() {
             data-count={line.count}
             data-new={line.fresh}
           >
-            <Link to={renewalsPath({ section: line.section })}>{line.text}</Link>
+            {line.text && <Link to={renewalsPath({ section: line.section })}>{line.text}</Link>}
             {line.overdue && (
               <>
                 {", "}
@@ -124,6 +125,18 @@ export function RenewalAlert() {
               <span className="badge" data-mark="new">
                 {freshText(line.fresh)}
               </span>
+            )}
+            {line.agreements && (
+              <>
+                {line.text ? " · " : ""}
+                <Link
+                  to={AGREEMENTS_PATH}
+                  data-agreements={line.agreements.count}
+                  data-testid={`alert-agreements-${line.section}`}
+                >
+                  {line.agreements.text}
+                </Link>
+              </>
             )}
           </li>
         ))}

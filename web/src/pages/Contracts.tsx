@@ -7,7 +7,6 @@ import {
   ContractsNav,
   contractSpecs,
   Dash,
-  ENDED_BY_CHOICE_NOTE,
   ENDS_WITH_TERM_NOTE,
   EndsWithTermMark,
   InForceValue,
@@ -124,21 +123,15 @@ const COLUMNS: GridColumn<Contract>[] = [
     width: 110,
   },
   {
-    // Not to be renewed: it ends with its present term (P-129).
+    // Marked by the team not to renew (P-129): a note, which changes nothing by itself.
     id: "ends_with_term",
-    header: "Ends with its term",
+    header: "Not to be renewed",
     kind: "boolean",
-    value: (contract) =>
-      contract.ends_with_term ? (contract.status === "expired" ? "Ended by choice" : "Yes") : "",
-    hint: (contract) =>
-      contract.ends_with_term
-        ? contract.status === "expired"
-          ? ENDED_BY_CHOICE_NOTE
-          : ENDS_WITH_TERM_NOTE
-        : "",
+    value: (contract) => (contract.ends_with_term ? "Yes" : ""),
+    hint: (contract) => (contract.ends_with_term ? ENDS_WITH_TERM_NOTE : ""),
     choices: [
-      { value: "true", label: "Not to be renewed: ends with its term" },
-      { value: "false", label: "To be renewed" },
+      { value: "true", label: "Marked not to renew" },
+      { value: "false", label: "Not marked" },
     ],
     hide: true,
     width: 160,
@@ -625,9 +618,7 @@ export function ContractDetail() {
               {record.ends_with_term && (
                 <>
                   <dt>Not to be renewed</dt>
-                  <dd data-testid="ends-with-term">
-                    {record.status === "expired" ? ENDED_BY_CHOICE_NOTE : ENDS_WITH_TERM_NOTE}
-                  </dd>
+                  <dd data-testid="ends-with-term">{ENDS_WITH_TERM_NOTE}</dd>
                 </>
               )}
               {record.next_term && (

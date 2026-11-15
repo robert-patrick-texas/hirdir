@@ -4,7 +4,8 @@
 //   After signing in, a person with the Inventory or the Admin role is shown a banner
 //   under the header of every page while the server says to show it: how many contracts
 //   have lapsed, have a renewal pending and end within the warning period, each leading
-//   to its list on the Renewals page. Dismissed, it is not shown again that day, in this
+//   to its list on the Renewals page, and beside them how many agreements are on the same
+//   lists. Dismissed, it is not shown again that day, in this
 //   browser or another, also when another contract comes onto a list. A View-only person
 //   is never shown it, and the page does not ask for it.
 //
@@ -30,6 +31,7 @@ const today = new Date().toISOString().slice(0, 10);
 const vendor = `Example Alerts ${suffix}`;
 const first = `CON-${upper}-A1`;
 const second = `CON-${upper}-A2`;
+const agreement = `Example Alert Agreement ${suffix}`;
 
 /** The banner of the alert, on the page on show. */
 function banner(page: Page) {
@@ -69,6 +71,16 @@ test("P-128: the alert is shown once a day, in every browser, and never to View-
   await signIn(page, account);
   await importFile(page, "vendors", `vendors-${suffix}.csv`, ["name"], [[vendor]]);
   await endingSoon(page, first);
+  // An agreement that ends within the warning period too.
+  await page.goto("./agreements");
+  await page.getByRole("button", { name: "New agreement" }).click();
+  const made = region(page, "New support agreement");
+  await made.getByLabel("Name (required)").fill(agreement);
+  await made.getByLabel("Vendor (required)").selectOption({ label: vendor });
+  await made.getByLabel("Starts on").fill(`${year - 1}-01-01`);
+  await made.getByLabel("Ends on").fill(dayAfter(today, 30));
+  await made.getByRole("button", { name: "Create agreement" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: agreement })).toBeVisible();
 
   // A contract ends within the warning period, and this account has dismissed nothing.
   const read = alertRead(page);
@@ -77,6 +89,9 @@ test("P-128: the alert is shown once a day, in every browser, and never to View-
   const ending = banner(page).locator('li[data-section="ending"]');
   await expect(ending).toBeVisible();
   expect(Number(await ending.getAttribute("data-count"))).toBeGreaterThanOrEqual(1);
+  const agreements = ending.getByTestId("alert-agreements-ending");
+  await expect(agreements).toContainText(/^\d+ agreements? ends? within 90 days$/);
+  expect(Number(await agreements.getAttribute("data-agreements"))).toBeGreaterThanOrEqual(1);
 
   // A count leads to its list on the Renewals page, and the banner is there too.
   await ending.getByRole("link").first().click();

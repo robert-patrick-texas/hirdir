@@ -63,11 +63,9 @@ interface StatusMarksProps {
  */
 export function StatusMarks({ record, always = false }: StatusMarksProps) {
   const pending = record.status === RENEWAL_PENDING;
-  // A contract that has ended by choice says so in its own mark, in place of Expired.
-  const byChoice = record.ends_with_term === true && record.status === "expired";
   return (
     <>
-      {!pending && !byChoice && (always || record.status !== "active") && (
+      {!pending && (always || record.status !== "active") && (
         <span className="badge badge-plain" data-mark="status">
           {optionLabel(CONTRACT_STATUSES, record.status)}
         </span>
@@ -101,34 +99,20 @@ export function StatusMarks({ record, always = false }: StatusMarksProps) {
   );
 }
 
-/** What is said of a contract that is not to be renewed, while its term runs. */
+/** What is said of a contract the team marked not to renew (P-129). */
 export const ENDS_WITH_TERM_NOTE =
-  "Not to be renewed: it ends with this term. It covers to the end of its present term, is not lapsed after it, and is expired from the next day. A renewal takes the mark off.";
+  "Marked not to renew: the team's own note, which may not have reached procurement or the vendor. It changes no date, no status and no coverage by itself: it is not lapsed, and it stays on the worklist's list of what is let go, also once its period has passed, until a person says it has expired or retires it. It stays through a renewal, and goes when it is taken off or the contract leaves its agreement.";
 
-/** What is said of a contract that was not to be renewed, once its term has ended. */
-export const ENDED_BY_CHOICE_NOTE =
-  "Expired by choice: it was marked to end with its term, and that term has ended. It covers nothing now, and is retired by hand once nobody needs to see it.";
-
-/**
- * The mark of a contract that is not to be renewed: ending with its term while that
- * runs, and expired by choice once it has ended (P-129). Nothing for any other.
- */
+/** The mark of a contract that the team marked not to renew. Nothing for any other. */
 export function EndsWithTermMark({
   contract,
 }: {
-  contract: Pick<Contract, "status"> & Partial<Pick<Contract, "ends_with_term">>;
+  contract: Partial<Pick<Contract, "ends_with_term">>;
 }) {
   if (contract.ends_with_term !== true) return null;
-  if (contract.status === "expired") {
-    return (
-      <span className="badge" data-mark="ended-by-choice" title={ENDED_BY_CHOICE_NOTE}>
-        Expired by choice
-      </span>
-    );
-  }
   return (
     <span className="badge badge-plain" data-mark="ends-with-term" title={ENDS_WITH_TERM_NOTE}>
-      Ends with this term
+      Not to be renewed
     </span>
   );
 }
@@ -407,11 +391,11 @@ export function contractSpecs(lists: ContractLists, current: Contract | null = n
     },
     {
       name: "ends_with_term",
-      label: "Not to be renewed: ends with this term",
+      label: "Not to be renewed: the team's note",
       kind: "boolean",
       hint: current?.agreement
-        ? `It covers to the end of its present term, is not lapsed after it, and is expired from the next day. A renewal takes the mark off. A contract that shares the period of ${current.agreement.name} is let go when the agreement is renewed, by choosing End with this term for it there.`
-        : "It covers to the end of its present term, is not lapsed after it, and is expired from the next day, as when a site closes. A renewal takes the mark off.",
+        ? `The team's own note, as when a site closes: it changes no date, status or coverage by itself, and the contract is listed with what is let go on the worklist until a person says it has expired or retires it. It stays through a renewal, and goes when the contract is taken out of ${current.agreement.name}. Choosing End with this term for it when the agreement is renewed gives it the agreement's present end as its own and marks it so.`
+        : "The team's own note, as when a site closes: it changes no date, status or coverage by itself, and the contract is listed with what is let go on the worklist until a person says it has expired or retires it. It stays through a renewal.",
     },
     {
       name: "purchase_reference",

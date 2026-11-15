@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { ContractContacts } from "../components/ContractContacts";
 import {
   agreementSpecs,
@@ -39,7 +40,7 @@ import {
 } from "../lib/contracts";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
-import { type Loaded, useLoad, useTitle } from "../lib/hooks";
+import { type Loaded, useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY, useMoney, useTags, useVendorOptions } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import {
@@ -50,12 +51,15 @@ import {
   memberLabels,
   membersBody,
   membersText,
+  membersToReviewText,
+  toReviewText,
 } from "../lib/renewals";
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
 type AgreementRenewed = Schemas["AgreementRenewed"];
+type ContractRef = Schemas["ContractRef"];
 
 const COLUMNS: GridColumn<Agreement>[] = [
   {
@@ -309,6 +313,8 @@ export function AgreementDetail() {
   const [done, setDone] = useState("");
   const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState(false);
+  // The members the last renewal made here left to be reviewed, as it answered them.
+  const [review, setReview] = useState<ContractRef[]>([]);
   const record = agreement.data;
   useTitle(record ? record.name : "Support agreement");
   const specs = useMemo(() => agreementSpecs(lists, record ?? null), [lists, record]);
@@ -471,11 +477,21 @@ export function AgreementDetail() {
               </p>
             </CreateForm>
           )}
+          {review.length > 0 && (
+            <ReviewAfterRenewal members={review} onClose={() => setReview([])} />
+          )}
+          <MembersToReview
+            agreement={record}
+            contracts={contracts.data?.items}
+            mayEdit={open}
+            onChanged={changed}
+          />
           {open && (
             <AgreementRenew
-              key={`renew ${record.hid} ${record.row_version} ${contracts.data ? "read" : ""}`}
+              key={`renew ${record.hid} ${record.row_version}`}
               agreement={record}
               contracts={contracts.data?.items}
+              onReview={(members) => setReview([...members])}
               onChanged={changed}
               onReload={agreement.reload}
             />
@@ -691,6 +707,8 @@ interface AgreementRenewProps {
   agreement: Agreement;
   /** Its contracts, as they were read: the members are those that share its period. */
   contracts: readonly Contract[] | undefined;
+  /** Told the members the renewal left to be reviewed. */
+  onReview: (members: readonly ContractRef[]) => void;
   onChanged: (text: string) => void;
   onReload: () => void;
 }
@@ -701,8 +719,12 @@ interface AgreementRenewProps {
  * term, or end with this term (P-122, P-129). The answer says what was done with each,
  * and how many coverages of items not to be renewed were left behind.
  */
-function AgreementRenew({ agreement, contracts, onChanged, onReload }: AgreementRenewProps) {
-  const [drafts, setDrafts] = useState<MemberDraft[]>(() => memberDrafts(contracts ?? []));
+function AgreementRenew(props: AgreementRenewProps) {
+  const { agreement, contracts, onReview, onChanged, onReload } = props;
+  // What the person chose for each member; until then, the members as they were read,
+  // which may arrive after the form was opened.
+  const [edited, setEdited] = useState<MemberDraft[] | null>(null);
+  const drafts = edited ?? memberDrafts(contracts ?? []);
   const numbers = Object.fromEntries((contracts ?? []).map((one) => [one.hid, one.number]));
   const sorting = useSorting(drafts, {
     number: (draft) => draft.number,
@@ -711,7 +733,7 @@ function AgreementRenew({ agreement, contracts, onChanged, onReload }: Agreement
   });
 
   function change(hid: string, part: Partial<MemberDraft>) {
-    setDrafts((was) => was.map((draft) => (draft.hid === hid ? { ...draft, ...part } : draft)));
+    setEdited(drafts.map((draft) => (draft.hid === hid ? { ...draft, ...part } : draft)));
   }
 
   const form = (
@@ -723,13 +745,15 @@ function AgreementRenew({ agreement, contracts, onChanged, onReload }: Agreement
         </p>
       ) : drafts.length === 0 ? (
         <p className="muted" data-testid="renew-members-none">
-          No contract shares its period: every contract in it has dates of its own, or is retired.
+          No contract shares its period: every contract in it has an end of its own, or is retired.
         </p>
       ) : (
         <>
           <p className="hint">
-            Each contract in it that is not retired and has no dates of its own shares its period.
-            For each, say what the renewal does with it.{" "}
+            Each contract in it that is not retired and whose end is the agreement&apos;s, having no
+            end of its own, shares its period, whatever its start. For each, say what the renewal
+            does with it. No member&apos;s status is changed by the renewal: one that still says
+            Renewal pending or Expired, or is marked not to renew, is listed to be reviewed.{" "}
             {MEMBER_CHOICES.map((one) => `${one.label}: ${one.about}`).join(" ")}
           </p>
           <div className="scroll">
@@ -755,7 +779,10 @@ function AgreementRenew({ agreement, contracts, onChanged, onReload }: Agreement
               <tbody>
                 {sorting.rows.map((draft) => (
                   <tr key={draft.hid} data-member={draft.number} data-choice={draft.choice}>
-                    <th scope="row">{draft.number}</th>
+                    <th scope="row">
+                      {draft.number}
+                      {draft.marked && <EndsWithTermMark contract={{ ends_with_term: true }} />}
+                    </th>
                     <td className="number">{draft.covered}</td>
                     <td>
                       <SelectField
@@ -829,10 +856,12 @@ function AgreementRenew({ agreement, contracts, onChanged, onReload }: Agreement
       follows={
         <p>
           A renewal gives the agreement its new period, and its new number where it has one. Each
-          contract that shares its period, having no dates of its own, keeps its number and follows,
+          contract that shares its period, having no end of its own, keeps its number and follows,
           takes a new number that begins with the new term, or ends with this term: the form asks
           for each. Every item under one that follows follows too, and nothing is written to any of
           them; an item not to be renewed is left behind, its coverage ending with the present term.
+          No member&apos;s status is changed: one that still says Renewal pending or Expired is
+          listed to be reviewed.
         </p>
       }
       submitLabel="Renew the agreement"
@@ -857,12 +886,170 @@ function AgreementRenew({ agreement, contracts, onChanged, onReload }: Agreement
         `${after.name} was renewed: ${periodText(after.starts_on, after.ends_on).toLowerCase()}. The contracts that are co-termed with it follow.`
       }
       afterword={(after) =>
-        [membersText(after.members, numbers), leftBehindText(after.left_behind)]
+        [
+          membersText(after.members, numbers),
+          leftBehindText(after.left_behind),
+          toReviewText(after.to_review.length),
+        ]
           .filter(Boolean)
           .join(" ")
       }
+      onRenewed={(after) => onReview(after.to_review)}
       onChanged={onChanged}
       onReload={onReload}
     />
+  );
+}
+
+/**
+ * What the last renewal of the agreement left to be reviewed, as it answered: the members
+ * that still say their renewal is pending or that they have expired, which no renewal of
+ * an agreement changes, and those marked not to renew that it carried on. Each leads to
+ * its contract.
+ */
+function ReviewAfterRenewal(props: { members: readonly ContractRef[]; onClose: () => void }) {
+  const { members, onClose } = props;
+  return (
+    <div className="warning" data-testid="renewal-to-review" data-count={members.length}>
+      <p>{toReviewText(members.length)}</p>
+      <ul className="plain-list">
+        {members.map((member) => (
+          <li key={member.hid} data-contract={member.number}>
+            <Link to={contractPath(member.hid)}>{member.number}</Link>
+            <span className="muted"> · {optionLabel(CONTRACT_STATUSES, member.status)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="actions">
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </p>
+    </div>
+  );
+}
+
+interface MembersToReviewProps {
+  agreement: Agreement;
+  /** Its contracts, as they were read: what a change of a member is sent at. */
+  contracts: readonly Contract[] | undefined;
+  mayEdit: boolean;
+  onChanged: (text: string) => void;
+}
+
+/**
+ * The members of the agreement to review, as its record lists them: those that still say
+ * their renewal is pending or that they have expired while it runs on (P-129). Each is
+ * made active, taken out of the agreement, or retired, by a person. The table holds all
+ * of its rows, so it is sorted by its headers in the browser.
+ */
+function MembersToReview({ agreement, contracts, mayEdit, onChanged }: MembersToReviewProps) {
+  const members = agreement.members_to_review;
+  const action = useAction();
+  const sorting = useSorting(members, {
+    number: (member) => member.number,
+    status: (member) => optionLabel(CONTRACT_STATUSES, member.status),
+  });
+  if (members.length === 0) return null;
+
+  /** The member as it was read, for its version: read again where the list did not hold it. */
+  async function current(hid: string): Promise<Contract> {
+    const known = contracts?.find((contract) => contract.hid === hid);
+    return known ?? api.request("get", "/api/v1/contracts/{hid}", { path: { hid } });
+  }
+
+  async function activate(member: ContractRef) {
+    const result = await action.run(async () => {
+      const contract = await current(member.hid);
+      return api.request("patch", "/api/v1/contracts/{hid}", {
+        path: { hid: member.hid },
+        body: { row_version: contract.row_version, status: "active" },
+      });
+    });
+    if (result.ok) onChanged(`${member.number} is Active again, under ${agreement.name}.`);
+  }
+
+  async function takeOut(member: ContractRef) {
+    const result = await action.run(async () => {
+      const contract = await current(member.hid);
+      return api.request("patch", "/api/v1/contracts/{hid}", {
+        path: { hid: member.hid },
+        body: { row_version: contract.row_version, agreement_hid: null },
+      });
+    });
+    if (result.ok) {
+      onChanged(`${member.number} was taken out of ${agreement.name}: it stands by itself.`);
+    }
+  }
+
+  async function retire(member: ContractRef) {
+    const result = await action.run(async () => {
+      const contract = await current(member.hid);
+      return api.request("post", "/api/v1/contracts/{hid}/retire", {
+        path: { hid: member.hid },
+        body: { row_version: contract.row_version },
+      });
+    });
+    if (result.ok) onChanged(`${member.number} was retired: it covers nothing any more.`);
+  }
+
+  return (
+    <section aria-labelledby="members-to-review" data-testid="members-to-review">
+      <h2 id="members-to-review">Members to review</h2>
+      <p className="warning" data-count={members.length}>
+        {membersToReviewText(members.length)}
+      </p>
+      <Problem error={action.error} />
+      <div className="scroll">
+        <table className="narrow">
+          <caption className="visually-hidden">
+            The members of {agreement.name} to review, each with what may be done with it
+          </caption>
+          <thead>
+            <tr>
+              <SortTh sort={sorting} column="number">
+                Contract
+              </SortTh>
+              <SortTh sort={sorting} column="status">
+                Status
+              </SortTh>
+              {mayEdit && <th scope="col">Review</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sorting.rows.map((member) => (
+              <tr key={member.hid} data-contract={member.number} data-status={member.status}>
+                <th scope="row">
+                  <Link to={contractPath(member.hid)}>{member.number}</Link>
+                </th>
+                <td>{optionLabel(CONTRACT_STATUSES, member.status)}</td>
+                {mayEdit && (
+                  <td className="row-actions">
+                    <button type="button" disabled={action.busy} onClick={() => activate(member)}>
+                      Make active<span className="visually-hidden">: {member.number}</span>
+                    </button>
+                    <button type="button" disabled={action.busy} onClick={() => takeOut(member)}>
+                      Take out<span className="visually-hidden">: {member.number}</span>
+                    </button>
+                    <ConfirmButton
+                      label="Retire"
+                      title={`Retire ${member.number}?`}
+                      confirmLabel="Retire contract"
+                      onConfirm={() => retire(member)}
+                      disabled={action.busy}
+                    >
+                      <p>
+                        A retired contract covers nothing any more. Its coverages stay on record,
+                        and it can be brought back.
+                      </p>
+                    </ConfirmButton>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
