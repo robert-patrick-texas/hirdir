@@ -170,6 +170,13 @@ what the release is:
   things changed, the version in its control file and hirdir's own `__version__`, with
   that file's checksum in `md5sums`, built again with `dpkg-deb --root-owner-group`
   outside `dist/`, so that it is never taken for a release.
+  `scripts/relabel_deb.sh` makes it:
+
+  ```bash
+  scripts/relabel_deb.sh dist/hirdir_0.7.0_amd64.deb 0.7.1 /tmp/later
+  PREVIOUS_DEB=dist/hirdir_0.7.0_amd64.deb DEB=/tmp/later/hirdir_0.7.1_amd64.deb \
+      packaging/package-test.sh --upgrade-alone
+  ```
 
 The test also makes the new version's migration fail, to see that the upgrade stops,
 names its backup, leaves the inventory as it was and can be undone. It does that in

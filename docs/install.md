@@ -225,7 +225,7 @@ Nine of the files are new in 0.6.0: the external systems and what is registered 
 them; two support agreements, a Cisco one and a Juniper one, with the contracts
 grouped into them, a contract that stands by itself for switches bought lately, and
 what each contract covers; two purchase requests with their lines, on one of which two
-switches have arrived, and a line of tape beside them that is not tracked; the capacity lines of the worked example on the
+switches have arrived; the capacity lines of the worked example on the
 [data model](data-model.md#capacity-balance) page, one of them a draft; and one
 replacement. The dates of the contracts are fixed in the files, so what the coverage
 report says of them changes as the calendar moves on. The capacity report of the
@@ -233,6 +233,19 @@ examples is not the one of that page: the lines are the same, a supply of 9.0, b
 the examples have a support weight of 32 where the worked example has 2,400, so the
 demand is 2.11 and the balance 6.89, where the page has a demand of 10.0 and a
 balance of −1.0.
+
+One of the files is new in 0.7.0: the contacts of the contracts, by which the Cisco
+agreement names two account managers, in their order, and one contract in it names an
+account manager of its own in place of the agreement's, while the other has the
+agreement's. The files from before say more as well. The model of the IP telephones is
+marked not to be renewed, so that the one of them in Prod that no contract covers is
+counted by itself on the coverage report, and not as a gap. The C9300-48P has a link to
+its data sheet, Site-2 one to its page and Room 102 two, to its floor plan and its
+racks. The second line of the request for Site-3 has, beside its model, the part number
+of a spare power supply as procurement wrote it, and a third line,
+of hook-and-loop tape, has no model: it is not tracked, takes no item and waits for
+nothing. The capacity lines have the columns of a line that multiplies, though none of
+them does.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:

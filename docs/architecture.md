@@ -528,9 +528,9 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement and the audit trail holds no event of the upgrade; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
-| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
-| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
+| `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
 **The pair of releases** is worked out by the script, and is written nowhere in it.
 The package under test is `dist/hirdir_<version>_amd64.deb`, or the one that `DEB`
@@ -618,33 +618,69 @@ itself does not carry it, and the upgrades after it do:
   vendor and a site, one a draft, one that has ended and one retired, and a label of
   the site's for a default category.
 
+A previous release at revision `0009`, which is 0.7.0, is given what that revision
+brought as well. No release before it can store any of it, so the upgrade to 0.7.0
+itself does not carry it, and the upgrades after it do:
+
+- the contacts of the agreement from before, an account manager and a support
+  contact, and a contract in it that names an account manager of its own in place of
+  the agreement's;
+- the flag not to renew on the second model, and so on its items, one of which says
+  otherwise for itself, and on a switch of the first model by itself;
+- a support agreement whose renewal is entered early with its two members: one is to
+  have a new number, which waits on the agreement's next term, and one ends with the
+  present term; an endpoint that is not to be renewed is left behind, with a cover
+  that ends with that term;
+- a purchase request with a line that this inventory does not track, which has a part
+  number and no model, and a line of the first model with a part number;
+- a line of tools that multiplies the engineers from before, with its target;
+- the record of the week's capacity balance, recorded by hand and corrected with a
+  reason;
+- links on the second model, the region, the site and the room from before; and
+- the renewal alert, seen by the Admin.
+
+It is tried, before there is a release after 0.7.0, by upgrading the package of 0.7.0
+to itself under a later version number, as
+[release-process.md](release-process.md#the-previous-releases-package) says.
+
 Afterwards every item, group, membership, network, address, owner and choice must be
 as it was, field for field and at the `row_version` it had, every item with its history
 event for event, and no choice may be added. So must every record of what came after
 the groups, list by list: the regions, sites, locations, contacts, operators and
-assignments, and from `0008` the agreements, contracts, coverage, purchase requests
-and lines, external systems, registrations and capacity lines. What is worked out of
+assignments, from `0008` the agreements, contracts, coverage, purchase requests
+and lines, external systems, registrations and capacity lines, and from `0009` the
+contacts of the agreement and of the contract and the records of the capacity
+balance. What is worked out of
 those records must be answered as it was: the tree of places with what it counts and
 what is planned at each, what the room has in force, the summary by operator, and
 from `0008` the earlier term of the contract that was renewed, which is read from the
 audit trail, the coverage report, the capacity report, the summary by contract and
-the portfolio of the vendor. The first stack must say of itself all
-that it said, the master that is seen and when among it. A second item with a serial
-number of the same model, one with an asset tag that is taken, and a second group of a
-name that is taken must still be refused. The whole inventory, the cluster by how it
-is managed, and the stack of one switch with its whole support weight must be counted
-as the previous release counted them.
+the portfolio of the vendor, and from `0009` the renewal worklist, the alert as the
+Admin has seen it and what the coverage report counts by model as not to be renewed.
+A newer version may give such an answer more, as it may a record: a section more of a
+report, which the comparison passes over, and the rest must be as it was. The first
+stack must say of itself all that it said, the master that is seen and when among it. A
+second item with a serial number of the same model, one with an asset tag that is taken,
+and a second group of a name that is taken must still be refused. The whole inventory,
+the cluster by how it is managed, and the stack of one switch with its whole support
+weight must be counted as the previous release counted them.
 
 The tables are read from the database file too, the eleven of the inventory where
-there are groups, eighteen with those of the places and the people, and twenty-six
+there are groups, eighteen with those of the places and the people, twenty-six
 with those of the contracts, the purchases, the external systems and the capacity
-lines. Where there is no migration, each must have the columns, the
-indexes, uniquenesses and foreign keys, and the rows it had, the schema must be the
-same statement for statement, and the audit trail, read before anything is asked of
-the new version, must hold the events it held and no other. Where there is a
-migration, each must have every column it had, as it was, and after them the columns
-that the migration is said to add and no other; the indexes, uniquenesses and foreign
-keys likewise; and every row must hold what it held in the columns it had.
+lines, and thirty with the contacts of contracts, the targets of capacity lines, the
+records of the capacity balance and the renewal alerts that were seen. A table that
+has no `hid`, as the targets have none, is read by its primary key. Where there is no
+migration, each must have the columns, the indexes, uniquenesses and foreign keys, and
+the rows it had, the schema must be the same statement for statement, and the audit
+trail, read before anything is asked of the new version, must hold the events it held
+and no other, but for the one that a service of 0.7.0 or later writes by itself when it
+starts in a week that has no record of the capacity balance: one `create` of a
+`capacity_record` that the system makes, which every upgrade allows for, by name and at
+most once. Where there is a migration, each must have every column it had, as it was,
+and after them the columns that the migration is said to add and no other; the indexes,
+uniquenesses and foreign keys likewise; and every row must hold what it held in the
+columns it had.
 
 **What one upgrade alone has** is kept apart from all of that, in
 `packaging/package-test.d/`:
@@ -664,7 +700,10 @@ what it made. The third runs in the upgrade pass alone, last: it tries what is n
 what was carried over. What is meant to change is named, never implied: the fields of
 records, each by HID and field, which the comparison passes over; the rows of a table,
 by HID, which the comparison of its rows leaves out; the columns, indexes and foreign
-keys that the migration adds to a table, which must be there and no other; a list or a
+keys that the migration adds to a table, which must be there and no other; the columns
+that it declares otherwise, each in its place, such as one that may now be blank;
+tables that hold what a site made and are no part of the inventory, which the
+migration changes, and which are then kept and compared as the inventory's are; a list or a
 table that may have more records than before; and the view of the items that must be
 counted as before, where some are meant to be counted otherwise. A migration that
 writes no audit event says that too, and the audit trail is then read before anything
@@ -776,6 +815,47 @@ the site had put into the list before the upgrade. All of it is then retired, en
 marked as removed or cancelled, so that the rest of the pass starts from reports as
 empty as a new installation's.
 
+`migration-0009.sh` is the one that 0.7.0 brought, and what it looks for is what
+[install.md](install.md#from-061-to-070) tells an operator of that upgrade. The
+migration gives columns to `catalog_entries`, `items`, `regions`, `sites`,
+`locations` and `contracts` as they stand, makes `purchase_lines` anew so that its
+model may be blank, with a part number and a description, and `capacity_lines` anew
+so that its quantity and its units may be blank, with an effect, a factor and a
+share. It gives `import_jobs` and `import_rows` the counts and the outcomes of an
+apply in the background, and a job that was applied before the counts it would have
+had, which is the one thing it changes. Then it creates `contract_contacts`,
+`capacity_line_targets` and `renewal_alert_views`, and `capacity_records` last. It
+writes no audit event. What it makes anew and what it gives columns to are in the
+inventory already from `0008`, with every kind of record, and the file sees that
+they are. With the previous release it makes three import jobs, one applied with a
+row rejected, one that failed because its record was changed after the preview, and
+one that waits, and sees that the previous release refuses a line with no model and
+has no record of the balance and no alert. It names the two import tables as tables
+beside the inventory, the row of the applied job as meant to change, every column
+the migration adds, and the three that it declares as may be blank.
+
+After the upgrade the applied job has worked its three rows and applied two, the
+others none, and nothing else of any job is changed; no row says what an apply did
+with it. The three new tables are empty and the new columns hold their defaults: no
+model or item is flagged, no place or model has a link, no contract is marked, every
+line has its model and adds, and no row refers to a record that is not there. The
+service has recorded the balance of the week by itself, with the figures of the
+capacity report of what was carried over and one event that the system made. The
+five settings that were constants are at their defaults; the coverage report counts
+nothing as not to be renewed; the renewal worklist and the alert count the contract
+whose renewal is pending, and the alert is shown to the Admin, who has not seen it;
+and the regions at the top with what is nowhere add up to the support weight of the
+capacity report. Last, what is new is tried on what was carried over. The job that
+waited is applied in the background, answered `202`, and the one that failed is
+refused. The agreement from before has its early renewal withdrawn and entered again
+with its member, which is to have a new number that waits, and the items under it
+are not written to; withdrawn once more, the number goes with it. A switch in Prod
+that no contract covers is flagged and counted by itself under its model, and then
+has its model's flag again. A line that multiplies the engineers from before adds
+0.75 units, the week is recorded by hand in place of the system's record and
+corrected with a reason, and the line is retired. A model and a room are given
+links.
+
 `release-0.4.2.sh` is the example of the second kind. 0.4.2 has no migration. One
 thing that it says differently of what it holds is left out of the comparison by name
 and looked at by itself: the health of the two items whose condition is the site's
@@ -834,12 +914,16 @@ group still there. That is the way back that
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
-`addresses` was for 0.4.0, `owner_members` for 0.5.0 and `capacity_lines` is for 0.6.0,
-so that everything else the migration does is done before it fails: migration `0007`
+`addresses` was for 0.4.0, `owner_members` for 0.5.0, `capacity_lines` for 0.6.0 and
+`capacity_records` is for 0.7.0, so that everything else the migration does is done
+before it fails: migration `0007`
 has by then created five tables, made `items` and `device_groups` anew and loaded two
 lists, and migration `0008` has created seven tables, made `items` anew, with the
-locations and the operators that its rows refer to, and loaded a list, and all of that
-has to be undone. Where it creates none, as 0.4.1 creates none, a trigger is put on
+locations and the operators that its rows refer to, and loaded a list, and migration
+`0009` has made
+`purchase_lines` and `capacity_lines` anew, given columns to six tables and counts to
+the jobs that were applied, and created three tables, and all of that has to be undone.
+Where it creates none, as 0.4.1 creates none, a trigger is put on
 `alembic_version` that refuses any change to it. Writing the new revision into that
 table is the last thing a migration does, so for migration `0006` the failure comes
 when the columns are added, the `device_groups` table is made anew, the clusters are
@@ -876,56 +960,57 @@ overrides its support level, while the contract for the switches bought lately s
 by itself; a spare arrived on a purchase line, took the place of a switch and is
 under that contract, and the switch that left is out of cover, a person having ended
 it, and its registration removed; the first line of that request has two of its four
-still to come; the core stack is registered with two systems, and its two switches,
-which have no registration of their own, say what their stack is registered with and
-are found by `registration.system`; the portfolio of
-Cisco has all four kinds, its agreement and its three contracts, and its filter lists
-as many items as it counts, and the portfolio of the reseller has the contracts that
-were bought through it, by the reseller in force; and the summary by contract has a
-row for each contract
-that covers something. The dates of the contracts are fixed in the files, so what
-the coverage and the end-of-life reports must count is worked out from the files for
-the day the report says it is of, by the rules of D-140 to D-142, D-149 and D-150,
-and never written into the test: the major items
-in Assigned, Test, Prod or Down, those of them that are covered and that are not,
-those out of service that a contract still counts, those whose cover runs out within
-ninety days, those under more than one contract and those under a renewal that is
-pending; and for each of the four dates the items
-past it and within two years of it. The capacity lines of the examples are those of
-the worked example, against a support weight of 32 where the worked example has
-2,400: the report must give a demand of 2.11, the supply of 9 by category, a balance
-of 6.89 and a coverage of 427.22%, and a supply of 10 with the draft line. What the
-examples show of 0.5.0 is
-looked for: the tree has Americas with its two regions and their sites, and not the
-site that is a draft until the drafts are asked for; it counts at Americas, at Site-2,
-in Room 102 and in the rack within it the items that `examples/items.csv` puts at or
-beneath each, a minor item where the item it is in is, and what is in the tree, what
-is nowhere and what is hidden add up to the totals; Room 102 has the shipping contact
-of its site, the technical contact of its building and not the two of the region, the
-shipping address of its site whole and the instructions of the region; the store room,
-which is in no building, has the two technical contacts of the region and instructions
-of its own; the room of the small office has no shipping contact, because its site
-says that nobody takes shipments there; the one item with an owner outside the team is
-marked as an exception, with its reason; and the management report with no `by` is by
-site, and by region has the items in the row of each region above them. What the examples
-show of 0.4.1 is looked for: the core stack is found by the serial number of the master
-that is intended and shows that of the master that is seen; the address that two
-routers share is held once, by their cluster; `GET /reports/duplicates` lists the one
-address that two virtual machines hold by mistake, and no other; the item list finds
+still to come, the second has its part number as procurement gave it, and the third,
+of tape, is not tracked and waits for nothing, so that `hirdir purchases show` counts
+two of the eight that are tracked as arrived; the core stack is registered with two
+systems, and its two switches, which have no registration of their own, say what their
+stack is registered with and are found by `registration.system`; the portfolio of Cisco
+has all four kinds, its agreement and its three contracts, and its filter lists as many
+items as it counts, and the portfolio of the reseller has the contracts that were bought
+through it, by the reseller in force; and the summary by contract has a row for each
+contract that covers something. The dates of the contracts are fixed in the files, so
+what the coverage and the end-of-life reports must count is worked out from the files
+for the day the report says it is of, by the rules of D-140 to D-142, D-149, D-150 and
+P-131, and never written into the test: the major items in Assigned, Test, Prod or Down,
+those of them that are covered and that are not, those that no contract covers and that
+are not to be renewed, by their own flag or their model's, which are left off what is
+not covered and what runs out soon, those out of service that a contract still counts,
+those whose cover runs out within ninety days, those under more than one contract and
+those under a renewal that is pending; and for each of the four dates the items past it
+and within two years of it. The capacity lines of the examples are those of the worked
+example, against a support weight of 32 where the worked example has 2,400: the report
+must give a demand of 2.11, the supply of 9 by category, a balance of 6.89 and a
+coverage of 427.22%, and a supply of 10 with the draft line. What the examples show of
+0.5.0 is looked for: the tree has Americas with its two regions and their sites, and not
+the site that is a draft until the drafts are asked for; it counts at Americas, at
+Site-2, in Room 102 and in the rack within it the items that `examples/items.csv` puts
+at or beneath each, a minor item where the item it is in is, and what is in the tree,
+what is nowhere and what is hidden add up to the totals; Room 102 has the shipping
+contact of its site, the technical contact of its building and not the two of the
+region, the shipping address of its site whole and the instructions of the region; the
+store room, which is in no building, has the two technical contacts of the region and
+instructions of its own; the room of the small office has no shipping contact, because
+its site says that nobody takes shipments there; the one item with an owner outside the
+team is marked as an exception, with its reason; and the management report with no `by`
+is by site, and by region has the items in the row of each region above them. What the
+examples show of 0.4.1 is looked for: the core stack is found by the serial number of
+the master that is intended and shows that of the master that is seen; the address that
+two routers share is held once, by their cluster; `GET /reports/duplicates` lists the
+one address that two virtual machines hold by mistake, and no other; the item list finds
 as many items of each condition as the file has; a router that is Down and observed
 unreachable is `degraded`, and a stack that is short of a member says so. The summary
-must hold no money and count every component once by health, and the components of
-each condition in its totals must be those of the rows when it is asked for by
-condition; the management report must hold the money and refuse `by=health`. The
-examples must weigh and cost what `examples/` says, a support weight of 32 and an
-annual support cost of 67140.00 in all, with their one licence at quantity 1. Sent a
-second time, as CSV and as JSON, every row is
-unchanged. A filtered export is taken as CSV and as JSON: its rows are those the
-examples hold for the filter and those the list gives, and `hid` comes first. An export
-of stored values is imported back unchanged. A file of more than a megabyte is imported,
-and its apply sent twice with an `Idempotency-Key`. Then the limits: a body of exactly
-20 MB passes nginx and is answered by `hirdir`; one byte more is refused by nginx with
-its own `413`; the same body sent straight to the service is refused by `hirdir` with a
+must hold no money and count every component once by health, and the components of each
+condition in its totals must be those of the rows when it is asked for by condition; the
+management report must hold the money and refuse `by=health`. The examples must weigh
+and cost what `examples/` says, a support weight of 32 and an annual support cost of
+67140.00 in all, with their one licence at quantity 1. Sent a second time, as CSV and as
+JSON, every row is unchanged. A filtered export is taken as CSV and as JSON: its rows
+are those the examples hold for the filter and those the list gives, and `hid` comes
+first. An export of stored values is imported back unchanged. A file of more than a
+megabyte is imported, and its apply sent twice with an `Idempotency-Key`. Then the
+limits: a body of exactly 20 MB passes nginx and is answered by `hirdir`; one byte more
+is refused by nginx with its own `413`; the same body sent straight to the service is
+refused by `hirdir` with a
 `413` problem document; and a file of 100,001 rows is refused by `hirdir` with its own
 `413`, which nginx passes on. The package's copy of `examples/` is compared with the
 repository's.
@@ -1108,10 +1193,17 @@ restore`. In between, with the examples and the records above still loaded, `hir
 admin reset` is tried as an operator would use it: it must refuse while the service
 runs, change nothing without the word `reset`, and then clear every table of the
 inventory, those of the replacements, groups, members, networks and addresses, of the
-regions, sites, locations, contacts, assignments and members of owners, and of the
+regions, sites, locations, contacts, assignments and members of owners, of the
 agreements, contracts, coverage, purchase requests and lines, external systems,
-registrations and capacity lines among them, each of which holds rows before and none
-after, and keep the accounts.
+registrations and capacity lines, and of the contacts of contracts, the targets of
+capacity lines, the records of the capacity balance and the renewal alerts that were
+seen among them, each of which holds rows before and none after, and keep the
+accounts. The examples hold no line that multiplies and nobody has seen the alert, so
+two records of 0.7.0 are made beside them for the reset to find: a line of tools that
+multiplies the network engineers of the examples by one and a half, which counts 1.5
+units more under tools, and the alert as this Admin has seen it, which is then not
+shown to them again that day. The record of the balance is the one the service made
+when it started.
 
 **The capacity balance**, scenarios S39 and S40, is worked after that, where the
 inventory holds four items made by hand and no capacity line, because the report is of
