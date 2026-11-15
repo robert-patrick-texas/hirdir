@@ -1,6 +1,7 @@
-"""The routes of external systems, of registrations with them, and of capacity lines."""
+"""The routes of external systems, of registrations with them, of capacity lines, and of
+the records of the capacity balance."""
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter
 
@@ -8,10 +9,10 @@ from hirdir.api import lists, shapes
 from hirdir.api import records as r
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
-from hirdir.api.lists import Listed
+from hirdir.api.lists import Limit, Listed, Offset, sort_of
 from hirdir.api.schemas import Page
 from hirdir.domain import capacity, systems
-from hirdir.io import fields
+from hirdir.io import balance, fields, tables
 
 system_routes = APIRouter(
     prefix="/external-systems", tags=["External systems"], route_class=IdempotentRoute
@@ -20,6 +21,9 @@ registrations = APIRouter(
     prefix="/registrations", tags=["External systems"], route_class=IdempotentRoute
 )
 capacity_lines = APIRouter(prefix="/capacity-lines", tags=["Capacity"], route_class=IdempotentRoute)
+capacity_records = APIRouter(
+    prefix="/capacity-records", tags=["Capacity"], route_class=IdempotentRoute
+)
 
 
 def _changes(body: r.Model) -> dict:
@@ -166,4 +170,61 @@ def retire_capacity_line(
     return shapes.capacity_lines_out(db, [retired])[0]
 
 
-ROUTERS = (system_routes, registrations, capacity_lines)
+# --- the records of the capacity balance ---------------------------------------------
+
+
+@capacity_records.get("")
+def list_capacity_records(
+    _: Viewer,
+    db: Db,
+    sort: Annotated[list[str] | None, sort_of(tables.CAPACITY_RECORDS)] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
+) -> Page[r.CapacityRecordOut]:
+    """List the records of the balance, one for each week, the oldest first unless a
+    sort says otherwise."""
+    arrange = tables.arrange(tables.CAPACITY_RECORDS, sort)
+    page, total = balance.list_records(db, limit, offset, arrange)
+    return Page(items=shapes.capacity_records_out(page), total=total, limit=limit, offset=offset)
+
+
+@capacity_records.post("", status_code=201)
+def record_capacity(
+    body: r.CapacityRecordCreate, _: Inventory, context: Audit, db: Db
+) -> r.CapacityRecordOut:
+    """Record the balance of the whole installation as it is now. The record of this
+    week, by the application's time zone, is replaced: what it held is in its audit
+    event."""
+    return shapes.capacity_records_out([balance.record(db, context, note=body.note)])[0]
+
+
+@capacity_records.get("/{hid}")
+def get_capacity_record(hid: str, _: Viewer, db: Db) -> r.CapacityRecordOut:
+    """Return one record of the balance."""
+    return shapes.capacity_records_out([capacity.get_record(db, hid)])[0]
+
+
+@capacity_records.patch("/{hid}")
+def correct_capacity_record(
+    hid: str, body: r.CapacityRecordPatch, _: Inventory, context: Audit, db: Db
+) -> r.CapacityRecordOut:
+    """Correct the demand and the supply of a saved week, with a note that says why.
+    The record is then marked `adjusted`."""
+    corrected = capacity.correct_record(
+        db,
+        context,
+        hid,
+        body.row_version,
+        body.model_dump(exclude={"row_version"}, exclude_none=True),
+    )
+    return shapes.capacity_records_out([corrected])[0]
+
+
+@capacity_records.delete("/{hid}", status_code=204)
+def remove_capacity_record(hid: str, _: Inventory, context: Audit, db: Db) -> None:
+    """Remove a record of the balance that was a mistake. The audit event of the removal
+    holds what it was."""
+    capacity.remove_record(db, context, hid)
+
+
+ROUTERS = (system_routes, registrations, capacity_lines, capacity_records)

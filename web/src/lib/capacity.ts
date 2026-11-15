@@ -46,7 +46,7 @@ export function supplyCategories(
 export type MeasureKind = "units" | "weight" | "percent" | "money";
 
 export interface Measure {
-  key: Exclude<keyof CapacityView, "by_category">;
+  key: Exclude<keyof CapacityView, "by_category" | "multiplying_lines" | "demand_by_region">;
   label: string;
   kind: MeasureKind;
   /** What the measure is, for whoever has not met it. */

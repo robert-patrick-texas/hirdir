@@ -1,9 +1,9 @@
 """Everything that differs between SQLite and PostgreSQL lives in this module.
 
 Comparison without regard to case, wildcard and regular expression matching, where
-blank values fall in a sorted list, the order of addresses and the least text of a list
-that is kept as JSON. The rest of the code builds its SQL from these and never asks
-which database it is talking to.
+blank values fall in a sorted list, the order of addresses, the least text of a list
+that is kept as JSON, and a number that a JSON object holds. The rest of the code
+builds its SQL from these and never asks which database it is talking to.
 
 Regular expressions are bounded. A pattern has a longest length and a limit on how far
 its counted repeats multiply, each match has a time limit, and one request has a budget
@@ -29,6 +29,7 @@ from sqlalchemy import (
     Boolean,
     ColumnElement,
     Date,
+    Float,
     Integer,
     Numeric,
     String,
@@ -428,6 +429,34 @@ def _list_values_sqlite(element: list_values, compiler: Any, **kw: Any) -> str:
 @compiles(list_values, "postgresql")
 def _list_values_postgresql(element: list_values, compiler: Any, **kw: Any) -> str:
     return f"json_array_elements_text({compiler.process(element.clauses, **kw)})"
+
+
+class json_number(FunctionElement):
+    """A number that a JSON object kept in a column holds as text under a key, such as
+    the demand of a record of the balance, as a number to sort by. The key is a bound
+    value, as any value of a statement is."""
+
+    type = Float()
+    name = "json_number"
+    inherit_cache = True
+
+
+@compiles(json_number, "sqlite")
+def _json_number_sqlite(element: json_number, compiler: Any, **kw: Any) -> str:
+    column, key = (compiler.process(clause, **kw) for clause in element.clauses)
+    return f"CAST(json_extract({column}, '$.' || {key}) AS REAL)"
+
+
+@compiles(json_number)
+@compiles(json_number, "postgresql")
+def _json_number_postgresql(element: json_number, compiler: Any, **kw: Any) -> str:
+    column, key = (compiler.process(clause, **kw) for clause in element.clauses)
+    return f"CAST(({column} ->> {key}) AS double precision)"
+
+
+def number_in_json(column: Any, key: str) -> ColumnElement[Any]:
+    """Return the number a JSON column holds as text under a key, to sort by."""
+    return json_number(column, literal(key))
 
 
 def least_of_list(column: Any) -> ColumnElement[Any]:

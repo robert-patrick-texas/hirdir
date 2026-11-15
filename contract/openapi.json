@@ -2390,6 +2390,44 @@
         "title": "CapacityCategory",
         "type": "object"
       },
+      "CapacityFigures": {
+        "additionalProperties": false,
+        "description": "The two figures of one view of a record that a person may correct.",
+        "properties": {
+          "demand": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demand"
+          },
+          "supply": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supply"
+          }
+        },
+        "title": "CapacityFigures",
+        "type": "object"
+      },
       "CapacityLineCreate": {
         "additionalProperties": false,
         "description": "A new capacity line.",
@@ -2409,6 +2447,17 @@
             ],
             "title": "Annual Cost"
           },
+          "applies_to": {
+            "default": [],
+            "description": "The staff lines that a line that multiplies works on: at least one.",
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Applies To",
+            "type": "array"
+          },
           "category": {
             "anyOf": [
               {
@@ -2422,6 +2471,16 @@
             "description": "A value of the capacity_category list. Left out on a demand line.",
             "title": "Category"
           },
+          "effect": {
+            "default": "add",
+            "description": "`multiply` only for a supply line of the category tools or services.",
+            "enum": [
+              "add",
+              "multiply"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
           "ends_on": {
             "anyOf": [
               {
@@ -2433,6 +2492,22 @@
               }
             ],
             "title": "Ends On"
+          },
+          "factor": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "At least 1, on a line that multiplies.",
+            "title": "Factor"
           },
           "name": {
             "maxLength": 200,
@@ -2453,13 +2528,20 @@
             "title": "Notes"
           },
           "quantity": {
-            "default": "1",
-            "examples": [
-              "1.5"
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
-            "title": "Quantity",
-            "type": "string"
+            "description": "Left out, 1 on a line that adds. Blank on one that multiplies.",
+            "title": "Quantity"
           },
           "record_status": {
             "default": "active",
@@ -2481,6 +2563,22 @@
               }
             ],
             "title": "Region Hid"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "examples": [
+                  "0.5"
+                ],
+                "pattern": "^[01](\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, 1 on a line that multiplies.",
+            "title": "Share"
           },
           "side": {
             "enum": [
@@ -2515,12 +2613,20 @@
             "title": "Starts On"
           },
           "units_each": {
-            "examples": [
-              "1.5"
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
-            "title": "Units Each",
-            "type": "string"
+            "description": "Required on a line that adds. Blank on one that multiplies.",
+            "title": "Units Each"
           },
           "vendor_hid": {
             "anyOf": [
@@ -2537,8 +2643,7 @@
         },
         "required": [
           "side",
-          "name",
-          "units_each"
+          "name"
         ],
         "title": "CapacityLineCreate",
         "type": "object"
@@ -2562,6 +2667,14 @@
             ],
             "title": "Annual Cost"
           },
+          "applies_to": {
+            "description": "A line that multiplies: the staff lines it works on, by name.",
+            "items": {
+              "$ref": "#/components/schemas/CapacityLineRef"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -2575,6 +2688,15 @@
             "title": "Created At",
             "type": "string"
           },
+          "effect": {
+            "description": "`add` a fixed amount, or `multiply` the staff lines of `applies_to`.",
+            "enum": [
+              "add",
+              "multiply"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
           "ends_on": {
             "anyOf": [
               {
@@ -2586,6 +2708,22 @@
               }
             ],
             "title": "Ends On"
+          },
+          "factor": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A line that multiplies: how much more one person does with it.",
+            "title": "Factor"
           },
           "hid": {
             "title": "Hid",
@@ -2612,12 +2750,20 @@
             "title": "Notes"
           },
           "quantity": {
-            "examples": [
-              "1.5"
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
-            "title": "Quantity",
-            "type": "string"
+            "description": "Blank on a line that multiplies.",
+            "title": "Quantity"
           },
           "record_status": {
             "enum": [
@@ -2652,6 +2798,22 @@
           "row_version": {
             "title": "Row Version",
             "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "examples": [
+                  "0.5"
+                ],
+                "pattern": "^[01](\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A line that multiplies: the share of the positions that use it.",
+            "title": "Share"
           },
           "side": {
             "enum": [
@@ -2695,21 +2857,36 @@
             "title": "Starts On"
           },
           "units": {
-            "description": "`quantity` times `units_each`.",
-            "examples": [
-              "1.5"
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
-            "title": "Units",
-            "type": "string"
+            "description": "`quantity` times `units_each`. Blank on a line that multiplies, whose units are those of the lines it applies to in each view: see `GET /reports/capacity`.",
+            "title": "Units"
           },
           "units_each": {
-            "examples": [
-              "1.5"
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
-            "title": "Units Each",
-            "type": "string"
+            "description": "Blank on a line that multiplies.",
+            "title": "Units Each"
           },
           "updated_at": {
             "format": "date-time",
@@ -2744,9 +2921,13 @@
           "category",
           "category_label",
           "name",
+          "effect",
           "quantity",
           "units_each",
           "units",
+          "factor",
+          "share",
+          "applies_to",
           "annual_cost",
           "vendor_hid",
           "vendor",
@@ -2785,6 +2966,23 @@
             ],
             "title": "Annual Cost"
           },
+          "applies_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 36,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Changed whole.",
+            "title": "Applies To"
+          },
           "category": {
             "anyOf": [
               {
@@ -2797,6 +2995,21 @@
             ],
             "title": "Category"
           },
+          "effect": {
+            "anyOf": [
+              {
+                "enum": [
+                  "add",
+                  "multiply"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect"
+          },
           "ends_on": {
             "anyOf": [
               {
@@ -2808,6 +3021,21 @@
               }
             ],
             "title": "Ends On"
+          },
+          "factor": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factor"
           },
           "name": {
             "anyOf": [
@@ -2879,6 +3107,21 @@
             "title": "Row Version",
             "type": "integer"
           },
+          "share": {
+            "anyOf": [
+              {
+                "examples": [
+                  "0.5"
+                ],
+                "pattern": "^[01](\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
           "site_hid": {
             "anyOf": [
               {
@@ -2937,6 +3180,26 @@
         "title": "CapacityLinePatch",
         "type": "object"
       },
+      "CapacityLineRef": {
+        "additionalProperties": false,
+        "description": "A capacity line, as named on another: a staff line that one which multiplies\nworks on.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name"
+        ],
+        "title": "CapacityLineRef",
+        "type": "object"
+      },
       "CapacityOut": {
         "additionalProperties": false,
         "description": "Demand against supply for the whole installation, with and without the drafts.",
@@ -2968,6 +3231,293 @@
           "with_drafts"
         ],
         "title": "CapacityOut",
+        "type": "object"
+      },
+      "CapacityRecordCreate": {
+        "additionalProperties": false,
+        "description": "A record of the balance as it is now, which replaces the record of this week.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "CapacityRecordCreate",
+        "type": "object"
+      },
+      "CapacityRecordOut": {
+        "additionalProperties": false,
+        "description": "The capacity balance as it was in a week, kept to show the trend.",
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/CapacityRecordView"
+          },
+          "adjusted": {
+            "description": "A person has corrected the figures.",
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "week_of": {
+            "description": "The Monday that begins the week, in the time zone.",
+            "format": "date",
+            "title": "Week Of",
+            "type": "string"
+          },
+          "weight_per_resource_unit": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Weight Per Resource Unit",
+            "type": "string"
+          },
+          "with_drafts": {
+            "$ref": "#/components/schemas/CapacityRecordView"
+          }
+        },
+        "required": [
+          "hid",
+          "week_of",
+          "recorded_at",
+          "weight_per_resource_unit",
+          "active",
+          "with_drafts",
+          "adjusted",
+          "note",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CapacityRecordOut",
+        "type": "object"
+      },
+      "CapacityRecordPatch": {
+        "additionalProperties": false,
+        "description": "A correction of a saved week, with why, and the version it was read at.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CapacityFigures"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "description": "Why the figures are corrected.",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "with_drafts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CapacityFigures"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "row_version",
+          "note"
+        ],
+        "title": "CapacityRecordPatch",
+        "type": "object"
+      },
+      "CapacityRecordView": {
+        "additionalProperties": false,
+        "description": "The balance of one view as a record of a week keeps it.",
+        "properties": {
+          "balance": {
+            "description": "Supply less demand, worked out when it is read.",
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "by_category": {
+            "items": {
+              "$ref": "#/components/schemas/CapacityCategory"
+            },
+            "title": "By Category",
+            "type": "array"
+          },
+          "coverage_pct": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Supply over demand, worked out when it is read. Blank with no demand.",
+            "title": "Coverage Pct"
+          },
+          "demand": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Demand",
+            "type": "string"
+          },
+          "infrastructure_demand": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Infrastructure Demand",
+            "type": "string"
+          },
+          "other_demand": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Other Demand",
+            "type": "string"
+          },
+          "outside_units": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Outside Units",
+            "type": "string"
+          },
+          "own_units": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Own Units",
+            "type": "string"
+          },
+          "supply": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Supply",
+            "type": "string"
+          },
+          "support_weight": {
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Support Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "support_weight",
+          "infrastructure_demand",
+          "other_demand",
+          "demand",
+          "supply",
+          "balance",
+          "coverage_pct",
+          "own_units",
+          "outside_units",
+          "by_category"
+        ],
+        "title": "CapacityRecordView",
+        "type": "object"
+      },
+      "CapacityTarget": {
+        "additionalProperties": false,
+        "description": "A staff line that a line which multiplies works on, as the view counts it.",
+        "properties": {
+          "counted": {
+            "description": "It counts in this view: active, or a draft with the drafts, and in date.",
+            "title": "Counted",
+            "type": "boolean"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "units": {
+            "description": "Its units in this view, nothing when it is not counted.",
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "counted",
+          "units"
+        ],
+        "title": "CapacityTarget",
         "type": "object"
       },
       "CapacityView": {
@@ -3023,6 +3573,14 @@
             "title": "Demand",
             "type": "string"
           },
+          "demand_by_region": {
+            "description": "Each region that holds an item of the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions.",
+            "items": {
+              "$ref": "#/components/schemas/RegionDemand"
+            },
+            "title": "Demand By Region",
+            "type": "array"
+          },
           "infrastructure_demand": {
             "examples": [
               "1.5"
@@ -3030,6 +3588,14 @@
             "pattern": "^-?\\d+(\\.\\d{1,4})?$",
             "title": "Infrastructure Demand",
             "type": "string"
+          },
+          "multiplying_lines": {
+            "description": "The lines that multiply and count in this view, by name.",
+            "items": {
+              "$ref": "#/components/schemas/MultiplyingLine"
+            },
+            "title": "Multiplying Lines",
+            "type": "array"
           },
           "other_demand": {
             "examples": [
@@ -3100,7 +3666,9 @@
           "outside_units",
           "own_share_pct",
           "annual_cost",
-          "by_category"
+          "by_category",
+          "multiplying_lines",
+          "demand_by_region"
         ],
         "title": "CapacityView",
         "type": "object"
@@ -3230,6 +3798,16 @@
               }
             ],
             "title": "Ldos"
+          },
+          "links": {
+            "default": [],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/LinkIn"
+            },
+            "maxItems": 20,
+            "title": "Links",
+            "type": "array"
           },
           "model_name": {
             "anyOf": [
@@ -3461,6 +4039,14 @@
             ],
             "title": "Ldos"
           },
+          "links": {
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
+          },
           "model_name": {
             "anyOf": [
               {
@@ -3585,6 +4171,7 @@
           "stack_discount_pct",
           "successor_hid",
           "review_status",
+          "links",
           "record_status",
           "tags",
           "effective",
@@ -3712,6 +4299,22 @@
               }
             ],
             "title": "Ldos"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LinkIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "title": "Links"
           },
           "model_name": {
             "anyOf": [
@@ -9802,6 +10405,86 @@
         "title": "ImportRowOut",
         "type": "object"
       },
+      "ItemCatalog": {
+        "additionalProperties": false,
+        "description": "The catalog entry of an item, with the links of the model.",
+        "properties": {
+          "function": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Function"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "links": {
+            "description": "The links of the model, in order.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "pid": {
+            "title": "Pid",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "vendor_hid",
+          "vendor",
+          "pid",
+          "model_name",
+          "kind",
+          "type",
+          "function",
+          "links"
+        ],
+        "title": "ItemCatalog",
+        "type": "object"
+      },
       "ItemCreate": {
         "additionalProperties": false,
         "description": "A new item. Only what identifies it is needed: a serial number with a catalog\nentry, or an asset tag, a name or a hostname. Everything else may be left blank.",
@@ -10387,7 +11070,7 @@
           "catalog": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CatalogRef"
+                "$ref": "#/components/schemas/ItemCatalog"
               },
               {
                 "type": "null"
@@ -11929,6 +12612,59 @@
         "title": "LifecycleRulePatch",
         "type": "object"
       },
+      "Link": {
+        "additionalProperties": false,
+        "description": "An address to reach about a record, with the text to show for it.",
+        "properties": {
+          "text": {
+            "description": "Blank where the address itself is shown.",
+            "title": "Text",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "text"
+        ],
+        "title": "Link",
+        "type": "object"
+      },
+      "LinkIn": {
+        "additionalProperties": false,
+        "description": "A link of a record: an address on the web, and the text to show for it. What each\nmay be is checked as a rule, and a refusal names the link.",
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "description": "At most 200 characters, with no `<` or `>`. Blank, the address is shown.",
+            "title": "Text"
+          },
+          "url": {
+            "description": "Begins with https:// or http://, with no space, `<` or `>`; 2,000 at most.",
+            "examples": [
+              "https://www.example.com/datasheet.pdf"
+            ],
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "LinkIn",
+        "type": "object"
+      },
       "ListQuery": {
         "additionalProperties": false,
         "description": "What a list route takes, as a body, for a filter too large for a URL.",
@@ -12085,6 +12821,16 @@
               }
             ],
             "title": "Latitude"
+          },
+          "links": {
+            "default": [],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/LinkIn"
+            },
+            "maxItems": 20,
+            "title": "Links",
+            "type": "array"
           },
           "longitude": {
             "anyOf": [
@@ -12399,6 +13145,14 @@
             ],
             "title": "Latitude"
           },
+          "links": {
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
+          },
           "locations": {
             "description": "How many locations are directly in it, retired aside.",
             "title": "Locations",
@@ -12657,6 +13411,7 @@
           "operator",
           "latitude",
           "longitude",
+          "links",
           "notes",
           "record_status",
           "tags",
@@ -12761,6 +13516,22 @@
               }
             ],
             "title": "Latitude"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LinkIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "title": "Links"
           },
           "longitude": {
             "anyOf": [
@@ -13570,6 +14341,77 @@
           "joined_on"
         ],
         "title": "MembershipRef",
+        "type": "object"
+      },
+      "MultiplyingLine": {
+        "additionalProperties": false,
+        "description": "A line that multiplies, the staff lines it works on, and what it adds to them.",
+        "properties": {
+          "applies_to": {
+            "items": {
+              "$ref": "#/components/schemas/CapacityTarget"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
+          "base_units": {
+            "description": "The units of the lines it works on that count.",
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Base Units",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "factor": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Factor",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "share": {
+            "examples": [
+              "0.5"
+            ],
+            "pattern": "^[01](\\.\\d{1,2})?$",
+            "title": "Share",
+            "type": "string"
+          },
+          "units": {
+            "description": "`factor` less 1, times `share`, times `base_units`: its gain.",
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "category",
+          "factor",
+          "share",
+          "applies_to",
+          "base_units",
+          "units"
+        ],
+        "title": "MultiplyingLine",
         "type": "object"
       },
       "NetworkCreate": {
@@ -14788,6 +15630,38 @@
           "offset"
         ],
         "title": "Page[CapacityLineOut]",
+        "type": "object"
+      },
+      "Page_CapacityRecordOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CapacityRecordOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CapacityRecordOut]",
         "type": "object"
       },
       "Page_CatalogEntryOut_": {
@@ -17078,6 +17952,16 @@
             ],
             "title": "Code"
           },
+          "links": {
+            "default": [],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/LinkIn"
+            },
+            "maxItems": 20,
+            "title": "Links",
+            "type": "array"
+          },
           "name": {
             "maxLength": 200,
             "minLength": 1,
@@ -17231,6 +18115,89 @@
         "title": "RegionCreate",
         "type": "object"
       },
+      "RegionDemand": {
+        "additionalProperties": false,
+        "description": "Where the work is: the support weight at or beneath one region, or of the items\nthat are nowhere.",
+        "properties": {
+          "infrastructure_demand": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Infrastructure Demand",
+            "type": "string"
+          },
+          "parent_region_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for a region at the top.",
+            "title": "Parent Region Hid"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "region_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for the items that are nowhere.",
+            "title": "Region Hid"
+          },
+          "share_pct": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its share of the whole support weight. Blank when there is none.",
+            "title": "Share Pct"
+          },
+          "support_weight": {
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Support Weight",
+            "type": "string"
+          }
+        },
+        "required": [
+          "region_hid",
+          "parent_region_hid",
+          "path",
+          "support_weight",
+          "infrastructure_demand",
+          "share_pct"
+        ],
+        "title": "RegionDemand",
+        "type": "object"
+      },
       "RegionOut": {
         "additionalProperties": false,
         "description": "A part of the world that sites are in.",
@@ -17254,6 +18221,14 @@
           "hid": {
             "title": "Hid",
             "type": "string"
+          },
+          "links": {
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
           },
           "name": {
             "title": "Name",
@@ -17446,6 +18421,7 @@
           "ship_instructions",
           "operator_hid",
           "operator",
+          "links",
           "notes",
           "record_status",
           "tags",
@@ -17473,6 +18449,22 @@
               }
             ],
             "title": "Code"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LinkIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "title": "Links"
           },
           "name": {
             "anyOf": [
@@ -19317,6 +20309,16 @@
             ],
             "title": "Latitude"
           },
+          "links": {
+            "default": [],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/LinkIn"
+            },
+            "maxItems": 20,
+            "title": "Links",
+            "type": "array"
+          },
           "longitude": {
             "anyOf": [
               {
@@ -19590,6 +20592,14 @@
             ],
             "title": "Latitude"
           },
+          "links": {
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "title": "Links",
+            "type": "array"
+          },
           "locations": {
             "description": "How many locations it has, retired ones aside.",
             "title": "Locations",
@@ -19813,6 +20823,7 @@
           "operator",
           "latitude",
           "longitude",
+          "links",
           "notes",
           "record_status",
           "tags",
@@ -19902,6 +20913,22 @@
               }
             ],
             "title": "Latitude"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LinkIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Up to 20, in order, changed whole: an empty list has none.",
+            "title": "Links"
           },
           "longitude": {
             "anyOf": [
@@ -22500,6 +23527,274 @@
           }
         },
         "summary": "Retire Capacity Line",
+        "tags": [
+          "Capacity"
+        ]
+      }
+    },
+    "/api/v1/capacity-records": {
+      "get": {
+        "description": "List the records of the balance, one for each week, the oldest first unless a\nsort says otherwise.",
+        "operationId": "list_capacity_records_api_v1_capacity_records_get",
+        "parameters": [
+          {
+            "description": "What to sort by: `week_of`, `recorded_at`, `active.demand`, `active.supply`, `active.balance`, `active.coverage_pct`, `with_drafts.demand`, `with_drafts.supply`, `with_drafts.balance`, `with_drafts.coverage_pct`, `adjusted`, `note`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `week_of`, `recorded_at`, `active.demand`, `active.supply`, `active.balance`, `active.coverage_pct`, `with_drafts.demand`, `with_drafts.supply`, `with_drafts.balance`, `with_drafts.coverage_pct`, `adjusted`, `note`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CapacityRecordOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Capacity Records",
+        "tags": [
+          "Capacity"
+        ]
+      },
+      "post": {
+        "description": "Record the balance of the whole installation as it is now. The record of this\nweek, by the application's time zone, is replaced: what it held is in its audit\nevent.",
+        "operationId": "record_capacity_api_v1_capacity_records_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityRecordCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapacityRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Capacity",
+        "tags": [
+          "Capacity"
+        ]
+      }
+    },
+    "/api/v1/capacity-records/{hid}": {
+      "delete": {
+        "description": "Remove a record of the balance that was a mistake. The audit event of the removal\nholds what it was.",
+        "operationId": "remove_capacity_record_api_v1_capacity_records__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Capacity Record",
+        "tags": [
+          "Capacity"
+        ]
+      },
+      "get": {
+        "description": "Return one record of the balance.",
+        "operationId": "get_capacity_record_api_v1_capacity_records__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapacityRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capacity Record",
+        "tags": [
+          "Capacity"
+        ]
+      },
+      "patch": {
+        "description": "Correct the demand and the supply of a saved week, with a note that says why.\nThe record is then marked `adjusted`.",
+        "operationId": "correct_capacity_record_api_v1_capacity_records__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityRecordPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapacityRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Correct Capacity Record",
         "tags": [
           "Capacity"
         ]

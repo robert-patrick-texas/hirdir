@@ -67,7 +67,7 @@ SHOWN = {
     "purchase_requests": "reference,requested_on,status,notes",
     "external_systems": "name,kind,url,record_status",
     "registrations": "system,item,group,external_id,status,confirmed_at",
-    "capacity_lines": "side,category,name,quantity,units_each,units,vendor,record_status",
+    "capacity_lines": "side,category,name,effect,quantity,units_each,units,vendor,record_status",
 }
 # What a minor item may have from the item it is in.
 FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
@@ -374,6 +374,8 @@ def show(
         shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
             lines.append((name, f"{effective['value']} ({effective['source']})"))
+    # The links of its model.
+    lines += [("link", _link(link)) for link in (model["links"] if model else [])]
     for name in ("state_changed_at", "created_at", "updated_at"):
         if found[name]:
             lines.append((name, clock.shown(datetime.fromisoformat(found[name]), zone)))
@@ -1035,6 +1037,7 @@ def _show_place(level: str) -> Any:
         said = in_force["ship_instructions"]
         if said["value"] is not None:
             lines.append(("ship_instructions", said["value"] + _from(said)))
+        lines += [("link", _link(link)) for link in record["links"]]
         lines.append(("row_version", record["row_version"]))
         for name, value in lines:
             if value is not None:
@@ -1045,6 +1048,11 @@ def _show_place(level: str) -> Any:
         "each with the level it came from."
     )
     return show
+
+
+def _link(link: dict[str, Any]) -> str:
+    """Return a link as a person reads it: its text and its address, or the address."""
+    return f"{link['text']} <{link['url']}>" if link["text"] else link["url"]
 
 
 def _from(found: dict[str, Any]) -> str:
@@ -2335,4 +2343,91 @@ def capacity_report(
                 shown(found["with_drafts"]["by_category"][place]["units"]),
             ]
         )
+    rows += _capacity_parts(views, shown)
+    _rows(format_, output, rows)
+
+
+def _capacity_parts(views: tuple[dict[str, Any], ...], shown: Any) -> list[list[str]]:
+    """Return the rows of the capacity report beside the balance: what each line that
+    multiplies adds, and the demand and the share of each region and of what is nowhere."""
+    rows = []
+    gains: dict[str, dict[str, Any]] = {}
+    for view in views:
+        for line in view["multiplying_lines"]:
+            gains.setdefault(line["hid"], line)
+    for hid, line in gains.items():
+        on = ", ".join(target["name"] for target in line["applies_to"])
+        units = [
+            next((one["units"] for one in view["multiplying_lines"] if one["hid"] == hid), "")
+            for view in views
+        ]
+        rows.append([f"multiplies: {line['name']} ({line['factor']} on {on})", *units])
+    regions: dict[str | None, str] = {}
+    for view in views:
+        for row in view["demand_by_region"]:
+            regions.setdefault(row["region_hid"], row["path"] or "nowhere")
+    for hid, path in regions.items():
+        found = [
+            next((row for row in view["demand_by_region"] if row["region_hid"] == hid), None)
+            for view in views
+        ]
+        for measure, name in (("infrastructure_demand", "demand"), ("share_pct", "share")):
+            rows.append([f"{name}: {path}", *(shown(row[measure]) if row else "" for row in found)])
+    return rows
+
+
+RECORD_FIGURES = ("demand", "supply", "balance", "coverage_pct")
+
+
+@capacity.command("record")
+def record_capacity(
+    note: Annotated[str | None, typer.Option(help="What to say of this week's record.")] = None,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Record the capacity balance as it is now, in place of this week's record."""
+    target = client.load_target(url, token)
+    made = client.call(target, "POST", "/capacity-records", {"note": note})
+    if format_ == "json":
+        typer.echo(json.dumps(made, indent=2))
+        return
+    typer.echo(f"recorded the week of {made['week_of']}")
+    for view in ("active", "with_drafts"):
+        figures = ", ".join(f"{name} {made[view][name]}" for name in RECORD_FIGURES[:3])
+        typer.echo(f"{view + ':':<13}{figures}")
+
+
+@capacity.command("records")
+def capacity_records(
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """List the records of the capacity balance, a week to a row, the oldest first."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    found: list[dict[str, Any]] = []
+    while True:
+        page = client.call(
+            target, "GET", "/capacity-records", params={"limit": 1000, "offset": len(found)}
+        )
+        found += page["items"]
+        if not page["items"] or len(found) >= page["total"]:
+            break
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    head = ["week_of"]
+    head += [f"{view}.{name}" for view in ("active", "with_drafts") for name in RECORD_FIGURES]
+    rows = [[*head, "adjusted", "note"]]
+    for one in found:
+        figures = [
+            "" if one[view][name] is None else str(one[view][name])
+            for view in ("active", "with_drafts")
+            for name in RECORD_FIGURES
+        ]
+        adjusted = "true" if one["adjusted"] else "false"
+        rows.append([one["week_of"], *figures, adjusted, one["note"] or ""])
     _rows(format_, output, rows)

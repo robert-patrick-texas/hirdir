@@ -921,3 +921,78 @@ def test_items_are_covered_in_pieces_as_large_as_the_setting_says(
         "0",
         "0",
     ]
+
+
+# --- capacity over time, and links (0.7.0) ---------------------------------------------
+
+
+def test_the_balance_is_recorded_and_listed_and_the_report_says_where_the_work_is(
+    run, make: Maker
+) -> None:
+    engineer = make.post(
+        "/capacity-lines",
+        {
+            "side": "supply",
+            "category": "staff",
+            "name": "Engineer",
+            "quantity": "3",
+            "units_each": "1",
+        },
+    )
+    make.post(
+        "/capacity-lines",
+        {
+            "side": "supply",
+            "category": "services",
+            "name": "AI assistant",
+            "effect": "multiply",
+            "factor": "1.5",
+            "applies_to": [engineer["hid"]],
+        },
+    )
+    region = make.region("Americas")
+    room = make.location("Room 1", make.site("Site-2", region))
+    entry = make.entry(make.vendor(), support_weight="300")
+    make.item(
+        catalog_entry_hid=entry["hid"],
+        serial_number="FCW0000X001",
+        lifecycle_state="Prod",
+        location_hid=room["hid"],
+    )
+    report = run("report", "capacity", "--format", "csv").stdout
+    rows = {row[0]: row[1:] for row in csv.reader(io.StringIO(report))}
+    assert rows["supply"] == ["4.5", "4.5"]
+    assert rows["multiplies: AI assistant (1.5 on Engineer)"] == ["1.5", "1.5"]
+    assert (rows["demand: Americas"], rows["share: Americas"]) == (["1", "1"], ["100", "100"])
+    assert (rows["demand: nowhere"], rows["share: nowhere"]) == (["0", "0"], ["0", "0"])
+
+    recorded = run("capacity", "record", "--note", "by hand").stdout
+    assert "recorded the week of" in recorded
+    assert "active:      demand 1, supply 4.5, balance 3.5" in recorded
+    listed = run("capacity", "records", "--format", "csv").stdout
+    [row] = list(csv.DictReader(io.StringIO(listed)))
+    assert (row["active.supply"], row["active.coverage_pct"], row["adjusted"], row["note"]) == (
+        "4.5",
+        "450",
+        "false",
+        "by hand",
+    )
+    assert run("capacity", "records").stdout.lower().splitlines()[0].split()[:3] == [
+        "week_of",
+        "active.demand",
+        "active.supply",
+    ]
+
+
+def test_show_prints_the_links_of_a_place_and_of_the_model_of_an_item(run, make: Maker) -> None:
+    sheet = {"url": "https://www.example.com/c9300/datasheet.pdf", "text": "Data sheet"}
+    plain = {"url": "https://intranet.example.net/site-2/room-102"}
+    region = make.region("Americas")
+    room = make.location("Room 102", make.site("Site-2", region), links=[sheet, plain])
+    shown = run("locations", "show", room["hid"]).stdout
+    assert f"link:                Data sheet <{sheet['url']}>" in shown
+    assert f"link:                {plain['url']}\n" in shown
+    entry = make.entry(make.vendor(), links=[sheet])
+    make.item(catalog_entry_hid=entry["hid"], serial_number="FCW0000X009")
+    item = run("items", "show", "FCW0000X009").stdout
+    assert f"link:                Data sheet <{sheet['url']}>" in item

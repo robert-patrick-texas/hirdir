@@ -154,6 +154,33 @@ class VendorPatch(Model):
     review_status: str | None = Field(default=None, max_length=12)
 
 
+# --- links ---------------------------------------------------------------------------
+
+
+class Link(Model):
+    """An address to reach about a record, with the text to show for it."""
+
+    url: str
+    text: str = Field(description="Blank where the address itself is shown.")
+
+
+class LinkIn(Model):
+    """A link of a record: an address on the web, and the text to show for it. What each
+    may be is checked as a rule, and a refusal names the link."""
+
+    url: str = Field(
+        description="Begins with https:// or http://, with no space, `<` or `>`; 2,000 at most.",
+        examples=["https://www.example.com/datasheet.pdf"],
+    )
+    text: str | None = Field(
+        default="",
+        description="At most 200 characters, with no `<` or `>`. Blank, the address is shown.",
+    )
+
+
+LINKS_DESCRIPTION = "Up to 20, in order, changed whole: an empty list has none."
+
+
 # --- catalog entries -----------------------------------------------------------------
 
 
@@ -185,6 +212,7 @@ class CatalogEntryOut(Model):
     stack_discount_pct: Percent | None
     successor_hid: str | None
     review_status: str
+    links: list[Link] = Field(description=LINKS_DESCRIPTION)
     record_status: RecordStatus
     tags: list[str]
     effective: CatalogEffective
@@ -213,6 +241,7 @@ class CatalogEntryCreate(Model):
     stack_discount_pct: Percent | None = None
     successor_hid: Hid | None = None
     review_status: str = Field(default="reviewed", max_length=12)
+    links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
 
@@ -238,6 +267,7 @@ class CatalogEntryPatch(Model):
     stack_discount_pct: Percent | None = None
     successor_hid: Hid | None = None
     review_status: str | None = Field(default=None, max_length=12)
+    links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
@@ -318,6 +348,7 @@ class RegionOut(Model):
     ship_instructions: str | None
     operator_hid: str | None
     operator: OperatorRef | None = Field(description="Its own operator.")
+    links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
@@ -344,6 +375,7 @@ class RegionCreate(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     operator_hid: Hid | None = None
+    links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -366,6 +398,7 @@ class RegionPatch(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     operator_hid: Hid | None = None
+    links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -400,6 +433,7 @@ class SiteOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
@@ -432,6 +466,7 @@ class SiteCreate(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -461,6 +496,7 @@ class SitePatch(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -499,6 +535,7 @@ class LocationOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
@@ -540,6 +577,7 @@ class LocationCreate(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -572,6 +610,7 @@ class LocationPatch(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -971,6 +1010,12 @@ class CatalogRef(Model):
     function: str | None
 
 
+class ItemCatalog(CatalogRef):
+    """The catalog entry of an item, with the links of the model."""
+
+    links: list[Link] = Field(description="The links of the model, in order.")
+
+
 class HealthOut(Model):
     """How a record is doing, worked out as it is read, and why."""
 
@@ -1175,7 +1220,7 @@ class ItemOut(Model):
 
     hid: str
     catalog_entry_hid: str | None
-    catalog: CatalogRef | None
+    catalog: ItemCatalog | None
     serial_number: str | None
     mac_address: str | None = Field(description="Twelve lower-case hex digits.")
     asset_tag: str | None
@@ -2450,6 +2495,23 @@ Units = Annotated[
 Side = Literal["supply", "demand"]
 
 
+Effect = Literal["add", "multiply"]
+Share = Annotated[
+    Decimal,
+    Field(ge=0, le=1, max_digits=3, decimal_places=2),
+    PlainSerializer(_plain, return_type=str, when_used="json"),
+    WithJsonSchema({"type": "string", "pattern": r"^[01](\.\d{1,2})?$", "examples": ["0.5"]}),
+]
+
+
+class CapacityLineRef(Model):
+    """A capacity line, as named on another: a staff line that one which multiplies
+    works on."""
+
+    hid: str
+    name: str
+
+
 class CapacityLineOut(Model):
     """A source of resource units, or a call on them other than the infrastructure."""
 
@@ -2458,9 +2520,26 @@ class CapacityLineOut(Model):
     category: str
     category_label: str
     name: str
-    quantity: Weight
-    units_each: Weight
-    units: Units = Field(description="`quantity` times `units_each`.")
+    effect: Effect = Field(
+        description="`add` a fixed amount, or `multiply` the staff lines of `applies_to`."
+    )
+    quantity: Weight | None = Field(description="Blank on a line that multiplies.")
+    units_each: Weight | None = Field(description="Blank on a line that multiplies.")
+    units: Units | None = Field(
+        description=(
+            "`quantity` times `units_each`. Blank on a line that multiplies, whose units "
+            "are those of the lines it applies to in each view: see `GET /reports/capacity`."
+        )
+    )
+    factor: Weight | None = Field(
+        description="A line that multiplies: how much more one person does with it."
+    )
+    share: Share | None = Field(
+        description="A line that multiplies: the share of the positions that use it."
+    )
+    applies_to: list[CapacityLineRef] = Field(
+        description="A line that multiplies: the staff lines it works on, by name."
+    )
     annual_cost: Money | None
     vendor_hid: str | None
     vendor: VendorRef | None
@@ -2488,8 +2567,25 @@ class CapacityLineCreate(Model):
         description="A value of the capacity_category list. Left out on a demand line.",
     )
     name: Name = Field(min_length=1)
-    quantity: Weight = Decimal(1)
-    units_each: Weight
+    effect: Effect = Field(
+        default="add",
+        description="`multiply` only for a supply line of the category tools or services.",
+    )
+    quantity: Weight | None = Field(
+        default=None, description="Left out, 1 on a line that adds. Blank on one that multiplies."
+    )
+    units_each: Weight | None = Field(
+        default=None, description="Required on a line that adds. Blank on one that multiplies."
+    )
+    factor: Weight | None = Field(
+        default=None, description="At least 1, on a line that multiplies."
+    )
+    share: Share | None = Field(default=None, description="Left out, 1 on a line that multiplies.")
+    applies_to: list[Hid] = Field(
+        default=[],
+        max_length=100,
+        description="The staff lines that a line that multiplies works on: at least one.",
+    )
     annual_cost: Money | None = None
     vendor_hid: Hid | None = None
     region_hid: Hid | None = None
@@ -2506,8 +2602,12 @@ class CapacityLinePatch(Model):
     row_version: int
     category: str | None = Field(default=None, max_length=40)
     name: Name | None = None
+    effect: Effect | None = None
     quantity: Weight | None = None
     units_each: Weight | None = None
+    factor: Weight | None = None
+    share: Share | None = None
+    applies_to: list[Hid] | None = Field(default=None, max_length=100, description="Changed whole.")
     annual_cost: Money | None = None
     vendor_hid: Hid | None = None
     region_hid: Hid | None = None
@@ -2528,6 +2628,46 @@ class CapacityCategory(Model):
     annual_cost: MoneySum
 
 
+class CapacityTarget(Model):
+    """A staff line that a line which multiplies works on, as the view counts it."""
+
+    hid: str
+    name: str
+    counted: bool = Field(
+        description="It counts in this view: active, or a draft with the drafts, and in date."
+    )
+    units: Units = Field(description="Its units in this view, nothing when it is not counted.")
+
+
+class MultiplyingLine(Model):
+    """A line that multiplies, the staff lines it works on, and what it adds to them."""
+
+    hid: str
+    name: str
+    category: str
+    factor: Weight
+    share: Share
+    applies_to: list[CapacityTarget]
+    base_units: Units = Field(description="The units of the lines it works on that count.")
+    units: Units = Field(
+        description="`factor` less 1, times `share`, times `base_units`: its gain."
+    )
+
+
+class RegionDemand(Model):
+    """Where the work is: the support weight at or beneath one region, or of the items
+    that are nowhere."""
+
+    region_hid: str | None = Field(description="Blank for the items that are nowhere.")
+    parent_region_hid: str | None = Field(description="Blank for a region at the top.")
+    path: str | None
+    support_weight: WeightSum
+    infrastructure_demand: Units
+    share_pct: Units | None = Field(
+        description="Its share of the whole support weight. Blank when there is none."
+    )
+
+
 class CapacityView(Model):
     """The balance of one view."""
 
@@ -2543,6 +2683,15 @@ class CapacityView(Model):
     own_share_pct: Units | None
     annual_cost: MoneySum = Field(description="What the supply lines cost a year.")
     by_category: list[CapacityCategory]
+    multiplying_lines: list[MultiplyingLine] = Field(
+        description="The lines that multiply and count in this view, by name."
+    )
+    demand_by_region: list[RegionDemand] = Field(
+        description=(
+            "Each region that holds an item of the view, by path, with what is beneath it, "
+            "and last the items that are nowhere. No supply is divided among regions."
+        )
+    )
 
 
 class CapacityOut(Model):
@@ -2552,6 +2701,61 @@ class CapacityOut(Model):
     weight_per_resource_unit: Units
     active: CapacityView
     with_drafts: CapacityView
+
+
+class CapacityRecordView(Model):
+    """The balance of one view as a record of a week keeps it."""
+
+    support_weight: WeightSum
+    infrastructure_demand: Units
+    other_demand: Units
+    demand: Units
+    supply: Units
+    balance: Units = Field(description="Supply less demand, worked out when it is read.")
+    coverage_pct: Units | None = Field(
+        description="Supply over demand, worked out when it is read. Blank with no demand."
+    )
+    own_units: Units
+    outside_units: Units
+    by_category: list[CapacityCategory]
+
+
+class CapacityRecordOut(Model):
+    """The capacity balance as it was in a week, kept to show the trend."""
+
+    hid: str
+    week_of: date = Field(description="The Monday that begins the week, in the time zone.")
+    recorded_at: datetime
+    weight_per_resource_unit: Units
+    active: CapacityRecordView
+    with_drafts: CapacityRecordView
+    adjusted: bool = Field(description="A person has corrected the figures.")
+    note: str | None
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CapacityRecordCreate(Model):
+    """A record of the balance as it is now, which replaces the record of this week."""
+
+    note: LongText | None = None
+
+
+class CapacityFigures(Model):
+    """The two figures of one view of a record that a person may correct."""
+
+    demand: Units | None = None
+    supply: Units | None = None
+
+
+class CapacityRecordPatch(Model):
+    """A correction of a saved week, with why, and the version it was read at."""
+
+    row_version: int
+    note: LongText = Field(min_length=1, description="Why the figures are corrected.")
+    active: CapacityFigures | None = None
+    with_drafts: CapacityFigures | None = None
 
 
 # --- the reports that look ahead -----------------------------------------------------

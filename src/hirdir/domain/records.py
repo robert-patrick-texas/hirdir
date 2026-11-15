@@ -217,3 +217,57 @@ def checked_url(name: str, value: Any) -> str | None:
             {name: "an address that begins with https:// or http://, with no space"},
         )
     return url
+
+
+# --- links ---------------------------------------------------------------------------
+
+MAX_LINKS = 20
+MAX_LINK_TEXT = 200
+LINKS = "links"
+# What a file writes a link with, `text <url>`, and so what neither the text nor the
+# address of a link holds.
+LINK_MARKS = ("<", ">")
+
+
+def checked_links(value: Any, name: str = LINKS) -> list[dict[str, str]]:
+    """Return the links a change gives a record, in their order, or refuse them.
+
+    Each is an `url`, which begins with https:// or http://, holds no space, neither `<`
+    nor `>`, and is at most 2,000 characters, and a `text` to show for it, of at most
+    200 characters and without `<` or `>`, which may be blank. A record has 20 at most.
+    A refusal names the link. Nothing is a list of none.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise Invalid(f"{name} is not acceptable", {name: "a list of links, each url and text"})
+    if len(value) > MAX_LINKS:
+        raise Invalid(f"{name} is not acceptable", {name: f"at most {MAX_LINKS} links"})
+    links = []
+    for number, link in enumerate(value, start=1):
+        if not isinstance(link, Mapping):
+            raise Invalid(f"link {number} is not acceptable", {name: f"link {number}: url, text"})
+        try:
+            url = checked_url(name, link.get("url"))
+        except Invalid:
+            url = None
+        if url is None or any(mark in url for mark in LINK_MARKS):
+            raise Invalid(
+                f"link {number} is not acceptable",
+                {
+                    name: f"link {number}: an address that begins with https:// or http://, "
+                    f"with no space, < or >, of at most {MAX_URL:,} characters"
+                },
+            )
+        text = clean(link.get("text"))
+        if text is not None and (
+            not isinstance(text, str)
+            or len(text) > MAX_LINK_TEXT
+            or any(mark in text for mark in LINK_MARKS)
+        ):
+            raise Invalid(
+                f"link {number} is not acceptable",
+                {name: f"link {number}: a text of at most {MAX_LINK_TEXT} characters, no < or >"},
+            )
+        links.append({"url": url, "text": text or ""})
+    return links

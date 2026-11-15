@@ -104,6 +104,8 @@ CODE = Column("code", limit=40)
 NOTES = Column("notes", limit=LONG)
 PATH = Column("path", limit=LONG, settable=False)
 OPERATOR = Column("operator", limit=40)
+# Each link `text <url>`, joined with `;`; the rules hold what each may be.
+LINKS = Column(records.LINKS, "links", limit=LONG)
 
 
 def _sources(columns: tuple[Column, ...]) -> tuple[Column, ...]:
@@ -736,6 +738,8 @@ class _Places(Entity):
             given["tags"] = []
         if given.get(geography.SAME, _MISSING) is None:
             given[geography.SAME] = False
+        if given.get(records.LINKS, _MISSING) is None:
+            given[records.LINKS] = []
         return given
 
     @staticmethod
@@ -798,6 +802,7 @@ class Regions(_Places):
         CODE,
         *SHIPPING,
         OPERATOR,
+        LINKS,
         NOTES,
         STATUS,
         TAGS,
@@ -809,7 +814,7 @@ class Regions(_Places):
         "parent_region_hid": "parent",
     }
     renamed: ClassVar[Mapping[str, str]] = {"parent_region_hid": "parent"}
-    _fields = ("name", "code", *geography.SHIPPING, "notes")
+    _fields = ("name", "code", *geography.SHIPPING, records.LINKS, "notes")
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         name, parent = values.get("name"), values.get("parent")
@@ -870,6 +875,7 @@ class Sites(_Places):
         SAME_AS_ADDRESS,
         OPERATOR,
         *COORDINATES,
+        LINKS,
         NOTES,
         STATUS,
         TAGS,
@@ -886,6 +892,7 @@ class Sites(_Places):
         geography.SAME,
         "latitude",
         "longitude",
+        records.LINKS,
         "notes",
     )
 
@@ -942,6 +949,7 @@ class Locations(_Places):
         SAME_AS_ADDRESS,
         OPERATOR,
         *COORDINATES,
+        LINKS,
         NOTES,
         STATUS,
         TAGS,
@@ -967,6 +975,7 @@ class Locations(_Places):
         geography.SAME,
         "latitude",
         "longitude",
+        records.LINKS,
         "notes",
     )
 
@@ -1405,6 +1414,7 @@ class CatalogEntries(Entity):
         _discount,
         Column("successor_vendor"),
         Column("successor_pid", limit=100),
+        LINKS,
         REVIEW,
         STATUS,
         TAGS,
@@ -1426,6 +1436,7 @@ class CatalogEntries(Entity):
         *catalog.AMOUNTS,
         "stack_discount_pct",
         "review_status",
+        records.LINKS,
         "tags",
     )
 
@@ -1482,6 +1493,8 @@ class CatalogEntries(Entity):
         given.update(self._successor(run, record, values, vendor))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
+        if given.get(records.LINKS, _MISSING) is None:
+            given[records.LINKS] = []
         discount = given.get("stack_discount_pct")
         if (
             discount is not None
@@ -3068,8 +3081,13 @@ class CapacityLines(Entity):
         Column("side", limit=10),
         Column("category", limit=40),
         Column("name"),
+        Column("effect", limit=10),
         Column("quantity", "number"),
         Column("units_each", "number"),
+        Column("factor", "number"),
+        Column("share", "number"),
+        # The staff lines a line that multiplies works on, by name, joined with `;`.
+        Column(capacity.APPLIES_TO, "list"),
         Column("annual_cost", "money"),
         Column("vendor"),
         Column("region", limit=LONG),
@@ -3095,8 +3113,11 @@ class CapacityLines(Entity):
         "side",
         "category",
         "name",
+        "effect",
         "quantity",
         "units_each",
+        "factor",
+        "share",
         "annual_cost",
         "starts_on",
         "ends_on",
@@ -3114,6 +3135,19 @@ class CapacityLines(Entity):
         named = [values.get(name) for name in ("side", "name")]
         return " ".join(str(part) for part in named if part)
 
+    def order(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[int]:
+        """Work a line that multiplies after the lines of the same file it may apply to."""
+
+        def multiplies(row: Mapping[str, Any]) -> bool:
+            effect = row.get("effect")
+            return bool(row.get(capacity.APPLIES_TO)) or (
+                isinstance(effect, str) and records.key(effect) == capacity.MULTIPLY
+            )
+
+        return sorted(
+            range(1, len(rows) + 1), key=lambda number: (multiplies(rows[number - 1]), number)
+        )
+
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         given = {**_plain_fields(values, self._direct), **_status(values, record)}
         if "vendor" in values:
@@ -3128,6 +3162,17 @@ class CapacityLines(Entity):
                 given[f"{name}_hid"] = (
                     run.place(named, name, level).hid if named is not None else None
                 )
+        if capacity.APPLIES_TO in values:
+            targets = []
+            for named in values[capacity.APPLIES_TO] or []:
+                target = capacity.find_line(run.db, capacity.SUPPLY, named)
+                if target is None:
+                    raise Invalid(
+                        "there is no such line",
+                        {capacity.APPLIES_TO: f"there is no supply line {named}"},
+                    )
+                targets.append(target.hid)
+            given[capacity.APPLIES_TO] = targets
         if record is None:
             return capacity.create_line(run.db, run.context, _new(given))
         return capacity.update_line(run.db, run.context, record.hid, record.row_version, given)
@@ -3136,15 +3181,20 @@ class CapacityLines(Entity):
         vendors = _by_hid(db, Vendor, {line.vendor_hid for line in found})
         atlas = geography.Atlas(db)
         atlas.read_sites(line.site_hid for line in found)
+        targets = capacity.targets_of(db, [line.hid for line in found if capacity.multiplies(line)])
+        named = _by_hid(db, CapacityLine, {hid for hids in targets.values() for hid in hids})
         return [
             {
                 **_kept(line),
                 **{name: getattr(line, name) for name in self._direct},
+                capacity.APPLIES_TO: sorted(
+                    (named[hid].name for hid in targets.get(line.hid, [])), key=records.key
+                ),
                 "vendor": vendors[line.vendor_hid].name if line.vendor_hid else None,
                 "region": _region_named(atlas, line.region_hid),
                 "site": atlas.site_path(line.site_hid) or None,
                 "record_status": line.record_status,
-                "units": capacity.units(line),
+                "units": None if capacity.multiplies(line) else capacity.units(line),
             }
             for line in found
         ]

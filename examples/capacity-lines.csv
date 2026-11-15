@@ -1,10 +1,10 @@
-hid,side,category,name,quantity,units_each,annual_cost,vendor,region,site,starts_on,ends_on,notes,record_status
-,demand,other_work,Organization transition,1,0.5,,,,,,,,active
-,demand,other_work,Site consolidation project,1,1.5,,,,,,,,active
-,supply,professional_services,Escalation partner,1,1,48000.00,Example Reseller,,,,,,active
-,supply,services,AI assistant,1,1,24000.00,Example Cloud,,,,,A what-if: the balance with it is beside the balance without,draft
-,supply,smart_hands,Colocation smart hands,1,0.5,9000.00,,,Americas > East > Site-1,,,,active
-,supply,staff,Junior network engineer,2,0.6,,,,,,,,active
-,supply,staff,Network engineer,3,1,,,,,,,,active
-,supply,staff,Senior network engineer,1,1.8,,,,,,,,active
-,supply,tools,Automation and tooling,1,1.5,,,,,,,,active
+hid,side,category,name,effect,quantity,units_each,factor,share,applies_to,annual_cost,vendor,region,site,starts_on,ends_on,notes,record_status
+,demand,other_work,Organization transition,add,1,0.5,,,,,,,,,,,active
+,demand,other_work,Site consolidation project,add,1,1.5,,,,,,,,,,,active
+,supply,professional_services,Escalation partner,add,1,1,,,,48000.00,Example Reseller,,,,,,active
+,supply,services,AI assistant,add,1,1,,,,24000.00,Example Cloud,,,,,A what-if: the balance with it is beside the balance without,draft
+,supply,smart_hands,Colocation smart hands,add,1,0.5,,,,9000.00,,,Americas > East > Site-1,,,,active
+,supply,staff,Junior network engineer,add,2,0.6,,,,,,,,,,,active
+,supply,staff,Network engineer,add,3,1,,,,,,,,,,,active
+,supply,staff,Senior network engineer,add,1,1.8,,,,,,,,,,,active
+,supply,tools,Automation and tooling,add,1,1.5,,,,,,,,,,,active

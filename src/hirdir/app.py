@@ -2,10 +2,13 @@
 
 import logging
 import re
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.staticfiles import StaticFiles
@@ -33,6 +36,7 @@ from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.ids import new_hid
 from hirdir.io import fields, tables
+from hirdir.schedule import Scheduler
 
 API_PREFIX = "/api/v1"
 ROUTERS = (
@@ -172,8 +176,20 @@ def bind(app: FastAPI, config: Config) -> None:
     app.state.throttle = Throttle(config.sign_in_failures_before_delay)
 
 
-def create_app(config: Config) -> FastAPI:
-    """Build the application for one configuration."""
+@asynccontextmanager
+async def _scheduled(app: FastAPI) -> AsyncGenerator[None]:
+    """Run what the server does by itself at set times, from start to shutdown."""
+    scheduler = Scheduler(lambda: app.state.sessions())
+    await run_in_threadpool(scheduler.start)
+    try:
+        yield
+    finally:
+        await run_in_threadpool(scheduler.stop)
+
+
+def create_app(config: Config, scheduled: bool = False) -> FastAPI:
+    """Build the application for one configuration. `scheduled` is for the server, which
+    does what is due at set times; a test drives `hirdir.schedule` itself."""
     app = FastAPI(
         title="hirdir",
         version=hirdir.__version__,
@@ -181,6 +197,7 @@ def create_app(config: Config) -> FastAPI:
         openapi_url=None,
         docs_url=None,
         redoc_url=None,
+        lifespan=_scheduled if scheduled else None,
     )
     bind(app, config)
     # Every list is made ready by this one thread, before requests arrive side by side.

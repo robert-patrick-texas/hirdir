@@ -17,12 +17,12 @@ and CLI's types are generated from it.
 | Record routes | `GET /items`, `POST /items`, `GET /items/{hid}`, `PATCH /items/{hid}`, `POST /items/{hid}/retire` |
 | Lists | `GET` with `filter`, `sort`, `limit`, `offset`, `fields`. Returns `{items, total, limit, offset}`. `limit` is at most 1000 and `offset` at most 10,000,000 |
 | Fewer fields | `fields=hid,name,catalog.pid` returns only the fields named, of each record of a list. A name is a field of the record as the route returns it, or one field of a record within it, written with a dot. `hid` and `row_version` are always returned. A name the record does not have is a `422` |
-| Other paged tables | The users, the audit trail, the stored previews and their rows, the duplicates report, the members of a group, the coverage of a contract, the lines of a purchase request, and the minor items and the history of an item are paged with `limit` and `offset`, and take `sort` as a list does. With no `sort` each is in the order it always had. See [Sorting](#sorting) |
+| Other paged tables | The users, the audit trail, the stored previews and their rows, the duplicates report, the members of a group, the coverage of a contract, the lines of a purchase request, the records of the capacity balance, and the minor items and the history of an item are paged with `limit` and `offset`, and take `sort` as a list does. With no `sort` each is in the order it always had. See [Sorting](#sorting) |
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
 | Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses and locations |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}` and `DELETE /registrations/{hid}` for one that was a mistake, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /registrations/{hid}` and `DELETE /capacity-records/{hid}` for one that was a mistake, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored, as it may behind a large import being applied, is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
@@ -42,7 +42,7 @@ and CLI's types are generated from it.
 | Contracts | `/agreements`, `POST /agreements/{hid}/renew`, `POST /agreements/{hid}/retire`, `GET /agreements/{hid}/terms`, `/contracts`, `POST /contracts/{hid}/retire`, `POST /contracts/{hid}/renew`, `GET /contracts/{hid}/terms`, `GET` and `POST /contracts/{hid}/coverage`, `PATCH` and `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `GET /contract-coverage` |
 | Purchases | `/purchase-requests`, `GET` and `POST /purchase-requests/{hid}/lines`, `GET /purchase-lines`, `GET` and `PATCH /purchase-lines/{hid}`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `POST /external-systems/{hid}/retire`, `/registrations`, `DELETE /registrations/{hid}` |
-| Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity` |
+| Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
@@ -260,7 +260,7 @@ what is worked out, the field is sorted by and not filtered by:
 | Purchase requests | Lines, Pending | `line_count`, `pending_quantity` | how many lines it has, and how many items are still to come on them |
 | Purchase lines | Received, Pending, Of another model | `received_quantity`, `pending_quantity`, `mismatched_items` | the items that name the line, what is left of its quantity, and how many of those items are of another model than the line's |
 | External systems | Registrations | `registrations` | how many records are registered with it, those removed not counted |
-| Capacity lines | Units | `units` | `quantity` × `units_each` |
+| Capacity lines | Units | `units` | `quantity` × `units_each`, and blank on a line that multiplies |
 
 `mgmt_address`, `minor_items`, `serial_number` of a group, `health` of a group,
 `master.name`, `observed_master.name`, `member_count`, `uses`, `aliases`,
@@ -285,6 +285,7 @@ the rows that a sort leaves tied.
 | `GET /device-groups/{hid}/members` | `position`, `item.name`, `item.pid`, `item.serial_number`, `role`, `observed_master`, `joined_on`, `left_on` | the current ones first, by position |
 | `GET /items/{hid}/children` | any field the item list is sorted by: `position`, `name`, `catalog.pid`, `serial_number`, `effective.lifecycle_state`, `owner.label`, `location.name` and `minor_items` are the columns of its table | by position and name |
 | `GET /items/{hid}/history` | `at`, `actor_name`, `action` | newest first |
+| `GET /capacity-records` | `week_of`, `recorded_at`, `active.demand`, `active.supply`, `active.balance`, `active.coverage_pct`, the same four of `with_drafts`, `adjusted`, `note` | the oldest week first |
 
 `role` of a user is the role in force, from the lowest to the highest, and a user with
 none comes last; `groups` is the first of the user's groups by name. `key` of a row is
@@ -292,9 +293,11 @@ how the row names its record, or else the HID of the record it matched. `holders
 duplicate is the first of its holders by name, `network` its label, and `address` is
 sorted as an address. `observed_master` puts the member that is seen as master first,
 whichever way round. The history of an item is sorted by its events, and the changes
-of one event stay together. The columns that a page composes from a list of changes
-are not sorted by the server: What changed in the audit trail, and Changes and
-Reasons of the rows of a preview (D-136).
+of one event stay together. The balance and the coverage of a record of the capacity
+balance are sorted as the record shows them, worked out from its demand and its supply,
+and a coverage that is blank, with no demand, comes last. The columns that a page
+composes from a list of changes are not sorted by the server: What changed in the
+audit trail, and Changes and Reasons of the rows of a preview (D-136).
 
 ## Import and export
 
@@ -343,18 +346,19 @@ entry, `owner` for an owner's label. Release 0.3.0 carries the records that exis
 far, 0.4.0 adds networks, addresses, device groups and their members, 0.5.0
 regions, sites, locations, contacts, their assignments and the members of owners, and
 0.6.0 contracts and their coverage, purchase requests and their lines, external
-systems and registrations, capacity lines and replacements.
+systems and registrations, capacity lines and replacements. 0.7.0 adds the links of
+regions, sites, locations and catalog entries, and the lines that multiply.
 
 | Entity | Columns that can be set | Further columns an export can write |
 |---|---|---|
 | `tags` | `label`, `colour`, `description` | |
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
-| `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
+| `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
 | `contacts` | `name`, `organization`, `email`, `phone`, `notes`, `record_status`, `tags` | |
 | `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open` |
-| `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `notes`, `record_status`, `tags` | `path` |
-| `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `notes`, `record_status`, `tags` | `path` |
-| `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `notes`, `record_status`, `tags` | `path` |
+| `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `links`, `notes`, `record_status`, `tags` | `path` |
+| `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `links`, `notes`, `record_status`, `tags` | `path` |
+| `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `contact_assignments` | `region`, `site`, `location`, `role`, `contact`, `priority`, `stop_inheritance` | |
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
 | `owner_members` | `owner`, `contact`, `role`, `priority` | |
@@ -371,7 +375,7 @@ systems and registrations, capacity lines and replacements.
 | `contract_coverage` | `contract`, `vendor`, `item`, `starts_on`, `ends_on`, `left_service` | `in_force`, and `effective_starts_on` and `effective_ends_on`, the dates in force |
 | `purchase_requests` | `reference`, `requested_on`, `status`, `notes` | |
 | `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
-| `capacity_lines` | `side`, `category`, `name`, `quantity`, `units_each`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
+| `capacity_lines` | `side`, `category`, `name`, `effect`, `quantity`, `units_each`, `factor`, `share`, `applies_to`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
 
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
 `country`, and the shipping set is the same six with `ship_` before them, and
@@ -419,6 +423,8 @@ are read there too.
 | Contracts and coverage | `contract` in a file of coverage is the number of a contract, and `vendor` beside it says which where two vendors use one number. A row covers one item, named as any column names an item. A row with no dates takes the contract's. An import does not remove a coverage: it is ended by a row that gives it `ends_on`. Under one contract an item has one coverage at most with no start of its own, so a row with no `starts_on` is that one; a row that finds one which has ended, and gives it nothing new, says so in its notes, since covering the item again takes a row with the day the new coverage starts. A file of contracts or of agreements holds the record as it is stored: the present term in `number`, `starts_on` and the rest, and a term that is still to begin in the `next_` columns |
 | Purchases | `request` of a line is the reference of its request, and `line` its number there: left out, a new line takes the next. `part_number` and `description` are kept as procurement gave them. A row is matched to a model by its part number, `pid` where the row gives one and `part_number` where it does not, against the PIDs of the catalog without regard to case, surrounding space or the `=` that ends the part number of a spare, on either side: `PWR-C1-715WAC-P=` finds `PWR-C1-715WAC-P`. It is matched among the models of `vendor` where the row names one, and among all models where it does not. One model that answers is the line's. None, a vendor there is not, or two models or more, such as one PID of two vendors, leave a new line not tracked, and its notes in the preview say why, naming the models where there are several. A file of lines makes no vendor and no catalog entry. A row whose part number answers to no one model leaves a line the model it has, and a row that names `pid` and no part number gives a line that it cannot match that PID as its part number. A row that would give a line on which items have arrived another model is rejected: that is corrected by hand, where what becomes of the items is said. A line has a model or a part number, and a row that leaves it neither is rejected. `purchase_line` on an item names the line it arrived on, as `RITM0012345/2`, or by the HID of the line. A file of items with that column is how the serial numbers of a delivery are loaded: each new item is in whatever state its row says, and counts as received on its line. A row that would put more items on a line than its quantity is rejected, and so is one for a line of a request that is a draft or cancelled. A row with no `vendor` and `pid` that names a line takes the line's model, and one that names another model than its line's is rejected. What was received as a count is named for its line, `RITM0012345/2-003`, and a file that names it so gives it its serial number |
 | Registrations | A row names a `system` and one of `item` and `group`. A registration is not removed by an import: a row gives it the status `removed` |
+| Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
+| Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
 | Load order | tags, vendors, catalog entries, contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply. The preview and the apply are events on the job |
@@ -701,11 +707,31 @@ installation as of today, twice:
 ```json
 { "as_of": "2026-11-14", "weight_per_resource_unit": "300",
   "active": { "support_weight": "2400", "infrastructure_demand": "8", "other_demand": "2",
-              "demand": "10", "supply": "9", "balance": "-1", "coverage_pct": "90",
-              "own_units": "6", "own_share_pct": "66.67", "outside_units": "3",
+              "demand": "10", "supply": "9.6", "balance": "-0.4", "coverage_pct": "96",
+              "own_units": "6", "own_share_pct": "62.5", "outside_units": "3.6",
               "annual_cost": "0.00",
               "by_category": [ { "category": "staff", "label": "Staff", "lines": 3,
-                                 "units": "6", "annual_cost": "0.00" } ] },
+                                 "units": "6", "annual_cost": "0.00" },
+                               { "category": "services", "label": "Services", "lines": 1,
+                                 "units": "0.6", "annual_cost": "0.00" } ],
+              "multiplying_lines": [
+                { "hid": "0193a1f4-...", "name": "AI assistant", "category": "services",
+                  "factor": "1.25", "share": "0.5",
+                  "applies_to": [ { "hid": "...", "name": "Network engineer",
+                                    "counted": true, "units": "3" },
+                                  { "hid": "...", "name": "Senior network engineer",
+                                    "counted": true, "units": "1.8" } ],
+                  "base_units": "4.8", "units": "0.6" } ],
+              "demand_by_region": [
+                { "region_hid": "0193a1f4-...", "parent_region_hid": null, "path": "Americas",
+                  "support_weight": "1800", "infrastructure_demand": "6", "share_pct": "75" },
+                { "region_hid": "...", "parent_region_hid": "0193a1f4-...",
+                  "path": "Americas > Central", "support_weight": "600",
+                  "infrastructure_demand": "2", "share_pct": "25" },
+                { "region_hid": "...", "parent_region_hid": null, "path": "Europe",
+                  "support_weight": "480", "infrastructure_demand": "1.6", "share_pct": "20" },
+                { "region_hid": null, "parent_region_hid": null, "path": null,
+                  "support_weight": "120", "infrastructure_demand": "0.4", "share_pct": "5" } ] },
   "with_drafts": { "...": "..." } }
 ```
 
@@ -714,6 +740,50 @@ installation as of today, twice:
 `by_category` has a row for every category of the list that supplies, also one with
 no line. `coverage_pct` is blank when there is no demand. The definitions are under
 "Capacity balance" on the [data model](data-model.md#capacity-balance) page.
+
+`multiplying_lines` lists the lines that multiply and count in the view, by name: each
+with its `factor` and its `share`, the staff lines it applies to, each with whether it
+is `counted` in the view and its units there, `base_units`, the units of those that are
+counted, and `units`, what the line adds: `factor` less 1, times `share`, times
+`base_units`. A line it applies to that is retired, out of date, a draft in `active`,
+or no longer a staff line that adds, is listed as not counted and gives it nothing.
+Its units are in its own category, so `own_units` stays that of the team's positions.
+
+`demand_by_region` says where the work is. A row of a region holds the support weight
+of the items at or beneath it, by their location in force, as the summary by `region`
+counts it, with the infrastructure demand that is and its share of the whole support
+weight as a percentage, blank when there is none. Each region that holds an item of
+the view has a row, by path, with the region it is in, and the last row, with no
+region, is the items that are nowhere: the regions at the top and that row add up to
+the whole. The report stays one balance for the whole operations team: no supply is
+divided among regions, and a line's region or site narrows nothing.
+
+**The records of the balance**, `GET /capacity-records`, keep the balance week by week,
+to show the trend. Each record is of one week, `week_of`, the Monday that begins it in
+the application's time zone, with `recorded_at`, `weight_per_resource_unit`, and for
+`active` and `with_drafts` the figures as the report answered them: `support_weight`,
+`infrastructure_demand`, `other_demand`, `demand`, `supply`, `own_units`,
+`outside_units` and `by_category`. `balance` and `coverage_pct` are worked out from
+the record's own demand and supply when it is read. The list is paged with `limit` and
+`offset`, the oldest week first, and takes `sort` (see [Sorting](#sorting)); any role
+reads it.
+
+The server records the balance by itself each Monday just after midnight in the
+application's time zone, and when it starts in a week that has no record, with `via`
+of `system` in the audit trail; a week that somebody has recorded already keeps what
+they recorded. `POST /capacity-records`, with an optional `note`, records the balance
+as it is now, on any day, by hand, and replaces the record of this week: a contractor
+added on a Wednesday is in that week's point once somebody records again, and the audit
+event of the change holds what the record was. `PATCH /capacity-records/{hid}` corrects
+the `demand` and the `supply` of `active` and of `with_drafts` of a saved week, either
+or both, with a `note` that says why, which is required; the record is then
+`adjusted`, and the change is audited. A correction changes the two totals and
+nothing else: the parts, `infrastructure_demand` and `other_demand` of the demand and
+`by_category` of the supply, stay as they were recorded, so a corrected week shows its
+corrected totals beside its parts as recorded. A record that is recorded again is
+worked out anew and is no longer adjusted. `DELETE /capacity-records/{hid}` removes a
+record that was a mistake, with an audit event that holds what it was. Recording,
+correcting and removing take the Inventory role.
 
 **The portfolio of a vendor**, `GET /vendors/{hid}/portfolio`, is everything from one
 vendor in one place, for the view that `include_drafts` and `include_archived`
@@ -917,6 +987,8 @@ hirdir purchases receive RITM0012345/1 --count 4 # arrived, with nothing to know
 hirdir systems list                              # the external systems
 hirdir registrations list --filter 'system.name:eq:NetWatch'
 hirdir capacity list                             # the lines of supply and of other work
+hirdir capacity record --note 'a contractor started'   # this week's balance, recorded again now
+hirdir capacity records                          # the balance week by week, the oldest first
 ```
 
 | Subject | Rule |
@@ -927,11 +999,12 @@ hirdir capacity list                             # the lines of supply and of ot
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, `6` server or network |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
-| An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done |
+| An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
-| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
+| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, and its links, each as its text and its address. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
-| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere |
+| The balance over time | `hirdir capacity record` records the balance as it is now, in place of this week's record, with `--note` to say why. `hirdir capacity records` lists the records, one week to a row, the oldest first, each with the demand, the supply, the balance and the coverage of both views, whether it was corrected, and its note; `--format csv` and `json` write all of them |
 | A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. It sends them as many at a time as the setting `max_items_per_request` says. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, with `--member CONTRACT=same`, `CONTRACT=new:NUMBER` or `CONTRACT=ends` for each contract that shares its period and is to do other than keep its number, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
 | A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the four kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
@@ -976,8 +1049,8 @@ script. It removes the items with their replacements, addresses and memberships,
 device groups, networks, catalog entries, vendors, owners with their people, regions,
 sites, locations, operators, contacts with their assignments, agreements and contracts with
 their coverage, purchase requests with their lines, external systems with their
-registrations, capacity lines, tags and stored imports, and the
-audit events of those records, and writes one audit event that says so and
+registrations, capacity lines and the records of the balance, tags and stored imports,
+and the audit events of those records, and writes one audit event that says so and
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
 lifecycle rules stay. `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
