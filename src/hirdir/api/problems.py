@@ -75,8 +75,8 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(OperationalError)
     async def _busy(_: Request, error: OperationalError) -> JSONResponse:
-        # One change is stored at a time. This one waited behind another, such as a
-        # large import being applied, for as long as it may, and was not made.
+        # One change is stored at a time. This one waited behind another, such as one
+        # that covers a thousand items at once, for as long as it may, and was not made.
         if not dialect.is_busy(error):
             raise error
         return problem(

@@ -472,7 +472,7 @@ def test_operators_travel_in_files_and_are_set_on_many_at_once(make: Maker, file
         201,
     )
     assert edit["job"]["updated"] == 3
-    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{edit['job']['hid']}/apply")
     assert _in_force(make, more[2])[:2] == ("Op2", "own")
     assert make.get("/operators", filter="label:eq:Op2")["items"][0]["uses"] == 3
 

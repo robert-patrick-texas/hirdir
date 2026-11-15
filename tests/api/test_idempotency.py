@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from hirdir import clock
 from hirdir.domain import idempotency
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, wait_for_job
 
 KEY = "Idempotency-Key"
 
@@ -105,9 +105,14 @@ def test_an_import_and_a_bulk_edit_take_a_key(
     assert make.get("/imports")["total"] == 1
     apply = f"{API}/imports/{first.json()['job']['hid']}/apply"
     keyed = {**inventory, KEY: "apply-1"}
-    assert client.post(apply, headers=keyed).json()["status"] == "applied"
-    # Sent again, it is answered as it was, and not refused as applied already.
-    assert client.post(apply, headers=keyed).status_code == 200
+    begun = client.post(apply, headers=keyed)
+    assert (begun.status_code, begun.json()["status"]) == (202, "applying")
+    assert wait_for_job(client, inventory, begun.json()["hid"])["status"] == "applied"
+    # Sent again, it is answered as it was, the job as it was begun, and not refused as
+    # applied already. The job itself says how far it got.
+    replayed = client.post(apply, headers=keyed)
+    assert (replayed.status_code, replayed.headers["idempotency-replayed"]) == (202, "true")
+    assert replayed.json() == begun.json()
     assert make.get("/vendors")["total"] == 1
 
 

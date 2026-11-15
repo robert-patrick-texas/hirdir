@@ -258,17 +258,17 @@ after_0007() {
     # column that the previous release refused.
     send "/imports/preview?entity=items&file_name=placed.csv" "$work/placed.csv"
     made="$made | $status $(job_counts)"
-    api POST "/imports/$(json 'd["job"]["hid"]')/apply"
+    apply_job "/imports/$(json 'd["job"]["hid"]')/apply"
     made="$made $status $(job_counts)"
     send "/imports/preview?entity=device_groups&file_name=placed-groups.csv" "$work/placed-groups.csv"
-    api POST "/imports/$(json 'd["job"]["hid"]')/apply"
+    apply_job "/imports/$(json 'd["job"]["hid"]')/apply"
     made="$made | $status $(job_counts)"
     api GET "/device-groups/$witness_stack"
     made="$made $(json 'd["location"]["path"]')"
     api GET "/items/$witness_item"
     expect "pkg an operator is made, with that contact behind it, and put on the site; the two files with a location column that $previous_version refused are previewed and applied: the item is at that location, and so is the first stack" \
         "$made | $(json '[d["location"]["path"], d["effective"]["location_hid"]["source"]]')" \
-        '201 200 | 201 ["previewed", 1, 0, 1, 0, 0] 200 ["applied", 1, 0, 1, 0, 0] | 200 ["applied", 1, 0, 1, 0, 0] Upgrade Witness Region > Upgrade Witness Site > Upgrade Witness Cage | ["Upgrade Witness Region > Upgrade Witness Site > Upgrade Witness Cage", "own"]'
+        '201 200 | 201 ["previewed", 1, 0, 1, 0, 0] 202 ["applied", 1, 0, 1, 0, 0] | 202 ["applied", 1, 0, 1, 0, 0] Upgrade Witness Region > Upgrade Witness Site > Upgrade Witness Cage | ["Upgrade Witness Region > Upgrade Witness Site > Upgrade Witness Cage", "own"]'
     expect "pkg and the item, which has no operator of its own and is in no group that has one, has the operator of the site it is at, with the person behind it" \
         "$(json '[d["operator_hid"], d["effective"]["operator_hid"]["label"], d["effective"]["operator_hid"]["source"], d["effective"]["operator_hid"]["contact"], d["effective"]["operator_hid"]["is_open"]]')" \
         '[null, "UW1", "site", "Upgrade Witness Guard", false]'

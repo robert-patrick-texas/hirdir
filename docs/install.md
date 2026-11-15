@@ -244,8 +244,12 @@ curl -H "Authorization: Bearer $HIRDIR_TOKEN" -H 'Content-Type: text/csv' \
 ```
 
 The answer is the preview: what each row would do, and the HID of the stored job.
-`POST /api/v1/imports/<that HID>/apply` then loads it. The rules of an import are under
-"Import and export" on the [interfaces](interfaces.md#import-and-export) page.
+`POST /api/v1/imports/<that HID>/apply` then loads it in the background: it answers at
+once, and `GET /api/v1/imports/<that HID>` says how far it has got, until its `status`
+is `applied`. A script waits for that before it previews the next file of the load
+order, whose rows refer to what this one makes; `hirdir import --apply` waits by
+itself. The rules of an import are under "Import and export" on the
+[interfaces](interfaces.md#import-and-export) page.
 
 ## Configuration
 

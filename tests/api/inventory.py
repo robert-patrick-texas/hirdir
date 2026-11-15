@@ -1,10 +1,27 @@
 """Helpers for the tests of the inventory: short ways to make its records."""
 
+import time
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 API = "/api/v1"
+# An apply is worked by the server's worker in the background (P-134). A test waits for
+# it as a person would, looking at the job, for this long at the most, in seconds.
+WAIT_FOR_JOB = 60.0
+
+
+def wait_for_job(client: TestClient, headers: dict[str, str], hid: str) -> dict[str, Any]:
+    """Return the job of an import or a bulk edit once it is no longer being applied."""
+    deadline = time.monotonic() + WAIT_FOR_JOB
+    while True:
+        response = client.get(f"{API}/imports/{hid}", headers=headers)
+        assert response.status_code == 200, response.text
+        job = response.json()
+        if job["status"] not in ("queued", "applying"):
+            return job
+        assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
+        time.sleep(0.01)
 
 
 class Maker:
@@ -28,6 +45,18 @@ class Maker:
         response = self.client.get(API + path, params=params, headers=self.headers)
         assert response.status_code == expect, response.text
         return response.json()
+
+    def apply(self, path: str, expect: int = 202, **params: Any) -> dict[str, Any]:
+        """Apply a stored preview at path, and return its job once it has been applied.
+
+        An apply answers at once, with 202, and is worked in the background. A refusal
+        is returned as it is.
+        """
+        response = self.client.post(API + path, params=params, headers=self.headers)
+        assert response.status_code == expect, response.text
+        if expect != 202:
+            return response.json()
+        return wait_for_job(self.client, self.headers, response.json()["hid"])
 
     def vendor(self, name: str = "Cisco", **more: Any) -> dict[str, Any]:
         return self.post("/vendors", {"name": name, **more})

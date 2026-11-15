@@ -10,6 +10,7 @@ server is told another day.
 
 import csv
 import io
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from hirdir import config as config_module
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.schedule import CAPACITY_RECORD, Scheduler
 from tests.acceptance.conftest import ADMIN, Server
+from tests.acceptance.test_file_scenarios import WAIT_FOR_JOB
 from tests.acceptance.test_item_scenarios import IVY
 from tests.acceptance.test_money_scenarios import Money
 
@@ -46,6 +48,17 @@ def _last_monday_just_after_midnight() -> tuple[datetime, datetime]:
     monday = today - timedelta(days=today.weekday() + 7)
     due = datetime(monday.year, monday.month, monday.day, 0, 2, tzinfo=ZONE)
     return due - timedelta(minutes=5), due
+
+
+def wait_for_job(money: Any, hid: str) -> dict[str, Any]:
+    """Return a job of an import once the server has applied it in the background."""
+    deadline = time.monotonic() + WAIT_FOR_JOB
+    while True:
+        job = money.get(f"/imports/{hid}")
+        if job["status"] not in ("queued", "applying"):
+            return job
+        assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
+        time.sleep(0.05)
 
 
 def test_s44_the_trend_shows_both_weeks_the_first_corrected_and_a_line_multiplies_two(
@@ -212,8 +225,9 @@ def test_s46_links_show_on_their_records_go_out_to_a_file_and_back_and_a_bad_one
             headers={"Content-Type": "text/csv"},
         ).json()
         assert (preview["job"]["unchanged"], preview["job"]["rejected"]) == (1, 0), preview
-        applied = money.post(f"/imports/{preview['job']['hid']}/apply", {}, expect=200)
-        assert applied["unchanged"] == 1
+        begun = money.post(f"/imports/{preview['job']['hid']}/apply", {}, expect=202)
+        applied = wait_for_job(money, begun["hid"])
+        assert (applied["status"], applied["unchanged"]) == ("applied", 1)
         assert money.get(f"{route}/{hid}")["links"] == links
         if entity == "locations":
             assert row["links"] == f"Floor plan <{plan['url']}>; Racks <{racks['url']}>"

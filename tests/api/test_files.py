@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.inventory import API, Maker, errors
+from tests.api.inventory import API, Maker, errors, wait_for_job
 
 ITEM_HEAD = "vendor,pid,serial_number,asset_tag,name,lifecycle_state,owner,est_value,tags"
 
@@ -36,12 +36,15 @@ class Files:
         assert response.status_code == expect, response.text
         return response.json()
 
-    def apply(self, preview: dict[str, Any], expect: int = 200, **params: Any) -> dict[str, Any]:
+    def apply(self, preview: dict[str, Any], expect: int = 202, **params: Any) -> dict[str, Any]:
+        """Apply a preview, and return its job once the worker has applied it."""
         response = self.client.post(
             f"{API}/imports/{preview['job']['hid']}/apply", params=params, headers=self.headers
         )
         assert response.status_code == expect, response.text
-        return response.json()
+        if expect != 202:
+            return response.json()
+        return wait_for_job(self.client, self.headers, response.json()["hid"])
 
     def load(self, entity: str, text: str | dict, **params: Any) -> dict[str, Any]:
         preview = self.preview(entity, text, **params)
@@ -217,7 +220,7 @@ def test_a_rejected_row_leaves_nothing_behind_and_blocks_the_apply(
     assert make.get("/vendors", filter="name:eq:Acme")["total"] == 0
 
 
-def test_a_record_changed_after_the_preview_stops_the_whole_apply(
+def test_a_record_changed_after_the_preview_is_left_out_and_the_rest_are_applied(
     files: Files, make: Maker, catalog: dict
 ) -> None:
     one = make.item(catalog_entry_hid=catalog["hid"], serial_number="S1", name="one")
@@ -229,17 +232,26 @@ def test_a_record_changed_after_the_preview_stops_the_whole_apply(
     assert counts(preview["job"]) == (0, 2, 0, 0)
     make.patch(f"/items/{one['hid']}", {"row_version": one["row_version"], "name": "uno"})
 
-    refused = files.apply(preview, expect=409)
-    assert refused["title"] == "Preview out of date"
-    assert list(errors(refused)) == ["rows.1"]
-    assert "changed since the preview" in errors(refused)["rows.1"]
-    assert [row["comments"] for row in make.get("/items")["items"]] == [None, None]
-    job = make.get(f"/imports/{preview['job']['hid']}")
-    assert (job["status"], job["applied_at"]) == ("failed", None)
-    assert "preview again" in job["failure"]
-    # A failed preview is not applied a second time either.
-    assert files.apply(preview, expect=409)["title"] == "Conflict"
-    assert counts(files.preview("items", text)["job"]) == (0, 2, 0, 0)
+    job = files.apply(preview)
+    assert (job["status"], job["rows_done"], job["applied"], job["stale"]) == ("applied", 2, 1, 1)
+    assert job["applied_at"] is not None
+    by_serial = {row["serial_number"]: row for row in make.get("/items")["items"]}
+    assert (by_serial["S1"]["name"], by_serial["S1"]["comments"]) == ("uno", None)
+    assert by_serial["S2"]["comments"] == "second"
+    rows = make.get(f"/imports/{preview['job']['hid']}/rows")["items"]
+    assert [row["applied_outcome"] for row in rows] == ["stale", "update"]
+    assert rows[0]["applied_reasons"] == [
+        {"field": "", "message": "changed since the preview: preview it again"}
+    ]
+    assert rows[1]["applied_reasons"] == []
+    stale = make.get(f"/imports/{preview['job']['hid']}/rows", applied_outcome="stale")
+    assert [row["row"] for row in stale["items"]] == [1]
+    # An applied preview is not applied a second time; the stale row is previewed again.
+    assert "applied already" in files.apply(preview, expect=409)["detail"]
+    again = files.preview("items", text)
+    assert counts(again["job"]) == (0, 1, 1, 0)
+    assert files.apply(again)["applied"] == 2
+    assert make.get(f"/items/{one['hid']}")["comments"] == "first"
 
 
 def test_a_row_that_was_unchanged_must_still_be_as_it_was_previewed(
@@ -249,7 +261,10 @@ def test_a_row_that_was_unchanged_must_still_be_as_it_was_previewed(
     preview = files.preview("items", "vendor,pid,serial_number,name\nCisco,C9300-48P,S1,one\n")
     assert counts(preview["job"]) == (0, 0, 1, 0)
     make.patch(f"/items/{item['hid']}", {"row_version": 1, "comments": "touched"})
-    assert list(errors(files.apply(preview, expect=409))) == ["rows.1"]
+    job = files.apply(preview)
+    assert (job["applied"], job["stale"]) == (0, 1)
+    rows = make.get(f"/imports/{preview['job']['hid']}/rows")["items"]
+    assert rows[0]["applied_outcome"] == "stale"
 
 
 def test_another_with_the_inventory_role_may_apply_a_preview_and_only_once(
@@ -405,8 +420,10 @@ def test_every_record_an_import_changes_is_audited_under_one_request(
     applied = make.audit(action="apply")[0]
     assert (applied["record_type"], applied["record_hid"]) == ("import_job", preview["job"]["hid"])
     shared = make.audit(request_id=applied["request_id"])
+    # The events on the job are where the apply began and where it ended.
     assert sorted((event["record_type"], event["via"]) for event in shared) == [
         ("catalog_entry", "import"),
+        ("import_job", "api"),
         ("import_job", "api"),
         ("item", "import"),
         ("item", "import"),
@@ -737,13 +754,8 @@ def test_a_change_that_waits_too_long_behind_another_is_told_to_try_again(
 # --- found by review -----------------------------------------------------------------
 
 
-def test_an_apply_that_fails_after_its_work_leaves_nothing_behind(
-    files: Files,
-    make: Maker,
-    client: TestClient,
-    inventory: dict[str, str],
-    catalog: dict,
-    monkeypatch,
+def test_an_apply_that_fails_at_its_end_keeps_its_rows_and_is_resumed_without_them(
+    files: Files, make: Maker, catalog: dict, monkeypatch
 ) -> None:
     from hirdir.io import imports
 
@@ -756,15 +768,21 @@ def test_an_apply_that_fails_after_its_work_leaves_nothing_behind(
         return record(db, context, action, *more, **named)
 
     monkeypatch.setattr(imports.audit, "record", fails_at_the_end)
-    with TestClient(client.app, raise_server_exceptions=False) as failing:
-        path = f"{API}/imports/{preview['job']['hid']}/apply"
-        assert failing.post(path, headers=inventory).status_code == 500
+    stopped = files.apply(preview)
     monkeypatch.setattr(imports.audit, "record", record)
-    assert make.get("/items")["total"] == 0
-    assert make.audit(record_type="item") == []
-    assert make.get(f"/imports/{preview['job']['hid']}")["status"] == "previewed"
+    assert (stopped["status"], stopped["rows_done"], stopped["applied"]) == ("stopped", 1, 1)
+    assert "RuntimeError" in stopped["failure"]
+    assert "apply it again to resume" in stopped["failure"]
+    # The batch that was stored stays stored.
+    assert make.get("/items")["total"] == 1
+    assert [event["action"] for event in make.audit(record_type="import_job")][:2] == [
+        "apply_stopped",
+        "apply_started",
+    ]
+    # Resumed, it has no row left to apply, and applies none of them a second time.
     assert files.apply(preview)["status"] == "applied"
     assert make.get("/items")["total"] == 1
+    assert len(make.audit(record_type="item", action="create")) == 1
 
 
 def test_a_catalog_entrys_inherited_discount_is_never_copied_down(
@@ -819,8 +837,10 @@ def test_an_apply_never_makes_a_record_the_preview_did_not_show(
     preview = files.preview("items", "vendor,pid,serial_number\nCisco,C9300-48P,S1\n")
     assert preview["rows"][0]["notes"] == []
     make.patch(f"/catalog-entries/{catalog['hid']}", {"row_version": 1, "pid": "C9300-48P-A"})
-    refused = files.apply(preview, expect=409)
-    assert list(errors(refused)) == ["rows.1"]
+    # Worked now, the row would make a catalog entry, which the preview did not show.
+    assert files.apply(preview)["stale"] == 1
+    row = make.get(f"/imports/{preview['job']['hid']}/rows")["items"][0]
+    assert "would no longer do what was previewed" in row["applied_reasons"][0]["message"]
     assert make.get("/catalog-entries")["total"] == 1
     assert make.get("/items")["total"] == 0
 

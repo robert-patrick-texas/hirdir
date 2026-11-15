@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -76,26 +76,27 @@ def bulk_update(
     return shapes.preview_out(db, job)
 
 
-@router.post("/bulk-update/{hid}/apply", tags=["Bulk"], responses=files.OUT_OF_DATE)
+@router.post("/bulk-update/{hid}/apply", status_code=202, tags=["Bulk"], responses=files.APPLYING)
 def apply_bulk_update(
     hid: str,
-    principal: Inventory,
+    _: Inventory,
     context: Audit,
     db: Db,
+    request: Request,
+    background_tasks: BackgroundTasks,
     skip_rejected: Annotated[
         bool, Query(description="Change the rows that are not rejected, and leave the rest.")
     ] = False,
 ) -> r.ImportJobOut:
-    """Apply a previewed bulk edit, in one transaction, or not at all.
+    """Apply a previewed bulk edit in the background, or resume one that stopped.
 
-    Anybody with the Inventory role may apply it, whoever made it. If an item it would change has
-    been changed since, by anybody, nothing is applied and the answer is a `409`
-    that names the rows.
+    The answer is at once: the job, `applying`, or `queued` while another is applied.
+    Anybody with the Inventory role may apply it, whoever made it. An item that has been
+    changed since the preview, by anybody, is left as it is and its row is `stale`;
+    the rest are changed. `GET /imports/{hid}` says how far it has got.
     """
-    done = imports.apply(
-        db, context, principal.role, hid, source="bulk", skip_rejected=skip_rejected
-    )
-    return files.applied(db, done)
+    job = imports.begin_apply(db, context, hid, source="bulk", skip_rejected=skip_rejected)
+    return files.begun(request, background_tasks, db, job)
 
 
 @router.get("/{hid}")

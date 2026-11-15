@@ -216,12 +216,48 @@ def test_import_previews_then_applies_and_exits_4_on_rejected_rows(
     run("import", str(good), expect=4)
 
 
+def test_an_apply_is_waited_for_or_left_to_the_server_and_a_stopped_one_resumed(
+    run, make: Maker, switches: list, monkeypatch, tmp_path: Path
+) -> None:
+    from hirdir.io import imports
+
+    file = tmp_path / "comments.csv"
+    file.write_text("hostname,comments\nsite2-sw-1,first\nsite2-sw-2,second\n")
+    # Left to the server, the command says where to look, and the job goes on.
+    left = run("import", str(file), "--entity", "items", "--apply", "--no-wait")
+    hid = make.get("/imports")["items"][0]["hid"]
+    assert f"hirdir imports show {hid} --wait" in left.stderr
+    waited = run("imports", "show", hid, "--wait")
+    assert "applied: 0 created, 2 updated, 0 unchanged" in waited.stderr
+    assert "status: applied" in run("imports", "show", hid).stdout
+
+    # One that stops partway exits with 6 and says how to resume it.
+    one = imports._apply_row
+
+    def fails_at_the_second_row(run_, which, was, values):
+        if was.row == 2:
+            raise RuntimeError("something nobody foresaw")
+        return one(run_, which, was, values)
+
+    # Only the apply fails: the preview is made as ever.
+    monkeypatch.setattr(imports, "_apply_row", fails_at_the_second_row)
+    file.write_text("hostname,comments\nsite2-sw-1,third\nsite2-sw-2,fourth\n")
+    stopped = run("import", str(file), "--entity", "items", "--apply", expect=6)
+    hid = make.get("/imports")["items"][0]["hid"]
+    assert f"`hirdir imports apply {hid}` resumes it" in stopped.stderr
+    monkeypatch.setattr(imports, "_apply_row", one)
+    resumed = run("imports", "apply", hid)
+    assert "applied: 0 created, 2 updated" in resumed.stderr
+    assert {item["comments"] for item in make.get("/items")["items"]} == {"third", "fourth", None}
+
+
 def test_exit_codes_tell_access_from_a_conflict_from_no_server(
     run, client: TestClient, make: Maker, admin: dict, switches: list, monkeypatch, tmp_path: Path
 ) -> None:
     file = tmp_path / "items.csv"
     file.write_text("vendor,pid,serial_number,comments\nCisco,C9300-48P,FCW0000X001,noted\n")
-    # A row changed between the preview and the apply is a conflict: exit 5.
+    # A row changed between the preview and the apply is left out as stale, which is a
+    # conflict: exit 5.
     request = cli_client.httpx2.request
 
     def changed_in_between(method: str, url: str, **more: Any):
@@ -231,7 +267,9 @@ def test_exit_codes_tell_access_from_a_conflict_from_no_server(
 
     monkeypatch.setattr(cli_client.httpx2, "request", changed_in_between)
     stale = run("import", str(file), "--entity", "items", "--apply", expect=5)
-    assert "rows.1" in stale.stderr
+    assert "row 1  stale" in stale.stdout
+    assert "changed since the preview" in stale.stdout
+    assert "1 changed since the preview and were left out" in stale.stderr
     monkeypatch.setattr(cli_client.httpx2, "request", request)
 
     monkeypatch.setenv("HIRDIR_TOKEN", "not-a-token")

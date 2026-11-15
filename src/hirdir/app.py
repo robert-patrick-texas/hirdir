@@ -2,9 +2,10 @@
 
 import logging
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
@@ -36,7 +37,7 @@ from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.ids import new_hid
-from hirdir.io import fields, tables
+from hirdir.io import background, fields, tables
 from hirdir.schedule import Scheduler
 
 API_PREFIX = "/api/v1"
@@ -179,15 +180,36 @@ def bind(app: FastAPI, config: Config) -> None:
     app.state.throttle = Throttle(config.sign_in_failures_before_delay)
 
 
-@asynccontextmanager
-async def _scheduled(app: FastAPI) -> AsyncGenerator[None]:
-    """Run what the server does by itself at set times, from start to shutdown."""
-    scheduler = Scheduler(lambda: app.state.sessions())
-    await run_in_threadpool(scheduler.start)
-    try:
-        yield
-    finally:
-        await run_in_threadpool(scheduler.stop)
+# --- what runs beside the requests --------------------------------------------------
+
+
+def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
+    """Return what works beside the requests for as long as the server is up.
+
+    That is the worker that applies imports and bulk edits in the background (P-134),
+    started once the application is bound to its database and stopped, after the batch
+    it is in, when the server stops; and, for the server, what it does by itself at set
+    times (`hirdir.schedule`), which a test drives itself.
+    """
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+        applying = background.running(app.state)
+        await run_in_threadpool(applying.__enter__)
+        scheduler = Scheduler(lambda: app.state.sessions()) if scheduled else None
+        try:
+            if scheduler is not None:
+                await run_in_threadpool(scheduler.start)
+            yield
+        finally:
+            if scheduler is not None:
+                await run_in_threadpool(scheduler.stop)
+            await run_in_threadpool(applying.__exit__, None, None, None)
+
+    return lifespan
+
+
+# --- the application ------------------------------------------------------------------
 
 
 def create_app(config: Config, scheduled: bool = False) -> FastAPI:
@@ -200,7 +222,7 @@ def create_app(config: Config, scheduled: bool = False) -> FastAPI:
         openapi_url=None,
         docs_url=None,
         redoc_url=None,
-        lifespan=_scheduled if scheduled else None,
+        lifespan=_lifespan(scheduled),
     )
     bind(app, config)
     # Every list is made ready by this one thread, before requests arrive side by side.

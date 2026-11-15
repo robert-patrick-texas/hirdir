@@ -160,13 +160,13 @@ def test_a_file_and_a_bulk_edit_set_the_flag_and_the_very_value_inherited_is_no_
     )
     told = {row["record_hid"]: changes(row) for row in preview["rows"] if row["changes"]}
     assert told == {gear["ap2"]["hid"]: {"do_not_renew": (False, True)}}
-    desk.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+    assert desk.apply(f"/items/bulk-update/{preview['job']['hid']}/apply")["status"] == "applied"
     assert _flag(desk.get(f"/items/{gear['ap2']['hid']}"))[:2] == (True, "own")
     cleared = desk.post(
         "/items/bulk-update",
         {"hids": [gear["ap2"]["hid"]], "set": {"do_not_renew": None}},
     )
-    desk.post(f"/items/bulk-update/{cleared['job']['hid']}/apply", {}, 200)
+    assert desk.apply(f"/items/bulk-update/{cleared['job']['hid']}/apply")["status"] == "applied"
     assert _flag(desk.get(f"/items/{gear['ap2']['hid']}"))[:2] == (True, "catalog")
 
 

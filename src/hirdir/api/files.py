@@ -3,7 +3,7 @@
 from itertools import chain
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -12,10 +12,9 @@ from hirdir.api import shapes
 from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute, limited_body
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
-from hirdir.api.problems import problem
 from hirdir.api.schemas import Page, Problem
 from hirdir.domain.errors import Invalid
-from hirdir.io import exports, imports, tables
+from hirdir.io import background, exports, imports, tables
 
 imports_ = APIRouter(prefix="/imports", tags=["Files"], route_class=IdempotentRoute)
 exports_ = APIRouter(prefix="/exports", tags=["Files"])
@@ -24,8 +23,12 @@ FILE_TYPES = {"text/csv": "csv", "application/json": "json"}
 SkipRejected = Annotated[
     bool, Query(description="Apply the rows that are not rejected, and leave the rest.")
 ]
-OUT_OF_DATE: dict[int | str, dict[str, Any]] = {
-    409: {"model": Problem, "description": "A record changed after the preview was made."}
+APPLYING: dict[int | str, dict[str, Any]] = {
+    409: {
+        "model": Problem,
+        "description": "It is applied already, or being applied, or failed before 0.7.0.",
+    },
+    422: {"model": Problem, "description": "Rows are rejected, and `skip_rejected` is not given."},
 }
 
 
@@ -43,16 +46,14 @@ def _format(request: Request, file_name: str | None) -> str:
     )
 
 
-def applied(db: Db, done: imports.Applied) -> Any:
-    """Return the job of an apply, or a conflict that names the rows in the way."""
-    if not done.problems:
-        return shapes.job_out(db, done.job)
-    return problem(
-        409,
-        "Preview out of date",
-        done.job.failure or "",
-        {entry["field"]: entry["message"] for entry in done.problems},
-    )
+def begun(request: Request, background_tasks: BackgroundTasks, db: Db, job: Any) -> r.ImportJobOut:
+    """Return the job of an apply that is begun, and wake the worker once it is stored.
+
+    The request's changes are stored when the route returns, and the worker is woken
+    after the answer is sent, so that it finds the job it is woken for.
+    """
+    background_tasks.add_task(background.wake, request.app.state)
+    return shapes.job_out(db, job)
 
 
 @imports_.post(
@@ -105,23 +106,25 @@ async def preview_import(
     return shapes.preview_out(db, job)
 
 
-@imports_.post("/{hid}/apply", responses=OUT_OF_DATE)
+@imports_.post("/{hid}/apply", status_code=202, responses=APPLYING)
 def apply_import(
     hid: str,
-    principal: Inventory,
+    _: Inventory,
     context: Audit,
     db: Db,
+    request: Request,
+    background_tasks: BackgroundTasks,
     skip_rejected: SkipRejected = False,
 ) -> r.ImportJobOut:
-    """Apply a preview exactly as it was shown, in one transaction, or not at all.
+    """Apply a preview in the background, or resume one that stopped.
 
-    Anybody with the Inventory role may apply it, whoever made it. If a record it would touch has
-    changed since, nothing is applied and the answer is a `409`.
+    The answer is at once: the job, `applying`, or `queued` while another is applied.
+    Anybody with the Inventory role may apply it, whoever made it. The rows are applied
+    50 at a time; a row whose record changed since the preview is left out as `stale`,
+    and the rest go on. `GET /imports/{hid}` says how far it has got.
     """
-    done = imports.apply(
-        db, context, principal.role, hid, source="file", skip_rejected=skip_rejected
-    )
-    return applied(db, done)
+    job = imports.begin_apply(db, context, hid, source="file", skip_rejected=skip_rejected)
+    return begun(request, background_tasks, db, job)
 
 
 @imports_.get("")
@@ -156,13 +159,21 @@ def list_import_rows(
     _: Viewer,
     db: Db,
     outcome: Annotated[r.Outcome | None, Query(description="Only rows of this kind.")] = None,
+    applied_outcome: Annotated[
+        r.AppliedOutcome | None, Query(description="Only rows the apply did this with.")
+    ] = None,
     sort: Annotated[list[str] | None, sort_of(tables.IMPORT_ROWS)] = None,
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
 ) -> Page[r.ImportRowOut]:
-    """List the rows of a preview, in the order of the file unless a sort says otherwise."""
+    """List the rows of a preview, in the order of the file unless a sort says otherwise.
+
+    Each says what the preview found, and once it is applied, what the apply did with it.
+    """
     arrange = tables.arrange(tables.IMPORT_ROWS, sort)
-    page, total = imports.list_rows(db, hid, outcome, limit, offset, arrange)
+    page, total = imports.list_rows(
+        db, hid, outcome, limit, offset, arrange, applied_outcome=applied_outcome
+    )
     return Page(
         items=[shapes.row_out(row) for row in page], total=total, limit=limit, offset=offset
     )

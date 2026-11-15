@@ -213,7 +213,7 @@ def test_a_plan_travels_in_files_is_set_on_many_and_a_file_opens_a_site(
         201,
     )
     assert edit["job"]["updated"] == 2
-    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{edit['job']['hid']}/apply")
     files.load("items", f"hid,planned_location\n{spares[2]['hid']},{suite}\n")
     assert make.get("/items", filter=f"planned_location:within:{suite}")["total"] == 3
     exported = files.export("items", own_values=True)
@@ -580,7 +580,7 @@ def test_a_room_is_replaced_under_a_project_name_and_takes_the_real_name_at_the_
         201,
     )
     assert edit["job"]["updated"] == 2
-    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{edit['job']['hid']}/apply")
     _patch(make, f"/device-groups/{stack['hid']}", planned_location_hid=new["hid"])
     # The old room is not retired while it is in use.
     refused = make.post(f"/locations/{old['hid']}/retire", {"row_version": old["row_version"]}, 409)

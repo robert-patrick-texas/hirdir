@@ -3490,6 +3490,8 @@ EntityName = Literal[
     "capacity_lines",
 ]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
+# What an apply in the background did with a row (P-134).
+AppliedOutcome = Literal["create", "update", "unchanged", "stale", "rejected"]
 
 
 class ImportEnvelope(Model):
@@ -3510,16 +3512,27 @@ class ImportJobOut(Model):
     mode: Literal["create", "upsert", "update"]
     file_name: str | None
     file_sha256: str | None
-    status: Literal["previewed", "applied", "failed"]
+    status: Literal["previewed", "queued", "applying", "applied", "stopped", "failed"] = Field(
+        description="`queued` and `applying` while it is applied in the background, "
+        "`applied` once every row is worked, `stopped` when it stopped partway, to be "
+        "resumed. `failed` is a job of a release before 0.7.0 that was not applied."
+    )
     row_count: int
-    created: int = Field(description="Rows that create a record.")
-    updated: int = Field(description="Rows that change a record.")
+    created: int = Field(description="Rows that create a record, as the preview found.")
+    updated: int = Field(description="Rows that change a record, as the preview found.")
     unchanged: int = Field(description="Rows that find their record as the row has it.")
-    rejected: int = Field(description="Rows that cannot be applied.")
+    rejected: int = Field(description="Rows that cannot be applied, as the preview found.")
+    rows_done: int = Field(description="How many rows the apply has worked so far.")
+    applied: int = Field(description="How many rows the apply applied as they were previewed.")
+    stale: int = Field(
+        description="How many rows the apply left out because they changed since the preview."
+    )
     skip_rejected: bool | None = Field(description="Whether it was applied without them.")
-    failure: str | None = Field(description="Why a failed job was not applied.")
-    applied_at: datetime | None
-    applied_by: str | None
+    failure: str | None = Field(
+        description="Why a stopped job stopped, or why a failed one was not applied."
+    )
+    applied_at: datetime | None = Field(description="When it was last asked to be applied.")
+    applied_by: str | None = Field(description="Who last asked for it to be applied.")
     applied_by_name: str | None
     created_at: datetime
     created_by: str | None
@@ -3553,6 +3566,12 @@ class ImportRowOut(Model):
     changes: list[RowChange]
     reasons: list[RowReason]
     notes: list[str] = Field(description="What else the row brings about.")
+    applied_outcome: AppliedOutcome | None = Field(
+        description="What the apply did with the row. Blank until it is worked."
+    )
+    applied_reasons: list[RowReason] = Field(
+        description="Why the apply left a `stale` or `rejected` row out."
+    )
 
 
 class ImportPreview(Model):

@@ -546,5 +546,5 @@ def test_places_and_where_things_are_travel_in_files(make: Maker, files: Files) 
     # A bulk edit moves many items at once, and clears where they are.
     edit = make.post("/items/bulk-update", {"all_rows": True, "set": {"location": rack}}, 201)
     assert (edit["job"]["updated"], edit["job"]["unchanged"]) == (1, 1)
-    make.post(f"/items/bulk-update/{edit['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{edit['job']['hid']}/apply")
     assert make.get("/items", filter=f"location:within:{rack}")["total"] == 2
