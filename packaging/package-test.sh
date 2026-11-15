@@ -5843,14 +5843,19 @@ cover_and_purchases() {
     made="$made $status $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], [[i["serial_number"], i["covered"], [c["contract"]["status"] for c in i["coverage"]]] for i in d["items"]]]')"
     api PATCH "/contracts/$other" '{"row_version": 4, "status": "active"}'
     made="$made | $status $(json '[d["status"], d["covers_today"], d["lapsed"]]')"
+    # The count of lapsed contracts follows the report's filter (P-117): asked for these
+    # items alone, it is of the one contract that is in their scope, and its filter names
+    # it; the report of everything counts every lapsed contract there is.
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
-    made="$made $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], d["lapsed_contracts"]["count"] >= 1, d["lapsed_contracts"]["filter"]]')"
+    made="$made $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], d["lapsed_contracts"]["count"], d["lapsed_contracts"]["filter"] == {"and": [{"field": "hid", "op": "in", "value": ["'"$other"'"]}, {"field": "lapsed", "op": "eq", "value": True}]}]')"
+    api GET /reports/coverage
+    made="$made $(json '[d["lapsed_contracts"]["count"] >= 1, d["lapsed_contracts"]["filter"]]')"
     api GET '/contracts?filter=lapsed:eq:true&limit=1000'
     made="$made $status $(json 'sum(c["number"] == "PKG-CON-0002" for c in d["items"])')"
     api PATCH "/contracts/$other" "{\"row_version\": 5, \"ends_on\": \"$next_year\"}"
-    expect "pkg the period of the contract is ended a month ago and its status said to be renewal_pending: it covers still, and the coverage report lists its item under the renewals that are pending, and not as uncovered; said to be active again, with its period past, it has lapsed and covers nothing, its item is uncovered, and the report counts the lapsed contracts, among which the list of contracts finds it; given its last day back, it has not lapsed" \
+    expect "pkg the period of the contract is ended a month ago and its status said to be renewal_pending: it covers still, and the coverage report lists its item under the renewals that are pending, and not as uncovered; said to be active again, with its period past, it has lapsed and covers nothing, its item is uncovered, and the report asked for these items counts the one lapsed contract in their scope, with a filter that names it, where the report of everything counts every lapsed contract, among which the list of contracts finds it; given its last day back, it has not lapsed" \
         "$made | $status $(json '[d["covers_today"], d["lapsed"]]')" \
-        '200 ["renewal_pending", true, false] 200 [1, 1, [["PKG0000V004", true, ["renewal_pending"]]]] | 200 ["active", false, true] [2, 0, true, {"field": "lapsed", "op": "eq", "value": true}] 200 1 | 200 [true, false]'
+        '200 ["renewal_pending", true, false] 200 [1, 1, [["PKG0000V004", true, ["renewal_pending"]]]] | 200 ["active", false, true] [2, 0, 1, true] [true, {"field": "lapsed", "op": "eq", "value": true}] 200 1 | 200 [true, false]'
 
     # S31: a vendor with switches, a virtual machine template, a software application
     # and a service.
@@ -6480,6 +6485,15 @@ state() {
     done
     expect "S01 nothing under /var/lib/hirdir is readable by other users" \
         "$(inside find /var/lib/hirdir -perm /o=rwx 2>&1)" ""
+    # From 0.7.0 one server runs on one state directory, which it holds a lock on (P-134),
+    # so that a second could not take for stopped an import that the first is applying.
+    if inside test -e /var/lib/hirdir/server.lock; then
+        code=0
+        inside timeout 30 runuser -u hirdir -- /opt/hirdir/venv/bin/hirdir admin serve >"$work/second.log" 2>&1 || code=$?
+        expect "pkg the service holds its lock on the state directory, /var/lib/hirdir/server.lock, which the hirdir user made; a second server started on it is refused, and says so, and the one that runs goes on" \
+            "$(inside stat -c '%U %a' /var/lib/hirdir/server.lock 2>&1) $code $(grep -c 'another hirdir server is running on /var/lib/hirdir: stop it first' "$work/second.log") $(inside systemctl is-active hirdir.service 2>&1)" \
+            "hirdir 640 1 1 active"
+    fi
     # Root has run hirdir admin by now. Apart from the byte-code that postinst compiled and
     # prerm removes, every file under /opt/hirdir must be one dpkg installed.
     expect "S01 nothing is under /opt/hirdir that the package did not install" \

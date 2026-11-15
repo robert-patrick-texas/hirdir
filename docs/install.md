@@ -902,6 +902,13 @@ it works out the renewal alert of the day, which writes nothing. A time that pas
 while the service was stopped is not made up for, but the record of a week is made at
 the next start.
 
+**One server to a state directory.** While it runs, the service holds a lock on
+`/var/lib/hirdir/server.lock`, a file of its own that it makes there. A second
+`hirdir admin serve` on the same directory stops at once with `another hirdir server
+is running on /var/lib/hirdir: stop it first`, so that it cannot take for stopped an
+import that the first is applying. `systemctl restart hirdir` lets the lock go before
+the service starts again.
+
 **Imports are applied in the background.** For a script this is the change to look
 at:
 

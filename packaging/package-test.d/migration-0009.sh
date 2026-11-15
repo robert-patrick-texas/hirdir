@@ -223,7 +223,7 @@ previewed 1 0 0 0"
     answer="$status $(json '[d["totals"][k] for k in ("ending", "lapsed", "renewal_pending", "overdue", "ends_with_term", "overlapping")]')"
     api GET /renewals/alert
     expect "pkg $when GET /reports/renewals lists of the contracts from before nothing that ends soon with no renewal entered and nothing that has lapsed, what is pending, ${made% *}, of which none is overdue, nothing that ends with its term, and the ${made#* } items that the coverage report has under more than one contract; GET /renewals/alert counts the same, and shows them to this Admin, who has not seen them" \
-        "$answer $status $(json '[d["show"] == (d["lapsed"]["count"] + d["renewal_pending"]["count"] + d["ending"]["count"] > 0), d["ending"]["count"], d["lapsed"]["count"], d["renewal_pending"]["count"], d["overdue"]]')" \
+        "$answer $status $(json '[d["show"] == (d["lapsed"]["count"] + d["renewal_pending"]["count"] + d["ending"]["count"] + sum(d.get("agreements", {}).values()) > 0), d["ending"]["count"], d["lapsed"]["count"], d["renewal_pending"]["count"], d["overdue"]]')" \
         "200 [0, 0, ${made% *}, 0, 0, ${made#* }] 200 [true, 0, 0, ${made% *}, 0]"
 
     # The capacity report says beside its one balance where the work is: the regions at
