@@ -76,5 +76,7 @@ upgrade:        ## move every dependency to its latest production release, then 
 	uv python pin "$$(uv run python scripts/latest_python.py)"
 	uv lock --upgrade
 	uv sync --all-groups
-	@if [ -f web/package.json ]; then cd web && npx --yes npm-check-updates -u && npm install && npm run build; fi
+	uv run python scripts/latest_npm.py
+	npm --prefix web install
+	npm --prefix web run build
 	$(MAKE) check
