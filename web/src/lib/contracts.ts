@@ -53,6 +53,21 @@ export function nextTermText(next: NextTerm): string {
   return `${as} on ${next.starts_on}${until}`;
 }
 
+/**
+ * What a page says where a change of a contract or an agreement that has a term still to
+ * begin is refused as stale. From the day that term begins, the record is read with it,
+ * at the version it will have once the term is written down: a change that was read
+ * before is refused, and is not made to a term it was not meant for. Blank for a record
+ * with no term to come, which only a person changes.
+ */
+export function staleCause(
+  record: { next_term: { starts_on: string } | null },
+  what: "contract" | "agreement",
+): string {
+  if (!record.next_term) return "";
+  return `Someone changed it after you opened it, or its next term, from ${record.next_term.starts_on}, has begun: from that day the ${what} is read with that term, at a new version. Your change was not saved, so that it is not made to a term it was not meant for.`;
+}
+
 export function contractPath(hid: string): string {
   return `/contracts/${encodeURIComponent(hid)}`;
 }
@@ -99,30 +114,35 @@ export interface InForce {
   standing: Standing;
   /** The value in force, as text: a reseller by its name. Blank when there is none. */
   text: string;
-  /** For an override: what the agreement has, which the contract's own takes the place of. */
+  /** For an override: what the agreement gives, which the contract's own takes the place of. */
   overridden: string;
+  /**
+   * For an override: the contract's own is the same as what the agreement gives. It is
+   * still an override: it stays as it is when the agreement's changes.
+   */
+  same: boolean;
 }
 
-/** What an agreement itself says of one of the fields its contracts may have from it. */
-export function agreementValue(
-  agreement: Pick<Agreement, Exclude<Inherited, "reseller_hid"> | "reseller"> | null | undefined,
-  field: Inherited,
-): string {
-  if (!agreement) return "";
-  if (field === "reseller_hid") return agreement.reseller?.name ?? "";
-  return agreement[field] ?? "";
+/**
+ * What the agreement gives for one field of a contract today, as text, whether the
+ * contract overrides it or not: the server answers it beside the value in force, and
+ * the reseller by its name. Blank for a contract in no agreement, and where the
+ * agreement has nothing.
+ */
+export function agreementGives(contract: Pick<Contract, "effective">, field: Inherited): string {
+  if (field === "reseller_hid") {
+    const reseller = contract.effective.reseller_hid;
+    return reseller.from_agreement_label ?? reseller.from_agreement ?? "";
+  }
+  return contract.effective[field].from_agreement ?? "";
 }
 
 /**
  * One field of a contract as it is in force, with how it stands. The server says where
- * the value came from; that an own value overrides one of the agreement's is seen from
- * the agreement, when the page has read it.
+ * the value came from, and what the agreement gives for it: an own value is an override
+ * where the agreement gives one too, also where the two are the same.
  */
-export function inForce(
-  contract: Pick<Contract, "effective">,
-  field: Inherited,
-  agreement?: Parameters<typeof agreementValue>[0],
-): InForce {
+export function inForce(contract: Pick<Contract, "effective">, field: Inherited): InForce {
   const effective = contract.effective[field];
   const value = effective.value;
   const text =
@@ -132,24 +152,25 @@ export function inForce(
         ? value
         : "";
   if (effective.source === "agreement" && text !== "") {
-    return { standing: "inherited", text, overridden: "" };
+    return { standing: "inherited", text, overridden: "", same: false };
   }
   if (effective.source === "own" && text !== "") {
-    const above = agreementValue(agreement, field);
-    return above === ""
-      ? { standing: "own", text, overridden: "" }
-      : { standing: "override", text, overridden: above };
+    const above = agreementGives(contract, field);
+    if (above === "") return { standing: "own", text, overridden: "", same: false };
+    // A reseller is the same by its HID; any other value by its text.
+    const same =
+      field === "reseller_hid"
+        ? value === contract.effective.reseller_hid.from_agreement
+        : text === above;
+    return { standing: "override", text, overridden: above, same };
   }
-  return { standing: "none", text: "", overridden: "" };
+  return { standing: "none", text: "", overridden: "", same: false };
 }
 
-/** The fields of a contract that are its own where its agreement has one too. */
-export function overrides(
-  contract: Pick<Contract, "effective">,
-  agreement: Parameters<typeof agreementValue>[0],
-): Inherited[] {
+/** The fields of a contract that are its own where its agreement gives one too. */
+export function overrides(contract: Pick<Contract, "effective">): Inherited[] {
   return INHERITED.map(({ field }) => field).filter(
-    (field) => inForce(contract, field, agreement).standing === "override",
+    (field) => inForce(contract, field).standing === "override",
   );
 }
 
@@ -172,9 +193,15 @@ export function periodText(
 /** What to say under the input of a field a contract may have from its agreement. */
 export function agreementHint(contract: Contract | null, field: Inherited): string | undefined {
   if (!contract?.agreement) return undefined;
+  const name = contract.agreement.name;
   const mine = inForce(contract, field);
-  if (mine.standing === "own" || mine.standing === "override") {
-    return `Set here. Clear it to have what ${contract.agreement.name} says.`;
+  if (mine.standing === "override") {
+    return mine.same
+      ? `Set here, and the same as ${name} gives. Clear it to follow ${name} when that changes.`
+      : `Set here, in place of ${mine.overridden} from ${name}. Clear it to have that.`;
+  }
+  if (mine.standing === "own") {
+    return `Set here. ${name} gives nothing for it.`;
   }
   if (mine.standing === "inherited") {
     return `Blank has ${mine.text} from ${contract.agreement.name}.`;
@@ -322,19 +349,17 @@ export function coveringNumbers(coverage: readonly CoverageRef[]): string {
 
 /**
  * The numbers of the contracts that still count an item that is out of service, each
- * once: those that cover it today, and those whose coverage of it was ended because it
- * left service and of which the vendor has not been told. What the list for the vendor
- * says of each of its items.
+ * once, as the server lists them: those that cover it past today, and those whose
+ * coverage of it was ended because it left while their term still runs. The list to
+ * send the vendor. Blank for an item in service.
  */
-export function countingNumbers(coverage: readonly CoverageRef[]): string {
-  const numbers: string[] = [];
-  for (const one of coverage) {
-    if ((one.in_force || one.left_service) && !numbers.includes(one.contract.number)) {
-      numbers.push(one.contract.number);
-    }
-  }
-  return numbers.join(", ");
+export function countedUnder(item: { out_of_service_contracts: readonly { number: string }[] }) {
+  return [...new Set(item.out_of_service_contracts.map((contract) => contract.number))].join(", ");
 }
+
+/** What is said of an item that a contract still counts while it is out of service. */
+export const COUNTED_NOTE =
+  "Out of service, and still counted by these contracts: the list to send the vendor. A contract counts it where it covers it past today, or where its coverage was ended because the item left, until the vendor has been told, while the term of the contract runs.";
 
 /**
  * The statuses of the contracts that cover an item today, each once, as the item grid

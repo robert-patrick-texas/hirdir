@@ -13,11 +13,12 @@ import {
 } from "../components/ContractParts";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
-import { Notice, Problem } from "../components/Problem";
+import { Notice, Problem, StaleCause } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Renew } from "../components/Renew";
 import { Retire } from "../components/Retire";
 import { SortTh } from "../components/SortTh";
+import { AgreementTerms } from "../components/Terms";
 import { Time } from "../components/Time";
 import {
   type Agreement,
@@ -31,6 +32,7 @@ import {
   LAPSED_NOTE,
   nextTermText,
   periodText,
+  staleCause,
 } from "../lib/contracts";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
@@ -279,8 +281,8 @@ export function Agreements() {
 }
 
 /**
- * Support agreements → one agreement: its fields and tags, and its contracts with what
- * each has from it and what each overrides.
+ * Support agreements → one agreement: its fields and tags, its contracts with what each
+ * has from it and what each overrides, and the terms it had before: its purchase history.
  */
 export function AgreementDetail() {
   const { hid = "" } = useParams();
@@ -291,6 +293,7 @@ export function AgreementDetail() {
   );
   const { lists, loading: listsLoading, error: listsError } = useLists();
   const [done, setDone] = useState("");
+  const [turn, setTurn] = useState(0);
   const [adding, setAdding] = useState(false);
   const record = agreement.data;
   useTitle(record ? record.name : "Support agreement");
@@ -305,6 +308,7 @@ export function AgreementDetail() {
 
   function changed(text: string) {
     setDone(text);
+    setTurn((count) => count + 1);
     agreement.reload();
   }
 
@@ -324,7 +328,9 @@ export function AgreementDetail() {
       <Notice text={done} />
       {agreement.loading && !record && <p role="status">Loading…</p>}
       {record && (
-        <>
+        // A change of the agreement that was read before its next term began is refused
+        // as stale from that day: the forms of the record say so where it has one.
+        <StaleCause value={staleCause(record, "agreement")}>
           <section aria-labelledby="agreement-facts">
             <h2 id="agreement-facts">The agreement</h2>
             <dl className="facts" data-testid="agreement-facts">
@@ -463,6 +469,7 @@ export function AgreementDetail() {
               onReload={agreement.reload}
             />
           )}
+          <AgreementTerms agreement={record} turn={turn} />
           {open && !listsLoading && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
@@ -511,7 +518,7 @@ export function AgreementDetail() {
               onReload={agreement.reload}
             />
           )}
-        </>
+        </StaleCause>
       )}
     </>
   );
@@ -539,10 +546,7 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
     status: (contract) => optionLabel(CONTRACT_STATUSES, contract.status),
     covered: (contract) => contract.covered_items,
     ...Object.fromEntries(
-      INHERITED.map(({ field }) => [
-        field,
-        (contract: Contract) => inForce(contract, field, agreement).text,
-      ]),
+      INHERITED.map(({ field }) => [field, (contract: Contract) => inForce(contract, field).text]),
     ),
   });
   const holdsAll = found.data !== undefined && found.data.total <= rows.length;
@@ -552,8 +556,9 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
       <h2 id="agreement-contracts">Its contracts</h2>
       <p>
         What a contract says nothing of, it has from this agreement: that is shown lighter. What is
-        marked Overrides is the contract&apos;s own, in place of what the agreement has. Its number,
-        its status, its purchase reference, its cost and its notes are always its own.
+        marked Overrides is the contract&apos;s own, in place of what the agreement gives, also
+        where the two are the same. Its number, its status, its purchase reference, its cost and its
+        notes are always its own.
       </p>
       <Problem error={found.error} />
       {found.loading && !found.data && (
@@ -620,12 +625,15 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
                   </td>
                   <td className="number">{contract.covered_items}</td>
                   {INHERITED.map(({ field }) => {
-                    const value = inForce(contract, field, agreement);
+                    const value = inForce(contract, field);
                     return (
                       <td
                         key={field}
                         data-field={field}
                         data-standing={value.standing}
+                        {...(value.standing === "override"
+                          ? { "data-same": value.same ? "true" : "false" }
+                          : {})}
                         className={value.standing === "inherited" ? "inherited" : undefined}
                       >
                         {value.standing === "none" ? (
@@ -641,9 +649,18 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
                                 {" "}
                                 <span
                                   className="badge mark"
-                                  title={`In place of ${value.overridden}, which the agreement has`}
+                                  title={
+                                    value.same
+                                      ? `The same as ${value.overridden}, which the agreement gives: set here, it stays as it is when the agreement's changes`
+                                      : `In place of ${value.overridden}, which the agreement gives`
+                                  }
                                 >
                                   Overrides
+                                </span>
+                                <span className="visually-hidden">
+                                  {value.same
+                                    ? ", the same as the agreement gives"
+                                    : `, in place of ${value.overridden}`}
                                 </span>
                               </>
                             )}

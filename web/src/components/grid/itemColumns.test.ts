@@ -940,3 +940,64 @@ describe("itemIsDimmed", () => {
     expect(itemIsDimmed(supply)).toBe(false);
   });
 });
+
+describe("what still counts an item out of service, and a line of another model, in the item grid", () => {
+  const counted = (...numbers: string[]) =>
+    ({
+      ...chassis,
+      out_of_service_contracts: numbers.map((number, at) => ({
+        hid: `0193a1f4-0000-7000-8000-0000000000c${at}`,
+        number,
+        vendor: "Cisco",
+        status: "active",
+        record_status: "active",
+      })),
+      purchase_line_mismatch: numbers.length > 0,
+    }) as unknown as Item;
+  const archived = counted("CON-2026-0001", "CON-2025-0009");
+  const inService = counted();
+
+  it("lists the contracts the server says still count it, by their numbers, as the list for the vendor", () => {
+    expect(column("out_of_service_contract.number").value(archived)).toBe(
+      "CON-2026-0001, CON-2025-0009",
+    );
+    expect(cellHint(column("out_of_service_contract.number"), archived)).toContain(
+      "the list to send the vendor",
+    );
+    // Blank for an item in service.
+    expect(column("out_of_service_contract.number").value(inService)).toBe("");
+    expect(cellHint(column("out_of_service_contract.number"), inService)).toBe("");
+  });
+
+  it("filters and sorts by those contracts on the server, as the contracts that cover it are", () => {
+    expect(asked("out_of_service_contract.number")).toMatchObject({
+      field: "out_of_service_contract.number",
+      sortField: "out_of_service_contract.number",
+      kind: "text",
+    });
+    expect(column("out_of_service_contract.number").header).toBe("Still counted under");
+  });
+
+  it("says where an item is on a line of another model, and filters by it", () => {
+    expect(column("purchase_line_mismatch").value(archived)).toBe("Yes");
+    expect(cellHint(column("purchase_line_mismatch"), archived)).toContain("0.6.0 let in");
+    expect(column("purchase_line_mismatch").value(inService)).toBe("");
+    expect(asked("purchase_line_mismatch")).toMatchObject({
+      field: "purchase_line_mismatch",
+      sortField: "purchase_line_mismatch",
+      kind: "boolean",
+    });
+  });
+
+  it("hides both until they are asked for, and exports them under the names a file of items has", () => {
+    expect(column("out_of_service_contract.number").hide).toBe(true);
+    expect(column("purchase_line_mismatch").hide).toBe(true);
+    // The export reads `out_of_service_contract.number` as its column `out_of_service_contracts`.
+    expect(
+      exportColumns(COLUMNS, [
+        { colId: "out_of_service_contract.number" },
+        { colId: "purchase_line_mismatch" },
+      ]),
+    ).toEqual(["hid", "out_of_service_contract.number", "purchase_line_mismatch"]);
+  });
+});

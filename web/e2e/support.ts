@@ -42,7 +42,10 @@
 //      run beside it. Tests that have to change one of these cannot run beside the
 //      others: say so here and in docs/architecture.md before writing them, and give
 //      them a project of their own in playwright.config.ts that runs when the others
-//      have ended.
+//      have ended. stale-term.spec.ts is one: it makes a day come by changing the
+//      `time_zone` setting, which says what today is for every file, and puts it back.
+//      It runs in the project "after the others", which waits for the files of every
+//      browser to end, and is not run at all when one of them failed.
 //   6. Keep failed sign-ins few. They are counted for each address, and every worker
 //      comes from the same one: after five in a row from all files together, every
 //      sign-in is delayed (docs/architecture.md, "Throttling").

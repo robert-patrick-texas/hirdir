@@ -8,7 +8,7 @@ import { api, type Schemas } from "../api";
 import { any } from "../lib/filter";
 import { itemName } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
-import { useAction } from "../lib/hooks";
+import { useAction, useLoad } from "../lib/hooks";
 import { PICK_LIMIT } from "../lib/pick";
 import { fieldErrors } from "../lib/problems";
 import { arrivedPath, lineModel, requestPath } from "../lib/purchases";
@@ -65,6 +65,62 @@ export function PurchaseLineField(props: PickFieldProps) {
   );
 }
 
+/** The model of an item, as the purchase form shows it beside the line. */
+function modelText(item: Item): string {
+  return item.catalog ? `${item.catalog.vendor} ${item.catalog.pid}` : "";
+}
+
+/**
+ * The model of the item, beside the line it is put on: an item on a line is of the
+ * line's model, so the server refuses a line of another model under this field. It is
+ * changed under Details, and not while the item is on a line.
+ */
+function ItemModel({ item, error }: { item: Item; error: string | undefined }) {
+  const model = modelText(item);
+  return (
+    <div className="field" data-testid="item-model">
+      <span className="field-label">Model</span>
+      <p className="field-value">{model || <span className="muted">None yet</span>}</p>
+      <p className="hint">
+        {model
+          ? "An item on a line is of the line's model: a line of another model is refused. To move it to one, take it off this line, give it that model under Details, then name the line."
+          : "An item with no model takes the model of the line it is put on."}
+      </p>
+      {error && <p className="field-error">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * What is said of an item on a line of another model than its own, which 0.6.0 let in,
+ * and how it is put right. The line is read for the name of its model.
+ */
+function Mismatch({ item }: { item: Item }) {
+  const line = item.purchase_line;
+  const read = useLoad(`mismatch-line ${line?.hid ?? ""}`, (signal) =>
+    line
+      ? api.request("get", "/api/v1/purchase-lines/{hid}", { path: { hid: line.hid }, signal })
+      : Promise.resolve(null),
+  );
+  if (!line) return null;
+  const its = modelText(item);
+  const theirs = read.data ? lineModel(read.data) : "";
+  return (
+    <div className="warning" data-testid="purchase-line-mismatch">
+      <p>
+        <span className="badge">Of another model than its line</span>{" "}
+        {its ? `${itemName(item)} is ${its}` : `${itemName(item)} has no model`}, and {line.name} is
+        a line of {theirs || "another model"}. 0.6.0 let that in; an item put on a line now is of
+        the line&apos;s model.
+      </p>
+      <p>
+        To put it right: where it is of the line&apos;s model, give it that model under Details.
+        Where it arrived on another line, name that line here, or None where it arrived on none.
+      </p>
+    </div>
+  );
+}
+
 interface ItemPurchaseLineProps {
   item: Item;
   mayEdit: boolean;
@@ -77,7 +133,9 @@ export function ItemPurchaseLine({ item, mayEdit, onChanged, onReload }: ItemPur
   const [editing, setEditing] = useState(false);
   const [chosen, setChosen] = useState(item.purchase_line_hid ?? "");
   const action = useAction();
-  const refused = fieldErrors(action.error, ["purchase_line_hid"]).shown;
+  // The server refuses a line of another model on the model of the item.
+  const known = ["purchase_line_hid", "catalog_entry_hid"];
+  const refused = fieldErrors(action.error, known).shown;
   const line = item.purchase_line;
   const name = itemName(item);
 
@@ -120,6 +178,7 @@ export function ItemPurchaseLine({ item, mayEdit, onChanged, onReload }: ItemPur
         <dt>Delivered on</dt>
         <dd>{item.delivered_on ?? <span className="muted">—</span>}</dd>
       </dl>
+      {item.purchase_line_mismatch && <Mismatch item={item} />}
       {mayEdit && !editing && (
         <p className="actions">
           <button type="button" onClick={() => setEditing(true)}>
@@ -131,9 +190,9 @@ export function ItemPurchaseLine({ item, mayEdit, onChanged, onReload }: ItemPur
         <div className="panel stack" data-testid="set-purchase-line">
           <p className="hint">
             Receiving a line names it on each item it makes. Named here by hand, the item counts as
-            received on that line, which must still have room for it.
+            received on that line, which must still have room for it and be of its model.
           </p>
-          <Problem error={action.error} shown={["purchase_line_hid"]} onReload={onReload} />
+          <Problem error={action.error} shown={known} onReload={onReload} />
           <div className="fields">
             <PurchaseLineField
               label="Purchase line"
@@ -145,6 +204,7 @@ export function ItemPurchaseLine({ item, mayEdit, onChanged, onReload }: ItemPur
               disabled={action.busy}
               error={refused.purchase_line_hid}
             />
+            <ItemModel item={item} error={refused.catalog_entry_hid} />
           </div>
           <p className="actions">
             <button

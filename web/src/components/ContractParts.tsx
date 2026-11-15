@@ -144,7 +144,7 @@ export function InForceValue({ value, agreement, children }: InForceValueProps) 
   }
   if (value.standing === "override") {
     return (
-      <span data-standing="override">
+      <span data-standing="override" data-same={value.same ? "true" : "false"}>
         {shown}
         <span className="muted"> · Set here </span>
         <span className="badge mark">Overrides</span>{" "}
@@ -153,6 +153,11 @@ export function InForceValue({ value, agreement, children }: InForceValueProps) 
           <span className="muted">
             {" "}
             of <Link to={agreementPath(agreement.hid)}>{agreement.name}</Link>
+          </span>
+        )}
+        {value.same && (
+          <span className="muted" data-testid="override-same">
+            , which is the same: set here, it stays as it is when the agreement&apos;s changes
           </span>
         )}
       </span>

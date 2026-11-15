@@ -596,7 +596,9 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   const listed = gridRow(page, "grid-coverage-out_of_service", archived);
   await expect(listed.getByRole("link", { name: archived, exact: true })).toBeVisible();
-  await expect(listed.locator('[col-id="out_of_service_cover"]')).toHaveText(renewedNumber);
+  await expect(listed.locator('[col-id="out_of_service_contract.number"]')).toHaveText(
+    renewedNumber,
+  );
   await expect(listed.locator('[col-id="covered_until"]')).toHaveText(lastDay);
   await expect(listed.locator('[col-id="lifecycle_state"]')).toHaveText("Archived");
   // An archived item is shown greyed.
