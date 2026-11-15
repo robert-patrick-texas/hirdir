@@ -1156,7 +1156,7 @@ The monthly recurring cost of a circuit, as the lines the carrier bills (P-150).
 | `circuit_hid` | reference | not changed afterwards |
 | `description` | text | required, and unique within its circuit without regard to case: "Port", "Local loop", "Access", "Promotional credit" |
 | `monthly_cost` | money | required; below zero for a credit |
-| `vendor_hid` | reference | the carrier that bills the line. Blank is the circuit's primary carrier |
+| `vendor_hid` | reference | the carrier that bills the line: the circuit's primary carrier or one of its other carriers. Blank is the primary carrier |
 | `starts_on`, `ends_on` | date | the days the line is billed. Optional, a blank being open: a new rate is a line that ends and one that begins |
 | `notes` | text | |
 

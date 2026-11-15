@@ -339,6 +339,9 @@ class Region(Bookkeeping, ShippingAddress, Base):
     operator_hid: Mapped[str | None] = mapped_column(
         ForeignKey("operators.hid"), default=None, index=True
     )
+    # The work supporting the network there adds by itself, beside its devices. Not
+    # passed down to the places beneath (P-139).
+    support_weight: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
     # Addresses to reach about the place, each with its text. Not passed down.
     links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
@@ -367,6 +370,9 @@ class Site(Bookkeeping, StreetAddress, ShippingAddress, Base):
     )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    # The work supporting the network there adds by itself, beside its devices. Not
+    # passed down to the places beneath (P-139).
+    support_weight: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
     # Addresses to reach about the place, each with its text. Not passed down.
     links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
@@ -395,6 +401,9 @@ class Location(Bookkeeping, StreetAddress, ShippingAddress, Base):
     )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    # The work supporting the network there adds by itself, beside its devices. Not
+    # passed down to the places beneath (P-139).
+    support_weight: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
     # Addresses to reach about the place, each with its text. Not passed down.
     links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
@@ -904,6 +913,190 @@ class CapacityRecord(Bookkeeping, Base):
     # A person has corrected the figures, and the note says why.
     adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class Circuit(Bookkeeping, Base):
+    """A telecommunication circuit beside the inventory (D-157, D-158, P-145).
+
+    Its ends are locations, its carriers vendors, its owner an owner: nothing that the
+    inventory holds is typed again.
+    """
+
+    __tablename__ = "circuits"
+    __table_args__ = (
+        UniqueConstraint("enterprise_circuit_id_key", name="circuits_enterprise_circuit_id"),
+        UniqueConstraint("carrier_hid", "carrier_number_key", name="circuits_carrier_number"),
+        CheckConstraint(
+            "a_location_hid IS NOT NULL OR z_location_hid IS NOT NULL", name="circuits_one_side"
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200), index=True)
+    # The enterprise's own ID, assigned locally, as an asset tag is.
+    enterprise_circuit_id: Mapped[str | None] = mapped_column(String(100), default=None)
+    enterprise_circuit_id_key: Mapped[str | None] = mapped_column(String(100), default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    circuit_type: Mapped[str | None] = mapped_column(String(40), default=None)
+    # The speed of the port, and the rates it is limited to; a blank rate is the port's.
+    port_mbps: Mapped[Decimal | None] = mapped_column(Scaled(2), default=None)
+    down_mbps: Mapped[Decimal | None] = mapped_column(Scaled(2), default=None)
+    up_mbps: Mapped[Decimal | None] = mapped_column(Scaled(2), default=None)
+    # The two sides: a location each, or a note of where an end outside is.
+    a_location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
+    a_note: Mapped[str | None] = mapped_column(String(200), default=None)
+    z_location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
+    z_note: Mapped[str | None] = mapped_column(String(200), default=None)
+    # The side whose site its cost and weight count at: given once, when it is made.
+    cost_side: Mapped[str] = mapped_column(String(1), default="a")
+    # The primary carrier, or the other party that provides it, and its number.
+    carrier_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
+    carrier_circuit_number: Mapped[str | None] = mapped_column(String(100), default=None)
+    carrier_number_key: Mapped[str | None] = mapped_column(String(100), default=None, index=True)
+    billing_account: Mapped[str | None] = mapped_column(String(100), default=None)
+    billing_contract: Mapped[str | None] = mapped_column(String(200), default=None)
+    installed_on: Mapped[date | None] = mapped_column(Date, default=None)
+    activated_on: Mapped[date | None] = mapped_column(Date, default=None)
+    disconnected_on: Mapped[date | None] = mapped_column(Date, default=None)
+    production: Mapped[bool] = mapped_column(Boolean, default=True)
+    support_weight: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
+    owner_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("owners.hid"), default=None, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class CircuitCarrier(Bookkeeping, Base):
+    """A carrier of a circuit beside its primary one, in its part, with its number."""
+
+    __tablename__ = "circuit_carriers"
+    __table_args__ = (
+        UniqueConstraint("circuit_hid", "vendor_hid", name="circuit_carriers_once"),
+        UniqueConstraint("vendor_hid", "circuit_number_key", name="circuit_carriers_number"),
+    )
+
+    hid: Mapped[str] = _hid()
+    circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
+    vendor_hid: Mapped[str] = mapped_column(ForeignKey("vendors.hid"), index=True)
+    role: Mapped[str] = mapped_column(String(40))
+    circuit_number: Mapped[str | None] = mapped_column(String(100), default=None)
+    circuit_number_key: Mapped[str | None] = mapped_column(String(100), default=None, index=True)
+    priority: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class CircuitCost(Bookkeeping, Base):
+    """One line of what a carrier bills for a circuit each month."""
+
+    __tablename__ = "circuit_costs"
+    __table_args__ = (
+        UniqueConstraint("circuit_hid", "description_key", name="circuit_costs_description"),
+    )
+
+    hid: Mapped[str] = _hid()
+    circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
+    description: Mapped[str] = mapped_column(String(200))
+    description_key: Mapped[str] = mapped_column(String(200))
+    monthly_cost: Mapped[Decimal] = mapped_column(Scaled(MONEY_PLACES))
+    # The carrier that bills the line; blank is the circuit's primary carrier.
+    vendor_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("vendors.hid"), default=None, index=True
+    )
+    starts_on: Mapped[date | None] = mapped_column(Date, default=None)
+    ends_on: Mapped[date | None] = mapped_column(Date, default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class CircuitDevice(Bookkeeping, Base):
+    """An item or a device group that a circuit connects, on one of its sides."""
+
+    __tablename__ = "circuit_devices"
+    __table_args__ = (
+        CheckConstraint("(item_hid IS NULL) <> (group_hid IS NULL)", name="circuit_devices_one"),
+        UniqueConstraint("circuit_hid", "item_hid", name="circuit_devices_item_once"),
+        UniqueConstraint("circuit_hid", "group_hid", name="circuit_devices_group_once"),
+    )
+
+    hid: Mapped[str] = _hid()
+    circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
+    item_hid: Mapped[str | None] = mapped_column(ForeignKey("items.hid"), default=None, index=True)
+    group_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("device_groups.hid"), default=None, index=True
+    )
+    side: Mapped[str] = mapped_column(String(1))
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class VendorContact(Bookkeeping, Base):
+    """A contact record named for a vendor: its account team or its support desk."""
+
+    __tablename__ = "vendor_contacts"
+    __table_args__ = (
+        UniqueConstraint("vendor_hid", "role", "contact_hid", name="vendor_contacts_once"),
+    )
+
+    hid: Mapped[str] = _hid()
+    vendor_hid: Mapped[str] = mapped_column(ForeignKey("vendors.hid"), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    contact_hid: Mapped[str] = mapped_column(ForeignKey("contacts.hid"), index=True)
+    priority: Mapped[int] = mapped_column(Integer)
+
+
+class CircuitContact(Bookkeeping, Base):
+    """A contact a circuit names of its own: the carrier's, or a site contact of a side."""
+
+    __tablename__ = "circuit_contacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "circuit_hid", "side", "role", "contact_hid", name="circuit_contacts_once"
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
+    # Blank for one of the carrier's; `a` or `z` for a site contact of that side.
+    side: Mapped[str | None] = mapped_column(String(1), default=None)
+    role: Mapped[str] = mapped_column(String(40))
+    contact_hid: Mapped[str] = mapped_column(ForeignKey("contacts.hid"), index=True)
+    priority: Mapped[int] = mapped_column(Integer)
+
+
+class CircuitGroup(Bookkeeping, Base):
+    """Circuits looked at and costed together, which may land at different sites."""
+
+    __tablename__ = "circuit_groups"
+    __table_args__ = (UniqueConstraint("name_key", name="circuit_groups_name"),)
+
+    hid: Mapped[str] = _hid()
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    owner_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("owners.hid"), default=None, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class CircuitGroupMember(Bookkeeping, Base):
+    """One circuit in one group. A circuit may be in several groups."""
+
+    __tablename__ = "circuit_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_hid", "circuit_hid", name="circuit_group_members_once"),
+    )
+
+    hid: Mapped[str] = _hid()
+    group_hid: Mapped[str] = mapped_column(ForeignKey("circuit_groups.hid"), index=True)
+    circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
 
 
 class Tag(Bookkeeping, Base):

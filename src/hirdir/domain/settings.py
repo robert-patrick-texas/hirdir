@@ -34,6 +34,8 @@ MOST_DAYS = 36_500
 # `max_items_per_request` says: the API takes no more.
 FEWEST_ITEMS_PER_REQUEST = 100
 MOST_ITEMS_PER_REQUEST = 5000
+# The most a default or a minimum of support weight may be (P-155).
+MOST_WEIGHT = Decimal(1_000_000)
 
 
 def _refuse(key: str, expected: str) -> Invalid:
@@ -163,6 +165,10 @@ def _kinds() -> tuple[str, ...]:
     return CATALOG_KINDS
 
 
+def _sides() -> tuple[str, ...]:
+    return ("a", "z")
+
+
 def _end_of_life_dates() -> tuple[str, ...]:
     # The four dates are the catalog's, which reads the settings: it is asked when
     # they are wanted, once both are loaded.
@@ -252,6 +258,44 @@ SPECS: dict[str, Spec] = {
         "how many items one request may cover, add to a group or receive; the web UI and "
         "the command line send their pieces by it",
         _whole("max_items_per_request", FEWEST_ITEMS_PER_REQUEST, MOST_ITEMS_PER_REQUEST),
+    ),
+    # The defaults and minimums of support weight (P-141, P-155): blank unless an Admin
+    # sets one, so that nothing is counted that nobody chose.
+    "default_item_weight": Spec(
+        None,
+        "the support weight of a major item that neither it nor its model gives",
+        _number("default_item_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "minimum_item_weight": Spec(
+        None,
+        "the least support weight a major item counts at, where it has one",
+        _number("minimum_item_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "default_site_weight": Spec(
+        None,
+        "the support weight of a site that gives none of its own",
+        _number("default_site_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "minimum_site_weight": Spec(
+        None,
+        "the least support weight a site counts at, where it has one",
+        _number("minimum_site_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "default_circuit_weight": Spec(
+        None,
+        "the support weight of a circuit that gives none of its own",
+        _number("default_circuit_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "minimum_circuit_weight": Spec(
+        None,
+        "the least support weight a circuit counts at, where it has one",
+        _number("minimum_circuit_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "circuit_cost_side": Spec(
+        "a",
+        "the side, a or z, whose site a new circuit's cost and support weight count at; "
+        "a change of it changes no circuit that exists",
+        _one_of("circuit_cost_side", _sides),
     ),
 }
 

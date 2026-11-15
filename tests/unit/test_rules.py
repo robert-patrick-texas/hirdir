@@ -59,6 +59,8 @@ def test_migration_loads_the_rules_and_the_choices(db: Session) -> None:
         "contact_role",
         "location_kind",
         "capacity_category",
+        "circuit_type",
+        "carrier_role",
     }
     for rule in lifecycle.list_rules(db):
         assert set(rule.next_states) <= set(lifecycle.STATES)

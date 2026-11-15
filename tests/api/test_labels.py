@@ -39,6 +39,8 @@ def test_choices_come_with_defaults_and_can_be_added_to(make: Maker) -> None:
         "contact_role",
         "location_kind",
         "capacity_category",
+        "circuit_type",
+        "carrier_role",
     }
     assert "list" in errors(make.get("/choices", 422, list="colours"))
 

@@ -203,7 +203,8 @@ its primary carrier, `carriers.vendor_hid` and `carriers.circuit_number` find it
 of its carriers and by the number any of them gives it, `location` by a side at a
 location, and takes `within` with a region, a site or a location, `a_location.name` and
 `z_location.name` are the names of its two sides, `cost_site_hid` is the site it counts
-at, `groups.name` finds it by any of its groups, `owner.label` and `owner_exception` go
+at and `cost_location` the location it counts at, which takes `within` as `location`
+does, `groups.name` and `groups.hid` find it by any of its groups, `owner.label` and `owner_exception` go
 by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
 it gives none, `monthly_cost` and `annual_cost` what it costs today, and `in_service`
@@ -965,7 +966,9 @@ it; by `site` it is in the row of the site it counts at; by `region` in that of 
 region at or above that site; by `group` in the row of each group it is in, and by `tag`
 of each tag; by `circuit_type` and `owner` in one row. The blank row is what has none,
 and the totals count each circuit once. A row's `filter` lists its circuits on `GET
-/circuits` (P-151).
+/circuits`: by `carriers.vendor_hid`, the circuits of that carrier, by `cost_site_hid`,
+by `cost_location` `within` the region, by `groups.hid`, by `circuit_type`, by
+`owner_hid` or by `tags` (P-151).
 
 ## Kept answers
 

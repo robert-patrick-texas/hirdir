@@ -10,6 +10,9 @@ from hirdir.db.models import (
     CapacityLine,
     CatalogEntry,
     Choice,
+    Circuit,
+    CircuitCarrier,
+    CircuitContact,
     ContactAssignment,
     Item,
     ItemReplacement,
@@ -28,6 +31,8 @@ LISTS = (
     "location_kind",
     "replacement_reason",
     "capacity_category",
+    "circuit_type",
+    "carrier_role",
 )
 VALUE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 FIELDS = ("list_name", "value", "label", "sort", "active")
@@ -39,7 +44,12 @@ USES = {
     "state_reason": ((Item, Item.state_reason),),
     "item_condition": ((Item, Item.condition),),
     "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
-    "contact_role": ((ContactAssignment, ContactAssignment.role),),
+    "contact_role": (
+        (ContactAssignment, ContactAssignment.role),
+        (CircuitContact, CircuitContact.role),
+    ),
+    "circuit_type": ((Circuit, Circuit.circuit_type),),
+    "carrier_role": ((CircuitCarrier, CircuitCarrier.role),),
     "location_kind": ((Location, Location.kind),),
     "capacity_category": ((CapacityLine, CapacityLine.category),),
 }

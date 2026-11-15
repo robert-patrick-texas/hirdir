@@ -23,6 +23,13 @@ from hirdir.db.models import (
     CapacityRecord,
     CatalogEntry,
     Choice,
+    Circuit,
+    CircuitCarrier,
+    CircuitContact,
+    CircuitCost,
+    CircuitDevice,
+    CircuitGroup,
+    CircuitGroupMember,
     Contact,
     ContactAssignment,
     Contract,
@@ -57,6 +64,7 @@ from hirdir.db.models import (
     UserGroup,
     UserGroupMember,
     Vendor,
+    VendorContact,
 )
 from hirdir.domain import audit
 from hirdir.domain.audit import AuditContext, change
@@ -65,6 +73,14 @@ from hirdir.domain.audit import AuditContext, change
 # record goes before the record.
 CLEARED: tuple[Any, ...] = (
     TagLink,
+    CircuitGroupMember,
+    CircuitGroup,
+    CircuitContact,
+    CircuitDevice,
+    CircuitCost,
+    CircuitCarrier,
+    Circuit,
+    VendorContact,
     ImportRow,
     ImportJob,
     IdempotencyKey,
