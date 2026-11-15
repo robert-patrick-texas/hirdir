@@ -425,6 +425,20 @@ def update_line(
         )
     plain = {name: value for name, value in fields.items() if name != "request_hid"}
     values, corrected = _checked_line(db, plain, line, line.request_hid)
+    given_model = values.get("catalog_entry_hid", line.catalog_entry_hid)
+    if (
+        line.catalog_entry_hid is not None
+        and given_model != line.catalog_entry_hid
+        and line.part_number is None
+        and values.get("part_number") is None
+    ):
+        # A line with no part number of its own, one of 0.6.0 or one made by hand, keeps
+        # the PID of the model it is corrected from as the part number procurement gave
+        # it: loading procurement's file again then finds it unchanged and leaves the
+        # correction as it is (the owner's answer of 2026-11-15).
+        was = db.get(CatalogEntry, line.catalog_entry_hid)
+        if was is not None:
+            values["part_number"] = was.pid
     records.apply(db, context, LINE_TYPE, line, row_version, values)
     db.flush()
     if corrected == FOLLOW:

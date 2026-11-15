@@ -2204,6 +2204,14 @@ class MemberRenewal(Model):
         ),
     )
     number: ShortText | None = Field(default=None, description="The new number, for `new_number`.")
+    status: ContractStatus | None = Field(
+        default=None,
+        description=(
+            "The status it is to have from this change: the operator's confirmation that it "
+            "moves forward. Left out, its status stays as it is; nothing else in the renewal "
+            "changes it."
+        ),
+    )
     annual_cost: Money | None = Field(default=None, description="Its cost in the new term.")
     purchase_reference: Name | None = Field(
         default=None, description="What its new term was bought under."

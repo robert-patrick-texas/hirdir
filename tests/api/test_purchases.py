@@ -410,8 +410,11 @@ def test_a_line_corrected_after_items_arrived_says_what_becomes_of_them(
         ]
     assert make.get(f"/items/{gone['hid']}")["catalog_entry_hid"] == entry["hid"]
     line_events = make.audit(record_type="purchase_line", record_hid=follow["hid"])
-    assert line_events[0]["changes"] == [
-        {"field": "catalog_entry_hid", "old": entry["hid"], "new": right["hid"]}
+    # A line with no part number of its own keeps the PID it is corrected from, so that
+    # a reload of procurement's file leaves the correction as it is.
+    assert sorted(line_events[0]["changes"], key=lambda one: one["field"]) == [
+        {"field": "catalog_entry_hid", "old": entry["hid"], "new": right["hid"]},
+        {"field": "part_number", "old": None, "new": entry["pid"]},
     ]
 
     # Left as they are, they are reported, one by one.

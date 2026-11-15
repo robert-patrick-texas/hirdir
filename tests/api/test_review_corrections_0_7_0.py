@@ -291,3 +291,104 @@ def test_capacity_lines_sort_and_filter_by_what_they_apply_to(desk: Renewer) -> 
     found = desk.get("/capacity-lines", filter="applies_to:eq:Network engineer")["items"]
     assert [one["name"] for one in found] == ["AI assistant"]
     assert desk.get("/capacity-lines", sort="applies_to")["total"] == 2
+
+
+# --- the second review ------------------------------------------------------------------
+
+
+def test_a_new_number_moves_no_status_and_the_operator_confirms_the_member(
+    desk: Renewer, db: Session
+) -> None:
+    agreement = desk.agreement(starts_on=day(-365), ends_on=day(-40))
+    told = desk.contract("CON-T", agreement_hid=agreement["hid"], status="renewal_pending")
+    renumbered = desk.contract("CON-N", agreement_hid=agreement["hid"], status="renewal_pending")
+    answer = _renew(
+        desk,
+        agreement,
+        starts_on=day(-39),
+        ends_on=day(325),
+        members=[
+            {"contract_hid": told["hid"], "status": "active"},
+            {"contract_hid": renumbered["hid"], "renewal": "new_number", "number": "CON-N2"},
+        ],
+    )
+    assert desk.get(f"/contracts/{told['hid']}")["status"] == "active"
+    now = desk.get(f"/contracts/{renumbered['hid']}")
+    assert (now["number"], now["status"]) == ("CON-N2", "renewal_pending")
+    assert [one["number"] for one in answer["to_review"]] == ["CON-N2"]
+
+
+def test_a_waiting_number_keeps_the_members_status_when_it_begins(
+    desk: Renewer, db: Session
+) -> None:
+    agreement = desk.agreement(starts_on=day(-300), ends_on=day(30))
+    member = desk.contract("CON-1", agreement_hid=agreement["hid"], status="renewal_pending")
+    _renew(
+        desk,
+        agreement,
+        starts_on=day(31),
+        ends_on=day(395),
+        members=[{"contract_hid": member["hid"], "renewal": "new_number", "number": "CON-2"}],
+    )
+    held = db.get_one(Agreement, agreement["hid"])
+    held.ends_on, held.next_starts_on = date.fromisoformat(day(-2)), date.fromisoformat(day(-1))
+    db.commit()
+    now = desk.get(f"/contracts/{member['hid']}")
+    assert (now["number"], now["status"]) == ("CON-2", "renewal_pending")
+
+
+def test_a_marked_contract_is_on_the_list_of_what_is_let_go_alone(desk: Renewer) -> None:
+    marked = desk.contract(
+        "CON-M", starts_on=day(-400), ends_on=day(-70), status="renewal_pending",
+        ends_with_term=True,
+    )  # fmt: skip
+    found = worklist(desk)
+    assert (found["totals"]["renewal_pending"], found["totals"]["overdue"]) == (0, 0)
+    assert listed(desk, "/contracts", found["sections"]["ends_with_term"]["filter"]) == {
+        marked["hid"]
+    }
+    alert = desk.get("/renewals/alert")
+    assert (alert["show"], alert["renewal_pending"]["count"]) == (False, 0)
+
+
+def test_a_hand_added_coverage_keeps_the_contracts_end_only_while_a_renewal_waits(
+    desk: Renewer, db: Session
+) -> None:
+    phone = desk.entry(desk.cisco, pid="CP-8845")
+    flagged = desk.switch(phone, "PH-1")
+    db.get_one(CatalogEntry, phone["hid"]).do_not_renew = True
+    db.commit()
+    contract = desk.contract("CON-1", starts_on=day(-300), ends_on=day(20))
+    desk.cover(contract, flagged, ends_on=day(20))
+    desk.change(f"/contracts/{contract['hid']}", ends_on=day(200))
+    assert desk.covered(flagged)[1] == day(200)
+
+
+def test_a_line_corrected_keeps_the_pid_it_had_and_a_reload_keeps_the_correction(
+    desk: Renewer,
+) -> None:
+    right = desk.entry(desk.cisco, pid="SFP-10G-LR")
+    desk.entry(desk.cisco, pid="SFP-10G-SR")
+    files = "request,line,vendor,pid,quantity\nRITM0012345,1,Cisco,SFP-10G-SR,4\n"
+    desk.post("/purchase-requests", {"reference": "RITM0012345"})
+
+    def load() -> dict[str, Any]:
+        preview = desk.client.post(
+            f"{API}/imports/preview",
+            params={"entity": "purchase_lines", "mode": "upsert"},
+            content=files,
+            headers={**desk.headers, "Content-Type": "text/csv"},
+        ).json()
+        return preview
+
+    first = load()
+    desk.apply(f"/imports/{first['job']['hid']}/apply")
+    (line,) = desk.get("/purchase-lines")["items"]
+    assert line["part_number"] is None
+    corrected = desk.patch(
+        f"/purchase-lines/{line['hid']}",
+        {"row_version": line["row_version"], "catalog_entry_hid": right["hid"]},
+    )
+    assert corrected["part_number"] == "SFP-10G-SR"
+    again = load()
+    assert [row["outcome"] for row in again["rows"]] == ["unchanged"]

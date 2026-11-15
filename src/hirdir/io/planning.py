@@ -430,14 +430,20 @@ def _renewal_conditions(today: date, within_days: int) -> dict[str, dict[str, An
             where("ends_with_term", "eq", False),
         ),
         "lapsed": where("lapsed", "eq", True),
-        "renewal_pending": where("status", "eq", contracts.RENEWAL_PENDING),
-        "overdue": where("renewal_overdue", "eq", True),
+        # A contract the team marked not to renew is on its own list alone (P-129).
+        "renewal_pending": filters.both(
+            where("status", "eq", contracts.RENEWAL_PENDING),
+            where("ends_with_term", "eq", False),
+        ),
+        "overdue": filters.both(
+            where("renewal_overdue", "eq", True), where("ends_with_term", "eq", False)
+        ),
         # What the team marked not to renew, to be seen and never alerted: from when
         # it ends within the horizon, and also once it has ended, until a person says
         # it has expired or retires it. The mark changes nothing by itself (P-129).
         "ends_with_term": filters.both(
             where("ends_with_term", "eq", True),
-            where("status", "eq", contracts.ACTIVE),
+            where("status", "in", [contracts.ACTIVE, contracts.RENEWAL_PENDING]),
             where("effective.ends_on", "lte", horizon),
         ),
         # The members of an agreement that was renewed that still say their renewal is
