@@ -125,6 +125,10 @@ what the release is:
   same way. Most releases have none. For 0.4.2 it is the reason given for a health
   that is not known, and how a time with no zone is read: the test keeps a moment that
   0.4.1 stored from such a time, and sees that the upgrade leaves it the moment it was.
+  For 0.6.1 it is the dates of an earlier term of a contract that had none of its own,
+  an agreement's earlier terms, what a contract's agreement gives, an item on a
+  purchase line of another model, and the contracts that still count an item out of
+  service: the test makes each with 0.6.0 and sees what 0.6.1 says of it.
 - **A release that brings a new kind of record** adds it to the inventory in
   `packaging/package-test.sh`, to be made where the previous release is at the revision
   that brought it. That is for the upgrades to come, which then carry it: the upgrade
