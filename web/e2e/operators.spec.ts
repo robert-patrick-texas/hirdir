@@ -30,7 +30,7 @@
 
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { count, importFile, main, openItem, pick, region, summary } from "./structure";
+import { count, importFile, main, openItem, pick, region, summary, whenApplied } from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -489,7 +489,7 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   await bulk.getByRole("button", { name: "Preview the change" }).click();
   await expect(count(page, "updated")).toHaveText("1");
   await bulk.getByRole("button", { name: "Apply 1 item" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("1 updated");
+  await whenApplied(page, 1);
   await summary(page, filter, "operator");
   await expect(rows).toHaveCount(3);
   await expect(nobody).toHaveCount(0);

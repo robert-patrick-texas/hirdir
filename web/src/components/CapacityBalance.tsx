@@ -337,13 +337,21 @@ function DemandByRegion({ report }: { report: CapacityReport }) {
 function RegionLine({ row, indent }: { row: RegionRow; indent: boolean }) {
   const cells = (region: RegionRow["active"], which: string) => (
     <>
-      <td className="number" data-testid={`${which}-weight`} data-value={region?.support_weight}>
+      <td
+        className="number"
+        data-testid={`region-${which}-weight`}
+        data-value={region?.support_weight}
+      >
         {measureText(region?.support_weight, "weight")}
       </td>
-      <td className="number" data-testid={`${which}-demand`}>
+      <td className="number" data-testid={`region-${which}-demand`}>
         {measureText(region?.infrastructure_demand, "units")}
       </td>
-      <td className="number" data-testid={`${which}-share`} data-value={region?.share_pct ?? ""}>
+      <td
+        className="number"
+        data-testid={`region-${which}-share`}
+        data-value={region?.share_pct ?? ""}
+      >
         {measureText(region?.share_pct, "percent")}
       </td>
     </>

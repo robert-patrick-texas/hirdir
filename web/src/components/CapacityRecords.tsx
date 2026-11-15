@@ -291,13 +291,13 @@ function Records({ mayEdit, turn, onChanged }: RecordsProps) {
 function Figures({ view, which }: { view: Schemas["CapacityRecordView"]; which: string }) {
   return (
     <>
-      <td className="number" data-testid={`${which}-demand`} data-value={view.demand}>
+      <td className="number" data-testid={`record-${which}-demand`} data-value={view.demand}>
         {measureText(view.demand, "units")}
       </td>
-      <td className="number" data-testid={`${which}-supply`} data-value={view.supply}>
+      <td className="number" data-testid={`record-${which}-supply`} data-value={view.supply}>
         {measureText(view.supply, "units")}
       </td>
-      <td className="number" data-testid={`${which}-balance`} data-value={view.balance}>
+      <td className="number" data-testid={`record-${which}-balance`} data-value={view.balance}>
         {measureText(view.balance, "units")}
       </td>
       <td className="number">{measureText(view.coverage_pct, "percent")}</td>
@@ -331,7 +331,8 @@ function Correct(props: {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(CORRECTED.map((figure) => [key(figure), record[figure[0]][figure[1]]])),
   );
-  const [note, setNote] = useState(record.note ?? "");
+  // A correction says why it is made, in a note of its own.
+  const [note, setNote] = useState("");
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
   const names = [...CORRECTED.map(key), ...CORRECTED.map(([view]) => view), "note"];
