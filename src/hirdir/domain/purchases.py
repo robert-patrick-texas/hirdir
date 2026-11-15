@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from hirdir import clock, ids
@@ -174,6 +174,29 @@ def the_line(db: Session, text: str, field: str) -> PurchaseLine:
             {field: f"there is no purchase line {text}; a line is named as RITM0012345/2"},
         )
     return found
+
+
+def mismatched(db: Session, line_hids: Sequence[str]) -> dict[str, int]:
+    """Return how many of the items that name each line are of another model than the
+    line's: what 0.6.0 let in, to be put right."""
+    counts = dict.fromkeys(line_hids, 0)
+    if line_hids:
+        counted = db.execute(
+            select(Item.purchase_line_hid, func.count())
+            .join(PurchaseLine, PurchaseLine.hid == Item.purchase_line_hid)
+            .where(
+                Item.purchase_line_hid.in_(line_hids),
+                or_(
+                    Item.catalog_entry_hid.is_(None),
+                    Item.catalog_entry_hid != PurchaseLine.catalog_entry_hid,
+                ),
+            )
+            .group_by(Item.purchase_line_hid)
+        )
+        for hid, count in counted:
+            if hid is not None:
+                counts[hid] = count
+    return counts
 
 
 def received(db: Session, line_hids: Sequence[str]) -> dict[str, int]:

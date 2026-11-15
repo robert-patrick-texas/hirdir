@@ -1172,6 +1172,113 @@
         "title": "AgreementRef",
         "type": "object"
       },
+      "AgreementTerm": {
+        "additionalProperties": false,
+        "description": "A term an agreement had before it was renewed.",
+        "properties": {
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annual Cost"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Reference"
+          },
+          "renewed_at": {
+            "description": "When the renewal that ended this term was made.",
+            "format": "date-time",
+            "title": "Renewed At",
+            "type": "string"
+          },
+          "renewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renewed By"
+          },
+          "renewed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renewed By Name"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "required": [
+          "number",
+          "starts_on",
+          "ends_on",
+          "annual_cost",
+          "purchase_reference",
+          "renewed_at",
+          "renewed_by",
+          "renewed_by_name"
+        ],
+        "title": "AgreementTerm",
+        "type": "object"
+      },
       "Arrived": {
         "additionalProperties": false,
         "description": "One item that arrived on a line: something to know it by.",
@@ -4007,28 +4114,28 @@
       },
       "ContractEffective": {
         "additionalProperties": false,
-        "description": "What a contract has in force of the fields it may have from its agreement.",
+        "description": "What a contract has in force of the fields it may have from its agreement, each\nwith what the agreement gives for it, so that an override says what it is in place\nof.",
         "properties": {
           "account_manager": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           },
           "ends_on": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           },
           "reseller_hid": {
-            "$ref": "#/components/schemas/EffectiveReference"
+            "$ref": "#/components/schemas/ContractEffectiveReference"
           },
           "starts_on": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           },
           "support_contact": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           },
           "support_level": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           },
           "support_url": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/ContractEffectiveValue"
           }
         },
         "required": [
@@ -4041,6 +4148,164 @@
           "support_url"
         ],
         "title": "ContractEffective",
+        "type": "object"
+      },
+      "ContractEffectiveReference": {
+        "additionalProperties": false,
+        "description": "The reseller a contract has in force, where it came from, and the agreement's.",
+        "properties": {
+          "from_agreement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The HID of the reseller the agreement gives, whether overridden or not.",
+            "title": "From Agreement"
+          },
+          "from_agreement_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That reseller's name.",
+            "title": "From Agreement Label"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What people call the record.",
+            "title": "Label"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "device_group",
+              "location",
+              "site",
+              "region",
+              "agreement",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The HID of the record.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "source",
+          "source_hid",
+          "from_agreement",
+          "from_agreement_label"
+        ],
+        "title": "ContractEffectiveReference",
+        "type": "object"
+      },
+      "ContractEffectiveValue": {
+        "additionalProperties": false,
+        "description": "A value a contract has in force, where it came from, and what its agreement\ngives for it.",
+        "properties": {
+          "from_agreement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing.",
+            "title": "From Agreement"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "device_group",
+              "location",
+              "site",
+              "region",
+              "agreement",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "from_agreement"
+        ],
+        "title": "ContractEffectiveValue",
         "type": "object"
       },
       "ContractOut": {
@@ -4741,8 +5006,20 @@
       },
       "ContractTerm": {
         "additionalProperties": false,
-        "description": "A term a contract had before it was renewed.",
+        "description": "A term a contract had before it was renewed, with the dates it had in force.",
         "properties": {
+          "agreement_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agreement the contract was in then.",
+            "title": "Agreement Hid"
+          },
           "annual_cost": {
             "anyOf": [
               {
@@ -4768,7 +5045,17 @@
                 "type": "null"
               }
             ],
+            "description": "The last day of the term in force, in the same way.",
             "title": "Ends On"
+          },
+          "ends_on_source": {
+            "enum": [
+              "own",
+              "agreement",
+              "none"
+            ],
+            "title": "Ends On Source",
+            "type": "string"
           },
           "number": {
             "title": "Number",
@@ -4823,13 +5110,26 @@
                 "type": "null"
               }
             ],
+            "description": "The first day of the term in force: the contract's own, or, where it had none, its agreement's as it stood on the last day of the term.",
             "title": "Starts On"
+          },
+          "starts_on_source": {
+            "enum": [
+              "own",
+              "agreement",
+              "none"
+            ],
+            "title": "Starts On Source",
+            "type": "string"
           }
         },
         "required": [
           "number",
           "starts_on",
           "ends_on",
+          "starts_on_source",
+          "ends_on_source",
+          "agreement_hid",
           "annual_cost",
           "purchase_reference",
           "renewed_at",
@@ -9487,6 +9787,14 @@
             ],
             "title": "Operator Hid"
           },
+          "out_of_service_contracts": {
+            "description": "For an item out of service, the contracts that still count it: those that cover it past today, and those whose coverage of it was ended because it left while their term still runs. The list to send the vendor. Empty for an item in service.",
+            "items": {
+              "$ref": "#/components/schemas/ContractRef"
+            },
+            "title": "Out Of Service Contracts",
+            "type": "array"
+          },
           "owner": {
             "anyOf": [
               {
@@ -9614,6 +9922,11 @@
               }
             ],
             "title": "Purchase Line Hid"
+          },
+          "purchase_line_mismatch": {
+            "description": "It is on a line of another model, which 0.6.0 let in: it is to be put right. An item put on a line now is of the line's model.",
+            "title": "Purchase Line Mismatch",
+            "type": "boolean"
           },
           "quantity": {
             "title": "Quantity",
@@ -9796,6 +10109,7 @@
           "position",
           "purchase_line_hid",
           "purchase_line",
+          "purchase_line_mismatch",
           "is_major",
           "depth",
           "minor_items",
@@ -9821,6 +10135,7 @@
           "contract_count",
           "covered_until",
           "coverage",
+          "out_of_service_contracts",
           "registrations",
           "group_registrations",
           "tags",
@@ -14784,6 +15099,11 @@
             "title": "Line",
             "type": "integer"
           },
+          "mismatched_items": {
+            "description": "How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list.",
+            "title": "Mismatched Items",
+            "type": "integer"
+          },
           "name": {
             "description": "How the line is named: `RITM0012345/2`.",
             "title": "Name",
@@ -14856,6 +15176,7 @@
           "quantity",
           "received_quantity",
           "pending_quantity",
+          "mismatched_items",
           "destination_site_hid",
           "destination_site",
           "expected_on",
@@ -14961,6 +15282,11 @@
         "additionalProperties": false,
         "description": "The line of a purchase request an item arrived on.",
         "properties": {
+          "catalog_entry_hid": {
+            "description": "The model of the line.",
+            "title": "Catalog Entry Hid",
+            "type": "string"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -14988,7 +15314,8 @@
           "name",
           "request_hid",
           "reference",
-          "line"
+          "line",
+          "catalog_entry_hid"
         ],
         "title": "PurchaseLineRef",
         "type": "object"
@@ -15369,6 +15696,11 @@
             "title": "Line",
             "type": "integer"
           },
+          "mismatched_items": {
+            "description": "How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list.",
+            "title": "Mismatched Items",
+            "type": "integer"
+          },
           "name": {
             "description": "How the line is named: `RITM0012345/2`.",
             "title": "Name",
@@ -15441,6 +15773,7 @@
           "quantity",
           "received_quantity",
           "pending_quantity",
+          "mismatched_items",
           "destination_site_hid",
           "destination_site",
           "expected_on",
@@ -19921,6 +20254,53 @@
         ]
       }
     },
+    "/api/v1/agreements/{hid}/terms": {
+      "get": {
+        "description": "List the terms an agreement had before it was renewed, the latest first: its\npurchase history.",
+        "operationId": "agreement_terms_api_v1_agreements__hid__terms_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgreementTerm"
+                  },
+                  "title": "Response Agreement Terms Api V1 Agreements  Hid  Terms Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agreement Terms",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
     "/api/v1/audit-events": {
       "get": {
         "description": "List audit events, newest first unless a sort says otherwise.",
@@ -22705,7 +23085,7 @@
     },
     "/api/v1/contracts/{hid}/terms": {
       "get": {
-        "description": "List the terms a contract had before it was renewed, the latest first: its\npurchase history.",
+        "description": "List the terms a contract had before it was renewed, the latest first: its\npurchase history. Each has the dates it had in force: where the contract had none\nof its own, its agreement's as they stood on the last day of the term.",
         "operationId": "contract_terms_api_v1_contracts__hid__terms_get",
         "parameters": [
           {

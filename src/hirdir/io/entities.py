@@ -1586,6 +1586,8 @@ class Items(Entity):
         Column("covered_until", "date", settable=False),
         Column("contracts", "list", settable=False),
         Column("contract_count", "integer", settable=False),
+        Column("out_of_service_contracts", "list", settable=False),
+        Column("purchase_line_mismatch", "boolean", settable=False),
         *_sources((_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES)),
         *BOOKKEEPING,
     )
@@ -1612,6 +1614,7 @@ class Items(Entity):
         "region_hid": "region",
         "purchase_line_hid": "purchase_line",
         "contract.number": "contracts",
+        "out_of_service_contract.number": "out_of_service_contracts",
         **{f"effective.{name}": name for name in inheritance.STANDING},
         **MGMT_SPELLINGS,
     }
@@ -1657,13 +1660,21 @@ class Items(Entity):
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
         serial, tag = values.get("serial_number"), values.get("asset_tag")
+        model: str | None = None
         if vendor and pid and serial:
             entry = run.entry(vendor, pid)
             if entry is None:
                 return None
+            model = entry.hid
+        elif serial and not (vendor or pid) and values.get("purchase_line"):
+            # A row that names a line and no model is of the line's model (D-161).
+            model = purchases.the_line(
+                db, values["purchase_line"], "purchase_line"
+            ).catalog_entry_hid
+        if model is not None and serial:
             return db.scalar(
                 select(Item).where(
-                    Item.catalog_entry_hid == entry.hid, Item.serial_key == records.key(serial)
+                    Item.catalog_entry_hid == model, Item.serial_key == records.key(serial)
                 )
             ) or self._received_as_a_count(db, values)
         if tag:
@@ -2066,10 +2077,21 @@ class Items(Entity):
         today = contracts.today(db)
         cover = contracts.of_items(db, hids)
         arrived_on = _line_names(db, {item.purchase_line_hid for item in found})
+        models_of = {
+            line.hid: line.catalog_entry_hid
+            for line in _by_hid(
+                db, PurchaseLine, {item.purchase_line_hid for item in found}
+            ).values()
+        }
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
             line = lines[item.hid]
+            counting = {
+                contract.hid: contracts.term(contract, today)["number"]
+                for coverage, contract in cover[item.hid]
+                if contracts.still_counts(coverage, contract, today)
+            }
             covering_ = {
                 contract.hid: contracts.term(contract, today)["number"]
                 for coverage, contract in cover[item.hid]
@@ -2113,6 +2135,11 @@ class Items(Entity):
                 "contracts": sorted(set(covering), key=records.key),
                 # Contracts, and not numbers: two vendors may use one number.
                 "contract_count": len(covering_),
+                "out_of_service_contracts": sorted(set(counting.values()), key=records.key)
+                if contracts.out_of_service(item.record_status, in_force["lifecycle_state"].value)
+                else [],
+                "purchase_line_mismatch": item.purchase_line_hid is not None
+                and models_of.get(item.purchase_line_hid) != item.catalog_entry_hid,
             }
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
@@ -2803,6 +2830,7 @@ class PurchaseLines(Entity):
         NOTES,
         Column("received_quantity", "integer", settable=False),
         Column("pending_quantity", "integer", settable=False),
+        Column("mismatched_items", "integer", settable=False),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -2873,6 +2901,7 @@ class PurchaseLines(Entity):
         atlas = geography.Atlas(db)
         atlas.read_sites(line.destination_site_hid for line in found)
         arrived = purchases.received(db, [line.hid for line in found])
+        astray = purchases.mismatched(db, [line.hid for line in found])
         rows = []
         for line in found:
             entry = entries[line.catalog_entry_hid]
@@ -2889,6 +2918,7 @@ class PurchaseLines(Entity):
                     "notes": line.notes,
                     "received_quantity": arrived[line.hid],
                     "pending_quantity": line.quantity - arrived[line.hid],
+                    "mismatched_items": astray[line.hid],
                 }
             )
         return rows

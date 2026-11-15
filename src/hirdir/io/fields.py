@@ -470,27 +470,58 @@ COVERED_UNTIL: ColumnElement[Any] = type_coerce(
     Date,
 )
 # Out of service, and a contract still counts it: its cover goes on, or its coverage was
-# ended because it left while the term of its contract still runs.
-_OUT_OF_SERVICE = ("Pending-Removal", "Released", "Archived")
-# A coverage that ends today asks for nothing more: the cover that goes on is what counts.
-_COVER_GOES_ON = (
-    _ITS_COVER.where(
-        *_COVERS_TODAY, or_(_COVER.ends_on.is_(None), dialect.today() < _COVER.ends_on)
+# ended because it left while the term of its contract still runs. A coverage that ends
+# today asks for nothing more: the cover that goes on is what counts. An item that was
+# brought back is in service again, whatever a coverage of it says.
+# `hirdir.domain.contracts.still_counts` is the same test for a page of records.
+_ITEM_OUT = or_(Item.record_status == "retired", STATE_IN_FORCE.in_(contracts.OUT_OF_SERVICE))
+_COUNTING = (
+    _COVER.item_hid == Item.hid,
+    or_(
+        and_(
+            contracts.coverage_in_force(_COVER, _COVERING),
+            or_(_COVER.ends_on.is_(None), dialect.today() < _COVER.ends_on),
+        ),
+        contracts.left_while_running(_COVER, _COVERING),
+    ),
+)
+OUT_OF_SERVICE_COVER: ColumnElement[Any] = and_(
+    _ITEM_OUT, _ITS_COVER.where(*_COUNTING).correlate(Item).exists()
+)
+
+
+def _item_counting(condition: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Return the test that a contract that still counts an item out of service meets a
+    condition."""
+    return and_(_ITEM_OUT, _ITS_COVER.where(*_COUNTING, condition).exists())
+
+
+# The first number among the contracts that still count it, for a column to be sorted by.
+_FIRST_COUNTING = case(
+    (
+        _ITEM_OUT,
+        select(func.min(dialect.folded(contracts.term_value(_COVERING, "number"))))
+        .select_from(_COVER)
+        .join(_COVERING, _COVERING.hid == _COVER.contract_hid)
+        .where(*_COUNTING)
+        .correlate(Item)
+        .scalar_subquery(),
+    ),
+    else_=None,
+)
+# The line an item arrived on is of another model than the item's.
+_ITS_LINE: Any = aliased(PurchaseLine, name="item_line")
+PURCHASE_LINE_MISMATCH: ColumnElement[Any] = (
+    select(_ITS_LINE.hid)
+    .where(
+        _ITS_LINE.hid == Item.purchase_line_hid,
+        or_(
+            Item.catalog_entry_hid.is_(None),
+            _ITS_LINE.catalog_entry_hid != Item.catalog_entry_hid,
+        ),
     )
     .correlate(Item)
     .exists()
-)
-# An item that was brought back is in service again, whatever a coverage of it says.
-OUT_OF_SERVICE_COVER: ColumnElement[Any] = and_(
-    or_(Item.record_status == "retired", STATE_IN_FORCE.in_(_OUT_OF_SERVICE)),
-    or_(
-        _COVER_GOES_ON,
-        _ITS_COVER.where(
-            _COVER.item_hid == Item.hid, contracts.left_while_running(_COVER, _COVERING)
-        )
-        .correlate(Item)
-        .exists(),
-    ),
 )
 # What a list leaves out unless asked, of items: drafts, retired ones and the archived.
 _ITEM_IN_VIEW = (
@@ -675,6 +706,15 @@ ITEMS = Listing(
         "covered_until": Field("date", COVERED_UNTIL),
         "contract_count": Field("integer", CONTRACT_COUNT),
         "out_of_service_cover": Field("boolean", OUT_OF_SERVICE_COVER),
+        "out_of_service_contract.hid": Field("reference", _COVERING.hid, among=_item_counting),
+        "out_of_service_contract.number": Field(
+            "text",
+            contracts.term_value(_COVERING, "number"),
+            among=_item_counting,
+            ordered_by=_FIRST_COUNTING,
+        ),
+        # On a line of another model, which 0.6.0 let in: to be put right.
+        "purchase_line_mismatch": Field("boolean", PURCHASE_LINE_MISMATCH),
         "contract.hid": Field("reference", _COVERING.hid, among=_ITEM_CONTRACTS),
         "contract.status": Field(
             "choice",
@@ -1418,6 +1458,19 @@ RECEIVED: ColumnElement[Any] = (
     .correlate(PurchaseLine)
     .scalar_subquery()
 )
+# What arrived on a line and is of another model than the line's, which 0.6.0 let in.
+MISMATCHED: ColumnElement[Any] = (
+    select(func.count())
+    .where(
+        _ARRIVED.purchase_line_hid == PurchaseLine.hid,
+        or_(
+            _ARRIVED.catalog_entry_hid.is_(None),
+            _ARRIVED.catalog_entry_hid != PurchaseLine.catalog_entry_hid,
+        ),
+    )
+    .correlate(PurchaseLine)
+    .scalar_subquery()
+)
 _REQUEST_ORDERED = (
     select(func.coalesce(func.sum(_LINE_OF_REQUEST.quantity), 0))
     .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)
@@ -1473,6 +1526,7 @@ PURCHASE_LINES = Listing(
         "site": Field("text", _LINE_SITE.name),
         "received_quantity": Field("integer", RECEIVED.cast(Integer)),
         "pending_quantity": Field("integer", (PurchaseLine.quantity - RECEIVED).cast(Integer)),
+        "mismatched_items": Field("integer", MISMATCHED.cast(Integer)),
     },
     joined=lambda query: (
         query.join(PurchaseRequest, PurchaseRequest.hid == PurchaseLine.request_hid)

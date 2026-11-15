@@ -1050,6 +1050,7 @@ class PurchaseLineRef(Model):
     request_hid: str
     reference: str
     line: int
+    catalog_entry_hid: str = Field(description="The model of the line.")
 
 
 class DeviceGroupRef(Model):
@@ -1212,6 +1213,12 @@ class ItemOut(Model):
     purchase_line: PurchaseLineRef | None = Field(
         description="The line of a purchase request it arrived on."
     )
+    purchase_line_mismatch: bool = Field(
+        description=(
+            "It is on a line of another model, which 0.6.0 let in: it is to be put right. "
+            "An item put on a line now is of the line's model."
+        )
+    )
     is_major: bool = Field(description="An item with no parent. Major items are counted.")
     depth: int = Field(description="0 for a major item, 1 for a minor item of it, and so on.")
     minor_items: int = Field(description="How many minor items are directly in this one.")
@@ -1246,6 +1253,14 @@ class ItemOut(Model):
         )
     )
     coverage: list[CoverageRef] = Field(description="Its coverages under contracts.")
+    out_of_service_contracts: list[ContractRef] = Field(
+        description=(
+            "For an item out of service, the contracts that still count it: those that "
+            "cover it past today, and those whose coverage of it was ended because it left "
+            "while their term still runs. The list to send the vendor. Empty for an item "
+            "in service."
+        )
+    )
     registrations: list[RegistrationRef] = Field(
         description="The external systems it is registered with."
     )
@@ -1794,16 +1809,40 @@ class AgreementPatch(Model):
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
 
-class ContractEffective(Model):
-    """What a contract has in force of the fields it may have from its agreement."""
+class ContractEffectiveValue(EffectiveValue):
+    """A value a contract has in force, where it came from, and what its agreement
+    gives for it."""
 
-    reseller_hid: EffectiveReference
-    starts_on: EffectiveValue
-    ends_on: EffectiveValue
-    support_level: EffectiveValue
-    account_manager: EffectiveValue
-    support_contact: EffectiveValue
-    support_url: EffectiveValue
+    from_agreement: str | None = Field(
+        description=(
+            "What the agreement gives for this field today, whether the contract overrides "
+            "it or not. Blank for a contract in no agreement, and where the agreement has "
+            "nothing."
+        )
+    )
+
+
+class ContractEffectiveReference(EffectiveReference):
+    """The reseller a contract has in force, where it came from, and the agreement's."""
+
+    from_agreement: str | None = Field(
+        description="The HID of the reseller the agreement gives, whether overridden or not."
+    )
+    from_agreement_label: str | None = Field(description="That reseller's name.")
+
+
+class ContractEffective(Model):
+    """What a contract has in force of the fields it may have from its agreement, each
+    with what the agreement gives for it, so that an override says what it is in place
+    of."""
+
+    reseller_hid: ContractEffectiveReference
+    starts_on: ContractEffectiveValue
+    ends_on: ContractEffectiveValue
+    support_level: ContractEffectiveValue
+    account_manager: ContractEffectiveValue
+    support_contact: ContractEffectiveValue
+    support_url: ContractEffectiveValue
 
 
 class ContractOut(Model):
@@ -1924,12 +1963,36 @@ class ContractRenew(Model):
     )
 
 
-class ContractTerm(Model):
-    """A term a contract had before it was renewed."""
+class AgreementTerm(Model):
+    """A term an agreement had before it was renewed."""
 
-    number: str
+    number: str | None
     starts_on: date | None
     ends_on: date | None
+    annual_cost: Money | None
+    purchase_reference: str | None
+    renewed_at: datetime = Field(description="When the renewal that ended this term was made.")
+    renewed_by: str | None
+    renewed_by_name: str | None
+
+
+TermSource = Literal["own", "agreement", "none"]
+
+
+class ContractTerm(Model):
+    """A term a contract had before it was renewed, with the dates it had in force."""
+
+    number: str
+    starts_on: date | None = Field(
+        description=(
+            "The first day of the term in force: the contract's own, or, where it had none, "
+            "its agreement's as it stood on the last day of the term."
+        )
+    )
+    ends_on: date | None = Field(description="The last day of the term in force, in the same way.")
+    starts_on_source: TermSource
+    ends_on_source: TermSource
+    agreement_hid: str | None = Field(description="The agreement the contract was in then.")
     annual_cost: Money | None
     purchase_reference: str | None
     renewed_at: datetime = Field(description="When the renewal that ended this term was made.")
@@ -2005,6 +2068,12 @@ class PurchaseLineOut(Model):
     quantity: int
     received_quantity: int = Field(description="The items that name this line.")
     pending_quantity: int = Field(description="What is still to come.")
+    mismatched_items: int = Field(
+        description=(
+            "How many of the items that name this line are of another model, which 0.6.0 "
+            "let in. They are found by `purchase_line_mismatch` in the item list."
+        )
+    )
     destination_site_hid: str | None
     destination_site: PlaceRef | None
     expected_on: date | None

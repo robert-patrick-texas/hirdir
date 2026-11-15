@@ -421,6 +421,8 @@ def _checked(
         # It is where it was going: there is nothing planned any more.
         values["planned_location_hid"] = None
 
+    _check_line_model(db, values, item, final("purchase_line_hid"), final("catalog_entry_hid"))
+
     start, end = final("warranty_start"), final("warranty_end")
     if start is not None and end is not None and end < start:
         raise Invalid(
@@ -471,6 +473,39 @@ def _check_line(db: Session, line_hid: str) -> None:
             {
                 "purchase_line_hid": f"all {line.quantity} of this line have arrived; "
                 "raise its quantity first"
+            },
+        )
+
+
+def _check_line_model(
+    db: Session, values: dict[str, Any], item: Item | None, line_hid: Any, model: Any
+) -> None:
+    """Hold an item on a purchase line to the line's model: one that names none takes
+    it, and one that is put on the line, or given another model while on it, is
+    refused where it is of another. What was let in before is not held against a
+    change of anything else."""
+    if not line_hid or not isinstance(line_hid, str):
+        return
+    line = db.get(PurchaseLine, line_hid)
+    if line is None:
+        return
+    if model is None:
+        values["catalog_entry_hid"] = line.catalog_entry_hid
+        return
+    if model == line.catalog_entry_hid:
+        return
+    put_on = item is None or item.purchase_line_hid != line_hid
+    remodelled = "catalog_entry_hid" in values and (
+        item is None or item.catalog_entry_hid != values["catalog_entry_hid"]
+    )
+    if put_on or remodelled:
+        theirs = db.get_one(CatalogEntry, line.catalog_entry_hid)
+        request = db.get_one(PurchaseRequest, line.request_hid)
+        raise Invalid(
+            "the item is not of the line's model",
+            {
+                "catalog_entry_hid": f"line {request.reference}/{line.line} is of "
+                f"{theirs.pid}; an item on it is of that model, or is taken off the line first"
             },
         )
 
