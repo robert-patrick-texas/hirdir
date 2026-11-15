@@ -105,12 +105,15 @@ showed. It adds no scenario and no kind of record.
   member's next term and beginning with the agreement's new term. An earlier term of a
   contract that joined or left the agreement partway through is dated by the days it
   was a member (D-164).
-- **Not to be renewed.** A coverage is marked as one that ends with the present term.
-  The worklist shows the mark, and a renewal leaves the item behind. Until then an
-  item is left out by ending its coverage on an earlier day (D-156).
-- **Contacts of an agreement and of a contract.** The account manager and the support
-  contact may be contact records, as the contacts of a place are since 0.5.0, and
-  are inherited from the agreement as the text is. Free text stays possible.
+- **Not to be renewed.** A device is flagged as one whose coverage is not renewed, such
+  as an access point or a telephone whose support came with its purchase. A renewal
+  leaves it behind, its lack of cover is no gap, and a list and a count by model show
+  what is left out on purpose (P-118). Until then an item is left out by ending its
+  coverage on an earlier day (D-156).
+- **Contacts of an agreement and of a contract.** The account managers and the support
+  contacts, any number of each, may be contact records, as the contacts of a place are
+  since 0.5.0, and are inherited from the agreement as the text is. Free text stays
+  possible (P-119).
 - **The coverage report at speed.** Counted in one pass, what is in force for each
   contract worked out once for a request, and the answer kept until a change or the
   turn of the day makes it stale (P-115). The coverage filters of the grid gain from
