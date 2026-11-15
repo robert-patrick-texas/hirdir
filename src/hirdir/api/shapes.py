@@ -1570,7 +1570,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
                 reference=request.reference,
                 request_status=request.status,
                 name=purchases.line_name(request, line),
-                catalog=models[line.catalog_entry_hid],
+                catalog=models[line.catalog_entry_hid or ""],
                 received_quantity=arrived[line.hid],
                 pending_quantity=line.quantity - arrived[line.hid],
                 mismatched_items=astray[line.hid],

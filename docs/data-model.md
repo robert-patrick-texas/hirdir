@@ -11,7 +11,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a coverage or a registration that was a mistake, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a contact of a contract, a coverage, a registration or a record of the capacity balance that was a mistake, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -28,12 +28,13 @@ where it came from.**
 
 | Field on | Inherits from, nearest first |
 |---|---|
-| Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | its catalog entry |
+| Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew` | its catalog entry |
 | Catalog entry: `stack_discount_pct` | the global setting |
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
 | Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of, and the group that group is nested in; then the location it is at, the locations above that, the site, and each region outward |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Contract: `reseller_hid`, `starts_on`, `ends_on`, `support_level`, `account_manager`, `support_contact`, `support_url`, each by itself | the support agreement it is grouped into |
+| Contract: the contacts of each role, `account_manager` and `support_contact`, all of one role together | the support agreement it is grouped into |
 | Location: contacts per role, shipping address, shipping instructions | its parent location, its site, then each region outward |
 | Site: the same three | each region outward |
 
@@ -93,6 +94,8 @@ What is true of every item of one model. Unique on (`vendor_hid`, `pid`).
 | `annual_support_cost` | money | per unit per year; expected to be blank at first |
 | `stack_discount_pct` | 0 to 100 | blank inherits the global setting |
 | `successor_hid` | reference | the model that replaces this one, for refresh planning |
+| `do_not_renew` | boolean | its support is not to be renewed: gear whose cover came with its purchase and is not bought again. False unless said. See "Not to be renewed" |
+| `links` | list | addresses to reach about the model, each with its text: see "Links" |
 | `review_status` | choice | `reviewed`, or `unreviewed` when an import created it |
 | `record_status` | choice | see Conventions |
 
@@ -130,6 +133,7 @@ lifecycle fields included.
 | `warranty_start`, `warranty_end` | date | |
 | `est_value`, `support_weight`, `annual_support_cost` | override | blank inherits |
 | `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos` | override | blank inherits |
+| `do_not_renew` | override | true or false; blank inherits the model's. See "Not to be renewed" |
 | `record_status` | choice | see Conventions |
 
 A **major item** is one with `parent_item_hid` blank. `is_major` is derived and is
@@ -395,9 +399,9 @@ that holds what was removed.
 
 | Record | Fields | Rules |
 |---|---|---|
-| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `operator_hid`, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
-| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
-| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
+| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `operator_hid`, `links`, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
+| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `links`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
+| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `links`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
 
 Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`.
 The shipping set is the same six with the prefix `ship_`, plus `ship_instructions`. A
@@ -409,7 +413,8 @@ types it a second time.
 beneath it do not share a name, so that a path names one record. `code` is optional, a short name such as `CEN` or
 `S2`, and is unique when present: among regions, among sites, and within its site for a
 location. `latitude` and `longitude` are decimal degrees with up to six places, given
-together or not at all. All three records take tags.
+together or not at all. All three records take tags, and links (see "Links"), which a
+place does not pass down to the places beneath it.
 
 A **path** is the names from the top region down, joined with ` > `:
 `Americas > Central > Site-2 > Building 1 > Room 102`. A path identifies a region, site
@@ -566,7 +571,7 @@ contracts. It groups those contracts, and says once what they share.
 | `starts_on`, `ends_on` | date | its period. Either may be blank |
 | `status` | choice | `active`, `renewal_pending`, `expired`, `pending`, `cancelled`. What a person says of it |
 | `support_level`, `purchase_reference` | text | |
-| `account_manager`, `support_contact` | text | whom to ask, and whom to call for support: free text |
+| `account_manager`, `support_contact` | text | whom to ask, and whom to call for support: free text, beside the contact records of `contract_contacts` |
 | `support_url` | text | where support is reached online |
 | `annual_cost` | money | the agreement's own total, added to nothing |
 | `notes` | text | |
@@ -623,6 +628,8 @@ contract that is not retired is in it.
 | `contracts.support_level`, `notes` | text | |
 | `contracts.annual_cost` | money | the contract total, when that is all that is known |
 | `contracts.record_status` | choice | see Conventions. A contract takes tags |
+| `contracts.ends_with_term` | boolean | it is not to be renewed, and ends with its present term: see "A contract that ends with its term". False unless said |
+| `contracts.next_with_agreement` | boolean | its next term is a new number that waits on the agreement's next term and has no dates of its own: see "An agreement renewed with its members" |
 | `contract_coverage.contract_hid`, `item_hid` | reference | neither is changed afterwards |
 | `contract_coverage.starts_on`, `ends_on` | date | blank takes the contract's dates |
 | `contract_coverage.left_service` | boolean | `hirdir` ended it on the day its item left service. Cleared by a person once the vendor has been told |
@@ -712,6 +719,68 @@ agreement. An agreement's own earlier terms are answered in the same way by
 `GET /agreements/{hid}/terms`, with the same fields but the sources, and are its
 purchase history.
 
+**An agreement renewed with its members.** The contracts of an agreement that share
+its period, those in it that are not retired and have neither date of their own, are
+its members. A renewal of the agreement says for each of them one of three things
+(P-129). `same`: it follows the agreement into its new period under its number, as a
+contract with no dates of its own always has. `new_number`: the vendor gives it a new
+number for the new term. The number begins with the agreement's new term and has no
+dates of its own: where that term is in force at once, the member is renewed at once,
+recorded as its own renewal; where it is still to begin, the number waits as the
+member's next term, with `next_with_agreement` true and no `next_starts_on` or
+`next_ends_on`, and is in force from the day the agreement's next term is, worked out
+when it is read. A next term of the agreement that is withdrawn withdraws the numbers
+that wait on it, in the same change, and a member renewed by itself in the meantime
+has that renewal in place of the one that waited. `ends`: the member is let go with
+the present term, as when its site closes. It is given the dates of the agreement's
+present term as its own, in the same change, because from then it no longer shares
+the agreement's period and the new term does not carry it, and it is marked
+`ends_with_term`. It stays grouped in the agreement, so that the agreement's list and
+the contract's history show it, and is retired by hand once it is of no more use. A
+member left out of the request is `same`, and a contract named that is not a member
+is refused. The renewal is one change of the agreement and of every member, each
+audited under one request ID.
+
+**A contract that ends with its term.** `ends_with_term` says that a contract is not
+to be renewed. It covers to the end of its present term, is not lapsed after it, and
+from the next day its status in force is `expired`, worked out when it is read, with
+nothing written. It is on none of the lists of the renewal worklist but the one of
+what is let go, and never in the alert. The mark is given by a renewal of the
+agreement, as above, or by hand, also to a contract that stands by itself, and is
+taken off by hand or by a renewal of the contract.
+
+**A contract's history across an agreement.** A contract's history is in parts. A
+part begins when the contract is made, when a renewal takes effect, and when it joins
+an agreement, leaves one or moves from one to another, and ends the day before the
+next part begins. `GET /contracts/{hid}/terms` lists the parts before the present
+one, the latest first, each with `began_on` and `ended_on`, the days in the
+application's time zone, `began_by`, `created`, `renewal`, `joined` or `left`, a move
+being `joined`, the number, the period in force with where each date came from, and
+the agreement it was in. A part in an agreement with no dates of its own has the dates
+of the agreement's term in force when the part began. A part that lasted no day is
+not listed. The record of a contract says when its present part began,
+`part_began_on`, and how, `part_began_by` (P-130).
+
+**Contacts of an agreement and of a contract.** `contract_contacts` names contact
+records for an agreement or a contract, in one of two roles:
+
+| Field | Type | Notes |
+|---|---|---|
+| `agreement_hid` or `contract_hid` | reference | exactly one, and not changed afterwards |
+| `role` | choice | `account_manager` or `support_contact` |
+| `contact_hid` | reference | the contact: a person of the vendor's account team or of its support desk |
+| `priority` | integer | the order in which they are listed, from 1. Left out, one more than the highest there is for the record and the role |
+
+A contact is named once for one record and one role. For each role by itself, a
+contract that names nobody of its own has the contacts its agreement names, with the
+source `agreement`, and one that names anybody has its own, all of them, in place of
+the agreement's. Nothing is copied: a contact record that is changed shows its new
+telephone number on every record that names it and on every contract that has it from
+its agreement. A retired contact is still listed, marked as retired. A naming that was
+a mistake is removed outright, with an audit event that holds what it was. The free
+text of `account_manager` and `support_contact` stays beside them, and is inherited by
+itself as before (P-132).
+
 Rules, checked on every write:
 
 - An item is covered by any number of contracts, at once and over time. Under one
@@ -765,6 +834,28 @@ or its state in force is Pending-Removal, Released or Archived. An item with no
 state, and one that is Purchased or Delivered, is neither: it has not been in service
 yet. The coverage report is built on the two.
 
+**Not to be renewed.** Some gear is not worth covering once the support that came with
+it ends: wireless access points and telephones of a low price, for which the
+organization keeps spares. `do_not_renew` on a catalog entry says so of a model, and
+every item of the model has it, with the source `catalog`; an item says otherwise with
+its own value, so that one access point is renewed while the others of its model are
+not. A renewal of a contract, and of an agreement for each member it carries into the
+new term, ends the coverage of each item in scope whose flag is in force: the coverage
+is given the last day of the present term as its own end, in the same change, with an
+audit event of its own under the renewal's request ID. That end is written on purpose
+and kept, where a date that is the contract's own is otherwise kept as blank: it is
+the one exception, and only a renewal makes it. The item is covered to the end of the
+present term, also when the renewal was entered early. An item in service whose flag is
+in force and that no contract covers is no gap: it is on no list of what is uncovered
+or runs out soon, and the coverage report counts it by itself, by model (P-131).
+
+**Renewals to act on.** On a contract, and on the contract list, derived when read:
+`renewal_pending_days`, the days since the end of the term a pending renewal is for,
+blank unless the status in force is `renewal_pending` and zero before that end; and
+`renewal_overdue`, true when that is more than the `renewal_pending_overdue_days`
+setting. The renewal worklist and the alert after sign-in are built on them, on
+`lapsed` and on the `renewal_warning_days` setting (P-127, P-128).
+
 ### `purchase_requests` and `purchase_lines`
 
 | Field | Type | Notes |
@@ -774,7 +865,10 @@ yet. The coverage report is built on the two.
 | `purchase_requests.status` | choice | `draft`, `pending`, `ordered`, `received`, `cancelled`. Left out, `pending`. Set by people, and to `received` by the delivery that completes it |
 | `purchase_lines.request_hid` | reference | not changed afterwards |
 | `purchase_lines.line` | integer | the number of the line within its request, from 1. Left out, the next |
-| `purchase_lines.catalog_entry_hid`, `quantity` | reference, integer | model and how many. At least 1 when the line is entered, and never below what was received |
+| `purchase_lines.catalog_entry_hid` | reference | the model. Optional: a line with none is not tracked |
+| `purchase_lines.part_number`, `description` | text | as the procurement system gave them. A line has a model or a part number, or both |
+| `purchase_lines.quantity` | integer | how many. At least 1 when the line is entered, and never below what was received |
+| `purchase_lines.tracked` | boolean | derived: the line has a model |
 | `purchase_lines.destination_site_hid`, `expected_on` | reference, date | optional |
 | `purchase_lines.notes` | text | |
 | `purchase_lines.received_quantity` | integer | derived: the number of items that name this line |
@@ -782,6 +876,26 @@ yet. The coverage report is built on the two.
 | `purchase_lines.mismatched_items` | integer | derived: how many of the items that name this line are of another model, which 0.6.0 let in, counted as the item list counts: drafts, retired items and items in Archived are left out, so the number leads to as many rows. Zero once they are put right |
 
 A line is named by the reference of its request and its number: `RITM0012345/2`.
+
+**Lines that are not tracked.** A request bought through procurement holds lines of
+what this inventory does not follow beside the network equipment it does: cable ties,
+hook-and-loop tape, monitors, printers. A line with no model is not tracked: it is
+listed with its request, takes no item, by a receipt, by hand or by a file, is in no
+count, and is not waited for, so a request is `received` in full once every line that
+is tracked has arrived. A line is matched to a model at any time, which makes it
+tracked, and its model is taken off, making it untracked, only while nothing has
+arrived on it. In a file of lines the part number is matched to the catalog by the
+PID, without regard to case, surrounding space or the `=` that ends the part number of
+a spare, among the models of the row's vendor where it names one and among all models
+where it does not; none, or more than one, leaves the line untracked with a note that
+says why, and a file of lines makes no catalog entry (P-135).
+
+**A line's model corrected.** The model of a line is corrected at any time by an
+operator with the Inventory role. Where items have arrived on it, the correction says
+what becomes of them, `items` of `follow` or `stay`, and is refused without it:
+`follow` gives every item on the line that is not retired the corrected model, in the
+same change, each with its audit event; `stay` leaves them, and each is then of
+another model than its line's, reported to be looked at (P-120).
 
 A request and its lines are not inventory. Nothing of them is in any count, and no
 serial number is known yet. **Receiving** a line, `POST /purchase-lines/{hid}/receive`,
@@ -854,8 +968,12 @@ A source of resource units, or a call on them other than the infrastructure.
 | `side` | choice | `supply` or `demand` |
 | `category` | choice | supply: `staff`, `professional_services`, `smart_hands`, `tools`, `services`. demand: `other_work` |
 | `name` | text | "Senior network engineer", "Escalation partner", "AI assistant" |
-| `quantity` | decimal, default 1 | positions, contracted blocks of hours, subscriptions |
-| `units_each` | decimal | resource units that one of `quantity` provides or consumes |
+| `effect` | choice | `add`, or `multiply` for a supply line of the category `tools` or `services`. Left out, `add` |
+| `quantity` | decimal, default 1 | positions, contracted blocks of hours, subscriptions. Blank on a line that multiplies |
+| `units_each` | decimal | resource units that one of `quantity` provides or consumes. Blank on a line that multiplies |
+| `factor` | decimal | a line that multiplies: how much more one person does with it, at least 1: `1.25` |
+| `share` | decimal | a line that multiplies: the share of the positions that use it, from 0 to 1. Left out, 1 |
+| `applies_to` | references | a line that multiplies: the staff lines it works on, which add. Kept in `capacity_line_targets`, one row to a line it works on |
 | `annual_cost` | money | optional, for comparing options |
 | `vendor_hid` | reference | optional; the line then appears in that vendor's portfolio |
 | `region_hid` or `site_hid` | reference | optional, at most one; blank serves everywhere |
@@ -878,12 +996,50 @@ deleted: it is retired, or given an end date.
 - **Tools and services that take work to run.** These are items in the inventory with a
   support weight, so their burden is already in the demand. It is not entered again as a
   negative supply line.
-- **Tools and services that make people more effective.** For now, a supply line with the
-  estimated gain in units. LATER, a multiplier line: `effect` = `multiply`, a `factor`,
-  a `share` of the positions using it, and the staff lines it applies to. Its units are
-  (`factor` − 1) × `share` × the base units of those lines. Multipliers each work on the
-  base units and do not compound, so the result does not depend on their order, and a
-  cut in the staff lines shrinks the gain with it.
+- **Tools and services that make people more effective.** A line that multiplies:
+  `effect` of `multiply`, a `factor`, a `share` of the positions using it, and the
+  staff lines it applies to. Its units are (`factor` − 1) × `share` × the units of
+  those lines that are counted in the same view on the same day. Multipliers each work
+  on the base units and do not compound, so the result does not depend on their order,
+  and a cut in the staff lines shrinks the gain with it. Its units are counted in its
+  own category, so the team's own share stays that of its positions. A line it
+  applies to is a supply line of the category `staff` that adds; a line that is
+  retired or out of date gives it nothing to work on (R14.8, P-137).
+
+### `capacity_records`
+
+The balance as it was in a week, kept to show the trend (R14.7, P-137).
+
+| Field | Type | Notes |
+|---|---|---|
+| `week_of` | date, unique | the Monday that begins the week, in the application's time zone |
+| `recorded_at` | timestamp | when the figures were worked out |
+| `weight_per_resource_unit` | decimal | the setting as it was then |
+| `active`, `with_drafts` | JSON | the balance as the capacity report answered it, each with `support_weight`, `infrastructure_demand`, `other_demand`, `demand`, `supply`, `own_units`, `outside_units` and `by_category` |
+| `adjusted` | boolean | a person has corrected the figures |
+| `note` | text | why; required once the figures are corrected |
+
+The server records the balance of the whole installation by itself each Monday just
+after midnight in the application's time zone, and when it starts in a week that has
+no record, with `via` of `system`. A person records it again by hand on any day, which
+replaces the record of that week, and may correct the `demand` and the `supply` of a
+saved week, each of `active` and `with_drafts`, with a note that says why: the record
+is then `adjusted`. The `balance` and the `coverage_pct` of a record are worked out
+from its demand and its supply when it is read. A record is not worked out again from
+the records it was made of. One that was a mistake is removed outright, with an audit
+event that holds what it was.
+
+### Links
+
+A region, a site, a location and a catalog entry have `links`: addresses to reach
+about the record, the web page of a site, the data sheet of a model. Each link is an
+`url` and a `text`, in the order given, up to 20 to a record. An address begins with
+`https://` or `http://`, holds no space and is at most 2,000 characters; any other is
+refused. The text is at most 200 characters, holds neither `<` nor `>`, and may be
+blank, when the address itself is shown. The list is a field of the record, changed
+whole, and audited as one change of it. An item has the links of its model,
+`catalog.links`, read with it; a place has its own, and none from the places above it
+(P-138).
 
 ### `tags` and `tag_links`
 
@@ -920,6 +1076,16 @@ and is refused, not rounded, when it has more.
 | `service_states` | Assigned, Test, Prod, Down | states in which an item is in service, for the coverage report |
 | `count_kinds` | hardware, virtual_machine | kinds in the headline component count |
 | `weight_per_resource_unit` | 300 | how much support weight one resource unit carries; a placeholder until the team sets its own |
+| `renewal_warning_days` | 90 | how far ahead a contract counts as ending soon: the renewal worklist, the alert after sign-in and the coverage report's list of what runs out soon. From 1 to 36,500 |
+| `renewal_pending_overdue_days` | 60 | how long a renewal may be pending, counted from the end of the term it is for, before it is overdue. From 1 to 36,500 |
+| `end_of_life_within_days` | 730 | how far ahead the end-of-life report counts a date as approaching. From 1 to 36,500 |
+| `end_of_life_date` | `ldos` | which of the four end-of-life dates the end-of-life report is of, unless asked |
+| `max_items_per_request` | 1000 | how many items one request may cover, add to a group or receive, from 100 to 5,000. The web UI and the command line send their pieces by it |
+
+Every other value of a rule is fixed in the code, and `GET /settings` lists each with
+its value, what it limits and why it is fixed: what was decided, such as the states
+in which an item is out of service (D-142), and the limits that protect the service,
+such as the size of a page or the length of a pattern (P-136).
 
 The life of a session token, `session_hours`, is in the configuration file and not
 here, because it is needed before the database can be asked. See
@@ -957,10 +1123,12 @@ A preview of a change to many records, kept so that what is applied is what was 
 | `entity` | choice | `tags`, `vendors`, `catalog_entries`, `contacts`, `operators`, `regions`, `sites`, `locations`, `contact_assignments`, `owners`, `owner_members`, `networks`, `external_systems`, `agreements`, `contracts`, `purchase_requests`, `purchase_lines`, `items`, `device_groups`, `device_group_members`, `item_replacements`, `addresses`, `contract_coverage`, `registrations` and `capacity_lines` |
 | `mode` | choice | `create` or `upsert` for a file. A bulk edit is `update`: every row names a record that exists |
 | `file_name`, `file_sha256` | text | of the file as it was sent; blank for a bulk edit |
-| `status` | choice | `previewed`, `applied`, or `failed` when it could not be applied because a record had changed |
+| `status` | choice | `previewed`; `queued` and `applying` while it is being applied in the background; `applied` once every row has been worked; `stopped` when it stopped partway, to be resumed; and `failed`, which only a job of a release before 0.7.0 has, applied as one transaction and undone because a record had changed |
+| `rows_done` | integer | how many rows the apply has worked, while it works and after |
+| `applied`, `stale` | integer | how many rows the apply applied, and how many it did not because their record had changed since the preview |
 | `row_count`, `created`, `updated`, `unchanged`, `rejected` | integer | the counts of rows by what the preview found |
 | `skip_rejected` | boolean | whether it was applied without its rejected rows |
-| `failure` | text | why a `failed` job was not applied |
+| `failure` | text | why a `failed` job was not applied, or why a `stopped` one stopped |
 | `applied_at`, `applied_by` | timestamp, user HID | when it was applied, and by whom |
 
 The job carries `created_at` and `created_by`, for who made the preview. Anybody who
@@ -977,8 +1145,28 @@ holds the Inventory role may apply it. Its rows are kept one to a record in `imp
 | `changes` | JSON | a list of `{field, old, new}` in the columns of the file |
 | `reasons` | JSON | for a rejected row, a list of `{field, message}` |
 | `notes` | JSON | what else the row brings about, such as a catalog entry created unreviewed |
+| `applied_outcome` | choice | what the apply did with the row: `create`, `update`, `unchanged`, `stale` or `rejected`. Blank until it is worked |
+| `applied_reasons` | JSON | for a row that was `stale` or `rejected` at the apply, why |
+
+**An apply in the background.** An apply is worked by the server beside the requests,
+one job at a time, 50 rows to a batch and each batch a transaction of its own, so that
+a sign-in or another change waits a fraction of a second behind it at most. The rows
+are worked in the order the file needs, worked out once for the whole file, and the
+rows that are checked together, the members of one group, are one batch however many.
+A row whose record is not at the version previewed, or that would no longer do what
+was previewed, is not applied and is `stale`; the rest go on. A job that stops partway
+keeps the batches it applied, undoes the one it had not finished, and is resumed from
+the first row it had not applied (P-134).
 
 Jobs and their rows are kept without expiry, like audit events.
+
+### `renewal_alert_views`
+
+What a person last saw of the renewal alert (P-128): `user_hid`, unique, `seen_at`,
+`as_of`, the day of the alert they saw, and `lapsed`, `renewal_pending` and `ending`,
+each the list of the HIDs of the contracts that were on that list. A person is shown
+the alert again when a contract is on one of the three lists that is not in what they
+last saw of it. Keeping it is a change of their own, audited on their user.
 
 ### `idempotency_keys`
 
@@ -1222,9 +1410,19 @@ worked out exactly and rounded to two places once, half up. Coverage is blank wh
 there is no demand. The report also says how much of the supply is the team's own
 positions, the lines of the category `staff`, and how much is everything else.
 
-The report is of the whole installation. A line may name the region or the site it
-serves, which is kept and shown, and narrows nothing yet: what a report of one region
-would count is not decided.
+The report is of the whole operations team, whose tools and services, DNS, DHCP,
+network access control, remote access and the watch of the NOC, serve every region. A
+line may name the region or the site it serves, which is kept and shown, and narrows
+nothing. Beside the balance the report says where the work is, `demand_by_region`:
+each region with the support weight of the items at or beneath it, by their location
+in force, the infrastructure demand that is, and its share of the whole, and a row for
+the items that are nowhere. A row of a region holds what is beneath it, so the regions
+at the top and the row of what is nowhere add up to the whole. No supply is divided
+among regions (P-137).
+
+A line that multiplies adds (`factor` − 1) × `share` × the units of the staff lines it
+applies to that are counted in the same result: in `active` those that are active and
+in date, in `with_drafts` the drafts as well.
 
 Worked example, with `weight_per_resource_unit` at its default of 300 and a support
 weight of 2,400:

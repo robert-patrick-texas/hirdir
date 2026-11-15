@@ -253,6 +253,10 @@ class CatalogEntry(Bookkeeping, Base):
         ForeignKey("catalog_entries.hid"), default=None
     )
     review_status: Mapped[str] = mapped_column(String(12), default="reviewed")
+    # Its support is not renewed: what came with its purchase is not bought again.
+    do_not_renew: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Addresses to reach about the model, each with its text, in the order given.
+    links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
@@ -335,6 +339,8 @@ class Region(Bookkeeping, ShippingAddress, Base):
     operator_hid: Mapped[str | None] = mapped_column(
         ForeignKey("operators.hid"), default=None, index=True
     )
+    # Addresses to reach about the place, each with its text. Not passed down.
+    links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
@@ -361,6 +367,8 @@ class Site(Bookkeeping, StreetAddress, ShippingAddress, Base):
     )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    # Addresses to reach about the place, each with its text. Not passed down.
+    links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
@@ -387,6 +395,8 @@ class Location(Bookkeeping, StreetAddress, ShippingAddress, Base):
     )
     latitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
     longitude: Mapped[Decimal | None] = mapped_column(Scaled(DEGREE_PLACES), default=None)
+    # Addresses to reach about the place, each with its text. Not passed down.
+    links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
@@ -519,6 +529,8 @@ class Item(Bookkeeping, Base):
     end_of_sw_support: Mapped[date | None] = mapped_column(Date, default=None, index=True)
     end_of_hw_support: Mapped[date | None] = mapped_column(Date, default=None, index=True)
     ldos: Mapped[date | None] = mapped_column(Date, default=None, index=True)
+    # Its support is not renewed, or is, against what its model says. Blank: the model's.
+    do_not_renew: Mapped[bool | None] = mapped_column(Boolean, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 
 
@@ -703,7 +715,40 @@ class Contract(Bookkeeping, Base):
     next_ends_on: Mapped[date | None] = mapped_column(Date, default=None)
     next_annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
     next_purchase_reference: Mapped[str | None] = mapped_column(String(200), default=None)
+    # The next term is a new number that waits on the agreement's next term, and has no
+    # dates of its own: it is in force from the day the agreement's is.
+    next_with_agreement: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Not to be renewed: it ends with its present term, and is expired from the next day.
+    ends_with_term: Mapped[bool] = mapped_column(Boolean, default=False)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class ContractContact(Bookkeeping, Base):
+    """A contact record named for an agreement or a contract, in one of two roles."""
+
+    __tablename__ = "contract_contacts"
+    __table_args__ = (
+        CheckConstraint(
+            "(agreement_hid IS NULL) <> (contract_hid IS NULL)", name="contract_contacts_one_holder"
+        ),
+        UniqueConstraint(
+            "agreement_hid", "role", "contact_hid", name="contract_contacts_agreement_once"
+        ),
+        UniqueConstraint(
+            "contract_hid", "role", "contact_hid", name="contract_contacts_contract_once"
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    agreement_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("agreements.hid"), default=None, index=True
+    )
+    contract_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("contracts.hid"), default=None, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20))
+    contact_hid: Mapped[str] = mapped_column(ForeignKey("contacts.hid"), index=True)
+    priority: Mapped[int] = mapped_column(Integer)
 
 
 class ContractCoverage(Bookkeeping, Base):
@@ -744,7 +789,13 @@ class PurchaseLine(Bookkeeping, Base):
     hid: Mapped[str] = _hid()
     request_hid: Mapped[str] = mapped_column(ForeignKey("purchase_requests.hid"), index=True)
     line: Mapped[int] = mapped_column(Integer)
-    catalog_entry_hid: Mapped[str] = mapped_column(ForeignKey("catalog_entries.hid"), index=True)
+    # The model. A line with none is not tracked: cable ties, a monitor, a printer.
+    catalog_entry_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("catalog_entries.hid"), default=None, index=True
+    )
+    # As the procurement system gave them.
+    part_number: Mapped[str | None] = mapped_column(String(100), default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
     quantity: Mapped[int] = mapped_column(Integer)
     destination_site_hid: Mapped[str | None] = mapped_column(
         ForeignKey("sites.hid"), default=None, index=True
@@ -806,8 +857,12 @@ class CapacityLine(Bookkeeping, Base):
     category: Mapped[str] = mapped_column(String(40), index=True)
     name: Mapped[str] = mapped_column(String(200))
     name_key: Mapped[str] = mapped_column(String(200))
-    quantity: Mapped[Decimal] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(1))
-    units_each: Mapped[Decimal] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(0))
+    # `add` a fixed amount, or `multiply` the staff lines it applies to.
+    effect: Mapped[str] = mapped_column(String(10), default="add")
+    quantity: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(1))
+    units_each: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=Decimal(0))
+    factor: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
+    share: Mapped[Decimal | None] = mapped_column(Scaled(WEIGHT_PLACES), default=None)
     annual_cost: Mapped[Decimal | None] = mapped_column(Scaled(MONEY_PLACES), default=None)
     vendor_hid: Mapped[str | None] = mapped_column(
         ForeignKey("vendors.hid"), default=None, index=True
@@ -820,6 +875,35 @@ class CapacityLine(Bookkeeping, Base):
     ends_on: Mapped[date | None] = mapped_column(Date, default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
+
+
+class CapacityLineTarget(Base):
+    """A staff line that a line which multiplies works on."""
+
+    __tablename__ = "capacity_line_targets"
+
+    line_hid: Mapped[str] = mapped_column(ForeignKey("capacity_lines.hid"), primary_key=True)
+    target_hid: Mapped[str] = mapped_column(
+        ForeignKey("capacity_lines.hid"), primary_key=True, index=True
+    )
+
+
+class CapacityRecord(Bookkeeping, Base):
+    """The capacity balance as it was in a week, kept to show the trend."""
+
+    __tablename__ = "capacity_records"
+    __table_args__ = (UniqueConstraint("week_of", name="capacity_records_week"),)
+
+    hid: Mapped[str] = _hid()
+    # The Monday that begins the week, in the application's time zone.
+    week_of: Mapped[date] = mapped_column(Date)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
+    weight_per_resource_unit: Mapped[Decimal] = mapped_column(Scaled(WEIGHT_PLACES))
+    active: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    with_drafts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # A person has corrected the figures, and the note says why.
+    adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Tag(Bookkeeping, Base):
@@ -911,6 +995,10 @@ class ImportJob(Base):
     updated: Mapped[int] = mapped_column(Integer, default=0)
     unchanged: Mapped[int] = mapped_column(Integer, default=0)
     rejected: Mapped[int] = mapped_column(Integer, default=0)
+    # How far an apply in the background has got, and what it did.
+    rows_done: Mapped[int] = mapped_column(Integer, default=0)
+    applied: Mapped[int] = mapped_column(Integer, default=0)
+    stale: Mapped[int] = mapped_column(Integer, default=0)
     skip_rejected: Mapped[bool | None] = mapped_column(Boolean, default=None)
     failure: Mapped[str | None] = mapped_column(Text, default=None)
     applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
@@ -934,6 +1022,24 @@ class ImportRow(Base):
     changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     notes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # What the apply did with the row, and why where it did not apply it. Blank until then.
+    applied_outcome: Mapped[str | None] = mapped_column(String(10), default=None)
+    applied_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+
+
+class RenewalAlertView(Bookkeeping, Base):
+    """What a person last saw of the renewal alert: the contracts on each of its lists."""
+
+    __tablename__ = "renewal_alert_views"
+    __table_args__ = (UniqueConstraint("user_hid", name="renewal_alert_views_user"),)
+
+    hid: Mapped[str] = _hid()
+    user_hid: Mapped[str] = mapped_column(ForeignKey("users.hid"))
+    seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=clock.now)
+    as_of: Mapped[date] = mapped_column(Date)
+    lapsed: Mapped[list[str]] = mapped_column(JSON, default=list)
+    renewal_pending: Mapped[list[str]] = mapped_column(JSON, default=list)
+    ending: Mapped[list[str]] = mapped_column(JSON, default=list)
 
 
 class IdempotencyKey(Base):

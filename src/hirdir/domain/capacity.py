@@ -64,7 +64,7 @@ def find_line(db: Session, side: str, name: str) -> CapacityLine | None:
 
 def units(line: CapacityLine) -> Decimal:
     """Return the resource units of a line: its quantity times the units of one."""
-    return line.quantity * line.units_each
+    return (line.quantity or Decimal(0)) * (line.units_each or Decimal(0))
 
 
 def in_date(line: CapacityLine, day: date) -> bool:

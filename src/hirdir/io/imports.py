@@ -37,6 +37,8 @@ MAX_PROBLEMS = 50
 # A preview of more rows than this is worked on a copy of the database, so that it
 # holds nobody up while it works. See `engine.trial`.
 IN_PLACE_UP_TO = 100
+# An apply in the background works this many rows to a transaction (P-134).
+BATCH_ROWS = 50
 REFUSALS = (Invalid, Conflict, NotFound, NotAllowed)
 
 

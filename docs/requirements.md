@@ -109,6 +109,10 @@ later, for example a Last Day of Support date on its model.
   and cost like any other.
 - **R1.9** Tags MUST be attachable to catalog entries, items, device groups, regions,
   sites, locations, contracts, contacts and owners, and searchable on all of them.
+- **R1.10** A catalog entry, a region, a site and a location MAY carry links, each a
+  web address and the text to show for it: the data sheet of a model, the web page of
+  a site. An item MUST show the links of its model. Links travel in files, and an
+  address that is not a web address is refused.
 
 ### R2 Major and minor items
 
@@ -170,6 +174,15 @@ later, for example a Last Day of Support date on its model.
 - **R5.2** A line stays pending until delivery is assured. Receiving a line creates its
   items, with serial numbers and asset tags entered or imported then.
 - **R5.3** Pending lines are not counted as inventory. They appear in planning reports.
+- **R5.4** A request MAY hold lines of what the inventory does not follow, kept with
+  the part number and description that procurement gave them. A line with no model is
+  not tracked: it takes no item, is in no count and does not hold the request open. A
+  file of lines matches each part number to the catalog and never makes a catalog
+  entry; a part number that matches no model, or more than one, leaves its line
+  untracked and says why.
+- **R5.5** The model of a line MUST be correctable at any time. Where items have
+  arrived on it, the person correcting it says whether they take the corrected model
+  too.
 
 ### R6 Counting, support weight and value
 
@@ -220,6 +233,24 @@ later, for example a Last Day of Support date on its model.
   cost. This is the working list for annual renewal planning.
 - **R8.4** Reports MUST include items in service with no coverage, coverage on items no
   longer in service, and items past or approaching each end-of-life date.
+- **R8.5** A **renewal worklist** MUST list what a person has to act on: the contracts
+  that end within the warning period, those that have lapsed, those whose renewal is
+  pending, for how long and whether overdue, and the items under more than one
+  contract, each under its vendor and its agreement, each count leading to its rows. It
+  is a page, a report and a command.
+- **R8.6** A person with the Inventory or the Admin role MUST be told after signing in
+  how many contracts have lapsed, are pending renewal or end within the warning
+  period, once until something new comes onto one of those lists.
+- **R8.7** An agreement whose contracts share its period is renewed with them in one
+  change: each member keeps its number, takes a new one that begins with the new
+  term, or ends with the present term. A contract's history MUST show the period it
+  had in each part of it, also across joining or leaving an agreement.
+- **R8.8** A model, or a single item, MAY be flagged as not to be renewed. A renewal
+  leaves such an item behind, its lack of cover is not a gap, and what is left out on
+  purpose MUST be listed and counted by model.
+- **R8.9** An agreement and a contract MAY name any number of account managers and
+  support contacts as contact records, beside free text. A contract that names none of
+  a role has those of its agreement, with the source shown.
 
 ### R9 Addresses and networks
 
@@ -242,6 +273,11 @@ later, for example a Last Day of Support date on its model.
 - **R10.4** Selecting cell ranges and editing in the grid are LATER.
 - **R10.5** An edit made against a stale copy of a record MUST be refused with a clear
   message, never applied over the newer change.
+- **R10.6** A value of a business rule that a site could reasonably want otherwise
+  MUST be a setting with a default built in, listed with its default and description
+  and returned to it by one change. A limit that protects the service MAY stay fixed,
+  and is then listed as fixed. The application MUST be able to write a complete
+  configuration file, every key with its default and description.
 
 ### R11 Import and export
 
@@ -254,6 +290,11 @@ later, for example a Last Day of Support date on its model.
 - **R11.4** Importing the same file twice MUST change nothing the second time.
 - **R11.5** A reference to a manufacturer and PID that is not yet in the catalog creates
   the catalog entry, marked for review, so an import never stalls on catalog upkeep.
+  A file of purchase lines is the exception (R5.4).
+- **R11.6** Applying a large file MUST NOT stop other people's work. It is applied in
+  the background, in batches, with its progress shown; a row whose record changed
+  after the preview is not applied and is reported, while the rest are; and an apply
+  that stops partway says what was applied and is resumed.
 
 ### R12 Access
 
@@ -313,9 +354,14 @@ as AI.
   outside assistance, tools and services.
 - **R14.6** A line MAY be a draft. The report compares the balance with and without the
   drafts, which answers "what if we add this service" or "what if that contract ends".
-- **R14.7** In 0.7.0: a dated record of the balance, to show the trend.
-- **R14.8** In 0.7.0: a line that multiplies the capacity of chosen staff lines instead of
-  adding a fixed amount, for tools and AI that make people more effective.
+- **R14.7** A record of the balance each week, taken by the server each Monday and
+  again by hand, shows the trend as a graph. The figures of a week MAY be corrected by
+  hand, with a note, and the correction is shown.
+- **R14.8** A line MAY multiply the capacity of chosen staff lines instead of adding a
+  fixed amount, for tools and AI that make people more effective.
+- **R14.9** The balance is of the whole operations team, whose tools and services are
+  shared by every region. Beside it the report MUST show how the demand splits by
+  region, and divide no supply.
 
 ## Qualities
 

@@ -35,7 +35,7 @@ reading; it does not settle a policy question in code.
 | **0.5.0** Places and people | Regions, sites, locations and paths. Contacts, assignments and inherited resolution. Shipping address inheritance. Owners and external-owner exceptions. Geography tree with roll-up totals. Moving a site. | S24–S28 |
 | **0.6.0** Money, time and capacity | Support agreements, the contracts grouped into them, and dated coverage; a contract renewed in one place. Estimated value and annual support cost. The vendor portfolio. End-of-life and coverage reports. Replacements in reports and in files. Purchase requests, lines and receiving. External systems and registrations. Draft records. Capacity lines and the capacity report. | S29–S35, S39–S40 |
 | **0.6.1** Corrections to 0.6.0 | What a contract overrides, said beside what it has in force. The dates of an earlier term of a contract that is co-termed with its agreement. The model of an item that is put on a purchase line, held to the line's. The contract that still counts an item out of service, as a field of the item list. Browser scenarios for the pages of 0.6.0 that only unit tests hold. `make upgrade` without a step the host refuses. The speed of the item filters of 0.6.0 on a large inventory, measured. | none new |
-| **0.7.0** Renewals in practice, and links | The renewal worklist. An agreement renewed with new numbers for its member contracts. The coverage report worked out once and kept until it changes. A renewal alert after sign-in. Settings with defaults in place of constants, and a configuration file written by the application. Imports applied in the background, in batches. A coverage marked as not to be renewed. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a dated record of the balance, a line that multiplies staff capacity, and the report for one region or site. Links, an address with its text, on locations and on catalog entries. | S41–S46 |
+| **0.7.0** Renewals in practice, and links | The renewal worklist. An agreement renewed with new numbers for its member contracts, and a contract's history across joining and leaving one. The coverage report worked out once and kept until it changes. A renewal alert after sign-in. Settings with defaults in place of constants, and a configuration file written by the application. Imports applied in the background, in batches. A model or a device flagged as not to be renewed. Purchase lines as procurement has them. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a weekly record of the balance, a line that multiplies staff capacity, and the demand of each region beside the balance of the whole. Links, an address with its text, on regions, sites, locations and catalog entries. | S41–S46 |
 | **0.8.0** Circuits | Telecommunication circuits beside the inventory: its name, description and notes, the enterprise's own circuit ID, the devices it connects, its A side and Z side, its carriers and the circuit numbers they give, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the cost by year, as support costs are reported. | S47–S50 |
 | **0.9.0** Reference files | Files attached to a location: photographs, maps, sketches and floor plans. Documents attached to a catalog entry and reached from every item of that model, such as an administration guide, served by `hirdir` itself where there is no internet access. Upload, link, download, limits, roles, audit, and the files in the backup. | S51–S53 |
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
@@ -136,15 +136,18 @@ showed. It adds no scenario and no kind of record.
   complete configuration file from the application, every key with its default and a
   description, and the settings of the inventory are listed with their defaults and
   returned to them by one change (P-126).
-- **Capacity over time.** A dated record of the balance, to show the trend (R14.7).
-  A line that multiplies the capacity of chosen staff lines, for tools and services
-  that make people more effective (R14.8). The capacity report for one region or
-  one site, which D-147 left until the report of the whole had been used.
+- **Capacity over time.** A record of the balance each week, to show the trend as a
+  graph, taken by the server each Monday and again by hand, with a week's figures
+  correctable (R14.7). A line that multiplies the capacity of chosen staff lines, for
+  tools and services that make people more effective (R14.8). The report stays one
+  balance for the whole operations team, whose tools and services are shared by
+  every region, and shows beside it how the demand splits by region; the report for
+  one region or one site, which D-147 left until the report of the whole had been
+  used, is not built (P-137).
 - **Links.** A location and a catalog entry take one link or more, each an address
   and the text to show for it: the web page of a site, the data sheet of a model.
   They are optional, are shown where the record is shown, an item shows those of its
-  model, and they travel in files. Whether a site and a region take them too is
-  settled when the release is started.
+  model, and they travel in files. A site and a region take them too (P-138).
 
 ### 0.8.0, circuits
 
@@ -222,7 +225,7 @@ written as a failing test at the start of its release.
 | S12 | Import `examples/` in load order into an empty database | Every row is created; the summary counts match the seed |
 | S13 | Import the same files again | Every row is `unchanged` |
 | S14 | Import a CSV with one blank cell, one `!clear` cell and one unknown vendor and PID | The blank leaves the value, `!clear` returns the field to inheriting, the catalog entry is created `unreviewed` |
-| S15 | Preview an import, change one of its rows in the web UI, then apply | Nothing is applied and a new preview is asked for |
+| S15 | Preview an import, change the record of one of its rows in the web UI, then apply | That row is not applied and is reported as changed since the preview; every other row is applied. Until 0.7.0: nothing is applied and a new preview is asked for |
 | S16 | Filter the grid, select rows, copy, and export CSV and JSON from the UI and the CLI with the same filter | Clipboard, both exports and the CLI output hold the same rows and columns, each with `hid` |
 | S17 | Two people bulk-edit overlapping rows | The second is shown the conflict and nothing of theirs overwrites the first |
 | S18 | Add two power supplies and a module to a switch; give the switch another owner and move it to Prod. From 0.5.0, also move it to another location | The minor items show the new owner and the new state with source `parent_item`, and from 0.5.0 the new location; the component count rose by one, not four |
@@ -248,12 +251,12 @@ written as a failing test at the start of its release.
 | S38 | Install the first release, load the examples, upgrade through each release in turn | Every migration applies and the summary is unchanged |
 | S39 | Enter the lines of the worked example in [data-model.md](data-model.md) against a seeded support weight of 2,400 | Demand 10.0, supply 9.0 by category, balance −1.0, coverage 90% |
 | S40 | Add the draft services line, then set an end date in the past on the professional services line | With drafts the balance is zero; the ended line drops out of supply in both views |
-| S41 | Under one agreement: a contract that ends next month, one that has lapsed, one whose renewal is pending, and an item under two contracts | The renewal worklist lists each under its vendor and agreement, and each count leads to its rows |
-| S42 | Mark one of two coverages of a contract as not to be renewed, then renew the contract | The marked item's coverage ends with the old term; the other item follows into the new one |
-| S43 | The account manager of an agreement is a contact record; one contract in it names another | Each contract shows the contact in force with its source, and a change of the contact's telephone number shows on both |
-| S44 | Record the capacity balance on two days with a line added between them, then add a line that multiplies two staff lines | The trend shows both records; the supply of the two staff lines is multiplied and no other is |
-| S45 | Capacity lines and items in two regions; ask for the report of one | Demand, supply and balance are of that region alone |
-| S46 | Give a location two links and a catalog entry one, each an address and its text | Each shows on its record, an item shows the link of its model, a file carries them out and back unchanged, and an address that is no web address is refused |
+| S41 | Under one agreement: a contract that ends next month, one that has lapsed, one whose renewal has been pending for longer than the overdue period, and an item under two contracts; then sign in as Inventory | The renewal worklist lists each under its vendor and agreement, the pending one as overdue, and each count leads to its rows; the alert after sign-in counts them, is not shown again once seen, and is shown again when another contract lapses |
+| S42 | Two items of one model and one of another under one contract; flag the first model as not to be renewed, give one of its two items its own flag of false, then renew the contract | The flagged item's coverage ends with the old term and the other two follow into the new one; once its cover has ended, the flagged item is on no list of what is uncovered and is counted as not to be renewed |
+| S43 | The account manager of an agreement is a contact record; one contract in it names another | Each contract shows the contact in force with its source, and a change of the agreement's contact's telephone number shows on the agreement and on the contract that has it from there |
+| S44 | Record the capacity balance in one week and again in the next, with a line added between them; correct the figures of the first week; then add a line that multiplies two staff lines | The trend shows both weeks, the first marked as corrected; the supply of the two staff lines is multiplied and no other is |
+| S45 | Capacity lines and items in two regions | The report is one balance for the whole team; beside it each region's share of the support weight, which with what is nowhere adds up to the whole, and no supply is divided |
+| S46 | Give a location two links, a site one and a catalog entry one, each an address and its text | Each shows on its record, an item shows the link of its model, a file carries them out and back unchanged, and an address that is no web address is refused |
 | S47 | Enter a circuit between two locations with a name, an enterprise circuit ID, a primary carrier, a local exchange carrier, a circuit number for each, and a router at each end; then a dark fiber between two buildings that has an enterprise circuit ID and no carrier's number | The first shows both sides, both carriers and both devices, and each router and each location shows it; the second is accepted, is found by its enterprise circuit ID, and that ID is refused for another circuit |
 | S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier | The monthly cost of each is the sum of its lines and its annual cost twelve times that; the report totals the annual cost of both by carrier and by site, with the monthly figure beside it |
 | S49 | The A side's site has a site contact; the circuit has a carrier account manager | The circuit shows the site contacts of each side, resolved from its locations with their source, and the carrier's escalation contacts |
