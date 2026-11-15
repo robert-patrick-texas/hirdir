@@ -279,7 +279,7 @@ class Lapsed:
     """The contracts whose period has ended while they still say they are active."""
 
     count: int
-    filter: dict[str, Any]
+    filter: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -355,8 +355,7 @@ def coverage(
         covered=counted["covered"],
         **{name: one.count for name, one in sections.items()},
     )
-    lapsed = where("lapsed", "eq", True)
-    lapsed_contracts = Lapsed(listing.count(db, fields.CONTRACTS, filter_=lapsed), lapsed)
+    lapsed_contracts = _lapsed_in_view(db, filter_, include_drafts)
     default = ["covered_until", "name"] if section == "expiring" else ["name"]
     page = _page(db, filter_, section, conditions, sections, sort, default, limit, offset)
     by_model = _not_renewed_by_model(
@@ -373,6 +372,7 @@ RENEWAL_SECTIONS = (
     "renewal_pending",
     "overdue",
     "ends_with_term",
+    "to_review",
     "overlapping",
 )
 # The lists of contracts, and of agreements, that the alert after sign-in is of.
@@ -407,6 +407,7 @@ class Renewals:
     agreements: dict[str, Section]
     groups: list[RenewalGroup]
     on_lists: dict[str, list[str]]
+    agreement_lists: dict[str, list[str]]
     page: Page
 
 
@@ -431,12 +432,17 @@ def _renewal_conditions(today: date, within_days: int) -> dict[str, dict[str, An
         "lapsed": where("lapsed", "eq", True),
         "renewal_pending": where("status", "eq", contracts.RENEWAL_PENDING),
         "overdue": where("renewal_overdue", "eq", True),
-        # What is let go on purpose, to be seen and never alerted.
+        # What the team marked not to renew, to be seen and never alerted: from when
+        # it ends within the horizon, and also once it has ended, until a person says
+        # it has expired or retires it. The mark changes nothing by itself (P-129).
         "ends_with_term": filters.both(
             where("ends_with_term", "eq", True),
             where("status", "eq", contracts.ACTIVE),
-            ends_within,
+            where("effective.ends_on", "lte", horizon),
         ),
+        # The members of an agreement that was renewed that still say their renewal is
+        # pending or that they have expired: no renewal of an agreement changes them.
+        "to_review": where("to_review", "eq", True),
     }
 
 
@@ -456,11 +462,25 @@ def _agreement_conditions(today: date, within_days: int) -> dict[str, dict[str, 
 
 
 def _hids_of(
-    db: Session, of: Any, asked: Any, tree: dict[str, Any] | None, include_drafts: bool
+    db: Session,
+    of: Any,
+    asked: Any,
+    tree: dict[str, Any] | None,
+    include_drafts: bool,
+    include_archived: bool = False,
+    also: tuple[Any, ...] = (),
 ) -> list[Any]:
     """Return the records of a list that a filter and a section's conditions match."""
-    where = listing.where_of(db, of, asked, False, include_drafts, (_sql(db, tree, of),))
+    where = listing.where_of(
+        db, of, asked, include_archived, include_drafts, (_sql(db, tree, of), *also)
+    )
     return list(db.scalars(of.joined(select(of.model.hid)).where(*where)))
+
+
+def _within(named: dict[str, Any] | None, tree: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a filter that keeps to the records named, or none where they are too many
+    to name: never a wider one."""
+    return None if named is None else filters.both(named, tree)
 
 
 def _named(field_: str, hids: list[str]) -> dict[str, Any] | None:
@@ -475,6 +495,7 @@ def renewals(
     *,
     filter_: Any = None,
     include_drafts: bool = False,
+    include_archived: bool = False,
     within_days: int | None = None,
     section: str | None = None,
     sort: list[str] | None = None,
@@ -506,11 +527,12 @@ def renewals(
                     Contract.agreement_hid,
                     of.fields["agreement.name"].expression,
                 )
-            ).where(*listing.where_of(db, of, filter_, False, include_drafts, ()))
+            ).where(*listing.where_of(db, of, filter_, include_archived, include_drafts, ()))
         )
     ]
     on_lists = {
-        name: _hids_of(db, of, filter_, tree, include_drafts) for name, tree in conditions.items()
+        name: _hids_of(db, of, filter_, tree, include_drafts, include_archived)
+        for name, tree in conditions.items()
     }
     # The items that more than one contract covers today, and the contracts that do.
     pairs: list[tuple[Any, ...]] = [
@@ -538,14 +560,14 @@ def renewals(
     whole_view = asked_tree is None
     overlap_items = {hid for items in overlapping.values() for hid in items}
     sections = {
-        name: Section(len(on_lists[name]), _joined(filter_, tree), False, include_drafts)
+        name: Section(len(on_lists[name]), _joined(filter_, tree), include_archived, include_drafts)
         for name, tree in conditions.items()
     }
     sections["overlapping"] = Section(
         len(overlap_items),
         item_overlap
         if whole_view
-        else filters.both(item_overlap, _named("contract.hid", sorted(viewed))),
+        else _within(_named("contract.hid", sorted(viewed)), item_overlap),
         False,
         include_drafts,
     )
@@ -584,7 +606,7 @@ def renewals(
                         name: _joined(filter_, filters.both(scope, tree))
                         for name, tree in conditions.items()
                     },
-                    "overlapping": filters.both(item_overlap, _named("contract.hid", sorted(held))),
+                    "overlapping": _within(_named("contract.hid", sorted(held)), item_overlap),
                 },
             )
         )
@@ -598,16 +620,17 @@ def renewals(
     # The agreements, by themselves: renewing one renews what shares its period.
     agreement_hids = sorted({row[3] for row in in_view if row[3] is not None})
     by_agreement = _agreement_conditions(today, within_days)
-    narrowed = None if whole_view else _named("hid", agreement_hids)
+    narrowed = () if whole_view else (Agreement.hid.in_(agreement_hids),)
     agreement_sections = {}
+    agreement_lists: dict[str, list[str]] = {}
     for name, tree in by_agreement.items():
-        joined = filters.both(narrowed, tree) if not whole_view else tree
-        count = (
-            listing.count(db, fields.AGREEMENTS, filter_=joined, include_drafts=include_drafts)
-            if whole_view or narrowed is not None
-            else 0
+        agreement_lists[name] = _hids_of(
+            db, fields.AGREEMENTS, None, tree, include_drafts, include_archived, narrowed
         )
-        agreement_sections[name] = Section(count, joined, False, include_drafts)
+        joined = tree if whole_view else _within(_named("hid", agreement_hids), tree)
+        agreement_sections[name] = Section(
+            len(agreement_lists[name]), joined, include_archived, include_drafts
+        )
     totals = {name: one.count for name, one in sections.items()}
     page = Page(limit=limit, offset=offset)
     if section == "overlapping":
@@ -633,6 +656,7 @@ def renewals(
             limit=limit,
             offset=offset,
             include_drafts=include_drafts,
+            include_archived=include_archived,
             also=[_sql(db, conditions[section], of)],
         )
         page = Page(section, rows, total, limit, offset)
@@ -646,8 +670,30 @@ def renewals(
         agreement_sections,
         found,
         alerted,
+        {name: sorted(hids) for name, hids in agreement_lists.items()},
         page,
     )
+
+
+def _lapsed_in_view(db: Session, asked: Any, include_drafts: bool) -> Lapsed:
+    """Count the contracts that have lapsed, of the view the coverage report is of: with
+    no filter all of them, and with one those that have a coverage of an item in the
+    view that follows the contract, as a lapsed contract covers nothing today (P-117)."""
+    lapsed = filters.where("lapsed", "eq", True)
+    if filters.to_tree(filters.parse(asked)) is None:
+        return Lapsed(listing.count(db, fields.CONTRACTS, filter_=lapsed), lapsed)
+    in_view = listing.where_of(db, ITEMS, asked, False, include_drafts, ())
+    items = ITEMS.joined(select(Item.hid)).where(*in_view)
+    followed = select(ContractCoverage.contract_hid).where(
+        ContractCoverage.item_hid.in_(items),
+        or_(
+            ContractCoverage.ends_on.is_(None),
+            ContractCoverage.ends_on >= contracts.in_force_of(Contract, "ends_on"),
+        ),
+        ContractCoverage.contract_hid == Contract.hid,
+    )
+    hids = _hids_of(db, fields.CONTRACTS, None, lapsed, False, False, (followed.exists(),))
+    return Lapsed(len(hids), _within(_named("hid", sorted(hids)), lapsed))
 
 
 # --- end of life ---------------------------------------------------------------------

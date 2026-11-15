@@ -720,8 +720,8 @@ agreement. An agreement's own earlier terms are answered in the same way by
 purchase history.
 
 **An agreement renewed with its members.** The contracts of an agreement that share
-its period, those in it that are not retired and have neither date of their own, are
-its members. A renewal of the agreement says for each of them one of three things
+its period, those in it that are not retired and whose end is the agreement's, having
+no end of their own whatever their start, are its members. A renewal of the agreement says for each of them one of three things
 (P-129). `same`: it follows the agreement into its new period under its number, as a
 contract with no dates of its own always has. `new_number`: the vendor gives it a new
 number for the new term. The number begins with the agreement's new term and has no
@@ -732,22 +732,32 @@ member's next term, with `next_with_agreement` true and no `next_starts_on` or
 when it is read. A next term of the agreement that is withdrawn withdraws the numbers
 that wait on it, in the same change, and a member renewed by itself in the meantime
 has that renewal in place of the one that waited. `ends`: the member is let go with
-the present term, as when its site closes. It is given the dates of the agreement's
-present term as its own, in the same change, because from then it no longer shares
+the present term, as when its site closes. It is given the agreement's present end as
+its own, and its start where it has none of its own, in the same change, because from then it no longer shares
 the agreement's period and the new term does not carry it, and it is marked
 `ends_with_term`. It stays grouped in the agreement, so that the agreement's list and
 the contract's history show it, and is retired by hand once it is of no more use. A
 member left out of the request is `same`, and a contract named that is not a member
-is refused. The renewal is one change of the agreement and of every member, each
-audited under one request ID.
+is refused; two members are not given one new number. The renewal is one change of the
+agreement and of every member, each audited under one request ID. **It changes no
+member's status**: what procurement agreed is often told by email or in a meeting, and
+the team holds no copy of the new agreement to load, so a member that still says
+`renewal_pending` or `expired` is flagged to review, in the renewal's answer, on the
+agreement's record (`members_to_review`) and on the renewal worklist (`to_review`), for
+a person to make active, take out of the agreement or retire.
 
-**A contract that ends with its term.** `ends_with_term` says that a contract is not
-to be renewed. It covers to the end of its present term, is not lapsed after it, and
-from the next day its status in force is `expired`, worked out when it is read, with
-nothing written. It is on none of the lists of the renewal worklist but the one of
-what is let go, and never in the alert. The mark is given by a renewal of the
-agreement, as above, or by hand, also to a contract that stands by itself, and is
-taken off by hand or by a renewal of the contract.
+**A contract marked not to renew.** `ends_with_term` is the team's note that a
+contract is not to be renewed, which may not have reached procurement or the vendor, so
+a renewal may still occur. It changes no date, no status and no coverage by itself:
+the team handles what follows. A contract so marked is not lapsed once its period has
+passed, and covers nothing past it, as an active contract does not; it is on none of
+the lists of the renewal worklist but the one of what is let go, from when it ends
+within the warning period until a person says it has expired or retires it, and never
+in the alert. The mark is given and taken off by hand, also to a contract that shares
+its agreement's dates, which then still follows its agreement; it is given by a renewal
+of the agreement that lets the member go, as above. It stays through a renewal, and
+goes when a person takes it off or the contract is taken out of its agreement or moved
+to another (P-129).
 
 **A contract's history across an agreement.** A contract's history is in parts. A
 part begins when the contract is made, when a renewal takes effect, and when it joins
@@ -846,7 +856,8 @@ is given the last day of the present term as its own end, in the same change, wi
 audit event of its own under the renewal's request ID. That end is written on purpose
 and kept, where a date that is the contract's own is otherwise kept as blank: it is
 the one exception, and only a renewal makes it. The item is covered to the end of the
-present term, also when the renewal was entered early. An item in service whose flag is
+present term, also when the renewal was entered early, and the end is kept when a file
+carries the coverage out and back. An item in service whose flag is
 in force and that no contract covers is no gap: it is on no list of what is uncovered
 or runs out soon, and the coverage report counts it by itself, by model (P-131).
 
@@ -1164,10 +1175,10 @@ Jobs and their rows are kept without expiry, like audit events.
 ### `renewal_alert_views`
 
 What a person last saw of the renewal alert (P-128): `user_hid`, unique, `seen_at`,
-`as_of`, the day of the alert they saw, and `lapsed`, `renewal_pending` and `ending`,
-each the list of the HIDs of the contracts that were on that list. A person is shown
-the alert again when a contract is on one of the three lists that is not in what they
-last saw of it. Keeping it is a change of their own, audited on their user.
+`as_of`, the day they dismissed it, and `lapsed`, `renewal_pending` and `ending`, each
+the list of the HIDs of the contracts that were on that list then. A person is shown
+the alert again the next day, in the application's time zone, while any of its counts
+is more than none. Keeping it is a change of their own, audited on their user.
 
 ### `idempotency_keys`
 

@@ -494,6 +494,10 @@ so each has of its own what another could disturb:
   looks at its own rows: the past imports that its account made, the user it searched
   for.
 
+The browser scenarios of the renewal alert run in a project of their own, "the alert
+alone", after the others and with one worker: the alert is shown once a day to each
+person, and a scenario that dismisses it must not meet another that expects it shown.
+
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
 but one: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run

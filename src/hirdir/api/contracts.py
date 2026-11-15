@@ -81,9 +81,11 @@ def renew_agreement(
     members = changes.pop("members", None) or []
     renewed = contracts.renew_agreement(db, context, hid, body.row_version, changes, members)
     out = shapes.agreements_out(db, [renewed.record])[0]
+    review = [one.contract_hid for one in renewed.members if one.to_review]
     return r.AgreementRenewed(
         **out.model_dump(),
         left_behind=renewed.left_behind,
+        to_review=shapes.contract_refs(db, review),
         members=[
             r.MemberRenewedOut.model_validate(one, from_attributes=True) for one in renewed.members
         ],

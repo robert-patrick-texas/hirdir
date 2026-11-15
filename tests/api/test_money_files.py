@@ -233,11 +233,8 @@ def test_a_file_of_lines_matches_each_part_number_and_makes_no_catalog_entry(
     preview = files.preview("purchase_lines", lines)
     assert counts(preview["job"]) == (6, 0, 0, 0)
     notes = [row["notes"] for row in preview["rows"]]
-    assert notes[0] == notes[2] == []
-    assert notes[1] == [
-        "the part number sfp-10g-sr matches 2 models, Cisco SFP-10G-SR, Example Optics "
-        "SFP-10G-SR=: the line is not tracked"
-    ]
+    # An exact part number finds its own model before its spare twin is looked at.
+    assert notes[0] == notes[1] == notes[2] == []
     assert notes[3] == ["the part number HLT-100 matches no model: the line is not tracked"]
     assert notes[4] == [
         "there is no vendor Nobody Inc, so the part number PWR-X matches no model: the line is "
@@ -250,7 +247,7 @@ def test_a_file_of_lines_matches_each_part_number_and_makes_no_catalog_entry(
     listed = {line["line"]: line for line in make.get("/purchase-lines")["items"]}
     assert listed[1]["catalog"]["pid"] == "PWR-C1-715WAC-P"
     assert listed[1]["part_number"] == "PWR-C1-715WAC-P="
-    assert (listed[2]["tracked"], listed[2]["part_number"]) == (False, "sfp-10g-sr")
+    assert (listed[2]["catalog"]["vendor"], listed[2]["part_number"]) == ("Cisco", "sfp-10g-sr")
     assert (listed[3]["catalog"]["vendor"], listed[3]["catalog"]["pid"]) == ("Cisco", "SFP-10G-SR")
     assert [listed[number]["tracked"] for number in (4, 5, 6)] == [False, False, False]
     assert listed[4]["description"] == "Hook-and-loop tape, 100"
@@ -262,7 +259,7 @@ def test_a_file_of_lines_matches_each_part_number_and_makes_no_catalog_entry(
     exported = table(files.export("purchase_lines", sort=["line"], columns=columns))
     assert [row["tracked"] for row in exported] == [
         "true",
-        "false",
+        "true",
         "true",
         "false",
         "false",
@@ -292,10 +289,18 @@ def test_a_file_of_lines_matches_each_part_number_and_makes_no_catalog_entry(
     again = files.preview("purchase_lines", lines)
     assert counts(again["job"])[3] == 0
     assert again["rows"][3]["outcome"] == "unchanged"
-    assert again["rows"][3]["notes"] == [
-        "the part number HLT-100 matches no model: the line keeps its model, "
-        "Example Supplies HLT-100-ROLL"
-    ]
+    # And so does a line whose model a person corrected, while its part number is the
+    # same (the owner's answer): loading procurement's file again does not undo it.
+    sr = listed[2]
+    optic = make.entry(cisco, "SFP-10G-LR")
+    make.patch(
+        f"/purchase-lines/{sr['hid']}",
+        {"row_version": sr["row_version"], "catalog_entry_hid": optic["hid"]},
+    )
+    again = files.preview("purchase_lines", lines)
+    assert again["rows"][1]["outcome"] == "unchanged"
+    files.apply(again)
+    assert make.get(f"/purchase-lines/{sr['hid']}")["catalog"]["pid"] == "SFP-10G-LR"
     # A row that would give a line on which items have arrived another model is
     # rejected: that is corrected by hand, where what becomes of the items is said.
     power = make.get("/purchase-lines", filter="line:eq:1")["items"][0]

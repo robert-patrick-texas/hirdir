@@ -57,6 +57,7 @@ const agreement = {
     account_managers: { value: [], source: "none", source_hid: null },
     support_contacts: { value: [], source: "none", source_hid: null },
   },
+  members_to_review: [],
   row_version: 1,
   created_at: "2026-11-14T20:20:37Z",
   updated_at: "2026-11-14T20:20:37Z",

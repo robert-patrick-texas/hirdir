@@ -427,3 +427,33 @@ def test_reading_a_job_is_open_to_a_viewer_and_applying_it_is_not(
     refused = client.post(f"{API}/imports/{job['hid']}/apply", headers=viewer)
     assert refused.status_code == 403
     assert make.get(f"/imports/{job['hid']}")["status"] == "previewed"
+
+
+def test_a_resumed_job_knows_the_records_its_earlier_batches_made_for_a_reference(
+    make: Maker, client: TestClient, monkeypatch
+) -> None:
+    # Row 1 names a successor that no row has described yet, which the file makes for
+    # the reference; row 60, in the second batch, describes it.
+    lines = ["vendor,pid,successor_vendor,successor_pid,model_name"]
+    lines.append("Cisco,M-001,Cisco,M-999,first")
+    lines += [f"Cisco,M-{number:03d},,,model {number}" for number in range(2, 60)]
+    lines.append("Cisco,M-999,,,the successor")
+    job = preview(make, "catalog_entries", "\n".join(lines) + "\n")
+    previewed = {row["row"]: row["outcome"] for row in rows(make, job)}
+    one = imports._one
+    failed: list[int] = []
+
+    def fails_once_at_row_55(run, which, values, result):
+        if result.row == 55 and not failed:
+            failed.append(result.row)
+            raise RuntimeError("something nobody foresaw")
+        return one(run, which, values, result)
+
+    monkeypatch.setattr(imports, "_one", fails_once_at_row_55)
+    begin(make, job)
+    assert wait_for_job(client, make.headers, job["hid"])["status"] == "stopped"
+    begin(make, job)
+    ended = wait_for_job(client, make.headers, job["hid"])
+    assert (ended["status"], ended["stale"]) == ("applied", 0)
+    applied = {row["row"]: row["applied_outcome"] for row in rows(make, job)}
+    assert applied[60] == previewed[60]

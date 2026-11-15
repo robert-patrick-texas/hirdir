@@ -4982,9 +4982,9 @@ export interface paths {
     /**
      * Say how many contracts have lapsed, have a renewal pending, of which overdue,
      * and end within the warning period, each with the list of the worklist it leads to,
-     * and whether to show it to the person signed in: for the Inventory and the Admin
-     * role, once until a contract comes onto one of those lists that was not on it when
-     * they last saw it.
+     * and the same of the agreements, and whether to show it to the person signed in:
+     * for the Inventory and the Admin role, once a day while any count is more than
+     * none.
      */
     get: {
       parameters: {
@@ -5005,9 +5005,9 @@ export interface paths {
   };
   "/api/v1/renewals/alert/seen": {
     /**
-     * Keep that the person signed in has seen the alert as it was answered, by its
-     * `version`. It is a change of their own, audited on their user, and changes no
-     * contract. A version that is no longer in force is a `409`: read the alert again.
+     * Keep that the person signed in has seen the alert today: it is not shown to them
+     * again until the next day, in the application's time zone. It is a change of their
+     * own, audited on their user, and changes no contract.
      */
     post: {
       parameters: {
@@ -5247,13 +5247,15 @@ export interface paths {
           /** How far ahead a contract counts as ending. Left out, the `renewal_warning_days` setting. */
           within_days?: number | null;
           /** The list to return a page of. */
-          section?: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping" | null;
+          section?: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "to_review" | "overlapping" | null;
           /** As the contract list is sorted, or the item list for `overlapping`. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
           /** Count draft records as well. */
           include_drafts?: boolean;
+          /** Count retired records and items in Archived as well. */
+          include_archived?: boolean;
         };
         path?: never;
         header?: never;
@@ -6504,6 +6506,8 @@ export interface components {
       hid: string;
       /** Its period has ended, and it still says it is active. */
       lapsed: boolean;
+      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129). */
+      members_to_review: components["schemas"]["ContractRef"][];
       name: string;
       /** The term that begins on a day to come. Until then the present one runs on. */
       next_term: components["schemas"]["NextTerm"] | null;
@@ -6597,6 +6601,8 @@ export interface components {
       lapsed: boolean;
       left_behind: number;
       members: components["schemas"]["MemberRenewedOut"][];
+      /** Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129). */
+      members_to_review: components["schemas"]["ContractRef"][];
       name: string;
       /** The term that begins on a day to come. Until then the present one runs on. */
       next_term: components["schemas"]["NextTerm"] | null;
@@ -6615,6 +6621,8 @@ export interface components {
       support_level: string | null;
       support_url: string | null;
       tags: string[];
+      /** The members to look at: those of `members` with `to_review`. */
+      to_review: components["schemas"]["ContractRef"][];
       updated_at: string;
       vendor: components["schemas"]["VendorRef"];
       vendor_hid: string;
@@ -6641,11 +6649,12 @@ export interface components {
       count: number;
       /** How many of them were not on the list when last seen. */
       new: number;
-      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping";
+      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "to_review" | "overlapping";
     };
-    /** That the alert has been seen, as it was answered. */
+    /** That the alert has been seen today. */
     AlertSeen: {
-      version: string;
+      /** The version that was shown. Not required. */
+      version?: string | null;
     };
     /** What is kept of the alert a person has seen. */
     AlertSeenOut: {
@@ -8285,10 +8294,10 @@ export interface components {
     /** The contracts whose period has ended while they still say they are active. */
     LapsedContracts: {
       count: number;
-      /** The filter of `GET /contracts` for them. */
+      /** The filter of `GET /contracts` for them; blank where the report's filter leads to more of them than a filter can name. */
       filter: {
         [key: string]: unknown;
-      };
+      } | null;
     };
     /** What one lifecycle state allows, and where an item may move from it. */
     LifecycleRuleOut: {
@@ -8558,6 +8567,8 @@ export interface components {
       /** The number it has in the new term, or its last one. */
       number: string;
       renewal: "same" | "new_number" | "ends";
+      /** Carried into the new term while it says its renewal is pending or that it has expired, or while it is marked not to be renewed: a person looks at it. */
+      to_review: boolean;
     };
     /** Items to make members of a group together. The group is checked once all are in. */
     MembersAdd: {
@@ -9356,6 +9367,10 @@ export interface components {
     };
     /** The renewal alert, as the person signed in is to be shown it. */
     RenewalAlert: {
+      /** How many agreements have lapsed, have a renewal pending and end soon. */
+      agreements: {
+        [key: string]: number;
+      };
       as_of: string;
       ending: components["schemas"]["AlertCount"];
       lapsed: components["schemas"]["AlertCount"];
@@ -9363,9 +9378,9 @@ export interface components {
       overdue: number;
       overdue_after: number;
       renewal_pending: components["schemas"]["AlertCount"];
-      /** Whether to show it: for the Inventory and the Admin role, when a contract is on a list that it was not on when they last saw it. */
+      /** Whether to show it: for the Inventory and the Admin role, when a count is more than none and they have not dismissed it yet today, in the application's time zone. */
       show: boolean;
-      /** What `POST /renewals/alert/seen` is sent with. */
+      /** What `POST /renewals/alert/seen` may be sent with. */
       version: string;
       within_days: number;
     };
@@ -9391,7 +9406,7 @@ export interface components {
     RenewalTotals: {
       /** Contracts that cover and end within the days, with no renewal entered. */
       ending: number;
-      /** Contracts let go with their term that end within the days: never alerted. */
+      /** Contracts the team marked not to renew that end within the days or have ended, until a person says they have expired: never alerted. */
       ends_with_term: number;
       /** Contracts whose period has ended while they still say active. */
       lapsed: number;
@@ -9401,6 +9416,8 @@ export interface components {
       overlapping: number;
       /** Contracts whose renewal is pending. */
       renewal_pending: number;
+      /** Members of an agreement that was renewed that still say their renewal is pending or that they have expired: no renewal of an agreement changes them. */
+      to_review: number;
     };
     /** What a person must act on to keep the cover going: the renewal worklist. */
     RenewalsReport: {
@@ -9418,7 +9435,7 @@ export interface components {
       offset: number;
       /** The `renewal_pending_overdue_days` setting. */
       overdue_after: number;
-      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping" | null;
+      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "to_review" | "overlapping" | null;
       /** Each list with its filter: of `GET /contracts`, and of `GET /items` for `overlapping`. */
       sections: {
         [key: string]: components["schemas"]["ReportSection"];

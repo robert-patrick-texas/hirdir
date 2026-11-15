@@ -756,6 +756,14 @@
             "title": "Lapsed",
             "type": "boolean"
           },
+          "members_to_review": {
+            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129).",
+            "items": {
+              "$ref": "#/components/schemas/ContractRef"
+            },
+            "title": "Members To Review",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -941,6 +949,7 @@
           "lapsed",
           "next_term",
           "contracts",
+          "members_to_review",
           "row_version",
           "created_at",
           "updated_at"
@@ -1436,6 +1445,14 @@
             "title": "Members",
             "type": "array"
           },
+          "members_to_review": {
+            "description": "Its members that still say their renewal is pending or that they have expired while it runs on: no renewal of an agreement changes them, and a person makes each active, takes it out, or retires it (P-129).",
+            "items": {
+              "$ref": "#/components/schemas/ContractRef"
+            },
+            "title": "Members To Review",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1583,6 +1600,14 @@
             "title": "Tags",
             "type": "array"
           },
+          "to_review": {
+            "description": "The members to look at: those of `members` with `to_review`.",
+            "items": {
+              "$ref": "#/components/schemas/ContractRef"
+            },
+            "title": "To Review",
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -1621,11 +1646,13 @@
           "lapsed",
           "next_term",
           "contracts",
+          "members_to_review",
           "row_version",
           "created_at",
           "updated_at",
           "members",
-          "left_behind"
+          "left_behind",
+          "to_review"
         ],
         "title": "AgreementRenewed",
         "type": "object"
@@ -1796,6 +1823,7 @@
               "renewal_pending",
               "overdue",
               "ends_with_term",
+              "to_review",
               "overlapping"
             ],
             "title": "Section",
@@ -1812,17 +1840,22 @@
       },
       "AlertSeen": {
         "additionalProperties": false,
-        "description": "That the alert has been seen, as it was answered.",
+        "description": "That the alert has been seen today.",
         "properties": {
           "version": {
-            "maxLength": 64,
-            "title": "Version",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version that was shown. Not required.",
+            "title": "Version"
           }
         },
-        "required": [
-          "version"
-        ],
         "title": "AlertSeen",
         "type": "object"
       },
@@ -12859,10 +12892,17 @@
             "type": "integer"
           },
           "filter": {
-            "additionalProperties": true,
-            "description": "The filter of `GET /contracts` for them.",
-            "title": "Filter",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /contracts` for them; blank where the report's filter leads to more of them than a filter can name.",
+            "title": "Filter"
           }
         },
         "required": [
@@ -14730,13 +14770,19 @@
             ],
             "title": "Renewal",
             "type": "string"
+          },
+          "to_review": {
+            "description": "Carried into the new term while it says its renewal is pending or that it has expired, or while it is marked not to be renewed: a person looks at it.",
+            "title": "To Review",
+            "type": "boolean"
           }
         },
         "required": [
           "contract_hid",
           "number",
           "renewal",
-          "left_behind"
+          "left_behind",
+          "to_review"
         ],
         "title": "MemberRenewedOut",
         "type": "object"
@@ -19552,6 +19598,14 @@
         "additionalProperties": false,
         "description": "The renewal alert, as the person signed in is to be shown it.",
         "properties": {
+          "agreements": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "How many agreements have lapsed, have a renewal pending and end soon.",
+            "title": "Agreements",
+            "type": "object"
+          },
           "as_of": {
             "format": "date",
             "title": "As Of",
@@ -19576,12 +19630,12 @@
             "$ref": "#/components/schemas/AlertCount"
           },
           "show": {
-            "description": "Whether to show it: for the Inventory and the Admin role, when a contract is on a list that it was not on when they last saw it.",
+            "description": "Whether to show it: for the Inventory and the Admin role, when a count is more than none and they have not dismissed it yet today, in the application's time zone.",
             "title": "Show",
             "type": "boolean"
           },
           "version": {
-            "description": "What `POST /renewals/alert/seen` is sent with.",
+            "description": "What `POST /renewals/alert/seen` may be sent with.",
             "title": "Version",
             "type": "string"
           },
@@ -19599,7 +19653,8 @@
           "lapsed",
           "renewal_pending",
           "overdue",
-          "ending"
+          "ending",
+          "agreements"
         ],
         "title": "RenewalAlert",
         "type": "object"
@@ -19680,7 +19735,7 @@
             "type": "integer"
           },
           "ends_with_term": {
-            "description": "Contracts let go with their term that end within the days: never alerted.",
+            "description": "Contracts the team marked not to renew that end within the days or have ended, until a person says they have expired: never alerted.",
             "title": "Ends With Term",
             "type": "integer"
           },
@@ -19703,6 +19758,11 @@
             "description": "Contracts whose renewal is pending.",
             "title": "Renewal Pending",
             "type": "integer"
+          },
+          "to_review": {
+            "description": "Members of an agreement that was renewed that still say their renewal is pending or that they have expired: no renewal of an agreement changes them.",
+            "title": "To Review",
+            "type": "integer"
           }
         },
         "required": [
@@ -19711,6 +19771,7 @@
           "renewal_pending",
           "overdue",
           "ends_with_term",
+          "to_review",
           "overlapping"
         ],
         "title": "RenewalTotals",
@@ -19778,6 +19839,7 @@
                   "renewal_pending",
                   "overdue",
                   "ends_with_term",
+                  "to_review",
                   "overlapping"
                 ],
                 "type": "string"
@@ -33225,7 +33287,7 @@
     },
     "/api/v1/renewals/alert": {
       "get": {
-        "description": "Say how many contracts have lapsed, have a renewal pending, of which overdue,\nand end within the warning period, each with the list of the worklist it leads to,\nand whether to show it to the person signed in: for the Inventory and the Admin\nrole, once until a contract comes onto one of those lists that was not on it when\nthey last saw it.",
+        "description": "Say how many contracts have lapsed, have a renewal pending, of which overdue,\nand end within the warning period, each with the list of the worklist it leads to,\nand the same of the agreements, and whether to show it to the person signed in:\nfor the Inventory and the Admin role, once a day while any count is more than\nnone.",
         "operationId": "renewal_alert_api_v1_renewals_alert_get",
         "responses": {
           "200": {
@@ -33247,7 +33309,7 @@
     },
     "/api/v1/renewals/alert/seen": {
       "post": {
-        "description": "Keep that the person signed in has seen the alert as it was answered, by its\n`version`. It is a change of their own, audited on their user, and changes no\ncontract. A version that is no longer in force is a `409`: read the alert again.",
+        "description": "Keep that the person signed in has seen the alert today: it is not shown to them\nagain until the next day, in the application's time zone. It is a change of their\nown, audited on their user, and changes no contract.",
         "operationId": "renewal_alert_seen_api_v1_renewals_alert_seen_post",
         "requestBody": {
           "content": {
@@ -33897,6 +33959,7 @@
                     "renewal_pending",
                     "overdue",
                     "ends_with_term",
+                    "to_review",
                     "overlapping"
                   ],
                   "type": "string"
@@ -33963,6 +34026,18 @@
               "default": false,
               "description": "Count draft records as well.",
               "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Count retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count retired records and items in Archived as well.",
+              "title": "Include Archived",
               "type": "boolean"
             }
           }
