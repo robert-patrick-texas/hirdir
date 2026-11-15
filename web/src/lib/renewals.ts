@@ -299,12 +299,19 @@ export const MEMBER_CHOICES: ReadonlyArray<{ value: MemberChoice; label: string;
 export interface MemberOf {
   hid: string;
   number: string;
+  status: ContractStatus;
   record_status: string;
   starts_on: string | null;
   ends_on: string | null;
   ends_with_term: boolean;
   covered_items: number;
 }
+
+/** What a person says of a contract: its status. */
+export type ContractStatus = Schemas["ContractOut"]["status"];
+
+/** The statuses a member is to be confirmed out of when its agreement is renewed. */
+export const TO_CONFIRM: readonly ContractStatus[] = ["renewal_pending", "expired"];
 
 /**
  * Whether a contract shares its agreement's period, and so is a member that a renewal of
@@ -320,6 +327,13 @@ export interface MemberDraft {
   hid: string;
   number: string;
   covered: number;
+  /** Its status now: one still pending or expired is for the operator to confirm. */
+  current: ContractStatus;
+  /**
+   * The status it is to have from the renewal, the operator's confirmation that it moves
+   * forward, or blank to leave it as it is: no renewal of an agreement changes it else.
+   */
+  status: ContractStatus | "";
   /** The team marked it not to renew: carried into the new term, it is to be reviewed. */
   marked: boolean;
   choice: MemberChoice;
@@ -339,6 +353,8 @@ export function memberDrafts(contracts: readonly MemberOf[]): MemberDraft[] {
     hid: contract.hid,
     number: contract.number,
     covered: contract.covered_items,
+    current: contract.status,
+    status: "",
     marked: contract.ends_with_term,
     choice: "same",
     newNumber: "",
@@ -357,8 +373,9 @@ export function membersBody(
 ): { ok: true; value: MemberRenewal[] } | { ok: false; error: string } {
   const members: MemberRenewal[] = [];
   for (const draft of drafts) {
+    const status = draft.status === "" ? {} : { status: draft.status };
     if (draft.choice !== "new_number") {
-      members.push({ contract_hid: draft.hid, renewal: draft.choice });
+      members.push({ contract_hid: draft.hid, renewal: draft.choice, ...status });
       continue;
     }
     const number = draft.newNumber.trim();
@@ -383,9 +400,75 @@ export function membersBody(
       number,
       ...(cost === "" ? {} : { annual_cost: cost }),
       ...(reference === "" ? {} : { purchase_reference: reference }),
+      ...status,
     });
   }
   return { ok: true, value: members };
+}
+
+/** What a choice made for the members selected at once changes: either part, or both. */
+export interface ForSelected {
+  /** What the renewal does with them, or blank to leave each as it is. */
+  choice: MemberChoice | "";
+  /** The status each is to have, `keep` to leave it as it is, or blank to leave each as set. */
+  status: ContractStatus | "keep" | "";
+}
+
+/**
+ * The members with one choice applied to those selected at once: what the renewal does
+ * with them, the status each is to have from it, or both. The others stay as they are.
+ */
+export function applyToSelected(
+  drafts: readonly MemberDraft[],
+  selected: ReadonlySet<string>,
+  apply: ForSelected,
+): MemberDraft[] {
+  return drafts.map((draft) => {
+    if (!selected.has(draft.hid)) return draft;
+    return {
+      ...draft,
+      ...(apply.choice === "" ? {} : { choice: apply.choice }),
+      ...(apply.status === "" ? {} : { status: apply.status === "keep" ? "" : apply.status }),
+    };
+  });
+}
+
+/** Whether a member is still pending or expired, and so for the operator to confirm. */
+export function toConfirm(draft: Pick<MemberDraft, "current">): boolean {
+  return TO_CONFIRM.includes(draft.current);
+}
+
+// --- several contracts of an agreement updated at once ----------------------------------
+
+/** What "Update selected" does to each contract selected. */
+export type Update =
+  | { kind: "status"; status: ContractStatus }
+  | { kind: "take_out" }
+  | { kind: "retire" };
+
+/** What became of each contract of an update of several, as it was sent one by one. */
+export interface Updated {
+  done: string[];
+  refused: Array<{ number: string; message: string }>;
+}
+
+/** What an update of several did, in a sentence or two, naming each refusal by contract. */
+export function updatedText(update: Update, outcome: Updated, label: (status: string) => string) {
+  const { done, refused } = outcome;
+  const what =
+    update.kind === "status"
+      ? `now ${done.length === 1 ? "says" : "say"} ${label(update.status)}`
+      : update.kind === "take_out"
+        ? `${done.length === 1 ? "was" : "were"} taken out of the agreement, and ${done.length === 1 ? "stands" : "stand"} by ${done.length === 1 ? "itself" : "themselves"}`
+        : `${done.length === 1 ? "was" : "were"} retired`;
+  const parts: string[] = [];
+  if (done.length > 0) parts.push(`${done.join(", ")} ${what}.`);
+  if (refused.length > 0) {
+    parts.push(
+      `Refused: ${refused.map((one) => `${one.number}, ${one.message.replace(/\.$/, "")}`).join("; ")}.`,
+    );
+  }
+  return parts.join(" ") || "Nothing was selected.";
 }
 
 /** What the fields of each member are called, where the server refuses one of them. */

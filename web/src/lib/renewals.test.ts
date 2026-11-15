@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   alertLines,
   alertShown,
+  applyToSelected,
   asksForAlert,
   findGroup,
   freshText,
@@ -22,7 +23,9 @@ import {
   type RenewalGroup,
   renewalsPath,
   sharesPeriod,
+  toConfirm,
   toReviewText,
+  updatedText,
 } from "./renewals";
 
 const counts = {
@@ -201,10 +204,37 @@ describe("the alert after sign-in", () => {
   });
 });
 
+describe("several contracts of an agreement updated at once", () => {
+  const label = (status: string) => (status === "active" ? "Active" : status);
+
+  it("says what was done, and names each contract refused with why", () => {
+    expect(
+      updatedText(
+        { kind: "status", status: "active" },
+        { done: ["CON-1", "CON-2"], refused: [{ number: "CON-3", message: "It changed." }] },
+        label,
+      ),
+    ).toBe("CON-1, CON-2 now say Active. Refused: CON-3, It changed.");
+    expect(
+      updatedText({ kind: "status", status: "active" }, { done: ["CON-1"], refused: [] }, label),
+    ).toBe("CON-1 now says Active.");
+    expect(updatedText({ kind: "take_out" }, { done: ["CON-1"], refused: [] }, label)).toBe(
+      "CON-1 was taken out of the agreement, and stands by itself.",
+    );
+    expect(updatedText({ kind: "retire" }, { done: ["CON-1", "CON-2"], refused: [] }, label)).toBe(
+      "CON-1, CON-2 were retired.",
+    );
+    expect(updatedText({ kind: "retire" }, { done: [], refused: [] }, label)).toBe(
+      "Nothing was selected.",
+    );
+  });
+});
+
 describe("an agreement renewed with its members", () => {
   const contract = (over: Partial<MemberOf>): MemberOf => ({
     hid: "c-1",
     number: "CON-1",
+    status: "active",
     record_status: "active",
     starts_on: null,
     ends_on: null,
@@ -262,6 +292,48 @@ describe("an agreement renewed with its members", () => {
         { contract_hid: "c-3", renewal: "ends" },
       ],
     });
+  });
+
+  it("sends the status a member is to have where the operator confirms one, and none else", () => {
+    const [moving, waiting] = memberDrafts([
+      contract({ status: "renewal_pending" }),
+      contract({ hid: "c-2", number: "CON-2", status: "expired" }),
+    ]);
+    if (!moving || !waiting) throw new Error("two drafts");
+    expect(toConfirm(moving)).toBe(true);
+    expect(toConfirm(waiting)).toBe(true);
+    expect(toConfirm({ current: "active" })).toBe(false);
+    expect(membersBody([{ ...moving, status: "active" }, waiting])).toEqual({
+      ok: true,
+      value: [
+        { contract_hid: "c-1", renewal: "same", status: "active" },
+        { contract_hid: "c-2", renewal: "same" },
+      ],
+    });
+  });
+
+  it("sets those selected at once, a choice, a status or both, and leaves the others", () => {
+    const drafts = memberDrafts([
+      contract({ status: "renewal_pending" }),
+      contract({ hid: "c-2", number: "CON-2", status: "renewal_pending" }),
+      contract({ hid: "c-3", number: "CON-3", status: "renewal_pending" }),
+    ]);
+    const chosen = new Set(["c-1", "c-2"]);
+    const active = applyToSelected(drafts, chosen, { choice: "", status: "active" });
+    expect(active.map((draft) => [draft.number, draft.choice, draft.status])).toEqual([
+      ["CON-1", "same", "active"],
+      ["CON-2", "same", "active"],
+      ["CON-3", "same", ""],
+    ]);
+    const ended = applyToSelected(active, new Set(["c-2"]), { choice: "ends", status: "keep" });
+    expect(ended.map((draft) => [draft.number, draft.choice, draft.status])).toEqual([
+      ["CON-1", "same", "active"],
+      ["CON-2", "ends", ""],
+      ["CON-3", "same", ""],
+    ]);
+    expect(applyToSelected(drafts, new Set(), { choice: "ends", status: "active" })).toEqual(
+      drafts,
+    );
   });
 
   it("asks for the new number, and a cost that is an amount", () => {

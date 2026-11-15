@@ -40,10 +40,12 @@ import {
 } from "../lib/contracts";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
-import { type Loaded, useAction, useLoad, useTitle } from "../lib/hooks";
+import { type Loaded, toApiError, useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY, useMoney, useTags, useVendorOptions } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import {
+  applyToSelected,
+  type ForSelected,
   leftBehindText,
   MEMBER_CHOICES,
   type MemberDraft,
@@ -52,8 +54,16 @@ import {
   membersBody,
   membersText,
   membersToReviewText,
+  toConfirm,
   toReviewText,
+  type Update,
+  type Updated,
+  updatedText,
 } from "../lib/renewals";
+
+/** The values of the statuses of a contract, to read a choice of one back. */
+const CONTRACT_STATUS_VALUES = CONTRACT_STATUSES.map((one) => one.value as Contract["status"]);
+
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
@@ -315,6 +325,20 @@ export function AgreementDetail() {
   const [adding, setAdding] = useState(false);
   // The members the last renewal made here left to be reviewed, as it answered them.
   const [review, setReview] = useState<ContractRef[]>([]);
+  // The contracts selected on the page, for Update selected: one selection for its
+  // contracts and for its members to review.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const selection: Selection = {
+    selected,
+    pick: (hid, on) =>
+      setSelected((was) => {
+        const next = new Set(was);
+        if (on) next.add(hid);
+        else next.delete(hid);
+        return next;
+      }),
+    set: (hids) => setSelected(new Set(hids)),
+  };
   const record = agreement.data;
   useTitle(record ? record.name : "Support agreement");
   const specs = useMemo(() => agreementSpecs(lists, record ?? null), [lists, record]);
@@ -449,7 +473,22 @@ export function AgreementDetail() {
             mayEdit={mayEdit}
             onChanged={changed}
           />
-          <AgreementContracts agreement={record} found={contracts} />
+          <AgreementContracts
+            agreement={record}
+            found={contracts}
+            {...(open ? { selection } : {})}
+          />
+          {open && (
+            <UpdateSelected
+              agreement={record}
+              selected={selected}
+              contracts={contracts.data?.items}
+              onDone={(text) => {
+                setSelected(new Set());
+                changed(text);
+              }}
+            />
+          )}
           {open && !adding && (
             <p className="actions">
               <button type="button" onClick={() => setAdding(true)}>
@@ -484,7 +523,12 @@ export function AgreementDetail() {
             agreement={record}
             contracts={contracts.data?.items}
             mayEdit={open}
+            selection={selection}
             onChanged={changed}
+            onDone={(text) => {
+              setSelected(new Set());
+              changed(text);
+            }}
           />
           {open && (
             <AgreementRenew
@@ -559,9 +603,12 @@ export function AgreementDetail() {
 function AgreementContracts({
   agreement,
   found,
+  selection,
 }: {
   agreement: Agreement;
   found: Loaded<{ items: Contract[]; total: number }>;
+  /** The contracts selected for Update selected, for one who may change them. */
+  selection?: Selection;
 }) {
   const rows = found.data?.items ?? [];
   const sorting = useSorting(rows, {
@@ -607,6 +654,11 @@ function AgreementContracts({
             </caption>
             <thead>
               <tr>
+                {selection && (
+                  <th scope="col">
+                    <SelectAll rows={rows} selection={selection} label="Select every contract" />
+                  </th>
+                )}
                 <SortTh sort={sorting} column="number">
                   Number
                 </SortTh>
@@ -630,6 +682,15 @@ function AgreementContracts({
                   data-contract={contract.number}
                   className={contract.record_status === "active" ? undefined : "muted"}
                 >
+                  {selection && (
+                    <td>
+                      <SelectOne
+                        hid={contract.hid}
+                        number={contract.number}
+                        selection={selection}
+                      />
+                    </td>
+                  )}
                   <th scope="row">
                     <Link to={contractPath(contract.hid)}>{contract.number}</Link>
                     {contract.record_status !== "active" && (
@@ -726,14 +787,29 @@ function AgreementRenew(props: AgreementRenewProps) {
   const [edited, setEdited] = useState<MemberDraft[] | null>(null);
   const drafts = edited ?? memberDrafts(contracts ?? []);
   const numbers = Object.fromEntries((contracts ?? []).map((one) => [one.hid, one.number]));
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [forSelected, setForSelected] = useState<ForSelected>({ choice: "", status: "" });
   const sorting = useSorting(drafts, {
     number: (draft) => draft.number,
     covered: (draft) => draft.covered,
+    current: (draft) => optionLabel(CONTRACT_STATUSES, draft.current),
     choice: (draft) => MEMBER_CHOICES.findIndex((one) => one.value === draft.choice),
+    status: (draft) => (draft.status === "" ? null : optionLabel(CONTRACT_STATUSES, draft.status)),
   });
+  const all = drafts.length > 0 && drafts.every((draft) => selected.has(draft.hid));
+  const confirming = drafts.filter(toConfirm).length;
 
   function change(hid: string, part: Partial<MemberDraft>) {
     setEdited(drafts.map((draft) => (draft.hid === hid ? { ...draft, ...part } : draft)));
+  }
+
+  function pick(hid: string, on: boolean) {
+    setSelected((was) => {
+      const next = new Set(was);
+      if (on) next.add(hid);
+      else next.delete(hid);
+      return next;
+    });
   }
 
   const form = (
@@ -752,38 +828,142 @@ function AgreementRenew(props: AgreementRenewProps) {
           <p className="hint">
             Each contract in it that is not retired and whose end is the agreement&apos;s, having no
             end of its own, shares its period, whatever its start. For each, say what the renewal
-            does with it. No member&apos;s status is changed by the renewal: one that still says
-            Renewal pending or Expired, or is marked not to renew, is listed to be reviewed.{" "}
+            does with it, and confirm the status of each that moves forward: the renewal changes no
+            member&apos;s status but the one chosen here, and one that still says Renewal pending or
+            Expired is listed to be reviewed afterwards. Select several to set them at once.{" "}
             {MEMBER_CHOICES.map((one) => `${one.label}: ${one.about}`).join(" ")}
           </p>
+          {confirming > 0 && (
+            <p className="warning" data-testid="renew-members-to-confirm" data-count={confirming}>
+              {plural(confirming, "member still says", "members still say")} Renewal pending or
+              Expired: set Active for each that moves forward with the new term.
+            </p>
+          )}
+          <div className="inline" data-testid="renew-members-toolbar">
+            <SelectField
+              label="For those selected: with the renewal"
+              name="selected-choice"
+              value={forSelected.choice}
+              onChange={(next) =>
+                setForSelected((was) => ({
+                  ...was,
+                  choice: MEMBER_CHOICES.find((one) => one.value === next)?.value ?? "",
+                }))
+              }
+            >
+              <option value="">As each is set</option>
+              {MEMBER_CHOICES.map((one) => (
+                <option key={one.value} value={one.value}>
+                  {one.label}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              label="For those selected: status from the renewal"
+              name="selected-status"
+              value={forSelected.status}
+              onChange={(next) =>
+                setForSelected((was) => ({
+                  ...was,
+                  status:
+                    next === "keep"
+                      ? "keep"
+                      : (CONTRACT_STATUS_VALUES.find((one) => one === next) ?? ""),
+                }))
+              }
+            >
+              <option value="">As each is set</option>
+              <option value="keep">Leave it as it is</option>
+              {CONTRACT_STATUSES.map((one) => (
+                <option key={one.value} value={one.value}>
+                  {one.label}
+                </option>
+              ))}
+            </SelectField>
+            <button
+              type="button"
+              disabled={
+                selected.size === 0 || (forSelected.choice === "" && forSelected.status === "")
+              }
+              onClick={() => setEdited(applyToSelected(drafts, selected, forSelected))}
+            >
+              Apply to {plural(selected.size, "selected member", "selected members")}
+            </button>
+          </div>
           <div className="scroll">
             <table data-testid="renew-members-table">
               <caption className="visually-hidden">
                 The contracts that share the period of {agreement.name}, each with what the renewal
-                does with it
+                does with it and the status it is to have
               </caption>
               <thead>
                 <tr>
+                  <th scope="col">
+                    <input
+                      type="checkbox"
+                      aria-label="Select every member"
+                      checked={all}
+                      onChange={(event) =>
+                        setSelected(
+                          event.currentTarget.checked
+                            ? new Set(drafts.map((draft) => draft.hid))
+                            : new Set(),
+                        )
+                      }
+                    />
+                  </th>
                   <SortTh sort={sorting} column="number">
                     Contract
                   </SortTh>
                   <SortTh sort={sorting} column="covered" className="number">
                     Items covered
                   </SortTh>
+                  <SortTh sort={sorting} column="current">
+                    Status now
+                  </SortTh>
                   <SortTh sort={sorting} column="choice">
                     With the renewal
+                  </SortTh>
+                  <SortTh sort={sorting} column="status">
+                    Status from the renewal
                   </SortTh>
                   <th scope="col">Its new term</th>
                 </tr>
               </thead>
               <tbody>
                 {sorting.rows.map((draft) => (
-                  <tr key={draft.hid} data-member={draft.number} data-choice={draft.choice}>
+                  <tr
+                    key={draft.hid}
+                    data-member={draft.number}
+                    data-choice={draft.choice}
+                    data-status={draft.status}
+                    data-current={draft.current}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${draft.number}`}
+                        checked={selected.has(draft.hid)}
+                        onChange={(event) => pick(draft.hid, event.currentTarget.checked)}
+                      />
+                    </td>
                     <th scope="row">
                       {draft.number}
                       {draft.marked && <EndsWithTermMark contract={{ ends_with_term: true }} />}
                     </th>
                     <td className="number">{draft.covered}</td>
+                    <td>
+                      {optionLabel(CONTRACT_STATUSES, draft.current)}
+                      {toConfirm(draft) && (
+                        <span
+                          className="badge"
+                          data-mark="to-confirm"
+                          title="Set Active here if it moves forward with the new term: the renewal changes no status by itself"
+                        >
+                          To confirm
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <SelectField
                         label={`What the renewal does with ${draft.number}`}
@@ -797,6 +977,25 @@ function AgreementRenew(props: AgreementRenewProps) {
                         }
                       >
                         {MEMBER_CHOICES.map((one) => (
+                          <option key={one.value} value={one.value}>
+                            {one.label}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </td>
+                    <td>
+                      <SelectField
+                        label={`Status of ${draft.number} from the renewal`}
+                        name={`member-status-${draft.hid}`}
+                        value={draft.status}
+                        onChange={(next) =>
+                          change(draft.hid, {
+                            status: CONTRACT_STATUS_VALUES.find((one) => one === next) ?? "",
+                          })
+                        }
+                      >
+                        <option value="">Leave it as it is</option>
+                        {CONTRACT_STATUSES.map((one) => (
                           <option key={one.value} value={one.value}>
                             {one.label}
                           </option>
@@ -934,7 +1133,11 @@ interface MembersToReviewProps {
   /** Its contracts, as they were read: what a change of a member is sent at. */
   contracts: readonly Contract[] | undefined;
   mayEdit: boolean;
+  /** The contracts selected on the page, which these are selected among too. */
+  selection: Selection;
   onChanged: (text: string) => void;
+  /** Said once Update selected has gone through those selected. */
+  onDone: (text: string) => void;
 }
 
 /**
@@ -943,7 +1146,8 @@ interface MembersToReviewProps {
  * made active, taken out of the agreement, or retired, by a person. The table holds all
  * of its rows, so it is sorted by its headers in the browser.
  */
-function MembersToReview({ agreement, contracts, mayEdit, onChanged }: MembersToReviewProps) {
+function MembersToReview(props: MembersToReviewProps) {
+  const { agreement, contracts, mayEdit, selection, onChanged, onDone } = props;
   const members = agreement.members_to_review;
   const action = useAction();
   const sorting = useSorting(members, {
@@ -1007,6 +1211,15 @@ function MembersToReview({ agreement, contracts, mayEdit, onChanged }: MembersTo
           </caption>
           <thead>
             <tr>
+              {mayEdit && (
+                <th scope="col">
+                  <SelectAll
+                    rows={members}
+                    selection={selection}
+                    label="Select every member to review"
+                  />
+                </th>
+              )}
               <SortTh sort={sorting} column="number">
                 Contract
               </SortTh>
@@ -1019,6 +1232,11 @@ function MembersToReview({ agreement, contracts, mayEdit, onChanged }: MembersTo
           <tbody>
             {sorting.rows.map((member) => (
               <tr key={member.hid} data-contract={member.number} data-status={member.status}>
+                {mayEdit && (
+                  <td>
+                    <SelectOne hid={member.hid} number={member.number} selection={selection} />
+                  </td>
+                )}
                 <th scope="row">
                   <Link to={contractPath(member.hid)}>{member.number}</Link>
                 </th>
@@ -1050,6 +1268,161 @@ function MembersToReview({ agreement, contracts, mayEdit, onChanged }: MembersTo
           </tbody>
         </table>
       </div>
+      {mayEdit && (
+        <UpdateSelected
+          agreement={agreement}
+          selected={selection.selected}
+          contracts={contracts}
+          onDone={onDone}
+        />
+      )}
     </section>
+  );
+}
+
+/** The contracts selected on the page of an agreement, and how one is selected. */
+interface Selection {
+  selected: ReadonlySet<string>;
+  pick: (hid: string, on: boolean) => void;
+  set: (hids: readonly string[]) => void;
+}
+
+/** The box that selects every row of a table, or none. */
+function SelectAll(props: {
+  rows: ReadonlyArray<{ hid: string }>;
+  selection: Selection;
+  label: string;
+}) {
+  const { rows, selection, label } = props;
+  const all = rows.length > 0 && rows.every((row) => selection.selected.has(row.hid));
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={all}
+      onChange={(event) => {
+        const on = event.currentTarget.checked;
+        const others = [...selection.selected].filter(
+          (hid) => !rows.some((row) => row.hid === hid),
+        );
+        selection.set(on ? [...others, ...rows.map((row) => row.hid)] : others);
+      }}
+    />
+  );
+}
+
+/** The box that selects one contract. */
+function SelectOne(props: { hid: string; number: string; selection: Selection }) {
+  const { hid, number, selection } = props;
+  return (
+    <input
+      type="checkbox"
+      aria-label={`Select ${number}`}
+      checked={selection.selected.has(hid)}
+      onChange={(event) => selection.pick(hid, event.currentTarget.checked)}
+    />
+  );
+}
+
+/** What Update selected offers, as the value of its choice. */
+const UPDATES: ReadonlyArray<{ value: string; label: string; update: Update }> = [
+  ...CONTRACT_STATUSES.map((one) => ({
+    value: `status:${one.value}`,
+    label: `Set the status to ${one.label}`,
+    update: { kind: "status", status: one.value as Contract["status"] } as Update,
+  })),
+  { value: "take_out", label: "Take out of the agreement", update: { kind: "take_out" } },
+  { value: "retire", label: "Retire", update: { kind: "retire" } },
+];
+
+interface UpdateSelectedProps {
+  agreement: Agreement;
+  selected: ReadonlySet<string>;
+  /** Its contracts, as they were read: what each change is sent at, and their numbers. */
+  contracts: readonly Contract[] | undefined;
+  onDone: (text: string) => void;
+}
+
+/**
+ * Update selected: one change for every contract selected at once, a status, out of the
+ * agreement, or retired. Each is its own request, sent one after another, and the page
+ * then says what was done and names each contract that was refused, with why.
+ */
+function UpdateSelected({ agreement, selected, contracts, onDone }: UpdateSelectedProps) {
+  const [chosen, setChosen] = useState(UPDATES[0]?.value ?? "");
+  const [busy, setBusy] = useState(false);
+  const update = UPDATES.find((one) => one.value === chosen)?.update;
+  const count = selected.size;
+
+  async function run() {
+    if (!update) return;
+    setBusy(true);
+    const outcome: Updated = { done: [], refused: [] };
+    // In the order of the table of its contracts, those not among them last.
+    const order = [
+      ...(contracts ?? []).map((contract) => contract.hid).filter((hid) => selected.has(hid)),
+      ...[...selected].filter((hid) => !(contracts ?? []).some((one) => one.hid === hid)),
+    ];
+    for (const hid of order) {
+      let number = contracts?.find((one) => one.hid === hid)?.number ?? hid;
+      try {
+        const contract =
+          contracts?.find((one) => one.hid === hid) ??
+          (await api.request("get", "/api/v1/contracts/{hid}", { path: { hid } }));
+        number = contract.number;
+        if (update.kind === "retire") {
+          await api.request("post", "/api/v1/contracts/{hid}/retire", {
+            path: { hid },
+            body: { row_version: contract.row_version },
+          });
+        } else {
+          await api.request("patch", "/api/v1/contracts/{hid}", {
+            path: { hid },
+            body: {
+              row_version: contract.row_version,
+              ...(update.kind === "status" ? { status: update.status } : { agreement_hid: null }),
+            },
+          });
+        }
+        outcome.done.push(number);
+      } catch (thrown) {
+        outcome.refused.push({ number, message: toApiError(thrown).message });
+      }
+    }
+    setBusy(false);
+    onDone(updatedText(update, outcome, (status) => optionLabel(CONTRACT_STATUSES, status)));
+  }
+
+  return (
+    <div className="inline" data-testid="update-selected" data-count={count}>
+      <SelectField
+        label={`Update selected: ${plural(count, "contract")} of ${agreement.name}`}
+        name="update-selected"
+        value={chosen}
+        onChange={setChosen}
+        disabled={busy}
+      >
+        {UPDATES.map((one) => (
+          <option key={one.value} value={one.value}>
+            {one.label}
+          </option>
+        ))}
+      </SelectField>
+      {update?.kind === "retire" ? (
+        <ConfirmButton
+          label={`Update selected (${count})`}
+          title={`Retire ${plural(count, "contract")}?`}
+          confirmLabel="Retire them"
+          onConfirm={run}
+          disabled={busy || count === 0}
+        >
+          <p>A retired contract covers nothing any more. Its coverages stay on record.</p>
+        </ConfirmButton>
+      ) : (
+        <button type="button" className="primary" disabled={busy || count === 0} onClick={run}>
+          Update selected ({count})
+        </button>
+      )}
+    </div>
   );
 }

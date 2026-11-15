@@ -13,6 +13,9 @@
 //   P-127  The worklist: the counts of each list first, of the whole and of each vendor
 //          and agreement, each leading to its rows, which are read when the list is
 //          opened; a renewal pending for too long is marked overdue.
+//   P-129  An agreement renewed with two of its three members selected and confirmed
+//          Active at once in the form of the renewal; the third, left Renewal pending,
+//          is to review, and is set Active with Update selected on the agreement's page.
 //
 // It keeps to the rules of support.ts: an account and names of its own, and nothing
 // changed that another file reads. The worklist is read with a filter of this file's
@@ -56,6 +59,11 @@ const ending = `CON-${upper}-W1`;
 const lapsed = `CON-${upper}-W2`;
 const pending = `CON-${upper}-W3`;
 const ended = `CON-${upper}-W4`;
+
+// An agreement whose three members all say their renewal is pending.
+const confirmed = `Example Branch Agreement ${suffix}`;
+const selectedMembers = [`CON-${upper}-S1`, `CON-${upper}-S2`];
+const leftPending = `CON-${upper}-S3`;
 
 interface Made {
   number: string;
@@ -352,6 +360,104 @@ test("P-127: the worklist counts first, by vendor, and a list's rows when it is 
   // What is let go is listed by itself, and never in the alert.
   await page.getByTestId("renewals-count-ends_with_term").getByRole("link").click();
   await expect(gridRow(page, "grid-renewals-ends_with_term", ended)).toBeVisible();
+
+  await expectClean(page, seen);
+});
+
+test("P-129: two of three members confirmed Active in the renewal, the third with Update selected", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(240_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./agreements");
+  await page.getByRole("button", { name: "New agreement" }).click();
+  const made = region(page, "New support agreement");
+  await made.getByLabel("Name (required)").fill(confirmed);
+  await made.getByLabel("Vendor (required)").selectOption({ label: vendor });
+  await made.getByLabel("Starts on").fill(starts);
+  await made.getByLabel("Ends on").fill(ends);
+  await made.getByRole("button", { name: "Create agreement" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: confirmed })).toBeVisible();
+  for (const number of [...selectedMembers, leftPending]) {
+    await openAgreement(page, confirmed);
+    await page.getByRole("button", { name: "New contract in this agreement" }).click();
+    const form = region(page, `New contract in ${confirmed}`);
+    await form.getByLabel("Number (required)").fill(number);
+    await form.getByLabel("Status", { exact: true }).selectOption("renewal_pending");
+    await form.getByRole("button", { name: "Create contract" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: number })).toBeVisible();
+  }
+
+  // The renewal: each member still pending is marked to confirm; two are selected and
+  // set Active at once, the third left as it is.
+  await openAgreement(page, confirmed);
+  await region(page, "Renew").getByRole("button", { name: "Renew", exact: true }).click();
+  const form = page.getByTestId("renew-form");
+  const members = form.getByTestId("renew-members-table");
+  await expect(form.getByTestId("renew-members-to-confirm")).toHaveAttribute("data-count", "3");
+  for (const number of [...selectedMembers, leftPending]) {
+    await expect(
+      members.locator(`tr[data-member="${number}"] [data-mark="to-confirm"]`),
+    ).toBeVisible();
+  }
+  for (const number of selectedMembers) await members.getByLabel(`Select ${number}`).check();
+  const toolbar = form.getByTestId("renew-members-toolbar");
+  await toolbar
+    .getByLabel("For those selected: status from the renewal")
+    .selectOption({ label: "Active" });
+  await toolbar.getByRole("button", { name: "Apply to 2 selected members" }).click();
+  for (const number of selectedMembers) {
+    await expect(members.locator(`tr[data-member="${number}"]`)).toHaveAttribute(
+      "data-status",
+      "active",
+    );
+  }
+  await expect(members.locator(`tr[data-member="${leftPending}"]`)).toHaveAttribute(
+    "data-status",
+    "",
+  );
+  await form.getByLabel("New number", { exact: true }).fill(`EA-${upper}-B2`);
+  await form.getByLabel("New period: starts on").fill(renewedStarts);
+  await form.getByLabel("New period: ends on").fill(renewedEnds);
+  await form.getByRole("button", { name: "Renew the agreement" }).click();
+  await expect(page.getByTestId("agreement-period")).toHaveText(
+    `${renewedStarts} to ${renewedEnds}`,
+  );
+
+  // The two confirmed are Active; the third still says pending and is to review.
+  const review = page.getByTestId("renewal-to-review");
+  await expect(review).toHaveAttribute("data-count", "1");
+  await expect(review.getByRole("link", { name: leftPending, exact: true })).toBeVisible();
+  const table = page.getByTestId("agreement-contracts");
+  for (const number of selectedMembers) {
+    await expect(table.locator(`tr[data-contract="${number}"] [data-status]`)).toHaveAttribute(
+      "data-status",
+      "active",
+    );
+  }
+  const toReview = page.getByTestId("members-to-review");
+  await expect(toReview.locator(`tr[data-contract="${leftPending}"]`)).toHaveAttribute(
+    "data-status",
+    "renewal_pending",
+  );
+
+  // Selected among the members to review, it is selected among the contracts too, and
+  // Update selected sets it Active.
+  await toReview.getByLabel(`Select ${leftPending}`).check();
+  await expect(table.getByLabel(`Select ${leftPending}`)).toBeChecked();
+  const update = toReview.getByTestId("update-selected");
+  await update
+    .getByLabel(/^Update selected: 1 contract of /)
+    .selectOption({ label: "Set the status to Active" });
+  await update.getByRole("button", { name: "Update selected (1)" }).click();
+  await expect(page.getByText(`${leftPending} now says Active.`)).toBeVisible();
+  await expect(page.getByTestId("members-to-review")).toHaveCount(0);
+  await expect(table.locator(`tr[data-contract="${leftPending}"] [data-status]`)).toHaveAttribute(
+    "data-status",
+    "active",
+  );
 
   await expectClean(page, seen);
 });
