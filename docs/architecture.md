@@ -713,6 +713,30 @@ be 09:00 in the application's zone, 14:00 in UTC, for an item and for the moment
 master was seen at. A filter for 09:00 with no zone must find the item that was told
 so after the upgrade, and one for 09:00 with `Z` the item from before.
 
+`release-0.6.1.sh` is the second, and what it looks for is what
+[install.md](install.md#from-060-to-061) tells an operator of that upgrade. Each thing
+that 0.6.1 says differently is a field, a route or a column more, which the comparison
+lets a record have, so the file names nothing in `meant`. With 0.6.0 it makes a support
+agreement whose term has ended and a contract in it with no dates of its own, which is
+renewed with a new number and so has an earlier term that 0.6.0 gives with no dates;
+the agreement is then renewed late, for a period that has begun, and 0.6.0 has no list
+of its earlier terms. It puts an item by hand on a purchase line of another model,
+which 0.6.0 lets in and says nothing of, and takes an item that two contracts cover to
+Archived, which ends both coverages as having left service. It sees that 0.6.0 refuses
+a file of items with the columns that 0.6.1 adds. The earlier term is kept as an answer
+without its dates. After the upgrade the dates are those of the agreement as it stood
+when the contract was renewed, and not as its renewal left it, each marked as the
+agreement's; the agreement lists the term that its renewal ended, as 0.6.0 wrote it in
+the audit trail; a contract says beside each override what the agreement gives; the
+item on the line of another model is reported on its record, in the item list and by
+its line; and the item in Archived, and the one retired before, are counted by the
+contracts that still count them, on their records, in the item list and in a file of
+items. Last, the item on the wrong line is edited in another field without a refusal,
+is refused a third model, and is put right with the line's; an item put on the line
+now takes its model; the files that 0.6.1 exports with the new columns are taken back
+unchanged; and `hirdir agreements show` and `hirdir contracts show` print the earlier
+terms and an override as they now are.
+
 `migration-0003.sh` is the smallest. The release before that migration kept a support
 weight to three places, so the file has the inventory give its first model one of
 three, and says what the migration is to make of it. It does not name the rows that

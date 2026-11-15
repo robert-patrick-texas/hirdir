@@ -1660,23 +1660,19 @@ class Items(Entity):
         db = run.db
         vendor, pid = values.get("vendor"), values.get("pid")
         serial, tag = values.get("serial_number"), values.get("asset_tag")
-        model: str | None = None
         if vendor and pid and serial:
             entry = run.entry(vendor, pid)
             if entry is None:
                 return None
-            model = entry.hid
-        elif serial and not (vendor or pid) and values.get("purchase_line"):
-            # A row that names a line and no model is of the line's model (D-161).
-            model = purchases.the_line(
-                db, values["purchase_line"], "purchase_line"
-            ).catalog_entry_hid
-        if model is not None and serial:
-            return db.scalar(
-                select(Item).where(
-                    Item.catalog_entry_hid == model, Item.serial_key == records.key(serial)
-                )
-            ) or self._received_as_a_count(db, values)
+            return self._by_serial(db, entry.hid, serial, values)
+        # A row that names a line and no model is of the line's model (D-161): its
+        # serial number finds the item as the vendor and PID would. Where it finds
+        # none, the rules that follow are tried, as for any row with no model.
+        line_model = self._line_model(run, None, values)
+        if line_model is not None and serial:
+            found = self._by_serial(db, line_model, serial, values)
+            if found is not None:
+                return found
         if tag:
             return db.scalar(
                 select(Item).where(Item.asset_tag_key == records.key(tag))
@@ -1714,6 +1710,17 @@ class Items(Entity):
             if named:
                 return named[0]
         return None
+
+    def _by_serial(
+        self, db: Session, model: str, serial: str, values: Mapping[str, Any]
+    ) -> Any | None:
+        """Return the item of a model with a serial number, or the one that arrived as a
+        count that the row gives it to."""
+        return db.scalar(
+            select(Item).where(
+                Item.catalog_entry_hid == model, Item.serial_key == records.key(serial)
+            )
+        ) or self._received_as_a_count(db, values)
 
     @staticmethod
     def _received_as_a_count(db: Session, values: Mapping[str, Any]) -> Any | None:
@@ -1769,7 +1776,8 @@ class Items(Entity):
             else None
         )
         if "vendor" not in values and "pid" not in values:
-            return current
+            line = self._line_model(run, record, values)
+            return current if line is None else run.db.get(CatalogEntry, line)
         vendor = values.get("vendor", current.vendor_hid if current is not None else None)
         pid = values.get("pid", current.pid if current is not None else None)
         if vendor is None and pid is None:
@@ -1781,6 +1789,21 @@ class Items(Entity):
                 {missing: "a catalog entry is named by its vendor and its PID together"},
             )
         return run.entry(vendor, pid, create=True)
+
+    @staticmethod
+    def _line_model(run: Run, record: Any | None, values: Mapping[str, Any]) -> str | None:
+        """Return the model a row that names no model has from the purchase line it puts
+        the item on (D-161): the line's, for an item that is new or is put on the line
+        by this row and has no model of its own. None otherwise."""
+        named = values.get("purchase_line")
+        if not named or "vendor" in values or "pid" in values:
+            return None
+        line = purchases.the_line(run.db, named, "purchase_line")
+        if record is not None and (
+            record.catalog_entry_hid is not None or record.purchase_line_hid == line.hid
+        ):
+            return None
+        return line.catalog_entry_hid
 
     @staticmethod
     def _overrides(
@@ -2138,8 +2161,10 @@ class Items(Entity):
                 "out_of_service_contracts": sorted(set(counting.values()), key=records.key)
                 if contracts.out_of_service(item.record_status, in_force["lifecycle_state"].value)
                 else [],
-                "purchase_line_mismatch": item.purchase_line_hid is not None
-                and models_of.get(item.purchase_line_hid) != item.catalog_entry_hid,
+                "purchase_line_mismatch": item.purchase_line_hid in models_of
+                and purchases.of_another_model(
+                    item.catalog_entry_hid, models_of[item.purchase_line_hid]
+                ),
             }
             operator = item.operator_hid if own else looked_after[item.hid].value
             row["operator"] = called[operator] if operator else None
@@ -2901,7 +2926,7 @@ class PurchaseLines(Entity):
         atlas = geography.Atlas(db)
         atlas.read_sites(line.destination_site_hid for line in found)
         arrived = purchases.received(db, [line.hid for line in found])
-        astray = purchases.mismatched(db, [line.hid for line in found])
+        astray = fields.mismatched_items(db, [line.hid for line in found])
         rows = []
         for line in found:
             entry = entries[line.catalog_entry_hid]

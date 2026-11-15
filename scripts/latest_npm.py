@@ -2,9 +2,10 @@
 
 `make upgrade` runs this in place of a downloaded upgrade tool: it asks the registry,
 through the npm that builds the web UI, for the `latest` release of each package that
-`web/package.json` names, and installs the ones that are behind with `--save-exact`.
-A `latest` that is a pre-release is left alone and said so. Nothing is fetched or run
-but the packages themselves.
+`web/package.json` names, and writes the ones that are behind into `web/package.json`,
+exact. `make upgrade` then runs `npm install` once, so that the dependencies and the
+development dependencies are resolved together. A `latest` that is a pre-release is
+left alone and said so. Nothing is fetched or run but the packages themselves.
 """
 
 import json
@@ -15,23 +16,30 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 PRODUCTION = re.compile(r"\d+\.\d+\.\d+")
-SECTIONS = {"dependencies": "--save-prod", "devDependencies": "--save-dev"}
+SECTIONS = ("dependencies", "devDependencies")
 
 
-def behind(manifest: dict, latest: dict[str, str]) -> dict[str, list[str]]:
-    """Return, for each npm save flag, the `name@version` of each package to move.
+def behind(manifest: dict, latest: dict[str, str]) -> dict[str, dict[str, str]]:
+    """Return, for each section of the manifest, the version to move each package to.
 
     `latest` maps a package to the version its `latest` tag names. A package is moved
     when that version is a production release and differs from the one saved.
     """
-    moves: dict[str, list[str]] = {}
-    for section, flag in SECTIONS.items():
+    moves: dict[str, dict[str, str]] = {}
+    for section in SECTIONS:
         for name, saved in sorted(manifest.get(section, {}).items()):
             version = latest.get(name)
             if version is None or not PRODUCTION.fullmatch(version) or version == saved:
                 continue
-            moves.setdefault(flag, []).append(f"{name}@{version}")
+            moves.setdefault(section, {})[name] = version
     return moves
+
+
+def moved(manifest: dict, moves: dict[str, dict[str, str]]) -> dict:
+    """Return the manifest with each package that is behind at its latest release."""
+    return {
+        key: {**value, **moves[key]} if key in moves else value for key, value in manifest.items()
+    }
 
 
 def prereleases(manifest: dict, latest: dict[str, str]) -> list[str]:
@@ -79,12 +87,10 @@ def main() -> int:
     if not moves:
         print("every npm dependency is at its latest release")
         return 0
-    for flag, packages in moves.items():
-        print("moving", " ".join(packages))
-        result = _npm("install", "--save-exact", flag, *packages)
-        if result.returncode != 0:
-            print(result.stdout, result.stderr, sep="\n", file=sys.stderr)
-            return result.returncode
+    for packages in moves.values():
+        print("moving", " ".join(f"{name}@{version}" for name, version in packages.items()))
+    path = WEB / "package.json"
+    path.write_text(json.dumps(moved(manifest, moves), indent=2) + "\n", encoding="utf-8")
     return 0
 
 

@@ -489,16 +489,17 @@ def _check_line_model(
     line = db.get(PurchaseLine, line_hid)
     if line is None:
         return
-    if model is None:
-        values["catalog_entry_hid"] = line.catalog_entry_hid
-        return
-    if model == line.catalog_entry_hid:
-        return
     put_on = item is None or item.purchase_line_hid != line_hid
     remodelled = "catalog_entry_hid" in values and (
         item is None or item.catalog_entry_hid != values["catalog_entry_hid"]
     )
-    if put_on or remodelled:
+    if not (put_on or remodelled):
+        # Neither the line nor the model is changed by this edit.
+        return
+    if model is None:
+        values["catalog_entry_hid"] = line.catalog_entry_hid
+        return
+    if model != line.catalog_entry_hid:
         theirs = db.get_one(CatalogEntry, line.catalog_entry_hid)
         request = db.get_one(PurchaseRequest, line.request_hid)
         raise Invalid(

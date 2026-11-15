@@ -147,7 +147,7 @@ def renew_contract(
 def contract_terms(hid: str, _: Viewer, db: Db) -> list[r.ContractTerm]:
     """List the terms a contract had before it was renewed, the latest first: its
     purchase history. Each has the dates it had in force: where the contract had none
-    of its own, its agreement's as they stood on the last day of the term."""
+    of its own, those of the agreement's term that was in force when it began."""
     return shapes.terms_out(db, contracts.get_contract(db, hid))
 
 
