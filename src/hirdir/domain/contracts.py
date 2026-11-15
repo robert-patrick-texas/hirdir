@@ -34,6 +34,7 @@ from sqlalchemy import (
     Date,
     and_,
     case,
+    false,
     func,
     literal,
     or_,
@@ -195,8 +196,10 @@ def pending_term(record: Any, day: date) -> dict[str, Any] | None:
 
 def status_of(record: Any, day: date) -> str:
     """Return the status in force: a renewal that was pending is no longer, and a
-    contract that had expired is active again, once the term to come has begun."""
-    if record.status in ENDED_BY_A_TERM and next_started(record, day):
+    contract that had expired is active again, once the term to come has begun. A new
+    number that waited on the agreement's term changes no status when it begins: only a
+    person moves a member's status (P-129)."""
+    if record.status in ENDED_BY_A_TERM and next_started(record, day) and not tied(record):
         return ACTIVE
     return record.status
 
@@ -204,7 +207,7 @@ def status_of(record: Any, day: date) -> str:
 def last_status(record: Any) -> str:
     """Return the status in the last term that is known: that of the next one, where
     there is one."""
-    if record.status in ENDED_BY_A_TERM and has_next(record):
+    if record.status in ENDED_BY_A_TERM and has_next(record) and not tied(record):
         return ACTIVE
     return record.status
 
@@ -684,8 +687,12 @@ def _checked_members(
                 "only a new number takes a number and a cost",
                 {f"{where}.number": "give it with `new_number`, or leave it out"},
             )
+        status = member.get("status")
         asked[hid] = {
             "renewal": choice,
+            "status": None
+            if status is None
+            else records.checked_choice(status, STATUSES, f"{where}.status"),
             "number": number,
             "annual_cost": records.checked_amount(
                 f"{where}.annual_cost", member.get("annual_cost")
@@ -711,6 +718,11 @@ def _renew_member(
     day = today(db)
     choice = asked["renewal"]
     end = present["ends_on"]
+    if asked.get("status") is not None and asked["status"] != member.status:
+        # The status the operator gave this member in the renewal: the one way a
+        # renewal moves it (P-129).
+        _fold(db, context, member, RECORD_TYPE)
+        records.apply(db, context, RECORD_TYPE, member, None, {"status": asked["status"]})
     if choice != "same":
         # What is written to the member is written to the term in force.
         _fold(db, context, member, RECORD_TYPE)
@@ -736,7 +748,6 @@ def _renew_member(
                 "number_key": records.key(number),
                 **dict.fromkeys(NEXT),
                 "next_with_agreement": False,
-                "status": ACTIVE,
             }
             for name in ("annual_cost", "purchase_reference"):
                 if asked.get(name) is not None:
@@ -1120,8 +1131,8 @@ def renew_contract(
     until that day, so the items are covered throughout. The contract is active after
     a renewal that is in force at once, unless the renewal says another status. An
     item that is not to be renewed is left behind: its coverage ends with the present
-    term (P-131). The renewal takes off the mark that the contract ends with its term,
-    and replaces a new number that waited on the agreement (P-129).
+    term (P-131). The renewal keeps the team's mark not to renew, and replaces a new
+    number that waited on the agreement (P-129).
     """
     dialect.hold_other_writers(db)
     contract = get_contract(db, hid)
@@ -1709,6 +1720,8 @@ def to_review_value(contract: Any = Contract) -> ColumnElement[bool]:
         contract.agreement_hid.is_not(None),
         contract.ends_on.is_(None),
         contract.record_status != "retired",
+        # A contract the team marked not to renew is on that list alone.
+        contract.ends_with_term.is_(False),
         status_value(contract).in_(ENDED_BY_A_TERM),
         agreement_runs,
     )
@@ -1736,13 +1749,19 @@ def term_value(model: Any, name: str) -> ColumnElement[Any]:
 def status_value(model: Any) -> ColumnElement[Any]:
     """Return the status in force of an agreement or a contract, as `status_of` works
     it out."""
-    begun = and_(model.status.in_(ENDED_BY_A_TERM), _started(model))
+    begun = and_(model.status.in_(ENDED_BY_A_TERM), _started(model), ~_waits(model))
     return case((begun, ACTIVE), else_=model.status)
+
+
+def _waits(model: Any) -> ColumnElement[bool]:
+    """Return whether a contract's next term is a number that waits on its agreement."""
+    waits = getattr(model, "next_with_agreement", None)
+    return false() if waits is None else waits.is_(True)
 
 
 def last_status_value(model: Any) -> ColumnElement[Any]:
     """Return the status of an agreement or a contract in the last term that is known."""
-    renewed = and_(model.status.in_(ENDED_BY_A_TERM), _has_next(model))
+    renewed = and_(model.status.in_(ENDED_BY_A_TERM), _has_next(model), ~_waits(model))
     return case((renewed, ACTIVE), else_=model.status)
 
 
@@ -1951,6 +1970,12 @@ def add_coverage(
         raise Invalid("nothing to cover", {"items": "name one item or more"})
     settings.check_items(db, len(entries), "items")
     its = period(contract, today(db))
+    # A renewal waits for the contract: its own, or, for one whose end is its
+    # agreement's, the agreement's, which carries it.
+    above = agreement_of(contract) if contract.ends_on is None else None
+    waiting = pending_term(contract, today(db)) is not None or (
+        above is not None and pending_term(above, today(db)) is not None
+    )
     made: list[ContractCoverage] = []
     for place, entry in enumerate(entries):
         where = f"items.{place}."
@@ -1965,10 +1990,15 @@ def add_coverage(
         )
         given_end = records.checked_day(f"{where}ends_on", entry.get("ends_on"))
         ends_on = _own(given_end, its.ends_on)
-        if ends_on is None and given_end is not None and not_renewed.flagged(db, [item.hid]):
+        if (
+            ends_on is None
+            and given_end is not None
+            and waiting
+            and not_renewed.flagged(db, [item.hid])
+        ):
             # The end a renewal gave an item not to be renewed is the last day of the
-            # term then, which is the contract's own end until the next term begins: it
-            # is kept, so that a file carries it out and back (P-131).
+            # term then, which is the contract's own end while its next term waits, and
+            # only then: it is kept, so that a file carries it out and back (P-131).
             ends_on = given_end
         _check_span(db, contract, item.hid, starts_on, ends_on, None, f"{where}ends_on")
         coverage = ContractCoverage(

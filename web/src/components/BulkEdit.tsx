@@ -2,8 +2,9 @@
 //
 // The form names the fields to change. The server works out what that does to each item
 // and stores it as a preview, with before and after for every row. Nothing changes
-// until the preview is applied, and nothing at all when somebody has changed one of the
-// items in the meantime.
+// until the preview is applied. The apply goes on in the background, as an import's
+// does: an item that somebody has changed in the meantime is left as it is, and named,
+// and the rest are changed.
 
 import { type FormEvent, useMemo, useRef, useState } from "react";
 import { type ApiError, api, type Schemas } from "../api";
@@ -24,12 +25,13 @@ import { Keys, withKey } from "../lib/idempotency";
 import { EVERY, useOwnerOptions, useTags } from "../lib/lists";
 import { choiceOptions, SETTABLE_STATUSES } from "../lib/options";
 import type { FormValue, Option } from "../lib/patch";
-import type { Preview, StaleRow } from "../lib/preview";
+import type { Preview } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
 import { type Chosen, chosenCount, type GridView } from "../lib/transfer";
+import { useJob } from "../lib/useJob";
 import { CheckField, CheckGroupField, SelectField } from "./Field";
 import { FormFields } from "./FormFields";
-import { ApplyPreview, JobCounts, PreviewRows } from "./Preview";
+import { ApplyCounts, ApplyPreview, JobCounts, LeftOutOf, PreviewRows } from "./Preview";
 import { Problem } from "./Problem";
 
 type Choice = Schemas["ChoiceOut"];
@@ -252,8 +254,6 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [turn, setTurn] = useState(0);
-  const [stale, setStale] = useState<StaleRow[]>([]);
 
   const count = chosenCount(rows);
   // Every item the list shows: the reader set no filter, whatever a switch of the grid adds.
@@ -309,8 +309,6 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
         api.request("post", "/api/v1/items/bulk-update", { body: built.body, idempotencyKey }),
       );
       setPreview(made);
-      setStale([]);
-      setTurn(0);
     } catch (thrown) {
       setError(toApiError(thrown));
     } finally {
@@ -455,43 +453,85 @@ export function BulkEdit({ rows, view, states, choices, onApplied, onClose }: Bu
         </form>
       )}
       {preview && (
-        <>
-          <p>
-            What the change would do to <strong>{what}</strong>, row by row. Nothing has been
-            changed yet.
-          </p>
-          <JobCounts job={preview.job} />
-          <ApplyPreview
-            key={preview.job.hid}
-            job={preview.job}
-            noun={["item", "items"]}
-            busy={busy}
-            onApplied={(job) => {
-              setPreview({ ...preview, job });
-              setTurn((was) => was + 1);
-              onApplied();
-            }}
-            onOutOfDate={(inTheWay) => {
-              setStale(inTheWay);
-              setPreview({ ...preview, job: { ...preview.job, status: "failed" } });
-            }}
-            again={makePreview}
-            againHint=""
-          />
-          <Problem error={error} />
-          <p className="actions">
-            {preview.job.status === "previewed" && (
-              <button type="button" onClick={() => setPreview(null)} disabled={busy}>
-                Change the edit
-              </button>
-            )}
-            <button type="button" onClick={onClose} disabled={busy}>
-              {preview.job.status === "previewed" ? "Cancel" : "Close"}
-            </button>
-          </p>
-          <PreviewRows job={preview.job} preview={preview} stale={stale} turn={turn} />
-        </>
+        <BulkPreview
+          key={preview.job.hid}
+          preview={preview}
+          what={what}
+          busy={busy}
+          error={error}
+          again={makePreview}
+          onApplied={onApplied}
+          onChange={() => setPreview(null)}
+          onClose={onClose}
+        />
       )}
     </section>
+  );
+}
+
+interface BulkPreviewProps {
+  preview: Preview;
+  /** The rows it changes, in words. */
+  what: string;
+  busy: boolean;
+  error: ApiError | null;
+  /** Make the same edit again, against the items as they are now. */
+  again: () => void;
+  /** The apply ended: the grid is out of date. */
+  onApplied: () => void;
+  /** Go back to the form, to change the edit. */
+  onChange: () => void;
+  onClose: () => void;
+}
+
+/**
+ * A bulk edit, previewed: what it would do to each item, and the apply. The apply goes on
+ * in the background and is followed here, and on its page among the imports, which the
+ * panel may be closed for.
+ */
+function BulkPreview(props: BulkPreviewProps) {
+  const { preview, what, busy, error, again, onApplied, onChange, onClose } = props;
+  const [turn, setTurn] = useState(0);
+  const followed = useJob(preview.job.hid, {
+    first: preview.job,
+    onEnded: () => {
+      setTurn((was) => was + 1);
+      onApplied();
+    },
+  });
+  const job = followed.job ?? preview.job;
+  const previewed = job.status === "previewed";
+
+  return (
+    <div data-testid="bulk-preview" data-status={job.status}>
+      <p>
+        What the change would do to <strong>{what}</strong>, row by row.{" "}
+        {previewed ? "Nothing has been changed yet." : ""}
+      </p>
+      <JobCounts job={job} />
+      <ApplyCounts job={job} />
+      <ApplyPreview
+        job={job}
+        noun={["item", "items"]}
+        busy={busy}
+        onStarted={followed.started}
+        again={again}
+        againHint=""
+        followAt={`/import/${encodeURIComponent(job.hid)}`}
+      />
+      <Problem error={error ?? followed.error} />
+      <p className="actions">
+        {previewed && (
+          <button type="button" onClick={onChange} disabled={busy}>
+            Change the edit
+          </button>
+        )}
+        <button type="button" onClick={onClose} disabled={busy}>
+          {previewed ? "Cancel" : "Close"}
+        </button>
+      </p>
+      <LeftOutOf job={job} turn={turn} />
+      <PreviewRows job={job} preview={preview} turn={turn} />
+    </div>
   );
 }

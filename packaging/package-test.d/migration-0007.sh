@@ -21,17 +21,20 @@
 writes_no_event=yes
 # It loads the two lists beside the choices that are there.
 may_add[choices]=yes
-new_columns[items]='location_hid VARCHAR(36) NULL -
+# Put after what an earlier migration of the upgrade adds, where there is one.
+placed_columns='location_hid VARCHAR(36) NULL -
 planned_location_hid VARCHAR(36) NULL -
 operator_hid VARCHAR(36) NULL -'
-new_keys[items]='foreign key location_hid to locations.hid
+placed_keys='foreign key location_hid to locations.hid
 foreign key operator_hid to operators.hid
 foreign key planned_location_hid to locations.hid
 index ix_items_location_hid on location_hid unique=0 origin=c partial=0
 index ix_items_operator_hid on operator_hid unique=0 origin=c partial=0
 index ix_items_planned_location_hid on planned_location_hid unique=0 origin=c partial=0'
-new_columns[device_groups]=${new_columns[items]}
-new_keys[device_groups]=${new_keys[items]//ix_items_/ix_device_groups_}
+also new_columns items "$placed_columns"
+also new_keys items "$placed_keys"
+also new_columns device_groups "$placed_columns"
+also new_keys device_groups "${placed_keys//ix_items_/ix_device_groups_}"
 
 outside_owner=""
 outside_item=""

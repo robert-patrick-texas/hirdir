@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
+import { Links } from "../components/Links";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
@@ -403,6 +404,22 @@ export function CatalogEntryDetail() {
       {record && (
         <>
           <EntryFacts entry={record} choices={choices.data} />
+          {/* The links of the model, which every item of it shows (P-138). */}
+          <Links
+            key={`links ${record.hid} ${record.row_version}`}
+            links={record.links}
+            what="catalog entry"
+            level={2}
+            mayEdit={mayEdit && record.record_status !== "retired"}
+            save={(links) =>
+              api.request("patch", "/api/v1/catalog-entries/{hid}", {
+                path: { hid: record.hid },
+                body: { row_version: record.row_version, links },
+              })
+            }
+            onSaved={() => changed("The links were saved.")}
+            onReload={entry.reload}
+          />
           {mayEdit && record.record_status !== "retired" && (
             <EntryDetails
               key={`details ${record.hid} ${record.row_version}`}

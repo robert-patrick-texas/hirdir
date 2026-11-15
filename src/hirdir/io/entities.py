@@ -2691,12 +2691,19 @@ class Contracts(Entity):
                 **{name: getattr(within, name) for name in contracts.INHERITED},
                 **contracts.term(within, contracts.today(db)),
             }
-            # A contract let go with its agreement's term holds that term's dates as its
-            # own (P-129): they are kept, so that a file carries it out and back.
+            # A member let go with its agreement's term holds that term's dates as its own
+            # (P-129), and they are the agreement's while the agreement's renewal waits:
+            # then, and only then, a marked row's dates are kept as its own, so that a file
+            # carries it out and back. A member marked by hand follows its agreement, and
+            # its dates, once the renewal has begun or where none waits, are inherited.
             marked = bool(values.get("ends_with_term")) or (
                 record is not None and record.ends_with_term and "ends_with_term" not in values
             )
-            let_go = marked and (record is None or record.ends_on is not None)
+            let_go = (
+                marked
+                and contracts.pending_term(within, contracts.today(db)) is not None
+                and (record is None or record.ends_on is not None)
+            )
             for name in contracts.INHERITED:
                 if given.get(name) is None:
                     continue
@@ -3167,7 +3174,9 @@ class PurchaseLines(Entity):
         )
         given: dict[str, Any] = {}
         if pid and not part and len(found) != 1 and not (record and record.part_number):
-            # What the row gave is kept as the part number of a line it cannot match.
+            # What the row gave is kept as the part number of a line it cannot match. A
+            # line it matches keeps none: it takes the PID it is corrected from when a
+            # person corrects its model (P-135), which is what a reload compares.
             given["part_number"] = pid
         if len(found) == 1:
             (entry,) = found

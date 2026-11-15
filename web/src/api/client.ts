@@ -24,8 +24,10 @@ type BodyOf<O> = O extends { requestBody: { content: { "application/json": infer
   ? T
   : never;
 type JsonOf<R> = R extends { content: { "application/json": infer T } } ? T : undefined;
+// 202 is the answer of a route that has taken work to do in the background, as an apply
+// of an import: its body is the job, as the contract says.
 type AnswerOf<O> = O extends { responses: infer R }
-  ? JsonOf<R[Extract<keyof R, 200 | 201 | 204>]>
+  ? JsonOf<R[Extract<keyof R, 200 | 201 | 202 | 204>]>
   : never;
 
 type Part<K extends string, T> = [T] extends [never] ? { [P in K]?: never } : { [P in K]: T };

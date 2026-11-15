@@ -1,23 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../api/client";
 import {
+  appliedLabel,
+  appliedText,
   changeText,
   countsText,
   firstPage,
   isOutcome,
-  isOutOfDate,
+  isWorking,
   type Job,
+  leftOutCount,
+  leftOutQuery,
   outcomeCount,
   outcomeLabel,
   outcomeOptions,
   type Preview,
   type PreviewRow,
+  progressText,
   ROWS_PAGE,
   reasonText,
   recordPath,
+  refusedAtApply,
   rowsQuery,
-  staleRows,
   statusLabel,
+  stoppedText,
   valueText,
 } from "./preview";
 
@@ -166,15 +171,18 @@ describe("valueText and changeText", () => {
 });
 
 describe("countsText and statusLabel", () => {
-  it("say what a preview would do, and what an applied one did", () => {
+  it("say what the preview found each row would do, before the apply and after it", () => {
     expect(countsText(job())).toBe("2 to create, 3 to update, 3 unchanged, 1 rejected");
     expect(countsText(job({ status: "applied" }))).toBe(
-      "2 created, 3 updated, 3 unchanged, 1 rejected",
+      "2 to create, 3 to update, 3 unchanged, 1 rejected",
     );
   });
 
   it("say what became of a job", () => {
     expect(statusLabel(job())).toBe("Previewed, not applied");
+    expect(statusLabel(job({ status: "queued" }))).toBe("Waiting for another to be applied");
+    expect(statusLabel(job({ status: "applying" }))).toBe("Being applied");
+    expect(statusLabel(job({ status: "stopped" }))).toBe("Stopped partway, to be resumed");
     expect(statusLabel(job({ status: "failed" }))).toBe("Failed: nothing was applied");
     expect(statusLabel(job({ status: "applied", rejected: 0, skip_rejected: false }))).toBe(
       "Applied",
@@ -182,46 +190,63 @@ describe("countsText and statusLabel", () => {
     expect(statusLabel(job({ status: "applied", skip_rejected: true }))).toBe(
       "Applied, without the rejected rows",
     );
+    expect(statusLabel(job({ status: "applied", rejected: 0, stale: 1 }))).toBe(
+      "Applied, without the rows changed since the preview",
+    );
+    expect(statusLabel(job({ status: "applied", skip_rejected: true, stale: 2 }))).toBe(
+      "Applied, without the rejected rows and the rows changed since the preview",
+    );
   });
 });
 
-describe("an apply that found a record changed", () => {
-  const outOfDate = new ApiError({
-    status: 409,
-    title: "Preview out of date",
-    detail: "2 of the rows changed after the preview was made; preview again",
-    fields: {
-      "rows.12": "row 12, site2-sw-access-12: changed since the preview",
-      "rows.3": "row 3, site2-sw-access-03: would no longer do what was previewed",
-    },
-  });
-  const stale = new ApiError({ status: 409, title: "Stale version", fields: { "rows.1": "x" } });
-  const applied = new ApiError({
-    status: 409,
-    title: "Conflict",
-    detail: "this preview is applied already",
-    fields: { status: "make a new preview to go on" },
+describe("an apply in the background", () => {
+  it("is under way while the job is queued or applying, and not before or after", () => {
+    expect(isWorking(job({ status: "queued" }))).toBe(true);
+    expect(isWorking(job({ status: "applying" }))).toBe(true);
+    for (const status of ["previewed", "applied", "stopped", "failed"] as const) {
+      expect(isWorking(job({ status }))).toBe(false);
+    }
   });
 
-  it("is told from every other refusal", () => {
-    expect(isOutOfDate(outOfDate)).toBe(true);
-    expect(isOutOfDate(stale)).toBe(false);
-    expect(isOutOfDate(applied)).toBe(false);
-    expect(isOutOfDate(new ApiError({ status: 422, title: "Preview out of date" }))).toBe(false);
-    expect(isOutOfDate(null)).toBe(false);
+  it("says how far it has got", () => {
+    expect(progressText(job({ rows_done: 4 }))).toBe("4 of 9 rows worked");
+    expect(progressText(job({ row_count: 1 }), ["item", "items"])).toBe("0 of 1 item worked");
+    expect(stoppedText(job({ rows_done: 4 }))).toBe("4 of 9 rows had been worked");
   });
 
-  it("names the rows in the way, in the order of the file", () => {
-    expect(staleRows(outOfDate)).toEqual([
-      { row: 3, message: "row 3, site2-sw-access-03: would no longer do what was previewed" },
-      { row: 12, message: "row 12, site2-sw-access-12: changed since the preview" },
-    ]);
+  it("counts as refused what it worked and neither applied nor left out as stale", () => {
+    expect(refusedAtApply(job({ rows_done: 9, applied: 6, stale: 2 }))).toBe(1);
+    expect(refusedAtApply(job({ rows_done: 3, applied: 3, stale: 0 }))).toBe(0);
+    // Never fewer than none, whatever a job of an older release says.
+    expect(refusedAtApply(job({ rows_done: 0, applied: 2, stale: 0 }))).toBe(0);
   });
 
-  it("names no row for any other refusal", () => {
-    expect(staleRows(stale)).toEqual([]);
-    expect(staleRows(applied)).toEqual([]);
-    expect(staleRows(null)).toEqual([]);
+  it("says what it did in a sentence", () => {
+    expect(appliedText(job({ rows_done: 9, applied: 6, stale: 2 }))).toBe(
+      "6 rows applied, 2 left out as changed since the preview, 1 refused",
+    );
+    expect(appliedText(job({ rows_done: 1, applied: 1 }), ["item", "items"])).toBe(
+      "1 item applied, none left out as changed since the preview, none refused",
+    );
+  });
+
+  it("names what it did with a row, and nothing for a row it has not worked", () => {
+    expect(appliedLabel("create")).toBe("Created");
+    expect(appliedLabel("stale")).toBe("Changed since the preview");
+    expect(appliedLabel("rejected")).toBe("Refused");
+    expect(appliedLabel(null)).toBe("");
+  });
+
+  it("asks for the rows it left out, a page at a time, and counts them from the job", () => {
+    expect(leftOutQuery("stale", 0)).toEqual({
+      applied_outcome: "stale",
+      limit: ROWS_PAGE,
+      offset: 0,
+    });
+    expect(leftOutQuery("rejected", -5).offset).toBe(0);
+    const done = job({ status: "applied", rows_done: 9, applied: 6, stale: 2 });
+    expect(leftOutCount(done, "stale")).toBe(2);
+    expect(leftOutCount(done, "rejected")).toBe(1);
   });
 });
 

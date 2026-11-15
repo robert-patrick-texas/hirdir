@@ -740,7 +740,9 @@ the contract's history show it, and is retired by hand once it is of no more use
 member left out of the request is `same`, and a contract named that is not a member
 is refused; two members are not given one new number. The renewal is one change of the
 agreement and of every member, each audited under one request ID. **It changes no
-member's status**: what procurement agreed is often told by email or in a meeting, and
+member's status** but the one the operator gives it in the renewal, `status`, for the
+members that move forward, one, some or all at once: a new number is no confirmation,
+and a number that waits keeps the member's status when it begins. Otherwise: what procurement agreed is often told by email or in a meeting, and
 the team holds no copy of the new agreement to load, so a member that still says
 `renewal_pending` or `expired` is flagged to review, in the renewal's answer, on the
 agreement's record (`members_to_review`) and on the renewal worklist (`to_review`), for

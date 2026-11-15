@@ -78,13 +78,19 @@ and a retired one among them, minor items, stacks, clusters and a controller dom
 with their members, memberships that were ended, a replacement, conditions and
 observations, networks, addresses, and choices of the site's own; from 0.5.0 regions,
 sites, locations, contacts, their assignments, operators and the people of an owner,
-with items and a stack placed among them; and from 0.6.0 agreements, contracts,
+with items and a stack placed among them; from 0.6.0 agreements, contracts,
 coverage, purchase requests and lines, external systems, registrations and capacity
-lines. After the upgrade
+lines; and from 0.7.0 the contacts of agreements and contracts, the flag not to renew
+on a model and on an item, an agreement renewed early with a member whose new number
+waits and one that ends with its term, a purchase line that is not tracked and one
+with a part number, a line of capacity that multiplies, the record of a week's
+capacity balance, corrected, links on the four kinds of record that take them, and a
+renewal alert that was seen. After the upgrade
 each item, group, membership, address and choice must be as it was, field for field,
 at the `row_version` it had, each item with its history, and so must every record of
 the kinds that came later; what is worked out of them, a tree, a report, the earlier
-terms of a contract, must be answered as it was; and the tables of the
+terms of a contract, must be answered as it was, beside whatever a later version adds
+to the answer, as a section more of a report; and the tables of the
 inventory are read from the database file as well, their columns, rows, indexes and
 uniquenesses.
 
@@ -96,7 +102,10 @@ what the release is:
 - **A release with no migration does nothing.** Nothing that is held may change: every
   table of the inventory must have the columns and the rows it had, the schema must be
   the same statement for statement, and the audit trail must hold no event of the
-  upgrade.
+  upgrade. From 0.7.0 the service records the capacity balance of the week by itself
+  when it starts in a week that has none, which is an event of the system's own; the
+  check of the audit trail allows for that one by name, at most once, and for no other,
+  in every upgrade.
 - **A release with a migration adds one file**,
   `packaging/package-test.d/migration-<revision>.sh`, and changes nothing else. The
   file makes, with the previous release, what the migration could harm or is meant to
@@ -114,7 +123,19 @@ what the release is:
   table anew, which the inventory fills already, so the file makes only choices of a
   site's own in the list that the migration loads, holds the upgrade to what
   [install.md](install.md#from-050-to-060) says of it, and then covers, receives,
-  registers and renews with what was carried over. Where a migration
+  registers and renews with what was carried over. For 0.7.0 it is
+  `migration-0009.sh`. The migration makes `purchase_lines` and `capacity_lines` anew,
+  so that a model, a quantity and the units of a line may be blank, and gives columns to
+  the catalog, the items, the places and the contracts, all of which the inventory
+  fills already; it gives the import jobs that were applied the counts that an apply
+  keeps from now on, which is the one thing it changes. So the file makes three import
+  jobs with the previous release, one applied, one failed and one waiting, names the
+  import tables as tables beside the inventory to be compared as its tables are, the
+  row of the applied job as meant to change, and the columns that are declared anew,
+  holds the upgrade to what [install.md](install.md#from-061-to-070) says of it, and
+  then applies the waiting job in the background, renews the agreement from before
+  with its member, flags a switch not to be renewed, records the balance by hand with
+  a line that multiplies, and puts links on a model and a room. Where a migration
   provides for something the previous release could not store, the file shows that it
   could not, writes it into the database, and says so: 0.4.0 refuses a choice in the
   list of conditions, which migration `0006` is written to leave alone when it finds
@@ -135,7 +156,8 @@ what the release is:
   that brought it. That is for the upgrades to come, which then carry it: the upgrade
   to the release itself starts from a release that could not store it. The kinds of
   0.5.0 and of 0.6.0 are made by `witness_places` and `witness_money` there, which are
-  the ones to read first. Such a function makes the records, and names three things:
+  the ones to read first, and those of 0.7.0 by `witness_renewals`. Such a function
+  makes the records, and names three things:
   each list to be kept and compared record for record, each answer that is worked out
   of the records, a tree or a report, with the expression that says what must stay,
   and each record in the order in which the upgrade pass takes it out again. The
@@ -143,13 +165,18 @@ what the release is:
   cannot be tried against the release that brings it, which has no earlier package
   that could store it; `--upgrade-alone` with the package of that release named as
   both `PREVIOUS_DEB` and, under a later version number, `DEB` runs it, and is how the
-  inventory of 0.6.0 was tried before there was a 0.7.0.
+  inventory of 0.6.0 was tried before there was a 0.7.0, and that of 0.7.0 before there
+  was a later release. The package under the later number is the same package with two
+  things changed, the version in its control file and hirdir's own `__version__`, with
+  that file's checksum in `md5sums`, built again with `dpkg-deb --root-owner-group`
+  outside `dist/`, so that it is never taken for a release.
 
 The test also makes the new version's migration fail, to see that the upgrade stops,
 names its backup, leaves the inventory as it was and can be undone. It does that in
 the database, so that the package tested is the one that was built, and reads from the
 package how. Where the new version creates a table, the table it creates last is put
-in its way, as `owner_members` is for 0.5.0 and `capacity_lines` for 0.6.0. Where it creates none, as 0.4.1 creates
+in its way, as `owner_members` is for 0.5.0, `capacity_lines` for 0.6.0 and
+`capacity_records` for 0.7.0. Where it creates none, as 0.4.1 creates
 none, a trigger refuses the new
 revision when the migration comes to write it down, which is the last thing a
 migration does, so everything else it does has been done and must be undone. Only a

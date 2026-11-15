@@ -8559,6 +8559,8 @@ export interface components {
       purchase_reference?: string | null;
       /** `same`: it follows into the new term under its number. `new_number`: its new number begins with the new term. `ends`: it is let go with the present term. */
       renewal?: "same" | "new_number" | "ends";
+      /** The status it is to have from this change: the operator's confirmation that it moves forward. Left out, its status stays as it is; nothing else in the renewal changes it. */
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled" | null;
     };
     /** What a renewal of an agreement did with one contract that shares its period. */
     MemberRenewedOut: {

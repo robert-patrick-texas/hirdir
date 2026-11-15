@@ -612,6 +612,10 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
     return _Done(result.outcome, record_hid=result.record_hid)
 
 
+class RoleLost(Exception):
+    """Whoever asked for a job to be applied no longer holds the Inventory role."""
+
+
 def _apply_batch(
     db: Session,
     run: Run,
@@ -633,6 +637,13 @@ def _apply_batch(
         run.start_batch()
         try:
             dialect.hold_other_writers(db)
+            # The role of whoever asked is asked of once the batch holds the writer's
+            # place, so that no change of it can come between the asking and the batch: a
+            # role that is lost stops the job, and one that changed is the one used.
+            now = _role(db, run.context)
+            if now is None or not now.allows(Role.INVENTORY):
+                raise RoleLost
+            run.role = now
             done = {
                 was.row: _Done("rejected", refused[was.row])
                 if was.row in refused
@@ -845,18 +856,6 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
         run.stubs |= _stubs_made(db, hid)
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
-            if number and _role(db, context) != role:
-                # The role is asked of before each batch: one that is lost stops the job.
-                now = _role(db, context)
-                if now is None or not now.allows(Role.INVENTORY):
-                    _stop(
-                        db,
-                        hid,
-                        "who asked for it to be applied no longer holds the Inventory role; "
-                        "anybody who does may apply it again to resume it",
-                    )
-                    db.commit()
-                    return "stopped"
             if number and stop.wait(PAUSE_BETWEEN_BATCHES):
                 _stop(
                     db,
@@ -865,7 +864,18 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
                 )
                 db.commit()
                 return "stopped"
-            _apply_waiting(db, run, which, hid, batch, typed, stop)
+            try:
+                _apply_waiting(db, run, which, hid, batch, typed, stop)
+            except RoleLost:
+                db.rollback()
+                _stop(
+                    db,
+                    hid,
+                    "who asked for it to be applied no longer holds the Inventory role; "
+                    "anybody who does may apply it again to resume it",
+                )
+                db.commit()
+                return "stopped"
         _complete(db, hid, context)
         return "applied"
     except Exception as error:

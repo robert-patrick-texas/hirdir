@@ -14737,6 +14737,25 @@
             ],
             "title": "Renewal",
             "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "renewal_pending",
+                  "expired",
+                  "pending",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The status it is to have from this change: the operator's confirmation that it moves forward. Left out, its status stays as it is; nothing else in the renewal changes it.",
+            "title": "Status"
           }
         },
         "required": [

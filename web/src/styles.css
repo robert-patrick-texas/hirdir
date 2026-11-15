@@ -1509,3 +1509,273 @@ main:has(.geography) {
 .began-by {
   white-space: nowrap;
 }
+
+/* === 0.7.0: an apply in the background, the trend of the capacity balance, links === */
+
+/* --- an apply in the background --------------------------------------------------- */
+
+.apply-preview progress {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.job-progress {
+  width: 6rem;
+  vertical-align: middle;
+}
+
+.outcome-stale {
+  color: var(--danger);
+}
+
+/* --- the trend of the capacity balance --------------------------------------------- */
+
+:root {
+  --trend-demand: #a64b12;
+  --trend-supply: var(--accent);
+  --trend-over: var(--ok);
+  --trend-short: var(--danger);
+  --trend-layer-0: #1a5aa0;
+  --trend-layer-1: #2e7d4f;
+  --trend-layer-2: #7a4fb8;
+  --trend-layer-3: #a87800;
+  --trend-layer-4: #1f8593;
+  --trend-layer-5: #a8395f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --trend-demand: #f0a46c;
+    --trend-layer-0: #78b0ee;
+    --trend-layer-1: #7fd39b;
+    --trend-layer-2: #b99be6;
+    --trend-layer-3: #f2cc60;
+    --trend-layer-4: #7fd0da;
+    --trend-layer-5: #e88aa8;
+  }
+}
+
+.trend {
+  margin: 0 0 1rem;
+}
+
+.trend-graph {
+  display: block;
+  width: 100%;
+  max-width: 60rem;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-axis text,
+.trend-adjusted-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.trend-band {
+  stroke: none;
+}
+
+.trend-band-over {
+  fill: var(--trend-over);
+  fill-opacity: 0.2;
+}
+
+.trend-band-short {
+  fill: var(--trend-short);
+  fill-opacity: 0.22;
+}
+
+.trend-demand,
+.trend-supply,
+.trend-infrastructure,
+.trend-recorded-demand {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trend-demand {
+  stroke: var(--trend-demand);
+  stroke-width: 2.5;
+}
+
+.trend-supply {
+  stroke: var(--trend-supply);
+  stroke-width: 2.5;
+}
+
+.trend-infrastructure {
+  stroke: var(--trend-demand);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.trend-recorded-demand {
+  stroke: var(--trend-demand);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.trend-layer {
+  stroke: var(--bg);
+  stroke-width: 0.5;
+  fill-opacity: 0.55;
+}
+
+.trend-layer-0 {
+  fill: var(--trend-layer-0);
+  background: var(--trend-layer-0);
+}
+
+.trend-layer-1 {
+  fill: var(--trend-layer-1);
+  background: var(--trend-layer-1);
+}
+
+.trend-layer-2 {
+  fill: var(--trend-layer-2);
+  background: var(--trend-layer-2);
+}
+
+.trend-layer-3 {
+  fill: var(--trend-layer-3);
+  background: var(--trend-layer-3);
+}
+
+.trend-layer-4 {
+  fill: var(--trend-layer-4);
+  background: var(--trend-layer-4);
+}
+
+.trend-layer-5 {
+  fill: var(--trend-layer-5);
+  background: var(--trend-layer-5);
+}
+
+.trend-dot-demand {
+  fill: var(--trend-demand);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.trend-dot-supply {
+  fill: var(--trend-supply);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+}
+
+.trend-adjusted {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 2;
+}
+
+/* What a week is pointed at by: the column of the plot above it. */
+.trend-hit {
+  fill: transparent;
+}
+
+.trend-point:hover .trend-hit {
+  fill: var(--text);
+  fill-opacity: 0.06;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.trend-key {
+  display: inline-block;
+  width: 1.4rem;
+  height: 0.7rem;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+.trend-key-demand {
+  height: 0;
+  border-top: 3px solid var(--trend-demand);
+}
+
+.trend-key-supply {
+  height: 0;
+  border-top: 3px solid var(--trend-supply);
+}
+
+.trend-key-infrastructure {
+  height: 0;
+  border-top: 2px dashed var(--trend-demand);
+}
+
+.trend-key-recorded {
+  height: 0;
+  border-top: 2px dotted var(--trend-demand);
+}
+
+.trend-key.trend-band-over {
+  background: color-mix(in srgb, var(--trend-over) 25%, transparent);
+}
+
+.trend-key.trend-band-short {
+  background: color-mix(in srgb, var(--trend-short) 25%, transparent);
+}
+
+.trend-key-layer {
+  opacity: 0.7;
+}
+
+.trend-key-adjusted {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid var(--warn);
+  border-radius: 50%;
+}
+
+/* --- links -------------------------------------------------------------------------- */
+
+.links-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.link-item {
+  margin: 0.15rem 0;
+  overflow-wrap: anywhere;
+}
+
+.link-address {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.links-editor {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+fieldset.link-draft {
+  max-width: none;
+  margin: 0 0 0.5rem;
+}
+
+fieldset.link-draft[data-invalid="true"] {
+  border-color: var(--danger);
+}
