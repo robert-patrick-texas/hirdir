@@ -132,6 +132,15 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       width: 100,
     },
     {
+      // A line that multiplies: the staff lines it works on, by name. The server filters
+      // by any of them and sorts by the first.
+      id: "applies_to",
+      header: "Applies to",
+      kind: "text",
+      value: (line) => line.applies_to.map((target) => target.name).join(", "),
+      width: 240,
+    },
+    {
       // It counts today: not before it starts, and not after it ends.
       id: "in_date",
       header: "In date",

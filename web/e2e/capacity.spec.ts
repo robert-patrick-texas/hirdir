@@ -434,6 +434,32 @@ test("S44, S45: the balance over time, a line that multiplies, and the demand of
   await expect(appliesTo.getByRole("link", { name: engineer, exact: true })).toBeVisible();
   await expect(appliesTo.getByRole("link", { name: senior, exact: true })).toBeVisible();
 
+  // The grid of lines says what each applies to, and the server filters by it and sorts
+  // by it: of this file's lines, only the new one applies to any.
+  await page.goto(`./capacity?filter=${encodeURIComponent(`applies_to:contains:${suffix}`)}`);
+  const grid = page.getByTestId("grid-capacity-lines");
+  await expect(page.getByTestId("grid-total")).toHaveText("1 line");
+  // Room is made for the column: the grid draws only those in view.
+  await page.getByText("Columns", { exact: true }).click();
+  const columns = page.getByRole("group", { name: "Columns to show" });
+  for (const column of ["Category", "Quantity", "Units each", "Units", "Annual cost", "Vendor"]) {
+    await columns.getByLabel(column, { exact: true }).uncheck();
+  }
+  await page.getByText("Columns", { exact: true }).click();
+  const cell = grid.locator("[row-id]", { hasText: multiplier }).locator('[col-id="applies_to"]');
+  await expect(cell).toContainText(engineer);
+  await expect(cell).toContainText(senior);
+  const header = grid.locator('[role="columnheader"][col-id="applies_to"]');
+  const sorted = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/capacity-lines?") &&
+      new URL(response.url()).searchParams.getAll("sort").includes("applies_to"),
+  );
+  await header.click();
+  expect((await sorted).status()).toBe(200);
+  await expect(header).toHaveAttribute("aria-sort", "ascending");
+  await expect(cell).toContainText(senior);
+
   // Its gain is (1.25 − 1) × 0.5 × the 4.8 units of the two lines: 0.6, in its own
   // category, in both views, and the team's own positions are as they were.
   const multiplied = await reading(page);

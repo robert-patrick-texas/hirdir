@@ -136,7 +136,11 @@ interface RecordsProps {
   onChanged: (text: string) => void;
 }
 
-/** The records, a page at a time, the oldest week first until a header is clicked. */
+// The order of the table until a header is clicked: the latest week first, where the
+// route by itself, as the graph reads it, gives the oldest first.
+const NEWEST_FIRST = ["-week_of"];
+
+/** The records, a page at a time, the newest week first until a header is clicked. */
 function Records({ mayEdit, turn, onChanged }: RecordsProps) {
   const [offset, setOffset] = useState(0);
   const [correcting, setCorrecting] = useState<CapacityRecord | null>(null);
@@ -148,7 +152,7 @@ function Records({ mayEdit, turn, onChanged }: RecordsProps) {
   const records = sort.held(
     useLoad(`capacity-records ${offset} ${turn} ${sort.param ?? ""}`, (signal) =>
       api.request("get", "/api/v1/capacity-records", {
-        query: { ...sort.query, limit: RECORDS_PAGE, offset },
+        query: { sort: sort.query.sort ?? NEWEST_FIRST, limit: RECORDS_PAGE, offset },
         signal,
       }),
     ),
@@ -180,7 +184,7 @@ function Records({ mayEdit, turn, onChanged }: RecordsProps) {
           <div className="scroll">
             <table data-testid="capacity-records">
               <caption className="visually-hidden">
-                The records of the balance, the oldest week first until a header is clicked, in
+                The records of the balance, the newest week first until a header is clicked, in
                 resource units
               </caption>
               <thead>
