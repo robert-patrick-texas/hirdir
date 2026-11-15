@@ -4,7 +4,9 @@ The coverage report, the renewal worklist and the summary of the renewal alert a
 kept in the memory of the server with the newest audit event there is, the day in the
 application's time zone and the request whole. Every change writes an audit event, a
 setting's among them, so a newer event, or another day, leaves a kept answer unused:
-one that a change has made wrong is never given. What is kept is no record: it may be
+one that a change has made wrong is never given. An event that changes none of the
+records an answer is worked out of, a sign-in, seeing the alert, a preview or a change
+of an account, leaves it good. What is kept is no record: it may be
 dropped at any time, is dropped at a restart, and is worked out again from the records,
 so nothing inherited is copied down.
 """
@@ -15,7 +17,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import AuditEvent
@@ -28,14 +30,26 @@ _lock = threading.Lock()
 _kept: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
 
 
+# What changes none of the records a kept answer is worked out of, and so leaves it
+# good: signing in, seeing the alert, a preview, and the accounts (the role of the
+# person asking is applied to a kept answer, never kept in it).
+UNKEPT_ACTIONS = ("sign_in", "sign_in_failed", "alert_seen", "preview")
+UNKEPT_RECORDS = ("user", "user_group", "role_grant", "service_token")
+
+
 def stamp(db: Session) -> tuple[Any, ...]:
-    """Return what a kept answer is good for: the database, its newest audit event and
-    the day."""
-    return (
-        str(db.get_bind().engine.url),
-        db.scalar(select(func.max(AuditEvent.hid))),
-        contracts.today(db).isoformat(),
+    """Return what a kept answer is good for: the database, the newest audit event of
+    a change of the inventory or its settings, and the day."""
+    newest = db.scalar(
+        select(AuditEvent.hid)
+        .where(
+            AuditEvent.action.not_in(UNKEPT_ACTIONS),
+            AuditEvent.record_type.not_in(UNKEPT_RECORDS),
+        )
+        .order_by(AuditEvent.hid.desc())
+        .limit(1)
     )
+    return str(db.get_bind().engine.url), newest, contracts.today(db).isoformat()
 
 
 def asked(*parts: Any) -> str:

@@ -14,7 +14,14 @@ from sqlalchemy.orm import Session
 
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.db.models import Agreement, AuditEvent, CatalogEntry, Contract, Item
+from hirdir.db.models import (
+    Agreement,
+    AuditEvent,
+    CatalogEntry,
+    Contract,
+    Item,
+    RenewalAlertView,
+)
 from hirdir.io import kept
 from hirdir.schedule import RENEWAL_ALERT, Scheduler
 from tests.api.inventory import API, errors
@@ -100,6 +107,7 @@ def test_the_worklist_lists_each_contract_to_act_on_under_its_vendor_and_agreeme
         "renewal_pending": 2,
         "overdue": 1,
         "ends_with_term": 0,
+        "to_review": 0,
         "overlapping": 1,
     }
     # Each count leads to its rows.
@@ -164,8 +172,8 @@ def test_a_kept_answer_is_never_one_that_a_change_made_wrong(desk: Renewer) -> N
 # --- the alert ------------------------------------------------------------------------
 
 
-def test_the_alert_is_shown_once_until_something_new(
-    desk: Renewer, client: TestClient, viewer: dict[str, str]
+def test_the_alert_is_shown_once_a_day(
+    desk: Renewer, client: TestClient, viewer: dict[str, str], db: Session
 ) -> None:
     alert = desk.get("/renewals/alert")
     assert alert["show"] is False
@@ -180,14 +188,24 @@ def test_the_alert_is_shown_once_until_something_new(
     assert (seen_by_viewer["show"], seen_by_viewer["lapsed"]["count"]) == (False, 1)
     desk.post("/renewals/alert/seen", {"version": alert["version"]}, 200)
     assert desk.get("/renewals/alert")["show"] is False
-    # A version that is no longer in force is refused: read it again.
+    # Dismissed, it is not shown again that day, whatever comes onto a list ...
     desk.contract("CON-LAP-2", starts_on=day(-400), ends_on=day(-3))
-    stale = desk.post("/renewals/alert/seen", {"version": alert["version"]}, 409)
-    assert "version" in errors(stale)
     again = desk.get("/renewals/alert")
-    assert (again["show"], again["lapsed"]["new"]) == (True, 1)
-    desk.post("/renewals/alert/seen", {"version": again["version"]}, 200)
-    assert desk.get("/renewals/alert")["show"] is False
+    assert (again["show"], again["lapsed"]["count"], again["lapsed"]["new"]) == (False, 2, 1)
+    desk.post("/renewals/alert/seen", {}, 200)
+    # ... and it is shown again the next day.
+    held = db.scalar(select(RenewalAlertView))
+    assert held is not None
+    held.as_of = TODAY - timedelta(days=1)
+    db.commit()
+    assert desk.get("/renewals/alert")["show"] is True
+
+
+def test_the_alert_counts_the_agreements_too(desk: Renewer) -> None:
+    desk.agreement(starts_on=day(-400), ends_on=day(-5))
+    alert = desk.get("/renewals/alert")
+    assert alert["agreements"] == {"ending": 0, "lapsed": 1, "renewal_pending": 0}
+    assert alert["show"] is True
 
 
 def test_seeing_the_alert_is_a_change_of_ones_own_and_audited(desk: Renewer, db: Session) -> None:
@@ -327,7 +345,7 @@ def test_a_waiting_number_is_in_force_from_the_day_the_agreements_term_begins(
     assert desk.get(f"/contracts/{member['hid']}")["part_began_by"] == "renewal"
 
 
-def test_a_member_let_go_ends_with_the_present_term_and_is_then_expired(
+def test_a_member_let_go_ends_with_the_present_term_and_stays_listed_until_a_person_says(
     desk: Renewer, db: Session
 ) -> None:
     agreement = desk.agreement(starts_on=day(-300), ends_on=day(30))
@@ -350,14 +368,17 @@ def test_a_member_let_go_ends_with_the_present_term_and_is_then_expired(
     found = worklist(desk)
     assert found["totals"]["ends_with_term"] == 1
     assert listed(desk, "/contracts", found["sections"]["ending"]["filter"]) == set()
-    # After its end it is expired, not lapsed, and covers nothing.
+    # After its end nothing changes by itself: it covers nothing, is not lapsed, and stays
+    # on the list of what is let go until a person says it has expired.
     held = db.get_one(Contract, closing["hid"])
     held.starts_on, held.ends_on = date.fromisoformat(day(-400)), date.fromisoformat(day(-2))
     db.commit()
     now = desk.get(f"/contracts/{closing['hid']}")
-    assert (now["status"], now["lapsed"], now["covers_today"]) == ("expired", False, False)
-    assert desk.get("/contracts", filter="status:eq:expired")["total"] == 1
-    assert worklist(desk)["totals"]["lapsed"] == 0
+    assert (now["status"], now["lapsed"], now["covers_today"]) == ("active", False, False)
+    found = worklist(desk)
+    assert (found["totals"]["lapsed"], found["totals"]["ends_with_term"]) == (0, 1)
+    desk.change(f"/contracts/{closing['hid']}", status="expired")
+    assert worklist(desk)["totals"]["ends_with_term"] == 0
     assert desk.get(f"/contracts/{staying['hid']}")["ends_with_term"] is False
 
 

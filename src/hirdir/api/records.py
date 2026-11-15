@@ -1917,6 +1917,13 @@ class AgreementOut(Model):
         description="The term that begins on a day to come. Until then the present one runs on."
     )
     contracts: int = Field(description="How many contracts that are not retired are in it.")
+    members_to_review: list[ContractRef] = Field(
+        description=(
+            "Its members that still say their renewal is pending or that they have expired "
+            "while it runs on: no renewal of an agreement changes them, and a person "
+            "makes each active, takes it out, or retires it (P-129)."
+        )
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -1928,6 +1935,9 @@ class AgreementRenewed(AgreementOut):
 
     members: list[MemberRenewedOut]
     left_behind: int
+    to_review: list[ContractRef] = Field(
+        description="The members to look at: those of `members` with `to_review`."
+    )
 
 
 class AgreementCreate(Model):
@@ -2215,6 +2225,12 @@ class MemberRenewedOut(Model):
     number: str = Field(description="The number it has in the new term, or its last one.")
     renewal: MemberChoice
     left_behind: int
+    to_review: bool = Field(
+        description=(
+            "Carried into the new term while it says its renewal is pending or that it has "
+            "expired, or while it is marked not to be renewed: a person looks at it."
+        )
+    )
 
 
 class AgreementTerm(Model):
@@ -2926,7 +2942,12 @@ class LapsedContracts(Model):
     """The contracts whose period has ended while they still say they are active."""
 
     count: int
-    filter: dict[str, Any] = Field(description="The filter of `GET /contracts` for them.")
+    filter: dict[str, Any] | None = Field(
+        description=(
+            "The filter of `GET /contracts` for them; blank where the report's filter "
+            "leads to more of them than a filter can name."
+        )
+    )
 
 
 class CoverageReport(Model):
@@ -2948,7 +2969,7 @@ class CoverageReport(Model):
 # --- the renewal worklist and the alert (P-127, P-128) --------------------------------
 
 RenewalSection = Literal[
-    "ending", "lapsed", "renewal_pending", "overdue", "ends_with_term", "overlapping"
+    "ending", "lapsed", "renewal_pending", "overdue", "ends_with_term", "to_review", "overlapping"
 ]
 
 
@@ -2964,7 +2985,16 @@ class RenewalTotals(Model):
         description="Of those, the ones pending for longer than `renewal_pending_overdue_days`."
     )
     ends_with_term: int = Field(
-        description="Contracts let go with their term that end within the days: never alerted."
+        description=(
+            "Contracts the team marked not to renew that end within the days or have ended, "
+            "until a person says they have expired: never alerted."
+        )
+    )
+    to_review: int = Field(
+        description=(
+            "Members of an agreement that was renewed that still say their renewal is "
+            "pending or that they have expired: no renewal of an agreement changes them."
+        )
     )
     overlapping: int = Field(description="Items that more than one contract covers today.")
 
@@ -3034,21 +3064,27 @@ class RenewalAlert(Model):
     overdue_after: int
     show: bool = Field(
         description=(
-            "Whether to show it: for the Inventory and the Admin role, when a contract is "
-            "on a list that it was not on when they last saw it."
+            "Whether to show it: for the Inventory and the Admin role, when a count is more "
+            "than none and they have not dismissed it yet today, in the application's time "
+            "zone."
         )
     )
-    version: str = Field(description="What `POST /renewals/alert/seen` is sent with.")
+    version: str = Field(description="What `POST /renewals/alert/seen` may be sent with.")
     lapsed: AlertCount
     renewal_pending: AlertCount
     overdue: int = Field(description="Of those pending, how many are overdue.")
     ending: AlertCount
+    agreements: dict[str, int] = Field(
+        description="How many agreements have lapsed, have a renewal pending and end soon."
+    )
 
 
 class AlertSeen(Model):
-    """That the alert has been seen, as it was answered."""
+    """That the alert has been seen today."""
 
-    version: str = Field(max_length=64)
+    version: str | None = Field(
+        default=None, max_length=64, description="The version that was shown. Not required."
+    )
 
 
 class AlertSeenOut(Model):

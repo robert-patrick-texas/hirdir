@@ -1331,6 +1331,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
     grouped = contracts.contracts_in(db, hids)
     named, in_force = contract_contacts.of_agreements(db, hids)
     today = contracts.today(db)
+    review = _members_to_review(db, hids, today)
     shaped = (
         *contracts.TERM,
         "status",
@@ -1343,6 +1344,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
         "contracts",
         "contacts",
         "effective",
+        "members_to_review",
     )
     out = []
     for agreement in found:
@@ -1367,10 +1369,31 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
                     "effective": shapes.AgreementEffective(
                         **_contacts_in_force(in_force[agreement.hid])
                     ),
+                    "members_to_review": review.get(agreement.hid, []),
                 }
             )
         )
     return out
+
+
+def _members_to_review(
+    db: Session, agreement_hids: list[str], today: date
+) -> dict[str, list[shapes.ContractRef]]:
+    """Return, for each agreement, its members that a person must look at (P-129)."""
+    if not agreement_hids:
+        return {}
+    found = list(
+        db.scalars(
+            select(Contract)
+            .where(Contract.agreement_hid.in_(agreement_hids), contracts.to_review_value())
+            .order_by(Contract.number_key, Contract.hid)
+        )
+    )
+    refs = _contract_refs(db, found, today)
+    review: dict[str, list[shapes.ContractRef]] = {}
+    for contract in found:
+        review.setdefault(contract.agreement_hid or "", []).append(refs[contract.hid])
+    return review
 
 
 def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut]:
@@ -1856,6 +1879,7 @@ def renewal_alert_out(found: alerts.Alert) -> shapes.RenewalAlert:
                 name: {"count": len(hids), "new": found.new[name], "section": name}
                 for name, hids in summary.lists.items()
             },
+            "agreements": {name: len(hids) for name, hids in summary.agreements.items()},
         }
     )
 
@@ -1934,3 +1958,10 @@ def portfolio_out(db: Session, found: planning.Portfolio) -> shapes.PortfolioOut
         capacity_lines=capacity_lines_out(db, found.capacity_lines),
         filter=found.filter,
     )
+
+
+def contract_refs(db: Session, hids: list[str]) -> list[shapes.ContractRef]:
+    """Return contracts as other records name them, in the order given."""
+    found = {one.hid: one for one in db.scalars(select(Contract).where(Contract.hid.in_(hids)))}
+    refs = _contract_refs(db, list(found.values()), contracts.today(db))
+    return [refs[hid] for hid in hids if hid in refs]

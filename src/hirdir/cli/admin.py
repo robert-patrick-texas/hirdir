@@ -5,6 +5,7 @@ goes through the API.
 """
 
 import contextlib
+import fcntl
 import os
 import shutil
 import socket
@@ -12,7 +13,7 @@ import sqlite3
 import stat
 import tomllib
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TextIO
 
 import typer
 import uvicorn
@@ -99,8 +100,27 @@ def serve(
     # The application's own gateway reads the proxy's headers, and only from the
     # proxies named in the configuration. Uvicorn must leave them alone: if it
     # rewrote the client address first, the gateway would no longer see the proxy.
-    app = create_app(config, scheduled=True)
-    uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
+    # One server to a database: a second one started on the same state directory would
+    # take for stopped the import the first is applying, and work it twice.
+    lock = _one_server(config.state_dir)
+    try:
+        app = create_app(config, scheduled=True)
+        uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
+    finally:
+        lock.close()
+
+
+def _one_server(state_dir: Path) -> TextIO:
+    """Hold the lock that only one server holds on a state directory, or stop."""
+    state_dir.mkdir(parents=True, exist_ok=True)
+    held = (state_dir / "server.lock").open("a")
+    try:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        held.close()
+        typer.echo(f"another hirdir server is running on {state_dir}: stop it first", err=True)
+        raise typer.Exit(1) from None
+    return held
 
 
 @admin.command()

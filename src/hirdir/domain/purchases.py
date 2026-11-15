@@ -196,15 +196,21 @@ def part_key(text: str) -> str:
 
 def models_of_part(db: Session, text: str, vendor_hid: str | None) -> list[CatalogEntry]:
     """Return the models whose PID is the part number text, among the models of a
-    vendor where one is named and among all where none is (P-135). The `=` of a spare
-    is not looked at, on either side."""
+    vendor where one is named and among all where none is (P-135). An exact PID is
+    looked for first; only where none matches exactly is the `=` of a spare left out,
+    on either side, so that a model and its spare twin each find their own."""
+    exact = records.key(text)
     wanted = part_key(text)
     if not wanted:
         return []
-    query = select(CatalogEntry).where(CatalogEntry.pid_key.in_([wanted, f"{wanted}="]))
-    if vendor_hid is not None:
-        query = query.where(CatalogEntry.vendor_hid == vendor_hid)
-    return list(db.scalars(query.order_by(CatalogEntry.vendor_hid, CatalogEntry.pid_key)))
+
+    def among(keys: list[str]) -> list[CatalogEntry]:
+        query = select(CatalogEntry).where(CatalogEntry.pid_key.in_(keys))
+        if vendor_hid is not None:
+            query = query.where(CatalogEntry.vendor_hid == vendor_hid)
+        return list(db.scalars(query.order_by(CatalogEntry.vendor_hid, CatalogEntry.pid_key)))
+
+    return among([exact]) or among([wanted, f"{wanted}="])
 
 
 def tracked(line: PurchaseLine) -> bool:
