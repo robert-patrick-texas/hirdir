@@ -45,7 +45,12 @@
 //      have ended. stale-term.spec.ts is one: it makes a day come by changing the
 //      `time_zone` setting, which says what today is for every file, and puts it back.
 //      It runs in the project "after the others", which waits for the files of every
-//      browser to end, and is not run at all when one of them failed.
+//      browser to end, and is not run at all when one of them failed. A file whose
+//      changes are large enough to hold the database's one writer for seconds, as
+//      cover-many.spec.ts does with a thousand rows at once, cannot run beside the
+//      others either: a sign-in or a save of another file that waits longer than the
+//      server's `busy_timeout` is answered Busy. It runs in the project "the writer
+//      alone", after the files of every browser and before "after the others".
 //   6. Keep failed sign-ins few. They are counted for each address, and every worker
 //      comes from the same one: after five in a row from all files together, every
 //      sign-in is delayed (docs/architecture.md, "Throttling").

@@ -435,7 +435,11 @@ so each has of its own what another could disturb:
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
 but one: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run
-by itself with `--no-deps`. So no other test is kept from running beside those of
+by itself with `--no-deps`. Nor does any file hold the one writer for long beside the
+others but one: `cover-many.spec.ts` loads a thousand switches from a file and covers a
+thousand at once, each a change that holds the writer for seconds, which makes a
+sign-in of another file wait past `busy_timeout` and be answered Busy. It runs in a
+project of its own after the files of every browser and before `stale-term.spec.ts`. So no other test is kept from running beside those of
 another file. The rules a new spec file
 keeps to are at the top of `web/e2e/support.ts`.
 

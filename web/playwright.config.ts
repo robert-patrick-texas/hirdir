@@ -33,10 +33,15 @@ function workers(): number {
 }
 
 /**
- * The spec files that change what every other file reads, and so run when the others
- * have ended, one after another: stale-term.spec.ts changes the `time_zone` setting.
- * See rule 5 at the top of e2e/support.ts.
+ * The spec files that cannot run beside the others, and so run when the others have
+ * ended, one project after another. cover-many.spec.ts loads a thousand switches from
+ * one file and covers a thousand at once: each is one change that holds the database's
+ * one writer for seconds, and a sign-in or a save of another file that waits longer
+ * than the server's `busy_timeout` is answered Busy. stale-term.spec.ts then changes
+ * the `time_zone` setting, which every file reads. See rule 5 at the top of
+ * e2e/support.ts.
  */
+const HOLDS_THE_WRITER = /cover-many\.spec\.ts$/;
 const AFTER_THE_OTHERS = /stale-term\.spec\.ts$/;
 
 const browsers = [
@@ -62,11 +67,20 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    ...browsers.map((project) => ({ ...project, testIgnore: AFTER_THE_OTHERS })),
+    ...browsers.map((project) => ({
+      ...project,
+      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS],
+    })),
+    {
+      name: "the writer alone",
+      testMatch: HOLDS_THE_WRITER,
+      dependencies: browsers.map((project) => project.name),
+      use: { ...devices["Desktop Chrome"] },
+    },
     {
       name: "after the others",
       testMatch: AFTER_THE_OTHERS,
-      dependencies: browsers.map((project) => project.name),
+      dependencies: ["the writer alone"],
       use: { ...devices["Desktop Chrome"] },
     },
   ],
