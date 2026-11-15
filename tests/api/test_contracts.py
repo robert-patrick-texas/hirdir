@@ -617,7 +617,15 @@ def test_a_contract_has_from_its_agreement_what_it_leaves_blank(desk: Desk) -> N
     assert desk.get("/items", filter="covered:eq:true")["total"] == 0
     # A contract in no agreement has nothing from one.
     alone = desk.contract("CON-3", support_level="8x5")
-    assert {its["from_agreement"] for its in alone["effective"].values()} == {None}
+    # The contact records in force are lists, and say only where they came from.
+    lists = ("account_managers", "support_contacts")
+    texts = [its for name, its in alone["effective"].items() if name not in lists]
+    assert {its["from_agreement"] for its in texts} == {None}
+    assert alone["effective"]["account_managers"] == {
+        "value": [],
+        "source": "none",
+        "source_hid": None,
+    }
     assert alone["effective"]["reseller_hid"]["from_agreement_label"] is None
 
 
@@ -878,6 +886,7 @@ def test_the_coverage_report_counts_what_its_filters_list(desk: Desk, admin: dic
         "expiring": 1,
         "overlapping": 1,
         "renewal_pending": 0,
+        "not_renewed": 0,
     }
     assert (report["section"], report["items"], report["total"]) == (None, [], 0)
     assert report["lapsed_contracts"]["count"] == 0

@@ -202,6 +202,8 @@ const COVERAGE_COLUMNS: Readonly<Record<CoverageSection, readonly string[]>> = {
   out_of_service: ["out_of_service_contract.number", "covered", "covered_until"],
   renewal_pending: ["contract.status", "contract.number", "covered"],
   overlapping: ["contract_count", "contract.number", "covered_until"],
+  // Left out of support on purpose: in service, under no contract, and not to be renewed.
+  not_renewed: ["covered", "covered_until", "contract.number"],
 };
 
 /**

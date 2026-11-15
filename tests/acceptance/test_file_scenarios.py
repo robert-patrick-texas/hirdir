@@ -35,6 +35,7 @@ LOAD_ORDER = (
     "external_systems",
     "agreements",
     "contracts",
+    "contract_contacts",
     "purchase_requests",
     "purchase_lines",
     "items",
@@ -126,6 +127,13 @@ class Desk:
         if entity == "owner_members":
             owners = self.get("/owners", include_archived=True, include_drafts=True)
             return sum(len(owner["members"]) for owner in owners["items"])
+        if entity == "contract_contacts":
+            # The contacts of each agreement and each contract are on its record.
+            return sum(
+                len(record["contacts"])
+                for path in ("/agreements", "/contracts")
+                for record in self.get(path, include_archived=True, include_drafts=True)["items"]
+            )
         if entity == "device_group_members":
             # Memberships are listed a group at a time, the ones that have ended too.
             groups = self.get("/device-groups", include_archived=True, include_drafts=True)

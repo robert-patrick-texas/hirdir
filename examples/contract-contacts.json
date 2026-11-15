@@ -1,0 +1,5 @@
+{"schema": "hirdir/1", "entity": "contract_contacts", "mode": "upsert", "records": [
+  {"agreement": "Cisco Enterprise Agreement", "contract": null, "vendor": null, "role": "account_manager", "contact": "jordan.reyes@example.com", "priority": 1},
+  {"agreement": "Cisco Enterprise Agreement", "contract": null, "vendor": null, "role": "account_manager", "contact": "casey.lund@example.com", "priority": 2},
+  {"agreement": null, "contract": "CON-2025-0002", "vendor": "Cisco", "role": "account_manager", "contact": "casey.lund@example.com", "priority": 1}
+]}

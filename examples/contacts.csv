@@ -1,6 +1,8 @@
 hid,name,organization,email,phone,notes,record_status,tags
+,Casey Lund,Cisco,casey.lund@example.com,'+1 555 0144,,active,
 ,Dana Whitfield,Infrastructure Operations,dana.whitfield@example.net,'+1 555 0100,,active,
 ,Facilities Help Desk,Corporate Services,facilities@example.net,'+1 555 0150,,active,
+,Jordan Reyes,Cisco,jordan.reyes@example.com,'+1 555 0142,,active,
 ,Lee Marchetti,Infrastructure Operations,lee.marchetti@example.net,'+1 555 0102,,active,
 ,Network Operations Desk,Infrastructure Operations,noc@example.net,'+1 555 0199,,active,
 ,Priya Raman,Infrastructure Operations,priya.raman@example.net,'+1 555 0103,,active,

@@ -182,6 +182,12 @@ class CatalogEntryOut(Model):
     annual_support_cost: Money | None
     stack_discount_pct: Percent | None
     successor_hid: str | None
+    do_not_renew: bool = Field(
+        description=(
+            "Its support is not to be renewed: gear whose cover came with its purchase and "
+            "is not bought again. Every item of the model has it unless it says otherwise."
+        )
+    )
     review_status: str
     record_status: RecordStatus
     tags: list[str]
@@ -210,6 +216,13 @@ class CatalogEntryCreate(Model):
     annual_support_cost: Money | None = None
     stack_discount_pct: Percent | None = None
     successor_hid: Hid | None = None
+    do_not_renew: bool = Field(
+        default=False,
+        description=(
+            "Its support is not to be renewed: gear whose cover came with its purchase and "
+            "is not bought again."
+        ),
+    )
     review_status: str = Field(default="reviewed", max_length=12)
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -235,6 +248,7 @@ class CatalogEntryPatch(Model):
     annual_support_cost: Money | None = None
     stack_discount_pct: Percent | None = None
     successor_hid: Hid | None = None
+    do_not_renew: bool | None = Field(default=None, description="Null is false.")
     review_status: str | None = Field(default=None, max_length=12)
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -1161,6 +1175,9 @@ class ItemEffective(Model):
     end_of_sw_support: EffectiveValue
     end_of_hw_support: EffectiveValue
     ldos: EffectiveValue
+    do_not_renew: EffectiveValue = Field(
+        description="Whether its support is not to be renewed: its own word, or its model's."
+    )
 
 
 class ItemOut(Model):
@@ -1234,6 +1251,9 @@ class ItemOut(Model):
     end_of_sw_support: date | None
     end_of_hw_support: date | None
     ldos: date | None
+    do_not_renew: bool | None = Field(
+        description="Its own word on renewing its support. Blank has its model's."
+    )
     effective: ItemEffective
     groups: list[MembershipRef] = Field(description="Its current memberships of groups.")
     controllers: list[ControllerRef] = Field(
@@ -1338,6 +1358,7 @@ class ItemCreate(Model):
     end_of_sw_support: date | None = None
     end_of_hw_support: date | None = None
     ldos: date | None = None
+    do_not_renew: bool | None = Field(default=None, description="Left out, its model's.")
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
 
@@ -1391,6 +1412,7 @@ class ItemPatch(Model):
     end_of_sw_support: date | None = None
     end_of_hw_support: date | None = None
     ldos: date | None = None
+    do_not_renew: bool | None = Field(default=None, description="Null has its model's again.")
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
 
@@ -1724,6 +1746,68 @@ class NextTerm(Model):
     purchase_reference: str | None
 
 
+# --- the contacts of agreements and contracts ----------------------------------------
+
+ContractContactRole = Literal["account_manager", "support_contact"]
+ContractContactSource = Literal["own", "agreement", "none"]
+
+
+class ContractContactOut(Model):
+    """A contact record named for an agreement or a contract, in a role."""
+
+    hid: str = Field(description="The naming: what is changed and removed.")
+    agreement_hid: str | None = Field(description="The agreement it is named for, or blank.")
+    contract_hid: str | None = Field(description="The contract it is named for, or blank.")
+    role: ContractContactRole
+    priority: int = Field(description="The order in which they are listed, from 1.")
+    contact_hid: str
+    contact: ContactRef = Field(
+        description="The contact as its record is now. A retired one is still listed, so marked."
+    )
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContractContactAdd(Model):
+    """A contact record to name for an agreement or a contract, in a role."""
+
+    contact_hid: Hid
+    role: ContractContactRole
+    priority: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Left out, one more than the highest there is for the record and the role.",
+    )
+
+
+class ContractContactPatch(Model):
+    """Fields of a naming to change, and the version they were read at. It stays with
+    its agreement or its contract."""
+
+    row_version: int
+    contact_hid: Hid | None = None
+    role: ContractContactRole | None = None
+    priority: int | None = Field(default=None, ge=1, le=1000)
+
+
+class EffectiveContacts(Model):
+    """The contacts in force for one role, and the record they came from: the record's
+    own where it names any, else, for a contract, its agreement's, else none."""
+
+    value: list[ContractContactOut]
+    source: ContractContactSource
+    source_hid: str | None
+
+
+class AgreementEffective(Model):
+    """The contacts an agreement has in force for each role: its own."""
+
+    account_managers: EffectiveContacts
+    support_contacts: EffectiveContacts
+
+
 class AgreementRef(Model):
     """A support agreement, as named on a contract that is in it."""
 
@@ -1750,6 +1834,10 @@ class AgreementOut(Model):
     purchase_reference: str | None
     account_manager: str | None = Field(description="Whom to ask about it: free text.")
     support_contact: str | None = Field(description="Whom to call for support: free text.")
+    contacts: list[ContractContactOut] = Field(
+        description="The contact records it names, by role and then by priority."
+    )
+    effective: AgreementEffective
     support_url: str | None
     annual_cost: Money | None = Field(description="The agreement's own total, added to nothing.")
     notes: str | None
@@ -1843,6 +1931,12 @@ class ContractEffective(Model):
     account_manager: ContractEffectiveValue
     support_contact: ContractEffectiveValue
     support_url: ContractEffectiveValue
+    account_managers: EffectiveContacts = Field(
+        description="Its own account managers where it names any, else its agreement's."
+    )
+    support_contacts: EffectiveContacts = Field(
+        description="Its own support contacts where it names any, else its agreement's."
+    )
 
 
 class ContractOut(Model):
@@ -1870,6 +1964,9 @@ class ContractOut(Model):
     )
     account_manager: str | None = Field(description="Whom to ask about the contract: free text.")
     support_contact: str | None = Field(description="Whom to call for support: free text.")
+    contacts: list[ContractContactOut] = Field(
+        description="The contact records it names of its own, by role and then by priority."
+    )
     support_url: str | None = Field(description="Where support is reached online.")
     annual_cost: Money | None = Field(description="The contract's own total, added to nothing.")
     notes: str | None
@@ -2387,7 +2484,7 @@ class CapacityOut(Model):
 # --- the reports that look ahead -----------------------------------------------------
 
 CoverageSection = Literal[
-    "uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending"
+    "uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending", "not_renewed"
 ]
 EndOfLifeSection = Literal["past", "approaching"]
 EndOfLifeDate = Literal["end_of_sale", "end_of_sw_support", "end_of_hw_support", "ldos"]
@@ -2407,14 +2504,47 @@ class CoverageTotals(Model):
 
     in_service: int = Field(description="Major items whose state in force is a service state.")
     covered: int
-    uncovered: int
+    uncovered: int = Field(
+        description="In service, under no contract, and not flagged as not to be renewed."
+    )
     out_of_service: int = Field(
         description="Out of service, and a contract still counts it: the list for the vendor."
     )
-    expiring: int = Field(description="In service, and the cover runs out within the days.")
+    expiring: int = Field(
+        description=(
+            "In service, the cover runs out within the days, and not flagged as not to be renewed."
+        )
+    )
     overlapping: int = Field(description="Items that more than one contract covers today.")
     renewal_pending: int = Field(
         description="Items covered by a contract whose renewal is pending."
+    )
+    not_renewed: int = Field(
+        description=(
+            "In service, under no contract, and flagged as not to be renewed: left out of "
+            "support on purpose, and no gap."
+        )
+    )
+
+
+class NotRenewedModel(Model):
+    """The items of one model that are not to be renewed and that no contract covers."""
+
+    catalog_entry_hid: str | None = Field(description="Blank for the items that have no model.")
+    vendor_hid: str | None
+    vendor: str | None
+    pid: str | None
+    model_name: str | None
+    count: int
+    filter: dict[str, Any] | None = Field(description="The filter of `GET /items` for them.")
+
+
+class CoverageReportSection(ReportSection):
+    """One list of the coverage report."""
+
+    by_model: list[NotRenewedModel] | None = Field(
+        default=None,
+        description="Of `not_renewed` alone: its items counted by model, by vendor and PID.",
     )
 
 
@@ -2432,7 +2562,7 @@ class CoverageReport(Model):
     within_days: int
     service_states: list[str]
     totals: CoverageTotals
-    sections: dict[str, ReportSection]
+    sections: dict[str, CoverageReportSection]
     lapsed_contracts: LapsedContracts
     section: CoverageSection | None
     items: list[ItemOut]
@@ -2845,6 +2975,7 @@ EntityName = Literal[
     "external_systems",
     "agreements",
     "contracts",
+    "contract_contacts",
     "purchase_requests",
     "purchase_lines",
     "items",

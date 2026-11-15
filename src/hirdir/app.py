@@ -15,6 +15,7 @@ import hirdir
 from hirdir.api import (
     addresses,
     catalog,
+    contract_contacts,
     contracts,
     files,
     geography,
@@ -43,6 +44,8 @@ ROUTERS = (
     *addresses.ROUTERS,
     *geography.ROUTERS,
     *contracts.ROUTERS,
+    # The contacts of agreements and contracts (P-132).
+    *contract_contacts.ROUTERS,
     *purchases.ROUTERS,
     *systems.ROUTERS,
     *reports.ROUTERS,

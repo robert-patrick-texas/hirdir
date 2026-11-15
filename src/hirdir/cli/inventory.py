@@ -1353,6 +1353,7 @@ def show_contract(
         ("purchase_reference", found["purchase_reference"]),
         ("account_manager", _from_agreement(found, "account_manager")),
         ("support_contact", _from_agreement(found, "support_contact")),
+        *_contacts_in_force(found),
         ("support_url", _from_agreement(found, "support_url")),
         ("annual_cost", found["annual_cost"]),
         ("notes", found["notes"]),
@@ -1556,6 +1557,7 @@ def show_agreement(
         ("purchase_reference", found["purchase_reference"]),
         ("account_manager", found["account_manager"]),
         ("support_contact", found["support_contact"]),
+        *_contacts_in_force(found),
         ("support_url", found["support_url"]),
         ("annual_cost", found["annual_cost"]),
         ("contracts", str(found["contracts"])),
@@ -1597,6 +1599,109 @@ def renew_agreement(
         f"{'contract is' if renewed['contracts'] == 1 else 'contracts are'} in it"
     )
     _renewed(found, {**renewed, "number": renewed["name"]}, found["name"], follow)
+
+
+# --- the contacts of agreements and contracts ----------------------------------------
+
+Role = Annotated[str, typer.Option("--role", help="account_manager or support_contact.")]
+
+
+def _contacts_in_force(record: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return a line for each contact record in force, by role: who, how to reach them,
+    and where it came from when that is the agreement."""
+    lines = []
+    for name in ("account_managers", "support_contacts"):
+        in_force = record["effective"][name]
+        source = " (agreement)" if in_force["source"] == "agreement" else ""
+        for named in in_force["value"]:
+            contact = named["contact"]
+            reached = " ".join(part for part in (contact["email"], contact["phone"]) if part)
+            retired = " (retired)" if contact["record_status"] == "retired" else ""
+            lines.append((name, f"{contact['name']} {reached}".rstrip() + retired + source))
+    return lines
+
+
+def _find_contact(target: Target, text: str) -> dict[str, Any]:
+    """Return the contact a command names: by its HID, its email address or a name that
+    one contact alone has."""
+    return _one_named(target, "/contacts", "email", text, "contact", also="name")
+
+
+def _naming(group: typer.Typer, what: str, known_by: str, find: Any, called: str) -> None:
+    """Add to a group the commands that name a contact for an agreement or a contract,
+    and that remove one."""
+    path = f"/{what}s"
+
+    def add(
+        record: Annotated[str, typer.Argument(help=f"The {what}: {known_by}.")],
+        contact: Annotated[
+            str, typer.Argument(help="The contact: an email address, a name or an HID.")
+        ],
+        role: Role,
+        priority: Annotated[
+            int | None, typer.Option(help="Its place in the list, from 1. Left out, the last.")
+        ] = None,
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        target = client.load_target(url, token)
+        found = find(target, record)
+        person = _find_contact(target, contact)
+        body: dict[str, Any] = {"contact_hid": person["hid"], "role": role}
+        if priority is not None:
+            body["priority"] = priority
+        named = client.call(target, "POST", f"{path}/{found['hid']}/contacts", body)
+        typer.echo(
+            f"{found[called]} names {named['contact']['name']} as {named['role']}, "
+            f"number {named['priority']} of the list"
+        )
+
+    def remove(
+        record: Annotated[str, typer.Argument(help=f"The {what}: {known_by}.")],
+        contact: Annotated[
+            str, typer.Argument(help="The contact: an email address, a name or an HID.")
+        ],
+        role: Role,
+        url: Url = None,
+        token: Token = None,
+    ) -> None:
+        target = client.load_target(url, token)
+        found = find(target, record)
+        person = _find_contact(target, contact)
+        named = [
+            one
+            for one in found["contacts"]
+            if one["contact_hid"] == person["hid"] and one["role"] == role
+        ]
+        if not named:
+            raise client.fail(
+                f"{found[called]} does not name {person['name']} as {role}", client.EXIT_INVALID
+            )
+        client.call(target, "DELETE", f"{path}/{found['hid']}/contacts/{named[0]['hid']}")
+        typer.echo(f"{found[called]} no longer names {person['name']} as {role}")
+
+    add.__doc__ = (
+        f"Name a contact record for a {what} as an account manager or a support contact. "
+        + (
+            "Once a contract names anybody in a role, it has its own in place of its agreement's."
+            if what == "contract"
+            else "Each contract in it that names nobody of its own in the role has it."
+        )
+    )
+    remove.__doc__ = (
+        f"Remove a contact that was named for a {what} by mistake. The audit trail keeps "
+        "what it was."
+    )
+    group.command("add-contact")(add)
+    group.command("remove-contact")(remove)
+
+
+def _find_agreement(target: Target, text: str) -> dict[str, Any]:
+    return _one_named(target, "/agreements", "name", text, "agreement")
+
+
+_naming(agreements, "agreement", "a name or an HID", _find_agreement, "name")
+_naming(contracts, "contract", "a number or an HID", find_contract, "number")
 
 
 @contracts.command("cover")

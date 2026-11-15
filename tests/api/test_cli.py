@@ -876,3 +876,45 @@ def test_systems_and_registrations_are_listed(run, make: Maker, switches: list) 
     assert [(row["system"], row["item"], row["external_id"]) for row in rows] == [
         ("NetWatch", "FCW0000X001", "node-1")
     ]
+
+
+# --- the commands of 0.7.0: the contacts of agreements and contracts -------------------
+
+
+def test_the_contacts_of_a_contract_are_named_shown_with_their_source_and_removed(
+    run, make: Maker, covered: dict
+) -> None:
+    make.contact("Jordan Reyes", phone="+1 555 0142")
+    make.contact("Casey Lund")
+    agreement = "Cisco Enterprise Agreement"
+    named = run(
+        "agreements", "add-contact", agreement, "jordan.reyes@example.net", "--role",
+        "account_manager",
+    )  # fmt: skip
+    assert f"{agreement} names Jordan Reyes as account_manager, number 1 of the list" in (
+        named.stdout
+    )
+    reached = "Jordan Reyes jordan.reyes@example.net +1 555 0142"
+    assert f"account_managers:    {reached}" in run("agreements", "show", agreement).stdout
+    # A contract that names nobody of its own has its agreement's, and says so.
+    assert f"account_managers:    {reached} (agreement)" in run("contracts", "show", "CON-1").stdout
+
+    run("contracts", "add-contact", "CON-1", "Casey Lund", "--role", "account_manager")
+    shown = run("contracts", "show", "CON-1").stdout
+    assert "account_managers:    Casey Lund casey.lund@example.net\n" in shown
+    # Its own, in place of the agreement's; the free text is beside it as before.
+    assert reached not in shown
+    as_json = json.loads(run("contracts", "show", "CON-1", "--format", "json").stdout)
+    assert as_json["effective"]["account_managers"]["source"] == "own"
+    run("contracts", "add-contact", "CON-1", "Casey Lund", "--role", "account_manager", expect=5)
+    run("contracts", "add-contact", "CON-1", "Casey Lund", "--role", "sales", expect=4)
+    run("contracts", "add-contact", "CON-1", "nobody@example.net", "--role", "account_manager",
+        expect=4)  # fmt: skip
+
+    removed = run(
+        "contracts", "remove-contact", "CON-1", "casey.lund@example.net", "--role",
+        "account_manager",
+    )  # fmt: skip
+    assert "CON-1 no longer names Casey Lund as account_manager" in removed.stdout
+    run("contracts", "remove-contact", "CON-1", "Casey Lund", "--role", "account_manager", expect=4)
+    assert f"{reached} (agreement)" in run("contracts", "show", "CON-1").stdout
