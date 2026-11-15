@@ -17,7 +17,7 @@ function shown(value: InForce, agreement: typeof AGREEMENT | null = AGREEMENT): 
 
 describe("a value of a contract as it is in force", () => {
   it("is lighter and marked Inherited, with the agreement it came from as a link", () => {
-    const out = shown({ standing: "inherited", text: "2027-12-31", overridden: "" });
+    const out = shown({ standing: "inherited", text: "2027-12-31", overridden: "", same: false });
     expect(out).toContain('data-standing="inherited"');
     expect(out).toContain('class="inherited"');
     expect(out).toContain("2027-12-31");
@@ -31,16 +31,32 @@ describe("a value of a contract as it is in force", () => {
       standing: "override",
       text: "8x5, next business day",
       overridden: "24x7, four-hour response",
+      same: false,
     });
     expect(out).toContain('data-standing="override"');
+    expect(out).toContain('data-same="false"');
     expect(out).toContain("8x5, next business day");
     expect(out).toContain(">Overrides</span>");
     expect(out).toContain("24x7, four-hour response");
     expect(out).toContain("Set here");
+    expect(out).not.toContain("which is the same");
+  });
+
+  it("is still marked Overrides where its own is the same as the agreement's, and says so", () => {
+    const out = shown({
+      standing: "override",
+      text: "24x7, four-hour response",
+      overridden: "24x7, four-hour response",
+      same: true,
+    });
+    expect(out).toContain('data-standing="override"');
+    expect(out).toContain('data-same="true"');
+    expect(out).toContain(">Overrides</span>");
+    expect(out).toContain("which is the same: set here, it stays as it is when the agreement");
   });
 
   it("is plain for a value of its own, and says Set here only beside an agreement", () => {
-    const value: InForce = { standing: "own", text: "2026-07-01", overridden: "" };
+    const value: InForce = { standing: "own", text: "2026-07-01", overridden: "", same: false };
     expect(shown(value)).toContain("Set here");
     const alone = shown(value, null);
     expect(alone).toContain('data-standing="own"');
@@ -49,7 +65,7 @@ describe("a value of a contract as it is in force", () => {
   });
 
   it("is a dash where there is none", () => {
-    const out = shown({ standing: "none", text: "", overridden: "" });
+    const out = shown({ standing: "none", text: "", overridden: "", same: false });
     expect(out).toContain('data-standing="none"');
     expect(out).toContain("—");
   });
@@ -59,7 +75,12 @@ describe("a value of a contract as it is in force", () => {
       createElement(
         InForceValue,
         {
-          value: { standing: "inherited", text: "https://support.example.com", overridden: "" },
+          value: {
+            standing: "inherited",
+            text: "https://support.example.com",
+            overridden: "",
+            same: false,
+          },
           agreement: AGREEMENT,
         },
         createElement(SupportLink, { url: "https://support.example.com" }),
@@ -145,7 +166,12 @@ describe("the forms of an agreement and of a contract", () => {
         reseller_hid: { value: null, label: null, source: "none", source_hid: null },
         starts_on: { value: "2025-01-01", source: "agreement", source_hid: AGREEMENT.hid },
         ends_on: { value: "2027-12-31", source: "agreement", source_hid: AGREEMENT.hid },
-        support_level: { value: "8x5", source: "own", source_hid: "c-1" },
+        support_level: {
+          value: "8x5",
+          source: "own",
+          source_hid: "c-1",
+          from_agreement: "24x7, four-hour response",
+        },
         account_manager: { value: null, source: "none", source_hid: null },
         support_contact: { value: null, source: "none", source_hid: null },
         support_url: { value: null, source: "none", source_hid: null },
@@ -154,7 +180,10 @@ describe("the forms of an agreement and of a contract", () => {
     const specs = contractSpecs(lists, contract);
     const hint = (name: string) => specs.find((spec) => spec.name === name)?.hint;
     expect(hint("ends_on")).toBe("Blank has 2027-12-31 from Example Agreement.");
-    expect(hint("support_level")).toContain("Clear it to have what Example Agreement says");
+    // What an own value is in place of is what the server says the agreement gives.
+    expect(hint("support_level")).toBe(
+      "Set here, in place of 24x7, four-hour response from Example Agreement. Clear it to have that.",
+    );
     // The heading of those fields names the agreement.
     expect(specs.find((spec) => spec.name === "reseller_hid")?.heading).toBe(
       "What it may have from Example Agreement",

@@ -32,6 +32,19 @@ function workers(): number {
   }
 }
 
+/**
+ * The spec files that change what every other file reads, and so run when the others
+ * have ended, one after another: stale-term.spec.ts changes the `time_zone` setting.
+ * See rule 5 at the top of e2e/support.ts.
+ */
+const AFTER_THE_OTHERS = /stale-term\.spec\.ts$/;
+
+const browsers = [
+  { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+  // Asked for by name: npm run e2e -- --project=firefox
+  ...(process.env.E2E_FIREFOX ? [{ name: "firefox", use: { ...devices["Desktop Firefox"] } }] : []),
+];
+
 export default defineConfig({
   testDir: "e2e",
   // The spec files run side by side, each in a worker of its own and with accounts and
@@ -49,10 +62,12 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    // Asked for by name: npm run e2e -- --project=firefox
-    ...(process.env.E2E_FIREFOX
-      ? [{ name: "firefox", use: { ...devices["Desktop Firefox"] } }]
-      : []),
+    ...browsers.map((project) => ({ ...project, testIgnore: AFTER_THE_OTHERS })),
+    {
+      name: "after the others",
+      testMatch: AFTER_THE_OTHERS,
+      dependencies: browsers.map((project) => project.name),
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });

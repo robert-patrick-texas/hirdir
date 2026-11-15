@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  type Agreement,
+  agreementGives,
   agreementHint,
   agreementPath,
-  agreementValue,
   CONTRACT_STATUSES,
   COVER_AT_ONCE,
   COVER_MOST,
@@ -11,7 +10,7 @@ import {
   contractLabel,
   contractPath,
   contractsOfPath,
-  countingNumbers,
+  countedUnder,
   coverageDay,
   coverBatches,
   coverBody,
@@ -33,6 +32,7 @@ import {
   renewPeriodProblem,
   renewProblem,
   STANDALONE,
+  staleCause,
   startsLater,
 } from "./contracts";
 import { parseShort } from "./filter";
@@ -42,26 +42,21 @@ const AGREEMENT = "0193a1f4-0000-7000-8000-00000000a001";
 const CONTRACT = "0193a1f4-0000-7000-8000-00000000c001";
 const RESELLER = "0193a1f4-0000-7000-8000-00000000e001";
 
-/** An enterprise agreement that says whom to ask, and names no support address. */
-const agreement = {
-  hid: AGREEMENT,
-  name: "Example Enterprise Agreement",
-  reseller: { hid: RESELLER, name: "Example Reseller" },
-  starts_on: "2025-01-01",
-  ends_on: "2027-12-31",
-  support_level: "24x7, four-hour response",
-  account_manager: "Jordan Reyes, jordan.reyes@example.com, +1 555 0142",
-  support_contact: "Enterprise support desk, +1 555 0100",
-  support_url: null,
-} as unknown as Agreement;
-
+// What an enterprise agreement gives: whom to ask, and no support address. The server
+// answers it beside each value of a contract in it, whether the contract overrides it.
 const fromAgreement = (value: string) => ({
   value,
   source: "agreement",
   source_hid: AGREEMENT,
+  from_agreement: value,
 });
-const own = (value: string) => ({ value, source: "own", source_hid: CONTRACT });
-const none = { value: null, source: "none", source_hid: null };
+const own = (value: string, given: string | null = null) => ({
+  value,
+  source: "own",
+  source_hid: CONTRACT,
+  from_agreement: given,
+});
+const none = { value: null, source: "none", source_hid: null, from_agreement: null };
 
 /**
  * A contract in that agreement: co-termed with it, with a support level of its own in
@@ -80,10 +75,14 @@ const contract = {
   purchase_reference: "RITM0009122",
   annual_cost: "18000.00",
   effective: {
-    reseller_hid: { ...fromAgreement(RESELLER), label: "Example Reseller" },
+    reseller_hid: {
+      ...fromAgreement(RESELLER),
+      label: "Example Reseller",
+      from_agreement_label: "Example Reseller",
+    },
     starts_on: fromAgreement("2025-01-01"),
     ends_on: fromAgreement("2027-12-31"),
-    support_level: own("8x5, next business day"),
+    support_level: own("8x5, next business day", "24x7, four-hour response"),
     account_manager: fromAgreement("Jordan Reyes, jordan.reyes@example.com, +1 555 0142"),
     support_contact: fromAgreement("Enterprise support desk, +1 555 0100"),
     support_url: own("https://support.example.com/branch"),
@@ -100,7 +99,7 @@ const alone = {
   ends_on: null,
   support_level: null,
   effective: {
-    reseller_hid: { ...none, label: null },
+    reseller_hid: { ...none, label: null, from_agreement_label: null },
     starts_on: own("2026-07-01"),
     ends_on: none,
     support_level: none,
@@ -125,58 +124,116 @@ describe("the fields a contract may have from its agreement", () => {
     for (const { field } of INHERITED) expect(contract.effective[field], field).toBeDefined();
   });
 
-  it("are read from an agreement by the same names, the reseller by its name", () => {
-    expect(agreementValue(agreement, "reseller_hid")).toBe("Example Reseller");
-    expect(agreementValue(agreement, "ends_on")).toBe("2027-12-31");
-    expect(agreementValue(agreement, "support_url")).toBe("");
-    expect(agreementValue(null, "ends_on")).toBe("");
+  it("say what the agreement gives for each, as the server answers it, the reseller by its name", () => {
+    expect(agreementGives(contract, "reseller_hid")).toBe("Example Reseller");
+    expect(agreementGives(contract, "ends_on")).toBe("2027-12-31");
+    // Also where the contract overrides it.
+    expect(agreementGives(contract, "support_level")).toBe("24x7, four-hour response");
+    // Blank where the agreement has nothing, and for a contract in no agreement.
+    expect(agreementGives(contract, "support_url")).toBe("");
+    expect(agreementGives(alone, "starts_on")).toBe("");
+    expect(agreementGives(alone, "reseller_hid")).toBe("");
   });
 });
 
 describe("how a value of a contract stands", () => {
   it("is inherited where the server says it came from the agreement", () => {
-    expect(inForce(contract, "ends_on", agreement)).toEqual({
+    expect(inForce(contract, "ends_on")).toEqual({
       standing: "inherited",
       text: "2027-12-31",
       overridden: "",
+      same: false,
     });
     // A reseller is shown by its name, never by its HID.
-    expect(inForce(contract, "reseller_hid", agreement)).toMatchObject({
+    expect(inForce(contract, "reseller_hid")).toMatchObject({
       standing: "inherited",
       text: "Example Reseller",
     });
   });
 
-  it("is an override where it is the contract's own and the agreement has one too", () => {
-    expect(inForce(contract, "support_level", agreement)).toEqual({
+  it("is an override where it is the contract's own and the agreement gives one too", () => {
+    // What it is in place of is what the server says the agreement gives: the page
+    // reads no agreement for it.
+    expect(inForce(contract, "support_level")).toEqual({
       standing: "override",
       text: "8x5, next business day",
       overridden: "24x7, four-hour response",
+      same: false,
     });
   });
 
-  it("is plainly its own where the agreement says nothing, and for a contract that stands alone", () => {
-    expect(inForce(contract, "support_url", agreement)).toMatchObject({ standing: "own" });
-    expect(inForce(alone, "starts_on", null)).toEqual({
+  it("is still an override where its own is the same as the agreement's, and says so", () => {
+    const same = {
+      ...contract,
+      effective: {
+        ...contract.effective,
+        support_level: own("24x7, four-hour response", "24x7, four-hour response"),
+        reseller_hid: {
+          ...own(RESELLER, RESELLER),
+          label: "Example Reseller",
+          from_agreement_label: "Example Reseller",
+        },
+      },
+    } as unknown as Contract;
+    expect(inForce(same, "support_level")).toEqual({
+      standing: "override",
+      text: "24x7, four-hour response",
+      overridden: "24x7, four-hour response",
+      same: true,
+    });
+    // A reseller is the same by its HID, and is named by its name.
+    expect(inForce(same, "reseller_hid")).toEqual({
+      standing: "override",
+      text: "Example Reseller",
+      overridden: "Example Reseller",
+      same: true,
+    });
+    expect(overrides(same)).toEqual(["reseller_hid", "support_level"]);
+  });
+
+  it("is a reseller of its own in place of another, by name", () => {
+    const other = {
+      ...contract,
+      effective: {
+        ...contract.effective,
+        reseller_hid: {
+          ...own("0193a1f4-0000-7000-8000-00000000e002", RESELLER),
+          label: "Example Distributor",
+          from_agreement_label: "Example Reseller",
+        },
+      },
+    } as unknown as Contract;
+    expect(inForce(other, "reseller_hid")).toEqual({
+      standing: "override",
+      text: "Example Distributor",
+      overridden: "Example Reseller",
+      same: false,
+    });
+  });
+
+  it("is plainly its own where the agreement gives nothing, and for a contract that stands alone", () => {
+    expect(inForce(contract, "support_url")).toMatchObject({ standing: "own", overridden: "" });
+    expect(inForce(alone, "starts_on")).toEqual({
       standing: "own",
       text: "2026-07-01",
       overridden: "",
+      same: false,
     });
   });
 
-  it("is its own, and not yet an override, until the agreement has been read", () => {
-    // The contract's answer does not say what its own value overrides: the agreement does.
-    expect(inForce(contract, "support_level")).toMatchObject({ standing: "own", overridden: "" });
-  });
-
   it("is nothing where neither has a value", () => {
-    expect(inForce(alone, "ends_on", null)).toEqual({ standing: "none", text: "", overridden: "" });
-    expect(inForce(alone, "reseller_hid", null).standing).toBe("none");
+    expect(inForce(alone, "ends_on")).toEqual({
+      standing: "none",
+      text: "",
+      overridden: "",
+      same: false,
+    });
+    expect(inForce(alone, "reseller_hid").standing).toBe("none");
   });
 
   it("lists the fields a contract overrides, in the order a page shows them", () => {
-    expect(overrides(contract, agreement)).toEqual(["support_level"]);
-    expect(overrides(alone, null)).toEqual([]);
+    expect(overrides(contract)).toEqual(["support_level"]);
+    expect(overrides(alone)).toEqual([]);
   });
 });
 
@@ -186,7 +243,23 @@ describe("what a form says under a field a contract may have from its agreement"
       "Blank has 2027-12-31 from Example Enterprise Agreement.",
     );
     expect(agreementHint(contract, "support_level")).toBe(
-      "Set here. Clear it to have what Example Enterprise Agreement says.",
+      "Set here, in place of 24x7, four-hour response from Example Enterprise Agreement. Clear it to have that.",
+    );
+    expect(agreementHint(contract, "support_url")).toBe(
+      "Set here. Example Enterprise Agreement gives nothing for it.",
+    );
+  });
+
+  it("says so where an own value is the same as the agreement's", () => {
+    const same = {
+      ...contract,
+      effective: {
+        ...contract.effective,
+        support_level: own("24x7, four-hour response", "24x7, four-hour response"),
+      },
+    } as unknown as Contract;
+    expect(agreementHint(same, "support_level")).toBe(
+      "Set here, and the same as Example Enterprise Agreement gives. Clear it to follow Example Enterprise Agreement when that changes.",
     );
   });
 
@@ -434,17 +507,29 @@ describe("covering items", () => {
     expect(coveringNumbers([])).toBe("");
   });
 
-  it("lists the contracts that still count an item that left: in force, or ended because it left", () => {
-    const ref = (number: string, in_force: boolean, left_service: boolean) =>
-      ({ contract: { number }, in_force, left_service }) as Parameters<
-        typeof countingNumbers
-      >[0][number];
-    // Ended on the day the item was archived, the vendor not yet told: still counted.
-    expect(countingNumbers([ref("A-1", false, true)])).toBe("A-1");
-    // One ended by a person, or one the vendor has been told of, is counted no longer.
-    expect(countingNumbers([ref("A-1", false, false), ref("B-2", true, false)])).toBe("B-2");
-    expect(countingNumbers([ref("A-1", false, true), ref("A-1", true, false)])).toBe("A-1");
-    expect(countingNumbers([])).toBe("");
+  it("lists the contracts the server says still count an item that left, each once", () => {
+    const counted = (...numbers: string[]) => ({
+      out_of_service_contracts: numbers.map((number) => ({ number })),
+    });
+    expect(countedUnder(counted("A-1"))).toBe("A-1");
+    expect(countedUnder(counted("A-1", "B-2", "A-1"))).toBe("A-1, B-2");
+    // Blank for an item in service.
+    expect(countedUnder(counted())).toBe("");
+  });
+});
+
+describe("a change that is refused as stale", () => {
+  it("says that a term still to begin may have begun, and names its day", () => {
+    const next = { number: "CON-2027-0002", starts_on: "2027-01-01", ends_on: "2027-12-31" };
+    const said = staleCause({ next_term: next }, "contract");
+    expect(said).toContain("or its next term, from 2027-01-01, has begun");
+    expect(said).toContain("the contract is read with that term, at a new version");
+    expect(said).toContain("not made to a term it was not meant for");
+    expect(staleCause({ next_term: next }, "agreement")).toContain("the agreement is read");
+  });
+
+  it("says nothing of its own for a record with no term to come", () => {
+    expect(staleCause({ next_term: null }, "contract")).toBe("");
   });
 });
 

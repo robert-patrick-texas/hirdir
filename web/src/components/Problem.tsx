@@ -1,5 +1,13 @@
+import { createContext, useContext } from "react";
 import type { ApiError } from "../api/client";
 import { fieldErrors, fieldLine, sentence } from "../lib/problems";
+
+/**
+ * What else than another person may have changed the record a page shows, said where a
+ * change of it is refused as stale: the next term of a contract, which moves its version
+ * on the day it begins. A page gives it around the forms of that record alone.
+ */
+export const StaleCause = createContext("");
 
 interface ProblemProps {
   error: ApiError | null;
@@ -21,6 +29,7 @@ interface ProblemProps {
  */
 export function Problem({ error, shown = [], onReload, labels = {} }: ProblemProps) {
   const visible = error && !error.aborted ? error : null;
+  const cause = useContext(StaleCause);
   // A message about a field the form shows is shown beside its input, not here.
   const others = fieldErrors(visible, shown).rest;
   const heading =
@@ -33,8 +42,9 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
         <div className="alert alert-error" data-status={visible.status}>
           {visible.stale ? (
             <p>
-              <strong>This record has changed.</strong> Someone changed it after you opened it, so
-              your change was not saved. Reload it, then make your change again.
+              <strong>This record has changed.</strong>{" "}
+              {cause || "Someone changed it after you opened it, so your change was not saved."}{" "}
+              Reload it, then make your change again.
             </p>
           ) : (
             <p>

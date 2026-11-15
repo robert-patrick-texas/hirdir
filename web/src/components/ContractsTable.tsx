@@ -43,7 +43,7 @@ export function ContractsTable({ contracts, agreement, empty }: ContractsTablePr
     ends: (contract) => dateValue(effectiveText(contract.effective.ends_on)),
     support_level: (contract) => effectiveText(contract.effective.support_level),
     covered: (contract) => contract.covered_items,
-    overrides: (contract) => overrides(contract, agreement).length,
+    overrides: (contract) => overrides(contract).length,
   });
   if (contracts.length === 0) return <p className="muted">{empty}</p>;
   const label = (field: Inherited) =>
@@ -90,9 +90,9 @@ export function ContractsTable({ contracts, agreement, empty }: ContractsTablePr
         </thead>
         <tbody>
           {sorting.rows.map((contract) => {
-            const own = overrides(contract, agreement);
+            const own = overrides(contract);
             const cell = (field: Inherited) => {
-              const value = inForce(contract, field, agreement);
+              const value = inForce(contract, field);
               return (
                 <td
                   className={value.standing === "inherited" ? "inherited" : undefined}
@@ -102,7 +102,7 @@ export function ContractsTable({ contracts, agreement, empty }: ContractsTablePr
                     value.standing === "inherited"
                       ? `Inherited from ${agreement?.name ?? "its agreement"}`
                       : value.standing === "override"
-                        ? `Its own. Overrides ${value.overridden} of ${agreement?.name ?? "its agreement"}`
+                        ? `Its own. Overrides ${value.overridden} of ${agreement?.name ?? "its agreement"}${value.same ? ", which is the same" : ""}`
                         : undefined
                   }
                 >

@@ -26,6 +26,8 @@ import {
   arrivedPath,
   isArrivedBy,
   lineModel,
+  MISMATCH_NOTE,
+  mismatchedPath,
   notReceivable,
   type PurchaseLine,
   type PurchaseRequest,
@@ -279,6 +281,21 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     width: 130,
   },
   {
+    // The items on the line that are of another model than the line's, which 0.6.0 let
+    // in: zero once they are put right.
+    id: "mismatched_items",
+    header: "Of another model",
+    kind: "integer",
+    value: (line) => String(line.mismatched_items),
+    hint: (line) =>
+      line.mismatched_items > 0
+        ? `${plural(line.mismatched_items, "item on it is", "items on it are")} of another model than the line's, which 0.6.0 let in: to be put right`
+        : "",
+    numeric: true,
+    hide: true,
+    width: 160,
+  },
+  {
     id: "site",
     header: "Destination site",
     kind: "text",
@@ -431,6 +448,7 @@ export function PurchaseDetail() {
             <dt>HID</dt>
             <dd className="mono">{record.hid}</dd>
           </dl>
+          <Mismatched request={record} />
           <Lines request={record} mayEdit={mayEdit} turn={turn} onChanged={changed} />
           {mayEdit && (
             <section aria-labelledby="details">
@@ -453,6 +471,36 @@ export function PurchaseDetail() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * The lines of a request that hold items of another model than the line's, which 0.6.0
+ * let in: each with how many, leading to those items in the grid, to be put right.
+ * Nothing is said where there are none.
+ */
+function Mismatched({ request }: { request: PurchaseRequest }) {
+  const astray = request.lines.filter((line) => line.mismatched_items > 0);
+  if (astray.length === 0) return null;
+  const count = astray.reduce((sum, line) => sum + line.mismatched_items, 0);
+  return (
+    <div className="warning" data-testid="request-mismatched" data-count={count}>
+      <p>
+        {plural(count, "item")} on the lines of this request {count === 1 ? "is" : "are"} of another
+        model than the line&apos;s: 0.6.0 let that in, and an item put on a line now is of the
+        line&apos;s model. Each is put right on its own page.
+      </p>
+      <ul className="plain-list">
+        {astray.map((line) => (
+          <li key={line.hid} data-line={line.name}>
+            <Link to={mismatchedPath(line.hid)}>
+              {plural(line.mismatched_items, "item", "items")} on {line.name}
+            </Link>
+            <span className="muted"> · a line of {lineModel(line)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -568,6 +616,18 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                       <span className="muted"> · {row.catalog.model_name}</span>
                     )}
                     {row.notes && <div className="muted">{row.notes}</div>}
+                    {row.mismatched_items > 0 && (
+                      <div>
+                        <Link
+                          to={mismatchedPath(row.hid)}
+                          className="badge"
+                          data-testid="line-mismatched"
+                          title={`Of another model than the line's: ${MISMATCH_NOTE}`}
+                        >
+                          {row.mismatched_items} of another model
+                        </Link>
+                      </div>
+                    )}
                   </td>
                   <td className="number">{row.quantity}</td>
                   <td className="number" data-testid="line-received">
@@ -1064,6 +1124,11 @@ function Arrived({ line, onClose }: { line: PurchaseLine; onClose: () => void })
                 <tr key={item.hid} data-item={item.hid}>
                   <th scope="row">
                     <Link to={`/items/${encodeURIComponent(item.hid)}`}>{itemName(item)}</Link>
+                    {item.purchase_line_mismatch && (
+                      <span className="badge" data-mark="mismatch" title={MISMATCH_NOTE}>
+                        Of another model
+                      </span>
+                    )}
                   </th>
                   <td className="mono">{item.serial_number || <Dash />}</td>
                   <td>{item.asset_tag || <Dash />}</td>

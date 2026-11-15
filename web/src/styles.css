@@ -315,10 +315,16 @@ textarea[aria-invalid="true"] {
   margin-bottom: 0;
 }
 
-.field label {
+.field label,
+.field .field-label {
   display: block;
   margin-bottom: 0.15rem;
   font-weight: 600;
+}
+
+/* A value a form shows beside its inputs and does not change, such as the model of an item. */
+.field .field-value {
+  margin: 0.3rem 0 0;
 }
 
 .field .required {

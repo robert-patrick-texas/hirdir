@@ -12,6 +12,7 @@ import type { Agreement, Contract } from "../lib/contracts";
 import { Balance } from "./CapacityBalance";
 import { ContractsTable } from "./ContractsTable";
 import { PortfolioCounts } from "./PortfolioTables";
+import { TermsTable } from "./TermsTable";
 
 function html(element: ReactElement): string {
   return renderToStaticMarkup(createElement(MemoryRouter, null, element));
@@ -532,5 +533,60 @@ describe("what a portfolio counts", () => {
     expect(bare).toContain("There is no support agreement with this vendor.");
     expect(bare).toContain("This vendor provides no contract, and none was bought through it.");
     expect(bare).toContain("No capacity line names this vendor.");
+  });
+});
+
+describe("the terms a contract had before it was renewed", () => {
+  const term = (number: string, more: Partial<Schemas["ContractTerm"]> = {}) =>
+    ({
+      number,
+      starts_on: "2025-01-01",
+      ends_on: "2025-12-31",
+      starts_on_source: "own",
+      ends_on_source: "own",
+      agreement_hid: null,
+      annual_cost: "18000.00",
+      purchase_reference: "RITM0009122",
+      renewed_at: "2026-11-14T20:20:37Z",
+      renewed_by: null,
+      renewed_by_name: "jordan.reyes",
+      ...more,
+    }) as Schemas["ContractTerm"];
+  /** One co-termed with its agreement: both of its dates were the agreement's then. */
+  const coTermed = term("CON-2024-0001", {
+    starts_on: "2024-01-01",
+    ends_on: "2024-12-31",
+    starts_on_source: "agreement",
+    ends_on_source: "agreement",
+    agreement_hid: AGREEMENT,
+  });
+  /** One with a start of its own and no end at all. */
+  const open = term("CON-2023-0001", { ends_on: null, ends_on_source: "none" });
+  const markup = html(
+    createElement(TermsTable<Schemas["ContractTerm"]>, {
+      terms: [coTermed, term("CON-2025-0001"), open],
+      testId: "contract-terms",
+      caption: "The terms",
+      money: " (USD)",
+      inheritedFrom: (one) => (one.agreement_hid === AGREEMENT ? agreement.name : "its agreement"),
+    }),
+  );
+  const [first = "", second = "", third = ""] = rows(markup, "contract-terms");
+
+  it("shows a date it had from its agreement lighter, with the agreement it came from", () => {
+    expect(first).toContain('data-term="CON-2024-0001"');
+    expect(first).toContain('class="nowrap inherited" data-source="agreement"');
+    expect(first).toContain("2024-01-01");
+    expect(first).toContain(`(inherited from ${agreement.name})`);
+    expect(first).toContain(
+      `title="Inherited from ${agreement.name}: the date of the agreement&#x27;s term this term began in`,
+    );
+  });
+
+  it("shows a date of its own plainly, and none as a dash", () => {
+    expect(second).toContain('<td class="nowrap" data-source="own">2025-01-01</td>');
+    expect(second).not.toContain("inherited");
+    expect(third).toContain('data-source="none"');
+    expect(third).toContain("—");
   });
 });

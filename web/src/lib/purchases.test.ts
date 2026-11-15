@@ -6,6 +6,7 @@ import {
   arrivedPath,
   isArrivedBy,
   lineModel,
+  mismatchedPath,
   notReceivable,
   REQUEST_STATUSES,
   receiptOf,
@@ -143,6 +144,25 @@ describe("requests and lines as words and links", () => {
       filter: { field: "purchase_line_hid", op: "eq", value: "l-1" },
     });
     expect(query.get("minor")).toBe("1");
+  });
+
+  it("leads to the items on a line that are of another model, as many as the line counts", () => {
+    const query = new URLSearchParams(mismatchedPath("l-1").split("?")[1]);
+    expect(parseShort(query.get("filter") ?? "")).toEqual({
+      ok: true,
+      filter: {
+        and: [
+          { field: "purchase_line_hid", op: "eq", value: "l-1" },
+          { field: "purchase_line_mismatch", op: "eq", value: "true" },
+        ],
+      },
+    });
+    // The line counts them as the item list does: drafts and archived items left out.
+    expect([query.get("minor"), query.get("archived"), query.get("drafts")]).toEqual([
+      "1",
+      null,
+      null,
+    ]);
   });
 
   it("calls the model of a line by its vendor and its PID", () => {

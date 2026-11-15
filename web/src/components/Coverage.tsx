@@ -9,6 +9,7 @@ import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import {
   CONTRACT_STATUSES,
+  COUNTED_NOTE,
   COVER_AT_ONCE,
   COVER_MOST,
   type Contract,
@@ -233,6 +234,10 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
   const open = rows.find((row) => row.hid === ending) ?? null;
   const action = useAction();
   const pending = renewalPending(item.coverage);
+  // Out of service, the contracts that still count it, each once: the list to send the vendor.
+  const counting = item.out_of_service_contracts.filter(
+    (contract, at, all) => all.findIndex((one) => one.hid === contract.hid) === at,
+  );
   // Brought back after it left: neither retired, nor in a state that ends coverage. Its
   // coverage does not come back by itself, and is opened again here.
   const backInService =
@@ -324,6 +329,25 @@ export function ItemCoverage({ item, mayEdit, onChanged }: ItemCoverageProps) {
               <span className="muted">—</span>
             ))}
         </dd>
+        {counting.length > 0 && (
+          <>
+            <dt>Still counted under</dt>
+            <dd data-testid="item-counted-under" title={COUNTED_NOTE}>
+              {counting.map((contract, at) => (
+                <span key={contract.hid} data-contract={contract.number}>
+                  {at > 0 && ", "}
+                  <Link to={contractPath(contract.hid)}>{contract.number}</Link>
+                  <span className="muted"> of {contract.vendor}</span>
+                </span>
+              ))}
+              <span className="muted">
+                {" "}
+                · it is out of service, and {counting.length === 1 ? "this contract" : "these"}{" "}
+                still {counting.length === 1 ? "counts" : "count"} it: the list to send the vendor
+              </span>
+            </dd>
+          </>
+        )}
       </dl>
       <Problem error={found.error} />
       <Problem error={action.error} onReload={() => setTurn((count) => count + 1)} />

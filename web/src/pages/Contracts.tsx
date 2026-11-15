@@ -16,14 +16,13 @@ import { ContractCoverage } from "../components/Coverage";
 import { SelectField } from "../components/Field";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
-import { Notice, Problem } from "../components/Problem";
+import { Notice, Problem, StaleCause } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Renew } from "../components/Renew";
 import { Retire } from "../components/Retire";
-import { SortTh } from "../components/SortTh";
+import { ContractTerms } from "../components/Terms";
 import { Time } from "../components/Time";
 import {
-  type Agreement,
   agreementPath,
   CONTRACT_STATUSES,
   type Contract,
@@ -39,7 +38,7 @@ import {
   RENEWAL_PENDING,
   RENEWAL_PENDING_NOTE,
   STANDALONE,
-  type Term,
+  staleCause,
 } from "../lib/contracts";
 import { effectiveLabel, effectiveText } from "../lib/effective";
 import { formatTime, plural } from "../lib/format";
@@ -50,9 +49,7 @@ import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
-import { dateValue, decimalValue } from "../lib/sort";
 import { amountText } from "../lib/summary";
-import { useSorting } from "../lib/useSorting";
 
 const COLUMNS: GridColumn<Contract>[] = [
   {
@@ -462,15 +459,6 @@ export function ContractDetail() {
     api.request("get", "/api/v1/contracts/{hid}", { path: { hid }, signal }),
   );
   const record = contract.data;
-  // The agreement itself, to say what an own value of the contract overrides.
-  const agreementHid = record?.agreement_hid ?? "";
-  const agreement = useLoad(
-    `contract-agreement ${agreementHid} ${record?.row_version}`,
-    (signal) =>
-      agreementHid === ""
-        ? Promise.resolve(null)
-        : api.request("get", "/api/v1/agreements/{hid}", { path: { hid: agreementHid }, signal }),
-  );
   const { lists, loading: listsLoading, error: listsError } = useContractLists();
   const [done, setDone] = useState("");
   const [turn, setTurn] = useState(0);
@@ -504,11 +492,13 @@ export function ContractDetail() {
         {record && <StatusMarks record={record} always />}
       </h1>
       <Problem error={contract.error} />
-      <Problem error={agreement.error ?? listsError} />
+      <Problem error={listsError} />
       <Notice text={done} />
       {contract.loading && !record && <p role="status">Loading…</p>}
       {record && (
-        <>
+        // A change of the contract that was read before its next term began is refused
+        // as stale from that day: the forms of the record say so where it has one.
+        <StaleCause value={staleCause(record, "contract")}>
           <section aria-labelledby="contract-facts">
             <h2 id="contract-facts">The contract</h2>
             <dl className="facts" data-testid="contract-facts">
@@ -614,7 +604,6 @@ export function ContractDetail() {
           <InForce
             key={`in-force ${record.hid} ${record.row_version}`}
             contract={record}
-            agreement={agreement.data ?? null}
             mayEdit={open}
             onChanged={changed}
             onReload={contract.reload}
@@ -666,8 +655,10 @@ export function ContractDetail() {
               onReload={contract.reload}
             />
           )}
-          <Terms contract={record} turn={turn} />
-          <ContractCoverage contract={record} mayEdit={mayEdit} onChanged={changed} />
+          <ContractTerms contract={record} turn={turn} />
+          <StaleCause value="">
+            <ContractCoverage contract={record} mayEdit={mayEdit} onChanged={changed} />
+          </StaleCause>
           {open && !listsLoading && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
@@ -716,7 +707,7 @@ export function ContractDetail() {
               onReload={contract.reload}
             />
           )}
-        </>
+        </StaleCause>
       )}
     </>
   );
@@ -729,17 +720,16 @@ interface ChangeProps {
 }
 
 interface InForceProps extends ChangeProps {
-  /** The agreement the contract is in, once read: it says what an own value overrides. */
-  agreement: Agreement | null;
   mayEdit: boolean;
 }
 
 /**
  * The period of a contract and whom to ask, as they are in force: each its own, or had
- * from the agreement it is in, or its own in place of what the agreement has. An
- * override is given up here, and the agreement then speaks again.
+ * from the agreement it is in, or its own in place of what the agreement gives, which
+ * the server answers beside it. An override is given up here, and the agreement then
+ * speaks again.
  */
-function InForce({ contract, agreement, mayEdit, onChanged, onReload }: InForceProps) {
+function InForce({ contract, mayEdit, onChanged, onReload }: InForceProps) {
   const action = useAction();
   const from = contract.agreement;
 
@@ -763,7 +753,9 @@ function InForce({ contract, agreement, mayEdit, onChanged, onReload }: InForceP
           What the contract says nothing of, it has from{" "}
           <Link to={agreementPath(from.hid)}>{from.name}</Link>: that is shown lighter, and marked
           Inherited. What is marked Overrides is the contract&apos;s own, in place of what the
-          agreement has. A contract with no dates of its own ends when its agreement does.
+          agreement gives, also where the two are the same: an override stays as it is when the
+          agreement&apos;s changes. A contract with no dates of its own ends when its agreement
+          does.
         </p>
       ) : (
         <p className="muted">
@@ -774,7 +766,7 @@ function InForce({ contract, agreement, mayEdit, onChanged, onReload }: InForceP
       <Problem error={action.error} onReload={onReload} />
       <dl className="facts" data-testid="contract-in-force">
         {INHERITED.map(({ field, label }) => {
-          const value = inForce(contract, field, agreement);
+          const value = inForce(contract, field);
           return (
             <div key={field} className="fact-row" data-field={field} data-standing={value.standing}>
               <dt>{label}</dt>
@@ -892,92 +884,6 @@ function InAgreement({ contract, onChanged, onReload }: ChangeProps) {
           </button>
         )}
       </p>
-    </section>
-  );
-}
-
-/**
- * The terms the contract had before it was renewed, the latest first: its purchase
- * history. They are read from the audit trail, and are stored nowhere else.
- */
-function Terms({ contract, turn }: { contract: Contract; turn: number }) {
-  const terms = useLoad(`terms ${contract.hid} ${contract.row_version} ${turn}`, (signal) =>
-    api.request("get", "/api/v1/contracts/{hid}/terms", { path: { hid: contract.hid }, signal }),
-  );
-  const money = useMoney();
-  const sorting = useSorting<Term>(terms.data, {
-    number: (term) => term.number,
-    starts: (term) => dateValue(term.starts_on),
-    ends: (term) => dateValue(term.ends_on),
-    cost: (term) => decimalValue(term.annual_cost),
-    reference: (term) => term.purchase_reference,
-    renewed: (term) => dateValue(term.renewed_at),
-    by: (term) => term.renewed_by_name,
-  });
-  return (
-    <section aria-labelledby="terms">
-      <h2 id="terms">Terms before this one</h2>
-      <Problem error={terms.error} />
-      {terms.loading && !terms.data && (
-        <p role="status" className="muted loading-late">
-          Loading…
-        </p>
-      )}
-      {terms.data && terms.data.length === 0 && (
-        <p className="muted" data-testid="no-terms">
-          The contract has not been renewed: this is its first term.
-        </p>
-      )}
-      {terms.data && terms.data.length > 0 && (
-        <div className="scroll">
-          <table data-testid="contract-terms">
-            <caption>
-              Each term with the number, the period and the purchase reference it had, and when it
-              was renewed: the purchase history of the contract
-            </caption>
-            <thead>
-              <tr>
-                <SortTh sort={sorting} column="number">
-                  Number
-                </SortTh>
-                <SortTh sort={sorting} column="starts">
-                  Started
-                </SortTh>
-                <SortTh sort={sorting} column="ends">
-                  Ended
-                </SortTh>
-                <SortTh sort={sorting} column="cost" className="number">
-                  Annual cost{money}
-                </SortTh>
-                <SortTh sort={sorting} column="reference">
-                  Purchase reference
-                </SortTh>
-                <SortTh sort={sorting} column="renewed">
-                  Renewed
-                </SortTh>
-                <SortTh sort={sorting} column="by">
-                  By
-                </SortTh>
-              </tr>
-            </thead>
-            <tbody>
-              {sorting.rows.map((term) => (
-                <tr key={`${term.renewed_at} ${term.number}`} data-term={term.number}>
-                  <th scope="row">{term.number}</th>
-                  <td className="nowrap">{term.starts_on ?? <Dash />}</td>
-                  <td className="nowrap">{term.ends_on ?? <Dash />}</td>
-                  <td className="number">{amountText(term.annual_cost) || <Dash />}</td>
-                  <td>{term.purchase_reference || <Dash />}</td>
-                  <td className="nowrap">
-                    <Time at={term.renewed_at} />
-                  </td>
-                  <td>{term.renewed_by_name || <Dash />}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </section>
   );
 }

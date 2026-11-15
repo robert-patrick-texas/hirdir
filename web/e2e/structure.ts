@@ -21,14 +21,19 @@ export function count(page: Page, which: string): Locator {
   return page.getByTestId("preview-counts").locator(`[data-count="${which}"] dd`);
 }
 
-/** Load a CSV file on the Import page: preview it, see that every row is new, apply it. */
+/**
+ * Load a CSV file on the Import page: preview it, see that every row is new, apply it.
+ * `timeout` is how long the preview and the apply may each take, for a large file.
+ */
 export async function importFile(
   page: Page,
   entity: string,
   name: string,
   header: string[],
   rows: string[][],
+  { timeout }: { timeout?: number } = {},
 ) {
+  const waiting = timeout === undefined ? {} : { timeout };
   // Opened afresh, so that the form holds nothing of the file before.
   await page.goto("./import");
   await expect(page.getByRole("heading", { level: 1, name: "Import" })).toBeVisible();
@@ -41,13 +46,16 @@ export async function importFile(
   await expect(page.getByLabel("Records")).toHaveValue(entity);
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   const job = page.getByTestId("import-job");
-  await expect(job).toHaveAttribute("data-status", "previewed");
+  await expect(job).toHaveAttribute("data-status", "previewed", waiting);
   await expect(count(page, "created")).toHaveText(String(rows.length));
   await expect(count(page, "rejected")).toHaveText("0");
   await page
     .getByRole("button", { name: `Apply ${rows.length} ${rows.length === 1 ? "row" : "rows"}` })
     .click();
-  await expect(page.getByTestId("preview-applied")).toContainText(`${rows.length} created`);
+  await expect(page.getByTestId("preview-applied")).toContainText(
+    `${rows.length} created`,
+    waiting,
+  );
 }
 
 /**

@@ -5,6 +5,8 @@ import type { Schemas } from "../../api/client";
 import { addressList, managementText, networkLabels } from "../../lib/addresses";
 import {
   CONTRACT_STATUSES,
+  COUNTED_NOTE,
+  countedUnder,
   coveringNumbers,
   coveringStatuses,
   RENEWAL_PENDING_NOTE,
@@ -33,6 +35,7 @@ import {
 } from "../../lib/options";
 import type { Option } from "../../lib/patch";
 import { nameOf } from "../../lib/places";
+import { MISMATCH_NOTE } from "../../lib/purchases";
 import { registeredWith } from "../../lib/systems";
 import type { GridColumn } from "./columns";
 
@@ -482,6 +485,20 @@ export function itemColumns(
       width: 180,
     },
     {
+      // For an item that is out of service, the contracts that still count it, by their
+      // numbers: those that cover it past today, and those whose coverage of it was
+      // ended because it left while their term still runs. The list to send the vendor.
+      // Found by any of them and sorted by the first, as Contracts is; an export writes
+      // them in the column `out_of_service_contracts`.
+      id: "out_of_service_contract.number",
+      header: "Still counted under",
+      kind: "text",
+      value: countedUnder,
+      hint: (item) => (item.out_of_service_contracts.length > 0 ? COUNTED_NOTE : ""),
+      hide: true,
+      width: 190,
+    },
+    {
       // How many contracts cover it today. More than one is worth a look before a
       // renewal: two contracts for one device are usually one too many.
       id: "contract_count",
@@ -533,6 +550,21 @@ export function itemColumns(
       hint: (item) => (item.purchase_line ? `The line with the HID ${item.purchase_line.hid}` : ""),
       hide: true,
       width: 160,
+    },
+    {
+      // On a line of another model than its own, which 0.6.0 let in: to be put right,
+      // by giving it the line's model or by naming the line it arrived on.
+      id: "purchase_line_mismatch",
+      header: "Of another model than its line",
+      kind: "boolean",
+      value: (item) => (item.purchase_line_mismatch ? "Yes" : ""),
+      hint: (item) => (item.purchase_line_mismatch ? MISMATCH_NOTE : ""),
+      choices: [
+        { value: "true", label: "On a line of another model: to be put right" },
+        { value: "false", label: "Not so" },
+      ],
+      hide: true,
+      width: 230,
     },
     {
       id: "catalog.kind",

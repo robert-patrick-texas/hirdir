@@ -27,6 +27,20 @@ export function arrivedPath(lineHid: string): string {
   return `/items?filter=${encodeURIComponent(`purchase_line_hid:eq:${lineHid}`)}&minor=1`;
 }
 
+/**
+ * The items on a line that are of another model than the line's, which 0.6.0 let in, in
+ * the grid of items. The line counts them as the item list does, drafts, retired items
+ * and items in Archived left out, so the grid holds as many rows as the line says.
+ */
+export function mismatchedPath(lineHid: string): string {
+  const filter = `purchase_line_hid:eq:${lineHid} purchase_line_mismatch:eq:true`;
+  return `/items?filter=${encodeURIComponent(filter)}&minor=1`;
+}
+
+/** What is said of an item that is on a line of another model than its own. */
+export const MISMATCH_NOTE =
+  "It is on a line of another model than its own, which 0.6.0 let in. Give it the line's model, where that is what it is, or name the line it arrived on, or none.";
+
 /** What tells one arrived item from another: every item needs one of the three. */
 export type ArrivedBy = "serial_number" | "asset_tag" | "name";
 
