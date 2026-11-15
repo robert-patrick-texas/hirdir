@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.domain import audit, settings
-from hirdir.io import alerts, balance
+from hirdir.io import balance
 
 log = logging.getLogger("hirdir.schedule")
 # How often the scheduler looks at the clock.
@@ -82,19 +82,23 @@ def record_balance(db: Session, moment: datetime) -> None:
     balance.record_if_missing(db, audit.SYSTEM, moment)
 
 
-def warm_alert(db: Session, moment: datetime) -> None:
-    """Work out the day's summary of the renewal alert and keep it, so that the first
-    sign-in of the day is not kept waiting (D-179). It writes nothing."""
-    alerts.summary(db)
+def work_out_ahead(db: Session, moment: datetime) -> None:
+    """Work out the long reports of the day and keep them, for the view each page opens
+    with, so that the first person of the day is not kept waiting (D-179, P-157): the
+    coverage report, the renewal worklist, the summary of the renewal alert and the
+    capacity balance. It writes nothing."""
+    from hirdir.api import reports
+
+    reports.work_out_ahead(db)
 
 
 # R14.7: the balance of each week, each Monday just after midnight, and when the server
 # starts in a week that has none.
 CAPACITY_RECORD = Job("capacity record", weekly(MONDAY), record_balance, at_start=True)
-# D-179: the renewal alert of the day, just after midnight and when the server starts.
-# It runs after the record, whose audit event would otherwise leave it stale.
-RENEWAL_ALERT = Job("renewal alert", daily(), warm_alert, at_start=True)
-JOBS: tuple[Job, ...] = (CAPACITY_RECORD, RENEWAL_ALERT)
+# D-179, P-157: the long reports of the day, just after midnight and when the server
+# starts. It runs after the record, whose audit event would otherwise leave them stale.
+LONG_REPORTS = Job("long reports", daily(), work_out_ahead, at_start=True)
+JOBS: tuple[Job, ...] = (CAPACITY_RECORD, LONG_REPORTS)
 
 
 class Scheduler:

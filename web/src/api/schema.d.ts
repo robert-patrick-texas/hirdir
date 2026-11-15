@@ -3365,6 +3365,53 @@ export interface paths {
       };
     };
   };
+  "/api/v1/kept-answers": {
+    /**
+     * List the long reports that are kept and would be given now: the report, the
+     * request whole, when it was worked out, and how many times it has been given since.
+     * For an Admin, since the kept answers are in the server's memory.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["KeptAnswer"][];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/kept-answers/check": {
+    /**
+     * Work out each kept answer anew, compare it with what was kept, and keep the new
+     * one. `differed` names each that was not the same, which none should be: one that
+     * was is a defect to report. Audited as `kept_answers_checked`; it changes no record
+     * and leaves the kept answers good (P-157).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["KeptCheck"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/lifecycle-rules": {
     /** List what each lifecycle state allows, in the order of the lifecycle. */
     get: {
@@ -5039,7 +5086,8 @@ export interface paths {
   "/api/v1/reports/capacity": {
     /**
      * Return the capacity balance of the whole installation as of today: demand
-     * against supply, without the drafts and with them.
+     * against supply, without the drafts and with them. It is kept as the coverage
+     * report is, and given again to every person while nothing could have changed it.
      */
     get: {
       parameters: {
@@ -8290,6 +8338,25 @@ export interface components {
     ItemsCounted: {
       component_count: number;
       items: number;
+    };
+    /** A long report that is kept, and would be given as it is now. */
+    KeptAnswer: {
+      kept_at: string;
+      report: string;
+      request: string;
+      uses: number;
+    };
+    /** What a check of the kept answers found: none should have differed. */
+    KeptCheck: {
+      checked: number;
+      checked_at: string;
+      differed: components["schemas"]["KeptDiffered"][];
+    };
+    /** A kept answer that was not the same as the one worked out anew. */
+    KeptDiffered: {
+      kept_at: string;
+      report: string;
+      request: string;
     };
     /** The contracts whose period has ended while they still say they are active. */
     LapsedContracts: {

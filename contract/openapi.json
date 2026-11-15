@@ -12883,6 +12883,92 @@
         "title": "ItemsCounted",
         "type": "object"
       },
+      "KeptAnswer": {
+        "additionalProperties": false,
+        "description": "A long report that is kept, and would be given as it is now.",
+        "properties": {
+          "kept_at": {
+            "format": "date-time",
+            "title": "Kept At",
+            "type": "string"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "uses": {
+            "title": "Uses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "report",
+          "request",
+          "kept_at",
+          "uses"
+        ],
+        "title": "KeptAnswer",
+        "type": "object"
+      },
+      "KeptCheck": {
+        "additionalProperties": false,
+        "description": "What a check of the kept answers found: none should have differed.",
+        "properties": {
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "differed": {
+            "items": {
+              "$ref": "#/components/schemas/KeptDiffered"
+            },
+            "title": "Differed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked_at",
+          "checked",
+          "differed"
+        ],
+        "title": "KeptCheck",
+        "type": "object"
+      },
+      "KeptDiffered": {
+        "additionalProperties": false,
+        "description": "A kept answer that was not the same as the one worked out anew.",
+        "properties": {
+          "kept_at": {
+            "format": "date-time",
+            "title": "Kept At",
+            "type": "string"
+          },
+          "report": {
+            "title": "Report",
+            "type": "string"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "request",
+          "kept_at"
+        ],
+        "title": "KeptDiffered",
+        "type": "object"
+      },
       "LapsedContracts": {
         "additionalProperties": false,
         "description": "The contracts whose period has ended while they still say they are active.",
@@ -29850,6 +29936,54 @@
         ]
       }
     },
+    "/api/v1/kept-answers": {
+      "get": {
+        "description": "List the long reports that are kept and would be given now: the report, the\nrequest whole, when it was worked out, and how many times it has been given since.\nFor an Admin, since the kept answers are in the server's memory.",
+        "operationId": "kept_answers_api_v1_kept_answers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KeptAnswer"
+                  },
+                  "title": "Response Kept Answers Api V1 Kept Answers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Kept Answers",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/kept-answers/check": {
+      "post": {
+        "description": "Work out each kept answer anew, compare it with what was kept, and keep the new\none. `differed` names each that was not the same, which none should be: one that\nwas is a defect to report. Audited as `kept_answers_checked`; it changes no record\nand leaves the kept answers good (P-157).",
+        "operationId": "check_kept_answers_api_v1_kept_answers_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeptCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Kept Answers",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/v1/lifecycle-rules": {
       "get": {
         "description": "List what each lifecycle state allows, in the order of the lifecycle.",
@@ -33370,7 +33504,7 @@
     },
     "/api/v1/reports/capacity": {
       "get": {
-        "description": "Return the capacity balance of the whole installation as of today: demand\nagainst supply, without the drafts and with them.",
+        "description": "Return the capacity balance of the whole installation as of today: demand\nagainst supply, without the drafts and with them. It is kept as the coverage\nreport is, and given again to every person while nothing could have changed it.",
         "operationId": "capacity_api_v1_reports_capacity_get",
         "responses": {
           "200": {

@@ -1,18 +1,21 @@
 """The routes of reports: the summary of a view, and the addresses held more than once."""
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
 
 from hirdir.api import records as r
 from hirdir.api import shapes
-from hirdir.api.deps import Audit, Db, Viewer
+from hirdir.api.deps import Admin, Audit, Db, Viewer
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
-from hirdir.api.schemas import Page
+from hirdir.api.schemas import Model, Page
+from hirdir.domain import settings
 from hirdir.io import alerts, balance, filters, kept, planning, reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 renewals_ = APIRouter(prefix="/renewals", tags=["Reports"])
+kept_ = APIRouter(prefix="/kept-answers", tags=["Reports"])
 
 Archived = Annotated[
     bool, Query(description="Count retired records and items in Archived as well.")
@@ -162,18 +165,48 @@ def coverage(
     says the filter that lists the same items on `GET /items`. The contracts that
     have lapsed are counted beside them.
     """
-    asked = kept.asked(filter_, include_drafts, within_days, section, sort, limit, offset)
+    return coverage_answer(
+        db,
+        filter_=filter_,
+        include_drafts=include_drafts,
+        within_days=within_days,
+        section=section,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def coverage_answer(
+    db: Db,
+    *,
+    filter_: str = "",
+    include_drafts: bool = False,
+    within_days: int | None = None,
+    section: r.CoverageSection | None = None,
+    sort: list[str] | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> r.CoverageReport:
+    """Return the coverage report, kept until a change or the day makes it stale.
+
+    A request that leaves `within_days` out asks for the setting's, and is kept as the
+    same request as one that names it, so that the home page and the report share one
+    answer.
+    """
+    days = within_days if within_days is not None else settings.value(db, "renewal_warning_days")
+    asked = kept.asked(filter_, include_drafts, days, section, sort, limit, offset)
     return kept.answer(
         db,
         "coverage",
         asked,
-        lambda: shapes.coverage_report_out(
-            db,
+        lambda session: shapes.coverage_report_out(
+            session,
             planning.coverage(
-                db,
+                session,
                 filter_=filter_,
                 include_drafts=include_drafts,
-                within_days=within_days,
+                within_days=days,
                 section=section,
                 sort=sort,
                 limit=limit,
@@ -225,21 +258,48 @@ def renewals(
     count says the filter that lists its rows. `section` asks for a page of one list,
     the soonest end first. The agreements on the same lists are counted beside them.
     """
+    return renewals_answer(
+        db,
+        filter_=filter_,
+        include_drafts=include_drafts,
+        include_archived=include_archived,
+        within_days=within_days,
+        section=section,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def renewals_answer(
+    db: Db,
+    *,
+    filter_: str = "",
+    include_drafts: bool = False,
+    include_archived: bool = False,
+    within_days: int | None = None,
+    section: r.RenewalSection | None = None,
+    sort: list[str] | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> r.RenewalsReport:
+    """Return the renewal worklist, kept until a change or the day makes it stale."""
+    days = within_days if within_days is not None else settings.value(db, "renewal_warning_days")
     asked = kept.asked(
-        filter_, include_drafts, include_archived, within_days, section, sort, limit, offset
+        filter_, include_drafts, include_archived, days, section, sort, limit, offset
     )
     return kept.answer(
         db,
         "renewals",
         asked,
-        lambda: shapes.renewals_report_out(
-            db,
+        lambda session: shapes.renewals_report_out(
+            session,
             planning.renewals(
-                db,
+                session,
                 filter_=filter_,
                 include_drafts=include_drafts,
                 include_archived=include_archived,
-                within_days=within_days,
+                within_days=days,
                 section=section,
                 sort=sort,
                 limit=limit,
@@ -364,8 +424,79 @@ def replacements(
 @router.get("/capacity")
 def capacity(_: Viewer, db: Db) -> r.CapacityOut:
     """Return the capacity balance of the whole installation as of today: demand
-    against supply, without the drafts and with them."""
-    return shapes.capacity_out(balance.balance(db))
+    against supply, without the drafts and with them. It is kept as the coverage
+    report is, and given again to every person while nothing could have changed it."""
+    return capacity_answer(db)
 
 
-ROUTERS = (router, renewals_)
+def capacity_answer(db: Db) -> r.CapacityOut:
+    """Return the capacity balance, kept until a change or the day makes it stale (P-157)."""
+    return kept.answer(
+        db, "capacity", kept.asked(), lambda session: shapes.capacity_out(balance.balance(session))
+    )
+
+
+def work_out_ahead(db: Db) -> None:
+    """Work out and keep the long reports for the view each page opens with: the
+    coverage report, the renewal worklist, the summary of the renewal alert and the
+    capacity balance (P-142, P-157). It writes nothing."""
+    coverage_answer(db)
+    renewals_answer(db)
+    alerts.summary(db)
+    capacity_answer(db)
+
+
+class KeptAnswer(Model):
+    """A long report that is kept, and would be given as it is now."""
+
+    report: str
+    request: str
+    kept_at: datetime
+    uses: int
+
+
+class KeptDiffered(Model):
+    """A kept answer that was not the same as the one worked out anew."""
+
+    report: str
+    request: str
+    kept_at: datetime
+
+
+class KeptCheck(Model):
+    """What a check of the kept answers found: none should have differed."""
+
+    checked_at: datetime
+    checked: int
+    differed: list[KeptDiffered]
+
+
+@kept_.get("")
+def kept_answers(_: Admin, db: Db) -> list[KeptAnswer]:
+    """List the long reports that are kept and would be given now: the report, the
+    request whole, when it was worked out, and how many times it has been given since.
+    For an Admin, since the kept answers are in the server's memory."""
+    return [
+        KeptAnswer(report=e.report, request=e.request, kept_at=e.kept_at, uses=e.uses)
+        for e in kept.listing(db)
+    ]
+
+
+@kept_.post("/check")
+def check_kept_answers(_: Admin, context: Audit, db: Db) -> KeptCheck:
+    """Work out each kept answer anew, compare it with what was kept, and keep the new
+    one. `differed` names each that was not the same, which none should be: one that
+    was is a defect to report. Audited as `kept_answers_checked`; it changes no record
+    and leaves the kept answers good (P-157)."""
+    found = kept.check(db, context)
+    return KeptCheck(
+        checked_at=found.checked_at,
+        checked=found.checked,
+        differed=[
+            KeptDiffered(report=d.report, request=d.request, kept_at=d.kept_at)
+            for d in found.differed
+        ],
+    )
+
+
+ROUTERS = (router, renewals_, kept_)

@@ -72,7 +72,7 @@ def _worked_out(db: Session) -> Summary:
 def summary(db: Session) -> Summary:
     """Return the day's lists of the alert, kept until a change or the day makes them
     stale (D-184)."""
-    return kept.answer(db, "renewal_alert", kept.asked(), lambda: _worked_out(db))
+    return kept.answer(db, "renewal_alert", kept.asked(), _worked_out)
 
 
 def _seen(db: Session, user_hid: str) -> RenewalAlertView | None:

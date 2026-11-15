@@ -505,7 +505,7 @@ def test_the_times_of_a_job_follow_the_time_zone() -> None:
     early = datetime(2027, 3, 28, 22, 0, 30, tzinfo=UTC)
     assert each_monday(early, zone) == datetime(2027, 3, 22, 0, 1, tzinfo=zone)
     assert daily()(wednesday, zone) == datetime(2027, 3, 31, 0, 1, tzinfo=zone)
-    assert [job.name for job in JOBS] == ["capacity record", "renewal alert"]
+    assert [job.name for job in JOBS] == ["capacity record", "long reports"]
 
 
 def test_the_server_records_the_week_when_it_starts(config: Config) -> None:

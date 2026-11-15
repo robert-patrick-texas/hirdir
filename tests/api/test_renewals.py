@@ -23,7 +23,7 @@ from hirdir.db.models import (
     RenewalAlertView,
 )
 from hirdir.io import kept
-from hirdir.schedule import RENEWAL_ALERT, Scheduler
+from hirdir.schedule import LONG_REPORTS, Scheduler
 from tests.api.inventory import API, errors
 from tests.api.test_contracts import Desk
 
@@ -523,9 +523,9 @@ def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
     desk.contract("CON-LAP", starts_on=day(-400), ends_on=day(-10))
     kept.drop()
     sessions = make_sessions(make_engine(config.database_url))
-    scheduler = Scheduler(sessions, (RENEWAL_ALERT,))
+    scheduler = Scheduler(sessions, (LONG_REPORTS,))
     start = datetime.now(UTC)
-    assert scheduler.run_due(start, starting=True) == ["renewal alert"]
+    assert scheduler.run_due(start, starting=True) == ["long reports"]
     with sessions() as db:
         stamp = kept.stamp(db)
     # The day's summary is kept, and the alert is answered from it.
@@ -537,4 +537,4 @@ def test_the_alert_of_the_day_is_worked_out_just_after_midnight_and_at_start(
     midnight = datetime.combine(
         start.astimezone(zone).date() + timedelta(days=1), time(0, 2), tzinfo=zone
     )
-    assert scheduler.run_due(midnight) == ["renewal alert"]
+    assert scheduler.run_due(midnight) == ["long reports"]
