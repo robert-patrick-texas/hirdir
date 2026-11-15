@@ -153,7 +153,11 @@ showed. It adds no scenario and no kind of record.
 
 Beside the circuits, 0.8.0 gives a region, a site and a location an optional support
 weight of its own, which is not inherited by the places beneath and is added to the
-demand of the capacity report (P-139).
+demand of the capacity report (P-139). An Admin may set, for sites, for major items and
+for circuits, a default support weight, which an object of the kind counts at where it
+has none, and a minimum, which raises an object that has a weight to at least it: both
+blank unless set, for an estimate with a few settings before weights are set object by
+object, and for a floor set by policy for capacity planning (P-141).
 
 A first way to track telecommunication circuits beside the device inventory. A
 circuit is a record of its own, referenced by HID, audited, role-checked, retired and
@@ -180,6 +184,12 @@ never deleted, and may be a draft, as every record is. It holds:
   locations as 0.5.0 resolves them, with any that are the circuit's own;
 - its monthly recurring cost, as lines that add up, which is how a carrier bills
   it, and its annual cost, twelve times that, worked out when it is read;
+- its install date and its activation date: the carrier usually starts to bill on the
+  activation date, which is often not the day the circuit was installed (P-140);
+- whether it is a production circuit, one that carries the enterprise's production
+  work; a circuit that is not is billed by the carrier all the same (P-140);
+- its support weight, blank unless given: a circuit with none carries no weight
+  (P-140);
 - its owner, and what every record has: status, dates, notes and tags.
 
 Circuits are listed, filtered, sorted and exported as items are, and load from
