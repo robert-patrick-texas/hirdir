@@ -1,18 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { settingText, settingValue } from "./settings";
+import { listValue, settingInput, settingText, settingValue, splitSettings } from "./settings";
 
 describe("settingText", () => {
   it("writes a number, a word and a list as people read them", () => {
     expect(settingText(50)).toBe("50");
     expect(settingText(30.5)).toBe("30.5");
+    expect(settingText(0.05)).toBe("0.05");
     expect(settingText("USD")).toBe("USD");
     expect(settingText(["Test", "Prod", "Down"])).toBe("Test, Prod, Down");
   });
 
+  it("writes a fixed value that says something of several things, each with what it holds", () => {
+    expect(
+      settingText({
+        failed: ["failed", "dead"],
+        degraded: ["degraded", "suspect"],
+        good: ["good"],
+      }),
+    ).toBe("failed: failed, dead; degraded: degraded, suspect; good: good");
+    expect(settingText({ a: 1 })).toBe("a: 1");
+  });
+
   it("is blank for a kind it does not know", () => {
     expect(settingText(null)).toBe("");
-    expect(settingText({ a: 1 })).toBe("");
+    expect(settingText(undefined)).toBe("");
     expect(settingText(Number.NaN)).toBe("");
+    expect(settingText(true)).toBe("");
+  });
+});
+
+describe("splitSettings", () => {
+  it("puts the settings first and the fixed values apart, each in the order it came", () => {
+    const all = [
+      { key: "currency", value: "USD", default: "USD", fixed: false },
+      { key: "max_page_size", value: 1000, default: 1000, fixed: true },
+      { key: "time_zone", value: "UTC", default: "UTC" },
+      { key: "received_state", value: "Delivered", default: "Delivered", fixed: true },
+    ];
+    const { settings, fixed } = splitSettings(all);
+    expect(settings.map((one) => one.key)).toEqual(["currency", "time_zone"]);
+    expect(fixed.map((one) => one.key)).toEqual(["max_page_size", "received_state"]);
+  });
+});
+
+describe("settingInput", () => {
+  it("ticks a list, chooses one of a list, and types the rest", () => {
+    expect(
+      settingInput({
+        key: "count_kinds",
+        value: ["hardware"],
+        default: ["hardware", "virtual_machine"],
+        options: ["hardware", "virtual_machine", "software", "service"],
+      }),
+    ).toBe("set");
+    expect(
+      settingInput({
+        key: "end_of_life_date",
+        value: "ldos",
+        default: "ldos",
+        options: ["end_of_sale", "ldos"],
+      }),
+    ).toBe("choice");
+    expect(settingInput({ key: "currency", value: "USD", default: "USD", options: null })).toBe(
+      "text",
+    );
+    expect(settingInput({ key: "max_items_per_request", value: 1000, default: 1000 })).toBe("text");
   });
 });
 
@@ -35,5 +87,25 @@ describe("settingValue", () => {
     expect(settingValue({ default: 50 }, "-5").ok).toBe(false);
     expect(settingValue({ default: 50 }, "").ok).toBe(false);
     expect(settingValue({ default: "USD" }, "  ").ok).toBe(false);
+  });
+});
+
+describe("listValue", () => {
+  it("sends what is ticked in the order of the options", () => {
+    expect(listValue(["Prod", "Test"], ["Test", "Prod", "Down"])).toEqual({
+      ok: true,
+      value: ["Test", "Prod"],
+    });
+  });
+
+  it("keeps a value that is not among the options, after them", () => {
+    expect(listValue(["Old", "Prod"], ["Test", "Prod"])).toEqual({
+      ok: true,
+      value: ["Prod", "Old"],
+    });
+  });
+
+  it("refuses nothing ticked", () => {
+    expect(listValue([], ["Test"]).ok).toBe(false);
   });
 });

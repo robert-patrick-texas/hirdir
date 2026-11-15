@@ -579,7 +579,14 @@ test("S29, S30: cover on an archived item, an item with no cover, and the end of
   await expect(page.getByTestId("count-overlapping")).toHaveAttribute("data-count", "0");
   await expect(page.getByTestId("count-renewal_pending")).toHaveAttribute("data-count", "0");
 
-  // S30: the list of what is in service with no cover is on show first, as a grid.
+  // S30: the counts come first, and no list is read until one is opened (P-133). The list
+  // of what is in service with no cover, opened, is a grid.
+  await expect(page.getByTestId("no-list-open")).toBeVisible();
+  await expect(page.getByTestId("section-heading")).toHaveCount(0);
+  await page
+    .locator('.section-card[data-section="uncovered"]')
+    .getByRole("button", { name: "Show these items" })
+    .click();
   await expect(page.getByTestId("section-heading")).toHaveText("In service with no cover");
   await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expect(

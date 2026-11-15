@@ -93,6 +93,16 @@ const INHERITED: ReadonlyArray<[field: Inherited, label: string]> = [
   ["ldos", "Last day of support (LDoS)"],
 ];
 
+/**
+ * What the page lists among the values in force: those above, and the flag not to renew,
+ * which is yes or no, the item's own word or its model's (P-118, P-131).
+ */
+type InForceField = Inherited | "do_not_renew";
+const IN_FORCE: ReadonlyArray<[field: InForceField, label: string]> = [
+  ...INHERITED,
+  ["do_not_renew", "Not to be renewed"],
+];
+
 // Those of them that are dates. The rest are decimals, as the server writes them.
 const INHERITED_DATES: ReadonlySet<Inherited> = new Set([
   "end_of_sale",
@@ -103,6 +113,24 @@ const INHERITED_DATES: ReadonlySet<Inherited> = new Set([
 
 function Dash() {
   return <span className="muted">—</span>;
+}
+
+/**
+ * What to say under the flag not to renew on the form of an item: its own word, or what
+ * its model says, which a blank has. A renewal of a contract leaves an item behind whose
+ * flag is in force: its coverage ends with the present term.
+ */
+function notRenewedHint(item: Item): string {
+  const inForce = item.effective.do_not_renew;
+  const what =
+    "Yes is for an item whose support is not bought again when its contract is renewed: a renewal leaves it behind, its coverage ending with the present term, and with no cover it is no gap.";
+  if (item.do_not_renew !== null && item.do_not_renew !== undefined) {
+    return `${what} Set here. "As its model says" has its model's again.`;
+  }
+  if (inForce.source === "catalog") {
+    return `${what} Blank has its model's: ${effectiveText(inForce)}.`;
+  }
+  return `${what} Blank, and its model says nothing: No.`;
 }
 
 /** Items → one item: what it is, the values in force, its standing, and its history. */
@@ -519,11 +547,13 @@ function Doing({ item, choices, mayEdit, onChanged, onReload }: DoingProps) {
 
 /** Every field the item inherits: the value in force, and where it came from. */
 function ValuesInForce({ item }: { item: Item }) {
-  const sorting = useSorting(INHERITED, {
+  const sorting = useSorting(IN_FORCE, {
     field: ([, label]) => label,
-    // A date is sorted as a date and a decimal as a number, and none is last.
+    // A date is sorted as a date, a decimal as a number and yes or no as its word, and
+    // none is last.
     value: ([field]) => {
       const text = effectiveText(item.effective[field]);
+      if (field === "do_not_renew") return text || null;
       return INHERITED_DATES.has(field) ? dateValue(text) : decimalValue(text);
     },
     source: ([field]) => sourceLabel(item.effective[field]),
@@ -983,6 +1013,13 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       { name: "end_of_sw_support", label: "End of software support", kind: "date" },
       { name: "end_of_hw_support", label: "End of hardware support", kind: "date" },
       { name: "ldos", label: "Last day of support (LDoS)", kind: "date" },
+      {
+        // Its own word on renewing its support: blank has its model's (P-131).
+        name: "do_not_renew",
+        label: "Not to be renewed",
+        kind: "tristate",
+        blank: "As its model says",
+      },
     ];
   }, [item, entries.data, owners.data, tags.data]);
 
@@ -994,6 +1031,7 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       item.effective[field].source === "own" ? null : item.effective[field],
     );
   }
+  hints.do_not_renew = notRenewedHint(item);
   // The location and the planned location of an item that has something above it:
   // with one of its own the form says that it is an override and how to give it up;
   // with none it shows the one in force from above, before one is chosen.

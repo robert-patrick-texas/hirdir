@@ -112,6 +112,19 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
     day("end_of_hw_support", "End of hardware support"),
     day("ldos", "LDoS", false),
     {
+      // Not to be renewed: every item of the model has it, unless it says otherwise.
+      id: "do_not_renew",
+      header: "Not to be renewed",
+      kind: "boolean",
+      value: (entry) => (entry.do_not_renew ? "Yes" : "No"),
+      choices: [
+        { value: "true", label: "Not to be renewed" },
+        { value: "false", label: "Renewed as usual" },
+      ],
+      hide: true,
+      width: 160,
+    },
+    {
       id: "review_status",
       header: "Review",
       kind: "choice",
@@ -226,6 +239,12 @@ function entrySpecs(lists: {
     { name: "end_of_sw_support", label: "End of software support", kind: "date" },
     { name: "end_of_hw_support", label: "End of hardware support", kind: "date" },
     { name: "ldos", label: "Last day of support (LDoS)", kind: "date" },
+    {
+      name: "do_not_renew",
+      label: "Not to be renewed",
+      kind: "boolean",
+      hint: "For a model whose support came with its purchase and is not bought again, such as a telephone of a low price with spares kept. Every item of the model has it, unless the item says otherwise; a renewal of a contract leaves such an item behind, its coverage ending with the present term, and with no cover it is no gap.",
+    },
     {
       name: "stack_discount_pct",
       label: "Stack discount %",
@@ -442,6 +461,25 @@ function EntryFacts({ entry, choices }: { entry: Entry; choices: readonly Choice
         {facts.map(([label, value]) => (
           <FactRow key={label} label={label} value={value} />
         ))}
+        <dt>Not to be renewed</dt>
+        <dd data-testid="entry-do-not-renew" data-value={entry.do_not_renew ? "true" : "false"}>
+          {entry.do_not_renew ? (
+            <>
+              Yes
+              <span className="muted">
+                {" "}
+                · every item of the model has it, unless it says otherwise:{" "}
+                <Link
+                  to={itemsPath(`catalog_entry_hid:eq:${entry.hid} effective.do_not_renew:eq:true`)}
+                >
+                  those that have it
+                </Link>
+              </span>
+            </>
+          ) : (
+            "No"
+          )}
+        </dd>
         <dt>Stack discount %</dt>
         <dd data-testid="stack-discount" data-source={discount.source}>
           <span

@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -24,16 +24,23 @@ import {
   type ArrivedBy,
   arrivedOf,
   arrivedPath,
+  asksWhatFollows,
   isArrivedBy,
   lineModel,
+  lineWhat,
   MISMATCH_NOTE,
   mismatchedPath,
+  modelStays,
+  NOT_TRACKED_NOTE,
   notReceivable,
+  ON_CORRECTION,
+  ON_CORRECTION_NOTE,
   type PurchaseLine,
   type PurchaseRequest,
   REQUEST_STATUSES,
   receiptOf,
   requestPath,
+  savedText,
 } from "../lib/purchases";
 import { allows } from "../lib/roles";
 import type { SortFields } from "../lib/sort";
@@ -173,7 +180,9 @@ export function Purchases() {
       <p>
         A purchase request records what was asked for: a model and how many, on each of its lines. A
         request and its lines are not inventory, and are in no count. Receiving a line says which
-        items arrived, and makes them, in the state Delivered.
+        items arrived, and makes them, in the state Delivered. A line of something this inventory
+        does not follow, as cable ties or a monitor, has its part number and no model: it is not
+        tracked, takes no item, and the request is not kept waiting for it.
       </p>
       {adding && (
         <CreateForm<Schemas["PurchaseRequestCreate"], PurchaseRequest>
@@ -255,6 +264,36 @@ const LINE_COLUMNS: GridColumn<PurchaseLine>[] = [
     column: null,
     value: (line) => line.catalog?.model_name ?? null,
     hide: true,
+  },
+  {
+    // As the procurement system gave them, beside the model the line is matched to.
+    id: "part_number",
+    header: "Part number",
+    kind: "text",
+    value: (line) => line.part_number,
+    mono: true,
+    width: 170,
+  },
+  {
+    id: "description",
+    header: "Description",
+    kind: "text",
+    value: (line) => line.description,
+    hide: true,
+    width: 240,
+  },
+  {
+    // A line with no model is not tracked: it takes no item and is waited for by nobody.
+    id: "tracked",
+    header: "Tracked",
+    kind: "boolean",
+    value: (line) => (line.tracked ? "Yes" : "Not tracked"),
+    hint: (line) => (line.tracked ? "" : NOT_TRACKED_NOTE),
+    choices: [
+      { value: "true", label: "Tracked: the line has a model" },
+      { value: "false", label: "Not tracked: no model, and no item" },
+    ],
+    width: 120,
   },
   {
     id: "quantity",
@@ -351,7 +390,8 @@ export function PurchaseLines() {
         The lines of every request: what was asked for, what has arrived and what is still to come.
         Filter <span className="mono">Still to come</span> to more than 0, or type{" "}
         <span className="mono">pending_quantity:gt:0</span>, for the list to plan by. A line is
-        received on the page of its request.
+        received on the page of its request. A line with no model is not tracked, and{" "}
+        <span className="mono">tracked:eq:false</span> lists those: nothing is to come on them.
       </p>
       <DataGrid<PurchaseLine>
         key={startFilter ?? ""}
@@ -365,7 +405,7 @@ export function PurchaseLines() {
         rowId={(line) => line.hid}
         rowLink={(line) => requestPath(line.request_hid)}
         dimmed={(line) => line.request_status === "cancelled" || line.request_status === "draft"}
-        shortFilter="pending_quantity:gt:0 catalog.vendor:eq:Cisco"
+        shortFilter="pending_quantity:gt:0 tracked:eq:true catalog.vendor:eq:Cisco"
         startFilter={startFilter}
       />
     </>
@@ -376,6 +416,7 @@ export function PurchaseLines() {
 const LINES_SORT: SortFields = {
   line: "line",
   model: "catalog.vendor,catalog.pid",
+  part: "part_number",
   quantity: "quantity",
   received: "received_quantity",
   pending: "pending_quantity",
@@ -427,14 +468,17 @@ export function PurchaseDetail() {
               {optionLabel(REQUEST_STATUSES, record.status)}
               <span className="muted">
                 {" "}
-                · what a person says of it, and Received by itself once every line has arrived in
-                full
+                · what a person says of it, and Received by itself once every line that is tracked
+                has arrived in full
               </span>
             </dd>
             <dt>Requested on</dt>
             <dd>{record.requested_on ?? <Dash />}</dd>
             <dt>Asked for</dt>
-            <dd data-testid="request-quantity">{plural(record.quantity, "item")}</dd>
+            <dd>
+              <span data-testid="request-quantity">{plural(record.quantity, "item")}</span>
+              <Untracked request={record} />
+            </dd>
             <dt>Received</dt>
             <dd data-testid="request-received">{plural(record.received_quantity, "item")}</dd>
             <dt>Still to come</dt>
@@ -471,6 +515,22 @@ export function PurchaseDetail() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * How many lines of a request are not tracked: they are bought with it, and counted in
+ * nothing that it asks for or that is still to come. Nothing is said where there are none.
+ */
+function Untracked({ request }: { request: PurchaseRequest }) {
+  const untracked = request.lines.filter((line) => !line.tracked).length;
+  if (untracked === 0) return null;
+  return (
+    <span className="muted" data-testid="request-untracked" data-count={untracked}>
+      {" "}
+      · on the lines that are tracked; {plural(untracked, "line is", "lines are")} not tracked, and
+      counted in none of this
+    </span>
   );
 }
 
@@ -571,6 +631,9 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                 <SortTh sort={sort.header("model", holdsAll)} column="model">
                   Model
                 </SortTh>
+                <SortTh sort={sort.header("part", holdsAll)} column="part">
+                  As procurement gave it
+                </SortTh>
                 <SortTh
                   sort={sort.header("quantity", holdsAll)}
                   column="quantity"
@@ -604,14 +667,19 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                 <tr
                   key={row.hid}
                   data-line={row.name}
+                  data-tracked={row.tracked ? "true" : "false"}
                   data-pending={row.pending_quantity}
                   data-received={row.received_quantity}
                 >
                   <th scope="row">{row.name}</th>
                   <td>
                     {row.catalog_entry_hid === null ? (
-                      <span>
-                        {lineModel(row)} <span className="muted">· not tracked</span>
+                      <span
+                        className="badge badge-plain"
+                        data-testid="line-not-tracked"
+                        title={NOT_TRACKED_NOTE}
+                      >
+                        Not tracked
                       </span>
                     ) : (
                       <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
@@ -635,19 +703,24 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
                       </div>
                     )}
                   </td>
+                  <td data-testid="line-part-number">
+                    {row.part_number ? <span className="mono">{row.part_number}</span> : <Dash />}
+                    {row.description && <div className="muted">{row.description}</div>}
+                  </td>
                   <td className="number">{row.quantity}</td>
                   <td className="number" data-testid="line-received">
-                    {row.received_quantity}
+                    {row.tracked ? row.received_quantity : <Dash />}
                   </td>
                   <td className="number" data-testid="line-pending">
-                    {row.pending_quantity}
+                    {row.tracked ? row.pending_quantity : <Dash />}
                   </td>
                   <td title={row.destination_site?.path}>
                     {row.destination_site?.name ?? <Dash />}
                   </td>
                   <td className="nowrap">{row.expected_on ?? <Dash />}</td>
                   <td className="row-actions">
-                    {mayEdit && (
+                    {/* A line that is not tracked takes no item: there is nothing to receive. */}
+                    {mayEdit && row.tracked && (
                       <button
                         type="button"
                         aria-label={`Receive on ${row.name}`}
@@ -711,7 +784,7 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
         <ChangeLine
           key={`change ${line.hid} ${line.row_version}`}
           line={line}
-          onSaved={() => changed(`${line.name} was saved.`)}
+          onSaved={(text) => changed(text)}
           onReload={() => setMine((count) => count + 1)}
           onClose={() => setOpen(null)}
         />
@@ -741,12 +814,27 @@ function Lines({ request, mayEdit, turn, onChanged }: LinesProps) {
           request={request}
           onCancel={() => setAdding(false)}
           onAdded={(made) =>
-            changed(`${made.name} was added: ${made.quantity} × ${lineModel(made)}.`)
+            changed(`${made.name} was added: ${made.quantity} × ${lineWhat(made)}.`)
           }
         />
       )}
     </section>
   );
+}
+
+/** What is said beneath the model of a line, as the line stands. */
+function modelHint(line: PurchaseLine | null): string {
+  if (line === null) {
+    return "The model of the catalog. Left blank, the line is not tracked: it takes no item, is in no count, and the request is not kept waiting for it, as for cable ties or a monitor. It then needs its part number.";
+  }
+  const stays = modelStays(line);
+  if (stays) {
+    return `Corrected at any time, a typing error among them. ${stays} Where it is corrected, say beneath it what becomes of the items.`;
+  }
+  if (line.catalog_entry_hid === null) {
+    return "The line is not tracked. Given a model, it is tracked: it takes items, and what is still to come on it is counted.";
+  }
+  return "Corrected at any time. Nothing has arrived on it, so the model may also be taken off, and the line is then not tracked.";
 }
 
 /** The fields of a line that a form sets. */
@@ -755,14 +843,46 @@ function lineSpecs(
   sites: FieldSpec["options"],
   line: PurchaseLine | null,
 ) {
+  // A line keeps a model while anything has arrived on it: then there is no blank to choose.
+  const keeps = line !== null && modelStays(line) !== "";
   const model: FieldSpec = {
     name: "catalog_entry_hid",
     label: "Model",
     kind: "choice",
-    required: true,
     options: entries ?? [],
-    ...(line ? {} : { blank: "Choose a model" }),
+    ...(keeps ? {} : { blank: "None: the line is not tracked" }),
+    hint: modelHint(line),
   };
+  // Asked only where items have arrived on the line and its model is corrected.
+  const follows: FieldSpec[] = line
+    ? [
+        {
+          name: "items",
+          label: `What becomes of the ${plural(line.received_quantity, "item")} that arrived on it`,
+          kind: "choice",
+          blank: "Choose one",
+          options: ON_CORRECTION,
+          hint: ON_CORRECTION_NOTE,
+          when: (values) => asksWhatFollows(line, values.catalog_entry_hid),
+        },
+      ]
+    : [];
+  const procurement: FieldSpec[] = [
+    {
+      name: "part_number",
+      label: "Part number",
+      kind: "text",
+      maxLength: 100,
+      hint: "As the procurement system gave it. A line with no model needs it.",
+    },
+    {
+      name: "description",
+      label: "Description",
+      kind: "longtext",
+      maxLength: 10000,
+      hint: "As the procurement system gave it.",
+    },
+  ];
   const rest: FieldSpec[] = [
     {
       name: "quantity",
@@ -783,7 +903,7 @@ function lineSpecs(
     { name: "expected_on", label: "Expected on", kind: "date" },
     { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
   ];
-  return [model, ...rest];
+  return [model, ...follows, ...procurement, ...rest];
 }
 
 /** An option for what a line already names, when the list read does not offer it. */
@@ -830,8 +950,9 @@ function AddLine({ request, onCancel, onAdded }: AddLineProps) {
         submitLabel="Add line"
       >
         <p className="hint">
-          A model and how many. The line takes the next number of the request, and is named by the
-          reference and that number, as in {request.reference}/{request.lines.length + 1}.
+          A model and how many, or the part number with no model for what this inventory does not
+          follow. The line takes the next number of the request, and is named by the reference and
+          that number, as in {request.reference}/{request.lines.length + 1}.
         </p>
       </CreateForm>
     </>
@@ -844,7 +965,14 @@ interface LineFormProps {
   onClose: () => void;
 }
 
-function ChangeLine({ line, onSaved, onReload, onClose }: LineFormProps & { onSaved: () => void }) {
+function ChangeLine({
+  line,
+  onSaved,
+  onReload,
+  onClose,
+}: LineFormProps & { onSaved: (text: string) => void }) {
+  // What the change did, said once it is taken: the form knows only that it was.
+  const said = useRef("");
   const entries = useEntryOptions();
   const sites = useSiteOptions();
   const specs = useMemo(
@@ -863,10 +991,15 @@ function ChangeLine({ line, onSaved, onReload, onClose }: LineFormProps & { onSa
       <EditForm<PurchaseLine, Schemas["PurchaseLinePatch"]>
         specs={specs}
         record={line}
-        save={(body) =>
-          api.request("patch", "/api/v1/purchase-lines/{hid}", { path: { hid: line.hid }, body })
-        }
-        onSaved={onSaved}
+        save={async (body) => {
+          const saved = await api.request("patch", "/api/v1/purchase-lines/{hid}", {
+            path: { hid: line.hid },
+            body,
+          });
+          said.current = savedText(line, saved, body);
+          return saved;
+        }}
+        onSaved={() => onSaved(said.current)}
         onReload={onReload}
       />
       <p className="actions">

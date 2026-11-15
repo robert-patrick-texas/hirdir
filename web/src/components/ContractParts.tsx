@@ -35,6 +35,9 @@ export function ContractsNav() {
           <NavLink to="/agreements">Support agreements</NavLink>
         </li>
         <li>
+          <NavLink to="/contracts/renewals">Renewals</NavLink>
+        </li>
+        <li>
           <NavLink to="/reports/coverage">Gaps and expiries: the coverage report</NavLink>
         </li>
       </ul>
@@ -47,7 +50,8 @@ export function Dash() {
 }
 
 interface StatusMarksProps {
-  record: Pick<Contract, "status" | "lapsed" | "next_term" | "record_status">;
+  record: Pick<Contract, "status" | "lapsed" | "next_term" | "record_status"> &
+    Partial<Pick<Contract, "ends_with_term">>;
   /** Say the status also where it is Active: beside the name of a page. */
   always?: boolean;
 }
@@ -59,13 +63,16 @@ interface StatusMarksProps {
  */
 export function StatusMarks({ record, always = false }: StatusMarksProps) {
   const pending = record.status === RENEWAL_PENDING;
+  // A contract that has ended by choice says so in its own mark, in place of Expired.
+  const byChoice = record.ends_with_term === true && record.status === "expired";
   return (
     <>
-      {!pending && (always || record.status !== "active") && (
+      {!pending && !byChoice && (always || record.status !== "active") && (
         <span className="badge badge-plain" data-mark="status">
           {optionLabel(CONTRACT_STATUSES, record.status)}
         </span>
       )}
+      {record.ends_with_term === true && <EndsWithTermMark contract={record} />}
       {pending && (
         <span className="badge" data-mark="renewal-pending" title={RENEWAL_PENDING_NOTE}>
           Renewal pending
@@ -91,6 +98,38 @@ export function StatusMarks({ record, always = false }: StatusMarksProps) {
         </span>
       )}
     </>
+  );
+}
+
+/** What is said of a contract that is not to be renewed, while its term runs. */
+export const ENDS_WITH_TERM_NOTE =
+  "Not to be renewed: it ends with this term. It covers to the end of its present term, is not lapsed after it, and is expired from the next day. A renewal takes the mark off.";
+
+/** What is said of a contract that was not to be renewed, once its term has ended. */
+export const ENDED_BY_CHOICE_NOTE =
+  "Expired by choice: it was marked to end with its term, and that term has ended. It covers nothing now, and is retired by hand once nobody needs to see it.";
+
+/**
+ * The mark of a contract that is not to be renewed: ending with its term while that
+ * runs, and expired by choice once it has ended (P-129). Nothing for any other.
+ */
+export function EndsWithTermMark({
+  contract,
+}: {
+  contract: Pick<Contract, "status"> & Partial<Pick<Contract, "ends_with_term">>;
+}) {
+  if (contract.ends_with_term !== true) return null;
+  if (contract.status === "expired") {
+    return (
+      <span className="badge" data-mark="ended-by-choice" title={ENDED_BY_CHOICE_NOTE}>
+        Expired by choice
+      </span>
+    );
+  }
+  return (
+    <span className="badge badge-plain" data-mark="ends-with-term" title={ENDS_WITH_TERM_NOTE}>
+      Ends with this term
+    </span>
   );
 }
 
@@ -365,6 +404,14 @@ export function contractSpecs(lists: ContractLists, current: Contract | null = n
       kind: "text",
       maxLength: 2000,
       ...from("support_url", "Where support is reached online: begins with https:// or http://"),
+    },
+    {
+      name: "ends_with_term",
+      label: "Not to be renewed: ends with this term",
+      kind: "boolean",
+      hint: current?.agreement
+        ? `It covers to the end of its present term, is not lapsed after it, and is expired from the next day. A renewal takes the mark off. A contract that shares the period of ${current.agreement.name} is let go when the agreement is renewed, by choosing End with this term for it there.`
+        : "It covers to the end of its present term, is not lapsed after it, and is expired from the next day, as when a site closes. A renewal takes the mark off.",
     },
     {
       name: "purchase_reference",

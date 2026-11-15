@@ -2,15 +2,18 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { ContractContacts } from "../components/ContractContacts";
 import {
   agreementSpecs,
   ContractsNav,
   contractSpecs,
   Dash,
+  EndsWithTermMark,
   Lines,
   StatusMarks,
   SupportLink,
 } from "../components/ContractParts";
+import { SelectField, TextField } from "../components/Field";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem, StaleCause } from "../components/Problem";
@@ -36,12 +39,23 @@ import {
 } from "../lib/contracts";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
-import { useLoad, useTitle } from "../lib/hooks";
+import { type Loaded, useLoad, useTitle } from "../lib/hooks";
 import { EVERY, useMoney, useTags, useVendorOptions } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
+import {
+  leftBehindText,
+  MEMBER_CHOICES,
+  type MemberDraft,
+  memberDrafts,
+  memberLabels,
+  membersBody,
+  membersText,
+} from "../lib/renewals";
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
+
+type AgreementRenewed = Schemas["AgreementRenewed"];
 
 const COLUMNS: GridColumn<Agreement>[] = [
   {
@@ -305,6 +319,15 @@ export function AgreementDetail() {
   );
   const money = useMoney();
   const navigate = useNavigate();
+  // Its contracts, read once for the table of them and for the form of a renewal.
+  const contracts = useLoad(
+    `agreement-contracts ${hid} ${record?.row_version ?? ""} ${turn}`,
+    (signal) =>
+      api.request("get", "/api/v1/contracts", {
+        query: { filter: `agreement_hid:eq:${hid}`, limit: EVERY, include_drafts: true },
+        signal,
+      }),
+  );
 
   function changed(text: string) {
     setDone(text);
@@ -413,7 +436,14 @@ export function AgreementDetail() {
               <dd className="mono">{record.hid}</dd>
             </dl>
           </section>
-          <AgreementContracts agreement={record} />
+          <ContractContacts
+            of="agreement"
+            record={record}
+            name={record.name}
+            mayEdit={mayEdit}
+            onChanged={changed}
+          />
+          <AgreementContracts agreement={record} found={contracts} />
           {open && !adding && (
             <p className="actions">
               <button type="button" onClick={() => setAdding(true)}>
@@ -442,29 +472,10 @@ export function AgreementDetail() {
             </CreateForm>
           )}
           {open && (
-            <Renew<Agreement>
-              key={`renew ${record.hid} ${record.row_version}`}
-              record={record}
-              name={record.name}
-              what="agreement"
-              follows={
-                <p>
-                  A renewal gives the agreement its new period, and its new number where it has one.
-                  It changes this one record: the contracts in it that have no dates of their own
-                  are co-termed with it and follow, and so does every item under them. Nothing is
-                  written to any of them.
-                </p>
-              }
-              submitLabel="Renew the agreement"
-              send={(body) =>
-                api.request("post", "/api/v1/agreements/{hid}/renew", {
-                  path: { hid: record.hid },
-                  body,
-                })
-              }
-              renewed={(after) =>
-                `${after.name} was renewed: ${periodText(after.starts_on, after.ends_on).toLowerCase()}. The contracts that are co-termed with it follow.`
-              }
+            <AgreementRenew
+              key={`renew ${record.hid} ${record.row_version} ${contracts.data ? "read" : ""}`}
+              agreement={record}
+              contracts={contracts.data?.items}
               onChanged={changed}
               onReload={agreement.reload}
             />
@@ -529,17 +540,13 @@ export function AgreementDetail() {
  * a contract may have from its agreement: lighter where it is the agreement's, and
  * marked where it is the contract's own in place of what the agreement has.
  */
-function AgreementContracts({ agreement }: { agreement: Agreement }) {
-  const found = useLoad(`agreement-contracts ${agreement.hid} ${agreement.row_version}`, (signal) =>
-    api.request("get", "/api/v1/contracts", {
-      query: {
-        filter: `agreement_hid:eq:${agreement.hid}`,
-        limit: EVERY,
-        include_drafts: true,
-      },
-      signal,
-    }),
-  );
+function AgreementContracts({
+  agreement,
+  found,
+}: {
+  agreement: Agreement;
+  found: Loaded<{ items: Contract[]; total: number }>;
+}) {
   const rows = found.data?.items ?? [];
   const sorting = useSorting(rows, {
     number: (contract) => contract.number,
@@ -622,6 +629,7 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
                         Lapsed
                       </span>
                     )}
+                    <EndsWithTermMark contract={contract} />
                   </td>
                   <td className="number">{contract.covered_items}</td>
                   {INHERITED.map(({ field }) => {
@@ -676,5 +684,185 @@ function AgreementContracts({ agreement }: { agreement: Agreement }) {
         </div>
       )}
     </section>
+  );
+}
+
+interface AgreementRenewProps {
+  agreement: Agreement;
+  /** Its contracts, as they were read: the members are those that share its period. */
+  contracts: readonly Contract[] | undefined;
+  onChanged: (text: string) => void;
+  onReload: () => void;
+}
+
+/**
+ * Renew an agreement, with what the renewal does with each contract that shares its
+ * period: keep its number, the default, take a new number that begins with the new
+ * term, or end with this term (P-122, P-129). The answer says what was done with each,
+ * and how many coverages of items not to be renewed were left behind.
+ */
+function AgreementRenew({ agreement, contracts, onChanged, onReload }: AgreementRenewProps) {
+  const [drafts, setDrafts] = useState<MemberDraft[]>(() => memberDrafts(contracts ?? []));
+  const numbers = Object.fromEntries((contracts ?? []).map((one) => [one.hid, one.number]));
+  const sorting = useSorting(drafts, {
+    number: (draft) => draft.number,
+    covered: (draft) => draft.covered,
+    choice: (draft) => MEMBER_CHOICES.findIndex((one) => one.value === draft.choice),
+  });
+
+  function change(hid: string, part: Partial<MemberDraft>) {
+    setDrafts((was) => was.map((draft) => (draft.hid === hid ? { ...draft, ...part } : draft)));
+  }
+
+  const form = (
+    <fieldset className="stack" data-testid="renew-members">
+      <legend>The contracts that share its period</legend>
+      {contracts === undefined ? (
+        <p role="status" className="muted loading-late">
+          Loading…
+        </p>
+      ) : drafts.length === 0 ? (
+        <p className="muted" data-testid="renew-members-none">
+          No contract shares its period: every contract in it has dates of its own, or is retired.
+        </p>
+      ) : (
+        <>
+          <p className="hint">
+            Each contract in it that is not retired and has no dates of its own shares its period.
+            For each, say what the renewal does with it.{" "}
+            {MEMBER_CHOICES.map((one) => `${one.label}: ${one.about}`).join(" ")}
+          </p>
+          <div className="scroll">
+            <table data-testid="renew-members-table">
+              <caption className="visually-hidden">
+                The contracts that share the period of {agreement.name}, each with what the renewal
+                does with it
+              </caption>
+              <thead>
+                <tr>
+                  <SortTh sort={sorting} column="number">
+                    Contract
+                  </SortTh>
+                  <SortTh sort={sorting} column="covered" className="number">
+                    Items covered
+                  </SortTh>
+                  <SortTh sort={sorting} column="choice">
+                    With the renewal
+                  </SortTh>
+                  <th scope="col">Its new term</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorting.rows.map((draft) => (
+                  <tr key={draft.hid} data-member={draft.number} data-choice={draft.choice}>
+                    <th scope="row">{draft.number}</th>
+                    <td className="number">{draft.covered}</td>
+                    <td>
+                      <SelectField
+                        label={`What the renewal does with ${draft.number}`}
+                        name={`member-${draft.hid}`}
+                        value={draft.choice}
+                        onChange={(next) =>
+                          change(draft.hid, {
+                            choice:
+                              MEMBER_CHOICES.find((one) => one.value === next)?.value ?? "same",
+                          })
+                        }
+                      >
+                        {MEMBER_CHOICES.map((one) => (
+                          <option key={one.value} value={one.value}>
+                            {one.label}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </td>
+                    <td>
+                      {draft.choice === "new_number" ? (
+                        <div className="fields">
+                          <TextField
+                            label={`New number of ${draft.number}`}
+                            name={`member-number-${draft.hid}`}
+                            value={draft.newNumber}
+                            onChange={(next) => change(draft.hid, { newNumber: next })}
+                            autoComplete="off"
+                            required
+                          />
+                          <TextField
+                            label={`Annual cost of ${draft.number}`}
+                            name={`member-cost-${draft.hid}`}
+                            value={draft.annualCost}
+                            onChange={(next) => change(draft.hid, { annualCost: next })}
+                            inputMode="decimal"
+                            autoComplete="off"
+                          />
+                          <TextField
+                            label={`Purchase reference of ${draft.number}`}
+                            name={`member-reference-${draft.hid}`}
+                            value={draft.purchaseReference}
+                            onChange={(next) => change(draft.hid, { purchaseReference: next })}
+                            autoComplete="off"
+                          />
+                        </div>
+                      ) : (
+                        <span className="muted">
+                          {draft.choice === "ends"
+                            ? "Ends with the present term, and covers to its end"
+                            : "Its number, in the new term"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </fieldset>
+  );
+
+  return (
+    <Renew<Agreement, AgreementRenewed>
+      record={agreement}
+      name={agreement.name}
+      what="agreement"
+      follows={
+        <p>
+          A renewal gives the agreement its new period, and its new number where it has one. Each
+          contract that shares its period, having no dates of its own, keeps its number and follows,
+          takes a new number that begins with the new term, or ends with this term: the form asks
+          for each. Every item under one that follows follows too, and nothing is written to any of
+          them; an item not to be renewed is left behind, its coverage ending with the present term.
+        </p>
+      }
+      submitLabel="Renew the agreement"
+      more={{
+        form,
+        body: () => {
+          if (contracts === undefined) {
+            return { ok: false, error: "Its contracts are still being read: wait a moment." };
+          }
+          const members = membersBody(drafts);
+          return members.ok ? { ok: true, value: { members: members.value } } : members;
+        },
+        labels: memberLabels(drafts),
+      }}
+      send={(body) =>
+        api.request("post", "/api/v1/agreements/{hid}/renew", {
+          path: { hid: agreement.hid },
+          body,
+        })
+      }
+      renewed={(after) =>
+        `${after.name} was renewed: ${periodText(after.starts_on, after.ends_on).toLowerCase()}. The contracts that are co-termed with it follow.`
+      }
+      afterword={(after) =>
+        [membersText(after.members, numbers), leftBehindText(after.left_behind)]
+          .filter(Boolean)
+          .join(" ")
+      }
+      onChanged={onChanged}
+      onReload={onReload}
+    />
   );
 }

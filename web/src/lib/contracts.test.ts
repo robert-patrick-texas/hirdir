@@ -3,6 +3,7 @@ import {
   agreementGives,
   agreementHint,
   agreementPath,
+  beganByLabel,
   CONTRACT_STATUSES,
   COVER_AT_ONCE,
   COVER_MOST,
@@ -24,6 +25,7 @@ import {
   nextTermText,
   overrides,
   periodText,
+  pieceSize,
   RENEW_SPECS,
   RENEWAL_PENDING,
   RENEWAL_PENDING_NOTE,
@@ -405,6 +407,31 @@ describe("a renewal that is entered early", () => {
       }),
     ).toBe("Renews on 2028-01-01, with no end named");
   });
+
+  it("says of a new number that waits on the agreement's next term whose dates it has", () => {
+    expect(
+      nextTermText({
+        number: "CON-2027-0002",
+        starts_on: "2027-01-01",
+        ends_on: "2027-12-31",
+        annual_cost: null,
+        purchase_reference: null,
+        with_agreement: true,
+      }),
+    ).toBe(
+      "Renews as CON-2027-0002 on 2027-01-01, until 2027-12-31, with the agreement's next term, whose dates these are",
+    );
+  });
+});
+
+describe("the parts of a contract's history", () => {
+  it("names what began each part", () => {
+    expect(beganByLabel("created")).toBe("Made");
+    expect(beganByLabel("renewal")).toBe("A renewal");
+    expect(beganByLabel("joined")).toBe("Joining an agreement");
+    expect(beganByLabel("left")).toBe("Leaving its agreement");
+    expect(beganByLabel(null)).toBe("");
+  });
 });
 
 describe("a renewal that is late, and a contract that has lapsed", () => {
@@ -464,6 +491,23 @@ describe("covering many items", () => {
   it("sends few in one request, and none for none", () => {
     expect(coverBatches(["i-1", "i-2"])).toEqual([["i-1", "i-2"]]);
     expect(coverBatches([])).toEqual([]);
+  });
+
+  it("sends the piece the setting max_items_per_request says", () => {
+    const hids = Array.from({ length: 450 }, (_, place) => `i-${place}`);
+    const settings = [{ key: "max_items_per_request", value: 200 }];
+    expect(pieceSize(settings)).toBe(200);
+    expect(coverBatches(hids, pieceSize(settings)).map((batch) => batch.length)).toEqual([
+      200, 200, 50,
+    ]);
+  });
+
+  it("takes the default piece until the setting is read, or where it is no count", () => {
+    expect(pieceSize(undefined)).toBe(COVER_AT_ONCE);
+    expect(pieceSize([])).toBe(COVER_AT_ONCE);
+    expect(pieceSize([{ key: "max_items_per_request", value: "many" }])).toBe(COVER_AT_ONCE);
+    expect(pieceSize([{ key: "max_items_per_request", value: 0 }])).toBe(COVER_AT_ONCE);
+    expect(coverBatches(["i-1", "i-2", "i-3"], 0)).toEqual([["i-1", "i-2", "i-3"]]);
   });
 });
 

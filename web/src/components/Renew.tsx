@@ -6,6 +6,7 @@
 // here too.
 
 import { type FormEvent, type ReactNode, useState } from "react";
+import type { Schemas } from "../api";
 import {
   type Agreement,
   type Contract,
@@ -29,7 +30,23 @@ import { Problem } from "./Problem";
 
 type Renewed = Contract | Agreement;
 
-interface RenewProps<R extends Renewed> {
+/** What a renewal sends: of an agreement, also what is done with each of its members. */
+export type RenewBody = ContractRenew & { members?: Schemas["MemberRenewal"][] };
+
+/**
+ * More that a renewal asks for than its number and its period, given by the page: the
+ * members of an agreement, each with what the renewal does with it (P-129).
+ */
+export interface RenewMore {
+  /** Shown in the form, beneath the fields of the new term. */
+  form: ReactNode;
+  /** What it adds to the body, or what is wrong with what the form holds. */
+  body: () => { ok: true; value: Partial<RenewBody> } | { ok: false; error: string };
+  /** The names of the fields the server may refuse, said by `Problem` with these labels. */
+  labels?: Readonly<Record<string, string>>;
+}
+
+interface RenewProps<R extends Renewed, A extends R = R> {
   record: R;
   /** What the record is called: the number of a contract, the name of an agreement. */
   name: string;
@@ -40,17 +57,25 @@ interface RenewProps<R extends Renewed> {
   submitLabel: string;
   /** Something to read above the form, as that a blank date is the agreement's. */
   note?: ReactNode;
-  send: (body: ContractRenew) => Promise<R>;
+  send: (body: RenewBody) => Promise<A>;
   /** What to say of a renewal that is in force at once. */
-  renewed: (record: R) => string;
+  renewed: (record: A) => string;
+  /**
+   * What more to say of the answer, whether the renewal is in force at once or kept as
+   * the next term: what was done with each member, and the coverages left behind.
+   */
+  afterword?: (record: A) => string;
+  /** More that the form asks for: the members of an agreement. */
+  more?: RenewMore;
   onChanged: (text: string) => void;
   onReload: () => void;
 }
 
 /** The term to come, the form of a renewal, and the withdrawal of a term to come. */
-export function Renew<R extends Renewed>(props: RenewProps<R>) {
+export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A>) {
   const { record, name, what, follows, submitLabel, note, send, renewed, onChanged, onReload } =
     props;
+  const { afterword, more } = props;
   const [open, setOpen] = useState(false);
   const stored = record as R & Readonly<Record<string, unknown>>;
   const [values, setValues] = useState<FormValues>(() => formOf(RENEW_SPECS, stored));
@@ -88,17 +113,19 @@ export function Renew<R extends Renewed>(props: RenewProps<R>) {
       "value" in end && typeof end.value === "string" ? end.value : null,
       day,
     );
-    const wrong = renewProblem(built.changed) || renewPeriodProblem(body, day);
+    const extra = more?.body() ?? { ok: true as const, value: {} };
+    const wrong =
+      renewProblem(built.changed) || renewPeriodProblem(body, day) || (extra.ok ? "" : extra.error);
     setProblem(wrong);
-    if (wrong) return;
-    const result = await action.run(() => send(body));
+    if (wrong || !extra.ok) return;
+    const result = await action.run(() => send({ ...body, ...extra.value }));
     if (!result.ok) return;
     const after = result.value;
-    onChanged(
-      after.next_term
-        ? `The renewal is kept as the next term. ${nextTermText(after.next_term)}. Until then ${name} keeps its present number and period.`
-        : renewed(after),
-    );
+    const said = after.next_term
+      ? `The renewal is kept as the next term. ${nextTermText(after.next_term)}. Until then ${name} keeps its present number and period.`
+      : renewed(after);
+    const besides = afterword?.(after) ?? "";
+    onChanged(besides ? `${said} ${besides}` : said);
   }
 
   async function withdraw() {
@@ -165,7 +192,12 @@ export function Renew<R extends Renewed>(props: RenewProps<R>) {
         </p>
       ) : (
         <form onSubmit={submit} className="panel stack" noValidate data-testid="renew-form">
-          <Problem error={action.error} shown={names} onReload={onReload} />
+          <Problem
+            error={action.error}
+            shown={names}
+            onReload={onReload}
+            {...(more?.labels ? { labels: more.labels } : {})}
+          />
           {problem && (
             <div className="alert alert-error" role="alert">
               <p>{problem}</p>
@@ -184,6 +216,7 @@ export function Renew<R extends Renewed>(props: RenewProps<R>) {
             Active. A period that begins after today is kept as the next term: say the day it ends,
             or leave that blank for none. The present term runs on until then.
           </p>
+          {more?.form}
           <p className="actions">
             <button
               type="submit"

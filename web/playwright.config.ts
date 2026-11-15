@@ -43,6 +43,12 @@ function workers(): number {
  */
 const HOLDS_THE_WRITER = /cover-many\.spec\.ts$/;
 const AFTER_THE_OTHERS = /stale-term\.spec\.ts$/;
+/**
+ * 0.7.0: the renewal alert is of the whole inventory, so what renewal-alert.spec.ts sees
+ * depends on every contract that any file makes. It runs by itself, once every other
+ * project has ended. See the note under the rules at the top of e2e/support.ts.
+ */
+const THE_ALERT_ALONE = /renewal-alert\.spec\.ts$/;
 
 const browsers = [
   { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -69,7 +75,7 @@ export default defineConfig({
   projects: [
     ...browsers.map((project) => ({
       ...project,
-      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS],
+      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS, THE_ALERT_ALONE],
     })),
     {
       name: "the writer alone",
@@ -81,6 +87,14 @@ export default defineConfig({
       name: "after the others",
       testMatch: AFTER_THE_OTHERS,
       dependencies: ["the writer alone"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // 0.7.0: the renewal alert, one file at a time, when nothing else changes a contract.
+    {
+      name: "the alert alone",
+      testMatch: THE_ALERT_ALONE,
+      dependencies: ["after the others"],
+      workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

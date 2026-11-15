@@ -29,6 +29,8 @@ const pages = {
   operators: () => import("./pages/Operators"),
   owners: () => import("./pages/Owners"),
   purchases: () => import("./pages/Purchases"),
+  // 0.7.0: the renewal worklist (P-127).
+  renewals: () => import("./pages/Renewals"),
   reports: () => import("./pages/Reports"),
   roles: () => import("./pages/Roles"),
   scoreboard: () => import("./pages/Scoreboard"),
@@ -66,6 +68,8 @@ const PurchaseLines = lazy(() =>
   pages.purchases().then((page) => ({ default: page.PurchaseLines })),
 );
 const Purchases = lazy(() => pages.purchases().then((page) => ({ default: page.Purchases })));
+// 0.7.0: the renewal worklist, under Contracts (P-127).
+const Renewals = lazy(() => pages.renewals().then((page) => ({ default: page.Renewals })));
 const Replacements = lazy(() =>
   pages.lifecycleReports().then((page) => ({ default: page.Replacements })),
 );
@@ -288,6 +292,15 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <Contracts />
+                </RequireRole>
+              }
+            />
+            {/* 0.7.0: the renewal worklist, under Contracts (P-127). */}
+            <Route
+              path="contracts/renewals"
+              element={
+                <RequireRole needs="viewer">
+                  <Renewals />
                 </RequireRole>
               }
             />

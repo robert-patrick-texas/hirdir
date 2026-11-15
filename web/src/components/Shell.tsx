@@ -2,6 +2,7 @@ import { Suspense, useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { useAuth } from "../auth";
 import { allows, roleLabel } from "../lib/roles";
+import { RenewalAlert } from "./RenewalAlert";
 
 /** The frame around every page: the product name, the navigation, and who is signed in. */
 export function Shell() {
@@ -108,6 +109,8 @@ export function Shell() {
           Sign out
         </button>
       </header>
+      {/* The renewal alert of 0.7.0 (P-128), under the header of every page. */}
+      <RenewalAlert />
       <main ref={main} tabIndex={-1}>
         {/* A page whose code is still on its way. It says so only if that takes a while. */}
         <Suspense

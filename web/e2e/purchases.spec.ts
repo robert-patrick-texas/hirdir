@@ -86,7 +86,7 @@ test("S32: a request with a line of ten switches: six are received, then four as
   await page.getByRole("button", { name: "Add a line" }).click();
   const newLine = region(page, `New line of ${reference}`);
   await newLine
-    .getByLabel("Model (required)")
+    .getByLabel("Model", { exact: true })
     .selectOption({ label: `${pid} (Example 9300 24-port)` });
   await newLine.getByLabel("Quantity (required)").fill("10");
   await newLine.getByRole("button", { name: "Add line" }).click();
@@ -306,7 +306,7 @@ test("D-161: an item put on a line is of its model, and what 0.6.0 let in is mar
   await page.getByRole("button", { name: "Add a line" }).click();
   const newLine = region(page, `New line of ${reference}`);
   await newLine
-    .getByLabel("Model (required)")
+    .getByLabel("Model", { exact: true })
     .selectOption({ label: `${pid} (Example 9300 24-port)` });
   await newLine.getByLabel("Quantity (required)").fill("2");
   await newLine.getByRole("button", { name: "Add line" }).click();

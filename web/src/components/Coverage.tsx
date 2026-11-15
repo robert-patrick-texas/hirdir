@@ -10,7 +10,6 @@ import { api, type Schemas } from "../api";
 import {
   CONTRACT_STATUSES,
   COUNTED_NOTE,
-  COVER_AT_ONCE,
   COVER_MOST,
   type Contract,
   type Coverage,
@@ -20,6 +19,7 @@ import {
   coverBatches,
   coverBody,
   endable,
+  pieceSize,
   RENEWAL_PENDING,
   RENEWAL_PENDING_NOTE,
   renewalPending,
@@ -27,7 +27,7 @@ import {
 import { formatTime, itemName, plural, today } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { useAction, useLoad } from "../lib/hooks";
-import { EVERY } from "../lib/lists";
+import { EVERY, useSettings } from "../lib/lists";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import { fieldErrors } from "../lib/problems";
 import { dateValue } from "../lib/sort";
@@ -604,7 +604,10 @@ export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsP
   const refused = fieldErrors(action.error, known).shown;
   const count = chosenCount(rows);
   const whom = what ?? plural(count, "item");
-  const several = count > COVER_AT_ONCE;
+  // The piece one request takes is the setting the server holds to.
+  const settings = useSettings();
+  const piece = pieceSize(settings.data);
+  const several = count > piece;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -613,7 +616,7 @@ export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsP
       const hids = rows.kind === "rows" ? rows.hids : view ? await hidsOf(view, rows.count) : [];
       let done = 0;
       let number = "the contract";
-      for (const batch of coverBatches(hids)) {
+      for (const batch of coverBatches(hids, piece)) {
         const made = await api.request("post", "/api/v1/contracts/{hid}/coverage", {
           path: { hid: contract },
           body: coverBody(batch, starts, ends),
@@ -637,7 +640,7 @@ export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsP
       <p className="hint">
         {rows.kind === "all" && `All ${plural(count, "item")} that match the filter. `}
         {several
-          ? `They go ${COVER_AT_ONCE} to a request, one request after another: each request covers all of its items, or none.`
+          ? `They go ${piece} to a request, one request after another: each request covers all of its items, or none. That is the setting max_items_per_request.`
           : "In one request: all of them, or none."}{" "}
         An item under a contract holds only the link: the number, the period and the support level
         it shows are the contract&apos;s.

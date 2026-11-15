@@ -13,7 +13,7 @@ export type CoverageSection = NonNullable<CoverageReport["section"]>;
 export type EndOfLifeSection = NonNullable<EndOfLifeReport["section"]>;
 export type EndOfLifeDate = EndOfLifeReport["date"];
 
-/** The five lists of the coverage report. */
+/** The six lists of the coverage report. */
 export const COVERAGE_SECTIONS: ReadonlyArray<{
   value: CoverageSection;
   label: string;
@@ -47,7 +47,22 @@ export const COVERAGE_SECTIONS: ReadonlyArray<{
     about:
       "Items that more than one contract covers today. A list to look at before a renewal, and not a fault: two contracts for one device are usually one too many, and now and then are meant.",
   },
+  {
+    value: "not_renewed",
+    label: "Not to be renewed",
+    about:
+      "Major items in service that no contract covers today and whose flag not to renew is in force, their own or their model's: left out of support on purpose, and no gap. Counted by model beneath.",
+  },
 ];
+
+/** One model of the items not to be renewed, as the coverage report counts them. */
+export type NotRenewedModel = Schemas["NotRenewedModel"];
+
+/** A model of the items not to be renewed as people read it: its vendor and PID, or none. */
+export function notRenewedModelLabel(row: NotRenewedModel): string {
+  if (!row.catalog_entry_hid) return "No model";
+  return [row.vendor, row.pid].filter(Boolean).join(" ");
+}
 
 export function isCoverageSection(value: string | null): value is CoverageSection {
   return COVERAGE_SECTIONS.some((section) => section.value === value);
