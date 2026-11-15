@@ -85,7 +85,12 @@ ENTRIES: tuple[tuple[Any, ...], ...] = (
         "1",
         "1450",
         "2034-04-30",
-        {},
+        # Every item of the model reaches its data sheet.
+        {
+            "links": [
+                {"url": "https://www.example.com/catalyst-9300/datasheet.pdf", "text": "Data sheet"}
+            ]
+        },
     ),
     (
         "Cisco",
@@ -516,6 +521,7 @@ SITES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
             "ship_instructions": "Dock B, weekdays 08:00 to 15:00",
             "latitude": Decimal("40.000000"),
             "longitude": Decimal("-89.000000"),
+            "links": [{"url": "https://intranet.example.net/sites/site-2", "text": "Site page"}],
             "tags": ["critical"],
         },
     ),
@@ -537,7 +543,17 @@ LOCATIONS: tuple[tuple[str, str | None, str, str, dict[str, Any]], ...] = (
         "Building 1 > Floor 1",
         "Room 102",
         "room",
-        {"notes": "The main equipment room"},
+        {
+            "notes": "The main equipment room",
+            # A link with no text shows its address.
+            "links": [
+                {
+                    "url": "https://intranet.example.net/sites/site-2/room-102/floor-plan.pdf",
+                    "text": "Floor plan",
+                },
+                {"url": "https://intranet.example.net/sites/site-2/room-102/racks", "text": ""},
+            ],
+        },
     ),
     ("Site-2", "Building 1 > Floor 1 > Room 102", "Rack A1", "rack", {}),
     ("Site-2", "Building 1", "Floor 2", "floor", {}),

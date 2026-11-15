@@ -31,6 +31,7 @@ ENTRY_FIELDS = (
     "stack_discount_pct",
     "successor_hid",
     "review_status",
+    "links",
     "record_status",
 )
 RECORD_TYPE = "catalog_entry"
@@ -227,6 +228,9 @@ def _checked_entry(
         values["successor_hid"] = successor
     if "review_status" in fields:
         values["review_status"] = _review_status(fields["review_status"])
+    if records.LINKS in fields:
+        # The links of the model: every item of it answers them.
+        values[records.LINKS] = records.checked_links(fields[records.LINKS])
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
     return values

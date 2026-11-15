@@ -1645,7 +1645,8 @@ _LINE_REGION: Any = aliased(Region, name="capacity_region")
 _CAPACITY_SITE: Any = aliased(Site, name="capacity_site")
 _CAPACITY_VENDOR: Any = aliased(Vendor, name="capacity_vendor")
 # The units of a line: its quantity times the units of one. Each is kept in
-# hundredths, so the product is in ten-thousandths.
+# hundredths, so the product is in ten-thousandths. A line that multiplies has neither,
+# and none: its units are those of the lines it applies to, in each view of the report.
 UNITS: ColumnElement[Any] = type_coerce(
     type_coerce(CapacityLine.quantity, BigInteger)
     * type_coerce(CapacityLine.units_each, BigInteger),
@@ -1656,9 +1657,11 @@ CAPACITY_LINES = Listing(
     model=CapacityLine,
     fields={
         **_bookkeeping(CapacityLine),
-        **_columns(CapacityLine, "choice", "side", "category", "record_status"),
+        **_columns(CapacityLine, "choice", "side", "category", "effect", "record_status"),
         **_columns(CapacityLine, "text", "name", "notes"),
-        **_columns(CapacityLine, "number", "quantity", "units_each", "annual_cost"),
+        **_columns(
+            CapacityLine, "number", "quantity", "units_each", "factor", "share", "annual_cost"
+        ),
         "units": Field("number", UNITS),
         **_columns(CapacityLine, "reference", "vendor_hid", "region_hid", "site_hid"),
         "vendor": Field("text", _CAPACITY_VENDOR.name),

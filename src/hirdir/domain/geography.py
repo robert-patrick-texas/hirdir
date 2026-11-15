@@ -57,6 +57,7 @@ REGION_FIELDS = (
     "parent_region_hid",
     *SHIPPING,
     "operator_hid",
+    "links",
     "notes",
     "record_status",
 )
@@ -71,6 +72,7 @@ SITE_FIELDS = (
     "operator_hid",
     "latitude",
     "longitude",
+    "links",
     "notes",
     "record_status",
 )
@@ -86,6 +88,7 @@ LOCATION_FIELDS = (
     "operator_hid",
     "latitude",
     "longitude",
+    "links",
     "notes",
     "record_status",
 )
@@ -598,6 +601,12 @@ def _status(fields: dict[str, Any], values: dict[str, Any]) -> None:
         values["record_status"] = records.checked_status(fields["record_status"])
 
 
+def _links(fields: dict[str, Any], values: dict[str, Any]) -> None:
+    """Take the links of a place: its own, changed whole. A place inherits none."""
+    if records.LINKS in fields:
+        values[records.LINKS] = records.checked_links(fields[records.LINKS])
+
+
 def _brought_back(
     db: Session, record: Any | None, values: dict[str, Any], within: Sequence[tuple[Any, str]]
 ) -> None:
@@ -628,6 +637,7 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
     _texts(fields, values, (*SHIPPING, "notes"))
     _operator(db, fields, values, region)
     _status(fields, values)
+    _links(fields, values)
     if "parent_region_hid" in fields:
         parent_hid = fields["parent_region_hid"] or None
         if parent_hid is not None:
@@ -670,6 +680,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     _operator(db, fields, values, site)
     _coordinates(fields, values, site)
     _status(fields, values)
+    _links(fields, values)
     if "region_hid" in fields:
         _linked(db, Region, "region_hid", fields["region_hid"], site, "region")
         values["region_hid"] = fields["region_hid"]
@@ -718,6 +729,7 @@ def _checked_location(
     _operator(db, fields, values, location)
     _coordinates(fields, values, location)
     _status(fields, values)
+    _links(fields, values)
     if "kind" in fields:
         kind = records.clean(fields["kind"])
         values["kind"] = choices.checked(db, KIND_LIST, kind, "kind") if kind else None

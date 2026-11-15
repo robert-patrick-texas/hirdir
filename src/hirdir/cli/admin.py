@@ -96,7 +96,8 @@ def serve(
     # The application's own gateway reads the proxy's headers, and only from the
     # proxies named in the configuration. Uvicorn must leave them alone: if it
     # rewrote the client address first, the gateway would no longer see the proxy.
-    uvicorn.run(create_app(config), host=host, port=port, server_header=False, proxy_headers=False)
+    app = create_app(config, scheduled=True)
+    uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
 
 
 @admin.command()

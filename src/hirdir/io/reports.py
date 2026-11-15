@@ -410,6 +410,16 @@ def weight_steps(db: Session, include_drafts: bool = False) -> int:
     return _sums(db, terms, terms.weight).get(None, [0, 0])[0]
 
 
+def weight_steps_by_region(db: Session, include_drafts: bool = False) -> dict[str | None, int]:
+    """Return the support weight of the items at or beneath each region, by the
+    location in force, in the steps `weight_steps` sums in, as the summary by `region`
+    counts it: an item is in the row of each region above it. The items that are
+    nowhere are under None. Only a region that holds an item of the view is named."""
+    terms = _terms(db, None, False, include_drafts)
+    key, _, join = _grouping("region")
+    return {region: sums[0] for region, sums in _sums(db, terms, terms.weight, key, join).items()}
+
+
 def _sums(
     db: Session, terms: _Terms, amounts: tuple[Any, ...], key: Any = None, join: Any = None
 ) -> dict[Any, list[int]]:

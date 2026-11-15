@@ -16,6 +16,7 @@ from hirdir.db.models import (
     Address,
     Agreement,
     CapacityLine,
+    CapacityRecord,
     CatalogEntry,
     Choice,
     Contact,
@@ -893,7 +894,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 },
                 catalog=None
                 if entry is None
-                else shapes.CatalogRef(
+                else shapes.ItemCatalog(
                     hid=entry.hid,
                     vendor_hid=entry.vendor_hid,
                     vendor=vendors[entry.vendor_hid].name,
@@ -902,6 +903,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     kind=entry.kind,
                     type=entry.type,
                     function=entry.function,
+                    # The links of its model: an item has none of its own.
+                    links=entry.links,
                 ),
                 owner=None if owner is None else _owner_ref(owner),
                 **_exception(owner_in_force),
@@ -1659,12 +1662,21 @@ def capacity_lines_out(db: Session, found: list[CapacityLine]) -> list[shapes.Ca
     sites = _site_refs(db, {line.site_hid for line in found})
     called = {one.value: one.label for one in choices.list_choices(db, capacity.CATEGORY_LIST)}
     today = contracts.today(db)
-    shaped = ("category_label", "units", "vendor", "region", "site", "in_date")
+    targets = capacity.targets_of(db, [line.hid for line in found if capacity.multiplies(line)])
+    named = _by_hid(db, CapacityLine, {hid for hids in targets.values() for hid in hids})
+    shaped = ("category_label", "units", "applies_to", "vendor", "region", "site", "in_date")
     return [
         shapes.CapacityLineOut(
             **_own(line, shapes.CapacityLineOut, shaped),
             category_label=called.get(line.category, line.category),
-            units=capacity.units(line),
+            units=None if capacity.multiplies(line) else capacity.units(line),
+            applies_to=sorted(
+                (
+                    shapes.CapacityLineRef(hid=hid, name=named[hid].name)
+                    for hid in targets.get(line.hid, [])
+                ),
+                key=lambda ref: records.key(ref.name),
+            ),
             vendor=_vendor_ref(vendors[line.vendor_hid]) if line.vendor_hid else None,
             region=regions.get(line.region_hid or ""),
             site=sites.get(line.site_hid or ""),
@@ -1677,6 +1689,23 @@ def capacity_lines_out(db: Session, found: list[CapacityLine]) -> list[shapes.Ca
 def capacity_out(found: balance.Balance) -> shapes.CapacityOut:
     """Return the capacity balance."""
     return shapes.CapacityOut.model_validate(found)
+
+
+def capacity_records_out(found: list[CapacityRecord]) -> list[shapes.CapacityRecordOut]:
+    """Return records of the balance, with the balance and the coverage of each view
+    worked out from its demand and its supply."""
+    return [
+        shapes.CapacityRecordOut(
+            **_own(record, shapes.CapacityRecordOut, capacity.VIEWS),
+            **{
+                view: shapes.CapacityRecordView.model_validate(
+                    capacity.figures(getattr(record, view))
+                )
+                for view in capacity.VIEWS
+            },
+        )
+        for record in found
+    ]
 
 
 # --- the reports that look ahead -----------------------------------------------------

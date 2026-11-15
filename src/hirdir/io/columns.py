@@ -2,8 +2,9 @@
 
 A value has three forms. In a CSV file it is the text of a cell. In JSON, in a stored
 preview and in a list of changes it is *plain*: text, a whole number, true or false, a
-list of text, with a date as `YYYY-MM-DD` and a decimal as text. The rules work on the
-*typed* form: dates and decimals as Python has them.
+list of text, with a date as `YYYY-MM-DD`, a decimal as text and links as the text a
+cell holds. The rules work on the *typed* form: dates and decimals as Python has them,
+and links as a list of an `url` and a `text` each.
 """
 
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ CLEAR_MARK = "!clear"
 FORMULA_STARTS = ("=", "+", "-", "@")
 LIST_SEPARATOR = ";"
 MAX_LIST = 100
+# A link in a file is its text and then its address within these two.
+LINK_OPEN, LINK_CLOSE = "<", ">"
+MAX_LINKS = 20
 BIGGEST_AMOUNT = Decimal(10) ** 13
 BIGGEST_WHOLE = 1_000_000_000
 TRUE_WORDS = ("true", "yes", "1")
@@ -33,8 +37,9 @@ class Unreadable(ValueError):
 class Column:
     """One column of a file.
 
-    `kind` is text, integer, boolean, date, money, number, degrees, list or timestamp. `limit`
-    is the longest text the column takes, or the longest entry of a list. A column that
+    `kind` is text, integer, boolean, date, money, number, degrees, list, links or
+    timestamp. `limit` is the longest text the column takes, or the longest entry of a
+    list; links have limits of their own, which the rules hold. A column that
     is not `settable` is written by an export and passed over by an import. One that is
     not `listed` is taken by an import, and written by an export only when it is asked
     for by name: what it holds is in a file of its own already.
@@ -154,6 +159,42 @@ def _entries(column: Column, value: Any) -> list[str]:
     return [_text(column, part) for part in parts if part.strip()]
 
 
+def links_of(text: str) -> list[dict[str, str]]:
+    """Return the links a file writes as text, in their order: each `text <url>`, or
+    `<url>` with no text, joined with `;`. The text of a link runs to its `<`, so it may
+    hold a `;`, and each link ends with its `>`. The rules decide what an address and a
+    text may be; this reads where each begins and ends."""
+    links: list[dict[str, str]] = []
+    rest = text.strip()
+    while rest:
+        number = len(links) + 1
+        opened = rest.find(LINK_OPEN)
+        closed = rest.find(LINK_CLOSE, opened + 1) if opened >= 0 else -1
+        if closed < 0:
+            raise Unreadable(f"link {number} is not written as text <url>")
+        links.append({"url": rest[opened + 1 : closed].strip(), "text": rest[:opened].strip()})
+        rest = rest[closed + 1 :].lstrip()
+        if rest and not rest.startswith(LIST_SEPARATOR):
+            raise Unreadable(f"link {number} is followed by something other than ;")
+        rest = rest[len(LIST_SEPARATOR) :].lstrip()
+    if len(links) > MAX_LINKS:
+        raise Unreadable(f"at most {MAX_LINKS} links")
+    return links
+
+
+def links_text(links: list[dict[str, Any]]) -> str:
+    """Write links as a file holds them: each `text <url>`, joined with `; `."""
+    return "; ".join(
+        f"{link.get('text') or ''} {LINK_OPEN}{link['url']}{LINK_CLOSE}".lstrip() for link in links
+    )
+
+
+def _links(value: Any) -> str:
+    if not isinstance(value, str):
+        raise Unreadable("links as text: each text <url>, joined with ;")
+    return links_text(links_of(value))
+
+
 def decimal_text(column: Column, number: Decimal) -> str:
     """Write a decimal as every interface shows it: money with two places, the rest plain."""
     if column.kind == "money":
@@ -178,6 +219,8 @@ def read(column: Column, value: Any) -> Any:
         return _degrees(value)
     if kind == "list":
         return _entries(column, value)
+    if kind == "links":
+        return _links(value)
     if isinstance(value, bool) or not isinstance(value, str | int):
         raise Unreadable("text")
     return _text(column, str(value))
@@ -233,11 +276,15 @@ def typed(column: Column, value: Any) -> Any:
         return datetime.fromisoformat(value)
     if column.kind in ("money", "number", "degrees"):
         return Decimal(value)
+    if column.kind == "links":
+        return links_of(value)
     return value
 
 
 def plain(column: Column, value: Any) -> Any:
     """Return a typed value in the form a file, a preview and a list of changes hold."""
+    if column.kind == "links" and isinstance(value, list):
+        return links_text(value)
     if isinstance(value, Decimal):
         return decimal_text(column, value)
     if isinstance(value, datetime | date):

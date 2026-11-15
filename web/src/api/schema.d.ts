@@ -716,6 +716,158 @@ export interface paths {
       };
     };
   };
+  "/api/v1/capacity-records": {
+    /**
+     * List the records of the balance, one for each week, the oldest first unless a
+     * sort says otherwise.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** What to sort by: `week_of`, `recorded_at`, `active.demand`, `active.supply`, `active.balance`, `active.coverage_pct`, `with_drafts.demand`, `with_drafts.supply`, `with_drafts.balance`, `with_drafts.coverage_pct`, `adjusted`, `note`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CapacityRecordOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Record the balance of the whole installation as it is now. The record of this
+     * week, by the application's time zone, is replaced: what it held is in its audit
+     * event.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CapacityRecordCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CapacityRecordOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/capacity-records/{hid}": {
+    /** Return one record of the balance. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityRecordOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Remove a record of the balance that was a mistake. The audit event of the removal
+     * holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Correct the demand and the supply of a saved week, with a note that says why.
+     * The record is then marked `adjusted`.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CapacityRecordPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityRecordOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/catalog-entries": {
     /** List catalog entries, by vendor and PID unless a sort says otherwise. */
     get: {
@@ -6128,47 +6280,72 @@ export interface components {
       lines: number;
       units: string;
     };
+    /** The two figures of one view of a record that a person may correct. */
+    CapacityFigures: {
+      demand?: string | null;
+      supply?: string | null;
+    };
     /** A new capacity line. */
     CapacityLineCreate: {
       annual_cost?: string | null;
+      /** The staff lines that a line that multiplies works on: at least one. */
+      applies_to?: string[];
       /** A value of the capacity_category list. Left out on a demand line. */
       category?: string | null;
+      /** `multiply` only for a supply line of the category tools or services. */
+      effect?: "add" | "multiply";
       ends_on?: string | null;
+      /** At least 1, on a line that multiplies. */
+      factor?: string | null;
       name: string;
       notes?: string | null;
-      quantity?: string;
+      /** Left out, 1 on a line that adds. Blank on one that multiplies. */
+      quantity?: string | null;
       record_status?: "draft" | "active";
       region_hid?: string | null;
+      /** Left out, 1 on a line that multiplies. */
+      share?: string | null;
       side: "supply" | "demand";
       site_hid?: string | null;
       starts_on?: string | null;
-      units_each: string;
+      /** Required on a line that adds. Blank on one that multiplies. */
+      units_each?: string | null;
       vendor_hid?: string | null;
     };
     /** A source of resource units, or a call on them other than the infrastructure. */
     CapacityLineOut: {
       annual_cost: string | null;
+      /** A line that multiplies: the staff lines it works on, by name. */
+      applies_to: components["schemas"]["CapacityLineRef"][];
       category: string;
       category_label: string;
       created_at: string;
+      /** `add` a fixed amount, or `multiply` the staff lines of `applies_to`. */
+      effect: "add" | "multiply";
       ends_on: string | null;
+      /** A line that multiplies: how much more one person does with it. */
+      factor: string | null;
       hid: string;
       /** It counts today: not before it starts, not after it ends. */
       in_date: boolean;
       name: string;
       notes: string | null;
-      quantity: string;
+      /** Blank on a line that multiplies. */
+      quantity: string | null;
       record_status: "draft" | "active" | "retired";
       region: components["schemas"]["PlaceRef"] | null;
       region_hid: string | null;
       row_version: number;
+      /** A line that multiplies: the share of the positions that use it. */
+      share: string | null;
       side: "supply" | "demand";
       site: components["schemas"]["PlaceRef"] | null;
       site_hid: string | null;
       starts_on: string | null;
-      /** `quantity` times `units_each`. */
-      units: string;
-      units_each: string;
+      /** `quantity` times `units_each`. Blank on a line that multiplies, whose units are those of the lines it applies to in each view: see `GET /reports/capacity`. */
+      units: string | null;
+      /** Blank on a line that multiplies. */
+      units_each: string | null;
       updated_at: string;
       vendor: components["schemas"]["VendorRef"] | null;
       vendor_hid: string | null;
@@ -6176,18 +6353,31 @@ export interface components {
     /** Fields of a capacity line to change, and the version they were read at. */
     CapacityLinePatch: {
       annual_cost?: string | null;
+      /** Changed whole. */
+      applies_to?: string[] | null;
       category?: string | null;
+      effect?: "add" | "multiply" | null;
       ends_on?: string | null;
+      factor?: string | null;
       name?: string | null;
       notes?: string | null;
       quantity?: string | null;
       record_status?: "draft" | "active" | null;
       region_hid?: string | null;
       row_version: number;
+      share?: string | null;
       site_hid?: string | null;
       starts_on?: string | null;
       units_each?: string | null;
       vendor_hid?: string | null;
+    };
+    /**
+     * A capacity line, as named on another: a staff line that one which multiplies
+     * works on.
+     */
+    CapacityLineRef: {
+      hid: string;
+      name: string;
     };
     /** Demand against supply for the whole installation, with and without the drafts. */
     CapacityOut: {
@@ -6195,6 +6385,58 @@ export interface components {
       as_of: string;
       weight_per_resource_unit: string;
       with_drafts: components["schemas"]["CapacityView"];
+    };
+    /** A record of the balance as it is now, which replaces the record of this week. */
+    CapacityRecordCreate: {
+      note?: string | null;
+    };
+    /** The capacity balance as it was in a week, kept to show the trend. */
+    CapacityRecordOut: {
+      active: components["schemas"]["CapacityRecordView"];
+      /** A person has corrected the figures. */
+      adjusted: boolean;
+      created_at: string;
+      hid: string;
+      note: string | null;
+      recorded_at: string;
+      row_version: number;
+      updated_at: string;
+      /** The Monday that begins the week, in the time zone. */
+      week_of: string;
+      weight_per_resource_unit: string;
+      with_drafts: components["schemas"]["CapacityRecordView"];
+    };
+    /** A correction of a saved week, with why, and the version it was read at. */
+    CapacityRecordPatch: {
+      active?: components["schemas"]["CapacityFigures"] | null;
+      /** Why the figures are corrected. */
+      note: string;
+      row_version: number;
+      with_drafts?: components["schemas"]["CapacityFigures"] | null;
+    };
+    /** The balance of one view as a record of a week keeps it. */
+    CapacityRecordView: {
+      /** Supply less demand, worked out when it is read. */
+      balance: string;
+      by_category: components["schemas"]["CapacityCategory"][];
+      /** Supply over demand, worked out when it is read. Blank with no demand. */
+      coverage_pct: string | null;
+      demand: string;
+      infrastructure_demand: string;
+      other_demand: string;
+      outside_units: string;
+      own_units: string;
+      supply: string;
+      support_weight: string;
+    };
+    /** A staff line that a line which multiplies works on, as the view counts it. */
+    CapacityTarget: {
+      /** It counts in this view: active, or a draft with the drafts, and in date. */
+      counted: boolean;
+      hid: string;
+      name: string;
+      /** Its units in this view, nothing when it is not counted. */
+      units: string;
     };
     /** The balance of one view. */
     CapacityView: {
@@ -6206,7 +6448,11 @@ export interface components {
       /** Supply over demand. Blank with no demand. */
       coverage_pct: string | null;
       demand: string;
+      /** Each region that holds an item of the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions. */
+      demand_by_region: components["schemas"]["RegionDemand"][];
       infrastructure_demand: string;
+      /** The lines that multiply and count in this view, by name. */
+      multiplying_lines: components["schemas"]["MultiplyingLine"][];
       other_demand: string;
       outside_units: string;
       own_share_pct: string | null;
@@ -6230,6 +6476,8 @@ export interface components {
       function?: string | null;
       kind?: string;
       ldos?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][];
       model_name?: string | null;
       pid: string;
       record_status?: "draft" | "active";
@@ -6255,6 +6503,8 @@ export interface components {
       hid: string;
       kind: string;
       ldos: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links: components["schemas"]["Link"][];
       model_name: string | null;
       pid: string;
       record_status: "draft" | "active" | "retired";
@@ -6280,6 +6530,8 @@ export interface components {
       function?: string | null;
       kind?: string | null;
       ldos?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][] | null;
       model_name?: string | null;
       pid?: string | null;
       record_status?: "draft" | "active" | null;
@@ -7130,6 +7382,19 @@ export interface components {
       /** Its number in the file, from 1. */
       row: number;
     };
+    /** The catalog entry of an item, with the links of the model. */
+    ItemCatalog: {
+      function: string | null;
+      hid: string;
+      kind: string;
+      /** The links of the model, in order. */
+      links: components["schemas"]["Link"][];
+      model_name: string | null;
+      pid: string;
+      type: string | null;
+      vendor: string;
+      vendor_hid: string;
+    };
     /**
      * A new item. Only what identifies it is needed: a serial number with a catalog
      * entry, or an asset tag, a name or a hostname. Everything else may be left blank.
@@ -7215,7 +7480,7 @@ export interface components {
       addresses: components["schemas"]["AddressRef"][];
       annual_support_cost: string | null;
       asset_tag: string | null;
-      catalog: components["schemas"]["CatalogRef"] | null;
+      catalog: components["schemas"]["ItemCatalog"] | null;
       catalog_entry_hid: string | null;
       comments: string | null;
       /** The state of the hardware, as a person knows it. */
@@ -7416,6 +7681,22 @@ export interface components {
       next_states?: string[] | null;
       row_version: number;
     };
+    /** An address to reach about a record, with the text to show for it. */
+    Link: {
+      /** Blank where the address itself is shown. */
+      text: string;
+      url: string;
+    };
+    /**
+     * A link of a record: an address on the web, and the text to show for it. What each
+     * may be is checked as a rule, and a refusal names the link.
+     */
+    LinkIn: {
+      /** At most 200 characters, with no `<` or `>`. Blank, the address is shown. */
+      text?: string | null;
+      /** Begins with https:// or http://, with no space, `<` or `>`; 2,000 at most. */
+      url: string;
+    };
     /** What a list route takes, as a body, for a filter too large for a URL. */
     ListQuery: {
       /** Only these fields of each record. `hid` and `row_version` always come. */
@@ -7441,6 +7722,8 @@ export interface components {
       /** A value of the location_kind list. */
       kind?: string | null;
       latitude?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][];
       longitude?: string | null;
       name: string;
       notes?: string | null;
@@ -7476,6 +7759,8 @@ export interface components {
       items: number;
       kind: string | null;
       latitude: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links: components["schemas"]["Link"][];
       /** How many locations are directly in it, retired aside. */
       locations: number;
       longitude: string | null;
@@ -7518,6 +7803,8 @@ export interface components {
       country?: string | null;
       kind?: string | null;
       latitude?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][] | null;
       longitude?: string | null;
       name?: string | null;
       notes?: string | null;
@@ -7624,6 +7911,19 @@ export interface components {
       position: number | null;
       role: string;
       type: string;
+    };
+    /** A line that multiplies, the staff lines it works on, and what it adds to them. */
+    MultiplyingLine: {
+      applies_to: components["schemas"]["CapacityTarget"][];
+      /** The units of the lines it works on that count. */
+      base_units: string;
+      category: string;
+      factor: string;
+      hid: string;
+      name: string;
+      share: string;
+      /** `factor` less 1, times `share`, times `base_units`: its gain. */
+      units: string;
     };
     /** A new network label. */
     NetworkCreate: {
@@ -7822,6 +8122,12 @@ export interface components {
     };
     Page_CapacityLineOut_: {
       items: components["schemas"]["CapacityLineOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CapacityRecordOut_: {
+      items: components["schemas"]["CapacityRecordOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -8208,6 +8514,8 @@ export interface components {
     /** A new region. */
     RegionCreate: {
       code?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][];
       name: string;
       notes?: string | null;
       operator_hid?: string | null;
@@ -8223,11 +8531,28 @@ export interface components {
       ship_state?: string | null;
       tags?: string[];
     };
+    /**
+     * Where the work is: the support weight at or beneath one region, or of the items
+     * that are nowhere.
+     */
+    RegionDemand: {
+      infrastructure_demand: string;
+      /** Blank for a region at the top. */
+      parent_region_hid: string | null;
+      path: string | null;
+      /** Blank for the items that are nowhere. */
+      region_hid: string | null;
+      /** Its share of the whole support weight. Blank when there is none. */
+      share_pct: string | null;
+      support_weight: string;
+    };
     /** A part of the world that sites are in. */
     RegionOut: {
       code: string | null;
       created_at: string;
       hid: string;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links: components["schemas"]["Link"][];
       name: string;
       notes: string | null;
       /** Its own operator. */
@@ -8255,6 +8580,8 @@ export interface components {
     /** Fields of a region to change, and the version they were read at. */
     RegionPatch: {
       code?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][] | null;
       name?: string | null;
       notes?: string | null;
       operator_hid?: string | null;
@@ -8494,6 +8821,8 @@ export interface components {
       code?: string | null;
       country?: string | null;
       latitude?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][];
       longitude?: string | null;
       name: string;
       notes?: string | null;
@@ -8522,6 +8851,8 @@ export interface components {
       created_at: string;
       hid: string;
       latitude: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links: components["schemas"]["Link"][];
       /** How many locations it has, retired ones aside. */
       locations: number;
       longitude: string | null;
@@ -8557,6 +8888,8 @@ export interface components {
       code?: string | null;
       country?: string | null;
       latitude?: string | null;
+      /** Up to 20, in order, changed whole: an empty list has none. */
+      links?: components["schemas"]["LinkIn"][] | null;
       longitude?: string | null;
       name?: string | null;
       notes?: string | null;

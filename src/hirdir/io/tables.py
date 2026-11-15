@@ -22,6 +22,7 @@ from hirdir.db import dialect
 from hirdir.db.models import (
     Address,
     AuditEvent,
+    CapacityRecord,
     CatalogEntry,
     DeviceGroup,
     DeviceGroupMember,
@@ -246,6 +247,38 @@ DUPLICATES = Table(
     ),
 )
 
+# --- the records of the capacity balance ------------------------------------------------
+
+
+def _figures(view: str) -> dict[str, Field]:
+    """Return the fields of one view of a record of the balance: its demand and supply,
+    as kept, and its balance and coverage, worked out from them as the page shows them."""
+    column = getattr(CapacityRecord, view)
+    demand = dialect.number_in_json(column, "demand")
+    supply = dialect.number_in_json(column, "supply")
+    return {
+        f"{view}.demand": Field("number", ordered_by=demand),
+        f"{view}.supply": Field("number", ordered_by=supply),
+        f"{view}.balance": Field("number", ordered_by=supply - demand),
+        # Blank where there is no demand, as the record shows it.
+        f"{view}.coverage_pct": Field(
+            "number", ordered_by=case((demand > 0, supply * 100 / demand))
+        ),
+    }
+
+
+CAPACITY_RECORDS = Table(
+    CapacityRecord,
+    {
+        "week_of": Field("date", CapacityRecord.week_of),
+        "recorded_at": Field("timestamp", CapacityRecord.recorded_at),
+        **_figures("active"),
+        **_figures("with_drafts"),
+        "adjusted": Field("boolean", CapacityRecord.adjusted),
+        "note": Field("text", CapacityRecord.note),
+    },
+)
+
 TABLES: tuple[Table, ...] = (
     USERS,
     AUDIT_EVENTS,
@@ -255,6 +288,7 @@ TABLES: tuple[Table, ...] = (
     GROUP_MEMBERS,
     CHILDREN,
     DUPLICATES,
+    CAPACITY_RECORDS,
 )
 
 

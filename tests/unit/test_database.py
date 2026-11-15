@@ -504,4 +504,4 @@ def test_every_list_is_built_before_the_first_request() -> None:
 
     assert fields.warm() == len(fields.LISTINGS) == 25
     # And those of the tables that are paged and are no list, with every sort they take.
-    assert tables.warm() == len(tables.TABLES) == 8
+    assert tables.warm() == len(tables.TABLES) == 9

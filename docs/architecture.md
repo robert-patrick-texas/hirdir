@@ -39,6 +39,7 @@ cut. See [release-process.md](release-process.md).
 src/hirdir/
   __init__.py        the version, and nothing else
   app.py             application factory, middleware, static UI
+  schedule.py        what the server does by itself at set times
   config.py          /etc/hirdir/config.toml and its defaults
   db/                engine, models, dialect helpers, migrations/
   domain/            the rules: inheritance, lifecycle, matching, counting, geography
@@ -224,6 +225,20 @@ rendered as text, never as HTML.
   and PostgreSQL uses `now()` in the zone.
 - **Writes.** A request's changes are committed when its route returns and before any
   of the answer is sent. Every update of a row names the `row_version` it was read at.
+- **What the server does by itself.** A few things are done at set times, by the
+  server and not by a request: the record of the capacity balance each Monday just
+  after midnight. `hirdir/schedule.py` holds them as a list of jobs, each a name, when
+  it is due and what it does, run by a scheduler in the server's own process. The
+  scheduler is started with the application and stopped with it. When the server
+  starts, the jobs that run at start are run before the first request is answered, and
+  then a thread of its own wakes once a minute and runs, each with a session of its
+  own and as one writer among the others, every job that has come due since it last
+  looked, by the clock of the `time_zone` setting. What a job writes is audited with
+  `via` of `system`. A job that fails is logged and tried again a minute later. A time
+  that passed while the server was stopped is not made up for, so a job that must not
+  miss one also runs at start and looks for what is missing: the server records the
+  balance when it starts in a week that has no record. The tests run a job for a
+  moment they choose, through `run_due`, and do not wait for a Monday.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. A backup is named
   for when it was made, in the application's time zone with its offset from UTC:
