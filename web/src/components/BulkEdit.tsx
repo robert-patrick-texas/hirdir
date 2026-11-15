@@ -174,6 +174,15 @@ function bulkFields(
       }),
     ),
     {
+      // Its own word on renewing its support (P-131): cleared, it has its model's again.
+      name: "do_not_renew",
+      label: "Not to be renewed",
+      kind: "tristate",
+      blank: "Choose yes or no",
+      clearable: true,
+      hint: "Yes leaves each item behind when its contract is renewed, its coverage ending with the present term. Cleared, an item has its model's word again.",
+    },
+    {
       name: "record_status",
       label: "Record status",
       kind: "choice",

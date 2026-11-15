@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
-import { any } from "../lib/filter";
+import { all, any, type FilterNode } from "../lib/filter";
 import { itemName } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useAction, useLoad } from "../lib/hooks";
@@ -23,19 +23,21 @@ async function findLines(typed: string, signal: AbortSignal): Promise<Found | nu
   if (value === "") return null;
   // A line is typed as it is named, RITM0012345/2: the request is what is searched for.
   const [reference = "", number = ""] = value.split("/");
+  const matched: FilterNode | null = /^\d+$/.test(number.trim())
+    ? {
+        and: [
+          { field: "request.reference", op: "contains", value: reference.trim() },
+          { field: "line", op: "eq", value: Number.parseInt(number.trim(), 10) },
+        ],
+      }
+    : any(
+        { field: "request.reference", op: "contains", value: reference.trim() || value },
+        { field: "catalog.pid", op: "contains", value },
+      );
   const page = await api.request("get", "/api/v1/purchase-lines", {
     query: queryParams({
-      filter: /^\d+$/.test(number.trim())
-        ? {
-            and: [
-              { field: "request.reference", op: "contains", value: reference.trim() },
-              { field: "line", op: "eq", value: Number.parseInt(number.trim(), 10) },
-            ],
-          }
-        : any(
-            { field: "request.reference", op: "contains", value: reference.trim() || value },
-            { field: "catalog.pid", op: "contains", value },
-          ),
+      // A line that is not tracked takes no item, so it is not offered to one.
+      filter: all(matched, { field: "tracked", op: "eq", value: true }),
       sort: ["request.reference", "line"],
       limit: PICK_LIMIT,
       offset: 0,

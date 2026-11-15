@@ -9,18 +9,49 @@ import {
   isCoverageSection,
   isEndOfLifeDate,
   isEndOfLifeSection,
+  notRenewedModelLabel,
 } from "./lifecycleReports";
 
 describe("the lists of the coverage report", () => {
-  it("are the five the server answers, the gaps first", () => {
+  it("are the six the server answers, the gaps first", () => {
     expect(COVERAGE_SECTIONS.map((section) => section.value)).toEqual([
       "uncovered",
       "expiring",
       "out_of_service",
       "renewal_pending",
       "overlapping",
+      "not_renewed",
     ]);
     for (const section of COVERAGE_SECTIONS) expect(section.about).not.toBe("");
+  });
+
+  it("say of what is not to be renewed that it is no gap", () => {
+    const left = COVERAGE_SECTIONS.find((section) => section.value === "not_renewed");
+    expect(left?.about).toContain("no gap");
+    expect(isCoverageSection("not_renewed")).toBe(true);
+  });
+
+  it("name a model of the items not to be renewed by its vendor and PID, or say it has none", () => {
+    const row = {
+      catalog_entry_hid: "e-1",
+      vendor_hid: "v-1",
+      vendor: "Example Voice",
+      pid: "EV-PHONE-10",
+      model_name: "Example desk phone",
+      count: 6,
+      filter: null,
+    };
+    expect(notRenewedModelLabel(row)).toBe("Example Voice EV-PHONE-10");
+    expect(
+      notRenewedModelLabel({
+        ...row,
+        catalog_entry_hid: null,
+        vendor_hid: null,
+        vendor: null,
+        pid: null,
+        model_name: null,
+      }),
+    ).toBe("No model");
   });
 
   it("say of the items under more than one contract that they are no fault", () => {

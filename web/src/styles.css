@@ -1463,6 +1463,53 @@ main:has(.geography) {
   margin: 0 0 0.35rem;
 }
 
+/* --- 0.7.0: the renewal alert and the renewal worklist (P-127, P-128) ----------------- */
+
+/* The renewal alert, under the header of every page until it is dismissed. */
+.renewal-alert {
+  /* As wide as the content of the page beneath it. */
+  margin: 0.75rem max(1rem, calc((100% - 76rem) / 2)) 0;
+  padding: 0.5rem 0.9rem;
+  background: var(--warn-surface);
+  border: 1px solid var(--warn);
+  border-left-width: 4px;
+  border-radius: 4px;
+}
+
+.renewal-alert p {
+  margin: 0 0 0.35rem;
+}
+
+.renewal-alert-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  list-style: none;
+}
+
+.renewal-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.renewal-alert .badge {
+  margin-left: 0.35rem;
+}
+
+/* A count of the worklist that leads to its rows: a button that looks like the number. */
+.count-link {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A part of a contract's history and what began it, beside its days. */
+.began-by {
+  white-space: nowrap;
+}
+
 /* === 0.7.0: an apply in the background, the trend of the capacity balance, links === */
 
 /* --- an apply in the background --------------------------------------------------- */

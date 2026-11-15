@@ -60,6 +60,13 @@
 //      minor-items.spec.ts, stack.spec.ts and wireless.spec.ts do with what they share
 //      in structure.ts.
 
+// 0.7.0, the renewal alert (P-128): whether the banner shows depends on every contract
+// of the inventory, so renewal-alert.spec.ts reads what every other file changes, which
+// rule 4 forbids beside them. It runs in the project "the alert alone" of
+// playwright.config.ts, by itself, after "after the others". Every other file may find
+// the banner on its pages, as an account of its own has seen nothing: it is a region
+// named "Renewals to act on", and a file looks within its own regions, as it does.
+
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import {

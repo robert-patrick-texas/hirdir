@@ -39,6 +39,21 @@ export const LAPSED_NOTE =
 /** The contracts that have lapsed, in the grid of contracts. */
 export const LAPSED = "lapsed:eq:true";
 
+/** What began a part of the history of a contract or an agreement (P-130). */
+export type BeganBy = Schemas["ContractTerm"]["began_by"];
+
+const BEGAN_BY: Readonly<Record<BeganBy, string>> = {
+  created: "Made",
+  renewal: "A renewal",
+  joined: "Joining an agreement",
+  left: "Leaving its agreement",
+};
+
+/** What began a part of a contract's history, as people read it. */
+export function beganByLabel(began: BeganBy | null | undefined): string {
+  return began ? (BEGAN_BY[began] ?? began) : "";
+}
+
 /** The term of a contract or an agreement that is still to begin. */
 export type NextTerm = NonNullable<Contract["next_term"]>;
 
@@ -50,7 +65,12 @@ export type NextTerm = NonNullable<Contract["next_term"]>;
 export function nextTermText(next: NextTerm): string {
   const as = next.number ? `Renews as ${next.number}` : "Renews";
   const until = next.ends_on ? `, until ${next.ends_on}` : ", with no end named";
-  return `${as} on ${next.starts_on}${until}`;
+  // A new number that waits on the agreement's next term has no dates of its own: the
+  // days are the agreement's, as they stand, and it begins when that term does.
+  const waits = next.with_agreement
+    ? ", with the agreement's next term, whose dates these are"
+    : "";
+  return `${as} on ${next.starts_on}${until}${waits}`;
 }
 
 /**
@@ -300,16 +320,35 @@ export function coverBody(
   };
 }
 
-/** The most items one request puts under a contract, as the server has it. */
+/**
+ * The most items one request puts under a contract until the setting is read: the
+ * default of `max_items_per_request`.
+ */
 export const COVER_AT_ONCE = 1000;
 /** The most items the page puts under a contract in one go, a request after another. */
 export const COVER_MOST = 10_000;
 
-/** The items to cover, in the batches one request takes. */
-export function coverBatches(itemHids: readonly string[]): string[][] {
+/**
+ * How many items one request may cover, add to a group or receive: the
+ * `max_items_per_request` setting as `GET /settings` answers it, which the server holds
+ * to, or its default until it is read or where it is not a whole number above zero.
+ */
+export function pieceSize(
+  settings: ReadonlyArray<{ key: string; value: unknown }> | undefined,
+): number {
+  const value = settings?.find((setting) => setting.key === "max_items_per_request")?.value;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : COVER_AT_ONCE;
+}
+
+/** The items to cover, in the pieces one request takes: `size` to a request. */
+export function coverBatches(
+  itemHids: readonly string[],
+  size: number = COVER_AT_ONCE,
+): string[][] {
+  const piece = Number.isInteger(size) && size > 0 ? size : COVER_AT_ONCE;
   const batches: string[][] = [];
-  for (let at = 0; at < itemHids.length; at += COVER_AT_ONCE) {
-    batches.push(itemHids.slice(at, at + COVER_AT_ONCE));
+  for (let at = 0; at < itemHids.length; at += piece) {
+    batches.push(itemHids.slice(at, at + piece));
   }
   return batches;
 }

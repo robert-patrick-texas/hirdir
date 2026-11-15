@@ -4,14 +4,54 @@ import {
   ARRIVED_BY,
   arrivedOf,
   arrivedPath,
+  asksWhatFollows,
   isArrivedBy,
   lineModel,
+  lineWhat,
   mismatchedPath,
+  modelStays,
   notReceivable,
+  ON_CORRECTION,
   REQUEST_STATUSES,
   receiptOf,
   requestPath,
+  savedText,
 } from "./purchases";
+
+describe("what a change of a line did", () => {
+  const before = { name: "RITM-1/2", received_quantity: 3 };
+  const after = {
+    name: "RITM-1/2",
+    catalog: { vendor: "Example Networks", pid: "EN-48" } as never,
+    part_number: "EN-48",
+  };
+
+  it("says that the items followed the corrected model, or stayed", () => {
+    expect(savedText(before, after, { catalog_entry_hid: "m-2", items: "follow" })).toBe(
+      "RITM-1/2 is of Example Networks EN-48 now. The 3 items that arrived on it follow: each that is not retired is of Example Networks EN-48 as well.",
+    );
+    expect(
+      savedText({ ...before, received_quantity: 1 }, after, {
+        catalog_entry_hid: "m-2",
+        items: "stay",
+      }),
+    ).toContain("The item that arrived on it keeps its model, and is marked");
+  });
+
+  it("says that a line is tracked once it has a model, and not once it is taken off", () => {
+    const none = { ...before, received_quantity: 0 };
+    expect(savedText(none, after, { catalog_entry_hid: "m-2" })).toBe(
+      "RITM-1/2 is of Example Networks EN-48 now, and tracked.",
+    );
+    expect(savedText(none, { ...after, catalog: null }, { catalog_entry_hid: null })).toContain(
+      "is not tracked any more",
+    );
+  });
+
+  it("says only that it was saved where the model was left alone", () => {
+    expect(savedText(before, after, {})).toBe("RITM-1/2 was saved.");
+  });
+});
 
 describe("what arrived on a line", () => {
   it("is one item to a line, each by the serial number, the asset tag or the name chosen", () => {
@@ -114,6 +154,15 @@ describe("whether a line can be received on", () => {
     expect(notReceivable({ request_status: "received", pending_quantity: 1 })).toBe("");
   });
 
+  it("says that a line that is not tracked takes no item", () => {
+    expect(
+      notReceivable({ request_status: "ordered", pending_quantity: 0, tracked: false }),
+    ).toContain("not tracked");
+    expect(notReceivable({ request_status: "ordered", pending_quantity: 2, tracked: true })).toBe(
+      "",
+    );
+  });
+
   it("says why not: a draft, a cancelled request, a line with nothing to come", () => {
     expect(notReceivable({ request_status: "draft", pending_quantity: 4 })).toContain("draft");
     expect(notReceivable({ request_status: "cancelled", pending_quantity: 4 })).toContain(
@@ -169,5 +218,49 @@ describe("requests and lines as words and links", () => {
     expect(lineModel({ catalog: { vendor: "Cisco", pid: "C9300-48P" } } as never)).toBe(
       "Cisco C9300-48P",
     );
+  });
+
+  it("calls a line that is not tracked by its part number, as procurement gave it", () => {
+    const untracked = {
+      catalog: null,
+      part_number: "CAB-TIE-100",
+      description: "Cable ties, 100",
+      tracked: false,
+    };
+    expect(lineModel(untracked)).toBe("CAB-TIE-100");
+    expect(lineWhat(untracked)).toBe("CAB-TIE-100, not tracked");
+    expect(lineWhat({ ...untracked, part_number: null })).toBe("Cable ties, 100, not tracked");
+    expect(
+      lineWhat({
+        catalog: { vendor: "Example Networks", pid: "EN-24" } as never,
+        part_number: "EN-24=",
+        description: null,
+        tracked: true,
+      }),
+    ).toBe("Example Networks EN-24");
+  });
+});
+
+describe("correcting the model of a line", () => {
+  const line = { catalog_entry_hid: "m-1", received_quantity: 3 };
+
+  it("asks what becomes of the items that arrived, where the model chosen is another", () => {
+    expect(asksWhatFollows(line, "m-2")).toBe(true);
+    expect(asksWhatFollows(line, "m-1")).toBe(false);
+    // Taking the model off is refused while items are on it: there is nothing to ask.
+    expect(asksWhatFollows(line, "")).toBe(false);
+    expect(asksWhatFollows({ ...line, received_quantity: 0 }, "m-2")).toBe(false);
+    expect(asksWhatFollows({ catalog_entry_hid: null, received_quantity: 0 }, "m-2")).toBe(false);
+  });
+
+  it("offers the two answers, follow and stay", () => {
+    expect(ON_CORRECTION.map((option) => option.value)).toEqual(["follow", "stay"]);
+  });
+
+  it("keeps a model on a line on which something has arrived", () => {
+    expect(modelStays(line)).toContain("3 items have arrived on it");
+    expect(modelStays({ ...line, received_quantity: 1 })).toContain("An item has arrived");
+    expect(modelStays({ ...line, received_quantity: 0 })).toBe("");
+    expect(modelStays({ catalog_entry_hid: null, received_quantity: 0 })).toBe("");
   });
 });

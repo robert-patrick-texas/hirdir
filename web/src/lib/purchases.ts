@@ -136,8 +136,12 @@ export function receiptOf(read: Pick<ArrivedRead, "items" | "quantity">): {
  * a draft or cancelled receives nothing, and neither does a line with nothing to come.
  */
 export function notReceivable(
-  line: Pick<PurchaseLine, "request_status" | "pending_quantity">,
+  line: Pick<PurchaseLine, "request_status" | "pending_quantity"> &
+    Partial<Pick<PurchaseLine, "tracked">>,
 ): string {
+  if (line.tracked === false) {
+    return "The line is not tracked: it has no model, and takes no item. Give it a model to track it.";
+  }
   if (line.request_status === "draft") return "The request is a draft: it receives nothing yet.";
   if (line.request_status === "cancelled") return "The request is cancelled: it receives nothing.";
   if (line.pending_quantity <= 0) {
@@ -153,4 +157,89 @@ export function lineModel(line: Pick<PurchaseLine, "catalog" | "part_number">): 
     return line.part_number ?? "";
   }
   return [line.catalog.vendor, line.catalog.pid].filter(Boolean).join(" ");
+}
+
+/**
+ * What is said of a line that is not tracked: one with no model, as procurement buys
+ * cable ties or a monitor beside the network equipment (P-121).
+ */
+export const NOT_TRACKED_NOTE =
+  "Not tracked: the line has no model of the catalog. It takes no item, is in no count, and the request is not kept waiting for it. Give it a model to track it.";
+
+/** A line as a sentence names what it is of: its model, or its part number and that it is not tracked. */
+export function lineWhat(
+  line: Pick<PurchaseLine, "catalog" | "part_number" | "description" | "tracked">,
+): string {
+  if (line.tracked && line.catalog) return lineModel(line);
+  const named = line.part_number || line.description || "a part";
+  return `${named}, not tracked`;
+}
+
+/** What becomes of the items that have arrived on a line whose model is corrected (P-120). */
+export type OnCorrection = "follow" | "stay";
+
+export const ON_CORRECTION: ReadonlyArray<Option & { value: OnCorrection }> = [
+  {
+    value: "follow",
+    label: "They follow: each is given the corrected model as well",
+  },
+  {
+    value: "stay",
+    label: "They stay as they are, and are marked as of another model than their line's",
+  },
+];
+
+/** What each answer means, said beside the question. */
+export const ON_CORRECTION_NOTE =
+  "Follow gives every item on the line that is not retired the corrected model, in the same change, each with an audit event of its own: what an item inherits it then has from the corrected model. Stay leaves each item with the model it has, and each is then marked as of another model than its line's, to be looked at one by one.";
+
+/**
+ * Whether a change of a line asks what becomes of the items on it: where items have
+ * arrived and the model chosen is another than the line has. The server refuses such a
+ * change without the answer.
+ */
+export function asksWhatFollows(
+  line: Pick<PurchaseLine, "catalog_entry_hid" | "received_quantity">,
+  chosen: unknown,
+): boolean {
+  if (line.received_quantity <= 0) return false;
+  const wanted = typeof chosen === "string" ? chosen : "";
+  return wanted !== "" && wanted !== (line.catalog_entry_hid ?? "");
+}
+
+/**
+ * Why the model of a line cannot be taken off, or blank where it can: a line keeps a
+ * model while anything has arrived on it, and one with none has nothing to take off.
+ */
+export function modelStays(
+  line: Pick<PurchaseLine, "catalog_entry_hid" | "received_quantity">,
+): string {
+  if (line.catalog_entry_hid === null) return "";
+  if (line.received_quantity > 0) {
+    return `${line.received_quantity === 1 ? "An item has" : `${line.received_quantity} items have`} arrived on it, so it keeps a model: it can be corrected to another, and not taken off.`;
+  }
+  return "";
+}
+
+/** What a change of a line did, said once it is taken: above all, what its model became. */
+export function savedText(
+  before: Pick<PurchaseLine, "name" | "received_quantity">,
+  after: Pick<PurchaseLine, "name" | "catalog" | "part_number">,
+  sent: Pick<Schemas["PurchaseLinePatch"], "catalog_entry_hid" | "items">,
+): string {
+  if (!("catalog_entry_hid" in sent)) return `${after.name} was saved.`;
+  if (sent.catalog_entry_hid === null) {
+    return `${after.name} is not tracked any more: its model was taken off. It takes no item, and the request is not kept waiting for it.`;
+  }
+  const model = lineModel(after);
+  const arrived = before.received_quantity;
+  const them =
+    arrived === 1 ? "The item that arrived on it" : `The ${arrived} items that arrived on it`;
+  if (sent.items === "follow") {
+    return `${after.name} is of ${model} now. ${them} ${arrived === 1 ? "follows" : "follow"}: each that is not retired is of ${model} as well.`;
+  }
+  if (sent.items === "stay") {
+    return `${after.name} is of ${model} now. ${them} ${arrived === 1 ? "keeps its" : "keep their"} model, and ${arrived === 1 ? "is" : "are"} marked as of another model than the line's, to be looked at one by one.`;
+  }
+  return `${after.name} is of ${model} now, and tracked.`;
 }

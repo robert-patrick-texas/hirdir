@@ -35,6 +35,9 @@ export function ContractsNav() {
           <NavLink to="/agreements">Support agreements</NavLink>
         </li>
         <li>
+          <NavLink to="/contracts/renewals">Renewals</NavLink>
+        </li>
+        <li>
           <NavLink to="/reports/coverage">Gaps and expiries: the coverage report</NavLink>
         </li>
       </ul>
@@ -47,7 +50,8 @@ export function Dash() {
 }
 
 interface StatusMarksProps {
-  record: Pick<Contract, "status" | "lapsed" | "next_term" | "record_status">;
+  record: Pick<Contract, "status" | "lapsed" | "next_term" | "record_status"> &
+    Partial<Pick<Contract, "ends_with_term">>;
   /** Say the status also where it is Active: beside the name of a page. */
   always?: boolean;
 }
@@ -66,6 +70,7 @@ export function StatusMarks({ record, always = false }: StatusMarksProps) {
           {optionLabel(CONTRACT_STATUSES, record.status)}
         </span>
       )}
+      {record.ends_with_term === true && <EndsWithTermMark contract={record} />}
       {pending && (
         <span className="badge" data-mark="renewal-pending" title={RENEWAL_PENDING_NOTE}>
           Renewal pending
@@ -91,6 +96,24 @@ export function StatusMarks({ record, always = false }: StatusMarksProps) {
         </span>
       )}
     </>
+  );
+}
+
+/** What is said of a contract the team marked not to renew (P-129). */
+export const ENDS_WITH_TERM_NOTE =
+  "Marked not to renew: the team's own note, which may not have reached procurement or the vendor. It changes no date, no status and no coverage by itself: it is not lapsed, and it stays on the worklist's list of what is let go, also once its period has passed, until a person says it has expired or retires it. It stays through a renewal, and goes when it is taken off or the contract leaves its agreement.";
+
+/** The mark of a contract that the team marked not to renew. Nothing for any other. */
+export function EndsWithTermMark({
+  contract,
+}: {
+  contract: Partial<Pick<Contract, "ends_with_term">>;
+}) {
+  if (contract.ends_with_term !== true) return null;
+  return (
+    <span className="badge badge-plain" data-mark="ends-with-term" title={ENDS_WITH_TERM_NOTE}>
+      Not to be renewed
+    </span>
   );
 }
 
@@ -365,6 +388,14 @@ export function contractSpecs(lists: ContractLists, current: Contract | null = n
       kind: "text",
       maxLength: 2000,
       ...from("support_url", "Where support is reached online: begins with https:// or http://"),
+    },
+    {
+      name: "ends_with_term",
+      label: "Not to be renewed: the team's note",
+      kind: "boolean",
+      hint: current?.agreement
+        ? `The team's own note, as when a site closes: it changes no date, status or coverage by itself, and the contract is listed with what is let go on the worklist until a person says it has expired or retires it. It stays through a renewal, and goes when the contract is taken out of ${current.agreement.name}. Choosing End with this term for it when the agreement is renewed gives it the agreement's present end as its own and marks it so.`
+        : "The team's own note, as when a site closes: it changes no date, status or coverage by itself, and the contract is listed with what is let go on the worklist until a person says it has expired or retires it. It stays through a renewal.",
     },
     {
       name: "purchase_reference",

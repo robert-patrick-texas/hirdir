@@ -29,8 +29,12 @@ import {
   isCoverageSection,
   isEndOfLifeDate,
   isEndOfLifeSection,
+  notRenewedModelLabel,
   type ReportSection,
 } from "../lib/lifecycleReports";
+
+type CoverageReportSection = Schemas["CoverageReportSection"];
+
 import { useChoices, useSettings } from "../lib/lists";
 import { choiceFilterOptions } from "../lib/options";
 import { fieldErrors } from "../lib/problems";
@@ -167,6 +171,8 @@ interface SectionCardProps {
   section: ReportSection | undefined;
   shown: boolean;
   onShow: () => void;
+  /** The count, where the section of the answer does not hold it. */
+  count?: number;
 }
 
 /** One list of a report: how many it holds, and the two ways to its rows. */
@@ -217,7 +223,8 @@ export function CoverageReport() {
   const [params, setParams] = useSearchParams();
   const view = viewOf(params);
   const asked = params.get("section");
-  const shown: CoverageSection = isCoverageSection(asked) ? asked : "uncovered";
+  // The counts come first, and no list is read until one is opened (P-133).
+  const shown: CoverageSection | null = isCoverageSection(asked) ? asked : null;
   const days = daysOf(view.days);
   const query = {
     ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
@@ -228,7 +235,7 @@ export function CoverageReport() {
     api.request("get", "/api/v1/reports/coverage", { query, signal }),
   );
   const data = report.data;
-  const section = data?.sections[shown];
+  const section = shown === null ? undefined : data?.sections[shown];
   const refused = fieldErrors(report.error, ["filter", "within_days"]).shown;
   const within = useMemo(
     () => ({
@@ -241,8 +248,8 @@ export function CoverageReport() {
     [section, shown],
   );
 
-  function show(next: View, which: CoverageSection = shown) {
-    setParams(paramsOf(next, which === "uncovered" ? {} : { section: which }));
+  function show(next: View, which: CoverageSection | null = shown) {
+    setParams(paramsOf(next, which === null ? {} : { section: which }));
   }
 
   return (
@@ -307,6 +314,10 @@ export function CoverageReport() {
                 <dt>Under more than one contract</dt>
                 <dd data-testid="total-overlapping">{countText(data.totals.overlapping)}</dd>
               </div>
+              <div>
+                <dt>Not to be renewed, with no cover</dt>
+                <dd data-testid="total-not-renewed">{countText(data.totals.not_renewed)}</dd>
+              </div>
             </dl>
             <p
               className={data.lapsed_contracts.count > 0 ? "warning" : "muted"}
@@ -315,13 +326,20 @@ export function CoverageReport() {
             >
               {data.lapsed_contracts.count > 0 ? (
                 <>
-                  <Link
-                    to={`/contracts?filter=${encodeURIComponent(
-                      filterText(viewFilter(data.lapsed_contracts.filter)),
-                    )}`}
-                  >
-                    {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
-                  </Link>
+                  {/* Its filter is blank where they are more than a filter can name. */}
+                  {data.lapsed_contracts.filter ? (
+                    <Link
+                      to={`/contracts?filter=${encodeURIComponent(
+                        filterText(viewFilter(data.lapsed_contracts.filter)),
+                      )}`}
+                    >
+                      {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
+                    </Link>
+                  ) : (
+                    <>
+                      {plural(data.lapsed_contracts.count, "contract has", "contracts have")} lapsed
+                    </>
+                  )}
                   : the period has ended and the status still says Active. A lapsed contract covers
                   nothing, so its items are among those with no cover: renew it, or say that it has
                   expired or that its renewal is pending.
@@ -332,7 +350,7 @@ export function CoverageReport() {
             </p>
           </section>
           <section aria-labelledby="coverage-lists">
-            <h2 id="coverage-lists">The five lists</h2>
+            <h2 id="coverage-lists">The six lists</h2>
             <div className="cards">
               {COVERAGE_SECTIONS.map((one) => (
                 <SectionCard
@@ -347,51 +365,144 @@ export function CoverageReport() {
               ))}
             </div>
           </section>
-          <section aria-labelledby="coverage-items">
-            <h2 id="coverage-items" data-testid="section-heading">
-              {COVERAGE_SECTIONS.find((one) => one.value === shown)?.label}
-            </h2>
-            {section?.filter && (
-              <ItemsGrid
-                key={shown}
-                id={`coverage-${shown}`}
-                within={within}
-                shown={COVERAGE_COLUMNS[shown]}
-              />
-            )}
-            {section && !section.filter && (
-              // The filter the report was asked with is as large as a filter may be: the
-              // server gives none for the list, and reads its items itself.
-              <>
-                <p className="hint">
-                  The filter of this report is as large as a filter may be, so the list cannot be
-                  handed on to the item grid or exported from here: it is read as the report gives
-                  it, and its columns do not filter. A shorter filter gives the whole grid.
-                </p>
+          <NotRenewedByModel section={data.sections.not_renewed} />
+          {shown === null && (
+            <p className="hint" data-testid="no-list-open">
+              Choose Show these items on a list above to read its items here.
+            </p>
+          )}
+          {shown !== null && (
+            <section aria-labelledby="coverage-items">
+              <h2 id="coverage-items" data-testid="section-heading">
+                {COVERAGE_SECTIONS.find((one) => one.value === shown)?.label}
+              </h2>
+              {section?.filter && (
                 <ItemsGrid
-                  key={`${shown} section`}
+                  key={shown}
                   id={`coverage-${shown}`}
-                  within={{ sort: within.sort }}
+                  within={within}
                   shown={COVERAGE_COLUMNS[shown]}
-                  read={(request, signal) =>
-                    api.request("get", "/api/v1/reports/coverage", {
-                      query: {
-                        ...query,
-                        section: shown,
-                        ...(request.sort.length > 0 ? { sort: request.sort } : {}),
-                        limit: request.limit,
-                        offset: request.offset,
-                      },
-                      signal,
-                    })
-                  }
                 />
-              </>
-            )}
-          </section>
+              )}
+              {section && !section.filter && (
+                // The filter the report was asked with is as large as a filter may be: the
+                // server gives none for the list, and reads its items itself.
+                <>
+                  <p className="hint">
+                    The filter of this report is as large as a filter may be, so the list cannot be
+                    handed on to the item grid or exported from here: it is read as the report gives
+                    it, and its columns do not filter. A shorter filter gives the whole grid.
+                  </p>
+                  <ItemsGrid
+                    key={`${shown} section`}
+                    id={`coverage-${shown}`}
+                    within={{ sort: within.sort }}
+                    shown={COVERAGE_COLUMNS[shown]}
+                    read={(request, signal) =>
+                      api.request("get", "/api/v1/reports/coverage", {
+                        query: {
+                          ...query,
+                          section: shown,
+                          ...(request.sort.length > 0 ? { sort: request.sort } : {}),
+                          limit: request.limit,
+                          offset: request.offset,
+                        },
+                        signal,
+                      })
+                    }
+                  />
+                </>
+              )}
+            </section>
+          )}
         </>
       )}
     </>
+  );
+}
+
+/**
+ * The items not to be renewed, counted by model: the vendor, the PID and the name of
+ * each, the items with no model last, each count leading to those items in the grid. The
+ * table holds all of its rows, so it is sorted by its headers in the browser.
+ */
+function NotRenewedByModel({ section }: { section: CoverageReportSection | undefined }) {
+  const rows = section?.by_model ?? [];
+  const sorting = useSorting(rows, {
+    vendor: (row) => row.vendor,
+    pid: (row) => row.pid,
+    model: (row) => row.model_name,
+    count: (row) => row.count,
+  });
+  if (!section || rows.length === 0) return null;
+  return (
+    <section aria-labelledby="not-renewed-by-model">
+      <h2 id="not-renewed-by-model">Not to be renewed, by model</h2>
+      <p className="hint">
+        What has been left out of support on purpose: each model with how many of its items in
+        service no contract covers while their flag not to renew is in force.
+      </p>
+      <div className="scroll">
+        <table data-testid="not-renewed-by-model">
+          <caption className="visually-hidden">
+            The items not to be renewed, counted by model; each count leads to its items
+          </caption>
+          <thead>
+            <tr>
+              <SortTh sort={sorting} column="vendor">
+                Vendor
+              </SortTh>
+              <SortTh sort={sorting} column="pid">
+                PID
+              </SortTh>
+              <SortTh sort={sorting} column="model">
+                Model
+              </SortTh>
+              <SortTh sort={sorting} column="count" className="number">
+                Items
+              </SortTh>
+            </tr>
+          </thead>
+          <tbody>
+            {sorting.rows.map((row) => (
+              <tr
+                key={row.catalog_entry_hid ?? "none"}
+                data-pid={row.pid ?? ""}
+                data-count={row.count}
+              >
+                <td>{row.vendor ?? <span className="muted">—</span>}</td>
+                <th scope="row">
+                  {row.catalog_entry_hid ? (
+                    <Link to={`/catalog/${encodeURIComponent(row.catalog_entry_hid)}`}>
+                      {row.pid}
+                    </Link>
+                  ) : (
+                    <span className="muted">{notRenewedModelLabel(row)}</span>
+                  )}
+                </th>
+                <td>{row.model_name ?? <span className="muted">—</span>}</td>
+                <td className="number">
+                  {row.filter ? (
+                    <Link
+                      to={itemsViewPath({
+                        filter: row.filter,
+                        include_archived: section.include_archived,
+                        include_drafts: section.include_drafts,
+                      })}
+                      aria-label={`${plural(row.count, "item")} of ${notRenewedModelLabel(row)} not to be renewed`}
+                    >
+                      {row.count}
+                    </Link>
+                  ) : (
+                    row.count
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -421,7 +532,7 @@ export function EndOfLifeReport() {
   );
   const settings = useSettings();
   const data = report.data;
-  const section = data?.sections[shown];
+  const section = shown === null ? undefined : data?.sections[shown];
   const refused = fieldErrors(report.error, ["filter", "within_days"]).shown;
   const within = useMemo(
     () => ({

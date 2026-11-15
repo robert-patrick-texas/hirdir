@@ -2,10 +2,13 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { ContractContacts } from "../components/ContractContacts";
 import {
   ContractsNav,
   contractSpecs,
   Dash,
+  ENDS_WITH_TERM_NOTE,
+  EndsWithTermMark,
   InForceValue,
   Lines,
   StatusMarks,
@@ -24,6 +27,7 @@ import { ContractTerms } from "../components/Terms";
 import { Time } from "../components/Time";
 import {
   agreementPath,
+  beganByLabel,
   CONTRACT_STATUSES,
   type Contract,
   contractPath,
@@ -48,8 +52,15 @@ import { EVERY, useAgreementOptions, useMoney, useTags, useVendorOptions } from 
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
+import { leftBehindText } from "../lib/renewals";
 import { allows } from "../lib/roles";
 import { amountText } from "../lib/summary";
+
+type ContractRenewed = Schemas["ContractRenewed"];
+
+/** What is said of a contract whose renewal has been pending too long. */
+const OVERDUE_NOTE =
+  "Pending for longer than the setting renewal_pending_overdue_days: somebody should ask why";
 
 const COLUMNS: GridColumn<Contract>[] = [
   {
@@ -85,6 +96,45 @@ const COLUMNS: GridColumn<Contract>[] = [
     hint: (contract) => (contract.status === RENEWAL_PENDING ? RENEWAL_PENDING_NOTE : ""),
     choices: CONTRACT_STATUSES,
     width: 150,
+  },
+  {
+    // While its renewal is pending: the days since the end of the term it is for.
+    id: "renewal_pending_days",
+    header: "Pending for",
+    kind: "integer",
+    value: (contract) =>
+      contract.renewal_pending_days === null ? "" : String(contract.renewal_pending_days),
+    hint: (contract) => (contract.renewal_overdue ? OVERDUE_NOTE : ""),
+    numeric: true,
+    hide: true,
+    width: 120,
+  },
+  {
+    id: "renewal_overdue",
+    header: "Overdue",
+    kind: "boolean",
+    value: (contract) => (contract.renewal_overdue ? "Overdue" : ""),
+    hint: (contract) => (contract.renewal_overdue ? OVERDUE_NOTE : ""),
+    choices: [
+      { value: "true", label: "Overdue: pending too long" },
+      { value: "false", label: "Not overdue" },
+    ],
+    hide: true,
+    width: 110,
+  },
+  {
+    // Marked by the team not to renew (P-129): a note, which changes nothing by itself.
+    id: "ends_with_term",
+    header: "Not to be renewed",
+    kind: "boolean",
+    value: (contract) => (contract.ends_with_term ? "Yes" : ""),
+    hint: (contract) => (contract.ends_with_term ? ENDS_WITH_TERM_NOTE : ""),
+    choices: [
+      { value: "true", label: "Marked not to renew" },
+      { value: "false", label: "Not marked" },
+    ],
+    hide: true,
+    width: 160,
   },
   {
     // Its period has ended and its status still says Active: it covers nothing, and
@@ -530,6 +580,7 @@ export function ContractDetail() {
                     called.
                   </span>
                 )}
+                <EndsWithTermMark contract={record} />
                 {record.lapsed && (
                   <span className="badge" data-testid="lapsed" title={LAPSED_NOTE}>
                     Lapsed
@@ -545,15 +596,68 @@ export function ContractDetail() {
                   </dd>
                 </>
               )}
+              {record.status === RENEWAL_PENDING && (
+                <>
+                  <dt>Pending for</dt>
+                  <dd
+                    data-testid="renewal-pending-days"
+                    data-days={record.renewal_pending_days ?? ""}
+                    data-overdue={record.renewal_overdue ? "true" : "false"}
+                  >
+                    {record.renewal_pending_days === null || record.renewal_pending_days === 0
+                      ? "Its term has not ended yet"
+                      : `${plural(record.renewal_pending_days, "day")} since the end of the term the renewal is for`}
+                    {record.renewal_overdue && (
+                      <span className="badge" data-mark="overdue" title={OVERDUE_NOTE}>
+                        Overdue
+                      </span>
+                    )}
+                  </dd>
+                </>
+              )}
+              {record.ends_with_term && (
+                <>
+                  <dt>Not to be renewed</dt>
+                  <dd data-testid="ends-with-term">{ENDS_WITH_TERM_NOTE}</dd>
+                </>
+              )}
               {record.next_term && (
                 <>
                   <dt>Next term</dt>
-                  <dd data-testid="contract-next-term">
+                  <dd
+                    data-testid="contract-next-term"
+                    data-with-agreement={record.next_term.with_agreement ? "true" : "false"}
+                  >
                     {nextTermText(record.next_term)}
                     <span className="muted">
                       {" "}
                       · until then the present number and period stay in force
                     </span>
+                    {record.next_term.with_agreement && record.agreement && (
+                      <span className="muted" data-testid="waits-on-agreement">
+                        {" "}
+                        · the new number waits on the next term of{" "}
+                        <Link to={agreementPath(record.agreement.hid)}>
+                          {record.agreement.name}
+                        </Link>
+                        , whose dates are shown, and begins when that term does
+                      </span>
+                    )}
+                  </dd>
+                </>
+              )}
+              {record.part_began_on && (
+                <>
+                  <dt>This part of its history</dt>
+                  <dd
+                    data-testid="contract-part"
+                    data-began-on={record.part_began_on}
+                    data-began-by={record.part_began_by ?? ""}
+                  >
+                    Since {record.part_began_on}
+                    {record.part_began_by
+                      ? `, begun by ${beganByLabel(record.part_began_by).toLowerCase()}`
+                      : ""}
                   </dd>
                 </>
               )}
@@ -608,6 +712,14 @@ export function ContractDetail() {
             onChanged={changed}
             onReload={contract.reload}
           />
+          <ContractContacts
+            of="contract"
+            record={record}
+            name={record.number}
+            agreement={record.agreement}
+            mayEdit={mayEdit}
+            onChanged={changed}
+          />
           {open && (
             <InAgreement
               key={`agreement ${record.hid} ${record.row_version}`}
@@ -617,7 +729,7 @@ export function ContractDetail() {
             />
           )}
           {open && (
-            <Renew<Contract>
+            <Renew<Contract, ContractRenewed>
               key={`renew ${record.hid} ${record.row_version}`}
               record={record}
               name={record.number}
@@ -651,6 +763,7 @@ export function ContractDetail() {
                   after.effective.ends_on.value,
                 ).toLowerCase()}. ${plural(after.items_in_scope, "item follows", "items follow")}: nothing was written to ${after.items_in_scope === 1 ? "it" : "any of them"}.`
               }
+              afterword={(after) => leftBehindText(after.left_behind)}
               onChanged={changed}
               onReload={contract.reload}
             />

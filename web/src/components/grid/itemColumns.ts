@@ -450,6 +450,22 @@ export function itemColumns(
       }),
     ),
     {
+      // Not to be renewed: its own word, or its model's, shown lighter (P-131). A renewal
+      // leaves such an item behind, and with no cover it is no gap.
+      id: "effective.do_not_renew",
+      header: "Not to be renewed",
+      kind: "boolean",
+      column: "do_not_renew",
+      value: (item) => effectiveText(item.effective.do_not_renew),
+      effective: (item) => item.effective.do_not_renew,
+      choices: [
+        { value: "true", label: "Not to be renewed" },
+        { value: "false", label: "Renewed as usual" },
+      ],
+      hide: true,
+      width: 160,
+    },
+    {
       // A contract covers it today. Worked out by the server when the item is read.
       id: "covered",
       header: "Covered",
