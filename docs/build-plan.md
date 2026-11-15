@@ -157,7 +157,9 @@ demand of the capacity report (P-139). An Admin may set, for sites, for major it
 for circuits, a default support weight, which an object of the kind counts at where it
 has none, and a minimum, which raises an object that has a weight to at least it: both
 blank unless set, for an estimate with a few settings before weights are set object by
-object, and for a floor set by policy for capacity planning (P-141).
+object, and for a floor set by policy for capacity planning (P-141). The capacity report
+gains a what-if, Try, which answers the balance that other defaults, minimums and figures
+would give beside the balance in force, saving nothing and auditing nothing.
 
 A first way to track telecommunication circuits beside the device inventory. A
 circuit is a record of its own, referenced by HID, audited, role-checked, retired and
