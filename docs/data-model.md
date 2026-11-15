@@ -1,5 +1,7 @@
 # Data model
 
+![Lifecycle workflow](../images/lifecycle-workflow.png)
+
 The records `hirdir` keeps and the rules between them. Field names here are the names
 used in the database, the API, JSON and CSV. A change to a name on this page is a change
 to every interface, so it is made here first.

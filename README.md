@@ -1,11 +1,22 @@
 # hirdir
 
+![hirdir, source of truth for the fleet](images/hirdir-source-of-truth-for-the-fleet.png)
+
 An inventory of the equipment, virtual machines, software and services a network
 operations team answers for, from the purchase request to disposal: what there is,
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.6.0, money, time and capacity. A support agreement with a
+**Status:** release 0.7.0, renewals in practice, and links. A worklist and an alert
+after sign-in say what has to be acted on to keep the cover going; an agreement is
+renewed with its member contracts, each confirmed by the operator, and those still
+pending or expired are listed to review; a model or a device is flagged as not to be
+renewed; the contacts of agreements and contracts are contact records; imports are
+applied in the background, in batches, beside other work; purchase lines keep the part
+numbers procurement gave them; values a site may change are settings; the capacity
+balance is kept week by week, with lines that multiply staff capacity and the demand
+of each region; and regions, sites, locations and models take links. This stands on
+0.6.0 and 0.6.1, money, time and capacity. A support agreement with a
 vendor groups contracts, and a contract covers one item or many: what an agreement or
 a contract says is said once, and everything beneath has it or overrides it. A
 contract is renewed in one place, with its new number and its new period, and every
