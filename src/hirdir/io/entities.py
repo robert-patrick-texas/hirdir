@@ -2691,8 +2691,16 @@ class Contracts(Entity):
                 **{name: getattr(within, name) for name in contracts.INHERITED},
                 **contracts.term(within, contracts.today(db)),
             }
+            # A contract let go with its agreement's term holds that term's dates as its
+            # own (P-129): they are kept, so that a file carries it out and back.
+            marked = bool(values.get("ends_with_term")) or (
+                record is not None and record.ends_with_term and "ends_with_term" not in values
+            )
+            let_go = marked and (record is None or record.ends_on is not None)
             for name in contracts.INHERITED:
                 if given.get(name) is None:
+                    continue
+                if let_go and name in ("starts_on", "ends_on"):
                     continue
                 own = getattr(record, name) if record is not None else None
                 if own is None and given[name] == above[name]:
@@ -3141,6 +3149,16 @@ class PurchaseLines(Entity):
                 )
             return {}
         text, field = (str(pid), "pid") if pid else (str(part), "part_number")
+        if (
+            record is not None
+            and record.catalog_entry_hid is not None
+            and record.part_number is not None
+            and records.key(record.part_number) == records.key(text)
+        ):
+            # The line's part number is as it was: a model a person gave it, a correction
+            # among them, is left as it is, so that loading procurement's file again does
+            # not undo it (the owner's answer of 2026-11-15).
+            return {}
         maker = run.vendor(vendor) if vendor else None
         found = (
             []

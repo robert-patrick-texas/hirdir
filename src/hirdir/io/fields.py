@@ -31,6 +31,7 @@ from hirdir.db.models import (
     Address,
     Agreement,
     CapacityLine,
+    CapacityLineTarget,
     CatalogEntry,
     Contact,
     ContactAssignment,
@@ -1407,6 +1408,9 @@ CONTRACTS = Listing(
         "renewal_overdue": Field("boolean", contracts.renewal_overdue_value()),
         # A renewal is entered that is still to begin: its own, or its agreement's.
         "renewal_waiting": Field("boolean", contracts.renewal_waiting_value()),
+        # A member of an agreement that was renewed that still says it is pending or has
+        # expired: a person looks at it (P-129).
+        "to_review": Field("boolean", contracts.to_review_value()),
         "tags": _tags("contract", Contract),
         # A contract is found by an item it covers, at any time.
         "coverage.item_hid": Field(
@@ -1710,6 +1714,23 @@ UNITS: ColumnElement[Any] = type_coerce(
     Scaled(4),
 )
 
+# The staff lines a line that multiplies works on (P-137), found by one of their names
+# and sorted by the first of them.
+_TARGET: Any = aliased(CapacityLine, name="target_line")
+_ITS_TARGETS = (CapacityLineTarget.line_hid == CapacityLine.hid,)
+_LINE_TARGETS = _one_of(
+    select(CapacityLineTarget.line_hid).join(_TARGET, _TARGET.hid == CapacityLineTarget.target_hid),
+    *_ITS_TARGETS,
+)
+_FIRST_TARGET = (
+    select(func.min(_TARGET.name_key))
+    .select_from(CapacityLineTarget)
+    .join(_TARGET, _TARGET.hid == CapacityLineTarget.target_hid)
+    .where(*_ITS_TARGETS)
+    .correlate(CapacityLine)
+    .scalar_subquery()
+)
+
 CAPACITY_LINES = Listing(
     model=CapacityLine,
     fields={
@@ -1720,6 +1741,7 @@ CAPACITY_LINES = Listing(
             CapacityLine, "number", "quantity", "units_each", "factor", "share", "annual_cost"
         ),
         "units": Field("number", UNITS),
+        "applies_to": Field("text", _TARGET.name, among=_LINE_TARGETS, ordered_by=_FIRST_TARGET),
         **_columns(CapacityLine, "reference", "vendor_hid", "region_hid", "site_hid"),
         "vendor": Field("text", _CAPACITY_VENDOR.name),
         "region": Field("text", _LINE_REGION.name),
