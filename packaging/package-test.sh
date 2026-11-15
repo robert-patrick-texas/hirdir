@@ -491,6 +491,33 @@ job_counts() {
     json '(lambda j: [j["status"], j["row_count"], j["created"], j["updated"], j["unchanged"], j["rejected"]])(d.get("job", d))'
 }
 
+# apply_job PATH [curl options]: POST the apply of a stored preview, which answers 202 at
+# once while the server applies it in the background (P-134), then look at the job
+# until it is no longer queued or applying, two minutes at the most. $status is the
+# answer to the POST, and the body is the job as it ended, for job_counts to read. With
+# curl options the POST goes through nginx with them, as `authorized` sends it.
+apply_job() {
+    local path=$1 begun hid looked=0
+    shift
+    if [ $# -gt 0 ]; then
+        authorized POST "$prefix/api/v1$path" "$@"
+    else
+        api POST "$path"
+    fi
+    begun=$status
+    hid=$(json_field hid)
+    while [ "$begun" = 202 ] && [ "$looked" -lt 1200 ]; do
+        case $(json_field status) in
+        queued | applying) ;;
+        *) break ;;
+        esac
+        sleep 0.1
+        looked=$((looked + 1))
+        api GET "/imports/$hid"
+    done
+    status=$begun
+}
+
 # keep NAME: keep the JSON of the last response for unchanged to compare with.
 keep() { cp "$work/body" "$work/kept-$1.json"; }
 
@@ -3159,9 +3186,9 @@ files() {
         expect "S12 POST $prefix/api/v1/imports/preview with examples/$name.csv as its body: each of its $rows rows is to be created" \
             "$status $(job_counts)" "201 [\"previewed\", $rows, $rows, 0, 0, 0]"
         hid=$(json 'd["job"]["hid"]')
-        api POST "/imports/$hid/apply"
+        apply_job "/imports/$hid/apply"
         expect "S12 POST $prefix/api/v1/imports/{hid}/apply creates the $rows" \
-            "$status $(job_counts)" "200 [\"applied\", $rows, $rows, 0, 0, 0]"
+            "$status $(job_counts)" "202 [\"applied\", $rows, $rows, 0, 0, 0]"
     done
     item_rows=$(table 'len(rows)' examples/items.csv)
     api GET '/items?include_archived=true&include_drafts=true&limit=1'
@@ -3252,9 +3279,9 @@ files() {
         send "/imports/preview?file_name=$name.json" "examples/$name.json" application/json
         expect "S13 and examples/$name.json, the same records as JSON: unchanged as well" \
             "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
-        api POST "/imports/$hid/apply"
+        apply_job "/imports/$hid/apply"
         expect "S13 applied, the second import of examples/$name.csv changes nothing" \
-            "$status $(job_counts)" "200 [\"applied\", $rows, 0, 0, $rows, 0]"
+            "$status $(job_counts)" "202 [\"applied\", $rows, 0, 0, $rows, 0]"
     done
 
     # A filtered export. What it must hold is read from examples/items.csv, with the
@@ -3301,12 +3328,12 @@ files() {
     expect "pkg nginx lets it through under $prefix/, and it is previewed: $large_rows items to create" \
         "$status $(job_counts)" "201 [\"previewed\", $large_rows, $large_rows, 0, 0, 0]"
     hid=$(json 'd["job"]["hid"]')
+    apply_job "/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
+    expect "pkg and applied in the background, with an Idempotency-Key" \
+        "$status $(job_counts)" "202 [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
     authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
-    expect "pkg and applied, with an Idempotency-Key" \
-        "$status $(job_counts)" "200 [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
-    authorized POST "$prefix/api/v1/imports/$hid/apply" --header 'Idempotency-Key: package-test-large-import'
-    expect "pkg sent again with the same key, the apply is answered with the first answer and marked as replayed" \
-        "$status $(header idempotency-replayed) $(job_counts)" "200 true [\"applied\", $large_rows, $large_rows, 0, 0, 0]"
+    expect "pkg sent again with the same key, the apply is answered with the first answer, the job as it was begun, and marked as replayed" \
+        "$status $(header idempotency-replayed) $(job_counts)" "202 true [\"applying\", $large_rows, $large_rows, 0, 0, 0]"
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-sw-*' --data-urlencode 'limit=1'
     expect "pkg and the $large_rows items are there once" "$status $(json_field total)" "200 $large_rows"
 
@@ -4468,12 +4495,12 @@ print(json.dumps([len(now), same, regions]))' "$work/kept-placed.json" "$work/bo
     printf '%s\n' 'owner,contact,role' 'Package Test Facilities,robin.okafor@example.net,alternate' 'Package Test Facilities,pkgtest.desk@example.net,primary' >"$work/people.csv"
     send "/imports/preview?entity=owner_members&file_name=people.csv" "$work/people.csv"
     made="$status $(job_counts)"
-    api POST "/imports/$(json 'd["job"]["hid"]')/apply"
+    apply_job "/imports/$(json 'd["job"]["hid"]')/apply"
     made="$made $status $(job_counts)"
     api GET "/owners/$outside/members"
     expect "pkg a file of the people of an owner that has none, with the row of the alternate before that of the primary, is previewed and applied whole, and GET $prefix/api/v1/owners/{hid}/members lists the two as a page" \
         "$made $status $(json '[d["total"], sorted([m["contact"]["name"], m["role"]] for m in d["items"])]')" \
-        '201 ["previewed", 2, 2, 0, 0, 0] 200 ["applied", 2, 2, 0, 0, 0] 200 [2, [["Package Test Desk", "primary"], ["Robin Okafor", "alternate"]]]'
+        '201 ["previewed", 2, 2, 0, 0, 0] 202 ["applied", 2, 2, 0, 0, 0] 200 [2, [["Package Test Desk", "primary"], ["Robin Okafor", "alternate"]]]'
 
     # Every record of the new kinds, the examples' and these, exported and imported back.
     for number in contacts operators regions sites locations contact_assignments owners owner_members; do
@@ -5744,8 +5771,8 @@ first_file() {
     expect "pkg POST $prefix/api/v1/imports/preview takes a file whose columns are hostname and IP_address, as it is: each of its 3 rows is to be created" \
         "$status $(job_counts)" '201 ["previewed", 3, 3, 0, 0, 0]'
     hid=$(json 'd["job"]["hid"]')
-    api POST "/imports/$hid/apply"
-    expect "pkg applied, it creates the 3 items" "$status $(job_counts)" '200 ["applied", 3, 3, 0, 0, 0]'
+    apply_job "/imports/$hid/apply"
+    expect "pkg applied, it creates the 3 items" "$status $(job_counts)" '202 ["applied", 3, 3, 0, 0, 0]'
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-first-*' --data-urlencode 'sort=hostname'
     expect "pkg each has its host name, and its address as the primary management address of its family, IPv4 or IPv6, in the short form; the one with no address has none" \
         "$status $(json '[[i["hostname"], [[a["address"], a["family"], a["role"], a["is_primary"], a["network"]] for a in i["addresses"]]] for i in d["items"]]')" \
@@ -5758,9 +5785,9 @@ first_file() {
         'pkgtest-first-03,198.51.100.103,2001:db8:0:51::103,present' >"$work/second.csv"
     send "/imports/preview?entity=items&file_name=second.csv" "$work/second.csv"
     hid=$(json 'd["job"]["hid"]')
-    api POST "/imports/$hid/apply"
+    apply_job "/imports/$hid/apply"
     expect "pkg a file with ipv4 and ipv6 columns and what was observed of each: both rows update their items" \
-        "$status $(job_counts)" '200 ["applied", 2, 0, 2, 0, 0]'
+        "$status $(job_counts)" '202 ["applied", 2, 0, 2, 0, 0]'
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:glob:pkgtest-first-*' --data-urlencode 'sort=hostname'
     send "/imports/preview?entity=items&file_name=second.csv" "$work/second.csv"
     expect "pkg that file a second time, which states again what was observed and gives no moment, changes nothing: both rows are unchanged" \
@@ -5781,8 +5808,8 @@ first_file() {
     expect "pkg a file of hostname and observed_status finds each by its host name, though it has a serial number that the file does not give: 2 rows to update, none to create" \
         "$status $(job_counts)" '201 ["previewed", 2, 0, 2, 0, 0]'
     hid=$(json 'd["job"]["hid"]')
-    api POST "/imports/$hid/apply"
-    expect "pkg applied, it updates the 2" "$status $(job_counts)" '200 ["applied", 2, 0, 2, 0, 0]'
+    apply_job "/imports/$hid/apply"
+    expect "pkg applied, it updates the 2" "$status $(job_counts)" '202 ["applied", 2, 0, 2, 0, 0]'
     authorized GET "$prefix/api/v1/items" --get --data-urlencode 'filter=hostname:in:pkgtest-stack-01,pkgtest-stack-04' --data-urlencode 'sort=hostname'
     expect "pkg there is still one item of each host name, the one with the serial number, and it has what was observed and the health that follows: no second item was made" \
         "$status $(json '[[i["hostname"], i["serial_number"], i["observed_status"], i["health"]["value"]] for i in d["items"]]')" \

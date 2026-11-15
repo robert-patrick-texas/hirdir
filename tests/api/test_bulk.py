@@ -32,10 +32,9 @@ def changes(row: dict[str, Any]) -> dict[str, tuple[Any, Any]]:
     return {entry["field"]: (entry["old"], entry["new"]) for entry in row["changes"]}
 
 
-def apply(make: Maker, preview: dict[str, Any], expect: int = 200, **params: str) -> dict[str, Any]:
-    query = "&".join(f"{name}={value}" for name, value in params.items())
-    path = f"/items/bulk-update/{preview['job']['hid']}/apply" + (f"?{query}" if query else "")
-    return make.post(path, {}, expect)
+def apply(make: Maker, preview: dict[str, Any], expect: int = 202, **params: str) -> dict[str, Any]:
+    """Apply a bulk edit, and return its job once the worker has applied it."""
+    return make.apply(f"/items/bulk-update/{preview['job']['hid']}/apply", expect, **params)
 
 
 def test_a_bulk_edit_shows_before_and_after_and_changes_nothing_until_applied(
@@ -80,7 +79,7 @@ def test_a_bulk_edit_shows_before_and_after_and_changes_nothing_until_applied(
     assert make.get("/imports", source="bulk")["total"] == 1
 
 
-def test_the_second_of_two_overlapping_bulk_edits_is_refused_whole(
+def test_the_second_of_two_overlapping_bulk_edits_leaves_the_rows_of_the_first_alone(
     client: TestClient, make: Maker, admin: dict[str, str], switches: list[dict]
 ) -> None:
     other = Maker(client, admin)
@@ -94,17 +93,21 @@ def test_the_second_of_two_overlapping_bulk_edits_is_refused_whole(
     )
     assert apply(make, mine)["status"] == "applied"
 
-    refused = apply(other, theirs, expect=409)
-    assert refused["title"] == "Preview out of date"
-    in_the_way = errors(refused)
-    assert list(in_the_way) == ["rows.1", "rows.2"]
-    assert "site2-sw-2" in in_the_way["rows.1"]
+    # The two items the first changed are left as the first made them, and are told as
+    # stale; the third, which nobody changed, is changed.
+    ended = apply(other, theirs)
+    assert (ended["status"], ended["applied"], ended["stale"]) == ("applied", 1, 2)
     comments = [item["comments"] for item in make.get("/items", sort="hostname")["items"]]
-    assert comments == ["mine", "mine", "mine", None]
-    assert make.get(f"/imports/{theirs['job']['hid']}")["status"] == "failed"
-    # A preview that is still good may be applied by another than the one who made it.
+    assert comments == ["mine", "mine", "mine", "theirs"]
+    stale = make.get(f"/imports/{theirs['job']['hid']}/rows", applied_outcome="stale")["items"]
+    assert [(row["row"], row["record_hid"]) for row in stale] == [
+        (1, switches[1]["hid"]),
+        (2, switches[2]["hid"]),
+    ]
+    assert all("changed since the preview" in row["applied_reasons"][0]["message"] for row in stale)
+    # A preview may be applied by another than the one who made it.
     again = other.post(
-        "/items/bulk-update", {"hids": [switches[3]["hid"]], "set": {"comments": "theirs"}}
+        "/items/bulk-update", {"hids": [switches[3]["hid"]], "set": {"comments": "again"}}
     )
     applied = apply(make, again)
     assert (applied["created_by_name"], applied["applied_by_name"]) == ("ada", "ivy")

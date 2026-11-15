@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,9 @@ ROUTES = {
 }
 IVY = ("ivy", "acceptance-inventory")
 IAN = ("ian", "acceptance-second")
+# An apply is worked by the server in the background (P-134). A scenario waits for it as
+# a person would, looking at the job, for this long at the most, in seconds.
+WAIT_FOR_JOB = 120.0
 
 
 def example(entity: str, format_: str) -> Path:
@@ -117,8 +121,27 @@ class Desk:
         assert response.status_code == 201, response.text
         return response.json()
 
-    def apply(self, preview: dict[str, Any], expect: int = 200) -> dict[str, Any]:
-        return self.post(f"/imports/{preview['job']['hid']}/apply", expect=expect)
+    def apply(self, preview: dict[str, Any], expect: int = 202) -> dict[str, Any]:
+        """Apply a preview, and return its job once the server has applied it."""
+        return self.applied(f"/imports/{preview['job']['hid']}/apply", expect)
+
+    def applied(self, path: str, expect: int = 202) -> dict[str, Any]:
+        """Ask for an apply at path, which answers at once, and wait for its end."""
+        begun = self.post(path, expect=expect)
+        if expect != 202:
+            return begun
+        assert begun["status"] in ("applying", "queued"), begun
+        return self.wait(begun["hid"])
+
+    def wait(self, hid: str) -> dict[str, Any]:
+        """Return a job once it is no longer being applied."""
+        deadline = time.monotonic() + WAIT_FOR_JOB
+        while True:
+            job = self.get(f"/imports/{hid}")
+            if job["status"] not in ("queued", "applying"):
+                return job
+            assert time.monotonic() < deadline, f"the job {hid} is still {job['status']}"
+            time.sleep(0.05)
 
     def total(self, entity: str) -> int:
         if entity == "tags":
@@ -190,9 +213,10 @@ def test_s13_importing_the_same_files_again_changes_nothing(desk: Desk) -> None:
             assert job["unchanged"] == job["row_count"] > 0, entity
             assert all(row["changes"] == [] for row in preview["rows"]), entity
             assert desk.apply(preview)["status"] == "applied"
-    # The only events since are the previews and the applies themselves.
+    # The only events since are the previews and the applies themselves: each apply is
+    # begun and ends.
     since = desk.get("/audit-events", limit=1)["total"] - events
-    assert since == 2 * 2 * len(LOAD_ORDER)
+    assert since == 2 * 3 * len(LOAD_ORDER)
     assert desk.get("/audit-events", record_type="item", action="update")["total"] == 0
 
 
@@ -232,7 +256,9 @@ def test_s14_a_blank_leaves_a_clear_inherits_and_an_unknown_model_is_created_unr
     )
 
 
-def test_s15_a_row_changed_after_the_preview_stops_the_apply(desk: Desk) -> None:
+def test_s15_a_row_changed_after_the_preview_is_left_out_and_the_rest_are_applied(
+    desk: Desk,
+) -> None:
     desk.load_examples()
     text = (
         "hostname,asset_tag,comments\n"
@@ -241,21 +267,32 @@ def test_s15_a_row_changed_after_the_preview_stops_the_apply(desk: Desk) -> None
     )
     preview = desk.preview("items", text)
     assert preview["job"]["updated"] == 2
-    # Somebody changes one of its rows on the item's page.
+    # Somebody changes the item of one of its rows on the item's page.
     core = desk.get("/items", filter="hostname:eq:site2-sw-core-02")["items"][0]
     changed = desk.client.patch(
         f"/items/{core['hid']}", json={"row_version": core["row_version"], "fqdn": None}
     )
     assert changed.status_code == 200, changed.text
 
-    refused = desk.apply(preview, expect=409)
-    assert refused["title"] == "Preview out of date"
-    assert "preview again" in refused["detail"]
-    assert [entry["field"] for entry in refused["errors"]] == ["rows.2"]
-    assert desk.get("/items", filter="comments:prefix:Uplinks")["total"] == 0
-    assert desk.get(f"/imports/{preview['job']['hid']}")["status"] == "failed"
-    # A new preview is what goes through.
-    assert desk.apply(desk.preview("items", text))["status"] == "applied"
+    job = desk.apply(preview)
+    assert (job["status"], job["rows_done"], job["applied"], job["stale"]) == (
+        "applied",
+        2,
+        1,
+        1,
+    )
+    rows = desk.get(f"/imports/{preview['job']['hid']}/rows")["items"]
+    assert [row["applied_outcome"] for row in rows] == ["update", "stale"]
+    assert rows[1]["applied_reasons"][0]["message"].startswith("changed since the preview")
+    stale = desk.get(f"/imports/{preview['job']['hid']}/rows", applied_outcome="stale")
+    assert [row["key"] for row in stale["items"]] == [rows[1]["key"]]
+    # Every other row is applied; the changed item keeps the change made on its page.
+    moved = desk.get("/items", filter="comments:prefix:Uplinks")["items"]
+    assert [item["hostname"] for item in moved] == ["site2-sw-core-01"]
+    assert desk.get(f"/items/{core['hid']}")["fqdn"] is None
+    # A new preview of that row is what goes through.
+    again = desk.apply(desk.preview("items", text))
+    assert (again["status"], again["applied"], again["stale"]) == ("applied", 2, 0)
     assert desk.get("/items", filter="comments:prefix:Uplinks")["total"] == 2
 
 
@@ -345,12 +382,18 @@ def test_s17_the_second_of_two_overlapping_bulk_edits_is_shown_the_conflict(
     )
     assert (mine["job"]["updated"], theirs["job"]["updated"]) == (8, 7)
 
-    applied = desk.post(f"/items/bulk-update/{mine['job']['hid']}/apply")
+    applied = desk.applied(f"/items/bulk-update/{mine['job']['hid']}/apply")
     assert applied["status"] == "applied"
-    refused = other.post(f"/items/bulk-update/{theirs['job']['hid']}/apply", expect=409)
-    assert refused["title"] == "Preview out of date"
-    assert len(refused["errors"]) == 7
-    assert all("changed since the preview" in entry["message"] for entry in refused["errors"])
+    # The second is shown the conflict: each of its rows that the first changed is left
+    # out as stale, with why.
+    ended = other.applied(f"/items/bulk-update/{theirs['job']['hid']}/apply")
+    assert (ended["status"], ended["applied"], ended["stale"]) == ("applied", 0, 7)
+    stale = other.get(f"/imports/{theirs['job']['hid']}/rows", applied_outcome="stale")
+    assert stale["total"] == 7
+    assert all(
+        row["applied_reasons"][0]["message"].startswith("changed since the preview")
+        for row in stale["items"]
+    )
 
     switches = desk.get("/items", filter="hostname:prefix:site2-sw-access-0")["items"]
     assert {item["owner"]["label"] for item in switches} == {"Voice Services"}
@@ -365,6 +408,6 @@ def test_s17_the_second_of_two_overlapping_bulk_edits_is_shown_the_conflict(
         },
         expect=201,
     )
-    assert other.post(f"/items/bulk-update/{again['job']['hid']}/apply")["status"] == "applied"
+    assert other.applied(f"/items/bulk-update/{again['job']['hid']}/apply")["status"] == "applied"
     kept = desk.get("/items", filter="comments:prefix:Checked")["items"]
     assert {item["owner"]["label"] for item in kept} == {"Voice Services"}

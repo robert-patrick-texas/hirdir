@@ -154,6 +154,11 @@ IMPORT_JOBS = Table(
         "unchanged": Field("integer", ImportJob.unchanged),
         "rejected": Field("integer", ImportJob.rejected),
         "created_by_name": Field("text", _username(ImportJob.created_by, ImportJob)),
+        # How far an apply in the background has got, and what it did (P-134).
+        "rows_done": Field("integer", ImportJob.rows_done),
+        "applied": Field("integer", ImportJob.applied),
+        "stale": Field("integer", ImportJob.stale),
+        "applied_at": Field("timestamp", ImportJob.applied_at),
     },
 )
 
@@ -164,6 +169,7 @@ IMPORT_ROWS = Table(
         # How the row names its record, or else the record it matched.
         "key": Field("text", func.coalesce(func.nullif(ImportRow.key, ""), ImportRow.record_hid)),
         "outcome": Field("choice", ImportRow.outcome),
+        "applied_outcome": Field("choice", ImportRow.applied_outcome),
     },
 )
 

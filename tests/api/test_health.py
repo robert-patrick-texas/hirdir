@@ -765,7 +765,7 @@ def test_a_walk_round_the_store_room_is_one_bulk_edit(make: Maker) -> None:
         {"filter": "tags:has:spares", "set": {"observed_status": "present", "condition": "good"}},
     )
     assert [row["outcome"] for row in preview["rows"]] == ["update"] * 3
-    make.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{preview['job']['hid']}/apply")
 
     assert make.found(filter="health:eq:good") == ["spare-1", "spare-2", "spare-3"]
 

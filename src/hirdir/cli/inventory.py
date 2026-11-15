@@ -8,6 +8,7 @@ print what it answers.
 import csv
 import json
 import sys
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -770,6 +771,7 @@ def _finish(
     apply: bool,
     skip_rejected: bool,
     as_json: bool,
+    wait: bool = True,
 ) -> None:
     """Print a preview, and apply it when asked to and when nothing stands in the way."""
     job = preview["job"]
@@ -794,24 +796,166 @@ def _finish(
             "or apply the rest with --skip-rejected",
             client.EXIT_INVALID,
         )
-    done = client.call(
-        target,
-        "POST",
-        apply_path.format(hid=job["hid"]),
-        params={"skip_rejected": "true"} if skip_rejected else None,
-        timeout=SLOW,
+    if not as_json and job["row_count"] <= len(preview["rows"]):
+        _show_rows(preview["rows"], job["row_count"])
+    _apply_job(target, apply_path.format(hid=job["hid"]), skip_rejected, as_json=as_json, wait=wait)
+
+
+# --- an apply in the background (P-134) ---
+
+NoWait = Annotated[
+    bool,
+    typer.Option("--no-wait", help="Leave the apply to the server, and do not wait for it to end."),
+]
+BEING_APPLIED = ("queued", "applying")
+# How long the command waits between two looks at a job being applied: at first, and
+# at the longest, in seconds. A small file is done before a person would notice.
+FIRST_LOOK = 0.05
+LOOK_AT_MOST = 1.0
+
+
+def _apply_job(
+    target: Target, path: str, skip_rejected: bool, *, as_json: bool, wait: bool
+) -> None:
+    """Ask for a job to be applied, or resumed, and wait for its end unless told not to."""
+    job = client.call(
+        target, "POST", path, params={"skip_rejected": "true"} if skip_rejected else None
     )
+    if wait:
+        job = _wait(target, job, quiet=as_json)
+    _ended(target, job, as_json=as_json)
+
+
+def _wait(target: Target, job: dict[str, Any], *, quiet: bool = False) -> dict[str, Any]:
+    """Wait for a job being applied to end, saying how far it has got. Return it then.
+
+    Stopping the command does not stop the apply, which the server goes on with.
+    """
+    pause = FIRST_LOOK
+    said = None
+    while job["status"] in BEING_APPLIED:
+        now = (job["status"], job["rows_done"])
+        if not quiet and now != said:
+            typer.echo(
+                "queued: waiting for another import to be applied"
+                if job["status"] == "queued"
+                else f"applying: {job['rows_done']} of {job['row_count']} rows",
+                err=True,
+            )
+            said = now
+        time.sleep(pause)
+        pause = min(pause * 2, LOOK_AT_MOST)
+        job = client.call(target, "GET", f"/imports/{job['hid']}")
+    return job
+
+
+def _show_applied(rows: list[dict[str, Any]]) -> None:
+    """Print the rows that an apply left out, each with why."""
+    for row in rows:
+        typer.echo(f"row {row['row']}  {row['applied_outcome']}  {row['key']}")
+        for reason in row["applied_reasons"]:
+            where = f"{reason['field']}: " if reason["field"] else ""
+            typer.echo(f"    {where}{reason['message']}")
+
+
+def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
+    """Say how an apply ended, and exit with the code for it."""
+    hid = job["hid"]
     if as_json:
-        typer.echo(json.dumps(done, indent=2))
-    else:
-        if not as_json and job["row_count"] <= len(preview["rows"]):
-            _show_rows(preview["rows"], job["row_count"])
-        left = f", {done['rejected']} rejected and left out" if done["rejected"] else ""
+        typer.echo(json.dumps(job, indent=2))
+    if job["status"] in BEING_APPLIED:
         typer.echo(
-            f"applied: {done['created']} created, {done['updated']} updated, "
-            f"{done['unchanged']} unchanged{left}",
+            f"{job['status']}: the server applies it; `hirdir imports show {hid} --wait` "
+            "waits for its end",
             err=True,
         )
+        return
+    if job["status"] == "stopped":
+        raise client.fail(
+            f"stopped after {job['rows_done']} of {job['row_count']} rows: {job['failure']}. "
+            f"`hirdir imports apply {hid}` resumes it",
+            client.EXIT_SERVER,
+        )
+    left_out = job["rejected"] if job["skip_rejected"] else 0
+    refused = job["rows_done"] - job["applied"] - job["stale"] - left_out
+    if not job["stale"] and not refused:
+        left = f", {job['rejected']} rejected and left out" if left_out else ""
+        typer.echo(
+            f"applied: {job['created']} created, {job['updated']} updated, "
+            f"{job['unchanged']} unchanged{left}",
+            err=True,
+        )
+        return
+    rows = []
+    for outcome in ("stale", "rejected"):
+        page = client.call(
+            target, "GET", f"/imports/{hid}/rows", params={"applied_outcome": outcome}
+        )
+        rows += [row for row in page["items"] if row["outcome"] != "rejected"]
+    if not as_json:
+        _show_applied(sorted(rows, key=lambda row: row["row"]))
+    said = [f"applied: {job['applied']} of {job['row_count']} rows"]
+    if job["stale"]:
+        said.append(f"{job['stale']} changed since the preview and were left out")
+    if refused:
+        said.append(f"{refused} were refused when they were applied")
+    raise client.fail(
+        "; ".join(said) + ": preview them again",
+        client.EXIT_CONFLICT if job["stale"] else client.EXIT_INVALID,
+    )
+
+
+imports_ = typer.Typer(
+    no_args_is_help=True, help="Stored previews of imports and bulk edits, and their applies."
+)
+
+
+@imports_.command("show")
+def show_import(
+    hid: Annotated[str, typer.Argument(help="The HID of the stored preview.")],
+    wait: Annotated[
+        bool, typer.Option("--wait", help="Wait for an apply that is going on to end.")
+    ] = False,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show a stored preview and how far its apply has got."""
+    target = client.load_target(url, token)
+    job = client.call(target, "GET", f"/imports/{hid}")
+    if wait:
+        job = _wait(target, job, quiet=format_ == "json")
+        _ended(target, job, as_json=format_ == "json")
+        return
+    if format_ == "json":
+        typer.echo(json.dumps(job, indent=2))
+        return
+    shown = ("source", "entity", "file_name", "status", "row_count", "rows_done", "applied")
+    for name in (*shown, "stale", "failure"):
+        if job[name] is not None:
+            typer.echo(f"{name}: {job[name]}")
+    typer.echo(f"preview: {_counts(job)}")
+
+
+@imports_.command("apply")
+def apply_import(
+    hid: Annotated[str, typer.Argument(help="The HID of the stored preview.")],
+    skip_rejected: Annotated[
+        bool, typer.Option("--skip-rejected", help="Apply the rows that are not rejected.")
+    ] = False,
+    no_wait: NoWait = False,
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Apply a stored preview of an import or a bulk edit, or resume one that stopped."""
+    target = client.load_target(url, token)
+    job = client.call(target, "GET", f"/imports/{hid}")
+    path = f"/items/bulk-update/{hid}/apply" if job["source"] == "bulk" else f"/imports/{hid}/apply"
+    _apply_job(target, path, skip_rejected, as_json=format_ == "json", wait=not no_wait)
+
+
+GROUPS["imports"] = imports_
 
 
 def import_file(
@@ -826,11 +970,16 @@ def import_file(
     skip_rejected: Annotated[
         bool, typer.Option("--skip-rejected", help="Apply the rows that are not rejected.")
     ] = False,
+    no_wait: NoWait = False,
     format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Preview what a file would create and change, and with --apply, do it."""
+    """Preview what a file would create and change, and with --apply, do it.
+
+    The server applies it in the background, and the command waits for the end and
+    says how far it has got, unless --no-wait is given.
+    """
     target = client.load_target(url, token)
     try:
         data = file.read_bytes()
@@ -852,6 +1001,7 @@ def import_file(
         apply=apply,
         skip_rejected=skip_rejected,
         as_json=format_ == "json",
+        wait=not no_wait,
     )
 
 
@@ -915,13 +1065,18 @@ def set_(
     skip_rejected: Annotated[
         bool, typer.Option("--skip-rejected", help="Change the rows that are not rejected.")
     ] = False,
+    no_wait: NoWait = False,
     include_archived: Archived = False,
     include_drafts: Drafts = False,
     format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
     url: Url = None,
     token: Token = None,
 ) -> None:
-    """Change one item, or with --filter, many: previewed first, applied with --apply."""
+    """Change one item, or with --filter, many: previewed first, applied with --apply.
+
+    The server applies a change in the background, and the command waits for the end
+    unless --no-wait is given.
+    """
     target = client.load_target(url, token)
     many = filter_ is not None or all_rows
     named = [] if many else arguments[:1]
@@ -956,6 +1111,7 @@ def set_(
         apply=apply or not many,
         skip_rejected=skip_rejected,
         as_json=format_ == "json",
+        wait=not no_wait,
     )
 
 

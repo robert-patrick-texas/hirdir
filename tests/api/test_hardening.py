@@ -631,7 +631,7 @@ def test_a_bulk_edit_of_an_item_and_its_minor_items_copies_nothing_down(make: Ma
         "unchanged",
         "unchanged",
     ]
-    make.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{preview['job']['hid']}/apply")
 
     for name in ("blade", "module", "zz-fan"):
         part = make.get("/items", filter=f"name:eq:{name}")["items"][0]
@@ -789,7 +789,7 @@ def test_a_preview_tells_every_management_address_that_the_apply_changes(make: M
     preview = _send(make, "items", "hostname,ip\nsite2-sw-01,2001:db8::99\n")
     row = preview["rows"][0]
     assert (row["outcome"], _told(row)) == ("update", {"mgmt_ipv6": (None, "2001:db8::99")})
-    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/imports/{preview['job']['hid']}/apply")
     # Replacing it is told as well, and clearing `mgmt_address` tells of both it removes.
     row = _send(make, "items", "hostname,ip\nsite2-sw-01,2001:db8::77\n")["rows"][0]
     assert _told(row) == {"mgmt_ipv6": ("2001:db8::99", "2001:db8::77")}
@@ -815,7 +815,7 @@ def test_an_export_of_two_networks_moves_neither_address_when_loaded_back(make: 
 
     preview = _send(make, "items", exported)
     assert preview["rows"][0]["outcome"] == "unchanged"
-    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/imports/{preview['job']['hid']}/apply")
     assert make.get(f"/addresses/{six['hid']}")["network"]["label"] == "Blue"
     assert make.audit(record_type="address", action="update") == []
 
@@ -872,7 +872,7 @@ def test_a_moment_with_no_zone_is_in_the_applications_zone_and_is_not_cleared_al
     # the preview tells is what the apply does.
     preview = _send(make, "items", "name,observed_status,observed_at\nsite2-sw-01,online,!clear\n")
     assert (preview["rows"][0]["outcome"], preview["rows"][0]["changes"]) == ("unchanged", [])
-    assert make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)["status"] == "applied"
+    assert make.apply(f"/imports/{preview['job']['hid']}/apply")["status"] == "applied"
     assert make.get(path)["observed_at"] == "2026-11-02T15:00:00Z"
 
 
@@ -890,7 +890,7 @@ def test_looking_again_is_on_record_for_a_person_and_not_for_a_file(make: Maker)
         "/items/bulk-update", {"filter": "tags:has:spares", "set": {"observed_status": "present"}}
     )
     assert (preview["rows"][0]["outcome"], preview["rows"][0]["changes"]) == ("update", [])
-    make.post(f"/items/bulk-update/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/items/bulk-update/{preview['job']['hid']}/apply")
     assert make.get(f"/items/{spare['hid']}")["observed_at"] > first
 
 
@@ -914,7 +914,7 @@ def test_an_item_that_has_left_the_teams_hands_joins_no_group(make: Maker, admin
     past = "group,item,joined_on,left_on\nsite2-sw-stack1,SITE2-SW-001,2024-01-01,2025-01-01\n"
     preview = _send(make, "device_group_members", past)
     assert preview["rows"][0]["outcome"] == "create"
-    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/imports/{preview['job']['hid']}/apply")
     assert len(make.members(stack, include_past="true")) == 2
     assert other["groups"] == []
 
@@ -940,7 +940,7 @@ def test_one_file_names_one_master_of_a_stack_and_loads_twice_the_same(make: Mak
     good = text.replace("002,master,", "002,member,").replace("003,member,true", "003,member,")
     first = _send(make, "device_group_members", good)
     assert [row["outcome"] for row in first["rows"]] == ["create"] * 3
-    make.post(f"/imports/{first['job']['hid']}/apply", {}, 200)
+    make.apply(f"/imports/{first['job']['hid']}/apply")
     again = _send(make, "device_group_members", good)
     assert [row["outcome"] for row in again["rows"]] == ["unchanged"] * 3
 
@@ -1018,7 +1018,7 @@ def test_a_moment_with_no_zone_follows_the_time_zone_setting_wherever_it_comes_i
     text = "hostname,observed_status,observed_at\nsite2-sw-01,online,2026-11-02T10:00:00\n"
     preview = _send(make, "items", text)
     assert _told(preview["rows"][0])["observed_at"] == (None, "2026-11-02T15:00:00+00:00")
-    make.post(f"/imports/{preview['job']['hid']}/apply", {}, 200)
+    make.apply(f"/imports/{preview['job']['hid']}/apply")
     assert make.get(f"/items/{first['hid']}")["observed_at"] == "2026-11-02T15:00:00Z"
     # The same file again changes nothing, and neither does the moment with its zone.
     assert _send(make, "items", text)["rows"][0]["outcome"] == "unchanged"

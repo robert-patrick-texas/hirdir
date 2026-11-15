@@ -35,6 +35,9 @@ function job(more: Partial<Job> = {}): Job {
     updated: 3,
     unchanged: 3,
     rejected: 1,
+    rows_done: 0,
+    applied: 0,
+    stale: 0,
     skip_rejected: null,
     failure: null,
     created_at: "2026-11-13T21:31:18Z",
@@ -56,6 +59,8 @@ function row(number: number, more: Partial<PreviewRow> = {}): PreviewRow {
     changes: [],
     reasons: [],
     notes: [],
+    applied_outcome: null,
+    applied_reasons: [],
     ...more,
   };
 }

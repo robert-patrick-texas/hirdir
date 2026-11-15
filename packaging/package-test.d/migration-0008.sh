@@ -143,12 +143,12 @@ after_0008() {
     line=$(json 'd["lines"][0]["hid"]')
     send "/imports/preview?entity=items&file_name=arrived.csv" "$work/arrived.csv"
     made="$made | $status $(job_counts)"
-    api POST "/imports/$(json 'd["job"]["hid"]')/apply"
+    apply_job "/imports/$(json 'd["job"]["hid"]')/apply"
     made="$made $status $(job_counts)"
     api GET "/items/$witness_item"
     expect "pkg a purchase request is made with a line of three of the model from before, and the file with a purchase_line column that $previous_version refused is previewed and applied: the item from before arrived on that line" \
         "$made | $(json '[d["purchase_line"]["name"], d["purchase_line_hid"] == "'"$line"'"]')" \
-        '201 [["UW-REQ-0001/1", "UW-48P", 3, 3]] | 201 ["previewed", 1, 0, 1, 0, 0] 200 ["applied", 1, 0, 1, 0, 0] | ["UW-REQ-0001/1", true]'
+        '201 [["UW-REQ-0001/1", "UW-48P", 3, 3]] | 201 ["previewed", 1, 0, 1, 0, 0] 202 ["applied", 1, 0, 1, 0, 0] | ["UW-REQ-0001/1", true]'
     api GET "/purchase-lines/$line"
     api POST "/purchase-lines/$line/receive" "{\"row_version\": $(json_field row_version), \"items\": [{\"serial_number\": \"UWN0000R001\"}]}"
     made="$status $(json '[d["received_quantity"], d["pending_quantity"], [i["serial_number"] for i in d["items"]]]')"

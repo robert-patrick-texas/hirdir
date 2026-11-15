@@ -13,7 +13,9 @@ integrations ────┘   terminates TLS,      ──▶    one Python proc
 ```
 
 One process serves both the API and the built web UI. nginx does TLS and nothing else
-of ours. There is no second service, no queue and no cache in the MVP.
+of ours. There is no second service, no queue and no cache in the MVP. An import or a
+bulk edit is applied in the background by a thread of that one process, and the jobs
+waiting for it are rows of the database: see "Applying in the background" below.
 
 ## Components
 
@@ -167,13 +169,13 @@ rendered as text, never as HTML.
 
 - SQLite with `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, set on every
   connection and checked by the readiness probe.
-- One writer at a time. Imports and bulk edits validate first, then write in one short
-  transaction.
+- One writer at a time. Imports and bulk edits are previewed first, then written in
+  batches, each a short transaction of its own.
 - **Previews.** A preview of an import or a bulk edit is made by doing the work for
   real, through the same functions as any other change, inside a transaction that is
   then undone. What it reports is therefore what an apply will do, and no rule is
   written twice. Apply does the same work again, compares each row with what was
-  previewed, and keeps the result only when they agree.
+  previewed, and keeps each row that agrees.
 
   SQLite has one writer at a time, and a transaction that writes holds every other
   writer up until it ends, also when it ends by being undone. A preview of more than a
@@ -184,9 +186,36 @@ rendered as text, never as HTML.
   once, with no waiting, a transaction that has read and then wants to write after
   another has written in between, and a preview that took its turn first waits for it
   like any other change. An apply cannot be spared the same
-  way: it is one transaction, and while it works, about five seconds for each thousand
-  rows, another change waits. One that waits longer than `busy_timeout` is answered
-  `503` with `Retry-After`, and nothing of it was done. Reading is never held up.
+  way, since what it does is kept, so it is worked a batch at a time beside the
+  requests, as the next point says. A change that waits longer than `busy_timeout` for
+  another is answered `503` with `Retry-After`, and nothing of it was done. Reading is
+  never held up.
+- **Applying in the background.** `POST /imports/{hid}/apply`, and the apply of a bulk
+  edit, store the job as `applying`, or `queued` behind another, and answer `202` at
+  once. A worker in the server's own process, a thread with its own database session
+  (`io/background.py`), applies one job at a time: the one applying, then the queued
+  ones in the order they were asked for. The route wakes it once the request is
+  stored, and it also looks for work by itself every five seconds. It works out the
+  order of the rows once for the whole job, then works them 50 to a batch
+  (`io/imports.py`), each batch a transaction that takes the one writer's place before
+  it looks, as a small preview does, and stores with its rows what it did with each
+  one and how far the job has got. Between two batches it leaves the writer's place
+  free for 0.12 seconds: SQLite tells a change that waits for the place to try again
+  every tenth of a second at the longest, so such a change is sure to get it there,
+  and a sign-in waits a batch, a fraction of a second, at most. A batch that waits
+  longer than `busy_timeout` itself is tried again from its start. The rows of one
+  group, which are checked together, are kept in one batch whatever its size, and a
+  group of thousands of members therefore holds others up for as long as it takes.
+  The batches are under the request ID of the apply, and as the person who asked for
+  it, whose role is looked at again as the worker takes it up. An error nobody foresaw
+  undoes the batch it happened in and stops the job, and is logged with its
+  traceback. When the server stops, the worker stops after the batch it is in, at
+  most a minute later, and the job is `stopped`; when it starts, before the worker
+  does anything, a job still `applying` is marked `stopped`, since only a stop that
+  cut it short leaves one so. A stopped job is resumed by asking for it to be applied
+  again, from the first row that was not applied. There is one worker for one
+  database, because there is one process: two servers on one database would each
+  take the jobs.
 - Schema changes are Alembic migrations, applied by `hirdir admin migrate`.
 - Everything that differs between SQLite and PostgreSQL lives in `db/dialect.py`:
   case-insensitive comparison, regular expression matching, the order of addresses,
@@ -223,7 +252,8 @@ rendered as text, never as HTML.
   requests in one minute agree. SQLite gets a function from the application for that,
   and PostgreSQL uses `now()` in the zone.
 - **Writes.** A request's changes are committed when its route returns and before any
-  of the answer is sent. Every update of a row names the `row_version` it was read at.
+  of the answer is sent, and the worker's at the end of each batch. Every update of a
+  row names the `row_version` it was read at.
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
   `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. A backup is named
   for when it was made, in the application's time zone with its offset from UTC:

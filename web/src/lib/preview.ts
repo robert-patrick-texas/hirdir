@@ -123,7 +123,10 @@ export function countsText(job: Job): string {
 
 const STATUS_LABELS: Readonly<Record<Job["status"], string>> = {
   previewed: "Previewed, not applied",
+  queued: "Waiting for another to be applied",
+  applying: "Being applied",
   applied: "Applied",
+  stopped: "Stopped partway, to be resumed",
   failed: "Failed: nothing was applied",
 };
 

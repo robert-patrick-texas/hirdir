@@ -8529,6 +8529,11 @@
         "additionalProperties": false,
         "description": "A stored preview of an import or a bulk edit, and what became of it.",
         "properties": {
+          "applied": {
+            "description": "How many rows the apply applied as they were previewed.",
+            "title": "Applied",
+            "type": "integer"
+          },
           "applied_at": {
             "anyOf": [
               {
@@ -8539,6 +8544,7 @@
                 "type": "null"
               }
             ],
+            "description": "When it was last asked to be applied.",
             "title": "Applied At"
           },
           "applied_by": {
@@ -8550,6 +8556,7 @@
                 "type": "null"
               }
             ],
+            "description": "Who last asked for it to be applied.",
             "title": "Applied By"
           },
           "applied_by_name": {
@@ -8564,7 +8571,7 @@
             "title": "Applied By Name"
           },
           "created": {
-            "description": "Rows that create a record.",
+            "description": "Rows that create a record, as the preview found.",
             "title": "Created",
             "type": "integer"
           },
@@ -8608,7 +8615,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why a failed job was not applied.",
+            "description": "Why a stopped job stopped, or why a failed one was not applied.",
             "title": "Failure"
           },
           "file_name": {
@@ -8647,12 +8654,17 @@
             "type": "string"
           },
           "rejected": {
-            "description": "Rows that cannot be applied.",
+            "description": "Rows that cannot be applied, as the preview found.",
             "title": "Rejected",
             "type": "integer"
           },
           "row_count": {
             "title": "Row Count",
+            "type": "integer"
+          },
+          "rows_done": {
+            "description": "How many rows the apply has worked so far.",
+            "title": "Rows Done",
             "type": "integer"
           },
           "skip_rejected": {
@@ -8675,10 +8687,19 @@
             "title": "Source",
             "type": "string"
           },
+          "stale": {
+            "description": "How many rows the apply left out because they changed since the preview.",
+            "title": "Stale",
+            "type": "integer"
+          },
           "status": {
+            "description": "`queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied.",
             "enum": [
               "previewed",
+              "queued",
+              "applying",
               "applied",
+              "stopped",
               "failed"
             ],
             "title": "Status",
@@ -8690,7 +8711,7 @@
             "type": "integer"
           },
           "updated": {
-            "description": "Rows that change a record.",
+            "description": "Rows that change a record, as the preview found.",
             "title": "Updated",
             "type": "integer"
           }
@@ -8708,6 +8729,9 @@
           "updated",
           "unchanged",
           "rejected",
+          "rows_done",
+          "applied",
+          "stale",
           "skip_rejected",
           "failure",
           "applied_at",
@@ -8747,6 +8771,33 @@
         "additionalProperties": false,
         "description": "One row of a preview: what it would do, or why it is rejected.",
         "properties": {
+          "applied_outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "create",
+                  "update",
+                  "unchanged",
+                  "stale",
+                  "rejected"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the apply did with the row. Blank until it is worked.",
+            "title": "Applied Outcome"
+          },
+          "applied_reasons": {
+            "description": "Why the apply left a `stale` or `rejected` row out.",
+            "items": {
+              "$ref": "#/components/schemas/RowReason"
+            },
+            "title": "Applied Reasons",
+            "type": "array"
+          },
           "changes": {
             "items": {
               "$ref": "#/components/schemas/RowChange"
@@ -8809,7 +8860,9 @@
           "key",
           "changes",
           "reasons",
-          "notes"
+          "notes",
+          "applied_outcome",
+          "applied_reasons"
         ],
         "title": "ImportRowOut",
         "type": "object"
@@ -24353,7 +24406,7 @@
             }
           },
           {
-            "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`, `rows_done`, `applied`, `stale`, `applied_at`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -24369,7 +24422,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`, `rows_done`, `applied`, `stale`, `applied_at`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -24687,7 +24740,7 @@
     },
     "/api/v1/imports/{hid}/apply": {
       "post": {
-        "description": "Apply a preview exactly as it was shown, in one transaction, or not at all.\n\nAnybody with the Inventory role may apply it, whoever made it. If a record it would touch has\nchanged since, nothing is applied and the answer is a `409`.",
+        "description": "Apply a preview in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. The rows are applied\n50 at a time; a row whose record changed since the preview is left out as `stale`,\nand the rest go on. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_import_api_v1_imports__hid__apply_post",
         "parameters": [
           {
@@ -24732,7 +24785,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -24750,17 +24803,17 @@
                 }
               }
             },
-            "description": "A record changed after the preview was made."
+            "description": "It is applied already, or being applied, or failed before 0.7.0."
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Rows are rejected, and `skip_rejected` is not given."
           }
         },
         "summary": "Apply Import",
@@ -24771,7 +24824,7 @@
     },
     "/api/v1/imports/{hid}/rows": {
       "get": {
-        "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.",
+        "description": "List the rows of a preview, in the order of the file unless a sort says otherwise.\n\nEach says what the preview found, and once it is applied, what the apply did with it.",
         "operationId": "list_import_rows_api_v1_imports__hid__rows_get",
         "parameters": [
           {
@@ -24808,7 +24861,32 @@
             }
           },
           {
-            "description": "What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas.",
+            "description": "Only rows the apply did this with.",
+            "in": "query",
+            "name": "applied_outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "create",
+                    "update",
+                    "unchanged",
+                    "stale",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only rows the apply did this with.",
+              "title": "Applied Outcome"
+            }
+          },
+          {
+            "description": "What to sort by: `row`, `key`, `outcome`, `applied_outcome`. `-` in front for descending. Repeat or separate by commas.",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -24824,7 +24902,7 @@
                   "type": "null"
                 }
               ],
-              "description": "What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas.",
+              "description": "What to sort by: `row`, `key`, `outcome`, `applied_outcome`. `-` in front for descending. Repeat or separate by commas.",
               "title": "Sort"
             }
           },
@@ -25145,7 +25223,7 @@
     },
     "/api/v1/items/bulk-update/{hid}/apply": {
       "post": {
-        "description": "Apply a previewed bulk edit, in one transaction, or not at all.\n\nAnybody with the Inventory role may apply it, whoever made it. If an item it would change has\nbeen changed since, by anybody, nothing is applied and the answer is a `409`\nthat names the rows.",
+        "description": "Apply a previewed bulk edit in the background, or resume one that stopped.\n\nThe answer is at once: the job, `applying`, or `queued` while another is applied.\nAnybody with the Inventory role may apply it, whoever made it. An item that has been\nchanged since the preview, by anybody, is left as it is and its row is `stale`;\nthe rest are changed. `GET /imports/{hid}` says how far it has got.",
         "operationId": "apply_bulk_update_api_v1_items_bulk_update__hid__apply_post",
         "parameters": [
           {
@@ -25190,7 +25268,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -25208,17 +25286,17 @@
                 }
               }
             },
-            "description": "A record changed after the preview was made."
+            "description": "It is applied already, or being applied, or failed before 0.7.0."
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Rows are rejected, and `skip_rejected` is not given."
           }
         },
         "summary": "Apply Bulk Update",

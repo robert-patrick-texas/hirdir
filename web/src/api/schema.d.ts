@@ -2343,7 +2343,7 @@ export interface paths {
         query?: {
           /** Imports of files, or bulk edits. */
           source?: "file" | "bulk";
-          /** What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`. `-` in front for descending. Repeat or separate by commas. */
+          /** What to sort by: `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`, `rows_done`, `applied`, `stale`, `applied_at`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -2448,10 +2448,12 @@ export interface paths {
   };
   "/api/v1/imports/{hid}/apply": {
     /**
-     * Apply a preview exactly as it was shown, in one transaction, or not at all.
+     * Apply a preview in the background, or resume one that stopped.
      *
-     * Anybody with the Inventory role may apply it, whoever made it. If a record it would touch has
-     * changed since, nothing is applied and the answer is a `409`.
+     * The answer is at once: the job, `applying`, or `queued` while another is applied.
+     * Anybody with the Inventory role may apply it, whoever made it. The rows are applied
+     * 50 at a time; a row whose record changed since the preview is left out as `stale`,
+     * and the rest go on. `GET /imports/{hid}` says how far it has got.
      */
     post: {
       parameters: {
@@ -2470,34 +2472,40 @@ export interface paths {
       requestBody?: never;
       responses: {
         /** Successful Response */
-        200: {
+        202: {
           content: {
             "application/json": components["schemas"]["ImportJobOut"];
           };
         };
-        /** A record changed after the preview was made. */
+        /** It is applied already, or being applied, or failed before 0.7.0. */
         409: {
           content: {
             "application/json": components["schemas"]["Problem"];
           };
         };
-        /** Validation Error */
+        /** Rows are rejected, and `skip_rejected` is not given. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
     };
   };
   "/api/v1/imports/{hid}/rows": {
-    /** List the rows of a preview, in the order of the file unless a sort says otherwise. */
+    /**
+     * List the rows of a preview, in the order of the file unless a sort says otherwise.
+     *
+     * Each says what the preview found, and once it is applied, what the apply did with it.
+     */
     get: {
       parameters: {
         query?: {
           /** Only rows of this kind. */
           outcome?: "create" | "update" | "unchanged" | "rejected" | null;
-          /** What to sort by: `row`, `key`, `outcome`. `-` in front for descending. Repeat or separate by commas. */
+          /** Only rows the apply did this with. */
+          applied_outcome?: "create" | "update" | "unchanged" | "stale" | "rejected" | null;
+          /** What to sort by: `row`, `key`, `outcome`, `applied_outcome`. `-` in front for descending. Repeat or separate by commas. */
           sort?: string[] | null;
           limit?: number;
           offset?: number;
@@ -2634,11 +2642,12 @@ export interface paths {
   };
   "/api/v1/items/bulk-update/{hid}/apply": {
     /**
-     * Apply a previewed bulk edit, in one transaction, or not at all.
+     * Apply a previewed bulk edit in the background, or resume one that stopped.
      *
-     * Anybody with the Inventory role may apply it, whoever made it. If an item it would change has
-     * been changed since, by anybody, nothing is applied and the answer is a `409`
-     * that names the rows.
+     * The answer is at once: the job, `applying`, or `queued` while another is applied.
+     * Anybody with the Inventory role may apply it, whoever made it. An item that has been
+     * changed since the preview, by anybody, is left as it is and its row is `stale`;
+     * the rest are changed. `GET /imports/{hid}` says how far it has got.
      */
     post: {
       parameters: {
@@ -2657,21 +2666,21 @@ export interface paths {
       requestBody?: never;
       responses: {
         /** Successful Response */
-        200: {
+        202: {
           content: {
             "application/json": components["schemas"]["ImportJobOut"];
           };
         };
-        /** A record changed after the preview was made. */
+        /** It is applied already, or being applied, or failed before 0.7.0. */
         409: {
           content: {
             "application/json": components["schemas"]["Problem"];
           };
         };
-        /** Validation Error */
+        /** Rows are rejected, and `skip_rejected` is not given. */
         422: {
           content: {
-            "application/json": components["schemas"]["HTTPValidationError"];
+            "application/json": components["schemas"]["Problem"];
           };
         };
       };
@@ -7083,31 +7092,40 @@ export interface components {
     };
     /** A stored preview of an import or a bulk edit, and what became of it. */
     ImportJobOut: {
+      /** How many rows the apply applied as they were previewed. */
+      applied: number;
+      /** When it was last asked to be applied. */
       applied_at: string | null;
+      /** Who last asked for it to be applied. */
       applied_by: string | null;
       applied_by_name: string | null;
-      /** Rows that create a record. */
+      /** Rows that create a record, as the preview found. */
       created: number;
       created_at: string;
       created_by: string | null;
       created_by_name: string | null;
       entity: string;
-      /** Why a failed job was not applied. */
+      /** Why a stopped job stopped, or why a failed one was not applied. */
       failure: string | null;
       file_name: string | null;
       file_sha256: string | null;
       hid: string;
       mode: "create" | "upsert" | "update";
-      /** Rows that cannot be applied. */
+      /** Rows that cannot be applied, as the preview found. */
       rejected: number;
       row_count: number;
+      /** How many rows the apply has worked so far. */
+      rows_done: number;
       /** Whether it was applied without them. */
       skip_rejected: boolean | null;
       source: "file" | "bulk";
-      status: "previewed" | "applied" | "failed";
+      /** How many rows the apply left out because they changed since the preview. */
+      stale: number;
+      /** `queued` and `applying` while it is applied in the background, `applied` once every row is worked, `stopped` when it stopped partway, to be resumed. `failed` is a job of a release before 0.7.0 that was not applied. */
+      status: "previewed" | "queued" | "applying" | "applied" | "stopped" | "failed";
       /** Rows that find their record as the row has it. */
       unchanged: number;
-      /** Rows that change a record. */
+      /** Rows that change a record, as the preview found. */
       updated: number;
     };
     /** A preview: the job with its counts, and the first of its rows. */
@@ -7118,6 +7136,10 @@ export interface components {
     };
     /** One row of a preview: what it would do, or why it is rejected. */
     ImportRowOut: {
+      /** What the apply did with the row. Blank until it is worked. */
+      applied_outcome: "create" | "update" | "unchanged" | "stale" | "rejected" | null;
+      /** Why the apply left a `stale` or `rejected` row out. */
+      applied_reasons: components["schemas"]["RowReason"][];
       changes: components["schemas"]["RowChange"][];
       /** How the row names its record. */
       key: string;

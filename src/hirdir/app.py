@@ -2,10 +2,13 @@
 
 import logging
 import re
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.staticfiles import StaticFiles
@@ -32,7 +35,7 @@ from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
 from hirdir.ids import new_hid
-from hirdir.io import fields, tables
+from hirdir.io import background, fields, tables
 
 API_PREFIX = "/api/v1"
 ROUTERS = (
@@ -172,6 +175,28 @@ def bind(app: FastAPI, config: Config) -> None:
     app.state.throttle = Throttle(config.sign_in_failures_before_delay)
 
 
+# --- what runs beside the requests --------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Run what works beside the requests for as long as the server is up.
+
+    That is the worker that applies imports and bulk edits in the background (P-134).
+    It is started once the application is bound to its database, and is stopped, after
+    the batch it is in, when the server stops.
+    """
+    applying = background.running(app.state)
+    await run_in_threadpool(applying.__enter__)
+    try:
+        yield
+    finally:
+        await run_in_threadpool(applying.__exit__, None, None, None)
+
+
+# --- the application ------------------------------------------------------------------
+
+
 def create_app(config: Config) -> FastAPI:
     """Build the application for one configuration."""
     app = FastAPI(
@@ -181,6 +206,7 @@ def create_app(config: Config) -> FastAPI:
         openapi_url=None,
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
     bind(app, config)
     # Every list is made ready by this one thread, before requests arrive side by side.

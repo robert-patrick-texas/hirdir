@@ -158,12 +158,39 @@ class Run:
         # The session lets go of a record that nothing else holds. These are held, so
         # that the vendor of a thousand rows is read once and not a thousand times.
         self._held: dict[str, Any] = {}
+        # --- an apply in batches (P-134) ---
+        # What the rows of the batch being applied have taught, to be forgotten again
+        # if the batch is undone. None outside an apply.
+        self._batch: list[Callable[[], None]] | None = None
 
     def start_row(self, number: int = 0) -> None:
         """Begin a row: nothing noted yet, nothing to forget."""
+        if self._batch is not None:
+            # What the row before taught stays, unless its whole batch is undone.
+            self._batch.extend(self._undo)
         self.row = number
         self.notes = []
         self._undo = []
+
+    def start_batch(self) -> None:
+        """Begin a batch of an apply, after other changes may have been stored.
+
+        What was looked up by name is looked up again, since somebody may have renamed
+        it between two batches, and the records worked on are read afresh.
+        """
+        self.let_go()
+        self.renamed()
+        self._owners.clear()
+        self._batch = []
+        self._undo = []
+
+    def forget_batch(self) -> None:
+        """Forget what every row of the batch taught, because the batch was undone."""
+        for step in reversed([*(self._batch or []), *self._undo]):
+            step()
+        self._batch = []
+        self._undo = []
+        self._held.clear()
 
     def forget_row(self) -> None:
         """Forget what the row taught, because the row was rejected."""
@@ -539,9 +566,22 @@ class Entity:
         """Return the rows that cannot stand once the whole file is worked, with why.
 
         Most records are right or wrong a row at a time. The members of a stack are
-        right together, so they are checked when all of them are in.
+        right together, so they are checked when all of them are in. An apply asks it
+        at the end of each batch, which holds every row that `together` keeps with
+        another.
         """
         return {}
+
+    # --- an apply in batches (P-134) ---
+
+    def together(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[Any]:
+        """Return, for each row, what it is checked together with, or None.
+
+        An apply works the rows in batches. Rows that share a value here are put in one
+        batch however many they are, so that what is checked of them together is
+        checked with all of them in.
+        """
+        return [None] * len(rows)
 
 
 def _kept(record: Any) -> dict[str, Any]:
@@ -3332,6 +3372,25 @@ class DeviceGroupMembers(Entity):
 
     def key(self, values: Mapping[str, Any], record: Any | None) -> str:
         return " ".join(str(values[name]) for name in ("group", "item") if values.get(name))
+
+    # --- an apply in batches (P-134) ---
+
+    def together(self, run: Run, rows: Sequence[Mapping[str, Any]]) -> list[Any]:
+        """Keep the members of one group in one batch: they are checked together (D-91)."""
+        found: list[Any] = []
+        for row in rows:
+            membership = run.db.get(DeviceGroupMember, row["hid"]) if row.get("hid") else None
+            if membership is not None:
+                found.append(membership.group_hid)
+            elif isinstance(row.get("group"), str):
+                try:
+                    found.append(run.group(row["group"]).hid)
+                except DomainError:
+                    # A group that is not there yet: rows that name it alike stay together.
+                    found.append(records.key(row["group"]))
+            else:
+                found.append(None)
+        return found
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         db, context = run.db, run.context
