@@ -12,7 +12,10 @@ records and rules, [architecture.md](architecture.md) the software and its packa
 ones still to confirm, are in [decisions.md](decisions.md).
 
 **MUST** marks a requirement of the MVP (release 1.0.0). **LATER** marks work that is
-planned after the MVP but that the MVP schema and interfaces must not block.
+planned after the MVP but that the MVP schema and interfaces must not block. The
+releases from 0.6.1 to 0.9.0 come before the MVP: what each adds is in
+[build-plan.md](build-plan.md) under "From 0.6.1 to 0.9.0", and is written into this
+page as requirements when the release is started.
 
 ![Lifecycle workflow](../images/lifecycle-workflow.png)
 
@@ -310,8 +313,8 @@ as AI.
   outside assistance, tools and services.
 - **R14.6** A line MAY be a draft. The report compares the balance with and without the
   drafts, which answers "what if we add this service" or "what if that contract ends".
-- **R14.7** LATER: a dated record of the balance, to show the trend.
-- **R14.8** LATER: a line that multiplies the capacity of chosen staff lines instead of
+- **R14.7** In 0.7.0: a dated record of the balance, to show the trend.
+- **R14.8** In 0.7.0: a line that multiplies the capacity of chosen staff lines instead of
   adding a fixed amount, for tools and AI that make people more effective.
 
 ## Qualities

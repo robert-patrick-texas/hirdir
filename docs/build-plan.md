@@ -34,6 +34,10 @@ reading; it does not settle a policy question in code.
 | **0.4.0** Structure | Minor items and inheritance from the parent. Device groups: stacks, clusters, controller domains, nesting, dated membership. Replacing an item, with its place in a group. Networks and addresses, and the duplicates report. Component count, managed-node count and support weight with the stack discount. Summary report. | S18–S23 |
 | **0.5.0** Places and people | Regions, sites, locations and paths. Contacts, assignments and inherited resolution. Shipping address inheritance. Owners and external-owner exceptions. Geography tree with roll-up totals. Moving a site. | S24–S28 |
 | **0.6.0** Money, time and capacity | Support agreements, the contracts grouped into them, and dated coverage; a contract renewed in one place. Estimated value and annual support cost. The vendor portfolio. End-of-life and coverage reports. Replacements in reports and in files. Purchase requests, lines and receiving. External systems and registrations. Draft records. Capacity lines and the capacity report. | S29–S35, S39–S40 |
+| **0.6.1** Corrections to 0.6.0 | What a contract overrides, said beside what it has in force. The dates of an earlier term of a contract that is co-termed with its agreement. The model of an item that is put on a purchase line, held to the line's. The contract that still counts an item out of service, as a field of the item list. Browser scenarios for the pages of 0.6.0 that only unit tests hold. `make upgrade` without a step the host refuses. The speed of the item filters of 0.6.0 on a large inventory, measured. | none new |
+| **0.7.0** Renewals in practice, and links | The renewal worklist. A coverage marked as not to be renewed. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a dated record of the balance, a line that multiplies staff capacity, and the report for one region or site. Links, an address with its text, on locations and on catalog entries. | S41–S46 |
+| **0.8.0** Circuits | Telecommunication circuits beside the inventory: the devices each connects, its A side and Z side, its carriers and their circuit numbers, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the monthly cost. | S47–S50 |
+| **0.9.0** Reference files | Files attached to a location: photographs, maps, sketches and floor plans. Documents attached to a catalog entry and reached from every item of that model, such as an administration guide, served by `hirdir` itself where there is no internet access. Upload, link, download, limits, roles, audit, and the files in the backup. | S51–S53 |
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
 
 After the MVP, in the order currently expected: RADIUS sign-in; access-code rules; SAML;
@@ -42,8 +46,9 @@ written by monitoring tools, which until then is set by hand or by an import (D-
 outward change feed and host lists for monitoring tools; planning views for draft sites and items; cell-range selection and
 editing in the grid; PostgreSQL; a container image.
 
-A release between two rows of the table carries corrections to the one before it and
-adds no scenario. 0.2.1 followed 0.2.0 with the answers to its proposals: one time zone
+A release whose last number is not zero carries corrections to the one before it and
+adds no scenario. One that is planned ahead has a row, as 0.6.1 has; the others came
+between two rows as their releases were answered. 0.2.1 followed 0.2.0 with the answers to its proposals: one time zone
 for everybody, support weight to two places, and a skipped upgrade test that says so.
 0.4.1 follows 0.4.0 with the answers to its proposals, a stack that may be its master
 alone among them, and with the condition of an item, what is observed of it, and the
@@ -51,6 +56,103 @@ health that follows for an item and for a stack (D-92). 0.4.2 follows 0.4.1 with
 answers to what its review found unsaid: a time that names no zone is in the
 application's time zone, where it is entered and where it is filtered by (D-109,
 D-110).
+
+## From 0.6.1 to 0.9.0
+
+What each release between 0.6.0 and the MVP is for (D-157). The requirements, the data
+model and the interfaces of each are written when it is started, in the contract lane,
+and what they leave to be chosen goes to [decisions.md](decisions.md) as proposals then.
+What is listed here is what the release must do, not yet how.
+
+### 0.6.1, corrections to 0.6.0
+
+What 0.6.0 left undone, and what its two reviews and its first run in a browser
+showed. It adds no scenario and no kind of record.
+
+- A contract says, for each field it has from its agreement or overrides, what the
+  agreement would give: the web UI no longer reads the agreement to show an override.
+- An earlier term of a contract that took its dates from its agreement shows the
+  dates it had, and not blanks.
+- An item that is put on a purchase line, by hand or by a file, is of the line's
+  model, or the answer says that it is not.
+- The contract that still counts an item which is out of service is a field of the
+  item list, to sort, filter and export by. The page works it out for itself today.
+- Browser scenarios for what only unit tests hold: renewing an agreement, the marks
+  of a lapsed contract and of a renewal that is pending, removing a coverage and
+  telling the vendor for several at once, opening a coverage again, covering more
+  than a thousand items, and the answer to an edit that went stale when a term began.
+- `make upgrade` moves every dependency without the step that the host's permissions
+  refuse.
+- The item filters that 0.6.0 added, how many contracts cover an item and what is
+  out of service and still counted among them, are timed on a large inventory. What
+  is slow is put right here where that is small, and otherwise goes to the timing of
+  1.0.0 with the numbers.
+
+### 0.7.0, renewals in practice, and links
+
+- **The renewal worklist.** One page, one report and one command for what a person
+  must act on: the contracts that end within a horizon, those that have lapsed,
+  those whose renewal is pending and for how long, and the items that more than one
+  contract covers, each under its vendor and its agreement, and each count leading
+  to its rows.
+- **Not to be renewed.** A coverage is marked as one that ends with the present term.
+  The worklist shows the mark, and a renewal leaves the item behind. Until then an
+  item is left out by ending its coverage on an earlier day (D-156).
+- **Contacts of an agreement and of a contract.** The account manager and the support
+  contact may be contact records, as the contacts of a place are since 0.5.0, and
+  are inherited from the agreement as the text is. Free text stays possible.
+- **Capacity over time.** A dated record of the balance, to show the trend (R14.7).
+  A line that multiplies the capacity of chosen staff lines, for tools and services
+  that make people more effective (R14.8). The capacity report for one region or
+  one site, which D-147 left until the report of the whole had been used.
+- **Links.** A location and a catalog entry take one link or more, each an address
+  and the text to show for it: the web page of a site, the data sheet of a model.
+  They are optional, are shown where the record is shown, an item shows those of its
+  model, and they travel in files. Whether a site and a region take them too is
+  settled when the release is started.
+
+### 0.8.0, circuits
+
+A first way to track telecommunication circuits beside the device inventory. A
+circuit is a record of its own, referenced by HID, audited, role-checked, retired and
+never deleted, and may be a draft, as every record is. It holds:
+
+- the device or devices it connects, matched from the inventory, and shown on each
+  of them;
+- its A side, the source, and its Z side, the destination, each a location;
+- its primary carrier, and any number of additional carriers, each with its part:
+  a local exchange carrier, the provider of a cross-connect in a co-location, and
+  the like;
+- its circuit numbers, one for each carrier that gives it one;
+- the billing account number and the reference of the billing contract;
+- the number and the address of technical support;
+- the contacts of the carrier's account team, for escalation;
+- the site contacts of the A side and of the Z side, which follow from the two
+  locations as 0.5.0 resolves them, with any that are the circuit's own;
+- its monthly recurring cost, as lines that add up;
+- its owner, and what every record has: status, dates, notes and tags.
+
+Circuits are listed, filtered, sorted and exported as items are, load from files,
+and have a report of the monthly cost by carrier and by site. What is not in scope
+stays so: cabling inside a building, the interfaces of a device, and the accounting
+of what was paid.
+
+### 0.9.0, reference files
+
+Optional reference material, kept with the record it is about.
+
+- **For a location:** photographs of the site, maps, sketches and floor plans.
+- **For a catalog entry:** the documents of a vendor or a manufacturer for that
+  model, an administration guide for one, reached from every item of the model. On
+  a closed network with no internet access the link of 0.7.0 leads nowhere, so the
+  file itself is kept and served by `hirdir`.
+- A reference is a file that is uploaded, or a link to one that is kept elsewhere:
+  both are listed together, with a title and what kind of thing each is.
+- Limits on size and on the kinds of file, role checks on every upload, download
+  and removal, an audit event for each, and no file is served in a way that lets
+  it run in the browser as part of the application.
+- The files are in the backup and come back with a restore, and an upgrade leaves
+  them as they were.
 
 ## Acceptance scenarios
 
@@ -100,6 +202,19 @@ written as a failing test at the start of its release.
 | S38 | Install the first release, load the examples, upgrade through each release in turn | Every migration applies and the summary is unchanged |
 | S39 | Enter the lines of the worked example in [data-model.md](data-model.md) against a seeded support weight of 2,400 | Demand 10.0, supply 9.0 by category, balance −1.0, coverage 90% |
 | S40 | Add the draft services line, then set an end date in the past on the professional services line | With drafts the balance is zero; the ended line drops out of supply in both views |
+| S41 | Under one agreement: a contract that ends next month, one that has lapsed, one whose renewal is pending, and an item under two contracts | The renewal worklist lists each under its vendor and agreement, and each count leads to its rows |
+| S42 | Mark one of two coverages of a contract as not to be renewed, then renew the contract | The marked item's coverage ends with the old term; the other item follows into the new one |
+| S43 | The account manager of an agreement is a contact record; one contract in it names another | Each contract shows the contact in force with its source, and a change of the contact's telephone number shows on both |
+| S44 | Record the capacity balance on two days with a line added between them, then add a line that multiplies two staff lines | The trend shows both records; the supply of the two staff lines is multiplied and no other is |
+| S45 | Capacity lines and items in two regions; ask for the report of one | Demand, supply and balance are of that region alone |
+| S46 | Give a location two links and a catalog entry one, each an address and its text | Each shows on its record, an item shows the link of its model, a file carries them out and back unchanged, and an address that is no web address is refused |
+| S47 | Enter a circuit between two locations with a primary carrier, a local exchange carrier, a circuit number for each, and a router at each end | The circuit shows both sides, both carriers and both devices; each router and each location shows the circuit |
+| S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier | The monthly cost of each is the sum of its lines, and the report totals both by carrier and by site |
+| S49 | The A side's site has a site contact; the circuit has a carrier account manager | The circuit shows the site contacts of each side, resolved from its locations with their source, and the carrier's escalation contacts |
+| S50 | Export the circuits to a file, load it into an empty inventory, and load it again | Every circuit is created with its sides, carriers, numbers and cost lines, and the second load changes nothing |
+| S51 | Upload a photograph and a floor plan to a location, and download each | Each is listed with its title and kind, comes back byte for byte, and a View-only user downloads and cannot upload |
+| S52 | Upload an administration guide to a catalog entry | Every item of that model reaches it, with no request leaving the server |
+| S53 | Upload a file over the limit and one of a kind that is not allowed; then back up, restore on a clean install | Both uploads are refused with the reason; the restored inventory has every file, byte for byte |
 
 ## Definition of done
 
