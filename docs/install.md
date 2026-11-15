@@ -767,6 +767,75 @@ this upgrade is at revision `0007`. 0.5.0 knows no contract, purchase request,
 external system or capacity line, so whatever was entered of those with 0.6.0 is lost
 with the rest that was entered since the upgrade.
 
+### From 0.6.0 to 0.6.1
+
+The schema stays at revision `0008`: 0.6.1 has no migration. Nothing that is held is
+changed by the upgrade. Every record is as it was, field for field and at the
+`row_version` it had, and the upgrade writes no audit event. It takes its backup and
+stops and starts the service all the same. `/etc/hirdir/config.toml` gains no setting,
+and `/etc/nginx/snippets/hirdir.conf` is the one 0.6.0 wrote, so the upgrade says
+nothing of either and nginx is not reloaded.
+
+Some of what is held is said or read differently from now on, for a script that reads
+it. Each is a field, a route or a column more beside what 0.6.0 gave; the one value
+that reads otherwise is the dates of an earlier term:
+
+- **An earlier term of a contract has the dates it had.** A contract with no dates of
+  its own takes its period from its agreement, and 0.6.0 gave an earlier term of such
+  a contract, in `GET /contracts/{hid}/terms`, with blank dates. 0.6.1 gives the
+  agreement's, as the agreement stood on the last day of that term, read from its
+  audit trail: a renewal of the agreement entered afterwards does not change them.
+  Each date says where it came from, `starts_on_source` and `ends_on_source`, `own`,
+  `agreement` or `none`, and the term names the agreement the contract was in,
+  `agreement_hid`. This holds for the renewals entered with 0.6.0 as well.
+- **An agreement lists its own earlier terms**, `GET /agreements/{hid}/terms`, which
+  0.6.0 did not have: each with its number, its period, its cost, its purchase
+  reference, and when the renewal that ended it was entered and by whom, read from
+  the audit trail in the same way, so the agreements that were renewed with 0.6.0 have
+  theirs. A renewal entered early, whose term is still to begin, has ended no term yet.
+- **A contract says what its agreement gives.** Each field of `effective` on a contract
+  has `from_agreement` beside its value and its source, and the reseller
+  `from_agreement_label`: what the agreement gives for that field today, whether the
+  contract overrides it or not. It is blank for a contract in no agreement.
+- **An item on a purchase line is of the line's model.** 0.6.0 let an item be put on a
+  line of another model, by hand or by a file. From 0.6.1 an item that is put on a line
+  and names no model takes the line's, one that names another is refused with `422` on
+  `catalog_entry_hid`, and the model of an item on a line is not changed to another
+  while it is there. **What 0.6.0 let in is left as it is**, and an edit of anything
+  else of such an item goes through. It is reported, to be put right: the record of an
+  item and the item list have `purchase_line_mismatch`, and each purchase line counts
+  its own, `mismatched_items`. `GET /api/v1/items?filter=purchase_line_mismatch:eq:true`
+  lists them, and with `include_archived=true` the retired and the archived among
+  them. An item is put right by giving it the line's model, or by taking it off the
+  line. The `purchase_line` of an item's record names the line's model,
+  `catalog_entry_hid`.
+- **The contracts that still count an item out of service** are on its record,
+  `out_of_service_contracts`, and are fields of the item list,
+  `out_of_service_contract.number` and `out_of_service_contract.hid`, to filter and
+  sort by, as `contract.number` and `contract.hid` are for the contracts that cover it
+  today. They are blank for an item in service.
+- A file of items has the columns `out_of_service_contracts`, the numbers of those
+  contracts, and `purchase_line_mismatch`, and a file of purchase lines the column
+  `mismatched_items`. An export writes them when they are asked for, and an import
+  passes over them, so such a file is taken back as it is.
+- `hirdir agreements show` prints an agreement with its earlier terms, and `hirdir
+  contracts show` marks a date of an earlier term that was the agreement's, and says
+  beside an override what the agreement gives.
+
+Going back to 0.6.0 needs no backup, because the schema is the same and 0.6.0 reads
+the database as 0.6.1 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.6.0_amd64.deb
+```
+
+The command goes through and starts the service, and that is all. What was entered
+with 0.6.1 stays. 0.6.0 then gives the earlier terms of a contract with no dates of its
+own blank dates again, has no list of the earlier terms of an agreement, and lets an
+item onto a line of another model again. It refuses a file of items with the column
+`out_of_service_contracts` or `purchase_line_mismatch`, and one of purchase lines with
+`mismatched_items`, as having a column it does not know.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -816,8 +885,8 @@ it is expected. The second puts the backup in place, and the third finishes the
 installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
-goes through, nothing is restored and nothing is lost. 0.4.2 is such a release. The
-section of each release above says what its upgrade changed.
+goes through, nothing is restored and nothing is lost. 0.4.2 and 0.6.1 are such
+releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 
