@@ -11,15 +11,18 @@ that the inventory can be looked at in a browser with
 127.0.0.1:8726. A folder is filled again only if this script made it.
 
 This is for timing, and it bypasses the rules. What there are few of, the catalog,
-the places, the owners, the agreements, the contracts and the device groups with their
-members, is made through `hirdir.domain`, as any change is. The items, their tags,
+the places, the owners, the agreements, the contracts, the purchase requests and their
+lines, and the device groups with their members, is made through `hirdir.domain`, as
+any change is. The items, their tags,
 their addresses and their coverage under contracts are written in bulk, straight into
 their tables, because 50,000 items made one at a time take many minutes. Those rows
 are what an import of the same inventory from a file would have written: HIDs from
 `hirdir.ids`, the keys that are compared, the standing each lifecycle state gives on
 entry, row versions, bookkeeping, and an audit event for each change. An item that has
 left service has a coverage that ended on the day it left and says so, as
-`hirdir.domain.contracts.end_for_item` leaves it, unless the vendor has been told.
+`hirdir.domain.contracts.end_for_item` leaves it, unless the vendor has been told. Many
+of the items bought in the last two years arrived on a line of a purchase request, and
+a few of those are of another model than their line's, as 0.6.0 let in.
 
 The shape is that of the target in docs/requirements.md: 30% of the items are major
 items that are not phones, 44% are phones, and the rest are power supplies, modules,
@@ -68,6 +71,8 @@ from hirdir.db.models import (
     DeviceGroupMember,
     Item,
     LifecycleRule,
+    PurchaseLine,
+    PurchaseRequest,
     TagLink,
 )
 from hirdir.domain import (
@@ -83,6 +88,7 @@ from hirdir.domain import (
     lifecycle,
     operators,
     owners,
+    purchases,
     records,
     tags,
 )
@@ -1044,6 +1050,72 @@ def plan_items(
     raise SystemExit("the major items have too few places for the minor items")
 
 
+# --- purchase requests, made through the rules before the items arrive on them -------------
+
+
+def plan_purchases(db: Session, dice: Dice, planned: list[Planned]) -> None:
+    """Put many of the major items bought in the last two years on a line of a request.
+
+    A site's purchases of a quarter are one request, with a line for each model. A line
+    asked for what arrived on it, and some for a few more that are still to come; a
+    request that has all it asked for is received. A few items are on the line of
+    another model of the same request, as 0.6.0 let in.
+    """
+    today = clock.today()
+    bought: dict[tuple[str, int], list[Planned]] = defaultdict(list)
+    for one in planned:
+        row = one.row
+        days = (today - row["procured_on"]).days
+        if one.depth or row["record_status"] != "active" or days > 730:
+            continue
+        if dice.chance(0.4, "on a line", row["serial_number"]):
+            bought[one.place.hid, days // 91].append(one)
+    for number, ((site, quarter), arrived) in enumerate(sorted(bought.items()), start=1):
+        lines: dict[str, list[Planned]] = defaultdict(list)
+        for one in arrived:
+            lines[one.row["catalog_entry_hid"]].append(one)
+        models = sorted(lines)
+        for one in arrived if len(models) > 1 else []:
+            if dice.chance(0.03, "wrong line", one.row["serial_number"]):
+                own = one.row["catalog_entry_hid"]
+                other = dice.pick([model for model in models if model != own], "other", own)
+                lines[own].remove(one)
+                lines[other].append(one)
+        to_come = {
+            model: dice.between(1, 3, "to come", number, model)
+            if dice.chance(0.3, "more", number, model)
+            else 0
+            for model in models
+        }
+        request = purchases.create_request(
+            db,
+            SEED,
+            {
+                "reference": f"RITM{2_000_000 + number:07d}",
+                "requested_on": min(one.row["procured_on"] for one in arrived) - timedelta(days=7),
+                "status": "ordered" if any(to_come.values()) else "received",
+                "notes": f"What one site bought in quarter {quarter}, counted back from today",
+            },
+        )
+        for model in models:
+            if not lines[model] and not to_come[model]:
+                continue
+            line = purchases.add_line(
+                db,
+                SEED,
+                request.hid,
+                {
+                    "catalog_entry_hid": model,
+                    "quantity": len(lines[model]) + to_come[model],
+                    "destination_site_hid": site,
+                    "expected_on": today + timedelta(days=30) if to_come[model] else None,
+                },
+            )
+            for one in lines[model]:
+                one.row["purchase_line_hid"] = line.hid
+    db.flush()
+
+
 # --- groups, made through the rules once the items are there ---------------------------------
 
 
@@ -1355,6 +1427,18 @@ def counts(db: Session) -> dict[str, int]:
         "contracts in agreements": of(Contract, Contract.agreement_hid.is_not(None)),
         "contracts pending renewal": of(Contract, Contract.status == contracts.RENEWAL_PENDING),
         "contracts with a next term": of(Contract, Contract.next_starts_on.is_not(None)),
+        "purchase requests": of(PurchaseRequest),
+        "purchase lines": of(PurchaseLine),
+        "items on a purchase line": of(Item, Item.purchase_line_hid.is_not(None)),
+        "items of another model than their line's": of(
+            Item,
+            select(PurchaseLine.hid)
+            .where(
+                PurchaseLine.hid == Item.purchase_line_hid,
+                PurchaseLine.catalog_entry_hid != Item.catalog_entry_hid,
+            )
+            .exists(),
+        ),
         "coverages": of(ContractCoverage),
         "coverages ended on leaving service": of(
             ContractCoverage, ContractCoverage.left_service.is_(True)
@@ -1380,6 +1464,7 @@ def build(folder: Path, items_wanted: int = ITEMS, seed: str = "hirdir") -> dict
             writer = Writer(db)
             planned = plan_items(dice, made, shape, rules, writer.now)
             planned_groups = plan_groups(dice, planned, shape)
+            plan_purchases(db, dice, planned)
             write_items(writer, planned, made.tags)
             write_addresses(writer, dice, planned)
             write_coverage(writer, dice, made, planned)

@@ -34,6 +34,7 @@ import os
 import statistics
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -64,8 +65,18 @@ class Case:
     params: dict[str, Any]
 
 
-def cases(contract_number: str) -> list[Case]:
-    """Return the requests to time. contract_number is that of one contract."""
+@dataclass(frozen=True)
+class Picked:
+    """The records some of the requests name: the contract that covers the most items,
+    and the one that still counts the most items that are out of service."""
+
+    number: str
+    counting_number: str
+    counting_hid: str
+
+
+def cases(picked: Picked) -> list[Case]:
+    """Return the requests to time."""
 
     def page(label: str, filter_: str = "", sort: str = "name", **more: Any) -> Case:
         params: dict[str, Any] = {"sort": sort, "limit": PAGE, "offset": 0, **more}
@@ -73,7 +84,12 @@ def cases(contract_number: str) -> list[Case]:
             params["filter"] = filter_
         return Case(label, f"{API}/items", params)
 
-    number = f"contract.number:eq:{contract_number}"
+    number = f"contract.number:eq:{picked.number}"
+    # The contracts that still count an item out of service are listed as the coverage
+    # report lists such items: whatever the status of the item.
+    out = {"include_archived": "true"}
+    counting = f"out_of_service_contract.number:eq:{picked.counting_number}"
+    by_counting = "out_of_service_contract.number"
     return [
         page("no filter, by name"),
         page("is_major:eq:true, by name (the grid's first page)", "is_major:eq:true"),
@@ -84,16 +100,25 @@ def cases(contract_number: str) -> list[Case]:
         page("contract_count:gt:1, by name", "contract_count:gt:1"),
         page("contract_count:gt:1, by -contract_count", "contract_count:gt:1", "-contract_count"),
         page("no filter, by -contract_count", "", "-contract_count"),
-        # As the coverage report lists it: whatever the status of the item.
+        page("out_of_service_cover:eq:true, by name", "out_of_service_cover:eq:true", **out),
+        page("out_of_service_contract.number:eq:<one>, by name", counting, **out),
         page(
-            "out_of_service_cover:eq:true, by name",
-            "out_of_service_cover:eq:true",
-            include_archived="true",
+            f"out_of_service_contract.number:eq:<one>, by {by_counting}",
+            counting,
+            by_counting,
+            **out,
+        ),
+        page(f"no filter, by {by_counting}", "", by_counting),
+        page(
+            "out_of_service_contract.hid:eq:<one>, by name",
+            f"out_of_service_contract.hid:eq:{picked.counting_hid}",
+            **out,
         ),
         page("contract.number:eq:<one>, by name", number),
         page("contract.number:eq:<one>, by contract.number", number, "contract.number"),
         page("no filter, by contract.number", "", "contract.number"),
         page("contract.status:eq:renewal_pending, by name", "contract.status:eq:renewal_pending"),
+        page("purchase_line_mismatch:eq:true, by name", "purchase_line_mismatch:eq:true"),
         Case("GET /reports/coverage, every section counted", f"{API}/reports/coverage", {}),
     ]
 
@@ -249,6 +274,28 @@ def largest_contract(client: httpx2.Client) -> tuple[str, int]:
     return found["number"], found["covered_items"]
 
 
+def most_counting(client: httpx2.Client) -> tuple[str, str, int]:
+    """Return the number and the HID of the contract under which the most items that are
+    out of service are still counted, of the first thousand such items, and how many."""
+    response = client.get(
+        f"{API}/items",
+        params={
+            "filter": "out_of_service_cover:eq:true",
+            "include_archived": "true",
+            "limit": 1000,
+        },
+    )
+    tally: Counter[tuple[str, str]] = Counter()
+    for item in response.json()["items"]:
+        for coverage in item["coverage"]:
+            if coverage["in_force"] or coverage["left_service"]:
+                tally[coverage["contract"]["number"], coverage["contract_hid"]] += 1
+    if not tally:
+        raise SystemExit("no item of the fixture is out of service and still counted")
+    (number, hid), count = tally.most_common(1)[0]
+    return number, hid, count
+
+
 def table(results: Sequence[Timed]) -> str:
     """Return the results as a table, slowest first within nothing: in the order asked."""
     width = max(len(one.case.label) for one in results)
@@ -276,7 +323,13 @@ def run(
     sign_in(client, facts)
     number, covered = largest_contract(client)
     say(f"contract.number is {number}, the contract that covers the most items: {covered:,}")
-    chosen = [case for case in cases(number) if only is None or only in case.label]
+    counting_number, counting_hid, counted = most_counting(client)
+    say(
+        f"out_of_service_contract is {counting_number}, which still counts the most items "
+        f"that are out of service: {counted:,}"
+    )
+    picked = Picked(number, counting_number, counting_hid)
+    chosen = [case for case in cases(picked) if only is None or only in case.label]
     results = []
     for case in chosen:
         results.append(time_case(client, case, runs, warm_up))

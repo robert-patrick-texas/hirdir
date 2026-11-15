@@ -1099,7 +1099,9 @@ locations, owners and operators, 360 stacks, firewall clusters and wireless cont
 domains, 24 agreements and 320 contracts in every status, and the coverage of most
 major items: some under two contracts, some ended, some ended because the item left
 service and marked so. Some items are in Pending-Removal, Released and Archived, and
-some are retired. It takes under a minute. `--items` makes a smaller one of the same
+some are retired. Many of the items bought in the last two years arrived on the lines
+of purchase requests, and a few of those are of another model than their line's, as
+0.6.0 let in. It takes under a minute. `--items` makes a smaller one of the same
 shape, and a folder that the script did not make is left alone.
 
 The fixture is for timing and bypasses the rules. What there are few of is made through
@@ -1114,8 +1116,10 @@ it and the account to sign in with, and a `config.toml`, so that
 `make time-filters` runs `scripts/time_filters.py`. It builds the application with
 `create_app` on the fixture, in its own process, and asks it through a test client for
 the first page the grid asks for, 100 items with the total counted, under each of the
-filters and sorts that the coverage of 0.6.0 added, beside the list with no filter;
-and for the coverage report, which counts each of its sections. Each request is asked
+filters and sorts that the coverage of 0.6.0 added and those of 0.6.1, the contracts
+that still count an item out of service and the items on a line of another model,
+beside the list with no filter; and for the coverage report, which counts each of its
+sections. Each request is asked
 several times after a warm-up, and the median and the 95th percentile are printed with
 the load of the host before and after, because a busy host is slower than the host can
 be. `--explain FILE` writes every statement of each request with how long it took and

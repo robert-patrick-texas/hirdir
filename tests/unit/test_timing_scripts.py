@@ -39,6 +39,7 @@ def _load(name: str) -> ModuleType:
 
 seed_fixture = _load("seed_fixture")
 time_filters = _load("time_filters")
+PICKED = time_filters.Picked("CN-000001", "CN-000002", "01a1dcb2-60a7-7292-bd11-8593568637df")
 
 
 def test_the_dice_choose_the_same_for_the_same_key() -> None:
@@ -78,7 +79,7 @@ def test_the_percentile_is_by_the_nearest_rank() -> None:
 
 
 def test_every_request_timed_is_one_the_item_list_takes() -> None:
-    for case in time_filters.cases("CN-000001"):
+    for case in time_filters.cases(PICKED):
         if not case.path.endswith("/items"):
             continue
         filters.parse(case.params.get("filter", ""))
@@ -115,6 +116,8 @@ def test_a_small_fixture_has_every_kind_of_thing(small: tuple[Path, dict]) -> No
         "contracts pending renewal",
         "contracts with a next term",
         "coverages ended on leaving service",
+        "purchase lines",
+        "items on a purchase line",
     ):
         assert counts[name] > 0, name
     engine = make_engine(Config(state_dir=folder).database_url)
@@ -160,7 +163,7 @@ def test_every_request_is_answered_on_the_fixture(small: tuple[Path, dict]) -> N
             say=said.append,
         )
     app.state.engine.dispose()
-    assert len(results) == len(time_filters.cases("x"))
+    assert len(results) == len(time_filters.cases(PICKED))
     for timed in results:
         assert len(timed.runs) == 1
         assert timed.total is not None
