@@ -1725,7 +1725,7 @@ export interface paths {
     /**
      * List the terms a contract had before it was renewed, the latest first: its
      * purchase history. Each has the dates it had in force: where the contract had none
-     * of its own, its agreement's as they stood on the last day of the term.
+     * of its own, those of the agreement's term that was in force when it began.
      */
     get: {
       parameters: {
@@ -6550,7 +6550,7 @@ export interface components {
       renewed_at: string;
       renewed_by: string | null;
       renewed_by_name: string | null;
-      /** The first day of the term in force: the contract's own, or, where it had none, its agreement's as it stood on the last day of the term. */
+      /** The first day of the term in force: the contract's own, or, where it had none, that of the agreement's term in force when the contract's term began. */
       starts_on: string | null;
       starts_on_source: "own" | "agreement" | "none";
     };
@@ -8089,7 +8089,7 @@ export interface components {
       expected_on: string | null;
       hid: string;
       line: number;
-      /** How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list. */
+      /** How many of the items that name this line are of another model, which 0.6.0 let in, counted as the item list counts them. They are found by `purchase_line_mismatch` in the item list. */
       mismatched_items: number;
       /** How the line is named: `RITM0012345/2`. */
       name: string;
@@ -8188,7 +8188,7 @@ export interface components {
       hid: string;
       items: components["schemas"]["ItemRef"][];
       line: number;
-      /** How many of the items that name this line are of another model, which 0.6.0 let in. They are found by `purchase_line_mismatch` in the item list. */
+      /** How many of the items that name this line are of another model, which 0.6.0 let in, counted as the item list counts them. They are found by `purchase_line_mismatch` in the item list. */
       mismatched_items: number;
       /** How the line is named: `RITM0012345/2`. */
       name: string;

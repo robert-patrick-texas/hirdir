@@ -941,9 +941,10 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 out_of_service_contracts=cover[item.hid][3]
                 if contracts.out_of_service(item.record_status, effective["lifecycle_state"].value)
                 else [],
-                purchase_line_mismatch=item.purchase_line_hid is not None
-                and item.purchase_line_hid in arrived_on
-                and arrived_on[item.purchase_line_hid].catalog_entry_hid != item.catalog_entry_hid,
+                purchase_line_mismatch=item.purchase_line_hid in arrived_on
+                and purchases.of_another_model(
+                    item.catalog_entry_hid, arrived_on[item.purchase_line_hid].catalog_entry_hid
+                ),
                 registrations=registered[item.hid],
                 group_registrations=through_groups[item.hid],
                 tags=labels[item.hid],
@@ -1549,7 +1550,7 @@ def lines_out(db: Session, found: list[PurchaseLine]) -> list[shapes.PurchaseLin
     models = _catalog_refs(db, {line.catalog_entry_hid for line in found})
     sites = _site_refs(db, {line.destination_site_hid for line in found})
     arrived = purchases.received(db, [line.hid for line in found])
-    astray = purchases.mismatched(db, [line.hid for line in found])
+    astray = fields.mismatched_items(db, [line.hid for line in found])
     shaped = (
         "reference",
         "request_status",

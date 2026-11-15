@@ -67,6 +67,7 @@ from hirdir.domain import (
     lifecycle,
     operators,
     owners,
+    purchases,
     records,
     systems,
 )
@@ -474,7 +475,12 @@ COVERED_UNTIL: ColumnElement[Any] = type_coerce(
 # today asks for nothing more: the cover that goes on is what counts. An item that was
 # brought back is in service again, whatever a coverage of it says.
 # `hirdir.domain.contracts.still_counts` is the same test for a page of records.
-_ITEM_OUT = or_(Item.record_status == "retired", STATE_IN_FORCE.in_(contracts.OUT_OF_SERVICE))
+# An item with no state is not out of service: the test is false, and never unknown,
+# so that its negation finds the item too.
+_ITEM_OUT = or_(
+    Item.record_status == "retired",
+    and_(STATE_IN_FORCE.is_not(None), STATE_IN_FORCE.in_(contracts.OUT_OF_SERVICE)),
+)
 _COUNTING = (
     _COVER.item_hid == Item.hid,
     or_(
@@ -513,13 +519,7 @@ _FIRST_COUNTING = case(
 _ITS_LINE: Any = aliased(PurchaseLine, name="item_line")
 PURCHASE_LINE_MISMATCH: ColumnElement[Any] = (
     select(_ITS_LINE.hid)
-    .where(
-        _ITS_LINE.hid == Item.purchase_line_hid,
-        or_(
-            Item.catalog_entry_hid.is_(None),
-            _ITS_LINE.catalog_entry_hid != Item.catalog_entry_hid,
-        ),
-    )
+    .where(_ITS_LINE.hid == Item.purchase_line_hid, purchases.another_model(Item, _ITS_LINE))
     .correlate(Item)
     .exists()
 )
@@ -1458,19 +1458,33 @@ RECEIVED: ColumnElement[Any] = (
     .correlate(PurchaseLine)
     .scalar_subquery()
 )
-# What arrived on a line and is of another model than the line's, which 0.6.0 let in.
+# What arrived on a line and is of another model than the line's, which 0.6.0 let in,
+# counted as the item list counts (D-152): drafts, retired items and items in Archived
+# are left out, so the number leads to as many rows of the grid.
 MISMATCHED: ColumnElement[Any] = (
-    select(func.count())
+    _with_items_above(select(func.count(func.distinct(Item.hid))).select_from(Item))
     .where(
-        _ARRIVED.purchase_line_hid == PurchaseLine.hid,
-        or_(
-            _ARRIVED.catalog_entry_hid.is_(None),
-            _ARRIVED.catalog_entry_hid != PurchaseLine.catalog_entry_hid,
-        ),
+        Item.purchase_line_hid == PurchaseLine.hid,
+        purchases.another_model(Item, PurchaseLine),
+        *_ITEM_IN_VIEW,
     )
     .correlate(PurchaseLine)
     .scalar_subquery()
 )
+
+
+def mismatched_items(db: Session, line_hids: list[str]) -> dict[str, int]:
+    """Return how many items of another model than its own each purchase line has, as
+    the item list counts them."""
+    counts = dict.fromkeys(line_hids, 0)
+    if line_hids:
+        found = db.execute(
+            select(PurchaseLine.hid, MISMATCHED).where(PurchaseLine.hid.in_(line_hids))
+        )
+        counts.update({hid: count or 0 for hid, count in found})
+    return counts
+
+
 _REQUEST_ORDERED = (
     select(func.coalesce(func.sum(_LINE_OF_REQUEST.quantity), 0))
     .where(_LINE_OF_REQUEST.request_hid == PurchaseRequest.hid)

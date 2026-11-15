@@ -23,7 +23,7 @@ database to filter, sort and count by. A test holds the two together.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any, Literal
@@ -881,14 +881,15 @@ def _agreement_as_it_stood(db: Session, hid: str, before: datetime | None) -> An
     return SimpleNamespace(**state)
 
 
-def _with_dates_in_force(db: Session, found: Term, last_day: date, before: datetime | None) -> Term:
-    """Return a term of a contract with the dates it had in force: a date it had none
-    of is its agreement's on the last day of the term, as the agreement stood then."""
+def _with_dates_in_force(db: Session, found: Term, began: datetime, zone: str) -> Term:
+    """Return a term of a contract with the dates it had in force (D-163): a date it had
+    none of is that of its agreement's term which was in force when the contract's term
+    began, as the agreement stood at that moment."""
     above: dict[str, Any] = {}
     if found.agreement_hid is not None and (found.starts_on is None or found.ends_on is None):
-        stood = _agreement_as_it_stood(db, found.agreement_hid, before)
+        stood = _agreement_as_it_stood(db, found.agreement_hid, began)
         if stood is not None:
-            above = term(stood, last_day)
+            above = term(stood, began.astimezone(ZoneInfo(zone)).date())
     dated: dict[str, Any] = {}
     for name in ("starts_on", "ends_on"):  # each by itself, as a contract has them
         own = getattr(found, name)
@@ -910,7 +911,7 @@ def terms(db: Session, record: Any, record_type: str = RECORD_TYPE) -> list[Term
     `renewed_by` are when the renewal that ended the term was entered, and by whom:
     for one that was entered early, that is not the day its term began, nor the change
     that happened to write it down. A term of a contract has the dates it had in
-    force, its agreement's where it had none of its own.
+    force, its agreement's where it had none of its own (D-163).
     """
     of_contract = record_type == RECORD_TYPE
     kept = (*TERM, "agreement_hid") if of_contract else TERM
@@ -936,30 +937,40 @@ def terms(db: Session, record: Any, record_type: str = RECORD_TYPE) -> list[Term
             agreement_hid=values.get("agreement_hid"),
         )
 
-    found: list[tuple[Term, date, datetime | None]] = []
+    def morning(of: date) -> datetime:
+        """Return the moment a day begins in the application's time zone."""
+        return datetime.combine(of, time.min, tzinfo=ZoneInfo(zone))
+
+    # Each term, the latest first, with the moment the term after it took effect.
+    found: list[tuple[Term, datetime]] = []
     if next_started(record, day) and record.next_starts_on is not None:
         # The next term has begun and is not written down yet: the one before it is
         # the one the record still holds, and it ended the day before the next began.
         at, by = entered(record.next_starts_on, 0)
-        found.append((made(state, at, by), record.next_starts_on - timedelta(days=1), None))
+        found.append((made(state, at, by), morning(record.next_starts_on)))
     for place, event in enumerate(events):
         after = dict(state)
         _undone(state, event)
         another = any(state[name] != after[name] for name in TERM[:3])
         # A contract always has a number, and an agreement may have none.
         if event.action == "renew" and another and (state["number"] or not of_contract):
-            at, by = event.at, event.actor_hid
-            last_day = event.at.astimezone(ZoneInfo(zone)).date()
+            at, by, ended = event.at, event.actor_hid, event.at
             waited = _as_kept("starts_on", _changed(event, "next_starts_on").get("old"))
             if waited is not None and waited == after["starts_on"]:
                 # A term that had waited was written down by this change, whatever
-                # else the change was for: it ended the day before the next began.
+                # else the change was for: it took effect on the day it began.
                 at, by = entered(waited, place + 1)
-                last_day = waited - timedelta(days=1)
-            found.append((made(state, at, by), last_day, event.at))
-    if not of_contract:
-        return [one for one, _, _ in found]
-    return [_with_dates_in_force(db, one, last, before) for one, last, before in found]
+                ended = morning(waited)
+            found.append((made(state, at, by), ended))
+    if not of_contract or not found:
+        return [one for one, _ in found]
+    # A term began when the one before it ended, and the first when the record was made.
+    made_at = events[-1].at if events else clock.now()
+    began = [ended for _, ended in found[1:]] + [made_at]
+    return [
+        _with_dates_in_force(db, one, start, zone)
+        for (one, _), start in zip(found, began, strict=True)
+    ]
 
 
 def in_scope(db: Session, contract_hids: Sequence[str]) -> dict[str, int]:

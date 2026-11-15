@@ -24,11 +24,15 @@ MANIFEST = {
 def test_behind_moves_only_production_releases_that_differ() -> None:
     latest = {"react": "19.4.0", "react-dom": "19.3.1", "vite": "9.0.0-beta.2", "vitest": "5.2.0"}
     module = _load()
-    assert module.behind(MANIFEST, latest) == {
-        "--save-prod": ["react@19.4.0"],
-        "--save-dev": ["vitest@5.2.0"],
-    }
+    moves = module.behind(MANIFEST, latest)
+    assert moves == {"dependencies": {"react": "19.4.0"}, "devDependencies": {"vitest": "5.2.0"}}
     assert module.prereleases(MANIFEST, latest) == ["vite@9.0.0-beta.2"]
+    # Written into the manifest, exact, each in its own section, the rest as it was.
+    assert module.moved({"name": "web", **MANIFEST}, moves) == {
+        "name": "web",
+        "dependencies": {"react": "19.4.0", "react-dom": "19.3.1"},
+        "devDependencies": {"vite": "8.3.8", "vitest": "5.2.0"},
+    }
 
 
 def test_nothing_to_move_when_every_package_is_latest() -> None:

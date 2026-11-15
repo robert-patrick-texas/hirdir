@@ -702,16 +702,18 @@ def test_an_earlier_term_of_a_co_termed_contract_has_the_dates_it_had(
         now = desk.get(f"/contracts/{contract['hid']}")
         body = {"row_version": now["row_version"], "number": number}
         desk.post(f"/contracts/{contract['hid']}/renew", body, 200)
-    # The agreement is changed again after: what the term had is what stood then.
+    # The agreement is changed again after: what the term had is what stood then. Each
+    # contract was given its new number after the agreement was renewed, and its
+    # earlier term still has the agreement's term it began in, EA-1's (D-163).
     desk.change(path, starts_on=day(-330))
     (earlier,) = desk.get(f"/contracts/{co_termed['hid']}/terms")
     assert (earlier["number"], earlier["agreement_hid"]) == ("CON-10", agreement["hid"])
-    assert (earlier["starts_on"], earlier["starts_on_source"]) == (day(-339), "agreement")
-    assert (earlier["ends_on"], earlier["ends_on_source"]) == (day(20), "agreement")
+    assert (earlier["starts_on"], earlier["starts_on_source"]) == (day(-700), "agreement")
+    assert (earlier["ends_on"], earlier["ends_on_source"]) == (day(-340), "agreement")
     # Each date by itself: its own where it had one, the agreement's where it had none.
     (other,) = desk.get(f"/contracts/{half['hid']}/terms")
     assert (other["starts_on"], other["starts_on_source"]) == (day(-650), "own")
-    assert (other["ends_on"], other["ends_on_source"]) == (day(20), "agreement")
+    assert (other["ends_on"], other["ends_on_source"]) == (day(-340), "agreement")
     # A contract that stands by itself has nothing from an agreement.
     alone = desk.contract("CON-30", starts_on=day(-100))
     desk.post(f"/contracts/{alone['hid']}/renew", {"row_version": 1, "number": "CON-31"}, 200)

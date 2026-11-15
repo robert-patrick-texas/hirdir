@@ -1986,7 +1986,7 @@ class ContractTerm(Model):
     starts_on: date | None = Field(
         description=(
             "The first day of the term in force: the contract's own, or, where it had none, "
-            "its agreement's as it stood on the last day of the term."
+            "that of the agreement's term in force when the contract's term began."
         )
     )
     ends_on: date | None = Field(description="The last day of the term in force, in the same way.")
@@ -2071,7 +2071,8 @@ class PurchaseLineOut(Model):
     mismatched_items: int = Field(
         description=(
             "How many of the items that name this line are of another model, which 0.6.0 "
-            "let in. They are found by `purchase_line_mismatch` in the item list."
+            "let in, counted as the item list counts them. They are found by "
+            "`purchase_line_mismatch` in the item list."
         )
     )
     destination_site_hid: str | None

@@ -29,8 +29,9 @@ ruff, ty and the build tools.
 2. `uv lock --upgrade`, then `uv sync --all-groups`.
 3. Every npm dependency to its `latest` release, saved exact, by
    `scripts/latest_npm.py`. It asks the registry through the npm that builds the web
-   UI and installs only the packages themselves: no upgrade tool is downloaded and run.
-   A `latest` that is a pre-release is left as it is, and said so.
+   UI and writes the new versions into `web/package.json`; `npm install` then resolves
+   them together, and installs only the packages themselves: no upgrade tool is
+   downloaded and run. A `latest` that is a pre-release is left as it is, and said so.
 4. Rebuild the web UI.
 5. `make check`.
 

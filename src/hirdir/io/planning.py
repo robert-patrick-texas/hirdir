@@ -28,8 +28,6 @@ from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters, listing, reports
 from hirdir.io.fields import ITEMS, REPLACEMENTS
 
-# The states in which an item has been in service and no longer is.
-OUT_OF_SERVICE = ("Pending-Removal", "Released", "Archived")
 COVERAGE_SECTIONS = ("uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending")
 END_OF_LIFE_SECTIONS = ("past", "approaching")
 EXPIRING_WITHIN = 90
