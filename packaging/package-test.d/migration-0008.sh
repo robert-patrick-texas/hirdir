@@ -21,8 +21,9 @@
 writes_no_event=yes
 # It loads the list beside the choices that are there.
 may_add[choices]=yes
-new_columns[items]='purchase_line_hid VARCHAR(36) NULL -'
-new_keys[items]='foreign key purchase_line_hid to purchase_lines.hid
+# Put after what an earlier migration of the upgrade adds, where there is one.
+also new_columns items 'purchase_line_hid VARCHAR(36) NULL -'
+also new_keys items 'foreign key purchase_line_hid to purchase_lines.hid
 index ix_items_purchase_line_hid on purchase_line_hid unique=0 origin=c partial=0'
 
 money_made=""
@@ -98,10 +99,12 @@ import json, sys
 items = json.load(open(sys.argv[1], encoding="utf-8"))["items"]
 print(sum(1 for i in items if i["is_major"] and i["record_status"] == "active"
           and i["effective"]["lifecycle_state"]["value"] in ("Assigned", "Test", "Prod", "Down")))' "$work/kept-items.json")
+    # The counts that 0.6.0 has, and from 0.7.0 the items that are not to be renewed,
+    # which are none: no model or item from before is flagged.
     api GET /reports/coverage
-    expect "pkg $when GET /reports/coverage counts every major item that $previous_version had in Assigned, Test, Prod or Down, $in_service of them, as in service with no cover, and nothing as covered, as out of service under a contract, as running out, as under more than one contract or as under a renewal that is pending; and no contract has lapsed" \
-        "$status $(json '[d["service_states"], d["totals"], d["lapsed_contracts"]["count"]]')" \
-        "200 [[\"Assigned\", \"Test\", \"Prod\", \"Down\"], {\"covered\": 0, \"expiring\": 0, \"in_service\": $in_service, \"out_of_service\": 0, \"overlapping\": 0, \"renewal_pending\": 0, \"uncovered\": $in_service}, 0]"
+    expect "pkg $when GET /reports/coverage counts every major item that $previous_version had in Assigned, Test, Prod or Down, $in_service of them, as in service with no cover, and nothing as covered, as out of service under a contract, as running out, as under more than one contract, as under a renewal that is pending or as not to be renewed; and no contract has lapsed" \
+        "$status $(json '[d["service_states"], {k: d["totals"][k] for k in ("covered", "expiring", "in_service", "out_of_service", "overlapping", "renewal_pending", "uncovered")}, d["totals"].get("not_renewed", 0), d["lapsed_contracts"]["count"]]')" \
+        "200 [[\"Assigned\", \"Test\", \"Prod\", \"Down\"], {\"covered\": 0, \"expiring\": 0, \"in_service\": $in_service, \"out_of_service\": 0, \"overlapping\": 0, \"renewal_pending\": 0, \"uncovered\": $in_service}, 0, 0]"
     api GET /settings
     expect "pkg $when the one setting more, service_states, is at its default: Assigned, Test, Prod and Down" \
         "$status $(json '[[s["value"], s["is_default"]] for s in d if s["key"] == "service_states"]')" \

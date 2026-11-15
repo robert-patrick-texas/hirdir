@@ -860,6 +860,131 @@ item onto a line of another model again. It refuses a file of items with the col
 `out_of_service_contracts` or `purchase_line_mismatch`, and one of purchase lines with
 `mismatched_items`, as having a column it does not know.
 
+### From 0.6.1 to 0.7.0
+
+The schema goes from revision `0008` to `0009`. Four tables are added:
+`contract_contacts`, the contacts that an agreement or a contract names;
+`capacity_line_targets`, the staff lines that a line of capacity multiplies;
+`renewal_alert_views`, what each person last saw of the renewal alert; and
+`capacity_records`, the capacity balance kept week by week. Columns are added to what
+is there, and each of them holds nothing, or says no, until somebody sets it:
+
+- `catalog_entries` gains `do_not_renew`, false, and `links`, none, and `items`
+  gains `do_not_renew`, blank, so that every item has its model's;
+- `regions`, `sites` and `locations` gain `links`, none;
+- `contracts` gains `ends_with_term` and `next_with_agreement`, both false;
+- `purchase_lines` gains `part_number` and `description`, blank, and its model may now
+  be blank. To change what a column may hold, SQLite makes the table anew and copies
+  every row across, inside the one transaction that the whole upgrade runs in. Every
+  line keeps its model;
+- `capacity_lines` gains `effect`, `add` on every line, and `factor` and `share`,
+  blank, and its `quantity` and `units_each` may now be blank. It is made anew in the
+  same way, and every line keeps its quantity and its units;
+- `import_jobs` gains `rows_done`, `applied` and `stale`, and `import_rows`
+  `applied_outcome` and `applied_reasons`.
+
+**One thing that is held changes, and is meant to.** A job that 0.6.1 applied was
+applied whole, in one transaction: the upgrade gives it the counts that an apply keeps
+from now on, `rows_done` its rows and `applied` the rows it applied, so that
+`GET /api/v1/imports/<HID>` says what it was. Nothing else is changed: every other
+record is as it was, field for field and at the `row_version` it had, and every item
+has its history. No model or item is flagged not to be renewed, no contract is marked,
+no line loses its model, and the upgrade writes no audit event.
+
+**What the server does by itself.** From 0.7.0 the service has two things to do at
+set times, by the clock of the application's time zone. Each Monday just after
+midnight it records the capacity balance of the week, and it does so when it starts in
+a week that has none. So the first start after the upgrade makes the first record, of
+what was carried over, with one audit event that the system makes, `create` of a
+`capacity_record` with `via` of `system`; somebody may record the week again by hand,
+or correct its figures with a reason. Each day just after midnight, and when it starts,
+it works out the renewal alert of the day, which writes nothing. A time that passed
+while the service was stopped is not made up for, but the record of a week is made at
+the next start.
+
+**Imports are applied in the background.** For a script this is the change to look
+at:
+
+- `POST /api/v1/imports/<HID>/apply`, and the apply of a bulk edit, answer `202` at
+  once with the job, which is `queued` or `applying`, where 0.6.1 answered `200` with
+  the job applied. The server applies it in a worker of its own, 50 rows to a
+  transaction. A script waits for `GET /api/v1/imports/<HID>` to say `applied`, or
+  `stopped`, before it goes on; one that previews the next file of the load order
+  straight away finds the records of this one not yet there. `hirdir import --apply`
+  waits by itself and shows how far it has got, unless it is given `--no-wait`.
+- A row whose record was changed by somebody after the preview is no longer a `409`
+  for the whole file: it is left out as `stale`, with the reason, and the rest are
+  applied. The job counts them, `applied` and `stale`, and each row says what the
+  apply did with it, `applied_outcome`.
+- A job that stopped partway, because the service stopped, is `stopped`, and the same
+  `POST` resumes it from the first row it had not applied.
+- A job that failed with 0.6.1 stays `failed`, and cannot be applied: preview the file
+  again.
+
+**Settings in place of what was held in the code.** Five values that were fixed in
+0.6.1 are settings of the inventory, each at the value 0.6.1 used until an Admin
+changes it on the Settings page or by `PUT /api/v1/settings/<key>`:
+`renewal_warning_days`, 90, how far ahead a contract counts as ending soon;
+`renewal_pending_overdue_days`, 60, how long a renewal may be pending before it is
+overdue; `end_of_life_within_days`, 730, and `end_of_life_date`, `ldos`, what the
+end-of-life report looks for unless asked; and `max_items_per_request`, 1000, how many
+items one request may cover, add to a group or receive. `GET /api/v1/settings` lists
+them with the rest, and then the values that stay fixed, each with `fixed` true and
+the decision that fixed it. Nothing reads differently until one of them is changed.
+
+**The configuration file is written by the application.** `hirdir admin config`
+writes a complete `/etc/hirdir/config.toml`, every key at its default and commented
+out, and the file the package ships is written by it; see
+[Configuration](#configuration). 0.7.0 adds no setting to the file, only a line that
+says what `[database] url` is for, so the upgrade leaves `/etc/hirdir/config.toml` as
+it is, edited or not, keeps no copy beside it and says nothing of it, and `sudo
+hirdir-setup --settings` finds nothing to change. A site that wants the new comments
+writes the file afresh from the one it has, and compares the two:
+
+```bash
+sudo hirdir admin config --current --output /etc/hirdir/config.toml.new
+sudo diff /etc/hirdir/config.toml /etc/hirdir/config.toml.new
+```
+
+`/etc/nginx/snippets/hirdir.conf` is the one 0.6.1 wrote, so the upgrade says nothing
+of it and nginx is not reloaded.
+
+Some of what is held is read differently from now on, for a script that reads it:
+
+- The coverage report counts a sixth section, `not_renewed`: an item in service that
+  no contract covers and is flagged not to be renewed is no gap, and is left off
+  `uncovered` and `expiring`. Until something is flagged it counts nothing, and the
+  other counts are those of 0.6.1.
+- The capacity report lists the lines that multiply, `multiplying_lines`, and beside
+  its one balance the demand of each region, `demand_by_region`.
+- The earlier terms of a contract, `GET /api/v1/contracts/<HID>/terms`, are the parts
+  of its history, each with when and how it began, and a contract that joined or left
+  an agreement with 0.6.1 has a part more for it, read from the audit trail.
+- A purchase line says whether it is `tracked`, and a request is received in full
+  once every tracked line has arrived.
+- The records of a catalog entry, an item, a place, an agreement and a contract have
+  the fields above, and the files of them the columns, which 0.6.1 rejected as unknown.
+- `GET /api/v1/reports/renewals`, `GET /api/v1/renewals/alert` and
+  `/api/v1/capacity-records` are new.
+
+The package now carries twenty-six example files, where it carried twenty-five: the
+contacts of the contracts are new. See [Try it with the examples](#try-it-with-the-examples).
+
+Going back to 0.6.1 is as under
+[Going back to the release before](#going-back-to-the-release-before), with the backup
+of this upgrade, which is at revision `0008`:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.6.1_amd64.deb
+sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-<time of the upgrade>.db
+sudo dpkg --configure hirdir
+```
+
+The first command stops at the database, as it is meant to. 0.6.1 knows no contact of
+a contract, no flag not to renew, no line that is not tracked or that multiplies, no
+record of the balance and no link, so whatever was entered of those with 0.7.0 is lost
+with the rest that was entered since the upgrade.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
