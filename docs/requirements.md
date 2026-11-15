@@ -322,7 +322,7 @@ as AI.
 | Quality | Target |
 |---|---|
 | Scale | 50,000 items, of which 15,000 are major items that are not phones, with 25 people signed in. |
-| Response | A sorted, filtered page of the item grid returns in under 300 ms at that scale on the reference host. |
+| Response | A sorted, filtered page of the item grid returns in under 300 ms at that scale on the reference host: the median of 15 requests after 2 warm-ups, on the inventory of `make fixture` and an otherwise idle host, with the 95th percentile under 600 ms (D-165). |
 | Import | 10,000 rows preview in under 30 s and apply in under 60 s. |
 | Availability | One host. A restart loses no committed change. |
 | Recovery | A backup restores to a clean host with one documented command. |

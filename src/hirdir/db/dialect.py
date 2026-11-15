@@ -398,7 +398,22 @@ def matches_glob(column: ColumnElement[Any], pattern: str) -> ColumnElement[bool
 def blanks_last(expression: ColumnElement[Any], descending: bool) -> list[ColumnElement[Any]]:
     """Return the ORDER BY terms that sort by expression with blank values at the end.
 
-    Left alone, SQLite puts NULL first and PostgreSQL puts it last.
+    Left alone, SQLite puts NULL first and PostgreSQL puts it last. Both say where it
+    goes with NULLS LAST, in one term, so that a value that is worked out for each row,
+    such as a count of what covers an item, is worked out once and not twice.
     """
     ordered = expression.desc() if descending else expression.asc()
-    return [expression.is_(None).asc(), ordered]
+    return [ordered.nulls_last()]
+
+
+def count_of(rows: Any) -> Any:
+    """Return the statement that counts the rows another statement reads.
+
+    A list is joined to what its fields read, each join to one record at most, and the
+    rows are counted under the same filter. SQLite leaves out of a statement the joins
+    that nothing in it reads, but not out of a count, and it folds a subquery that is
+    counted into the count. Asked to materialize the rows first, it plans them as the
+    statement they are. PostgreSQL leaves such joins out of a count by itself.
+    """
+    matched = rows.cte("counted").prefix_with("MATERIALIZED", dialect="sqlite")
+    return select(func.count()).select_from(matched)

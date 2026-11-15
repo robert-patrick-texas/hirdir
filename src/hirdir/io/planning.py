@@ -92,15 +92,14 @@ def _section(
             filters.to_sql(filters.from_tree(conditions), ITEMS.fields, settings.time_zone(db), db)
         ]
     )
-    count = listing.page(
+    count = listing.count(
         db,
         ITEMS,
         filter_=asked,
-        limit=1,
         include_archived=include_archived,
         include_drafts=include_drafts,
         also=also,
-    )[1]
+    )
     joined = filters.both(filters.to_tree(filters.parse(asked)), conditions)
     try:
         filters.parse(joined)
@@ -222,9 +221,7 @@ def coverage(
         **{name: one.count for name, one in sections.items()},
     )
     lapsed = where("lapsed", "eq", True)
-    lapsed_contracts = Lapsed(
-        listing.page(db, fields.CONTRACTS, filter_=lapsed, limit=1)[1], lapsed
-    )
+    lapsed_contracts = Lapsed(listing.count(db, fields.CONTRACTS, filter_=lapsed), lapsed)
     default = ["covered_until", "name"] if section == "expiring" else ["name"]
     page = _page(db, filter_, section, conditions, sections, sort, default, limit, offset)
     return Coverage(today, within_days, states, totals, sections, lapsed_contracts, page)

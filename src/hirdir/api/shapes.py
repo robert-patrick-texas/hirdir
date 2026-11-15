@@ -716,11 +716,11 @@ def _cover(
     contracts cover it today, and the contracts that would still count it once it is
     out of service."""
     found = contracts.of_items(db, item_hids)
-    refs = _contract_refs(
-        db,
-        list({contract.hid: contract for its in found.values() for _, contract in its}.values()),
-        today,
-    )
+    under = {contract.hid: contract for its in found.values() for _, contract in its}
+    # Read once and held while the page is shaped, so that each period below finds the
+    # agreement of its contract in the session and does not read it again.
+    _held = _by_hid(db, Agreement, {contract.agreement_hid for contract in under.values()})
+    refs = _contract_refs(db, list(under.values()), today)
     out: dict[str, tuple[list[shapes.CoverageRef], date | None, int, list[shapes.ContractRef]]]
     out = {}
     for hid, its in found.items():

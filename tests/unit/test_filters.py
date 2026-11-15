@@ -195,10 +195,8 @@ def test_a_field_of_several_values_is_sorted_by_only_when_it_says_by_what() -> N
     keys = filters.parse_sort(["least", "-only_sorted"], known)
     # What it is sorted by is taken as it is given, with the blanks last.
     assert [str(term) for term in filters.order_by(keys, known)] == [
-        "things.size IS NULL ASC",
-        "things.size ASC",
-        "things.size IS NULL ASC",
-        "things.size DESC",
+        "things.size ASC NULLS LAST",
+        "things.size DESC NULLS LAST",
     ]
     # A field that is only sorted by is no field of a filter.
     with pytest.raises(Invalid) as refused:
