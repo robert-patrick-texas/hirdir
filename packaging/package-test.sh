@@ -22,7 +22,10 @@
 #                      and choices of the site's own; from 0.5.0 places, contacts and
 #                      operators, with items and a stack among them; from 0.6.0
 #                      agreements, contracts, coverage, purchases, external systems,
-#                      registrations and capacity lines
+#                      registrations and capacity lines; from 0.7.0 the contacts of
+#                      contracts, the flag not to renew, renewals with their members,
+#                      lines that are not tracked, a line that multiplies, the record
+#                      of the capacity balance, links and the renewal alert seen
 #   --failed-upgrade   install the previous release, with the same inventory, and make
 #                      the migration of the new one fail, in the database: by a table in
 #                      the way of one it creates, or, where it creates none, by a
@@ -762,6 +765,9 @@ print(hashlib.sha256(repr(rows).encode()).hexdigest())' "$1" 2>&1 | tail -n 1
 #   rows-of HID,HID COLUMN...
 #                    the same, of the rows with these HIDs alone
 #   hids [HID,HID]   the HID of every row, but for those named, with a comma between them
+# A row is known by its HID. A table that has no hid column, such as the targets of a
+# capacity line, knows a row by its primary key, its columns written with a / between
+# them, and that stands for the HID above.
 table_read() {
     inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
 import hashlib, sqlite3, sys
@@ -771,6 +777,9 @@ table, question, names = sys.argv[1], sys.argv[2], sys.argv[3:]
 hids = names.pop(0).split(",") if names and question in ("rows-of", "hids") else None
 if not all(name.replace("_", "").isalnum() for name in [table, *names]):
     sys.exit("table_read: a table and its columns are named by letters, digits and _")
+info = held.execute(f"PRAGMA table_info({table})").fetchall()
+keyed = [column[1] for column in sorted(info, key=lambda column: column[5]) if column[5]]
+key = "hid" if any(column[1] == "hid" for column in info) else (" || " + repr("/") + " || ").join(f"\"{name}\"" for name in keyed)
 if question == "columns":
     for _, name, kind, not_null, _, key in held.execute(f"PRAGMA table_info({table})"):
         print(name, kind, "NOT NULL" if not_null else "NULL", "PRIMARY KEY" if key else "-")
@@ -784,13 +793,13 @@ elif question == "keys":
         lines.append(f"foreign key {row[3]} to {row[2]}.{row[4]}")
     print("\n".join(sorted(lines)))
 elif question == "hids":
-    found = [hid for (hid,) in held.execute(f"SELECT hid FROM {table} ORDER BY hid")]
+    found = [hid for (hid,) in held.execute(f"SELECT {key} FROM {table} ORDER BY {key}")]
     print(",".join(hid for hid in found if hid not in (hids or [])))
 else:
     if not names:
         sys.exit("table_read rows: name the columns")
-    only = "" if hids is None else " WHERE hid IN (" + ", ".join("?" * len(hids)) + ")"
-    rows = held.execute("SELECT " + ", ".join(names) + f" FROM {table}{only} ORDER BY hid", hids or []).fetchall()
+    only = "" if hids is None else f" WHERE {key} IN (" + ", ".join("?" * len(hids)) + ")"
+    rows = held.execute("SELECT " + ", ".join(f"\"{name}\"" for name in names) + f" FROM {table}{only} ORDER BY {key}", hids or []).fetchall()
     print(len(rows), "rows", hashlib.sha256(repr(rows).encode()).hexdigest())' "$@" 2>&1
 }
 
@@ -807,6 +816,43 @@ table_rows() {
     else
         table_read "$1" rows "${names[@]}"
     fi
+}
+
+# events_beside HIDS: the audit trail as it is after an upgrade, beside the events it
+# held before, whose HIDs are named with a comma between them: how many of those there
+# are and one checksum of what they hold, as table_rows prints it of them all; then
+# how many events there are since that the started service did not write by itself,
+# and how many it did. From 0.7.0 the service records the capacity balance of the
+# week when it starts in a week that has no record (P-137): one event, which the system
+# makes and nobody, of the action create on a capacity_record. No upgrade writes an
+# event, and a check that one wrote none allows for that event by name, and for no
+# other.
+events_beside() {
+    inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
+import hashlib, sqlite3, sys
+
+held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
+then = set(sys.argv[1].split(","))
+names = [column[1] for column in held.execute("PRAGMA table_info(audit_events)")]
+rows = held.execute("SELECT " + ", ".join(f"\"{name}\"" for name in names) + " FROM audit_events ORDER BY hid").fetchall()
+kept = [row for row in rows if row[names.index("hid")] in then]
+since = [dict(zip(names, row)) for row in rows if row[names.index("hid")] not in then]
+own = [e for e in since if (e["via"], e["actor_hid"], e["action"], e["record_type"]) == ("system", None, "create", "capacity_record")]
+print(len(kept), "rows", hashlib.sha256(repr(kept).encode()).hexdigest(), "|", len(since) - len(own), "other,", len(own), "by the service itself")' "$1" 2>&1
+}
+
+# no_event_written BEFORE HIDS: the check that an upgrade wrote no audit event, made
+# before anything is asked of the new version, since a sign-in is an event too. BEFORE
+# is what table_rows printed of the audit trail before the upgrade and HIDS the HIDs of
+# its events: each must be as it was, and beside them there may be the one event that
+# the started service writes by itself, and nothing else.
+no_event_written() {
+    local found own
+    found=$(events_beside "$2")
+    own=$(printf '%s' "$found" | sed -n 's/.*other, \([0-9]*\) by the service itself$/\1/p')
+    own=${own:-0}
+    expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($1), and beside them nothing but what the started service writes by itself, the record of the capacity balance of a week that had none: $own such event" \
+        "$found" "$1 | 0 other, $((own > 1 ? 1 : own)) by the service itself"
 }
 
 # sqlite_text SQL: every value of every row of one query on the database of the
@@ -1016,8 +1062,16 @@ install_previous() {
 #                        a comma between them
 #   new_columns[TABLE]   the columns that the migration adds to a table, as table_read
 #                        columns prints them, one on a line
+#   altered_columns[TABLE]
+#                        the columns that it declares otherwise, each in its place, such
+#                        as one that may now be blank, as table_read columns prints them
+#                        afterwards, one on a line
 #   new_keys[TABLE]      the indexes and foreign keys that it adds, as table_read keys
 #                        prints them, one on a line
+#   more_tables          tables that hold what a site made and are no part of the
+#                        inventory, which the migration changes, such as its import jobs,
+#                        with a space between them: they are read from the database
+#                        file, kept and compared as the tables of the inventory are
 #   counted_view         the view of the items that must be counted as before, as a
 #                        query with its question mark, where the migration is meant to
 #                        change how some are counted. Empty, it is all of them
@@ -1042,12 +1096,22 @@ particulars_dir=packaging/package-test.d
 particulars=()
 particular_files=()
 unwritten=""
-declare -A meant=() may_add=() rows_apart=() new_columns=() new_keys=() rest_of=() rest_before=()
+declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() new_keys=() rest_of=() rest_before=()
+more_tables=""
 counted_view=""
 writes_no_event=""
 fail_by=""
 # The days, in UTC, that the upgrade which went through began and ended on.
 upgrade_days=""
+
+# also NAME TABLE LINES: put LINES after what the files of the earlier migrations of the
+# upgrade have said of a table in new_columns, altered_columns or new_keys, which NAME
+# is, so that an upgrade that runs two migrations, each with its file, is told of both:
+#   also new_columns items 'do_not_renew BOOLEAN NULL -'
+also() {
+    local -n said=$1
+    said[$2]="${said[$2]:+${said[$2]}$'\n'}$3"
+}
 
 # Read the files of the migrations that the upgrade runs, and of the releases it crosses.
 load_particulars() {
@@ -1122,7 +1186,7 @@ tables_there() {
 failed_upgrade() {
     local witness_code planted tables_before backup good_backup command body
     local schema_before snippet_before created database=/var/lib/hirdir/hirdir.db
-    local cause cause_sql said cure cure_sql table events_then
+    local cause cause_sql said cure cure_sql table events_then events_hids found
 
     section "the previous release, $previous_version, with an account in it"
     previous_package
@@ -1271,6 +1335,7 @@ failed_upgrade() {
     section "the upgrade again, with its cause put right"
     check "pkg $cure" sqlite_run "$cure_sql"
     events_then=$(table_rows audit_events "$(table_columns audit_events)")
+    events_hids=$(table_read audit_events hids)
     upgrade_days=$(date -u +%F)
     if apt_get install /srv/debs/hirdir-new.deb; then
         upgrade_days="$upgrade_days $(date -u +%F)"
@@ -1280,10 +1345,7 @@ failed_upgrade() {
         tail -n 30 "$work/apt.log"
     fi
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if [ -n "$writes_no_event" ]; then
-        expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_then)" \
-            "$(table_rows audit_events "$(table_columns audit_events)")" "$events_then"
-    fi
+    if [ -n "$writes_no_event" ]; then no_event_written "$events_then" "$events_hids"; fi
     good_backup=$(sed -n 's/^hirdir: the database as it was before this upgrade is kept at //p' "$work/apt.log")
     expect "pkg dpkg holds hirdir $version as installed" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok installed"
@@ -1314,6 +1376,23 @@ failed_upgrade() {
         "$(local_status POST /api/v1/auth/sign-in "$body")" 200
     witness_carried fields "after the upgrade that went through,"
     tables_carried "after the upgrade that went through," migrated
+
+    # The settings file, which nobody edited in this pass, as the upgrade pass has one
+    # that the operator edited: every line of it stays, and the settings of the new
+    # version that it lacks are put after them. A line that only says more of a setting
+    # the file has is not put in.
+    new_settings >"$work/new-settings.txt"
+    found=$(settings_kept "$work/settings-before-failure.toml")
+    if [ -s "$work/new-settings.txt" ]; then
+        expect "pkg the settings file, which nobody edited, holds every line it had and after them every setting that $version has and $previous_version had not ($(cut -f1 "$work/new-settings.txt" | xargs))" \
+            "$found $(cut -f2 "$work/new-settings.txt" | grep -cvxF -f "$work/settings-now.toml" || true)" "kept more 0"
+    else
+        expect "pkg the settings file, which nobody edited, is as $previous_version wrote it: $version has no setting that it had not" \
+            "$found" "kept same"
+    fi
+    expect "pkg and hirdir-setup --settings finds nothing to change in it" \
+        "$(inside hirdir-setup --settings --yes 2>&1)" \
+        "Nothing to change: /etc/hirdir/config.toml has every setting of this version of hirdir."
 
     # The way docs/install.md gives under "Going back to the release before". The first
     # step is the older package meeting a database it cannot read: it must stop there.
@@ -1360,11 +1439,12 @@ failed_upgrade() {
 # is installing the older package again, with nothing to restore, and what was entered
 # since the upgrade stays.
 without_migration() {
-    local body=$1 backup database=/var/lib/hirdir/hirdir.db schema_before events_before
+    local body=$1 backup database=/var/lib/hirdir/hirdir.db schema_before events_before events_hids
 
     section "the upgrade to $version, which has no migration"
     schema_before=$(schema_sum "$database")
     events_before=$(table_rows audit_events "$(table_columns audit_events)")
+    events_hids=$(table_read audit_events hids)
     if apt_get install /srv/debs/hirdir-new.deb; then
         pass "pkg apt upgrades hirdir $previous_version to $version"
     else
@@ -1378,8 +1458,7 @@ without_migration() {
         inside test -s "${backup:-/nonexistent}"
     expect "pkg the schema is at revision $head, as it was, and is the same statement for statement" \
         "$(revision_now) $(schema_sum "$database")" "$revision_before $schema_before"
-    expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_before)" \
-        "$(table_rows audit_events "$(table_columns audit_events)")" "$events_before"
+    no_event_written "$events_before" "$events_hids"
     check "pkg hirdir admin check exits 0" inside hirdir admin check
     if wait_local_ready; then
         pass "pkg $version serves"
@@ -1460,8 +1539,9 @@ witness_retired=""
 witness_site=""
 witness_room=""
 witness_contracts=""
-# What came after the groups, which witness_places and witness_money make where the
-# previous release has it. Each list is kept and compared record for record, as
+witness_renewed=""
+# What came after the groups, which witness_places, witness_money and witness_renewals
+# make where the previous release has it. Each list is kept and compared record for record, as
 # "NAME PATH", and each answer that is worked out of the records, a tree or a report,
 # by what one expression makes of it, as "NAME|PATH|EXPRESSION|what it is, in words".
 # The records are noted in the order in which the upgrade pass takes them out again,
@@ -1476,6 +1556,7 @@ declare -A columns_before=() keys_before=() rows_before=()
 tables_then=0
 schema_then=""
 events_then=""
+events_hids_then=""
 counted_before=""
 cluster_before=""
 lone_before=""
@@ -1909,9 +1990,10 @@ witness_structure() {
             "$(counted_now '?filter=group.name:eq:upgrade-cluster')" '[2, 2, 1, 1.0, "0.00", "1800.00"]'
     fi
 
-    # What came with revisions 0007 and 0008, where the previous release has it.
+    # What came with revisions 0007, 0008 and 0009, where the previous release has it.
     if previous_at 0007; then witness_places; fi
     if previous_at 0008; then witness_money; fi
+    if previous_at 0009; then witness_renewals; fi
 }
 
 # day_from_today DAYS: the day that many days after today, or before it. The days that
@@ -2216,6 +2298,180 @@ witness_money() {
         "portfolio|/vendors/$vendor/portfolio|[d[\"totals\"], [[k[\"kind\"], k[\"items\"], k[\"covered\"]] for k in d[\"kinds\"]], [[m[\"pid\"], m[\"items\"], m[\"covered\"], m[\"covered_until\"]] for m in d[\"models\"]], [a[\"name\"] for a in d[\"agreements\"]], sorted(c[\"number\"] for c in d[\"contracts\"])]|the portfolio of the vendor from before is what it was: its totals, its kinds and models with what is covered of each and until when, its agreement and its contracts")
 }
 
+# witness_renewals: what came with revision 0009, made through the API of the previous
+# release for an upgrade to carry: the contacts of the agreement from before, an
+# account manager and a support contact, and a contract in it that names an account
+# manager of its own in place of the agreement's; the flag not to renew on the second
+# model, and so on its items, one of which says otherwise for itself, and on a switch
+# of the first model by itself; a support agreement whose renewal is entered early with
+# its two members, one of which is to have a new number, which waits on the
+# agreement's next term, and one of which ends with the present term, while an
+# endpoint that is not to be renewed is left behind with a cover that ends with it; a
+# purchase request with a line that this inventory does not track and a line with a
+# part number; a line that multiplies the engineers from before, with its target; the
+# record of the capacity balance of the week, recorded by hand and then corrected;
+# links on the second model, the region, the site and the room from before; and the
+# renewal alert, seen by the Admin.
+#
+# witness_structure runs this where previous_at says that the previous release is at
+# revision 0009, after witness_money, so the contracts, the places and the people are
+# there. No release before 0.7.0 can store any of it: the upgrade to 0.7.0 starts from a
+# release that could not, and this is for the upgrades after it. Every name is
+# invented, and every address is of a domain reserved for examples.
+witness_renewals() {
+    local vendor agreement plain overriding wireless member ender pat sam land made hid
+    local engineer start end next_start next_end record wanted undo=()
+    local -A item=()
+
+    witness_renewed=yes
+    read -r plain overriding _ <<<"$witness_contracts"
+    api GET '/agreements?limit=1000'
+    agreement=$(json '[a["hid"] for a in d["items"] if a["number"] == "UW-EA-0001"][0]')
+    vendor=$(json '[a["vendor_hid"] for a in d["items"] if a["number"] == "UW-EA-0001"][0]')
+    api GET '/contacts?limit=1000'
+    pat=$(json '[c["hid"] for c in d["items"] if c["email"] == "upgrade.pat@example.net"][0]')
+    sam=$(json '[c["hid"] for c in d["items"] if c["email"] == "upgrade.sam@example.net"][0]')
+    api GET '/regions?limit=1000'
+    land=$(json '[r["hid"] for r in d["items"] if r["name"] == "Upgrade Land"][0]')
+    api GET "$every_item&filter=serial_number:in:UWN0000S004,UWN0000S009,UWN0000F001,UWN0000F002,UWN0000W001,UWN0000A001"
+    for hid in $(json '" ".join(i["serial_number"] + "=" + i["hid"] for i in d["items"])'); do item[${hid%=*}]=${hid#*=}; done
+
+    # The contacts of an agreement and of a contract, each a contact record from before.
+    api POST "/agreements/$agreement/contacts" "{\"contact_hid\": \"$pat\", \"role\": \"account_manager\"}"
+    made=$status
+    undo+=("agreements/$agreement/contacts/$(json_field hid)")
+    api POST "/agreements/$agreement/contacts" "{\"contact_hid\": \"$sam\", \"role\": \"support_contact\"}"
+    made="$made $status"
+    undo+=("agreements/$agreement/contacts/$(json_field hid)")
+    api POST "/contracts/$overriding/contacts" "{\"contact_hid\": \"$sam\", \"role\": \"account_manager\"}"
+    made="$made $status"
+    undo+=("contracts/$overriding/contacts/$(json_field hid)")
+    api GET "/contracts/$plain"
+    made="$made $(json '[[c["contact"]["name"] for c in d["effective"][k]["value"]] + [d["effective"][k]["source"]] for k in ("account_managers", "support_contacts")]')"
+    api GET "/contracts/$overriding"
+    expect "pkg $previous_version holds the contacts of an agreement and of a contract: the agreement from before names an account manager and a support contact, a contract in it that names none has both from it, and the contract that names an account manager of its own has that one in place of the agreement's, and the support contact from it" \
+        "$made $(json '[[c["contact"]["name"] for c in d["effective"][k]["value"]] + [d["effective"][k]["source"]] for k in ("account_managers", "support_contacts")]')" \
+        '201 201 201 [["Upgrade Pat", "agreement"], ["Upgrade Sam", "agreement"]] [["Upgrade Sam", "own"], ["Upgrade Sam", "agreement"]]'
+
+    # The flag not to renew, on the second model and so on its items, of which the
+    # first of the cluster says otherwise for itself, and on a switch of the first model
+    # by itself, which no contract covers. The second model has its links as well.
+    api GET "/catalog-entries/$witness_second"
+    api PATCH "/catalog-entries/$witness_second" "{\"row_version\": $(json_field row_version), \"do_not_renew\": true, \"links\": [{\"url\": \"https://docs.example.com/uw-24s/datasheet.pdf\", \"text\": \"Data sheet\"}, {\"url\": \"https://docs.example.com/uw-24s\", \"text\": \"\"}]}"
+    made="$status $(json '[d["do_not_renew"], [[l["text"], l["url"]] for l in d["links"]]]')"
+    made="$made $(said_of "${item[UWN0000F001]}" items '"do_not_renew": false') $(said_of "${item[UWN0000S004]}" items '"do_not_renew": true')"
+    api GET "$every_item&filter=serial_number:in:UWN0000F001,UWN0000F002,UWN0000S003,UWN0000S004&sort=serial_number"
+    expect "pkg the flag not to renew: on the second model, whose items have it from there but for the first of the cluster, which says otherwise for itself; and on a switch of the first model by itself, while another of that model has the model's, which is not set; the second model has two links, one with no text" \
+        "$made $(json '[[i["serial_number"], i["do_not_renew"], i["effective"]["do_not_renew"]["value"], i["effective"]["do_not_renew"]["source"]] for i in d["items"]]')" \
+        '200 [true, [["Data sheet", "https://docs.example.com/uw-24s/datasheet.pdf"], ["", "https://docs.example.com/uw-24s"]]] 200 200 [["UWN0000F001", false, false, "own"], ["UWN0000F002", null, true, "catalog"], ["UWN0000S003", null, false, "catalog"], ["UWN0000S004", true, true, "own"]]'
+
+    # A support agreement whose renewal is entered early, with its two members. The
+    # first is to have a new number with the next term, which waits on it; it covers
+    # the switch that took the place of one in the first stack, which follows, and an
+    # endpoint that is not to be renewed, which is left behind: its cover ends with the
+    # present term. The second ends with the present term, with the agreement's dates
+    # as its own, and covers a controller.
+    start=$(day_from_today -200)
+    end=$(day_from_today 80)
+    next_start=$(day_from_today 81)
+    next_end=$(day_from_today 446)
+    api POST /agreements "{\"name\": \"Upgrade Witness Wireless Agreement\", \"number\": \"UW-EA-0003\", \"vendor_hid\": \"$vendor\", \"starts_on\": \"$start\", \"ends_on\": \"$end\", \"support_level\": \"8x5, next business day\"}"
+    made=$status
+    wireless=$(json_field hid)
+    api POST /contracts "{\"number\": \"UW-CON-1007\", \"agreement_hid\": \"$wireless\", \"annual_cost\": \"700.00\"}"
+    made="$made $status"
+    member=$(json_field hid)
+    api POST /contracts "{\"number\": \"UW-CON-1008\", \"agreement_hid\": \"$wireless\"}"
+    made="$made $status"
+    ender=$(json_field hid)
+    api POST "/contracts/$member/coverage" "{\"items\": [{\"item_hid\": \"${item[UWN0000S009]}\"}, {\"item_hid\": \"${item[UWN0000A001]}\"}]}"
+    made="$made $status"
+    api POST "/contracts/$ender/coverage" "{\"items\": [{\"item_hid\": \"${item[UWN0000W001]}\"}]}"
+    made="$made $status"
+    api POST "/agreements/$wireless/renew" "{\"row_version\": 1, \"starts_on\": \"$next_start\", \"ends_on\": \"$next_end\", \"purchase_reference\": \"UW-PO-0009\", \"members\": [{\"contract_hid\": \"$member\", \"renewal\": \"new_number\", \"number\": \"UW-CON-2007\", \"annual_cost\": \"750.00\"}, {\"contract_hid\": \"$ender\", \"renewal\": \"ends\"}]}"
+    made="$made $status $(json '[[m["number"], m["renewal"], m["left_behind"]] for m in d["members"]] + [d["left_behind"], d["ends_on"], d["next_term"]["starts_on"]]')"
+    api GET "/contracts/$member"
+    made="$made | $(json '[d["number"], d["ends_with_term"], d["effective"]["ends_on"]["value"], d["next_term"]["number"], d["next_term"]["starts_on"], d["next_term"]["with_agreement"]]')"
+    api GET "/contracts/$ender"
+    made="$made $(json '[d["number"], d["ends_with_term"], d["next_term"], d["starts_on"], d["ends_on"], d["agreement"]["name"]]')"
+    api GET "/contracts/$member/coverage"
+    expect "pkg a support agreement whose renewal is entered early with its two members: the first keeps its number and its period, and the new number waits on the agreement's next term; it covers a switch, which follows, and an endpoint that is not to be renewed, which is left behind, its cover ending with the present term; the second ends with the present term, with the agreement's dates as its own, and stays in the agreement" \
+        "$made $(json 'sorted([c["item"]["serial_number"], c["ends_on"]] for c in d["items"])')" \
+        "201 201 201 201 201 200 [[\"UW-CON-2007\", \"new_number\", 1], [\"UW-CON-1008\", \"ends\", 0], 1, \"$end\", \"$next_start\"] | [\"UW-CON-1007\", false, \"$end\", \"UW-CON-2007\", \"$next_start\", true] [\"UW-CON-1008\", true, null, \"$start\", \"$end\", \"Upgrade Witness Wireless Agreement\"] [[\"UWN0000A001\", \"$end\"], [\"UWN0000S009\", null]]"
+
+    # A request bought through procurement: a line of tape that this inventory does
+    # not track, which has no model and waits for nothing, and a spare switch of the
+    # first model with the part number that procurement gave it.
+    api POST /purchase-requests "{\"reference\": \"UW-REQ-1004\", \"status\": \"ordered\", \"lines\": [{\"part_number\": \"UW-TAPE-25\", \"description\": \"Hook-and-loop tape, 25 m\", \"quantity\": 10}, {\"catalog_entry_hid\": \"$witness_entry\", \"part_number\": \"UW-48P=\", \"description\": \"Spare switch, as procurement wrote it\", \"quantity\": 1, \"destination_site_hid\": \"$witness_site\"}]}"
+    expect "pkg a purchase request with a line that this inventory does not track, with the part number and the description that procurement gave and no model, and a line of the first model with a part number: the request waits for the one line that is tracked" \
+        "$status $(json '[[l["name"], l["tracked"], (l["catalog"] or {}).get("pid"), l["part_number"], l["quantity"], l["pending_quantity"]] for l in d["lines"]] + [d["quantity"], d["pending_quantity"]]')" \
+        '201 [["UW-REQ-1004/1", false, null, "UW-TAPE-25", 10, 0], ["UW-REQ-1004/2", true, "UW-48P", "UW-48P=", 1, 1], 1, 1]'
+
+    # A line that multiplies: tools that make half of the engineers from before half
+    # as able again, which is three quarters of a unit more, counted under tools.
+    api GET '/capacity-lines?limit=1000'
+    engineer=$(json '[l["hid"] for l in d["items"] if l["name"] == "Upgrade Witness Engineer"][0]')
+    api POST /capacity-lines "{\"side\": \"supply\", \"category\": \"tools\", \"name\": \"Upgrade Witness Automation\", \"effect\": \"multiply\", \"factor\": \"1.5\", \"share\": \"0.5\", \"applies_to\": [\"$engineer\"]}"
+    made="$status $(json '[d["effect"], d["factor"], d["share"], [a["name"] for a in d["applies_to"]], d["quantity"], d["units_each"]]')"
+    api GET /reports/capacity
+    expect "pkg a line that multiplies, of tools that make half of the three engineers from before half as able again: 0.75 units more under tools, and a supply of 4.25 units" \
+        "$made $status $(json '[d["active"]["supply"], [[m["name"], m["units"], [[a["name"], a["units"]] for a in m["applies_to"]]] for m in d["active"]["multiplying_lines"]]]')" \
+        '201 ["multiply", "1.5", "0.5", ["Upgrade Witness Engineer"], null, null] 200 ["4.25", [["Upgrade Witness Automation", "0.75", [["Upgrade Witness Engineer", "3"]]]]]'
+
+    # The capacity balance of the week, recorded by hand in place of what the service
+    # recorded when it started, and then corrected, with the reason.
+    api POST /capacity-records '{"note": "Recorded by hand with the release before"}'
+    made="$status $(json '[d["active"]["supply"], d["adjusted"]]')"
+    record=$(json_field hid)
+    api PATCH "/capacity-records/$record" "{\"row_version\": $(json_field row_version), \"note\": \"The demand of the project was counted short\", \"active\": {\"demand\": \"2.50\"}}"
+    made="$made $status $(json '[d["active"]["demand"], d["active"]["supply"], d["active"]["balance"], d["adjusted"], d["note"]]')"
+    api GET '/capacity-records?limit=1000'
+    expect "pkg the capacity balance of the week is recorded by hand, in place of what the service recorded when it started, and then corrected with the reason: a demand of 2.5 against a supply of 4.25 is a balance of 1.75, the record says that it was adjusted, and it is the one record of the week" \
+        "$made $status $(json_field total)" \
+        '201 ["4.25", false] 200 ["2.5", "4.25", "1.75", true, "The demand of the project was counted short"] 200 1'
+
+    # Links on the three places from before, and what an item shows of its model's.
+    made="$(said_of "$land" regions '"links": [{"url": "https://wiki.example.net/upgrade-land", "text": "Region page"}]')"
+    made="$made $(said_of "$witness_site" sites '"links": [{"url": "https://wiki.example.net/upgrade-site", "text": ""}]')"
+    made="$made $(said_of "$witness_room" locations '"links": [{"url": "https://intranet.example.net/upgrade-site/room-701/plan.pdf", "text": "Floor plan"}, {"url": "http://intranet.example.net/upgrade-site/room-701/racks", "text": "Racks"}]')"
+    api GET "/items/${item[UWN0000F002]}"
+    made="$made $(json '[l["text"] for l in d["catalog"]["links"]]')"
+    api GET "/locations/$witness_room"
+    expect "pkg links on each kind of record that takes them: the second model, whose items show its links; the region; the site, with a link that has no text; and the room, with two in their order, one of them over http" \
+        "$made $(json '[[l["text"], l["url"]] for l in d["links"]]')" \
+        '200 200 200 ["Data sheet", ""] [["Floor plan", "https://intranet.example.net/upgrade-site/room-701/plan.pdf"], ["Racks", "http://intranet.example.net/upgrade-site/room-701/racks"]]'
+
+    # The renewal alert after sign-in: the contract whose renewal is pending is on its
+    # list, which the Admin has not seen; once seen, it is not shown again.
+    api GET /renewals/alert
+    made="$status $(json '[d["show"], d["lapsed"]["count"], d["renewal_pending"]["count"], d["renewal_pending"]["new"], d["ending"]["count"], d["overdue"]]')"
+    api POST /renewals/alert/seen "{\"version\": \"$(json_field version)\"}"
+    made="$made $status"
+    api GET /renewals/alert
+    expect "pkg the renewal alert after sign-in shows the Admin the contract whose renewal is pending, which is new to them; once they have seen it, it is not shown again" \
+        "$made $(json '[d["show"], d["renewal_pending"]["count"], d["renewal_pending"]["new"]]')" \
+        '200 [true, 0, 1, 1, 0, 0] 200 [false, 1, 0]'
+
+    # What no contract covers and is not to be renewed, counted by model, as the items
+    # themselves say it.
+    api GET "$every_item"
+    wanted=$(json 'sorted([pid, count] for pid, count in __import__("collections").Counter(i["catalog"]["pid"] for i in d["items"] if i["record_status"] == "active" and i["is_major"] and (i["effective"]["lifecycle_state"]["value"] or "") in ("Assigned", "Test", "Prod", "Down") and not i["covered"] and i["effective"]["do_not_renew"]["value"]).items())')
+    api GET /reports/coverage
+    expect "pkg the coverage report counts by itself, by model, each item in service that no contract covers and that is not to be renewed, as the items say it, and leaves them off what no contract covers: $wanted" \
+        "$status $(json 'sorted([m["pid"], m["count"]] for m in d["sections"]["not_renewed"]["by_model"])') $(json 'd["totals"]["not_renewed"] == sum(m["count"] for m in d["sections"]["not_renewed"]["by_model"]) > 0')" \
+        "200 $wanted true"
+
+    # Taken out first by the upgrade pass: the contacts are removed outright, and the
+    # two contracts and then their agreement are retired.
+    witness_undo=("${undo[@]}" "contracts/$member" "contracts/$ender" "agreements/$wireless" "${witness_undo[@]}")
+    witness_lists+=("agreement-contacts /agreements/$agreement/contacts?limit=1000"
+        "contract-contacts /contracts/$overriding/contacts?limit=1000"
+        "capacity-records /capacity-records?limit=1000")
+    witness_answers+=('renewals|/reports/renewals|d["totals"]|GET /reports/renewals counts on each of its lists what it counted: what ends soon, what has lapsed, what is pending and overdue, what ends with its term, and what more than one contract covers'
+        'alert|/renewals/alert|[d["show"], d["overdue"]] + [[d[k]["count"], d[k]["new"]] for k in ("lapsed", "renewal_pending", "ending")]|GET /renewals/alert shows the Admin, who has seen it, nothing new, and counts what it counted'
+        'not-renewed|/reports/coverage|sorted([m["pid"], m["count"]] for m in d["sections"]["not_renewed"]["by_model"])|GET /reports/coverage counts by model, as it did, the items in service that no contract covers and that are not to be renewed')
+}
+
 # counted_now [QUERY]: what a release counts of a view of the items: items, components,
 # managed nodes and the support weight as a number, the estimated value and the annual
 # support cost. The first four are in the summary. The money is in the management
@@ -2306,6 +2562,11 @@ witness_kept() {
     if [ -n "$witness_contracts" ]; then
         witness_tables="$witness_tables agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines"
     fi
+    if [ -n "$witness_renewed" ]; then
+        witness_tables="$witness_tables contract_contacts capacity_line_targets capacity_records renewal_alert_views"
+    fi
+    # And the tables beside the inventory that the file of a migration names.
+    witness_tables="$witness_tables${more_tables:+ $more_tables}"
     for table in $witness_tables; do
         columns_before[$table]=$(table_read "$table" columns)
         keys_before[$table]=$(table_read "$table" keys)
@@ -2354,6 +2615,37 @@ but_for() {
     case $(how_of "$1" "$2") in
         *more) printf ', beside what the new version may have added' ;;
     esac
+}
+
+# as_before NOW BEFORE: an answer that is worked out of the records, as the new version
+# gave it, NOW, shown in the shape of the one that was kept, BEFORE: each is a status
+# and what json printed. A newer version may give an answer more fields, as it may a
+# record: a field that the kept answer has not is left out, also within what it holds,
+# so that the coverage report may count a section more, and the rest is shown as it is.
+as_before() {
+    python3 -c '
+import json, sys
+
+def split(text):
+    status, _, rest = text.partition(" ")
+    try:
+        return status, json.loads(rest)
+    except ValueError:
+        return status, None
+
+def shaped(now, was):
+    if isinstance(now, dict) and isinstance(was, dict):
+        return {key: shaped(value, was[key]) for key, value in now.items() if key in was}
+    if isinstance(now, list) and isinstance(was, list) and len(now) == len(was):
+        return [shaped(*pair) for pair in zip(now, was)]
+    return now
+
+status, now = split(sys.argv[1])
+_, was = split(sys.argv[2])
+if isinstance(now, (dict, list)):
+    print(status, json.dumps(shaped(now, was), sort_keys=True))
+else:
+    print(sys.argv[1])' "$1" "$2"
 }
 
 # witness_carried HOW WHEN: the items and the history of each, the groups, their
@@ -2410,7 +2702,9 @@ witness_carried() {
         for entry in "${witness_answers[@]}"; do
             IFS='|' read -r name path expression words <<<"$entry"
             api GET "$path"
-            expect "pkg $when $words" "$status $(json "$expression")" "${answers_before[$name]}"
+            found="$status $(json "$expression")"
+            if [ "$how" != exact ]; then found=$(as_before "$found" "${answers_before[$name]}"); fi
+            expect "pkg $when $words" "$found" "${answers_before[$name]}"
         done
     fi
     api GET '/owners?limit=1000'
@@ -2433,6 +2727,19 @@ witness_carried() {
 # columns_then TABLE: the names of the columns that the table had when witness_kept
 # read it.
 columns_then() { printf '%s\n' "${columns_before[$1]}" | cut -d' ' -f1 | xargs; }
+
+# columns_meant TABLE: the columns that a table is to have after the migrations of the
+# upgrade, as table_read columns prints them: those it had, in their places, each as the
+# files say that it is declared now where they say it is declared otherwise, and after
+# them those that the files say are added.
+columns_meant() {
+    python3 -c '
+import sys
+before, altered, added = (text.splitlines() for text in sys.argv[1:4])
+now = {line.split(" ", 1)[0]: line for line in altered if line}
+print("\n".join([now.get(line.split(" ", 1)[0], line) for line in before] + [line for line in added if line]))' \
+        "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}"
+}
 
 # every_line_in BEFORE NOW: whether every line of the first text is a line of the second.
 every_line_in() {
@@ -2477,9 +2784,14 @@ tables_carried() {
             every_line_in "${keys_before[$table]}" "$keys" || differing="${differing}keys. "
             added=", and whatever migration ${unwritten// /, }, which has no file yet, adds to them"
         else
-            if [ -n "${new_columns[$table]:-}" ]; then
-                [ "$columns" = "${columns_before[$table]}"$'\n'"${new_columns[$table]}" ] || differing="${differing}columns. "
-                added=", and after its columns $(printf '%s\n' "${new_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g')"
+            if [ -n "${new_columns[$table]:-}${altered_columns[$table]:-}" ]; then
+                [ "$columns" = "$(columns_meant "$table")" ] || differing="${differing}columns. "
+                if [ -n "${altered_columns[$table]:-}" ]; then
+                    added=", but for $(printf '%s\n' "${altered_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g'), which the migration declares as it says"
+                fi
+                if [ -n "${new_columns[$table]:-}" ]; then
+                    added="$added, and after its columns $(printf '%s\n' "${new_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g')"
+                fi
             else
                 [ "$columns" = "${columns_before[$table]}" ] || differing="${differing}columns. "
             fi
@@ -2550,11 +2862,11 @@ carried_inventory() {
     particular after
 }
 
-# witness_undone: take out again, with the new version, what witness_places and
-# witness_money made, so that the rest of the upgrade pass starts from lists, a tree
-# and reports as empty as those of a new installation. The items and the groups are
-# retired by then. Nothing is deleted but what the API removes outright, an assignment
-# and a person of an owner: a capacity line, an external system, a contract, an
+# witness_undone: take out again, with the new version, what witness_places,
+# witness_money and witness_renewals made, so that the rest of the upgrade pass starts
+# from lists, a tree and reports as empty as those of a new installation. The items and
+# the groups are retired by then. Nothing is deleted but what the API removes outright,
+# an assignment, a person of an owner and a contact of a contract: a capacity line, an external system, a contract, an
 # agreement, an operator, a contact and a place are retired, a registration is marked
 # as removed, a coverage is ended with a day, and a purchase request is cancelled.
 witness_undone() {
@@ -2588,7 +2900,7 @@ witness_undone() {
     fi
     for entry in "${witness_undo[@]}"; do
         case $entry in
-            contact-assignments/* | owners/*/members/*)
+            contact-assignments/* | owners/*/members/* | */contacts/*)
                 api DELETE "/$entry"
                 wanted="${wanted}204 "
                 ;;
@@ -2601,7 +2913,7 @@ witness_undone() {
         made="$made$status "
     done
     api GET /geography/tree
-    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: the assignments and the people of the owner are removed, the operators, the contacts and the places are retired, and whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts and agreements is retired, marked as removed, ended or cancelled; the tree of places is empty" \
+    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: the assignments, the people of the owner and whatever contacts the agreements and the contracts named are removed, the operators, the contacts and the places are retired, and whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts and agreements is retired, marked as removed, ended or cancelled; the tree of places is empty" \
         "$made$status $(json 'd["roots"]')" "${wanted}200 []"
 }
 
@@ -2712,6 +3024,7 @@ previous_release() {
     tables_then=$(sqlite_value /var/lib/hirdir/hirdir.db "SELECT count(*) FROM sqlite_master WHERE type = 'table'")
     schema_then=$(schema_sum /var/lib/hirdir/hirdir.db)
     events_then=$(table_rows audit_events "$(table_columns audit_events)")
+    events_hids_then=$(table_read audit_events hids)
 }
 
 upgrade() {
@@ -2728,10 +3041,7 @@ upgrade() {
     fi
     cp "$work/apt.log" "$work/install.log"
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if ! migrating || [ -n "$writes_no_event" ]; then
-        expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($events_then)" \
-            "$(table_rows audit_events "$(table_columns audit_events)")" "$events_then"
-    fi
+    if ! migrating || [ -n "$writes_no_event" ]; then no_event_written "$events_then" "$events_hids_then"; fi
     expect "pkg the installed version is $version" "$(installed_version)" "$version"
 
     backup=$(sed -n 's/^hirdir: the database as it was before this upgrade is kept at //p' "$work/install.log")
@@ -2782,6 +3092,13 @@ upgrade() {
     expect "pkg run again, hirdir-setup --settings finds nothing to change" \
         "$(inside hirdir-setup --settings --yes 2>&1)" \
         "Nothing to change: /etc/hirdir/config.toml has every setting of this version of hirdir."
+    # From 0.7.0 the application writes a complete file of its own (P-136): from the
+    # file the operator edited, it sets what that file sets, and nothing else.
+    if inside hirdir admin config --help >/dev/null 2>&1; then
+        expect "pkg hirdir admin config --current writes a complete file that sets what the one the operator edited sets, session_hours = 11, and nothing else, with every other key of this version commented out at its default" \
+            "$(inside bash -c 'hirdir admin config --current | /opt/hirdir/python/bin/python3 -I -c "import json, sys, tomllib; print(json.dumps({k: v for k, v in tomllib.loads(sys.stdin.read()).items() if v}))"; hirdir admin config --current | grep -c "^# [a-z_]* = "; hirdir admin config | grep -c "^# [a-z_]* = "' 2>&1 | xargs)" \
+            "{access: {session_hours: 11}} $(($(shipped_settings "$deb" | grep -c '^# [a-z_]* = ') - 1)) $(shipped_settings "$deb" | grep -c '^# [a-z_]* = ')"
+    fi
 
     # The nginx snippet is no conffile, because hirdir-setup writes the prefix into it:
     # dpkg would have stopped this upgrade to ask about it. The package writes it again
@@ -2959,6 +3276,12 @@ install_fresh() {
         "$(inside bash -c 'cmp /etc/hirdir/config.toml /usr/share/hirdir/config.toml && stat -c "%a %U:%G" /etc/hirdir/config.toml && grep -c "^[^#[]" /etc/hirdir/config.toml' 2>&1)" \
         "644 root:root
 0"
+    # From 0.7.0 the file that the package ships is the one the application writes
+    # (P-136), and with --current the application sets in it what the file sets.
+    if inside hirdir admin config --help >/dev/null 2>&1; then
+        expect "pkg hirdir admin config writes the very file that the package ships, every key at its default and commented out, and with --current it sets in it what the file in force sets, which is nothing" \
+            "$(inside bash -c 'hirdir admin config | cmp - /usr/share/hirdir/config.toml && hirdir admin config --current | cmp - /etc/hirdir/config.toml && echo same' 2>&1)" same
+    fi
     expect "pkg the install wrote the nginx snippet, /etc/nginx/snippets/hirdir.conf, as the package ships it" \
         "$(inside bash -c 'cmp /etc/nginx/snippets/hirdir.conf /usr/share/hirdir/nginx/snippet.conf && stat -c "%a %U:%G" /etc/nginx/snippets/hirdir.conf' 2>&1)" \
         "644 root:root"
@@ -3127,9 +3450,9 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
     out.writelines(b"row-%06d\n" % number for number in range(1, 100_002))' "$work"
 }
 
-# The tables that hirdir admin reset clears: the inventory, those of 0.4.0, of 0.5.0
-# and of 0.6.0 among it, and what was stored about it. A test in packaging/tests/ fails when a table that a reset
-# clears is not named here.
+# The tables that hirdir admin reset clears: the inventory, those of 0.4.0, of 0.5.0, of
+# 0.6.0 and of 0.7.0 among it, and what was stored about it. A test in packaging/tests/
+# fails when a table that a reset clears is not named here.
 inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts operators contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines capacity_line_targets capacity_records contract_contacts renewal_alert_views"
 
 # Which of those tables hold a row, and whether the table of accounts does. It is read
@@ -3359,11 +3682,12 @@ files() {
     operators_and_plans
     cover_and_purchases
     first_file
+    multiplied_and_seen
 
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
     # Here it clears the examples and what structure(), geography(),
-    # operators_and_plans() and cover_and_purchases() made beside them, a replacement
-    # among it, before the backup puts back what the checks need.
+    # operators_and_plans(), cover_and_purchases() and multiplied_and_seen() made beside
+    # them, a replacement among it, before the backup puts back what the checks need.
     local code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
@@ -3371,7 +3695,7 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, and the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
@@ -3414,6 +3738,30 @@ cli() { inside env HIRDIR_URL=http://127.0.0.1:8715 HIRDIR_TOKEN="$token" hirdir
 # nothing matches it prints 0 and does not fail, so that it can be kept in a variable:
 # under set -e a grep that finds nothing would stop the pass there.
 matches() { grep -c -E -- "$1" "$2" || true; }
+
+# printed_columns FILE COLUMN...: the cells of the named columns of a table that a client
+# command printed, a row on a line with a colon between its cells. The table is found by
+# its heading, which names the columns in capitals, and each cell is read from where its
+# heading begins to where the next one does, so that a blank cell stays a cell.
+printed_columns() {
+    python3 -c '
+import re, sys
+
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+wanted = [name.upper() for name in sys.argv[2:]]
+for at, line in enumerate(lines):
+    heads = [(found.group(), found.start()) for found in re.finditer(r"\S+", line)]
+    if set(wanted) <= {name for name, _ in heads}:
+        break
+else:
+    sys.exit()
+starts = [start for _, start in heads] + [None]
+places = {name: (starts[n], starts[n + 1]) for n, (name, _) in enumerate(heads)}
+for row in lines[at + 1:]:
+    if not row.strip():
+        break
+    print(":".join(row[slice(*places[name])].strip() for name in wanted))' "$@"
+}
 
 # cli_run OUT ARGUMENT...: run a client command with its output in OUT and what it says in
 # $work/cli.err. Sets $code to what it exited with.
@@ -4704,9 +5052,13 @@ client_cover() {
     cli_run /dev/null contracts renew CON-2027-0107
     made="$made | $code"
     cli_run /dev/null contracts show CON-2026-0107
-    expect "pkg hirdir contracts show finds it by its new number, with the earlier term beneath what it says now; a renewal that gives neither a number nor a period exits with 4, and so does a number that no contract has any more" \
-        "$made $code" \
-        "0 | RITM0019999 | 2600.00 | CON-2026-0107, 2026-09-01 to 2027-08-31, RITM0012345 | 4 4"
+    made="$made $code"
+    # The day of the application, which is the day the contract left the agreement and
+    # was renewed.
+    api GET '/reports/coverage?limit=1'
+    expect "pkg hirdir contracts show finds it by its new number, with the earlier term beneath what it says now: the part of its history that began when it left the agreement today, which the renewal ended on its first day, and is listed as of that day, while the parts that a join and a leave ended on the day they began are not (P-130); a renewal that gives neither a number nor a period exits with 4, and so does a number that no contract has any more" \
+        "$made" \
+        "0 | RITM0019999 | 2600.00 | CON-2026-0107, 2026-09-01 to 2027-08-31, RITM0012345; $(json_field as_of) to $(json_field as_of), began by left, by itself | 4 4"
 
     # A renewal that is entered before the term ends is the next term (D-150).
     early=$(day_from_today 700)
@@ -4740,9 +5092,9 @@ client_cover() {
     # A purchase request, and a delivery on one of its lines.
     received=$(table 'sum(r["purchase_line"].startswith("RITM0012345/") for r in rows)' examples/items.csv)
     cli_run "$work/cli.purchase" purchases show RITM0012345
-    expect "S32 hirdir purchases show takes a request by its reference and prints it with its two lines and what is still to come: all eight but the $received that arrived" \
-        "$code $(sed -n 's/^still to come: *//p' "$work/cli.purchase") | $(grep -E '^RITM0012345/[12] ' "$work/cli.purchase" | awk '{print $1 ":" $3 ":" $4 ":" $5 ":" $6}' | xargs)" \
-        "0 $((8 - received)) of 8 | RITM0012345/1:C9300-48P:4:$received:$((4 - received)) RITM0012345/2:PWR-C1-715WAC-P:4:0:4"
+    expect "S32 hirdir purchases show takes a request by its reference and prints it with its three lines and what is still to come: all eight of the two lines that are tracked but the $received that arrived; the second line has its part number, and the tape of the third is not tracked and waits for nothing" \
+        "$code $(sed -n 's/^still to come: *//p' "$work/cli.purchase") | $(printed_columns "$work/cli.purchase" line pid part_number quantity received pending | grep '^RITM0012345/' | xargs)" \
+        "0 $((8 - received)) of 8 | RITM0012345/1:C9300-48P::4:$received:$((4 - received)) RITM0012345/2:PWR-C1-715WAC-P:PWR-C1-715WAC-P=:4:0:4 RITM0012345/3:(not tracked):HLT-100:20:0:0"
     cli_run "$work/cli.out" purchases receive RITM0012345/2 --serial PKG0000R001 --serial PKG0000R002 --location 'Americas > Central > Site-2 > Store Room' --on 2026-11-02
     made="$code $(matches '^2 items received on RITM0012345/2; 2 of 4 are still to come$' "$work/cli.out")"
     api GET '/items?filter=serial_number:glob:PKG0000R00*&sort=serial_number'
@@ -5097,7 +5449,9 @@ records_of() {
 # contract covers on that day and how many none does, the items out of service that a
 # contract still counts, the items in service whose cover runs out within so many
 # days, the items that more than one contract covers, and the items under a contract
-# whose renewal is pending.
+# whose renewal is pending, and the items in service that no contract covers and that
+# are not to be renewed (P-131), which are left off what is not covered and what runs
+# out soon.
 #
 # A contract covers on a day within its period when its status is active, and from
 # the first day of its period on when its status is renewal_pending. Its period is
@@ -5121,6 +5475,7 @@ def day_of(text):
 day, within = date.fromisoformat(sys.argv[1]), timedelta(days=int(sys.argv[2]))
 agreements = {r["name"]: r for r in rows("agreements")}
 contracts = {(r["vendor"], r["number"]): r for r in rows("contracts")}
+models = {(r["vendor"], r["pid"]): r for r in rows("catalog-entries")}
 items = rows("items")
 known = {r[key]: r for r in items for key in ("asset_tag", "serial_number", "hostname", "name") if r[key]}
 
@@ -5128,6 +5483,11 @@ def state(r):
     while not r["lifecycle_state"] and r["parent"]:
         r = known[r["parent"]]
     return r["lifecycle_state"]
+
+def flagged(r):
+    """Whether the item is not to be renewed: by its own flag, or by that of its model."""
+    own = r.get("do_not_renew", "")
+    return (own or models.get((r["vendor"], r["pid"]), {}).get("do_not_renew", "")) == "true"
 
 def term(record):
     """The first and the last day in force on the day, and the last day that is known."""
@@ -5174,12 +5534,13 @@ service = [r for r in view if not r["parent"] and state(r) in ("Assigned", "Test
 gone = [r for r in items if r["record_status"] == "retired" or state(r) in ("Pending-Removal", "Released", "Archived")]
 print(json.dumps({
     "covered": sum(bool(covering(r)) for r in service),
-    "expiring": sum(1 for r in service if covering(r) and until(r) and until(r) <= day + within),
+    "expiring": sum(1 for r in service if covering(r) and until(r) and until(r) <= day + within and not flagged(r)),
     "in_service": len(service),
+    "not_renewed": sum(not covering(r) and flagged(r) for r in service),
     "out_of_service": sum(1 for r in gone if covering(r) or any(c["left"] and c["runs"] for c in cover.get(id(r), []))),
     "overlapping": sum(len({c["contract"] for c in covering(r)}) > 1 for r in view),
     "renewal_pending": sum(any(c["pending"] for c in covering(r)) for r in view),
-    "uncovered": sum(not covering(r) for r in service),
+    "uncovered": sum(not covering(r) and not flagged(r) for r in service),
 }, sort_keys=True))' "$1" "$2"
 }
 
@@ -5272,9 +5633,9 @@ examples_cover() {
         '200 [["AT-000107", "RITM0012345/1", "JAE0000X003", null, [["CON-2026-0107", "2027-08-31", false]], []], ["AT-000133", null, null, "FCW0000X007", [["CON-2025-0001", "2026-06-30", false]], [["NetWatch", "removed"]]]] [[false, 0]]'
     received=$(table 'sum(r["purchase_line"] == "RITM0012345/1" for r in rows)' examples/items.csv)
     api GET '/purchase-lines?filter=request.reference:eq:RITM0012345&sort=line'
-    expect "S32 the first line of a purchase request of the examples is for four switches: the $received that examples/items.csv says arrived on it are received and the rest are still to come, and nothing has arrived on its second line" \
-        "$status $(json '[[l["name"], l["catalog"]["pid"], l["quantity"], l["received_quantity"], l["pending_quantity"], l["destination_site"]["path"]] for l in d["items"]]')" \
-        "200 [[\"RITM0012345/1\", \"C9300-48P\", 4, $received, $((4 - received)), \"Americas > Central > Site-3\"], [\"RITM0012345/2\", \"PWR-C1-715WAC-P\", 4, 0, 4, \"Americas > Central > Site-3\"]]"
+    expect "S32 the first line of a purchase request of the examples is for four switches: the $received that examples/items.csv says arrived on it are received and the rest are still to come, and nothing has arrived on its second line, which has its part number as procurement gave it; the third, of tape, has no model, is not tracked and waits for nothing (P-135)" \
+        "$status $(json '[[l["name"], (l["catalog"] or {}).get("pid"), l["part_number"], l["tracked"], l["quantity"], l["received_quantity"], l["pending_quantity"], l["destination_site"]["path"]] for l in d["items"]]')" \
+        "200 [[\"RITM0012345/1\", \"C9300-48P\", null, true, 4, $received, $((4 - received)), \"Americas > Central > Site-3\"], [\"RITM0012345/2\", \"PWR-C1-715WAC-P\", \"PWR-C1-715WAC-P=\", true, 4, 0, 4, \"Americas > Central > Site-3\"], [\"RITM0012345/3\", null, \"HLT-100\", false, 20, 0, 0, \"Americas > Central > Site-3\"]]"
     api GET '/reports/replacements?filter=reference:eq:CHG0031877'
     expect "pkg GET $prefix/api/v1/reports/replacements lists the one replacement of the examples, with the switch that left, the one that took its place, the reason and the day, and counts it under its reason" \
         "$status $(json '[[r["old_item"]["serial_number"], r["new_item"]["serial_number"], r["reason"], r["replaced_on"]] for r in d["items"]]') $(json '[[r["reason"], r["count"]] for r in d["by_reason"]]')" \
@@ -5409,7 +5770,7 @@ cover_and_purchases() {
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
     expect "S29 a vendor, a model and a contract of a period that today is in are made, and two switches in Prod, each in a room of a site in a region of its own, are put under the contract by one request: GET $prefix/api/v1/reports/coverage, asked for these items alone, counts both as in service and covered" \
         "$made $status $(json 'd["totals"]')" \
-        '201 201 201 201 201 201 201 201 201 201 201 201 201 [["PKG0000V001", true], ["PKG0000V002", true]] 200 {"covered": 2, "expiring": 0, "in_service": 2, "out_of_service": 0, "overlapping": 0, "renewal_pending": 0, "uncovered": 0}'
+        '201 201 201 201 201 201 201 201 201 201 201 201 201 [["PKG0000V001", true], ["PKG0000V002", true]] 200 {"covered": 2, "expiring": 0, "in_service": 2, "not_renewed": 0, "out_of_service": 0, "overlapping": 0, "renewal_pending": 0, "uncovered": 0}'
     row_version=1
     made=""
     for number in Pending-Removal Released Archived; do
@@ -5482,14 +5843,19 @@ cover_and_purchases() {
     made="$made $status $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], [[i["serial_number"], i["covered"], [c["contract"]["status"] for c in i["coverage"]]] for i in d["items"]]]')"
     api PATCH "/contracts/$other" '{"row_version": 4, "status": "active"}'
     made="$made | $status $(json '[d["status"], d["covers_today"], d["lapsed"]]')"
+    # The count of lapsed contracts follows the report's filter (P-117): asked for these
+    # items alone, it is of the one contract that is in their scope, and its filter names
+    # it; the report of everything counts every lapsed contract there is.
     authorized GET "$prefix/api/v1/reports/coverage" --get --data-urlencode "filter=$view"
-    made="$made $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], d["lapsed_contracts"]["count"] >= 1, d["lapsed_contracts"]["filter"]]')"
+    made="$made $(json '[d["totals"]["uncovered"], d["totals"]["renewal_pending"], d["lapsed_contracts"]["count"], d["lapsed_contracts"]["filter"] == {"and": [{"field": "hid", "op": "in", "value": ["'"$other"'"]}, {"field": "lapsed", "op": "eq", "value": True}]}]')"
+    api GET /reports/coverage
+    made="$made $(json '[d["lapsed_contracts"]["count"] >= 1, d["lapsed_contracts"]["filter"]]')"
     api GET '/contracts?filter=lapsed:eq:true&limit=1000'
     made="$made $status $(json 'sum(c["number"] == "PKG-CON-0002" for c in d["items"])')"
     api PATCH "/contracts/$other" "{\"row_version\": 5, \"ends_on\": \"$next_year\"}"
-    expect "pkg the period of the contract is ended a month ago and its status said to be renewal_pending: it covers still, and the coverage report lists its item under the renewals that are pending, and not as uncovered; said to be active again, with its period past, it has lapsed and covers nothing, its item is uncovered, and the report counts the lapsed contracts, among which the list of contracts finds it; given its last day back, it has not lapsed" \
+    expect "pkg the period of the contract is ended a month ago and its status said to be renewal_pending: it covers still, and the coverage report lists its item under the renewals that are pending, and not as uncovered; said to be active again, with its period past, it has lapsed and covers nothing, its item is uncovered, and the report asked for these items counts the one lapsed contract in their scope, with a filter that names it, where the report of everything counts every lapsed contract, among which the list of contracts finds it; given its last day back, it has not lapsed" \
         "$made | $status $(json '[d["covers_today"], d["lapsed"]]')" \
-        '200 ["renewal_pending", true, false] 200 [1, 1, [["PKG0000V004", true, ["renewal_pending"]]]] | 200 ["active", false, true] [2, 0, true, {"field": "lapsed", "op": "eq", "value": true}] 200 1 | 200 [true, false]'
+        '200 ["renewal_pending", true, false] 200 [1, 1, [["PKG0000V004", true, ["renewal_pending"]]]] | 200 ["active", false, true] [2, 0, 1, true] [true, {"field": "lapsed", "op": "eq", "value": true}] 200 1 | 200 [true, false]'
 
     # S31: a vendor with switches, a virtual machine template, a software application
     # and a service.
@@ -5753,6 +6119,29 @@ cover_and_purchases() {
     expect "pkg and an export of the six items that arrived, with their own values, names in purchase_line the line each arrived on; it is imported back unchanged" \
         "$(table '["purchase_line" in head, sorted({r["purchase_line"] for r in rows})]' "$work/back-arrived.csv") $status $(job_counts)" \
         '[true, ["PKG-REQ-0001/1"]] 201 ["previewed", 6, 0, 0, 6, 0]'
+}
+
+# multiplied_and_seen: two records of 0.7.0 that the examples do not hold, made beside
+# them for hirdir admin reset to clear with them: a line that multiplies the network
+# engineers of the examples (P-137), which is a target of a capacity line, and the
+# renewal alert as this Admin has seen it (P-128).
+multiplied_and_seen() {
+    local engineers before made
+    api GET '/capacity-lines?limit=1000'
+    engineers=$(json '[l["hid"] for l in d["items"] if l["name"] == "Network engineer"][0]')
+    api GET /reports/capacity
+    before=$(json 'd["active"]["supply"]')
+    api POST /capacity-lines "{\"side\": \"supply\", \"category\": \"tools\", \"name\": \"Package Test Automation\", \"effect\": \"multiply\", \"factor\": \"1.5\", \"applies_to\": [\"$engineers\"]}"
+    made=$status
+    api GET /reports/capacity
+    expect "pkg a line that multiplies the three network engineers of the examples by one and a half, for every position, counts 1.5 units more under tools, and the capacity report names it with the line it works on" \
+        "$made $status $(python3 -c 'import sys; from decimal import Decimal; print(Decimal(sys.argv[2]) - Decimal(sys.argv[1]))' "$before" "$(json 'd["active"]["supply"]')") $(json '[[m["name"], m["share"], m["units"], [a["name"] for a in m["applies_to"]]] for m in d["active"]["multiplying_lines"]]')" \
+        '201 200 1.5 [["Package Test Automation", "1", "1.5", ["Network engineer"]]]'
+    api GET /renewals/alert
+    api POST /renewals/alert/seen "{\"version\": \"$(json_field version)\"}"
+    made=$status
+    api GET /renewals/alert
+    expect "pkg the renewal alert, once this Admin has seen it, is not shown to them again" "$made $status $(json_field show)" "200 200 false"
 }
 
 # ---- a first file ---------------------------------------------------------------------------
@@ -6096,6 +6485,15 @@ state() {
     done
     expect "S01 nothing under /var/lib/hirdir is readable by other users" \
         "$(inside find /var/lib/hirdir -perm /o=rwx 2>&1)" ""
+    # From 0.7.0 one server runs on one state directory, which it holds a lock on (P-134),
+    # so that a second could not take for stopped an import that the first is applying.
+    if inside test -e /var/lib/hirdir/server.lock; then
+        code=0
+        inside timeout 30 runuser -u hirdir -- /opt/hirdir/venv/bin/hirdir admin serve >"$work/second.log" 2>&1 || code=$?
+        expect "pkg the service holds its lock on the state directory, /var/lib/hirdir/server.lock, which the hirdir user made; a second server started on it is refused, and says so, and the one that runs goes on" \
+            "$(inside stat -c '%U %a' /var/lib/hirdir/server.lock 2>&1) $code $(grep -c 'another hirdir server is running on /var/lib/hirdir: stop it first' "$work/second.log") $(inside systemctl is-active hirdir.service 2>&1)" \
+            "hirdir 640 1 1 active"
+    fi
     # Root has run hirdir admin by now. Apart from the byte-code that postinst compiled and
     # prerm removes, every file under /opt/hirdir must be one dpkg installed.
     expect "S01 nothing is under /opt/hirdir that the package did not install" \
