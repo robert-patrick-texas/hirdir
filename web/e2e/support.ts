@@ -256,7 +256,9 @@ export async function signIn(page: Page, account: Account): Promise<void> {
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Access code").fill(account.accessCode);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  // The access code is hashed at its full cost, on purpose: on a busy host that takes
+  // longer than the 5 seconds an expectation waits by default.
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".who-name")).toHaveText(account.username);
 }
 

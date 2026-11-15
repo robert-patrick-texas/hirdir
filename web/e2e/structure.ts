@@ -33,7 +33,9 @@ export async function importFile(
   rows: string[][],
   { timeout }: { timeout?: number } = {},
 ) {
-  const waiting = timeout === undefined ? {} : { timeout };
+  // A preview and an apply are writes of the server, and on a busy host take longer
+  // than the 5 seconds an expectation waits by default.
+  const waiting = { timeout: timeout ?? 20_000 };
   // Opened afresh, so that the form holds nothing of the file before.
   await page.goto("./import");
   await expect(page.getByRole("heading", { level: 1, name: "Import" })).toBeVisible();
