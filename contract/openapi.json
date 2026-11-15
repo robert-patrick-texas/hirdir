@@ -664,6 +664,24 @@
         "title": "AgreementCreate",
         "type": "object"
       },
+      "AgreementEffective": {
+        "additionalProperties": false,
+        "description": "The contacts an agreement has in force for each role: its own.",
+        "properties": {
+          "account_managers": {
+            "$ref": "#/components/schemas/EffectiveContacts"
+          },
+          "support_contacts": {
+            "$ref": "#/components/schemas/EffectiveContacts"
+          }
+        },
+        "required": [
+          "account_managers",
+          "support_contacts"
+        ],
+        "title": "AgreementEffective",
+        "type": "object"
+      },
       "AgreementOut": {
         "additionalProperties": false,
         "description": "A support agreement with a vendor, such as an enterprise agreement, that groups\ncontracts. A contract in it has from it what the contract leaves blank.",
@@ -696,6 +714,14 @@
             "description": "The agreement's own total, added to nothing.",
             "title": "Annual Cost"
           },
+          "contacts": {
+            "description": "The contact records it names, by role and then by priority.",
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "contracts": {
             "description": "How many contracts that are not retired are in it.",
             "title": "Contracts",
@@ -705,6 +731,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/AgreementEffective"
           },
           "ends_on": {
             "anyOf": [
@@ -902,6 +931,8 @@
           "purchase_reference",
           "account_manager",
           "support_contact",
+          "contacts",
+          "effective",
           "support_url",
           "annual_cost",
           "notes",
@@ -1352,6 +1383,14 @@
             "description": "The agreement's own total, added to nothing.",
             "title": "Annual Cost"
           },
+          "contacts": {
+            "description": "The contact records it names, by role and then by priority.",
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "contracts": {
             "description": "How many contracts that are not retired are in it.",
             "title": "Contracts",
@@ -1361,6 +1400,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/AgreementEffective"
           },
           "ends_on": {
             "anyOf": [
@@ -1569,6 +1611,8 @@
           "purchase_reference",
           "account_manager",
           "support_contact",
+          "contacts",
+          "effective",
           "support_url",
           "annual_cost",
           "notes",
@@ -3718,6 +3762,12 @@
             ],
             "title": "Description"
           },
+          "do_not_renew": {
+            "default": false,
+            "description": "Its support is not to be renewed: gear whose cover came with its purchase and is not bought again.",
+            "title": "Do Not Renew",
+            "type": "boolean"
+          },
           "end_of_hw_support": {
             "anyOf": [
               {
@@ -3954,6 +4004,11 @@
             ],
             "title": "Description"
           },
+          "do_not_renew": {
+            "description": "Its support is not to be renewed: gear whose cover came with its purchase and is not bought again. Every item of the model has it unless it says otherwise.",
+            "title": "Do Not Renew",
+            "type": "boolean"
+          },
           "effective": {
             "$ref": "#/components/schemas/CatalogEffective"
           },
@@ -4170,6 +4225,7 @@
           "annual_support_cost",
           "stack_discount_pct",
           "successor_hid",
+          "do_not_renew",
           "review_status",
           "links",
           "record_status",
@@ -4212,6 +4268,18 @@
               }
             ],
             "title": "Description"
+          },
+          "do_not_renew": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null is false.",
+            "title": "Do Not Renew"
           },
           "end_of_hw_support": {
             "anyOf": [
@@ -5044,6 +5112,184 @@
         "title": "ContactRef",
         "type": "object"
       },
+      "ContractContactAdd": {
+        "additionalProperties": false,
+        "description": "A contact record to name for an agreement or a contract, in a role.",
+        "properties": {
+          "contact_hid": {
+            "maxLength": 36,
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, one more than the highest there is for the record and the role.",
+            "title": "Priority"
+          },
+          "role": {
+            "enum": [
+              "account_manager",
+              "support_contact"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact_hid",
+          "role"
+        ],
+        "title": "ContractContactAdd",
+        "type": "object"
+      },
+      "ContractContactOut": {
+        "additionalProperties": false,
+        "description": "A contact record named for an agreement or a contract, in a role.",
+        "properties": {
+          "agreement_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agreement it is named for, or blank.",
+            "title": "Agreement Hid"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef",
+            "description": "The contact as its record is now. A retired one is still listed, so marked."
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "contract_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contract it is named for, or blank.",
+            "title": "Contract Hid"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "description": "The naming: what is changed and removed.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "priority": {
+            "description": "The order in which they are listed, from 1.",
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "account_manager",
+              "support_contact"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "agreement_hid",
+          "contract_hid",
+          "role",
+          "priority",
+          "contact_hid",
+          "contact",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ContractContactOut",
+        "type": "object"
+      },
+      "ContractContactPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a naming to change, and the version they were read at. It stays with\nits agreement or its contract.",
+        "properties": {
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "account_manager",
+                  "support_contact"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "ContractContactPatch",
+        "type": "object"
+      },
       "ContractCreate": {
         "additionalProperties": false,
         "description": "A new contract. Items are put under it afterwards.",
@@ -5253,6 +5499,10 @@
           "account_manager": {
             "$ref": "#/components/schemas/ContractEffectiveValue"
           },
+          "account_managers": {
+            "$ref": "#/components/schemas/EffectiveContacts",
+            "description": "Its own account managers where it names any, else its agreement's."
+          },
           "ends_on": {
             "$ref": "#/components/schemas/ContractEffectiveValue"
           },
@@ -5264,6 +5514,10 @@
           },
           "support_contact": {
             "$ref": "#/components/schemas/ContractEffectiveValue"
+          },
+          "support_contacts": {
+            "$ref": "#/components/schemas/EffectiveContacts",
+            "description": "Its own support contacts where it names any, else its agreement's."
           },
           "support_level": {
             "$ref": "#/components/schemas/ContractEffectiveValue"
@@ -5279,7 +5533,9 @@
           "support_level",
           "account_manager",
           "support_contact",
-          "support_url"
+          "support_url",
+          "account_managers",
+          "support_contacts"
         ],
         "title": "ContractEffective",
         "type": "object"
@@ -5495,6 +5751,14 @@
             ],
             "description": "The contract's own total, added to nothing.",
             "title": "Annual Cost"
+          },
+          "contacts": {
+            "description": "The contact records it names of its own, by role and then by priority.",
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
           },
           "covered_items": {
             "description": "How many items it covers today.",
@@ -5763,6 +6027,7 @@
           "purchase_reference",
           "account_manager",
           "support_contact",
+          "contacts",
           "support_url",
           "annual_cost",
           "notes",
@@ -6260,6 +6525,14 @@
             "description": "The contract's own total, added to nothing.",
             "title": "Annual Cost"
           },
+          "contacts": {
+            "description": "The contact records it names of its own, by role and then by priority.",
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "covered_items": {
             "description": "How many items it covers today.",
             "title": "Covered Items",
@@ -6532,6 +6805,7 @@
           "purchase_reference",
           "account_manager",
           "support_contact",
+          "contacts",
           "support_url",
           "annual_cost",
           "notes",
@@ -7217,7 +7491,8 @@
                   "out_of_service",
                   "expiring",
                   "overlapping",
-                  "renewal_pending"
+                  "renewal_pending",
+                  "not_renewed"
                 ],
                 "type": "string"
               },
@@ -7229,7 +7504,7 @@
           },
           "sections": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/ReportSection"
+              "$ref": "#/components/schemas/CoverageReportSection"
             },
             "title": "Sections",
             "type": "object"
@@ -7269,6 +7544,61 @@
         "title": "CoverageReport",
         "type": "object"
       },
+      "CoverageReportSection": {
+        "additionalProperties": false,
+        "description": "One list of the coverage report.",
+        "properties": {
+          "by_model": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NotRenewedModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of `not_renewed` alone: its items counted by model, by vendor and PID.",
+            "title": "By Model"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` for them.",
+            "title": "Filter"
+          },
+          "include_archived": {
+            "description": "As it is to be sent with that filter.",
+            "title": "Include Archived",
+            "type": "boolean"
+          },
+          "include_drafts": {
+            "title": "Include Drafts",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "count",
+          "filter",
+          "include_archived",
+          "include_drafts"
+        ],
+        "title": "CoverageReportSection",
+        "type": "object"
+      },
       "CoverageTotals": {
         "additionalProperties": false,
         "description": "The counts of the coverage report.",
@@ -7278,13 +7608,18 @@
             "type": "integer"
           },
           "expiring": {
-            "description": "In service, and the cover runs out within the days.",
+            "description": "In service, the cover runs out within the days, and not flagged as not to be renewed.",
             "title": "Expiring",
             "type": "integer"
           },
           "in_service": {
             "description": "Major items whose state in force is a service state.",
             "title": "In Service",
+            "type": "integer"
+          },
+          "not_renewed": {
+            "description": "In service, under no contract, and flagged as not to be renewed: left out of support on purpose, and no gap.",
+            "title": "Not Renewed",
             "type": "integer"
           },
           "out_of_service": {
@@ -7303,6 +7638,7 @@
             "type": "integer"
           },
           "uncovered": {
+            "description": "In service, under no contract, and not flagged as not to be renewed.",
             "title": "Uncovered",
             "type": "integer"
           }
@@ -7314,7 +7650,8 @@
           "out_of_service",
           "expiring",
           "overlapping",
-          "renewal_pending"
+          "renewal_pending",
+          "not_renewed"
         ],
         "title": "CoverageTotals",
         "type": "object"
@@ -8381,6 +8718,46 @@
         "title": "EffectiveContact",
         "type": "object"
       },
+      "EffectiveContacts": {
+        "additionalProperties": false,
+        "description": "The contacts in force for one role, and the record they came from: the record's\nown where it names any, else, for a contract, its agreement's, else none.",
+        "properties": {
+          "source": {
+            "enum": [
+              "own",
+              "agreement",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Value",
+            "type": "array"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid"
+        ],
+        "title": "EffectiveContacts",
+        "type": "object"
+      },
       "EffectiveInstructions": {
         "additionalProperties": false,
         "description": "The shipping instructions in force, and the level they came from.",
@@ -9133,6 +9510,7 @@
               "external_systems",
               "agreements",
               "contracts",
+              "contract_contacts",
               "purchase_requests",
               "purchase_lines",
               "items",
@@ -10590,6 +10968,18 @@
             "description": "Left out, the state's own on entry.",
             "title": "Disposition"
           },
+          "do_not_renew": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, its model's.",
+            "title": "Do Not Renew"
+          },
           "end_of_hw_support": {
             "anyOf": [
               {
@@ -10971,6 +11361,10 @@
           "disposition": {
             "$ref": "#/components/schemas/EffectiveValue"
           },
+          "do_not_renew": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "Whether its support is not to be renewed: its own word, or its model's."
+          },
           "end_of_hw_support": {
             "$ref": "#/components/schemas/EffectiveValue"
           },
@@ -11024,7 +11418,8 @@
           "end_of_sale",
           "end_of_sw_support",
           "end_of_hw_support",
-          "ldos"
+          "ldos",
+          "do_not_renew"
         ],
         "title": "ItemEffective",
         "type": "object"
@@ -11204,6 +11599,18 @@
               }
             ],
             "title": "Disposition"
+          },
+          "do_not_renew": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own word on renewing its support. Blank has its model's.",
+            "title": "Do Not Renew"
           },
           "effective": {
             "$ref": "#/components/schemas/ItemEffective"
@@ -11796,6 +12203,7 @@
           "end_of_sw_support",
           "end_of_hw_support",
           "ldos",
+          "do_not_renew",
           "effective",
           "groups",
           "controllers",
@@ -11922,6 +12330,18 @@
               }
             ],
             "title": "Disposition"
+          },
+          "do_not_renew": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null has its model's again.",
+            "title": "Do Not Renew"
           },
           "end_of_hw_support": {
             "anyOf": [
@@ -14632,6 +15052,96 @@
         "title": "NextTerm",
         "type": "object"
       },
+      "NotRenewedModel": {
+        "additionalProperties": false,
+        "description": "The items of one model that are not to be renewed and that no contract covers.",
+        "properties": {
+          "catalog_entry_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for the items that have no model.",
+            "title": "Catalog Entry Hid"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter of `GET /items` for them.",
+            "title": "Filter"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
+          },
+          "vendor_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Hid"
+          }
+        },
+        "required": [
+          "catalog_entry_hid",
+          "vendor_hid",
+          "vendor",
+          "pid",
+          "model_name",
+          "count",
+          "filter"
+        ],
+        "title": "NotRenewedModel",
+        "type": "object"
+      },
       "OpeningOut": {
         "additionalProperties": false,
         "description": "What making a place active would bring about: what is planned for it, or for a\nplace beneath it that is thereby in use, moves in.",
@@ -15726,6 +16236,38 @@
           "offset"
         ],
         "title": "Page[ContactOut]",
+        "type": "object"
+      },
+      "Page_ContractContactOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContractContactOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ContractContactOut]",
         "type": "object"
       },
       "Page_ContractOut_": {
@@ -22749,6 +23291,248 @@
         ]
       }
     },
+    "/api/v1/agreements/{hid}/contacts": {
+      "get": {
+        "description": "List the contact records an agreement names: by role, then by priority. Every\ncontract in it that names nobody of its own in a role has these.",
+        "operationId": "list_agreement_contacts_api_v1_agreements__hid__contacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ContractContactOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agreement Contacts",
+        "tags": [
+          "Contracts"
+        ]
+      },
+      "post": {
+        "description": "Name a contact record for an agreement, as an account manager or a support\ncontact. A contact is named once for one agreement and one role.",
+        "operationId": "add_agreement_contact_api_v1_agreements__hid__contacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractContactAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Agreement Contact",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
+    "/api/v1/agreements/{hid}/contacts/{link_hid}": {
+      "delete": {
+        "description": "Remove a naming of an agreement that was a mistake. The audit event of the\nremoval holds what it was.",
+        "operationId": "remove_agreement_contact_api_v1_agreements__hid__contacts__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Agreement Contact",
+        "tags": [
+          "Contracts"
+        ]
+      },
+      "patch": {
+        "description": "Change the role, the priority or the contact of a naming of an agreement.",
+        "operationId": "update_agreement_contact_api_v1_agreements__hid__contacts__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agreement Contact",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
     "/api/v1/agreements/{hid}/renew": {
       "post": {
         "description": "Renew an agreement: its new period, and its new number where it has one.\n\nThe contracts that share its period follow it, each as `members` says: under its\nnumber (`same`, the default), with a new number that begins with the new term\n(`new_number`), or let go with the present term (`ends`), and the items under them,\nbut those that are not to be renewed, whose coverage ends with the present term. A\nperiod that begins after today is kept as the next term, and the present one runs\non until then. `withdraw` withdraws a term that is still to begin, and the new\nnumbers that wait on it.",
@@ -25521,6 +26305,248 @@
         ]
       }
     },
+    "/api/v1/contracts/{hid}/contacts": {
+      "get": {
+        "description": "List the contact records a contract names of its own: by role, then by\npriority. Those in force, its own or its agreement's, are in `effective` on the\ncontract.",
+        "operationId": "list_contract_contacts_api_v1_contracts__hid__contacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ContractContactOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Contract Contacts",
+        "tags": [
+          "Contracts"
+        ]
+      },
+      "post": {
+        "description": "Name a contact record for a contract, as an account manager or a support\ncontact. Once it names anybody in a role, it has its own in that role in place of\nits agreement's.",
+        "operationId": "add_contract_contact_api_v1_contracts__hid__contacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractContactAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Contract Contact",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
+    "/api/v1/contracts/{hid}/contacts/{link_hid}": {
+      "delete": {
+        "description": "Remove a naming of a contract that was a mistake. The audit event of the removal\nholds what it was. A contract that names nobody left in a role has its agreement's.",
+        "operationId": "remove_contract_contact_api_v1_contracts__hid__contacts__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Contract Contact",
+        "tags": [
+          "Contracts"
+        ]
+      },
+      "patch": {
+        "description": "Change the role, the priority or the contact of a naming of a contract.",
+        "operationId": "update_contract_contact_api_v1_contracts__hid__contacts__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Contract Contact",
+        "tags": [
+          "Contracts"
+        ]
+      }
+    },
     "/api/v1/contracts/{hid}/coverage": {
       "get": {
         "description": "List the items under a contract, with the days of each: filtered, sorted and\npaged as a list is. `in_force:eq:true` keeps to what it covers today.",
@@ -27362,6 +28388,7 @@
                     "external_systems",
                     "agreements",
                     "contracts",
+                    "contract_contacts",
                     "purchase_requests",
                     "purchase_lines",
                     "items",
@@ -27466,6 +28493,7 @@
                       "external_systems",
                       "agreements",
                       "contracts",
+                      "contract_contacts",
                       "purchase_requests",
                       "purchase_lines",
                       "items",
@@ -32254,7 +33282,8 @@
                     "out_of_service",
                     "expiring",
                     "overlapping",
-                    "renewal_pending"
+                    "renewal_pending",
+                    "not_renewed"
                   ],
                   "type": "string"
                 },

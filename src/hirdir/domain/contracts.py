@@ -37,13 +37,12 @@ from hirdir.db import dialect
 from hirdir.db.models import (
     Agreement,
     AuditEvent,
-    CatalogEntry,
     Contract,
     ContractCoverage,
     Item,
     Vendor,
 )
-from hirdir.domain import audit, records, settings, tags
+from hirdir.domain import audit, not_renewed, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
@@ -592,12 +591,6 @@ def members_of(db: Session, agreement_hid: str) -> list[Contract]:
     )
 
 
-def flag_in_force() -> ColumnElement[bool]:
-    """Return, for a statement that joins an item to its catalog entry, whether the item
-    is not to be renewed: its own flag, or its model's where it has none (P-118)."""
-    return func.coalesce(Item.do_not_renew, CatalogEntry.do_not_renew, literal(False))
-
-
 def _leave_behind(db: Session, context: AuditContext, contract: Contract, end: date | None) -> int:
     """End, on the last day of the present term, the coverage under a contract of each
     item that is not to be renewed, so that a renewal leaves it behind. The end is
@@ -608,14 +601,13 @@ def _leave_behind(db: Session, context: AuditContext, contract: Contract, end: d
     found = db.scalars(
         select(ContractCoverage)
         .join(Item, Item.hid == ContractCoverage.item_hid)
-        .outerjoin(CatalogEntry, CatalogEntry.hid == Item.catalog_entry_hid)
         .where(
             ContractCoverage.contract_hid == contract.hid,
             or_(ContractCoverage.ends_on.is_(None), ContractCoverage.ends_on > end),
             or_(ContractCoverage.starts_on.is_(None), ContractCoverage.starts_on <= end),
             ContractCoverage.left_service.is_(False),
             Item.record_status != "retired",
-            flag_in_force().is_(True),
+            not_renewed.in_force(Item),
         )
         .order_by(ContractCoverage.hid)
     )

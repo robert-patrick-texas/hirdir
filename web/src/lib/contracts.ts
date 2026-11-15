@@ -91,7 +91,12 @@ export function coveredItemsPath(contractHid: string): string {
 }
 
 /** The fields a contract may have from its agreement, each by itself. */
-export type Inherited = keyof Contract["effective"];
+/** The fields a contract has from its agreement one by one. The contact lists of each
+ * role are had from it as a whole, and are shown apart. */
+export type Inherited = Exclude<
+  keyof Contract["effective"],
+  "account_managers" | "support_contacts"
+>;
 
 /** Those fields as people read them, in the order a page shows them. */
 export const INHERITED: ReadonlyArray<{ field: Inherited; label: string }> = [

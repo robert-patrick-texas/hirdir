@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import CatalogEntry, Vendor
-from hirdir.domain import choices, records, settings, tags
+from hirdir.domain import choices, not_renewed, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
@@ -30,6 +30,7 @@ ENTRY_FIELDS = (
     *AMOUNTS,
     "stack_discount_pct",
     "successor_hid",
+    not_renewed.FIELD,
     "review_status",
     "links",
     "record_status",
@@ -226,6 +227,9 @@ def _checked_entry(
                     {"successor_hid": "there is no such catalog entry"},
                 )
         values["successor_hid"] = successor
+    if not_renewed.FIELD in fields:
+        # Not to be renewed, for every item of the model that says nothing of its own.
+        values[not_renewed.FIELD] = not_renewed.checked(fields[not_renewed.FIELD], inherits=False)
     if "review_status" in fields:
         values["review_status"] = _review_status(fields["review_status"])
     if records.LINKS in fields:

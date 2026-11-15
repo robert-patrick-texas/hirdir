@@ -34,6 +34,7 @@ from hirdir.domain import (
     capacity,
     catalog,
     contacts,
+    contract_contacts,
     contracts,
     geography,
     groups,
@@ -173,7 +174,8 @@ ENTRIES: tuple[tuple[Any, ...], ...] = (
         "0.1",
         None,
         "2030-06-30",
-        {},
+        # Its support came with its purchase and is not bought again: spares are kept.
+        {"do_not_renew": True},
     ),
     (
         "Juniper",
@@ -599,6 +601,9 @@ CONTACTS = (
     ("Sam Okafor", "Corporate Services", "sam.okafor", "+1 555 0110"),
     ("Network Operations Desk", "Infrastructure Operations", "noc", "+1 555 0199"),
     ("Facilities Help Desk", "Corporate Services", "facilities", "+1 555 0150"),
+    # The account team of a vendor, at an address of their own.
+    ("Jordan Reyes", "Cisco", "jordan.reyes@example.com", "+1 555 0142"),
+    ("Casey Lund", "Cisco", "casey.lund@example.com", "+1 555 0144"),
 )
 # Who answers for a place, in which role: the path of the place, the role and the
 # contact, in the order of their priority. A contact of None says: none here, and do
@@ -702,6 +707,15 @@ AGREEMENTS: tuple[dict[str, Any], ...] = (
         "account_manager": "Morgan Okafor, morgan.okafor@example.com, +1 555 0163",
         "support_url": "https://support.example.com/juniper",
     },
+)
+# The contact records named for an agreement or a contract: the agreement's name or
+# the contract's number, the role and the contact, in the order of their priority. A
+# contract that names nobody in a role has its agreement's.
+CONTRACT_CONTACTS: tuple[tuple[str, str, str], ...] = (
+    ("Cisco Enterprise Agreement", "account_manager", "Jordan Reyes"),
+    ("Cisco Enterprise Agreement", "account_manager", "Casey Lund"),
+    # The wireless contract is looked after by the second of them alone.
+    ("CON-2025-0002", "account_manager", "Casey Lund"),
 )
 # The contracts: grouped into an agreement, from which each has what it leaves blank,
 # or standing by themselves.
@@ -1023,6 +1037,8 @@ def _items() -> list[dict[str, Any]]:
         owner="Voice Services",
     )
     phones[2].update(lifecycle_state="Purchased", procured_on=date(2026, 10, 5))
+    # The phone of the reception desk is renewed, where the others of its model are not.
+    phones[0].update(do_not_renew=False)
     retired = _hardware(
         "C9200L-48P-4G",
         "Cisco",
@@ -1193,7 +1209,7 @@ def build(db: Session) -> None:
             {
                 "name": name,
                 "organization": organization,
-                "email": f"{mailbox}@{DOMAIN}",
+                "email": mailbox if "@" in mailbox else f"{mailbox}@{DOMAIN}",
                 "phone": phone,
             },
         )
@@ -1265,6 +1281,15 @@ def build(db: Session) -> None:
         if "agreement" in fields:
             fields["agreement_hid"] = its_agreements[fields.pop("agreement")].hid
         its_contracts[given["number"]] = contracts.create_contract(db, SEED, fields)
+    for named_for, role, person in CONTRACT_CONTACTS:
+        field, record = (
+            (contract_contacts.AGREEMENT, its_agreements[named_for])
+            if named_for in its_agreements
+            else (contract_contacts.CONTRACT, its_contracts[named_for])
+        )
+        contract_contacts.add(
+            db, SEED, field, record.hid, {"role": role, "contact_hid": people[person].hid}
+        )
     for reference, requested, status, notes, lines in PURCHASES:
         request = purchases.create_request(
             db,

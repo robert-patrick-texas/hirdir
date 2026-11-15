@@ -29,7 +29,14 @@ from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters, listing, reports
 from hirdir.io.fields import ITEMS, REPLACEMENTS
 
-COVERAGE_SECTIONS = ("uncovered", "out_of_service", "expiring", "overlapping", "renewal_pending")
+COVERAGE_SECTIONS = (
+    "uncovered",
+    "out_of_service",
+    "expiring",
+    "overlapping",
+    "renewal_pending",
+    "not_renewed",
+)
 END_OF_LIFE_SECTIONS = ("past", "approaching")
 MAX_DAYS = 36_500
 STATE = "effective.lifecycle_state"
@@ -185,6 +192,71 @@ def _page(
     return Page(name, items, total, limit, offset)
 
 
+# --- not to be renewed, by model -----------------------------------------------------
+
+# The flag in force on the item list: its own word, or its model's.
+NOT_RENEWED = "effective.do_not_renew"
+
+
+@dataclass(frozen=True)
+class NotRenewed:
+    """How many items of one model are not to be renewed and are under no contract,
+    with the filter that lists them. A row with no model is the items that have none."""
+
+    catalog_entry_hid: str | None
+    vendor_hid: str | None
+    vendor: str | None
+    pid: str | None
+    model_name: str | None
+    count: int
+    filter: dict[str, Any] | None
+
+
+def _not_renewed_by_model(
+    db: Session,
+    asked: Any,
+    conditions: dict[str, Any] | None,
+    section: Section,
+    include_drafts: bool,
+) -> list[NotRenewed]:
+    """Count the items of the section `not_renewed` by model, in one statement: by
+    vendor and PID, and the items with no model last."""
+    zone = settings.time_zone(db)
+    kept = [
+        filters.to_sql(filters.parse(asked), ITEMS.fields, zone, db),
+        *fields.default_view(ITEMS, False, include_drafts),
+        filters.to_sql(filters.from_tree(conditions), ITEMS.fields, zone, db),
+    ]
+    model = (Item.catalog_entry_hid, Vendor.hid, Vendor.name, CatalogEntry.pid)
+    counting: Any = select(*model, CatalogEntry.model_name, func.count(distinct(Item.hid)))
+    statement = (
+        ITEMS.joined(counting.select_from(Item))
+        .where(*kept)
+        .group_by(*model, CatalogEntry.model_name)
+    )
+    found = []
+    for hid, vendor_hid, vendor, pid, model_name, count in reports._run(db, statement):
+        its = (
+            filters.where("catalog_entry_hid", "eq", hid)
+            if hid is not None
+            else filters.where("catalog_entry_hid", "empty", True)
+        )
+        joined = None if section.filter is None else filters.both(section.filter, its)
+        try:
+            filters.parse(joined)
+        except Invalid:
+            joined = None
+        found.append(NotRenewed(hid, vendor_hid, vendor, pid, model_name, count, joined))
+    return sorted(
+        found,
+        key=lambda one: (
+            one.catalog_entry_hid is None,
+            records.key(one.vendor or ""),
+            records.key(one.pid or ""),
+        ),
+    )
+
+
 # --- coverage ------------------------------------------------------------------------
 
 
@@ -199,6 +271,7 @@ class CoverageTotals:
     expiring: int
     overlapping: int
     renewal_pending: int
+    not_renewed: int
 
 
 @dataclass(frozen=True)
@@ -220,6 +293,7 @@ class Coverage:
     sections: dict[str, Section]
     lapsed_contracts: Lapsed
     page: Page
+    by_model: list[NotRenewed] = field(default_factory=list)
 
 
 def coverage(
@@ -246,15 +320,22 @@ def coverage(
     where = filters.where
     in_service = filters.both(where(STATE, "in", states), where("is_major", "eq", True))
     covered = filters.both(in_service, where("covered", "eq", True))
+    # An item not to be renewed that no contract covers, or whose cover runs out, is no
+    # gap: it is left out of those two, and counted by itself (P-131).
+    flagged = where(NOT_RENEWED, "eq", True)
+    renewed = where(NOT_RENEWED, "ne", True)
+    uncovered = filters.both(in_service, where("covered", "eq", False))
     conditions: dict[str, dict[str, Any] | None] = {
-        "uncovered": filters.both(in_service, where("covered", "eq", False)),
+        "uncovered": filters.both(uncovered, renewed),
         "out_of_service": where("out_of_service_cover", "eq", True),
         "expiring": filters.both(
             covered,
             where("covered_until", "lte", (today + timedelta(days=within_days)).isoformat()),
+            renewed,
         ),
         "overlapping": where("contract_count", "gt", 1),
         "renewal_pending": where("contract.status", "eq", contracts.RENEWAL_PENDING),
+        "not_renewed": filters.both(uncovered, flagged),
     }
     # What is out of service is listed whatever its status: that is the point.
     archived = {"out_of_service"}
@@ -278,7 +359,10 @@ def coverage(
     lapsed_contracts = Lapsed(listing.count(db, fields.CONTRACTS, filter_=lapsed), lapsed)
     default = ["covered_until", "name"] if section == "expiring" else ["name"]
     page = _page(db, filter_, section, conditions, sections, sort, default, limit, offset)
-    return Coverage(today, within_days, states, totals, sections, lapsed_contracts, page)
+    by_model = _not_renewed_by_model(
+        db, filter_, conditions["not_renewed"], sections["not_renewed"], include_drafts
+    )
+    return Coverage(today, within_days, states, totals, sections, lapsed_contracts, page, by_model)
 
 
 # --- renewals ------------------------------------------------------------------------

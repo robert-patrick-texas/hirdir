@@ -194,6 +194,7 @@ hirdir import examples/networks.csv --entity networks --apply
 hirdir import examples/external-systems.csv --entity external_systems --apply
 hirdir import examples/agreements.csv --entity agreements --apply
 hirdir import examples/contracts.csv --entity contracts --apply
+hirdir import examples/contract-contacts.csv --entity contract_contacts --apply
 hirdir import examples/purchase-requests.csv --entity purchase_requests --apply
 hirdir import examples/purchase-lines.csv --entity purchase_lines --apply
 hirdir import examples/items.csv --entity items --apply

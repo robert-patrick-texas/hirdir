@@ -104,3 +104,51 @@ def test_s41_the_worklist_lists_what_to_act_on_and_the_alert_is_shown_once(
     money.contract("CON-LAPSED-2", starts_on=day(-400), ends_on=day(-2), **within)
     again = money.get("/renewals/alert")
     assert (again["show"], again["lapsed"]["count"], again["lapsed"]["new"]) == (True, 2, 1)
+
+
+def test_s42_a_model_not_to_be_renewed_is_left_behind_by_a_renewal(money: Money) -> None:
+    money.post("/vendors", {"name": "Cisco"})
+    phone = money.entry("CP-8845")
+    switch_model = money.entry("C9300-48P")
+    flagged, overridden = (
+        money.item(phone, "PH0000X001", lifecycle_state="Prod"),
+        money.item(phone, "PH0000X002", lifecycle_state="Prod"),
+    )
+    switch = money.item(switch_model, "FCW0000X042", lifecycle_state="Prod")
+    # The model is flagged; one of its two items is given its own flag of false.
+    money.patch(
+        f"/catalog-entries/{phone['hid']}",
+        {"row_version": phone["row_version"], "do_not_renew": True},
+    )
+    held = money.get(f"/items/{overridden['hid']}")
+    money.patch(
+        f"/items/{overridden['hid']}", {"row_version": held["row_version"], "do_not_renew": False}
+    )
+    assert money.get(f"/items/{flagged['hid']}")["effective"]["do_not_renew"]["source"] == (
+        "catalog"
+    )
+    contract = money.contract("CON-S42", starts_on=day(-365), ends_on=day(-1))
+    money.cover(contract, flagged, overridden, switch)
+    renewed = money.post(
+        f"/contracts/{contract['hid']}/renew",
+        {
+            "row_version": contract["row_version"],
+            "number": "CON-S42-2",
+            "starts_on": day(0),
+            "ends_on": day(364),
+        },
+        expect=200,
+    )
+    assert renewed["left_behind"] == 1
+    # The flagged item's coverage ends with the old term; the other two follow.
+    for item, covered in ((flagged, False), (overridden, True), (switch, True)):
+        assert money.get(f"/items/{item['hid']}")["covered"] is covered
+    coverage = money.get(f"/contracts/{contract['hid']}/coverage")["items"]
+    assert {row["item"]["hid"]: row["ends_on"] for row in coverage}[flagged["hid"]] == day(-1)
+    # Once its cover has ended it is no gap, and is counted as not to be renewed.
+    report = money.get("/reports/coverage")
+    assert rows(money, "/items", report["sections"]["uncovered"]["filter"]) == set()
+    assert report["totals"]["not_renewed"] == 1
+    assert rows(money, "/items", report["sections"]["not_renewed"]["filter"]) == {flagged["hid"]}
+    (model,) = report["sections"]["not_renewed"]["by_model"]
+    assert (model["pid"], model["count"]) == ("CP-8845", 1)

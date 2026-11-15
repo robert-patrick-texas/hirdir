@@ -30,6 +30,7 @@ from hirdir.domain import (
     geography,
     health,
     lifecycle,
+    not_renewed,
     records,
     settings,
     tags,
@@ -62,6 +63,7 @@ FIELDS = (
     *DAYS,
     *catalog.AMOUNTS,
     *catalog.DATES,
+    not_renewed.FIELD,
     "record_status",
 )
 MAC_SEPARATORS = re.compile(r"[\s:.\-]")
@@ -409,6 +411,9 @@ def _checked(
             if fields[name] is not None and not isinstance(fields[name], date):
                 raise Invalid(f"{name} is not acceptable", {name: "a date, as YYYY-MM-DD"})
             values[name] = fields[name]
+    if not_renewed.FIELD in fields:
+        # Its own word, which overrides its model's; blank has its model's again.
+        values[not_renewed.FIELD] = not_renewed.checked(fields[not_renewed.FIELD], inherits=True)
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
 

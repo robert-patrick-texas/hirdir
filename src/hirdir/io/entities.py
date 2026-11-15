@@ -28,6 +28,7 @@ from hirdir.db.models import (
     Contact,
     ContactAssignment,
     Contract,
+    ContractContact,
     ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
@@ -52,6 +53,7 @@ from hirdir.domain import (
     capacity,
     catalog,
     contacts,
+    contract_contacts,
     contracts,
     descent,
     geography,
@@ -61,6 +63,7 @@ from hirdir.domain import (
     items,
     lifecycle,
     moves,
+    not_renewed,
     operators,
     owners,
     purchases,
@@ -96,6 +99,8 @@ AMOUNTS = (
     Column("support_weight", "number", inherits=True),
     Column("annual_support_cost", "money", inherits=True),
 )
+# Not to be renewed: an item's own word, or its model's.
+NOT_RENEWED = Column(not_renewed.FIELD, "boolean", inherits=True)
 STREET = tuple(Column(name) for name in ADDRESS_FIELDS)
 SHIPPING = (*(Column(name) for name in SHIP_FIELDS), Column("ship_instructions", limit=LONG))
 COORDINATES = (Column("latitude", "degrees"), Column("longitude", "degrees"))
@@ -1415,6 +1420,7 @@ class CatalogEntries(Entity):
         Column("successor_vendor"),
         Column("successor_pid", limit=100),
         LINKS,
+        Column(not_renewed.FIELD, "boolean"),
         REVIEW,
         STATUS,
         TAGS,
@@ -1435,6 +1441,7 @@ class CatalogEntries(Entity):
         *catalog.DATES,
         *catalog.AMOUNTS,
         "stack_discount_pct",
+        not_renewed.FIELD,
         "review_status",
         records.LINKS,
         "tags",
@@ -1586,6 +1593,7 @@ class Items(Entity):
         Column("purchase_line", limit=140),
         *AMOUNTS,
         *DATES,
+        NOT_RENEWED,
         STATUS,
         TAGS,
         Column("model_name", settable=False),
@@ -1606,7 +1614,9 @@ class Items(Entity):
         Column("contract_count", "integer", settable=False),
         Column("out_of_service_contracts", "list", settable=False),
         Column("purchase_line_mismatch", "boolean", settable=False),
-        *_sources((_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES)),
+        *_sources(
+            (_OWNER, _OPERATOR, _LOCATION, _PLANNED, *_STANDING, *AMOUNTS, *DATES, NOT_RENEWED)
+        ),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -2843,6 +2853,127 @@ class Coverage(Entity):
         return rows
 
 
+class ContractContacts(Entity):
+    """The contact records named for agreements and contracts, each in a role."""
+
+    name = "contract_contacts"
+    record_type = contract_contacts.RECORD_TYPE
+    model = ContractContact
+    listing = fields.CONTRACT_CONTACTS
+    columns = (
+        HID,
+        Column("agreement"),
+        Column("contract", limit=100),
+        Column("vendor"),
+        Column("role", limit=20),
+        Column("contact", limit=254),
+        Column("priority", "integer"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "agreement_hid": "agreement",
+        "agreement.name": "agreement",
+        "contract_hid": "contract",
+        "contract.number": "contract",
+        "contact_hid": "contact",
+        "contact.name": "contact",
+        "contact.email": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        contract_contacts.AGREEMENT: "agreement",
+        contract_contacts.CONTRACT: "contract",
+        "contact_hid": "contact",
+    }
+    _holders = ("agreement", "contract")
+
+    def _holder(self, run: Run, values: Mapping[str, Any]) -> tuple[str, str]:
+        """Return the record a row names, an agreement by its name or a contract by its
+        number, as the field of a naming that holds it and the HID in it."""
+        named = [name for name in self._holders if values.get(name)]
+        if len(named) != 1:
+            raise Invalid(
+                "a contact is named for an agreement or for a contract",
+                dict.fromkeys(named or self._holders, "exactly one of agreement and contract"),
+            )
+        if named[0] == "agreement":
+            agreement = contracts.the_agreement(run.db, values["agreement"], "agreement")
+            return contract_contacts.AGREEMENT, agreement.hid
+        return contract_contacts.CONTRACT, run.contract(
+            values["contract"], values.get("vendor")
+        ).hid
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a naming: by its record, its role and its contact."""
+        role, contact = values.get("role"), values.get("contact")
+        if not role or not contact or not any(values.get(name) for name in self._holders):
+            return None
+        field, hid = self._holder(run, values)
+        return run.db.scalar(
+            select(ContractContact).where(
+                getattr(ContractContact, field) == hid,
+                ContractContact.role == records.key(role),
+                ContractContact.contact_hid == run.contact(contact).hid,
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in (*self._holders, "role", "contact")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("role", "priority"))
+        if "contact" in values:
+            contact = values["contact"]
+            given["contact_hid"] = run.contact(contact).hid if contact is not None else None
+        if record is None:
+            field, hid = self._holder(run, values)
+            return contract_contacts.add(run.db, run.context, field, hid, _new(given))
+        field = contract_contacts.AGREEMENT if record.agreement_hid else contract_contacts.CONTRACT
+        if any(name in values for name in self._holders):
+            named, hid = self._holder(run, values)
+            if (named, hid) != (field, getattr(record, field)):
+                raise Invalid(
+                    "a contact stays with its agreement or its contract",
+                    {self.renamed[named]: "remove this contact and name it where it belongs"},
+                )
+        return contract_contacts.update(
+            run.db,
+            run.context,
+            field,
+            getattr(record, field),
+            record.hid,
+            record.row_version,
+            given,
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        agreements = _by_hid(db, Agreement, {one.agreement_hid for one in found})
+        held = _by_hid(db, Contract, {one.contract_hid for one in found})
+        vendors = _by_hid(db, Vendor, {contract.vendor_hid for contract in held.values()})
+        people = _by_hid(db, Contact, {one.contact_hid for one in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        rows = []
+        for one in found:
+            agreement = agreements.get(one.agreement_hid or "")
+            contract = held.get(one.contract_hid or "")
+            rows.append(
+                {
+                    **_kept(one),
+                    "agreement": None
+                    if agreement is None
+                    else items.name_or_hid(agreement.name, agreement.hid),
+                    "contract": None
+                    if contract is None
+                    else items.name_or_hid(contract.number, contract.hid),
+                    "vendor": None if contract is None else vendors[contract.vendor_hid].name,
+                    "role": one.role,
+                    "contact": named[one.contact_hid],
+                    "priority": one.priority,
+                }
+            )
+        return rows
+
+
 class PurchaseRequests(Entity):
     """Purchase requests."""
 
@@ -3702,6 +3833,7 @@ ENTITIES: Mapping[str, Entity] = {
         ExternalSystems(),
         Agreements(),
         Contracts(),
+        ContractContacts(),
         PurchaseRequests(),
         PurchaseLines(),
         Items(),
@@ -3732,6 +3864,7 @@ LOAD_ORDER = (
     "external_systems",
     "agreements",
     "contracts",
+    "contract_contacts",
     "purchase_requests",
     "purchase_lines",
     "items",

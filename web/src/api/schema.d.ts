@@ -336,6 +336,133 @@ export interface paths {
       };
     };
   };
+  "/api/v1/agreements/{hid}/contacts": {
+    /**
+     * List the contact records an agreement names: by role, then by priority. Every
+     * contract in it that names nobody of its own in a role has these.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ContractContactOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Name a contact record for an agreement, as an account manager or a support
+     * contact. A contact is named once for one agreement and one role.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractContactAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ContractContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/agreements/{hid}/contacts/{link_hid}": {
+    /**
+     * Remove a naming of an agreement that was a mistake. The audit event of the
+     * removal holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the role, the priority or the contact of a naming of an agreement. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/agreements/{hid}/renew": {
     /**
      * Renew an agreement: its new period, and its new number where it has one.
@@ -1657,6 +1784,135 @@ export interface paths {
       };
     };
   };
+  "/api/v1/contracts/{hid}/contacts": {
+    /**
+     * List the contact records a contract names of its own: by role, then by
+     * priority. Those in force, its own or its agreement's, are in `effective` on the
+     * contract.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ContractContactOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Name a contact record for a contract, as an account manager or a support
+     * contact. Once it names anybody in a role, it has its own in that role in place of
+     * its agreement's.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractContactAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ContractContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/contracts/{hid}/contacts/{link_hid}": {
+    /**
+     * Remove a naming of a contract that was a mistake. The audit event of the removal
+     * holds what it was. A contract that names nobody left in a role has its agreement's.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the role, the priority or the contact of a naming of a contract. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ContractContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ContractContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/contracts/{hid}/coverage": {
     /**
      * List the items under a contract, with the days of each: filtered, sorted and
@@ -2535,7 +2791,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -2549,7 +2805,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
+            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -4811,7 +5067,7 @@ export interface paths {
           /** How far ahead cover that runs out is looked for. Left out, the setting `renewal_warning_days`. */
           within_days?: number | null;
           /** The list to return a page of. */
-          section?: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | null;
+          section?: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | "not_renewed" | null;
           /** As the item list is sorted. For a section. */
           sort?: string[] | null;
           limit?: number;
@@ -6215,6 +6471,11 @@ export interface components {
       tags?: string[];
       vendor_hid: string;
     };
+    /** The contacts an agreement has in force for each role: its own. */
+    AgreementEffective: {
+      account_managers: components["schemas"]["EffectiveContacts"];
+      support_contacts: components["schemas"]["EffectiveContacts"];
+    };
     /**
      * A support agreement with a vendor, such as an enterprise agreement, that groups
      * contracts. A contract in it has from it what the contract leaves blank.
@@ -6224,9 +6485,12 @@ export interface components {
       account_manager: string | null;
       /** The agreement's own total, added to nothing. */
       annual_cost: string | null;
+      /** The contact records it names, by role and then by priority. */
+      contacts: components["schemas"]["ContractContactOut"][];
       /** How many contracts that are not retired are in it. */
       contracts: number;
       created_at: string;
+      effective: components["schemas"]["AgreementEffective"];
       ends_on: string | null;
       hid: string;
       /** Its period has ended, and it still says it is active. */
@@ -6312,9 +6576,12 @@ export interface components {
       account_manager: string | null;
       /** The agreement's own total, added to nothing. */
       annual_cost: string | null;
+      /** The contact records it names, by role and then by priority. */
+      contacts: components["schemas"]["ContractContactOut"][];
       /** How many contracts that are not retired are in it. */
       contracts: number;
       created_at: string;
+      effective: components["schemas"]["AgreementEffective"];
       ends_on: string | null;
       hid: string;
       /** Its period has ended, and it still says it is active. */
@@ -6660,6 +6927,8 @@ export interface components {
     CatalogEntryCreate: {
       annual_support_cost?: string | null;
       description?: string | null;
+      /** Its support is not to be renewed: gear whose cover came with its purchase and is not bought again. */
+      do_not_renew?: boolean;
       end_of_hw_support?: string | null;
       end_of_sale?: string | null;
       end_of_sw_support?: string | null;
@@ -6685,6 +6954,8 @@ export interface components {
       annual_support_cost: string | null;
       created_at: string;
       description: string | null;
+      /** Its support is not to be renewed: gear whose cover came with its purchase and is not bought again. Every item of the model has it unless it says otherwise. */
+      do_not_renew: boolean;
       effective: components["schemas"]["CatalogEffective"];
       end_of_hw_support: string | null;
       end_of_sale: string | null;
@@ -6714,6 +6985,8 @@ export interface components {
     CatalogEntryPatch: {
       annual_support_cost?: string | null;
       description?: string | null;
+      /** Null is false. */
+      do_not_renew?: boolean | null;
       end_of_hw_support?: string | null;
       end_of_sale?: string | null;
       end_of_sw_support?: string | null;
@@ -6819,6 +7092,41 @@ export interface components {
       phone: string | null;
       record_status: "draft" | "active" | "retired";
     };
+    /** A contact record to name for an agreement or a contract, in a role. */
+    ContractContactAdd: {
+      contact_hid: string;
+      /** Left out, one more than the highest there is for the record and the role. */
+      priority?: number | null;
+      role: "account_manager" | "support_contact";
+    };
+    /** A contact record named for an agreement or a contract, in a role. */
+    ContractContactOut: {
+      /** The agreement it is named for, or blank. */
+      agreement_hid: string | null;
+      /** The contact as its record is now. A retired one is still listed, so marked. */
+      contact: components["schemas"]["ContactRef"];
+      contact_hid: string;
+      /** The contract it is named for, or blank. */
+      contract_hid: string | null;
+      created_at: string;
+      /** The naming: what is changed and removed. */
+      hid: string;
+      /** The order in which they are listed, from 1. */
+      priority: number;
+      role: "account_manager" | "support_contact";
+      row_version: number;
+      updated_at: string;
+    };
+    /**
+     * Fields of a naming to change, and the version they were read at. It stays with
+     * its agreement or its contract.
+     */
+    ContractContactPatch: {
+      contact_hid?: string | null;
+      priority?: number | null;
+      role?: "account_manager" | "support_contact" | null;
+      row_version: number;
+    };
     /** A new contract. Items are put under it afterwards. */
     ContractCreate: {
       account_manager?: string | null;
@@ -6848,10 +7156,14 @@ export interface components {
      */
     ContractEffective: {
       account_manager: components["schemas"]["ContractEffectiveValue"];
+      /** Its own account managers where it names any, else its agreement's. */
+      account_managers: components["schemas"]["EffectiveContacts"];
       ends_on: components["schemas"]["ContractEffectiveValue"];
       reseller_hid: components["schemas"]["ContractEffectiveReference"];
       starts_on: components["schemas"]["ContractEffectiveValue"];
       support_contact: components["schemas"]["ContractEffectiveValue"];
+      /** Its own support contacts where it names any, else its agreement's. */
+      support_contacts: components["schemas"]["EffectiveContacts"];
       support_level: components["schemas"]["ContractEffectiveValue"];
       support_url: components["schemas"]["ContractEffectiveValue"];
     };
@@ -6892,6 +7204,8 @@ export interface components {
       agreement_hid: string | null;
       /** The contract's own total, added to nothing. */
       annual_cost: string | null;
+      /** The contact records it names of its own, by role and then by priority. */
+      contacts: components["schemas"]["ContractContactOut"][];
       /** How many items it covers today. */
       covered_items: number;
       /** Active and today is within its period, or past it with its renewal pending. */
@@ -7002,6 +7316,8 @@ export interface components {
       agreement_hid: string | null;
       /** The contract's own total, added to nothing. */
       annual_cost: string | null;
+      /** The contact records it names of its own, by role and then by priority. */
+      contacts: components["schemas"]["ContractContactOut"][];
       /** How many items it covers today. */
       covered_items: number;
       /** Active and today is within its period, or past it with its renewal pending. */
@@ -7167,28 +7483,44 @@ export interface components {
       lapsed_contracts: components["schemas"]["LapsedContracts"];
       limit: number;
       offset: number;
-      section: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | null;
+      section: "uncovered" | "out_of_service" | "expiring" | "overlapping" | "renewal_pending" | "not_renewed" | null;
       sections: {
-        [key: string]: components["schemas"]["ReportSection"];
+        [key: string]: components["schemas"]["CoverageReportSection"];
       };
       service_states: string[];
       total: number;
       totals: components["schemas"]["CoverageTotals"];
       within_days: number;
     };
+    /** One list of the coverage report. */
+    CoverageReportSection: {
+      /** Of `not_renewed` alone: its items counted by model, by vendor and PID. */
+      by_model?: components["schemas"]["NotRenewedModel"][] | null;
+      count: number;
+      /** The filter of `GET /items` for them. */
+      filter: {
+        [key: string]: unknown;
+      } | null;
+      /** As it is to be sent with that filter. */
+      include_archived: boolean;
+      include_drafts: boolean;
+    };
     /** The counts of the coverage report. */
     CoverageTotals: {
       covered: number;
-      /** In service, and the cover runs out within the days. */
+      /** In service, the cover runs out within the days, and not flagged as not to be renewed. */
       expiring: number;
       /** Major items whose state in force is a service state. */
       in_service: number;
+      /** In service, under no contract, and flagged as not to be renewed: left out of support on purpose, and no gap. */
+      not_renewed: number;
       /** Out of service, and a contract still counts it: the list for the vendor. */
       out_of_service: number;
       /** Items that more than one contract covers today. */
       overlapping: number;
       /** Items covered by a contract whose renewal is pending. */
       renewal_pending: number;
+      /** In service, under no contract, and not flagged as not to be renewed. */
       uncovered: number;
     };
     /** A new device group, with its first members if they are known. */
@@ -7322,6 +7654,15 @@ export interface components {
       priority: number;
       record_status: "draft" | "active" | "retired";
     };
+    /**
+     * The contacts in force for one role, and the record they came from: the record's
+     * own where it names any, else, for a contract, its agreement's, else none.
+     */
+    EffectiveContacts: {
+      source: "own" | "agreement" | "none";
+      source_hid: string | null;
+      value: components["schemas"]["ContractContactOut"][];
+    };
     /** The shipping instructions in force, and the level they came from. */
     EffectiveInstructions: {
       overrides_hid: string | null;
@@ -7427,7 +7768,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -7681,6 +8022,8 @@ export interface components {
       description?: string | null;
       /** Left out, the state's own on entry. */
       disposition?: string | null;
+      /** Left out, its model's. */
+      do_not_renew?: boolean | null;
       end_of_hw_support?: string | null;
       end_of_sale?: string | null;
       end_of_sw_support?: string | null;
@@ -7727,6 +8070,8 @@ export interface components {
     ItemEffective: {
       annual_support_cost: components["schemas"]["EffectiveValue"];
       disposition: components["schemas"]["EffectiveValue"];
+      /** Whether its support is not to be renewed: its own word, or its model's. */
+      do_not_renew: components["schemas"]["EffectiveValue"];
       end_of_hw_support: components["schemas"]["EffectiveValue"];
       end_of_sale: components["schemas"]["EffectiveValue"];
       end_of_sw_support: components["schemas"]["EffectiveValue"];
@@ -7773,6 +8118,8 @@ export interface components {
       depth: number;
       description: string | null;
       disposition: string | null;
+      /** Its own word on renewing its support. Blank has its model's. */
+      do_not_renew: boolean | null;
       effective: components["schemas"]["ItemEffective"];
       end_of_hw_support: string | null;
       end_of_sale: string | null;
@@ -7862,6 +8209,8 @@ export interface components {
       delivered_on?: string | null;
       description?: string | null;
       disposition?: string | null;
+      /** Null has its model's again. */
+      do_not_renew?: boolean | null;
       end_of_hw_support?: string | null;
       end_of_sale?: string | null;
       end_of_sw_support?: string | null;
@@ -8254,6 +8603,20 @@ export interface components {
       /** A new number that waits on the agreement's next term and has no dates of its own: `starts_on` and `ends_on` are the agreement's, as they stand. */
       with_agreement?: boolean;
     };
+    /** The items of one model that are not to be renewed and that no contract covers. */
+    NotRenewedModel: {
+      /** Blank for the items that have no model. */
+      catalog_entry_hid: string | null;
+      count: number;
+      /** The filter of `GET /items` for them. */
+      filter: {
+        [key: string]: unknown;
+      } | null;
+      model_name: string | null;
+      pid: string | null;
+      vendor: string | null;
+      vendor_hid: string | null;
+    };
     /**
      * What making a place active would bring about: what is planned for it, or for a
      * place beneath it that is thereby in use, moves in.
@@ -8434,6 +8797,12 @@ export interface components {
     };
     Page_ContactOut_: {
       items: components["schemas"]["ContactOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ContractContactOut_: {
+      items: components["schemas"]["ContractContactOut"][];
       limit: number;
       offset: number;
       total: number;

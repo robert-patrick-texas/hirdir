@@ -52,6 +52,11 @@ const agreement = {
   contracts: 2,
   lapsed: false,
   next_term: null,
+  contacts: [],
+  effective: {
+    account_managers: { value: [], source: "none", source_hid: null },
+    support_contacts: { value: [], source: "none", source_hid: null },
+  },
   row_version: 1,
   created_at: "2026-11-14T20:20:37Z",
   updated_at: "2026-11-14T20:20:37Z",
@@ -86,7 +91,10 @@ function contract(number: string, more: Partial<Contract> = {}): Contract {
       account_manager: fromAgreement("Jordan Reyes, +1 555 0142"),
       support_contact: fromAgreement("Enterprise support desk, +1 555 0100"),
       support_url: fromAgreement("https://support.example.com/enterprise"),
+      account_managers: { value: [], source: "none", source_hid: null },
+      support_contacts: { value: [], source: "none", source_hid: null },
     },
+    contacts: [],
     reseller_hid: null,
     reseller: null,
     starts_on: null,
@@ -147,6 +155,8 @@ const alone = contract("CON-2026-00107", {
     account_manager: none,
     support_contact: none,
     support_url: none,
+    account_managers: { value: [], source: "none", source_hid: null },
+    support_contacts: { value: [], source: "none", source_hid: null },
   },
 });
 

@@ -35,6 +35,7 @@ from hirdir.db.models import (
     Contact,
     ContactAssignment,
     Contract,
+    ContractContact,
     ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
@@ -65,6 +66,7 @@ from hirdir.domain import (
     health,
     inheritance,
     lifecycle,
+    not_renewed,
     operators,
     owners,
     purchases,
@@ -142,6 +144,9 @@ def _bookkeeping(model: Any) -> dict[str, Field]:
 
 def _effective(name: str) -> Field:
     own = getattr(Item, name)
+    if name == not_renewed.FIELD:
+        # Its own, or its model's; blank for an item with no model and no word of its own.
+        return Field("boolean", not_renewed.value_of(Item, CatalogEntry))
     kind = (
         "date"
         if name in ("end_of_sale", "end_of_sw_support", "end_of_hw_support", "ldos")
@@ -619,6 +624,8 @@ ITEMS = Listing(
             *_INHERITED_DATES,
         ),
         **_columns(Item, "number", *_INHERITED_AMOUNTS),
+        # Its own word on renewing its support: blank has its model's.
+        not_renewed.FIELD: Field("boolean", Item.do_not_renew),
         **{f"effective.{name}": _effective(name) for name in inheritance.ITEM_FIELDS},
         "effective.owner_hid": Field("reference", OWNER_IN_FORCE),
         "effective.location_hid": Field("reference", LOCATION_IN_FORCE),
@@ -1061,6 +1068,7 @@ CATALOG_ENTRIES = Listing(
         ),
         **_columns(CatalogEntry, "date", *_INHERITED_DATES),
         **_columns(CatalogEntry, "number", *_INHERITED_AMOUNTS, "stack_discount_pct"),
+        not_renewed.FIELD: Field("boolean", CatalogEntry.do_not_renew),
         "tags": _tags("catalog_entry", CatalogEntry),
     },
     joined=lambda query: query.join(Vendor, Vendor.hid == CatalogEntry.vendor_hid),
@@ -1448,6 +1456,33 @@ COVERAGE = Listing(
     has_status=False,
 )
 
+# --- the contacts of agreements and contracts ----------------------------------------
+
+_NAMED_CONTACT: Any = aliased(Contact, name="named_contact")
+_NAMING_AGREEMENT: Any = aliased(Agreement, name="naming_agreement")
+_NAMING_CONTRACT: Any = aliased(Contract, name="naming_contract")
+
+CONTRACT_CONTACTS = Listing(
+    model=ContractContact,
+    fields={
+        **_bookkeeping(ContractContact),
+        **_columns(ContractContact, "reference", "agreement_hid", "contract_hid", "contact_hid"),
+        "role": Field("choice", ContractContact.role),
+        "priority": Field("integer", ContractContact.priority),
+        "agreement.name": Field("text", _NAMING_AGREEMENT.name),
+        "contract.number": Field("text", _NAMING_CONTRACT.number),
+        "contact.name": Field("text", _NAMED_CONTACT.name),
+        "contact.email": Field("text", _NAMED_CONTACT.email),
+    },
+    joined=lambda query: (
+        query.join(_NAMED_CONTACT, _NAMED_CONTACT.hid == ContractContact.contact_hid)
+        .outerjoin(_NAMING_AGREEMENT, _NAMING_AGREEMENT.hid == ContractContact.agreement_hid)
+        .outerjoin(_NAMING_CONTRACT, _NAMING_CONTRACT.hid == ContractContact.contract_hid)
+    ),
+    default_sort=("agreement.name", "contract.number", "role", "priority", "contact.name"),
+    has_status=False,
+)
+
 # --- purchases -----------------------------------------------------------------------
 
 _ARRIVED: Any = aliased(Item, name="arrived_item")
@@ -1777,6 +1812,7 @@ LISTINGS: tuple[Listing, ...] = (
     CONTACT_ASSIGNMENTS,
     AGREEMENTS,
     CONTRACTS,
+    CONTRACT_CONTACTS,
     COVERAGE,
     PURCHASE_REQUESTS,
     PURCHASE_LINES,

@@ -27,16 +27,17 @@ Load the files in this order, because a record names the ones it refers to:
 13. `external-systems.csv`
 14. `agreements.csv`
 15. `contracts.csv`
-16. `purchase-requests.csv`
-17. `purchase-lines.csv`
-18. `items.csv`
-19. `device-groups.csv`
-20. `device-group-members.csv`
-21. `item-replacements.csv`
-22. `addresses.csv`
-23. `contract-coverage.csv`
-24. `registrations.csv`
-25. `capacity-lines.csv`
+16. `contract-contacts.csv`
+17. `purchase-requests.csv`
+18. `purchase-lines.csv`
+19. `items.csv`
+20. `device-groups.csv`
+21. `device-group-members.csv`
+22. `item-replacements.csv`
+23. `addresses.csv`
+24. `contract-coverage.csv`
+25. `registrations.csv`
+26. `capacity-lines.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
@@ -56,6 +57,7 @@ hirdir import examples/networks.csv --entity networks
 hirdir import examples/external-systems.csv --entity external_systems
 hirdir import examples/agreements.csv --entity agreements
 hirdir import examples/contracts.csv --entity contracts
+hirdir import examples/contract-contacts.csv --entity contract_contacts
 hirdir import examples/purchase-requests.csv --entity purchase_requests
 hirdir import examples/purchase-lines.csv --entity purchase_lines
 hirdir import examples/items.csv --entity items

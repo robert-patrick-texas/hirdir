@@ -19,6 +19,8 @@ ITEM_FIELDS = (
     "end_of_sw_support",
     "end_of_hw_support",
     "ldos",
+    # Not to be renewed: true or false on the model, and an item's own overrides it.
+    "do_not_renew",
 )
 
 
@@ -57,7 +59,8 @@ def of_item(
 ) -> dict[str, Effective]:
     """Return the value in force of each field an item inherits.
 
-    The amounts and the dates come from its catalog entry. A minor item has the owner
+    The amounts, the dates and the flag not to renew come from its catalog entry, a
+    minor item's from its own. A minor item has the owner
     of the nearest item above it that has one, is where the nearest one that has a
     location is, and, when it has no lifecycle state of
     its own, the state, disposition and intent of the nearest one that has a state: the

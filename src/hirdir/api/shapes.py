@@ -50,6 +50,7 @@ from hirdir.domain import (
     capacity,
     choices,
     contacts,
+    contract_contacts,
     contracts,
     descent,
     geography,
@@ -1288,6 +1289,37 @@ def _next_term(record: Any, today: date) -> shapes.NextTerm | None:
     return None if waiting is None else shapes.NextTerm.model_validate(waiting)
 
 
+# --- the contacts of agreements and contracts ----------------------------------------
+
+
+def contract_contact_out(named: contract_contacts.Named) -> shapes.ContractContactOut:
+    """Return one naming of a contact for an agreement or a contract, with the contact
+    as its record is now."""
+    link, contact = named
+    return shapes.ContractContactOut(
+        **_own(link, shapes.ContractContactOut, ("contact",)), contact=_contact_ref(contact)
+    )
+
+
+def contract_contacts_out(db: Session, field: str, hid: str) -> list[shapes.ContractContactOut]:
+    """Return what one agreement or contract names, by role and then by priority."""
+    return [contract_contact_out(one) for one in contract_contacts.named_by(db, field, [hid])[hid]]
+
+
+def _contacts_in_force(
+    found: dict[str, contract_contacts.InForce],
+) -> dict[str, shapes.EffectiveContacts]:
+    """Return the contacts in force of a record, each role under its name in `effective`."""
+    return {
+        contract_contacts.IN_FORCE[role]: shapes.EffectiveContacts(
+            value=[contract_contact_out(one) for one in its.named],
+            source=its.source,
+            source_hid=its.source_hid,
+        )
+        for role, its in found.items()
+    }
+
+
 def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.AgreementOut]:
     """Return agreements, each with its term in force, its vendor, its tags and how
     many contracts it groups."""
@@ -1297,6 +1329,7 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
     )
     labels = tags.labels_of(db, contracts.AGREEMENT_TYPE, hids)
     grouped = contracts.contracts_in(db, hids)
+    named, in_force = contract_contacts.of_agreements(db, hids)
     today = contracts.today(db)
     shaped = (
         *contracts.TERM,
@@ -1308,6 +1341,8 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
         "lapsed",
         "next_term",
         "contracts",
+        "contacts",
+        "effective",
     )
     out = []
     for agreement in found:
@@ -1328,6 +1363,10 @@ def agreements_out(db: Session, found: list[Agreement]) -> list[shapes.Agreement
                     "lapsed": contracts.lapsed(agreement, its["ends_on"], today),
                     "next_term": _next_term(agreement, today),
                     "contracts": grouped[agreement.hid],
+                    "contacts": [contract_contact_out(one) for one in named[agreement.hid]],
+                    "effective": shapes.AgreementEffective(
+                        **_contacts_in_force(in_force[agreement.hid])
+                    ),
                 }
             )
         )
@@ -1353,12 +1392,14 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
     covered = fields.covered_items(db, hids)
     scope = contracts.in_scope(db, hids)
     overdue_after = contracts.overdue_after(db)
+    named, people_in_force = contract_contacts.of_contracts(db, found)
     shaped = (
         *contracts.TERM,
         "status",
         "row_version",
         "vendor",
         "agreement",
+        "contacts",
         "effective",
         "reseller",
         "tags",
@@ -1413,7 +1454,9 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
                             for name, value in its.items()
                             if name != "reseller_hid"
                         },
+                        **_contacts_in_force(people_in_force[contract.hid]),
                     ),
+                    "contacts": [contract_contact_out(one) for one in named[contract.hid]],
                     "reseller": _vendor_ref(vendors[contract.reseller_hid])
                     if contract.reseller_hid
                     else None,
@@ -1750,7 +1793,20 @@ def coverage_report_out(db: Session, found: planning.Coverage) -> shapes.Coverag
             "within_days": found.within_days,
             "service_states": found.service_states,
             "totals": shapes.CoverageTotals.model_validate(found.totals),
-            "sections": _sections(found.sections),
+            "sections": {
+                name: shapes.CoverageReportSection.model_validate(
+                    {
+                        **shapes.ReportSection.model_validate(one).model_dump(),
+                        # What is not renewed, counted by model.
+                        "by_model": [
+                            shapes.NotRenewedModel.model_validate(model) for model in found.by_model
+                        ]
+                        if name == "not_renewed"
+                        else None,
+                    }
+                )
+                for name, one in found.sections.items()
+            },
             "lapsed_contracts": shapes.LapsedContracts.model_validate(found.lapsed_contracts),
             **_page_of(db, found.page),
         }

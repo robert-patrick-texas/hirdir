@@ -32,6 +32,7 @@ LOAD_ORDER = [
     "external-systems",
     "agreements",
     "contracts",
+    "contract-contacts",
     "purchase-requests",
     "purchase-lines",
     "items",
