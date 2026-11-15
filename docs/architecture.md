@@ -292,8 +292,7 @@ setting's among them, so a newer event, or the turn of the day, leaves a kept an
 unused, and one that a change has made wrong is never given. At most 64 answers are
 kept, the least used dropped first, and a restart drops them all. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
-The coverage report counts every section in one pass over the items, one statement
-that reads the matching items once and tallies each section as it goes. The summary of
+The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as P-133 first had it, was measured at three times as long on the fixture. The summary of
 the renewal alert is worked out just after midnight in the application's time zone,
 and when the server starts, so that the first sign-in of the day is not kept waiting.
 `src/hirdir/io/kept.py` keeps them.
@@ -1416,17 +1415,18 @@ thirds: on the fixture as 0.6.1 made it, before what 0.7.0 added, it took 350 / 
 0.7.0, and the fixture of 0.7.0 has more items under a renewal pending, 2,417 against
 2,048.
 
-The coverage report worked out anew takes 4.2 s, where 0.6.1 took 0.8 s. Its one pass
-(P-133) is one statement of 140 KB that works out every condition of every section for
-each of the 50,000 items, the terms of each contract again for each coverage of each
-item: 3.5 s of it. Each section's condition in a pass of its own takes 82 to 282 ms,
-1.3 s for the eight, and a count of each, as 0.6.1 counted, 1.06 s. What is in force
-for each contract, worked out once for a request in a table of its own, which P-133
-also says, is not built: the statement reads the agreement of each contract anew for
-each coverage of each item. Narrowed to a region the report takes 1.9 s, in one pass or
-with a count to each section alike. The capacity balance takes 2.5 s: it sums the
-support weight of the inventory four times, for the whole and for each region, without
-the drafts and with them, about 0.55 s each.
+The coverage report worked out anew took 4.2 s with the one pass of P-133 as first
+built, where 0.6.1 took 0.8 s: one statement of 140 KB that worked out every condition
+of every section for each of the 50,000 items, the terms of each contract again for each
+coverage of each item, 3.5 s of it. Counted section by section, as it now is, it takes
+1432 / 1624 whole, 1819 / 2008 for the page of `uncovered` and 1837 / 2147 narrowed to a
+region, with the same answers (load 0.8 to 1.2): still slower than at 0.6.1, for the
+sections and the flag not to renew that 0.7.0 adds. What is in force for each contract,
+worked out once for a request in a table of its own, which P-133 also says, is not
+built: each coverage of each item reads the terms of its contract and its agreement
+anew. The capacity balance took 2.5 s, summing the support weight of the inventory four
+times; it now takes the whole from the demand of each region, which leaves two sums of
+four, 1305 / 1564, with the same answer.
 
 **An import at 0.7.0**, by `make time-import`: 10,000 new items, 1.9 MB of CSV, on a
 copy of the fixture, the host's load average 0.9 to 1.4 throughout.
@@ -1459,16 +1459,11 @@ most") only while 50 rows take under a second.
 
 **Left for the timing of 1.0.0**, with what each costs now:
 
-- The coverage report anew, 4.2 s whole and 1.9 s narrowed to a region. A count of
-  each section in place of the one pass takes it to 1432 / 1624 whole, 1819 / 2008 for
-  the page of `uncovered` and 1837 / 2147 narrowed to a region, with the same answers
-  (load 0.8 to 1.2); that is a change of what P-133 says. Under a second needs what
-  P-133 says of the terms of each contract, worked out once for a request and read by
-  every item.
-- The capacity balance, 2.5 s, not kept. The whole is the sum of the top regions' rows
-  and the row of no region, so working it out from the demand of each region leaves two
-  sums of four: 1305 / 1564, with the same answer. Keeping it as the coverage report is
-  kept would be a change of P-133.
+- The coverage report anew, 1.4 s whole and 1.8 s narrowed to a region, counted
+  section by section. Under a second needs what P-133 says of the terms of each
+  contract, worked out once for a request and read by every item.
+- The capacity balance anew, 1.3 s, which is not kept: keeping it as the coverage
+  report is kept would be a change of P-133.
 - An import of 10,000 rows: 122 s to preview and 168 s to apply, against 30 s and 60
   s. The apply cannot meet the minute while a row costs 13.6 ms: after the pauses, 23.9
   s, and the order of the rows, 3.4 s, a row would have to take under 3.3 ms. What a

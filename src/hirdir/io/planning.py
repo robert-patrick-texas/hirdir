@@ -103,21 +103,25 @@ def _tallied(
     include_drafts: bool,
     of: Any = ITEMS,
 ) -> dict[str, int]:
-    """Count every section of a report in one pass over the records (P-133). The
-    records of a section that `archived` names are counted whatever their status, and
-    those of every other as the list leaves them by default."""
-    by_default = and_(*fields.default_view(of, False, include_drafts))
-    return listing.tally(
-        db,
-        of,
-        {
-            name: _sql(db, tree, of) if name in archived else and_(by_default, _sql(db, tree, of))
-            for name, tree in conditions.items()
-        },
-        filter_=asked,
-        include_archived=True,
-        include_drafts=include_drafts,
-    )
+    """Count every section of a report, a count to each. The records of a section that
+    `archived` names are counted whatever their status, and those of every other as the
+    list leaves them by default.
+
+    One pass that tallied every section in one statement took three
+    times as long on the fixture at 0.7.0 as a count of each: SQLite works out every
+    condition of every section for every record, where a count of its own reads only
+    what its section needs, and each count is counted from its matched rows alone."""
+    return {
+        name: listing.count(
+            db,
+            of,
+            filter_=asked,
+            include_archived=name in archived,
+            include_drafts=include_drafts,
+            also=[_sql(db, tree, of)],
+        )
+        for name, tree in conditions.items()
+    }
 
 
 def _section(

@@ -210,7 +210,16 @@ def _view(
 ) -> View:
     with localcontext() as context:
         context.prec = PRECISION
-        weight_steps = reports.weight_steps(db, include_drafts)
+        # An item is in the row of each region above it, and so in the row of one top
+        # region, or else in the row of none: the whole is the sum of those rows, and
+        # needs no pass over the items of its own.
+        by_region = reports.weight_steps_by_region(db, include_drafts)
+        regions = geography.Atlas(db).regions
+        weight_steps = sum(
+            steps
+            for hid, steps in by_region.items()
+            if hid is None or regions[hid].parent_region_hid is None
+        )
         weight = Decimal(weight_steps) / reports.WEIGHT_STEPS
         infrastructure = weight / per_unit
         other = sum(
@@ -238,7 +247,6 @@ def _view(
                     annual_cost=sum((line.annual_cost or Decimal(0) for line in its), Decimal(0)),
                 )
             )
-        by_region = reports.weight_steps_by_region(db, include_drafts)
         return View(
             support_weight=_rounded(weight),
             infrastructure_demand=_rounded(infrastructure),

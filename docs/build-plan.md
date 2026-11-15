@@ -117,7 +117,7 @@ showed. It adds no scenario and no kind of record.
   contacts, any number of each, may be contact records, as the contacts of a place are
   since 0.5.0, and are inherited from the agreement as the text is. Free text stays
   possible (P-119).
-- **The coverage report at speed.** Counted in one pass, what is in force for each
+- **The coverage report at speed.** Counted section by section, what is in force for each
   contract worked out once for a request, and the answer kept until a change or the
   turn of the day makes it stale (P-115). The coverage filters of the grid gain from
   the same work.

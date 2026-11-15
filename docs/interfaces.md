@@ -602,7 +602,7 @@ kept once they are worked out, and given again while nothing could have changed 
 each is kept with the newest audit event of a change of the inventory or its settings,
 the day in the application's time zone and the request whole, so that a change, which
 always writes an audit event, or the turn of the day leaves it unused. A sign-in,
-seeing the alert, a preview and a change of an account leave it good. The report counts all its sections in one pass
+seeing the alert, a preview and a change of an account leave it good. The report counts each of its sections with a count of its own
 over the items. See "Answers that are kept" in
 [architecture.md](architecture.md#answers-that-are-kept).
 

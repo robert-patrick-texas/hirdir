@@ -4,7 +4,7 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import ColumnElement, case, func, select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import DBAPIError, OperationalError, StatementError
 from sqlalchemy.orm import Session
 
@@ -73,35 +73,6 @@ def count(
     where = where_of(db, listing, filter_, include_archived, include_drafts, also)
     with _answered():
         return db.scalar(_counting(listing, where)) or 0
-
-
-def tally(
-    db: Session,
-    listing: Listing,
-    conditions: dict[str, ColumnElement[bool]],
-    *,
-    filter_: Any = None,
-    include_archived: bool = False,
-    include_drafts: bool = False,
-) -> dict[str, int]:
-    """Return how many records of a list meet each of several conditions, within what
-    the filter matches, counted in one pass over the records (P-133): one statement
-    reads the matching records once and tallies every condition as it goes."""
-    if not conditions:
-        return {}
-    where = where_of(db, listing, filter_, include_archived, include_drafts, ())
-    marks = [
-        case((condition, 1), else_=0).label(f"c{place}")
-        for place, condition in enumerate(conditions.values())
-    ]
-    rows = listing.joined(select(listing.model.hid, *marks)).where(*where)
-    matched = dialect.materialized(rows, "tallied")
-    summed = select(
-        *(func.coalesce(func.sum(matched.c[f"c{place}"]), 0) for place in range(len(marks)))
-    )
-    with _answered():
-        found = db.execute(summed).one()
-    return {name: int(found[place]) for place, name in enumerate(conditions)}
 
 
 def page(
