@@ -159,7 +159,10 @@ has none, and a minimum, which raises an object that has a weight to at least it
 blank unless set, for an estimate with a few settings before weights are set object by
 object, and for a floor set by policy for capacity planning (P-141). The capacity report
 gains a what-if, Try, which answers the balance that other defaults, minimums and figures
-would give beside the balance in force, saving nothing and auditing nothing.
+would give beside the balance in force, saving nothing and auditing nothing. The capacity
+balance is kept as the coverage report is, the long reports are worked out each night
+and when the server starts, and an Admin can check what is kept against answers worked
+out anew (P-142).
 
 A first way to track telecommunication circuits beside the device inventory. A
 circuit is a record of its own, referenced by HID, audited, role-checked, retired and
