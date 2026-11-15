@@ -67,7 +67,7 @@ from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-from hirdir.io import balance, fields, imports, planning
+from hirdir.io import alerts, balance, fields, imports, planning
 
 FIRST_ROWS = 100
 
@@ -1349,6 +1349,7 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
     labels = tags.labels_of(db, contracts.RECORD_TYPE, hids)
     covered = fields.covered_items(db, hids)
     scope = contracts.in_scope(db, hids)
+    overdue_after = contracts.overdue_after(db)
     shaped = (
         *contracts.TERM,
         "status",
@@ -1363,6 +1364,10 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
         "next_term",
         "covered_items",
         "items_in_scope",
+        "renewal_pending_days",
+        "renewal_overdue",
+        "part_began_on",
+        "part_began_by",
     )
     out = []
     for contract in found:
@@ -1417,6 +1422,8 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
                     "next_term": _next_term(contract, today),
                     "covered_items": covered[contract.hid],
                     "items_in_scope": scope[contract.hid],
+                    "renewal_pending_days": contracts.renewal_pending_days(contract, today),
+                    "renewal_overdue": contracts.renewal_overdue(contract, today, overdue_after),
                 }
             )
         )
@@ -1424,8 +1431,11 @@ def contracts_out(db: Session, found: list[Contract]) -> list[shapes.ContractOut
 
 
 def contract_out(db: Session, contract: Contract) -> shapes.ContractOut:
-    """Return one contract."""
-    return contracts_out(db, [contract])[0]
+    """Return one contract, with when the present part of its history began."""
+    out = contracts_out(db, [contract])[0]
+    present = contracts.history(db, contract)
+    out.part_began_on, out.part_began_by = present.began_on, present.began_by
+    return out
 
 
 def _term(term: contracts.Term, users: dict[str, Any]) -> dict[str, Any]:
@@ -1438,6 +1448,9 @@ def _term(term: contracts.Term, users: dict[str, Any]) -> dict[str, Any]:
         "renewed_at": term.renewed_at,
         "renewed_by": term.renewed_by,
         "renewed_by_name": users[term.renewed_by].username if term.renewed_by in users else None,
+        "began_on": term.began_on,
+        "ended_on": term.ended_on,
+        "began_by": term.began_by,
     }
 
 
@@ -1707,6 +1720,53 @@ def coverage_report_out(db: Session, found: planning.Coverage) -> shapes.Coverag
             "sections": _sections(found.sections),
             "lapsed_contracts": shapes.LapsedContracts.model_validate(found.lapsed_contracts),
             **_page_of(db, found.page),
+        }
+    )
+
+
+def renewals_report_out(db: Session, found: planning.Renewals) -> shapes.RenewalsReport:
+    """Return the renewal worklist, with the rows of the list that was asked for."""
+    page = found.page
+    of_items = page.section == "overlapping"
+    return shapes.RenewalsReport.model_validate(
+        {
+            "as_of": found.as_of,
+            "within_days": found.within_days,
+            "overdue_after": found.overdue_after,
+            "totals": shapes.RenewalTotals.model_validate(found.totals),
+            "sections": _sections(found.sections),
+            "agreements": _sections(found.agreements),
+            "groups": [
+                shapes.RenewalGroup.model_validate(
+                    {**group.__dict__, "counts": shapes.RenewalTotals.model_validate(group.counts)}
+                )
+                for group in found.groups
+            ],
+            "section": page.section,
+            "contracts": [] if of_items or page.section is None else contracts_out(db, page.items),
+            "items": items_out(db, page.items) if of_items else [],
+            "total": page.total,
+            "limit": page.limit,
+            "offset": page.offset,
+        }
+    )
+
+
+def renewal_alert_out(found: alerts.Alert) -> shapes.RenewalAlert:
+    """Return the renewal alert for one person."""
+    summary = found.summary
+    return shapes.RenewalAlert.model_validate(
+        {
+            "as_of": summary.as_of,
+            "within_days": summary.within_days,
+            "overdue_after": summary.overdue_after,
+            "show": found.show,
+            "version": summary.version,
+            "overdue": summary.overdue,
+            **{
+                name: {"count": len(hids), "new": found.new[name], "section": name}
+                for name, hids in summary.lists.items()
+            },
         }
     )
 

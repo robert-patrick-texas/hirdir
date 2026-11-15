@@ -135,6 +135,18 @@ SPECS: dict[str, Spec] = {
         "kinds in the headline component count",
         _subset("count_kinds", CATALOG_KINDS),
     ),
+    "renewal_warning_days": Spec(
+        90,
+        "how far ahead a contract counts as ending soon: the renewal worklist, the alert "
+        "after sign-in and the coverage report's list of what runs out soon",
+        _number("renewal_warning_days", Decimal(1), Decimal(36_500)),
+    ),
+    "renewal_pending_overdue_days": Spec(
+        60,
+        "how long a renewal may be pending, counted from the end of the term it is for, "
+        "before it is overdue",
+        _number("renewal_pending_overdue_days", Decimal(1), Decimal(36_500)),
+    ),
     "weight_per_resource_unit": Spec(
         300,
         "how much support weight one resource unit carries",

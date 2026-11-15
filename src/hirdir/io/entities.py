@@ -2565,6 +2565,10 @@ class Contracts(Entity):
         Column("vendor"),
         Column("agreement"),
         *_TERMS,
+        # Let go with its present term (P-129), and a new number that waits on the
+        # agreement's next term with no dates of its own.
+        Column("ends_with_term", "boolean"),
+        Column("next_with_agreement", "boolean"),
         Column("covered_items", "integer", settable=False),
         *_sources(_TERMS),
         *BOOKKEEPING,
@@ -2603,7 +2607,10 @@ class Contracts(Entity):
 
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         db = run.db
-        given = {**_plain_fields(values, ("number",)), **_terms_given(run, values, record)}
+        given = {
+            **_plain_fields(values, ("number", "ends_with_term", "next_with_agreement")),
+            **_terms_given(run, values, record),
+        }
         within = contracts.agreement_of(record) if record is not None else None
         if "agreement" in values:
             named = values["agreement"]
@@ -2658,6 +2665,8 @@ class Contracts(Entity):
                 else None,
                 "record_status": contract.record_status,
                 "tags": labels[contract.hid],
+                "ends_with_term": contract.ends_with_term,
+                "next_with_agreement": contract.next_with_agreement,
                 "covered_items": covered[contract.hid],
             }
             for name, effective in in_force[contract.hid].items():

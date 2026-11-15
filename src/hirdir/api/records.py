@@ -1714,6 +1714,9 @@ class AddressPatch(Model):
 Url = Annotated[str, Field(max_length=2000)]
 
 
+PartBegun = Literal["created", "renewal", "joined", "left"]
+
+
 class NextTerm(Model):
     """A term that is still to begin: a renewal that was entered ahead of its period."""
 
@@ -1722,6 +1725,13 @@ class NextTerm(Model):
     ends_on: date | None
     annual_cost: Money | None
     purchase_reference: str | None
+    with_agreement: bool = Field(
+        default=False,
+        description=(
+            "A new number that waits on the agreement's next term and has no dates of its "
+            "own: `starts_on` and `ends_on` are the agreement's, as they stand."
+        ),
+    )
 
 
 class AgreementRef(Model):
@@ -1763,6 +1773,14 @@ class AgreementOut(Model):
     row_version: int
     created_at: datetime
     updated_at: datetime
+
+
+class AgreementRenewed(AgreementOut):
+    """An agreement as a renewal leaves it, with what the renewal did with each contract
+    that shares its period and how many coverages it left behind."""
+
+    members: list[MemberRenewedOut]
+    left_behind: int
 
 
 class AgreementCreate(Model):
@@ -1886,9 +1904,45 @@ class ContractOut(Model):
     items_in_scope: int = Field(
         description="How many items have a coverage under it that has not been ended."
     )
+    ends_with_term: bool = Field(
+        description=(
+            "It is not to be renewed: it covers to the end of its present term, is not lapsed "
+            "after it, and is expired in force from the next day."
+        )
+    )
+    renewal_pending_days: int | None = Field(
+        description=(
+            "While its renewal is pending, the days since the end of the term the renewal is "
+            "for, and zero before that end. Blank otherwise."
+        )
+    )
+    renewal_overdue: bool = Field(
+        description="Its renewal has been pending for longer than `renewal_pending_overdue_days`."
+    )
+    part_began_on: date | None = Field(
+        default=None,
+        description=(
+            "The day the present part of its history began. Answered by `GET "
+            "/contracts/{hid}`, and blank in a list."
+        ),
+    )
+    part_began_by: PartBegun | None = Field(
+        default=None, description="What began the present part. Blank in a list, as above."
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime
+
+
+class ContractRenewed(ContractOut):
+    """A contract as a renewal leaves it, with what the renewal did besides."""
+
+    left_behind: int = Field(
+        description=(
+            "How many coverages the renewal ended with the present term, because their items "
+            "are not to be renewed."
+        )
+    )
 
 
 class ContractCreate(Model):
@@ -1912,6 +1966,9 @@ class ContractCreate(Model):
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
+    ends_with_term: bool = Field(
+        default=False, description="It is not to be renewed, and ends with its present term."
+    )
 
 
 class ContractPatch(Model):
@@ -1938,6 +1995,9 @@ class ContractPatch(Model):
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
+    ends_with_term: bool | None = Field(
+        default=None, description="It is not to be renewed, and ends with its present term."
+    )
 
 
 class ContractRenew(Model):
@@ -1963,6 +2023,44 @@ class ContractRenew(Model):
     )
 
 
+MemberChoice = Literal["same", "new_number", "ends"]
+
+
+class MemberRenewal(Model):
+    """What a renewal of an agreement does with one contract that shares its period."""
+
+    contract_hid: Hid
+    renewal: MemberChoice = Field(
+        default="same",
+        description=(
+            "`same`: it follows into the new term under its number. `new_number`: its new "
+            "number begins with the new term. `ends`: it is let go with the present term."
+        ),
+    )
+    number: ShortText | None = Field(default=None, description="The new number, for `new_number`.")
+    annual_cost: Money | None = Field(default=None, description="Its cost in the new term.")
+    purchase_reference: Name | None = Field(
+        default=None, description="What its new term was bought under."
+    )
+
+
+class AgreementRenew(ContractRenew):
+    """A renewal of an agreement, and what it does with each contract that shares its
+    period. A member left out is `same`, or `ends` where it is marked to end with its
+    term."""
+
+    members: list[MemberRenewal] = Field(default=[], max_length=1000)
+
+
+class MemberRenewedOut(Model):
+    """What a renewal of an agreement did with one contract that shares its period."""
+
+    contract_hid: str
+    number: str = Field(description="The number it has in the new term, or its last one.")
+    renewal: MemberChoice
+    left_behind: int
+
+
 class AgreementTerm(Model):
     """A term an agreement had before it was renewed."""
 
@@ -1974,6 +2072,9 @@ class AgreementTerm(Model):
     renewed_at: datetime = Field(description="When the renewal that ended this term was made.")
     renewed_by: str | None
     renewed_by_name: str | None
+    began_on: date | None = Field(description="The first day of this part of its history.")
+    ended_on: date | None = Field(description="The last day of this part of its history.")
+    began_by: PartBegun
 
 
 TermSource = Literal["own", "agreement", "none"]
@@ -1995,9 +2096,16 @@ class ContractTerm(Model):
     agreement_hid: str | None = Field(description="The agreement the contract was in then.")
     annual_cost: Money | None
     purchase_reference: str | None
-    renewed_at: datetime = Field(description="When the renewal that ended this term was made.")
+    renewed_at: datetime = Field(
+        description="When the change that ended this part was made: a renewal, a join or a leave."
+    )
     renewed_by: str | None
     renewed_by_name: str | None
+    began_on: date | None = Field(description="The first day of this part of its history.")
+    ended_on: date | None = Field(description="The last day of this part of its history.")
+    began_by: PartBegun = Field(
+        description="What began this part: `created`, `renewal`, `joined` or `left`."
+    )
 
 
 class CoverageOut(Model):
@@ -2439,6 +2547,119 @@ class CoverageReport(Model):
     total: int
     limit: int
     offset: int
+
+
+# --- the renewal worklist and the alert (P-127, P-128) --------------------------------
+
+RenewalSection = Literal[
+    "ending", "lapsed", "renewal_pending", "overdue", "ends_with_term", "overlapping"
+]
+
+
+class RenewalTotals(Model):
+    """The counts of the renewal worklist."""
+
+    ending: int = Field(
+        description="Contracts that cover and end within the days, with no renewal entered."
+    )
+    lapsed: int = Field(description="Contracts whose period has ended while they still say active.")
+    renewal_pending: int = Field(description="Contracts whose renewal is pending.")
+    overdue: int = Field(
+        description="Of those, the ones pending for longer than `renewal_pending_overdue_days`."
+    )
+    ends_with_term: int = Field(
+        description="Contracts let go with their term that end within the days: never alerted."
+    )
+    overlapping: int = Field(description="Items that more than one contract covers today.")
+
+
+class AgreementTotals(Model):
+    """The agreements on the lists of the worklist: renewing one renews its members."""
+
+    ending: int
+    lapsed: int
+    renewal_pending: int
+
+
+class RenewalGroup(Model):
+    """One vendor and one agreement of the worklist, or the contracts of a vendor that
+    stand by themselves, with the count of each list and the filter that lists it."""
+
+    vendor_hid: str
+    vendor: str
+    agreement_hid: str | None
+    agreement: str | None = Field(description="Blank for contracts that stand by themselves.")
+    counts: RenewalTotals
+    filters: dict[str, dict[str, Any] | None] = Field(
+        description=(
+            "For each list, the filter of `GET /contracts`, or of `GET /items` for "
+            "`overlapping`, that lists its rows."
+        )
+    )
+
+
+class RenewalsReport(Model):
+    """What a person must act on to keep the cover going: the renewal worklist."""
+
+    as_of: date
+    within_days: int
+    overdue_after: int = Field(description="The `renewal_pending_overdue_days` setting.")
+    totals: RenewalTotals
+    sections: dict[str, ReportSection] = Field(
+        description=(
+            "Each list with its filter: of `GET /contracts`, and of `GET /items` for `overlapping`."
+        )
+    )
+    agreements: dict[str, ReportSection] = Field(
+        description="The agreements on each list, with the filter of `GET /agreements`."
+    )
+    groups: list[RenewalGroup]
+    section: RenewalSection | None
+    contracts: list[ContractOut] = Field(description="A page of a list of contracts.")
+    items: list[ItemOut] = Field(description="A page of `overlapping`.")
+    total: int
+    limit: int
+    offset: int
+
+
+class AlertCount(Model):
+    """One count of the alert, and the list of the worklist it leads to."""
+
+    count: int
+    new: int = Field(description="How many of them were not on the list when last seen.")
+    section: RenewalSection
+
+
+class RenewalAlert(Model):
+    """The renewal alert, as the person signed in is to be shown it."""
+
+    as_of: date
+    within_days: int
+    overdue_after: int
+    show: bool = Field(
+        description=(
+            "Whether to show it: for the Inventory and the Admin role, when a contract is "
+            "on a list that it was not on when they last saw it."
+        )
+    )
+    version: str = Field(description="What `POST /renewals/alert/seen` is sent with.")
+    lapsed: AlertCount
+    renewal_pending: AlertCount
+    overdue: int = Field(description="Of those pending, how many are overdue.")
+    ending: AlertCount
+
+
+class AlertSeen(Model):
+    """That the alert has been seen, as it was answered."""
+
+    version: str = Field(max_length=64)
+
+
+class AlertSeenOut(Model):
+    """What is kept of the alert a person has seen."""
+
+    as_of: date
+    seen_at: datetime
 
 
 class ItemsCounted(Model):

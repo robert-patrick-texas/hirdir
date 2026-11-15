@@ -1172,6 +1172,420 @@
         "title": "AgreementRef",
         "type": "object"
       },
+      "AgreementRenew": {
+        "additionalProperties": false,
+        "description": "A renewal of an agreement, and what it does with each contract that shares its\nperiod. A member left out is `same`, or `ends` where it is marked to end with its\nterm.",
+        "properties": {
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annual Cost"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "members": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MemberRenewal"
+            },
+            "maxItems": 1000,
+            "title": "Members",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Reference"
+          },
+          "reseller_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reseller Hid"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "renewal_pending",
+                  "expired",
+                  "pending",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, `active` for a renewal in force at once, and as it is otherwise.",
+            "title": "Status"
+          },
+          "support_level": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Level"
+          },
+          "withdraw": {
+            "default": false,
+            "description": "Withdraw the term that is still to begin. Nothing else is sent with it.",
+            "title": "Withdraw",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "AgreementRenew",
+        "type": "object"
+      },
+      "AgreementRenewed": {
+        "additionalProperties": false,
+        "description": "An agreement as a renewal leaves it, with what the renewal did with each contract\nthat shares its period and how many coverages it left behind.",
+        "properties": {
+          "account_manager": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whom to ask about it: free text.",
+            "title": "Account Manager"
+          },
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agreement's own total, added to nothing.",
+            "title": "Annual Cost"
+          },
+          "contracts": {
+            "description": "How many contracts that are not retired are in it.",
+            "title": "Contracts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "lapsed": {
+            "description": "Its period has ended, and it still says it is active.",
+            "title": "Lapsed",
+            "type": "boolean"
+          },
+          "left_behind": {
+            "title": "Left Behind",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRenewedOut"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextTerm"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The term that begins on a day to come. Until then the present one runs on."
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agreement's own number, if it has one.",
+            "title": "Number"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Reference"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "reseller": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reseller_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reseller Hid"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "renewal_pending",
+              "expired",
+              "pending",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "support_contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whom to call for support: free text.",
+            "title": "Support Contact"
+          },
+          "support_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Level"
+          },
+          "support_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Url"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/VendorRef"
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "number",
+          "vendor_hid",
+          "vendor",
+          "reseller_hid",
+          "reseller",
+          "starts_on",
+          "ends_on",
+          "status",
+          "support_level",
+          "purchase_reference",
+          "account_manager",
+          "support_contact",
+          "support_url",
+          "annual_cost",
+          "notes",
+          "record_status",
+          "tags",
+          "lapsed",
+          "next_term",
+          "contracts",
+          "row_version",
+          "created_at",
+          "updated_at",
+          "members",
+          "left_behind"
+        ],
+        "title": "AgreementRenewed",
+        "type": "object"
+      },
       "AgreementTerm": {
         "additionalProperties": false,
         "description": "A term an agreement had before it was renewed.",
@@ -1190,6 +1604,42 @@
               }
             ],
             "title": "Annual Cost"
+          },
+          "began_by": {
+            "enum": [
+              "created",
+              "renewal",
+              "joined",
+              "left"
+            ],
+            "title": "Began By",
+            "type": "string"
+          },
+          "began_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first day of this part of its history.",
+            "title": "Began On"
+          },
+          "ended_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last day of this part of its history.",
+            "title": "Ended On"
           },
           "ends_on": {
             "anyOf": [
@@ -1274,9 +1724,84 @@
           "purchase_reference",
           "renewed_at",
           "renewed_by",
-          "renewed_by_name"
+          "renewed_by_name",
+          "began_on",
+          "ended_on",
+          "began_by"
         ],
         "title": "AgreementTerm",
+        "type": "object"
+      },
+      "AlertCount": {
+        "additionalProperties": false,
+        "description": "One count of the alert, and the list of the worklist it leads to.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "new": {
+            "description": "How many of them were not on the list when last seen.",
+            "title": "New",
+            "type": "integer"
+          },
+          "section": {
+            "enum": [
+              "ending",
+              "lapsed",
+              "renewal_pending",
+              "overdue",
+              "ends_with_term",
+              "overlapping"
+            ],
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "new",
+          "section"
+        ],
+        "title": "AlertCount",
+        "type": "object"
+      },
+      "AlertSeen": {
+        "additionalProperties": false,
+        "description": "That the alert has been seen, as it was answered.",
+        "properties": {
+          "version": {
+            "maxLength": 64,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "AlertSeen",
+        "type": "object"
+      },
+      "AlertSeenOut": {
+        "additionalProperties": false,
+        "description": "What is kept of the alert a person has seen.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "seen_at": {
+            "format": "date-time",
+            "title": "Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "as_of",
+          "seen_at"
+        ],
+        "title": "AlertSeenOut",
         "type": "object"
       },
       "Arrived": {
@@ -3971,6 +4496,12 @@
             ],
             "title": "Ends On"
           },
+          "ends_with_term": {
+            "default": false,
+            "description": "It is not to be renewed, and ends with its present term.",
+            "title": "Ends With Term",
+            "type": "boolean"
+          },
           "notes": {
             "anyOf": [
               {
@@ -4392,6 +4923,11 @@
             ],
             "title": "Ends On"
           },
+          "ends_with_term": {
+            "description": "It is not to be renewed: it covers to the end of its present term, is not lapsed after it, and is expired in force from the next day.",
+            "title": "Ends With Term",
+            "type": "boolean"
+          },
           "hid": {
             "title": "Hid",
             "type": "string"
@@ -4432,6 +4968,37 @@
             "title": "Number",
             "type": "string"
           },
+          "part_began_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "created",
+                  "renewal",
+                  "joined",
+                  "left"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What began the present part. Blank in a list, as above.",
+            "title": "Part Began By"
+          },
+          "part_began_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day the present part of its history began. Answered by `GET /contracts/{hid}`, and blank in a list.",
+            "title": "Part Began On"
+          },
           "purchase_reference": {
             "anyOf": [
               {
@@ -4452,6 +5019,23 @@
             ],
             "title": "Record Status",
             "type": "string"
+          },
+          "renewal_overdue": {
+            "description": "Its renewal has been pending for longer than `renewal_pending_overdue_days`.",
+            "title": "Renewal Overdue",
+            "type": "boolean"
+          },
+          "renewal_pending_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While its renewal is pending, the days since the end of the term the renewal is for, and zero before that end. Blank otherwise.",
+            "title": "Renewal Pending Days"
           },
           "reseller": {
             "anyOf": [
@@ -4586,6 +5170,9 @@
           "next_term",
           "covered_items",
           "items_in_scope",
+          "ends_with_term",
+          "renewal_pending_days",
+          "renewal_overdue",
           "row_version",
           "created_at",
           "updated_at"
@@ -4648,6 +5235,18 @@
               }
             ],
             "title": "Ends On"
+          },
+          "ends_with_term": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "It is not to be renewed, and ends with its present term.",
+            "title": "Ends With Term"
           },
           "notes": {
             "anyOf": [
@@ -5004,6 +5603,353 @@
         "title": "ContractRenew",
         "type": "object"
       },
+      "ContractRenewed": {
+        "additionalProperties": false,
+        "description": "A contract as a renewal leaves it, with what the renewal did besides.",
+        "properties": {
+          "account_manager": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whom to ask about the contract: free text.",
+            "title": "Account Manager"
+          },
+          "agreement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreementRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agreement it is grouped into. Blank for one that stands by itself."
+          },
+          "agreement_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreement Hid"
+          },
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contract's own total, added to nothing.",
+            "title": "Annual Cost"
+          },
+          "covered_items": {
+            "description": "How many items it covers today.",
+            "title": "Covered Items",
+            "type": "integer"
+          },
+          "covers_today": {
+            "description": "Active and today is within its period, or past it with its renewal pending.",
+            "title": "Covers Today",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/ContractEffective"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "ends_with_term": {
+            "description": "It is not to be renewed: it covers to the end of its present term, is not lapsed after it, and is expired in force from the next day.",
+            "title": "Ends With Term",
+            "type": "boolean"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items_in_scope": {
+            "description": "How many items have a coverage under it that has not been ended.",
+            "title": "Items In Scope",
+            "type": "integer"
+          },
+          "lapsed": {
+            "description": "Its period has ended, and it still says it is active.",
+            "title": "Lapsed",
+            "type": "boolean"
+          },
+          "left_behind": {
+            "description": "How many coverages the renewal ended with the present term, because their items are not to be renewed.",
+            "title": "Left Behind",
+            "type": "integer"
+          },
+          "next_term": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextTerm"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The term that begins on a day to come. Until then the present one runs on."
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "part_began_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "created",
+                  "renewal",
+                  "joined",
+                  "left"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What began the present part. Blank in a list, as above.",
+            "title": "Part Began By"
+          },
+          "part_began_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day the present part of its history began. Answered by `GET /contracts/{hid}`, and blank in a list.",
+            "title": "Part Began On"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request or tracking number the present term was bought under.",
+            "title": "Purchase Reference"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "renewal_overdue": {
+            "description": "Its renewal has been pending for longer than `renewal_pending_overdue_days`.",
+            "title": "Renewal Overdue",
+            "type": "boolean"
+          },
+          "renewal_pending_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While its renewal is pending, the days since the end of the term the renewal is for, and zero before that end. Blank otherwise.",
+            "title": "Renewal Pending Days"
+          },
+          "reseller": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The vendor it was bought through."
+          },
+          "reseller_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reseller Hid"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "status": {
+            "description": "What a person says of it. Never set by the clock.",
+            "enum": [
+              "active",
+              "renewal_pending",
+              "expired",
+              "pending",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "support_contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whom to call for support: free text.",
+            "title": "Support Contact"
+          },
+          "support_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Level"
+          },
+          "support_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where support is reached online.",
+            "title": "Support Url"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vendor": {
+            "$ref": "#/components/schemas/VendorRef",
+            "description": "The manufacturer or the provider."
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "number",
+          "vendor_hid",
+          "vendor",
+          "agreement_hid",
+          "agreement",
+          "effective",
+          "reseller_hid",
+          "reseller",
+          "starts_on",
+          "ends_on",
+          "status",
+          "support_level",
+          "purchase_reference",
+          "account_manager",
+          "support_contact",
+          "support_url",
+          "annual_cost",
+          "notes",
+          "record_status",
+          "tags",
+          "covers_today",
+          "lapsed",
+          "next_term",
+          "covered_items",
+          "items_in_scope",
+          "ends_with_term",
+          "renewal_pending_days",
+          "renewal_overdue",
+          "row_version",
+          "created_at",
+          "updated_at",
+          "left_behind"
+        ],
+        "title": "ContractRenewed",
+        "type": "object"
+      },
       "ContractTerm": {
         "additionalProperties": false,
         "description": "A term a contract had before it was renewed, with the dates it had in force.",
@@ -5034,6 +5980,43 @@
               }
             ],
             "title": "Annual Cost"
+          },
+          "began_by": {
+            "description": "What began this part: `created`, `renewal`, `joined` or `left`.",
+            "enum": [
+              "created",
+              "renewal",
+              "joined",
+              "left"
+            ],
+            "title": "Began By",
+            "type": "string"
+          },
+          "began_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first day of this part of its history.",
+            "title": "Began On"
+          },
+          "ended_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last day of this part of its history.",
+            "title": "Ended On"
           },
           "ends_on": {
             "anyOf": [
@@ -5073,7 +6056,7 @@
             "title": "Purchase Reference"
           },
           "renewed_at": {
-            "description": "When the renewal that ended this term was made.",
+            "description": "When the change that ended this part was made: a renewal, a join or a leave.",
             "format": "date-time",
             "title": "Renewed At",
             "type": "string"
@@ -5134,7 +6117,10 @@
           "purchase_reference",
           "renewed_at",
           "renewed_by",
-          "renewed_by_name"
+          "renewed_by_name",
+          "began_on",
+          "ended_on",
+          "began_by"
         ],
         "title": "ContractTerm",
         "type": "object"
@@ -12404,6 +13390,111 @@
         "title": "MemberPatch",
         "type": "object"
       },
+      "MemberRenewal": {
+        "additionalProperties": false,
+        "description": "What a renewal of an agreement does with one contract that shares its period.",
+        "properties": {
+          "annual_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "18000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its cost in the new term.",
+            "title": "Annual Cost"
+          },
+          "contract_hid": {
+            "maxLength": 36,
+            "title": "Contract Hid",
+            "type": "string"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The new number, for `new_number`.",
+            "title": "Number"
+          },
+          "purchase_reference": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What its new term was bought under.",
+            "title": "Purchase Reference"
+          },
+          "renewal": {
+            "default": "same",
+            "description": "`same`: it follows into the new term under its number. `new_number`: its new number begins with the new term. `ends`: it is let go with the present term.",
+            "enum": [
+              "same",
+              "new_number",
+              "ends"
+            ],
+            "title": "Renewal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_hid"
+        ],
+        "title": "MemberRenewal",
+        "type": "object"
+      },
+      "MemberRenewedOut": {
+        "additionalProperties": false,
+        "description": "What a renewal of an agreement did with one contract that shares its period.",
+        "properties": {
+          "contract_hid": {
+            "title": "Contract Hid",
+            "type": "string"
+          },
+          "left_behind": {
+            "title": "Left Behind",
+            "type": "integer"
+          },
+          "number": {
+            "description": "The number it has in the new term, or its last one.",
+            "title": "Number",
+            "type": "string"
+          },
+          "renewal": {
+            "enum": [
+              "same",
+              "new_number",
+              "ends"
+            ],
+            "title": "Renewal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_hid",
+          "number",
+          "renewal",
+          "left_behind"
+        ],
+        "title": "MemberRenewedOut",
+        "type": "object"
+      },
       "MembersAdd": {
         "additionalProperties": false,
         "description": "Items to make members of a group together. The group is checked once all are in.",
@@ -12678,6 +13769,12 @@
             "format": "date",
             "title": "Starts On",
             "type": "string"
+          },
+          "with_agreement": {
+            "default": false,
+            "description": "A new number that waits on the agreement's next term and has no dates of its own: `starts_on` and `ends_on` are the agreement's, as they stand.",
+            "title": "With Agreement",
+            "type": "boolean"
           }
         },
         "required": [
@@ -16685,6 +17782,284 @@
         "title": "RegistrationRef",
         "type": "object"
       },
+      "RenewalAlert": {
+        "additionalProperties": false,
+        "description": "The renewal alert, as the person signed in is to be shown it.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "ending": {
+            "$ref": "#/components/schemas/AlertCount"
+          },
+          "lapsed": {
+            "$ref": "#/components/schemas/AlertCount"
+          },
+          "overdue": {
+            "description": "Of those pending, how many are overdue.",
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "overdue_after": {
+            "title": "Overdue After",
+            "type": "integer"
+          },
+          "renewal_pending": {
+            "$ref": "#/components/schemas/AlertCount"
+          },
+          "show": {
+            "description": "Whether to show it: for the Inventory and the Admin role, when a contract is on a list that it was not on when they last saw it.",
+            "title": "Show",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "What `POST /renewals/alert/seen` is sent with.",
+            "title": "Version",
+            "type": "string"
+          },
+          "within_days": {
+            "title": "Within Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of",
+          "within_days",
+          "overdue_after",
+          "show",
+          "version",
+          "lapsed",
+          "renewal_pending",
+          "overdue",
+          "ending"
+        ],
+        "title": "RenewalAlert",
+        "type": "object"
+      },
+      "RenewalGroup": {
+        "additionalProperties": false,
+        "description": "One vendor and one agreement of the worklist, or the contracts of a vendor that\nstand by themselves, with the count of each list and the filter that lists it.",
+        "properties": {
+          "agreement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for contracts that stand by themselves.",
+            "title": "Agreement"
+          },
+          "agreement_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreement Hid"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/RenewalTotals"
+          },
+          "filters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "For each list, the filter of `GET /contracts`, or of `GET /items` for `overlapping`, that lists its rows.",
+            "title": "Filters",
+            "type": "object"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor_hid",
+          "vendor",
+          "agreement_hid",
+          "agreement",
+          "counts",
+          "filters"
+        ],
+        "title": "RenewalGroup",
+        "type": "object"
+      },
+      "RenewalTotals": {
+        "additionalProperties": false,
+        "description": "The counts of the renewal worklist.",
+        "properties": {
+          "ending": {
+            "description": "Contracts that cover and end within the days, with no renewal entered.",
+            "title": "Ending",
+            "type": "integer"
+          },
+          "ends_with_term": {
+            "description": "Contracts let go with their term that end within the days: never alerted.",
+            "title": "Ends With Term",
+            "type": "integer"
+          },
+          "lapsed": {
+            "description": "Contracts whose period has ended while they still say active.",
+            "title": "Lapsed",
+            "type": "integer"
+          },
+          "overdue": {
+            "description": "Of those, the ones pending for longer than `renewal_pending_overdue_days`.",
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "overlapping": {
+            "description": "Items that more than one contract covers today.",
+            "title": "Overlapping",
+            "type": "integer"
+          },
+          "renewal_pending": {
+            "description": "Contracts whose renewal is pending.",
+            "title": "Renewal Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ending",
+          "lapsed",
+          "renewal_pending",
+          "overdue",
+          "ends_with_term",
+          "overlapping"
+        ],
+        "title": "RenewalTotals",
+        "type": "object"
+      },
+      "RenewalsReport": {
+        "additionalProperties": false,
+        "description": "What a person must act on to keep the cover going: the renewal worklist.",
+        "properties": {
+          "agreements": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReportSection"
+            },
+            "description": "The agreements on each list, with the filter of `GET /agreements`.",
+            "title": "Agreements",
+            "type": "object"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "contracts": {
+            "description": "A page of a list of contracts.",
+            "items": {
+              "$ref": "#/components/schemas/ContractOut"
+            },
+            "title": "Contracts",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/RenewalGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "items": {
+            "description": "A page of `overlapping`.",
+            "items": {
+              "$ref": "#/components/schemas/ItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "overdue_after": {
+            "description": "The `renewal_pending_overdue_days` setting.",
+            "title": "Overdue After",
+            "type": "integer"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ending",
+                  "lapsed",
+                  "renewal_pending",
+                  "overdue",
+                  "ends_with_term",
+                  "overlapping"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReportSection"
+            },
+            "description": "Each list with its filter: of `GET /contracts`, and of `GET /items` for `overlapping`.",
+            "title": "Sections",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/RenewalTotals"
+          },
+          "within_days": {
+            "title": "Within Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of",
+          "within_days",
+          "overdue_after",
+          "totals",
+          "sections",
+          "agreements",
+          "groups",
+          "section",
+          "contracts",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "RenewalsReport",
+        "type": "object"
+      },
       "Replace": {
         "additionalProperties": false,
         "description": "The replacement of an item: what takes its place, why and when.",
@@ -20112,7 +21487,7 @@
     },
     "/api/v1/agreements/{hid}/renew": {
       "post": {
-        "description": "Renew an agreement: its new period, and its new number where it has one.\n\nThe contracts that are co-termed with it follow, and the items under them. A\nperiod that begins after today is kept as the next term, and the present one runs\non until then. `withdraw` withdraws a term that is still to begin.",
+        "description": "Renew an agreement: its new period, and its new number where it has one.\n\nThe contracts that share its period follow it, each as `members` says: under its\nnumber (`same`, the default), with a new number that begins with the new term\n(`new_number`), or let go with the present term (`ends`), and the items under them,\nbut those that are not to be renewed, whose coverage ends with the present term. A\nperiod that begins after today is kept as the next term, and the present one runs\non until then. `withdraw` withdraws a term that is still to begin, and the new\nnumbers that wait on it.",
         "operationId": "renew_agreement_api_v1_agreements__hid__renew_post",
         "parameters": [
           {
@@ -20148,7 +21523,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ContractRenew"
+                "$ref": "#/components/schemas/AgreementRenew"
               }
             }
           },
@@ -20159,7 +21534,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgreementOut"
+                  "$ref": "#/components/schemas/AgreementRenewed"
                 }
               }
             },
@@ -22988,7 +24363,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ContractOut"
+                  "$ref": "#/components/schemas/ContractRenewed"
                 }
               }
             },
@@ -29210,6 +30585,70 @@
         ]
       }
     },
+    "/api/v1/renewals/alert": {
+      "get": {
+        "description": "Say how many contracts have lapsed, have a renewal pending, of which overdue,\nand end within the warning period, each with the list of the worklist it leads to,\nand whether to show it to the person signed in: for the Inventory and the Admin\nrole, once until a contract comes onto one of those lists that was not on it when\nthey last saw it.",
+        "operationId": "renewal_alert_api_v1_renewals_alert_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewalAlert"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Renewal Alert",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/renewals/alert/seen": {
+      "post": {
+        "description": "Keep that the person signed in has seen the alert as it was answered, by its\n`version`. It is a change of their own, audited on their user, and changes no\ncontract. A version that is no longer in force is a `409`: read the alert again.",
+        "operationId": "renewal_alert_seen_api_v1_renewals_alert_seen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertSeen"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSeenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renewal Alert Seen",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
     "/api/v1/reports/capacity": {
       "get": {
         "description": "Return the capacity balance of the whole installation as of today: demand\nagainst supply, without the drafts and with them.",
@@ -29744,6 +31183,156 @@
           }
         },
         "summary": "Management",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/renewals": {
+      "get": {
+        "description": "Say what a person must act on to keep the cover going: the renewal worklist.\n\nThe contracts that end within the warning period with no renewal entered, those\nthat have lapsed, those whose renewal is pending and of them those that are\noverdue, those let go with their term, and the items that more than one contract\ncovers. Each is counted under its vendor and its agreement in `groups`, and each\ncount says the filter that lists its rows. `section` asks for a page of one list,\nthe soonest end first. The agreements on the same lists are counted beside them.",
+        "operationId": "renewals_api_v1_reports_renewals_get",
+        "parameters": [
+          {
+            "description": "A filter of the contract list, in the short form or as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "A filter of the contract list, in the short form or as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How far ahead a contract counts as ending. Left out, the `renewal_warning_days` setting.",
+            "in": "query",
+            "name": "within_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 36500,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How far ahead a contract counts as ending. Left out, the `renewal_warning_days` setting.",
+              "title": "Within Days"
+            }
+          },
+          {
+            "description": "The list to return a page of.",
+            "in": "query",
+            "name": "section",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ending",
+                    "lapsed",
+                    "renewal_pending",
+                    "overdue",
+                    "ends_with_term",
+                    "overlapping"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The list to return a page of.",
+              "title": "Section"
+            }
+          },
+          {
+            "description": "As the contract list is sorted, or the item list for `overlapping`.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "As the contract list is sorted, or the item list for `overlapping`.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Count draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewalsReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Renewals",
         "tags": [
           "Reports"
         ]

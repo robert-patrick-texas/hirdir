@@ -1340,14 +1340,32 @@ def show_contract(
         ("reseller", _from_agreement(found, "reseller_hid")),
         ("starts_on", _from_agreement(found, "starts_on")),
         ("ends_on", _from_agreement(found, "ends_on")),
-        ("status", found["status"] + (", lapsed" if found["lapsed"] else "")),
+        (
+            "status",
+            found["status"]
+            + (", lapsed" if found["lapsed"] else "")
+            + (", ends with its term" if found["ends_with_term"] else "")
+            + (
+                f", pending {found['renewal_pending_days']} days"
+                + (" (overdue)" if found["renewal_overdue"] else "")
+                if found["renewal_pending_days"] is not None
+                else ""
+            ),
+        ),
         ("covers today", "yes" if found["covers_today"] else "no"),
         (
             "next term",
             None
             if found["next_term"] is None
             else f"{found['next_term']['number'] or found['number']}, "
-            + _period(found["next_term"]["starts_on"], found["next_term"]["ends_on"]),
+            + _period(found["next_term"]["starts_on"], found["next_term"]["ends_on"])
+            + (", with the agreement's term" if found["next_term"]["with_agreement"] else ""),
+        ),
+        (
+            "this part since",
+            f"{found['part_began_on']}, {found['part_began_by']}"
+            if found.get("part_began_on")
+            else None,
         ),
         ("support_level", _from_agreement(found, "support_level")),
         ("purchase_reference", found["purchase_reference"]),
@@ -1368,6 +1386,8 @@ def show_contract(
         typer.echo(
             f"{'earlier term:':<21}{term['number']}, {_term_period(term)}"
             + (f", {term['purchase_reference']}" if term["purchase_reference"] else "")
+            + f"; {term['began_on']} to {term['ended_on']}, began by {term['began_by']}"
+            + (", in an agreement" if term["agreement_hid"] else ", by itself")
         )
     if covered["items"]:
         typer.echo("")
@@ -1571,6 +1591,52 @@ def show_agreement(
         )
 
 
+def _members(target: Target, agreement_hid: str, given: list[str]) -> list[dict[str, Any]]:
+    """Return what `--member` says of each contract that shares an agreement's period:
+    `CON-1=same`, `CON-1=new:CON-2` or `CON-1=ends`, the contract by number or HID."""
+    asked = []
+    for one in given:
+        contract, _, choice = one.partition("=")
+        if not contract or (choice not in ("same", "ends") and not choice.startswith("new:")):
+            raise typer.BadParameter(
+                f"{one}: write CONTRACT=same, CONTRACT=new:NUMBER or CONTRACT=ends",
+                param_hint="--member",
+            )
+        if _is_hid(contract):
+            hid = contract
+        else:
+            named = {
+                "and": [
+                    {"field": "number", "op": "eq", "value": contract},
+                    {"field": "agreement_hid", "op": "eq", "value": agreement_hid},
+                ]
+            }
+            found = client.call(
+                target, "GET", "/contracts", params={"filter": json.dumps(named), "limit": 2}
+            )["items"]
+            if len(found) != 1:
+                raise client.fail(
+                    f"there is no one contract {contract} in this agreement", client.EXIT_INVALID
+                )
+            hid = found[0]["hid"]
+        member: dict[str, Any] = {"contract_hid": hid, "renewal": choice}
+        if choice.startswith("new:"):
+            member |= {"renewal": "new_number", "number": choice.removeprefix("new:")}
+        asked.append(member)
+    return asked
+
+
+Member = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--member",
+        help="What a contract that shares the agreement's period does: CONTRACT=same, "
+        "CONTRACT=new:NUMBER or CONTRACT=ends. Again for each; a contract left out keeps "
+        "its number.",
+    ),
+]
+
+
 @agreements.command("renew")
 def renew_agreement(
     agreement: Annotated[str, typer.Argument(help="A name or an HID.")],
@@ -1580,17 +1646,26 @@ def renew_agreement(
     purchase_reference: Reference = None,
     annual_cost: Cost = None,
     withdraw: Withdraw = False,
+    member: Member = None,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Renew a support agreement: its new period, in one change. The contracts that
-    are co-termed with it follow, and the items under them."""
+    share its period follow it, each under its number, with a new number that begins
+    with the new term, or let go with the present term, and the items under them."""
     target = client.load_target(url, token)
     found = _one_named(target, "/agreements", "name", agreement, "agreement")
     body = _renewal(
         number, from_, to, purchase_reference, annual_cost, withdraw, found["row_version"]
     )
+    if member:
+        body["members"] = _members(target, found["hid"], member)
     renewed = client.call(target, "POST", f"/agreements/{found['hid']}/renew", body)
+    for one in renewed["members"]:
+        if one["renewal"] != "same" or one["left_behind"]:
+            said = {"new_number": f"takes {one['number']}", "ends": "ends with this term"}
+            left = f", {one['left_behind']} left behind" if one["left_behind"] else ""
+            typer.echo(f"  {one['number']}: {said.get(one['renewal'], 'keeps its number')}{left}")
     follow = (
         f"{_period(renewed['starts_on'], renewed['ends_on'])}; "
         f"{renewed['contracts']} "
@@ -1990,6 +2065,103 @@ def coverage_report(
         note = f" (within {found['within_days']} days)" if name == "expiring" else ""
         typer.echo(f"{name + ':':<21}{found['totals'][name]}{note}")
     typer.echo(f"{'lapsed contracts:':<21}{found['lapsed_contracts']['count']}")
+
+
+RENEWAL_LISTS = (
+    "ending",
+    "lapsed",
+    "renewal_pending",
+    "overdue",
+    "ends_with_term",
+    "overlapping",
+)
+
+
+def renewals_worklist(
+    filter_: Annotated[
+        str | None,
+        typer.Option("--filter", help="A filter of the contract list, such as vendor:eq:Cisco."),
+    ] = None,
+    section: Annotated[
+        str | None,
+        typer.Option(
+            help="List the rows of one: ending, lapsed, renewal_pending, overdue, "
+            "ends_with_term or overlapping."
+        ),
+    ] = None,
+    within_days: Annotated[
+        int | None,
+        typer.Option(help="How far ahead a contract counts as ending. Left out, the setting."),
+    ] = None,
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Say what must be acted on to keep the cover going: the contracts that end soon,
+    those that have lapsed, those whose renewal is pending and how long, and the items
+    under more than one contract, each under its vendor and its agreement."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    params = {
+        "filter": filter_,
+        "section": section,
+        "within_days": within_days,
+        "include_drafts": include_drafts,
+    }
+    found = client.call(target, "GET", "/reports/renewals", params={**params, "limit": 1000})
+    rows_of = "items" if section == "overlapping" else "contracts"
+    while section and len(found[rows_of]) < found["total"]:
+        more = client.call(
+            target,
+            "GET",
+            "/reports/renewals",
+            params={**params, "limit": 1000, "offset": len(found[rows_of])},
+        )
+        if not more[rows_of]:
+            break
+        found[rows_of] += more[rows_of]
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    if section == "overlapping":
+        _rows(format_, output, _section_rows(found, "contract_count"))
+        return
+    if section is not None:
+        rows = [["number", "vendor", "agreement", "ends_on", "status", "pending_days", "items"]]
+        for contract in found["contracts"]:
+            rows.append(
+                [
+                    contract["number"],
+                    contract["vendor"]["name"],
+                    (contract["agreement"] or {}).get("name") or "",
+                    contract["effective"]["ends_on"]["value"] or "",
+                    contract["status"] + (" (overdue)" if contract["renewal_overdue"] else ""),
+                    ""
+                    if contract["renewal_pending_days"] is None
+                    else str(contract["renewal_pending_days"]),
+                    str(contract["covered_items"]),
+                ]
+            )
+        _rows(format_, output, rows)
+        return
+    rows = [["vendor", "agreement", *RENEWAL_LISTS]]
+    for group in found["groups"]:
+        rows.append(
+            [
+                group["vendor"],
+                group["agreement"] or "(by itself)",
+                *(str(group["counts"][name]) for name in RENEWAL_LISTS),
+            ]
+        )
+    rows.append(["all", "", *(str(found["totals"][name]) for name in RENEWAL_LISTS)])
+    if format_ == "table":
+        typer.echo(
+            f"as of {found['as_of']}: ending within {found['within_days']} days, "
+            f"overdue after {found['overdue_after']} days pending"
+        )
+    _rows(format_, output, rows)
 
 
 @report.command("end-of-life")

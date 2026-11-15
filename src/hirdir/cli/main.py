@@ -24,6 +24,7 @@ for name, group in inventory.GROUPS.items():
     app.add_typer(group, name=name)
 app.command("import")(inventory.import_file)
 app.command("export")(inventory.export)
+app.command("renewals")(inventory.renewals_worklist)
 
 Url = Annotated[str | None, typer.Option(help="The server, such as https://host/hirdir.")]
 Token = Annotated[str | None, typer.Option(help="A session or service token.")]

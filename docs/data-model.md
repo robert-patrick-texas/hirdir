@@ -757,8 +757,9 @@ one, the latest first, each with `began_on` and `ended_on`, the days in the
 application's time zone, `began_by`, `created`, `renewal`, `joined` or `left`, a move
 being `joined`, the number, the period in force with where each date came from, and
 the agreement it was in. A part in an agreement with no dates of its own has the dates
-of the agreement's term in force when the part began. A part that lasted no day is
-not listed. The record of a contract says when its present part began,
+of the agreement's term in force when the part began. A part that a join or a leave
+ended on the day it began lasted no day and is not listed; one that a renewal ended on
+its first day is listed as of that day, so that no number goes missing. The record of a contract says when its present part began,
 `part_began_on`, and how, `part_began_by` (P-130).
 
 **Contacts of an agreement and of a contract.** `contract_contacts` names contact
@@ -1025,7 +1026,7 @@ no record, with `via` of `system`. A person records it again by hand on any day,
 replaces the record of that week, and may correct the `demand` and the `supply` of a
 saved week, each of `active` and `with_drafts`, with a note that says why: the record
 is then `adjusted`. The `balance` and the `coverage_pct` of a record are worked out
-from its demand and its supply when it is read. A record is not worked out again from
+from its demand and its supply when it is read. The trend is a graph of one point a week: demand and supply as two lines with the balance between them, which a switch breaks into the supply of each category and the demand of the infrastructure and of other work; a corrected week shows its corrected totals, and its parts as they were recorded. A record is not worked out again from
 the records it was made of. One that was a mistake is removed outright, with an audit
 event that holds what it was.
 

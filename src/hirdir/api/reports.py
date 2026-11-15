@@ -6,12 +6,13 @@ from fastapi import APIRouter, Query
 
 from hirdir.api import records as r
 from hirdir.api import shapes
-from hirdir.api.deps import Db, Viewer
+from hirdir.api.deps import Audit, Db, Viewer
 from hirdir.api.lists import Limit, Offset, sort_of
 from hirdir.api.schemas import Page
-from hirdir.io import balance, planning, reports, tables
+from hirdir.io import alerts, balance, kept, planning, reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
+renewals_ = APIRouter(prefix="/renewals", tags=["Reports"])
 
 Archived = Annotated[
     bool, Query(description="Count retired records and items in Archived as well.")
@@ -153,17 +154,106 @@ def coverage(
     says the filter that lists the same items on `GET /items`. The contracts that
     have lapsed are counted beside them.
     """
-    found = planning.coverage(
+    asked = kept.asked(filter_, include_drafts, within_days, section, sort, limit, offset)
+    return kept.answer(
         db,
-        filter_=filter_,
-        include_drafts=include_drafts,
-        within_days=within_days,
-        section=section,
-        sort=sort,
-        limit=limit,
-        offset=offset,
+        "coverage",
+        asked,
+        lambda: shapes.coverage_report_out(
+            db,
+            planning.coverage(
+                db,
+                filter_=filter_,
+                include_drafts=include_drafts,
+                within_days=within_days,
+                section=section,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            ),
+        ),
     )
-    return shapes.coverage_report_out(db, found)
+
+
+@router.get("/renewals")
+def renewals(
+    _: Viewer,
+    db: Db,
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=8000,
+            description="A filter of the contract list, in the short form or as JSON.",
+        ),
+    ] = "",
+    within_days: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            le=36_500,
+            description="How far ahead a contract counts as ending. Left out, the "
+            "`renewal_warning_days` setting.",
+        ),
+    ] = None,
+    section: Annotated[
+        r.RenewalSection | None, Query(description="The list to return a page of.")
+    ] = None,
+    sort: Annotated[
+        list[str] | None,
+        Query(description="As the contract list is sorted, or the item list for `overlapping`."),
+    ] = None,
+    limit: Limit = 100,
+    offset: Offset = 0,
+    include_drafts: Drafts = False,
+) -> r.RenewalsReport:
+    """Say what a person must act on to keep the cover going: the renewal worklist.
+
+    The contracts that end within the warning period with no renewal entered, those
+    that have lapsed, those whose renewal is pending and of them those that are
+    overdue, those let go with their term, and the items that more than one contract
+    covers. Each is counted under its vendor and its agreement in `groups`, and each
+    count says the filter that lists its rows. `section` asks for a page of one list,
+    the soonest end first. The agreements on the same lists are counted beside them.
+    """
+    asked = kept.asked(filter_, include_drafts, within_days, section, sort, limit, offset)
+    return kept.answer(
+        db,
+        "renewals",
+        asked,
+        lambda: shapes.renewals_report_out(
+            db,
+            planning.renewals(
+                db,
+                filter_=filter_,
+                include_drafts=include_drafts,
+                within_days=within_days,
+                section=section,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            ),
+        ),
+    )
+
+
+@renewals_.get("/alert")
+def renewal_alert(caller: Viewer, db: Db) -> r.RenewalAlert:
+    """Say how many contracts have lapsed, have a renewal pending, of which overdue,
+    and end within the warning period, each with the list of the worklist it leads to,
+    and whether to show it to the person signed in: for the Inventory and the Admin
+    role, once until a contract comes onto one of those lists that was not on it when
+    they last saw it."""
+    return shapes.renewal_alert_out(alerts.alert(db, caller.user.hid, caller.role))
+
+
+@renewals_.post("/alert/seen")
+def renewal_alert_seen(body: r.AlertSeen, caller: Viewer, context: Audit, db: Db) -> r.AlertSeenOut:
+    """Keep that the person signed in has seen the alert as it was answered, by its
+    `version`. It is a change of their own, audited on their user, and changes no
+    contract. A version that is no longer in force is a `409`: read the alert again."""
+    view = alerts.seen(db, context, caller.user.hid, body.version)
+    return r.AlertSeenOut(as_of=view.as_of, seen_at=view.seen_at)
 
 
 @router.get("/end-of-life")
@@ -252,4 +342,4 @@ def capacity(_: Viewer, db: Db) -> r.CapacityOut:
     return shapes.capacity_out(balance.balance(db))
 
 
-ROUTERS = (router,)
+ROUTERS = (router, renewals_)

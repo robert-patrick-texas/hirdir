@@ -1321,7 +1321,7 @@ def _term_fields(model: Any) -> dict[str, Field]:
         "record_status": Field("choice", model.record_status),
         "row_version": Field("integer", contracts.version_value(model)),
         # The term that is still to begin: blank where no renewal waits.
-        "next_starts_on": Field("date", model.next_starts_on),
+        "next_starts_on": Field("date", contracts.next_on_value(model)),
         "next_number": Field("text", model.next_number),
     }
 
@@ -1392,6 +1392,13 @@ CONTRACTS = Listing(
         },
         # It covers today: active in both senses, and in date.
         "covers_today": Field("boolean", contracts.contract_covers()),
+        # Not to be renewed: it ends with its present term (P-129).
+        "ends_with_term": Field("boolean", Contract.ends_with_term),
+        # A renewal that is pending: for how long, and whether for too long (P-127).
+        "renewal_pending_days": Field("integer", contracts.renewal_pending_days_value()),
+        "renewal_overdue": Field("boolean", contracts.renewal_overdue_value()),
+        # A renewal is entered that is still to begin: its own, or its agreement's.
+        "renewal_waiting": Field("boolean", contracts.renewal_waiting_value()),
         "tags": _tags("contract", Contract),
         # A contract is found by an item it covers, at any time.
         "coverage.item_hid": Field(

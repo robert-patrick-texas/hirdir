@@ -65,16 +65,29 @@ def update_agreement(
 
 @agreements.post("/{hid}/renew")
 def renew_agreement(
-    hid: str, body: r.ContractRenew, _: Inventory, context: Audit, db: Db
-) -> r.AgreementOut:
+    hid: str, body: r.AgreementRenew, _: Inventory, context: Audit, db: Db
+) -> r.AgreementRenewed:
     """Renew an agreement: its new period, and its new number where it has one.
 
-    The contracts that are co-termed with it follow, and the items under them. A
+    The contracts that share its period follow it, each as `members` says: under its
+    number (`same`, the default), with a new number that begins with the new term
+    (`new_number`), or let go with the present term (`ends`), and the items under them,
+    but those that are not to be renewed, whose coverage ends with the present term. A
     period that begins after today is kept as the next term, and the present one runs
-    on until then. `withdraw` withdraws a term that is still to begin.
+    on until then. `withdraw` withdraws a term that is still to begin, and the new
+    numbers that wait on it.
     """
-    renewed = contracts.renew_agreement(db, context, hid, body.row_version, _changes(body))
-    return shapes.agreements_out(db, [renewed])[0]
+    changes = _changes(body)
+    members = changes.pop("members", None) or []
+    renewed = contracts.renew_agreement(db, context, hid, body.row_version, changes, members)
+    out = shapes.agreements_out(db, [renewed.record])[0]
+    return r.AgreementRenewed(
+        **out.model_dump(),
+        left_behind=renewed.left_behind,
+        members=[
+            r.MemberRenewedOut.model_validate(one, from_attributes=True) for one in renewed.members
+        ],
+    )
 
 
 @agreements.get("/{hid}/terms")
@@ -129,7 +142,7 @@ def update_contract(
 @router.post("/{hid}/renew")
 def renew_contract(
     hid: str, body: r.ContractRenew, _: Inventory, context: Audit, db: Db
-) -> r.ContractOut:
+) -> r.ContractRenewed:
     """Renew a contract: give it its new number, its new period, or both.
 
     It is one change of the one record, and nothing is written to any item. A period
@@ -140,7 +153,8 @@ def renew_contract(
     are kept in the audit trail, and are listed by `GET /contracts/{hid}/terms`.
     """
     renewed = contracts.renew_contract(db, context, hid, body.row_version, _changes(body))
-    return shapes.contract_out(db, renewed)
+    out = shapes.contract_out(db, renewed.record)
+    return r.ContractRenewed(**out.model_dump(), left_behind=renewed.left_behind)
 
 
 @router.get("/{hid}/terms")

@@ -236,6 +236,23 @@ rendered as text, never as HTML.
   stopped, after a backup. Every table is named in `domain/reset.py` as one that a
   reset clears or one that it keeps, and a test fails when a new table is in neither.
 
+### Answers that are kept
+
+The coverage report, the renewal worklist and the summary of the renewal alert are
+worked out once and given again while nothing could have changed them (P-133). Each
+answer is kept in the memory of the server process with the database it is of, the
+newest audit event there is, the day in the application's time zone and the request
+whole: filter, view, section, sort and page. Every change writes an audit event, a
+setting's among them, so a newer event, or the turn of the day, leaves a kept answer
+unused, and one that a change has made wrong is never given. At most 64 answers are
+kept, the least used dropped first, and a restart drops them all. What is kept is no
+record: it is worked out again from the records, so nothing inherited is copied down.
+The coverage report counts every section in one pass over the items, one statement
+that reads the matching items once and tallies each section as it goes. The summary of
+the renewal alert is worked out just after midnight in the application's time zone,
+and when the server starts, so that the first sign-in of the day is not kept waiting.
+`src/hirdir/io/kept.py` keeps them.
+
 ## Package
 
 `make deb` builds `hirdir_<version>_amd64.deb` in a clean Ubuntu 26.04 container with

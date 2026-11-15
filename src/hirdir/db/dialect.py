@@ -25,11 +25,24 @@ from functools import lru_cache
 from typing import Any
 
 import regex
-from sqlalchemy import Boolean, ColumnElement, Date, String, func, literal, select, text
+from sqlalchemy import (
+    Boolean,
+    ColumnElement,
+    Date,
+    Integer,
+    Numeric,
+    String,
+    cast,
+    func,
+    literal,
+    select,
+    text,
+)
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
 
 from hirdir import clock
+from hirdir.db.models import Setting
 
 REGEX_MAX_LENGTH = 200
 REGEX_MAX_REPEAT = 100
@@ -336,6 +349,69 @@ def today() -> ColumnElement[Any]:
     return today_here()
 
 
+class days_between(FunctionElement):
+    """The number of days from the second date to the first, as a whole number."""
+
+    name = "days_between"
+    inherit_cache = True
+
+
+@compiles(days_between, "sqlite")
+def _days_between_sqlite(element: days_between, compiler: Any, **kw: Any) -> str:
+    later, earlier = list(element.clauses)
+    return (
+        f"CAST(julianday({compiler.process(later, **kw)}) - "
+        f"julianday({compiler.process(earlier, **kw)}) AS INTEGER)"
+    )
+
+
+@compiles(days_between)
+@compiles(days_between, "postgresql")
+def _days_between_postgresql(element: days_between, compiler: Any, **kw: Any) -> str:
+    later, earlier = list(element.clauses)
+    return f"({compiler.process(later, **kw)} - {compiler.process(earlier, **kw)})"
+
+
+class setting_number(FunctionElement):
+    """The value of a setting that is a whole number, as the statement reads it from the
+    settings, or the default where the setting has none: so a list that compares with
+    a setting needs nothing handed to it."""
+
+    name = "setting_number"
+    inherit_cache = True
+
+
+def _setting(element: setting_number, number: Any, is_number: Any) -> Any:
+    key, default = list(element.clauses)
+    held = (
+        select(number(Setting.value))
+        .where(Setting.key == key, is_number(Setting.value))
+        .scalar_subquery()
+    )
+    return func.coalesce(held, default)
+
+
+@compiles(setting_number, "sqlite")
+def _setting_number_sqlite(element: setting_number, compiler: Any, **kw: Any) -> str:
+    found = _setting(
+        element,
+        lambda value: cast(value, Integer),
+        lambda value: func.json_type(value).in_(("integer", "real")),
+    )
+    return compiler.process(found, **kw)
+
+
+@compiles(setting_number)
+@compiles(setting_number, "postgresql")
+def _setting_number_postgresql(element: setting_number, compiler: Any, **kw: Any) -> str:
+    found = _setting(
+        element,
+        lambda value: cast(cast(value.op("#>>")(literal("{}")), Numeric), Integer),
+        lambda value: func.json_typeof(value) == "number",
+    )
+    return compiler.process(found, **kw)
+
+
 class list_values(FunctionElement):
     """The values of a list that is kept as JSON, one to a row, in a column `value`."""
 
@@ -415,5 +491,10 @@ def count_of(rows: Any) -> Any:
     counted into the count. Asked to materialize the rows first, it plans them as the
     statement they are. PostgreSQL leaves such joins out of a count by itself.
     """
-    matched = rows.cte("counted").prefix_with("MATERIALIZED", dialect="sqlite")
-    return select(func.count()).select_from(matched)
+    return select(func.count()).select_from(materialized(rows, "counted"))
+
+
+def materialized(rows: Any, name: str) -> Any:
+    """Return the rows a statement reads as a table of their own, which SQLite works
+    out once before it reads them: see `count_of`."""
+    return rows.cte(name).prefix_with("MATERIALIZED", dialect="sqlite")

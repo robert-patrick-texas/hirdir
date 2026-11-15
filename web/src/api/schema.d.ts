@@ -340,9 +340,13 @@ export interface paths {
     /**
      * Renew an agreement: its new period, and its new number where it has one.
      *
-     * The contracts that are co-termed with it follow, and the items under them. A
+     * The contracts that share its period follow it, each as `members` says: under its
+     * number (`same`, the default), with a new number that begins with the new term
+     * (`new_number`), or let go with the present term (`ends`), and the items under them,
+     * but those that are not to be renewed, whose coverage ends with the present term. A
      * period that begins after today is kept as the next term, and the present one runs
-     * on until then. `withdraw` withdraws a term that is still to begin.
+     * on until then. `withdraw` withdraws a term that is still to begin, and the new
+     * numbers that wait on it.
      */
     post: {
       parameters: {
@@ -357,14 +361,14 @@ export interface paths {
       };
       requestBody: {
         content: {
-          "application/json": components["schemas"]["ContractRenew"];
+          "application/json": components["schemas"]["AgreementRenew"];
         };
       };
       responses: {
         /** Successful Response */
         200: {
           content: {
-            "application/json": components["schemas"]["AgreementOut"];
+            "application/json": components["schemas"]["AgreementRenewed"];
           };
         };
         /** Validation Error */
@@ -1675,7 +1679,7 @@ export interface paths {
         /** Successful Response */
         200: {
           content: {
-            "application/json": components["schemas"]["ContractOut"];
+            "application/json": components["schemas"]["ContractRenewed"];
           };
         };
         /** Validation Error */
@@ -4557,6 +4561,64 @@ export interface paths {
       };
     };
   };
+  "/api/v1/renewals/alert": {
+    /**
+     * Say how many contracts have lapsed, have a renewal pending, of which overdue,
+     * and end within the warning period, each with the list of the worklist it leads to,
+     * and whether to show it to the person signed in: for the Inventory and the Admin
+     * role, once until a contract comes onto one of those lists that was not on it when
+     * they last saw it.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RenewalAlert"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/renewals/alert/seen": {
+    /**
+     * Keep that the person signed in has seen the alert as it was answered, by its
+     * `version`. It is a change of their own, audited on their user, and changes no
+     * contract. A version that is no longer in force is a `409`: read the alert again.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AlertSeen"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AlertSeenOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/capacity": {
     /**
      * Return the capacity balance of the whole installation as of today: demand
@@ -4738,6 +4800,53 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["ManagementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reports/renewals": {
+    /**
+     * Say what a person must act on to keep the cover going: the renewal worklist.
+     *
+     * The contracts that end within the warning period with no renewal entered, those
+     * that have lapsed, those whose renewal is pending and of them those that are
+     * overdue, those let go with their term, and the items that more than one contract
+     * covers. Each is counted under its vendor and its agreement in `groups`, and each
+     * count says the filter that lists its rows. `section` asks for a page of one list,
+     * the soonest end first. The agreements on the same lists are counted beside them.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** A filter of the contract list, in the short form or as JSON. */
+          filter?: string;
+          /** How far ahead a contract counts as ending. Left out, the `renewal_warning_days` setting. */
+          within_days?: number | null;
+          /** The list to return a page of. */
+          section?: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping" | null;
+          /** As the contract list is sorted, or the item list for `overlapping`. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["RenewalsReport"];
           };
         };
         /** Validation Error */
@@ -6021,9 +6130,75 @@ export interface components {
       name: string;
       number: string | null;
     };
+    /**
+     * A renewal of an agreement, and what it does with each contract that shares its
+     * period. A member left out is `same`, or `ends` where it is marked to end with its
+     * term.
+     */
+    AgreementRenew: {
+      annual_cost?: string | null;
+      ends_on?: string | null;
+      members?: components["schemas"]["MemberRenewal"][];
+      notes?: string | null;
+      number?: string | null;
+      purchase_reference?: string | null;
+      reseller_hid?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+      /** Left out, `active` for a renewal in force at once, and as it is otherwise. */
+      status?: "active" | "renewal_pending" | "expired" | "pending" | "cancelled" | null;
+      support_level?: string | null;
+      /** Withdraw the term that is still to begin. Nothing else is sent with it. */
+      withdraw?: boolean;
+    };
+    /**
+     * An agreement as a renewal leaves it, with what the renewal did with each contract
+     * that shares its period and how many coverages it left behind.
+     */
+    AgreementRenewed: {
+      /** Whom to ask about it: free text. */
+      account_manager: string | null;
+      /** The agreement's own total, added to nothing. */
+      annual_cost: string | null;
+      /** How many contracts that are not retired are in it. */
+      contracts: number;
+      created_at: string;
+      ends_on: string | null;
+      hid: string;
+      /** Its period has ended, and it still says it is active. */
+      lapsed: boolean;
+      left_behind: number;
+      members: components["schemas"]["MemberRenewedOut"][];
+      name: string;
+      /** The term that begins on a day to come. Until then the present one runs on. */
+      next_term: components["schemas"]["NextTerm"] | null;
+      notes: string | null;
+      /** The agreement's own number, if it has one. */
+      number: string | null;
+      purchase_reference: string | null;
+      record_status: "draft" | "active" | "retired";
+      reseller: components["schemas"]["VendorRef"] | null;
+      reseller_hid: string | null;
+      row_version: number;
+      starts_on: string | null;
+      status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
+      /** Whom to call for support: free text. */
+      support_contact: string | null;
+      support_level: string | null;
+      support_url: string | null;
+      tags: string[];
+      updated_at: string;
+      vendor: components["schemas"]["VendorRef"];
+      vendor_hid: string;
+    };
     /** A term an agreement had before it was renewed. */
     AgreementTerm: {
       annual_cost: string | null;
+      began_by: "created" | "renewal" | "joined" | "left";
+      /** The first day of this part of its history. */
+      began_on: string | null;
+      /** The last day of this part of its history. */
+      ended_on: string | null;
       ends_on: string | null;
       number: string | null;
       purchase_reference: string | null;
@@ -6032,6 +6207,22 @@ export interface components {
       renewed_by: string | null;
       renewed_by_name: string | null;
       starts_on: string | null;
+    };
+    /** One count of the alert, and the list of the worklist it leads to. */
+    AlertCount: {
+      count: number;
+      /** How many of them were not on the list when last seen. */
+      new: number;
+      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping";
+    };
+    /** That the alert has been seen, as it was answered. */
+    AlertSeen: {
+      version: string;
+    };
+    /** What is kept of the alert a person has seen. */
+    AlertSeenOut: {
+      as_of: string;
+      seen_at: string;
     };
     /** One item that arrived on a line: something to know it by. */
     Arrived: {
@@ -6382,6 +6573,8 @@ export interface components {
       agreement_hid?: string | null;
       annual_cost?: string | null;
       ends_on?: string | null;
+      /** It is not to be renewed, and ends with its present term. */
+      ends_with_term?: boolean;
       notes?: string | null;
       number: string;
       purchase_reference?: string | null;
@@ -6454,6 +6647,8 @@ export interface components {
       created_at: string;
       effective: components["schemas"]["ContractEffective"];
       ends_on: string | null;
+      /** It is not to be renewed: it covers to the end of its present term, is not lapsed after it, and is expired in force from the next day. */
+      ends_with_term: boolean;
       hid: string;
       /** How many items have a coverage under it that has not been ended. */
       items_in_scope: number;
@@ -6463,9 +6658,17 @@ export interface components {
       next_term: components["schemas"]["NextTerm"] | null;
       notes: string | null;
       number: string;
+      /** What began the present part. Blank in a list, as above. */
+      part_began_by?: "created" | "renewal" | "joined" | "left" | null;
+      /** The day the present part of its history began. Answered by `GET /contracts/{hid}`, and blank in a list. */
+      part_began_on?: string | null;
       /** The request or tracking number the present term was bought under. */
       purchase_reference: string | null;
       record_status: "draft" | "active" | "retired";
+      /** Its renewal has been pending for longer than `renewal_pending_overdue_days`. */
+      renewal_overdue: boolean;
+      /** While its renewal is pending, the days since the end of the term the renewal is for, and zero before that end. Blank otherwise. */
+      renewal_pending_days: number | null;
       /** The vendor it was bought through. */
       reseller: components["schemas"]["VendorRef"] | null;
       reseller_hid: string | null;
@@ -6494,6 +6697,8 @@ export interface components {
       agreement_hid?: string | null;
       annual_cost?: string | null;
       ends_on?: string | null;
+      /** It is not to be renewed, and ends with its present term. */
+      ends_with_term?: boolean | null;
       notes?: string | null;
       number?: string | null;
       purchase_reference?: string | null;
@@ -6536,17 +6741,81 @@ export interface components {
       /** Withdraw the term that is still to begin. Nothing else is sent with it. */
       withdraw?: boolean;
     };
+    /** A contract as a renewal leaves it, with what the renewal did besides. */
+    ContractRenewed: {
+      /** Whom to ask about the contract: free text. */
+      account_manager: string | null;
+      /** The agreement it is grouped into. Blank for one that stands by itself. */
+      agreement: components["schemas"]["AgreementRef"] | null;
+      agreement_hid: string | null;
+      /** The contract's own total, added to nothing. */
+      annual_cost: string | null;
+      /** How many items it covers today. */
+      covered_items: number;
+      /** Active and today is within its period, or past it with its renewal pending. */
+      covers_today: boolean;
+      created_at: string;
+      effective: components["schemas"]["ContractEffective"];
+      ends_on: string | null;
+      /** It is not to be renewed: it covers to the end of its present term, is not lapsed after it, and is expired in force from the next day. */
+      ends_with_term: boolean;
+      hid: string;
+      /** How many items have a coverage under it that has not been ended. */
+      items_in_scope: number;
+      /** Its period has ended, and it still says it is active. */
+      lapsed: boolean;
+      /** How many coverages the renewal ended with the present term, because their items are not to be renewed. */
+      left_behind: number;
+      /** The term that begins on a day to come. Until then the present one runs on. */
+      next_term: components["schemas"]["NextTerm"] | null;
+      notes: string | null;
+      number: string;
+      /** What began the present part. Blank in a list, as above. */
+      part_began_by?: "created" | "renewal" | "joined" | "left" | null;
+      /** The day the present part of its history began. Answered by `GET /contracts/{hid}`, and blank in a list. */
+      part_began_on?: string | null;
+      /** The request or tracking number the present term was bought under. */
+      purchase_reference: string | null;
+      record_status: "draft" | "active" | "retired";
+      /** Its renewal has been pending for longer than `renewal_pending_overdue_days`. */
+      renewal_overdue: boolean;
+      /** While its renewal is pending, the days since the end of the term the renewal is for, and zero before that end. Blank otherwise. */
+      renewal_pending_days: number | null;
+      /** The vendor it was bought through. */
+      reseller: components["schemas"]["VendorRef"] | null;
+      reseller_hid: string | null;
+      row_version: number;
+      starts_on: string | null;
+      /** What a person says of it. Never set by the clock. */
+      status: "active" | "renewal_pending" | "expired" | "pending" | "cancelled";
+      /** Whom to call for support: free text. */
+      support_contact: string | null;
+      support_level: string | null;
+      /** Where support is reached online. */
+      support_url: string | null;
+      tags: string[];
+      updated_at: string;
+      /** The manufacturer or the provider. */
+      vendor: components["schemas"]["VendorRef"];
+      vendor_hid: string;
+    };
     /** A term a contract had before it was renewed, with the dates it had in force. */
     ContractTerm: {
       /** The agreement the contract was in then. */
       agreement_hid: string | null;
       annual_cost: string | null;
+      /** What began this part: `created`, `renewal`, `joined` or `left`. */
+      began_by: "created" | "renewal" | "joined" | "left";
+      /** The first day of this part of its history. */
+      began_on: string | null;
+      /** The last day of this part of its history. */
+      ended_on: string | null;
       /** The last day of the term in force, in the same way. */
       ends_on: string | null;
       ends_on_source: "own" | "agreement" | "none";
       number: string;
       purchase_reference: string | null;
-      /** When the renewal that ended this term was made. */
+      /** When the change that ended this part was made: a renewal, a join or a leave. */
       renewed_at: string;
       renewed_by: string | null;
       renewed_by_name: string | null;
@@ -7610,6 +7879,26 @@ export interface components {
       role?: string | null;
       row_version: number;
     };
+    /** What a renewal of an agreement does with one contract that shares its period. */
+    MemberRenewal: {
+      /** Its cost in the new term. */
+      annual_cost?: string | null;
+      contract_hid: string;
+      /** The new number, for `new_number`. */
+      number?: string | null;
+      /** What its new term was bought under. */
+      purchase_reference?: string | null;
+      /** `same`: it follows into the new term under its number. `new_number`: its new number begins with the new term. `ends`: it is let go with the present term. */
+      renewal?: "same" | "new_number" | "ends";
+    };
+    /** What a renewal of an agreement did with one contract that shares its period. */
+    MemberRenewedOut: {
+      contract_hid: string;
+      left_behind: number;
+      /** The number it has in the new term, or its last one. */
+      number: string;
+      renewal: "same" | "new_number" | "ends";
+    };
     /** Items to make members of a group together. The group is checked once all are in. */
     MembersAdd: {
       members: components["schemas"]["MemberAdd"][];
@@ -7659,6 +7948,8 @@ export interface components {
       number: string | null;
       purchase_reference: string | null;
       starts_on: string;
+      /** A new number that waits on the agreement's next term and has no dates of its own: `starts_on` and `ends_on` are the agreement's, as they stand. */
+      with_agreement?: boolean;
     };
     /**
      * What making a place active would bring about: what is planned for it, or for a
@@ -8313,6 +8604,79 @@ export interface components {
       status: "registered" | "pending" | "removed";
       system: components["schemas"]["SystemRef"];
       system_hid: string;
+    };
+    /** The renewal alert, as the person signed in is to be shown it. */
+    RenewalAlert: {
+      as_of: string;
+      ending: components["schemas"]["AlertCount"];
+      lapsed: components["schemas"]["AlertCount"];
+      /** Of those pending, how many are overdue. */
+      overdue: number;
+      overdue_after: number;
+      renewal_pending: components["schemas"]["AlertCount"];
+      /** Whether to show it: for the Inventory and the Admin role, when a contract is on a list that it was not on when they last saw it. */
+      show: boolean;
+      /** What `POST /renewals/alert/seen` is sent with. */
+      version: string;
+      within_days: number;
+    };
+    /**
+     * One vendor and one agreement of the worklist, or the contracts of a vendor that
+     * stand by themselves, with the count of each list and the filter that lists it.
+     */
+    RenewalGroup: {
+      /** Blank for contracts that stand by themselves. */
+      agreement: string | null;
+      agreement_hid: string | null;
+      counts: components["schemas"]["RenewalTotals"];
+      /** For each list, the filter of `GET /contracts`, or of `GET /items` for `overlapping`, that lists its rows. */
+      filters: {
+        [key: string]: {
+          [key: string]: unknown;
+        } | null;
+      };
+      vendor: string;
+      vendor_hid: string;
+    };
+    /** The counts of the renewal worklist. */
+    RenewalTotals: {
+      /** Contracts that cover and end within the days, with no renewal entered. */
+      ending: number;
+      /** Contracts let go with their term that end within the days: never alerted. */
+      ends_with_term: number;
+      /** Contracts whose period has ended while they still say active. */
+      lapsed: number;
+      /** Of those, the ones pending for longer than `renewal_pending_overdue_days`. */
+      overdue: number;
+      /** Items that more than one contract covers today. */
+      overlapping: number;
+      /** Contracts whose renewal is pending. */
+      renewal_pending: number;
+    };
+    /** What a person must act on to keep the cover going: the renewal worklist. */
+    RenewalsReport: {
+      /** The agreements on each list, with the filter of `GET /agreements`. */
+      agreements: {
+        [key: string]: components["schemas"]["ReportSection"];
+      };
+      as_of: string;
+      /** A page of a list of contracts. */
+      contracts: components["schemas"]["ContractOut"][];
+      groups: components["schemas"]["RenewalGroup"][];
+      /** A page of `overlapping`. */
+      items: components["schemas"]["ItemOut"][];
+      limit: number;
+      offset: number;
+      /** The `renewal_pending_overdue_days` setting. */
+      overdue_after: number;
+      section: "ending" | "lapsed" | "renewal_pending" | "overdue" | "ends_with_term" | "overlapping" | null;
+      /** Each list with its filter: of `GET /contracts`, and of `GET /items` for `overlapping`. */
+      sections: {
+        [key: string]: components["schemas"]["ReportSection"];
+      };
+      total: number;
+      totals: components["schemas"]["RenewalTotals"];
+      within_days: number;
     };
     /** The replacement of an item: what takes its place, why and when. */
     Replace: {

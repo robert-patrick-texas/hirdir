@@ -382,6 +382,7 @@ def test_a_renewal_entered_early_leaves_the_old_term_running(desk: Desk, db: Ses
         "ends_on": day(412),
         "annual_cost": None,
         "purchase_reference": "RITM0002",
+        "with_agreement": False,
     }
     # The item is covered throughout, to the end of the term to come, and unwritten.
     item = desk.get(f"/items/{switch['hid']}")
