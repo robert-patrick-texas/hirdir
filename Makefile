@@ -1,4 +1,4 @@
-.PHONY: help version dev web check fmt test test-changed acceptance e2e deb package-test docs docs-watch facts release-body upgrade guard contract examples
+.PHONY: help version dev web check fmt test test-changed acceptance e2e deb package-test docs docs-watch facts release-body upgrade guard contract examples fixture time-filters
 
 # The tests run several at once: as many as the host has cores and memory free. Before
 # they start, a busy host is waited for, ten minutes at the most. HIRDIR_TEST_WORKERS
@@ -45,6 +45,12 @@ contract:       ## write the OpenAPI document to contract/openapi.json
 
 examples:       ## write examples/ by exporting the seeded example database
 	uv run python scripts/seed_examples.py
+
+fixture:        ## fill fixture-data/ with 50,000 fictional items, for timing
+	uv run python scripts/seed_fixture.py
+
+time-filters:   ## time the item list's filters on fixture-data/, which make fixture fills
+	uv run python scripts/time_filters.py
 
 acceptance:     ## the scenarios of docs/build-plan.md against a server started from an empty database
 	$(PYTEST) tests/acceptance

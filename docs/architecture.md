@@ -51,7 +51,8 @@ web/                 TypeScript source of the web UI
 tests/               unit/, api/, acceptance/, e2e/
 packaging/           build-deb.sh, control files, systemd units, nginx files, hirdir-setup, container/,
                      package-test.sh and package-test.d/, what one migration or release alone has in it
-scripts/             build_docs.py, docs.css, release_facts.py, release_body.py, seed_examples.py, seed_fixture.py
+scripts/             build_docs.py, docs.css, release_facts.py, release_body.py, seed_examples.py, seed_fixture.py,
+                     time_filters.py
 docs/                these pages, and releases/
 images/              pictures used by README.md and docs/
 examples/            fictional CSV and JSON for every record type
@@ -369,6 +370,7 @@ volume.
 | `make deb` | builds the web UI and the documentation, then the package with both inside, and writes its SHA-256 and lintian's report beside it |
 | `make package-test` | installs the package in containers and exercises it: upgraded from the previous release, with a migration that fails, and fresh |
 | `make fixture` | fills a database with 50,000 fictional items for timing |
+| `make time-filters` | times the filters and sorts of the item list on that database; see "Timing at scale" below |
 
 ### How long the tests take
 
@@ -1108,6 +1110,44 @@ Every check prints a line that starts with `PASS`, `FAIL` or `SKIP`, each pass e
 with its counts, and the run ends with the counts of all three and every `FAIL` and
 `SKIP` line once more. `systemd-nspawn` is available on the build host as an
 alternative runner for the same script.
+
+### Timing at scale
+
+The response target in [requirements.md](requirements.md#qualities) is held against a
+fixture of the size the target names. `make fixture` runs `scripts/seed_fixture.py`,
+which fills `fixture-data/`, a folder of its own that git ignores, with a database at
+the newest schema and 50,000 fictional items: 15,000 major items that are not phones,
+22,000 phones, and 13,000 power supplies, modules, line cards and optics in them. Beside
+them are a catalog of some three hundred models of six makers, regions, sites and their
+locations, owners and operators, 360 stacks, firewall clusters and wireless controller
+domains, 24 agreements and 320 contracts in every status, and the coverage of most
+major items: some under two contracts, some ended, some ended because the item left
+service and marked so. Some items are in Pending-Removal, Released and Archived, and
+some are retired. Many of the items bought in the last two years arrived on the lines
+of purchase requests, and a few of those are of another model than their line's, as
+0.6.0 let in. It takes under a minute. `--items` makes a smaller one of the same
+shape, and a folder that the script did not make is left alone.
+
+The fixture is for timing and bypasses the rules. What there are few of is made through
+`hirdir.domain`; the items, their tags, addresses and coverage are written in bulk, as
+rows that an import of the same inventory would have written, with an audit event for
+each. Dates are counted from the day it is made, so what has lapsed and what is pending
+renewal is so on that day. The folder also holds `fixture.json`, which says what is in
+it and the account to sign in with, and a `config.toml`, so that
+`HIRDIR_CONFIG=fixture-data/config.toml uv run hirdir admin serve --dev` serves it on
+127.0.0.1:8726.
+
+`make time-filters` runs `scripts/time_filters.py`. It builds the application with
+`create_app` on the fixture, in its own process, and asks it through a test client for
+the first page the grid asks for, 100 items with the total counted, under each of the
+filters and sorts that the coverage of 0.6.0 added and those of 0.6.1, the contracts
+that still count an item out of service and the items on a line of another model,
+beside the list with no filter; and for the coverage report, which counts each of its
+sections. Each request is asked
+several times after a warm-up, and the median and the 95th percentile are printed with
+the load of the host before and after, because a busy host is slower than the host can
+be. `--explain FILE` writes every statement of each request with how long it took and
+the plan SQLite made for it, and `--url` asks a server that is running instead.
 
 ## Configuration
 
