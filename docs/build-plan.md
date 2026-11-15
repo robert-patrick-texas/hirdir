@@ -36,7 +36,7 @@ reading; it does not settle a policy question in code.
 | **0.6.0** Money, time and capacity | Support agreements, the contracts grouped into them, and dated coverage; a contract renewed in one place. Estimated value and annual support cost. The vendor portfolio. End-of-life and coverage reports. Replacements in reports and in files. Purchase requests, lines and receiving. External systems and registrations. Draft records. Capacity lines and the capacity report. | S29–S35, S39–S40 |
 | **0.6.1** Corrections to 0.6.0 | What a contract overrides, said beside what it has in force. The dates of an earlier term of a contract that is co-termed with its agreement. The model of an item that is put on a purchase line, held to the line's. The contract that still counts an item out of service, as a field of the item list. Browser scenarios for the pages of 0.6.0 that only unit tests hold. `make upgrade` without a step the host refuses. The speed of the item filters of 0.6.0 on a large inventory, measured. | none new |
 | **0.7.0** Renewals in practice, and links | The renewal worklist. An agreement renewed with new numbers for its member contracts, and a contract's history across joining and leaving one. The coverage report worked out once and kept until it changes. A renewal alert after sign-in. Settings with defaults in place of constants, and a configuration file written by the application. Imports applied in the background, in batches. A model or a device flagged as not to be renewed. Purchase lines as procurement has them. The contacts of an agreement and of a contract, linked to contact records. Capacity over time: a weekly record of the balance, a line that multiplies staff capacity, and the demand of each region beside the balance of the whole. Links, an address with its text, on regions, sites, locations and catalog entries. | S41–S46 |
-| **0.8.0** Circuits | Telecommunication circuits beside the inventory: its name, description and notes, the enterprise's own circuit ID, the devices it connects, its A side and Z side, its carriers and the circuit numbers they give, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the cost by year, as support costs are reported. An optional support weight of a region, a site or a location, which the capacity report counts as demand (P-139). | S47–S50 |
+| **0.8.0** Circuits | Telecommunication circuits beside the inventory: its name, description and notes, the enterprise's own circuit ID, the devices it connects, its A side and Z side, its carriers and the circuit numbers they give, billing, support and escalation contacts, the site contacts of both sides, monthly recurring cost by line, and its owner. In the API, the command line, files and the web UI, with a report of the cost by year, as support costs are reported. Its type and its speed, groups of circuits costed together, and the account team and support desk of a carrier named once on the carrier. An optional support weight of a region, a site or a location, which the capacity report counts as demand (P-139); a default and a minimum support weight, with a what-if on the capacity report (P-141); the long reports worked out each night and checked by an Admin (P-142). | S47–S50 |
 | **0.9.0** Reference files | Files attached to a location: photographs, maps, sketches and floor plans. Documents attached to a catalog entry and reached from every item of that model, such as an administration guide, served by `hirdir` itself where there is no internet access. Upload, link, download, limits, roles, audit, and the files in the backup. | S51–S53 |
 | **1.0.0** MVP | Timing at 50,000 items and fixes from it. An import of 10,000 rows within its targets, each row made cheaper (P-143). Backup timer and restore. Upgrade test from every earlier release. Accessibility pass. Complete user and operator documentation. | S36–S38, and all earlier |
 
@@ -208,6 +208,26 @@ the cost of circuits is read beside them in the same terms. What is not in scope
 stays so: cabling inside a building, the interfaces of a device, and the accounting
 of what was paid.
 
+When 0.8.0 was started the owner answered what the list above left open, and asked
+that circuits share what the inventory already holds: locations, the contact lists of
+sites, vendors, contacts and owners (P-145 to P-157):
+
+- a part month is counted as the carrier bills it, for the days of it (P-151);
+- a circuit's cost counts at its A side, or at its Z side where it is switched, a
+  setting giving new circuits their side; and circuits are put into groups, a circuit
+  into more than one, whose cost is read as one sum, such as Internet access or a cloud
+  on-ramp (P-150, P-152). Who pays a charge-back is a tag or a note, and the owner is
+  who is responsible for the circuit;
+- the account team and the support desk of a carrier are named once, on the carrier,
+  and each of its circuits has them unless it names its own (P-149);
+- a far end that is not one of the enterprise's places has no location and a note of
+  where it ends, and at least one side is a location (P-147);
+- a circuit has a type, from a list that can be edited, and a speed: its port, and the
+  rates it is limited to down and up, blank for the full rate (P-146);
+- Try changes the defaults and minimums, the support weight one engineer carries, the
+  stack discount, and staff lines added, changed or left out without being saved
+  (P-156).
+
 ### 0.9.0, reference files
 
 Optional reference material, kept with the record it is about.
@@ -280,8 +300,8 @@ written as a failing test at the start of its release.
 | S45 | Capacity lines and items in two regions | The report is one balance for the whole team; beside it each region's share of the support weight, which with what is nowhere adds up to the whole, and no supply is divided |
 | S46 | Give a location two links, a site one and a catalog entry one, each an address and its text | Each shows on its record, an item shows the link of its model, a file carries them out and back unchanged, and an address that is no web address is refused |
 | S47 | Enter a circuit between two locations with a name, an enterprise circuit ID, a primary carrier, a local exchange carrier, a circuit number for each, and a router at each end; then a dark fiber between two buildings that has an enterprise circuit ID and no carrier's number | The first shows both sides, both carriers and both devices, and each router and each location shows it; the second is accepted, is found by its enterprise circuit ID, and that ID is refused for another circuit |
-| S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier | The monthly cost of each is the sum of its lines and its annual cost twelve times that; the report totals the annual cost of both by carrier and by site, with the monthly figure beside it |
-| S49 | The A side's site has a site contact; the circuit has a carrier account manager | The circuit shows the site contacts of each side, resolved from its locations with their source, and the carrier's escalation contacts |
+| S48 | Give the circuit three monthly cost lines; enter a second circuit of the same carrier; put both in one group | The monthly cost of each is the sum of its lines and its annual cost twelve times that; the report totals the annual cost of both by carrier, by site, each at its A side, and by the group, with the monthly figure beside it |
+| S49 | The A side's site has a site contact; the circuit's carrier has an account manager, and a second circuit of that carrier names its own | The circuit shows the site contacts of each side, resolved from its locations with their source, and the carrier's account manager with the source `vendor`; the second circuit shows its own |
 | S50 | Export the circuits to a file, load it into an empty inventory, and load it again | Every circuit is created with its sides, carriers, numbers and cost lines, and the second load changes nothing |
 | S51 | Upload a photograph and a floor plan to a location, and download each | Each is listed with its title and kind, comes back byte for byte, and a View-only user downloads and cannot upload |
 | S52 | Upload an administration guide to a catalog entry | Every item of that model reaches it, with no request leaving the server |
