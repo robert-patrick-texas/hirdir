@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Balance } from "../components/CapacityBalance";
+import { CapacityTrend } from "../components/CapacityRecords";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
@@ -13,14 +14,21 @@ import {
   CATEGORY_LIST,
   type CapacityLine,
   capacityLinePath,
+  EFFECTS,
+  lineForForm,
+  MULTIPLY,
   measureText,
+  multiplies,
   SIDES,
+  STAFF,
+  staffLineOptions,
   supplyCategories,
 } from "../lib/capacity";
 import { formatTime } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad, useTitle } from "../lib/hooks";
 import {
+  EVERY,
   useChoices,
   useMoney,
   useRegionOptions,
@@ -71,6 +79,15 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       width: 260,
     },
     {
+      // Whether it adds a fixed amount or multiplies the staff lines it applies to.
+      id: "effect",
+      header: "Effect",
+      kind: "choice",
+      value: (line) => optionLabel(EFFECTS, line.effect),
+      choices: EFFECTS,
+      width: 130,
+    },
+    {
       id: "quantity",
       header: "Quantity",
       kind: "number",
@@ -87,13 +104,41 @@ function lineColumns(choices: readonly Choice[] | undefined): GridColumn<Capacit
       width: 120,
     },
     {
-      // Quantity times units each: worked out by the server.
+      // Quantity times units each: worked out by the server. A line that multiplies has
+      // none of its own: its gain is in the report, for each view.
       id: "units",
       header: "Units",
       kind: "number",
       value: (line) => line.units,
       numeric: true,
       width: 100,
+    },
+    {
+      // A line that multiplies: how much more one person does with it.
+      id: "factor",
+      header: "Factor",
+      kind: "number",
+      value: (line) => line.factor,
+      numeric: true,
+      width: 100,
+    },
+    {
+      // A line that multiplies: the share of the positions that use it.
+      id: "share",
+      header: "Share",
+      kind: "number",
+      value: (line) => line.share,
+      numeric: true,
+      width: 100,
+    },
+    {
+      // A line that multiplies: the staff lines it works on, by name. The server filters
+      // by any of them and sorts by the first.
+      id: "applies_to",
+      header: "Applies to",
+      kind: "text",
+      value: (line) => line.applies_to.map((target) => target.name).join(", "),
+      width: 240,
     },
     {
       // It counts today: not before it starts, and not after it ends.
@@ -177,14 +222,21 @@ interface LineLists {
   vendors: readonly Option[];
   regions: readonly Option[];
   sites: readonly Option[];
+  /** The staff lines that add, which a line that multiplies may work on. */
+  staff: readonly Option[];
 }
 
 /**
  * The fields of a capacity line that a form sets. The side is chosen when the line is
- * made and stays: a demand line is other work, and has no category to choose.
+ * made and stays: a demand line is other work, and has no category to choose. A supply
+ * line adds a fixed amount, its quantity times the units of one, or multiplies the staff
+ * lines it applies to: then it has a factor and a share in place of a quantity.
  */
 function lineSpecs(lists: LineLists, line: CapacityLine | null): FieldSpec[] {
   const supply = (values: Record<string, unknown>) => (line ? line.side : values.side) === "supply";
+  const multiplying = (values: Record<string, unknown>) =>
+    supply(values) && values.effect === MULTIPLY;
+  const adding = (values: Record<string, unknown>) => !multiplying(values);
   return [
     ...(line
       ? []
@@ -208,6 +260,14 @@ function lineSpecs(lists: LineLists, line: CapacityLine | null): FieldSpec[] {
       hint: "Staff is the team's own positions. A level of seniority is a line of its own.",
     },
     {
+      name: "effect",
+      label: "Effect",
+      kind: "choice",
+      options: EFFECTS,
+      when: supply,
+      hint: "A line adds its units. A tool or a service that makes people more effective, of the category Tools or Services, multiplies the staff lines it applies to instead, and has no quantity of its own.",
+    },
+    {
       name: "name",
       label: "Name",
       kind: "text",
@@ -220,6 +280,7 @@ function lineSpecs(lists: LineLists, line: CapacityLine | null): FieldSpec[] {
       label: "Quantity",
       kind: "decimal",
       places: 2,
+      when: adding,
       hint: "Positions, contracted blocks of hours, subscriptions.",
     },
     {
@@ -228,7 +289,34 @@ function lineSpecs(lists: LineLists, line: CapacityLine | null): FieldSpec[] {
       kind: "decimal",
       places: 2,
       required: true,
+      when: adding,
       hint: "The resource units that one of the quantity provides, or takes. By convention one mid-level position is 1.0.",
+    },
+    {
+      name: "factor",
+      label: "Factor",
+      kind: "decimal",
+      places: 2,
+      required: true,
+      when: multiplying,
+      hint: "How much more one person does with it, at least 1: 1.25 is a quarter more.",
+    },
+    {
+      name: "share",
+      label: "Share",
+      kind: "decimal",
+      places: 2,
+      when: multiplying,
+      hint: "The share of the positions that use it, from 0 to 1. Left blank, 1: all of them.",
+    },
+    {
+      name: "applies_to",
+      label: "Applies to",
+      kind: "set",
+      options: lists.staff,
+      required: true,
+      when: multiplying,
+      hint: "The staff lines it works on, which add. Its gain is (factor − 1) × share × their units in each view, in its own category; it works on their units alone, and does not compound another line that multiplies.",
     },
     {
       name: "annual_cost",
@@ -278,12 +366,30 @@ function lineSpecs(lists: LineLists, line: CapacityLine | null): FieldSpec[] {
   ];
 }
 
+/** The staff lines that add, drafts among them: what a line that multiplies may work on. */
+function useStaffLines() {
+  return useLoad("capacity-staff-lines", async (signal) => {
+    const page = await api.request("get", "/api/v1/capacity-lines", {
+      query: {
+        filter: `side:eq:supply category:eq:${STAFF} effect:eq:add`,
+        include_drafts: true,
+        sort: ["name"],
+        limit: EVERY,
+      },
+      signal,
+    });
+    return page.items;
+  });
+}
+
 function useLineLists(choices: readonly Choice[] | undefined, line: CapacityLine | null) {
   const vendors = useVendorOptions();
   const regions = useRegionOptions();
   const sites = useSiteOptions();
+  const staff = useStaffLines();
   const lists = useMemo<LineLists>(
     () => ({
+      staff: staffLineOptions(staff.data ?? [], line),
       categories: supplyCategories(choices, line?.category ?? null),
       vendors: withCurrent(
         vendors.data,
@@ -298,12 +404,12 @@ function useLineLists(choices: readonly Choice[] | undefined, line: CapacityLine
         line?.site ? { value: line.site.hid, label: line.site.path } : null,
       ),
     }),
-    [choices, vendors.data, regions.data, sites.data, line],
+    [choices, vendors.data, regions.data, sites.data, staff.data, line],
   );
   return {
     lists,
-    loading: vendors.loading || regions.loading || sites.loading,
-    error: vendors.error ?? regions.error ?? sites.error,
+    loading: vendors.loading || regions.loading || sites.loading || staff.loading,
+    error: vendors.error ?? regions.error ?? sites.error ?? staff.error,
   };
 }
 
@@ -344,6 +450,7 @@ export function Capacity() {
         </p>
       )}
       {report.data && <Balance report={report.data} money={money} />}
+      <CapacityTrend mayEdit={allows(user.role, "inventory")} />
       <section aria-labelledby="capacity-lines">
         <h2 id="capacity-lines">Lines</h2>
         <p>
@@ -355,7 +462,7 @@ export function Capacity() {
           <CreateForm<Schemas["CapacityLineCreate"], CapacityLine>
             title="New capacity line"
             specs={specs}
-            start={{ side: "supply", quantity: "1", record_status: "active" }}
+            start={{ side: "supply", effect: "add", quantity: "1", record_status: "active" }}
             create={(body) => api.request("post", "/api/v1/capacity-lines", { body })}
             onCreated={(line) => navigate(capacityLinePath(line.hid))}
             onCancel={() => setAdding(false)}
@@ -435,15 +542,53 @@ export function CapacityLineDetail() {
             <dd>{optionLabel(SIDES, record.side)}</dd>
             <dt>Category</dt>
             <dd>{record.category_label || record.category}</dd>
-            <dt>Quantity</dt>
-            <dd>{measureText(record.quantity, "units")}</dd>
-            <dt>Units each</dt>
-            <dd>{measureText(record.units_each, "units")}</dd>
-            <dt>Units</dt>
-            <dd data-testid="line-units">
-              {measureText(record.units, "units")}
-              <span className="muted"> · quantity × units each</span>
-            </dd>
+            {record.side === "supply" && (
+              <>
+                <dt>Effect</dt>
+                <dd data-testid="line-effect">{optionLabel(EFFECTS, record.effect)}</dd>
+              </>
+            )}
+            {multiplies(record) ? (
+              <>
+                <dt>Factor</dt>
+                <dd data-testid="line-factor">{measureText(record.factor, "units")}</dd>
+                <dt>Share</dt>
+                <dd data-testid="line-share">{measureText(record.share, "units")}</dd>
+                <dt>Applies to</dt>
+                <dd data-testid="line-applies-to">
+                  {record.applies_to.length === 0 ? (
+                    <Dash />
+                  ) : (
+                    <ul className="plain-list">
+                      {record.applies_to.map((target) => (
+                        <li key={target.hid}>
+                          <Link to={capacityLinePath(target.hid)}>{target.name}</Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+                <dt>Units</dt>
+                <dd data-testid="line-units">
+                  <span className="muted">
+                    (factor − 1) × share × the units of the lines it applies to, in each view:{" "}
+                    <Link to="/capacity">see Lines that multiply</Link>
+                  </span>
+                </dd>
+              </>
+            ) : (
+              <>
+                <dt>Quantity</dt>
+                <dd>{measureText(record.quantity, "units")}</dd>
+                <dt>Units each</dt>
+                <dd>{measureText(record.units_each, "units")}</dd>
+                <dt>Units</dt>
+                <dd data-testid="line-units">
+                  {measureText(record.units, "units")}
+                  <span className="muted"> · quantity × units each</span>
+                </dd>
+              </>
+            )}
             <dt>Counts today</dt>
             <dd data-testid="line-counts">
               {record.record_status === "retired"
@@ -484,10 +629,10 @@ export function CapacityLineDetail() {
           {mayEdit && record.record_status !== "retired" && !loading && !choices.loading && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
-              <EditForm<CapacityLine, Schemas["CapacityLinePatch"]>
+              <EditForm<ReturnType<typeof lineForForm>, Schemas["CapacityLinePatch"]>
                 key={`${record.hid} ${record.row_version}`}
                 specs={specs}
-                record={record}
+                record={lineForForm(record)}
                 save={(body) =>
                   api.request("patch", "/api/v1/capacity-lines/{hid}", {
                     path: { hid: record.hid },

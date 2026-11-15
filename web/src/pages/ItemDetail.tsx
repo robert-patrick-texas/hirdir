@@ -10,6 +10,7 @@ import { FromAbove, InheritedFrom, OwnerNote, PlaceNote } from "../components/De
 import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
+import { LinkList } from "../components/Links";
 import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
@@ -284,6 +285,20 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </>
           )}
         </Fact>
+        {catalog && catalog.links.length > 0 && (
+          // The links of its model: an item has none of its own (P-138).
+          <Fact label="Links of its model">
+            <div className="inherited" data-testid="model-links" data-source="catalog">
+              <LinkList links={catalog.links} testId="model-links-list" />
+              <InheritedFrom
+                from={{
+                  path: `/catalog/${encodeURIComponent(catalog.hid)}`,
+                  text: `the catalog entry ${catalog.vendor} ${catalog.pid}`,
+                }}
+              />
+            </div>
+          </Fact>
+        )}
         <Fact label="Kind, type, function">
           {catalog &&
             [

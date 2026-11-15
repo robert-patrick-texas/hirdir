@@ -22,8 +22,30 @@ export function count(page: Page, which: string): Locator {
 }
 
 /**
- * Load a CSV file on the Import page: preview it, see that every row is new, apply it.
- * `timeout` is how long the preview and the apply may each take, for a large file.
+ * Wait for the apply of the preview on show to end, applied. An apply goes on in the
+ * background since 0.7.0, one job at a time for every file that runs: it may wait behind
+ * the imports of other files first. The notice says how many rows it applied, how many
+ * it left out as changed since the preview, and how many it refused.
+ */
+export async function whenApplied(
+  scope: Page | Locator,
+  applied: number,
+  {
+    stale = 0,
+    refused = 0,
+    timeout = 60_000,
+  }: { stale?: number; refused?: number; timeout?: number } = {},
+) {
+  const notice = scope.getByTestId("preview-applied");
+  await expect(notice).toHaveAttribute("data-applied", String(applied), { timeout });
+  await expect(notice).toHaveAttribute("data-stale", String(stale));
+  await expect(notice).toHaveAttribute("data-refused", String(refused));
+}
+
+/**
+ * Load a CSV file on the Import page: preview it, see that every row is new, apply it,
+ * and wait for the apply to end. `timeout` is how long the preview may take, for a
+ * large file, and the apply three times as long: it may wait behind other files' first.
  */
 export async function importFile(
   page: Page,
@@ -54,10 +76,8 @@ export async function importFile(
   await page
     .getByRole("button", { name: `Apply ${rows.length} ${rows.length === 1 ? "row" : "rows"}` })
     .click();
-  await expect(page.getByTestId("preview-applied")).toContainText(
-    `${rows.length} created`,
-    waiting,
-  );
+  await whenApplied(page, rows.length, { timeout: 3 * waiting.timeout });
+  await expect(job).toHaveAttribute("data-status", "applied");
 }
 
 /**

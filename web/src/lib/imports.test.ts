@@ -30,6 +30,8 @@ describe("entities", () => {
       "external_systems",
       "agreements",
       "contracts",
+      // The contacts of an agreement or a contract name the record and the contact.
+      "contract_contacts",
       "purchase_requests",
       "purchase_lines",
       "items",
@@ -75,6 +77,14 @@ describe("entities", () => {
     expect(guessEntity("registrations.csv")).toBe("registrations");
     expect(guessEntity("capacity-lines.csv")).toBe("capacity_lines");
     expect(guessEntity("agreements.csv")).toBe("agreements");
+  });
+
+  it("know the contacts of agreements and contracts, and guess them from their file", () => {
+    expect(isEntity("contract_contacts")).toBe(true);
+    expect(entityLabel("contract_contacts")).toBe("Contacts of agreements and contracts");
+    // Neither the contracts nor the contacts, though the name holds both words.
+    expect(guessEntity("contract-contacts.csv")).toBe("contract_contacts");
+    expect(guessEntity("contacts.csv")).toBe("contacts");
   });
 
   it("are known by name, and one this build does not know is shown as sent", () => {

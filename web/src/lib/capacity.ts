@@ -25,6 +25,115 @@ export function capacityLinePath(hid: string): string {
 }
 
 /**
+ * What a line does to the supply: it adds a fixed amount, or it multiplies the staff
+ * lines it applies to, as a tool or a service that makes people more effective does.
+ */
+export const EFFECTS: readonly Option[] = [
+  { value: "add", label: "Adds" },
+  { value: "multiply", label: "Multiplies staff lines" },
+];
+export const MULTIPLY = "multiply";
+/** The categories of a line that may multiply. */
+export const MULTIPLYING_CATEGORIES: readonly string[] = ["tools", "services"];
+/** The one category of the lines a line that multiplies works on. */
+export const STAFF = "staff";
+
+export function multiplies(line: Pick<CapacityLine, "effect">): boolean {
+  return line.effect === MULTIPLY;
+}
+
+/**
+ * The lines a line that multiplies may work on: the staff lines that add, other than the
+ * line itself, that are not retired, with those it works on already whatever they are.
+ */
+export function staffLineOptions(
+  lines: readonly CapacityLine[],
+  line: Pick<CapacityLine, "hid" | "applies_to"> | null = null,
+): Option[] {
+  const options: Option[] = lines
+    .filter(
+      (candidate) =>
+        candidate.side === "supply" &&
+        candidate.category === STAFF &&
+        candidate.effect !== MULTIPLY &&
+        candidate.record_status !== "retired" &&
+        candidate.hid !== line?.hid,
+    )
+    .map((candidate) => ({
+      value: candidate.hid,
+      label: candidate.record_status === "draft" ? `${candidate.name} (draft)` : candidate.name,
+    }));
+  for (const held of line?.applies_to ?? []) {
+    if (!options.some((option) => option.value === held.hid)) {
+      options.push({ value: held.hid, label: held.name });
+    }
+  }
+  return options;
+}
+
+/**
+ * A line as its form holds it: the lines it applies to by their HIDs, as the form sends
+ * them, where the record names each with its name.
+ */
+export function lineForForm(line: CapacityLine): Omit<CapacityLine, "applies_to"> & {
+  applies_to: string[];
+} {
+  return { ...line, applies_to: line.applies_to.map((target) => target.hid) };
+}
+
+export type MultiplyingLine = Schemas["MultiplyingLine"];
+export type RegionDemand = Schemas["RegionDemand"];
+
+/** One region of the demand by region, in both views: absent from a view that has none. */
+export interface RegionRow {
+  /** The region's HID, or blank for the items that are nowhere. */
+  key: string;
+  path: string | null;
+  /** How many regions it is beneath: 0 for one at the top, and for what is nowhere. */
+  depth: number;
+  active: RegionDemand | null;
+  drafts: RegionDemand | null;
+}
+
+/**
+ * Where the work is, by region, without the drafts and with them, in one table. The rows
+ * are those of both views, in the server's order, by path with the items that are
+ * nowhere last; a region that holds only drafts comes in by its path.
+ */
+export function regionRows(report: CapacityReport): RegionRow[] {
+  const rows = new Map<string, RegionRow>();
+  const add = (region: RegionDemand, which: "active" | "drafts") => {
+    const key = region.region_hid ?? "";
+    const row = rows.get(key) ?? {
+      key,
+      path: region.path,
+      depth: region.path ? region.path.split(" > ").length - 1 : 0,
+      active: null,
+      drafts: null,
+    };
+    row[which] = region;
+    rows.set(key, row);
+  };
+  for (const region of report.active.demand_by_region) add(region, "active");
+  for (const region of report.with_drafts.demand_by_region) add(region, "drafts");
+  return [...rows.values()].sort((one, other) => {
+    if (one.path === null || other.path === null) {
+      return one.path === other.path ? 0 : one.path === null ? 1 : -1;
+    }
+    return one.path.localeCompare(other.path);
+  });
+}
+
+/** The staff lines a line that multiplies works on, as words: "Network engineer (3)". */
+export function targetsText(line: MultiplyingLine): string {
+  return line.applies_to
+    .map((target) =>
+      target.counted ? `${target.name} (${measureText(target.units, "units")})` : target.name,
+    )
+    .join(", ");
+}
+
+/**
  * The categories a supply line may have: the active values of the list, without the one
  * that is of the demand side, and with the one the line already holds.
  */

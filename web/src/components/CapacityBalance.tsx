@@ -3,15 +3,22 @@
 // added up here.
 
 import { useMemo } from "react";
+import { Link } from "react-router";
 import {
   balanceRows,
   balanceTone,
   balanceWords,
   type CapacityReport,
   type CapacityView,
+  capacityLinePath,
   MEASURES,
+  type MultiplyingLine,
   measureText,
+  type RegionRow,
+  regionRows,
+  targetsText,
 } from "../lib/capacity";
+import { placePath } from "../lib/places";
 import { decimalValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
 import { SortTh } from "./SortTh";
@@ -119,7 +126,262 @@ export function Balance({ report, money }: BalanceProps) {
         items count as if they were active. Every number is worked out exactly by the server and
         rounded to two places once.
       </p>
+      <Multiplying report={report} />
+      <DemandByRegion report={report} />
     </section>
+  );
+}
+
+/**
+ * The lines that multiply, in each view: what each adds, and the staff lines it works
+ * on. Its gain is in its own category above, so the team's own share stays that of its
+ * positions.
+ */
+function Multiplying({ report }: { report: CapacityReport }) {
+  const any =
+    report.active.multiplying_lines.length > 0 || report.with_drafts.multiplying_lines.length > 0;
+  // A category by the name the report gives it: every category of supply is among them.
+  const labels = useMemo(
+    () => new Map(report.active.by_category.map((row) => [row.category, row.label])),
+    [report],
+  );
+  return (
+    <section aria-labelledby="capacity-multiplying" data-testid="capacity-multiplying">
+      <h3 id="capacity-multiplying">Lines that multiply</h3>
+      {any ? (
+        <>
+          <p className="hint">
+            A tool or a service that makes people more effective adds (factor − 1) × share × the
+            units of the staff lines it works on that count in the view. Each works on those units
+            alone, and none compounds another.
+          </p>
+          <MultiplyingTable
+            title="Without the drafts"
+            which="active"
+            lines={report.active.multiplying_lines}
+            labels={labels}
+          />
+          <MultiplyingTable
+            title="With the drafts"
+            which="with_drafts"
+            lines={report.with_drafts.multiplying_lines}
+            labels={labels}
+          />
+        </>
+      ) : (
+        <p className="muted">
+          No line multiplies the staff lines. A line of tools or of services may, from its own page.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function MultiplyingTable(props: {
+  title: string;
+  which: "active" | "with_drafts";
+  lines: readonly MultiplyingLine[];
+  labels: ReadonlyMap<string, string>;
+}) {
+  const { title, which, lines, labels } = props;
+  const label = (line: MultiplyingLine) => labels.get(line.category) ?? line.category;
+  const sorting = useSorting(lines, {
+    name: (line) => line.name,
+    category: label,
+    factor: (line) => decimalValue(line.factor),
+    share: (line) => decimalValue(line.share),
+    targets: (line) => targetsText(line),
+    base: (line) => decimalValue(line.base_units),
+    units: (line) => decimalValue(line.units),
+  });
+  return (
+    <div className="scroll">
+      <table data-testid={`multiplying-${which}`}>
+        <caption>{title}, in resource units</caption>
+        <thead>
+          <tr>
+            <SortTh sort={sorting} column="name">
+              Line
+            </SortTh>
+            <SortTh sort={sorting} column="category">
+              Category
+            </SortTh>
+            <SortTh sort={sorting} column="factor" className="number">
+              Factor
+            </SortTh>
+            <SortTh sort={sorting} column="share" className="number">
+              Share
+            </SortTh>
+            <SortTh sort={sorting} column="targets">
+              Works on
+            </SortTh>
+            <SortTh sort={sorting} column="base" className="number">
+              Units worked on
+            </SortTh>
+            <SortTh sort={sorting} column="units" className="number">
+              Gain
+            </SortTh>
+          </tr>
+        </thead>
+        <tbody>
+          {sorting.rows.map((line) => (
+            <tr key={line.hid} data-line={line.name}>
+              <th scope="row">
+                <Link to={capacityLinePath(line.hid)}>{line.name}</Link>
+              </th>
+              <td>{label(line)}</td>
+              <td className="number">{measureText(line.factor, "units")}</td>
+              <td className="number">{measureText(line.share, "units")}</td>
+              <td>
+                <ul className="plain-list">
+                  {line.applies_to.map((target) => (
+                    <li
+                      key={target.hid}
+                      data-target={target.name}
+                      data-counted={target.counted ? "true" : "false"}
+                    >
+                      <Link to={capacityLinePath(target.hid)}>{target.name}</Link>{" "}
+                      {target.counted ? (
+                        <span className="muted">{measureText(target.units, "units")}</span>
+                      ) : (
+                        <span className="muted">not counted in this view</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </td>
+              <td className="number" data-testid="multiplying-base" data-value={line.base_units}>
+                {measureText(line.base_units, "units")}
+              </td>
+              <td className="number" data-testid="multiplying-gain" data-value={line.units}>
+                {measureText(line.units, "units")}
+              </td>
+            </tr>
+          ))}
+          {lines.length === 0 && (
+            <tr>
+              <td colSpan={7} className="muted">
+                No line that multiplies counts in this view.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Where the work is: the support weight of the items at or beneath each region, the
+ * infrastructure demand that is, and its share of the whole. The balance stays one for
+ * the whole team: no supply is divided among the regions.
+ */
+function DemandByRegion({ report }: { report: CapacityReport }) {
+  const rows = useMemo(() => regionRows(report), [report]);
+  const sorting = useSorting(rows, {
+    path: (row) => row.path,
+    weight: (row) => decimalValue(row.active?.support_weight),
+    demand: (row) => decimalValue(row.active?.infrastructure_demand),
+    share: (row) => decimalValue(row.active?.share_pct),
+    drafts_weight: (row) => decimalValue(row.drafts?.support_weight),
+    drafts_demand: (row) => decimalValue(row.drafts?.infrastructure_demand),
+    drafts_share: (row) => decimalValue(row.drafts?.share_pct),
+  });
+  return (
+    <section aria-labelledby="capacity-regions" data-testid="capacity-regions">
+      <h3 id="capacity-regions">The demand of each region</h3>
+      <p className="hint">
+        The balance is of the whole operations team, whose tools and services serve every region: no
+        supply is divided among the regions. This says where the work is. A region holds what is
+        beneath it, so the regions at the top and the items that are nowhere add up to the whole.
+      </p>
+      <div className="scroll">
+        <table data-testid="demand-by-region">
+          <caption className="visually-hidden">
+            The demand of each region, without the drafts and with them
+          </caption>
+          <thead>
+            <tr>
+              <SortTh sort={sorting} column="path">
+                Region
+              </SortTh>
+              <SortTh sort={sorting} column="weight" className="number">
+                Support weight
+              </SortTh>
+              <SortTh sort={sorting} column="demand" className="number">
+                Infrastructure demand
+              </SortTh>
+              <SortTh sort={sorting} column="share" className="number">
+                Share
+              </SortTh>
+              <SortTh sort={sorting} column="drafts_weight" className="number">
+                Support weight with drafts
+              </SortTh>
+              <SortTh sort={sorting} column="drafts_demand" className="number">
+                Demand with drafts
+              </SortTh>
+              <SortTh sort={sorting} column="drafts_share" className="number">
+                Share with drafts
+              </SortTh>
+            </tr>
+          </thead>
+          <tbody>
+            {sorting.rows.map((row) => (
+              <RegionLine key={row.key} row={row} indent={sorting.state === null} />
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="muted">
+                  No item carries a support weight.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function RegionLine({ row, indent }: { row: RegionRow; indent: boolean }) {
+  const cells = (region: RegionRow["active"], which: string) => (
+    <>
+      <td
+        className="number"
+        data-testid={`region-${which}-weight`}
+        data-value={region?.support_weight}
+      >
+        {measureText(region?.support_weight, "weight")}
+      </td>
+      <td className="number" data-testid={`region-${which}-demand`}>
+        {measureText(region?.infrastructure_demand, "units")}
+      </td>
+      <td
+        className="number"
+        data-testid={`region-${which}-share`}
+        data-value={region?.share_pct ?? ""}
+      >
+        {measureText(region?.share_pct, "percent")}
+      </td>
+    </>
+  );
+  return (
+    <tr data-region={row.path ?? ""} data-depth={row.depth}>
+      <th
+        scope="row"
+        className={indent && row.depth > 0 ? `tree-depth-${Math.min(row.depth, 9)}` : undefined}
+      >
+        {row.path === null ? (
+          <span className="muted">Nowhere: items with no location in force</span>
+        ) : row.key ? (
+          <Link to={placePath("region", row.key)}>{row.path}</Link>
+        ) : (
+          row.path
+        )}
+      </th>
+      {cells(row.active, "active")}
+      {cells(row.drafts, "drafts")}
+    </tr>
   );
 }
 

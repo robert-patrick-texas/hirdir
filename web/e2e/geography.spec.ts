@@ -37,7 +37,16 @@
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { count, importFile, main, openGroup, openItem, pick, region } from "./structure";
+import {
+  count,
+  importFile,
+  main,
+  openGroup,
+  openItem,
+  pick,
+  region,
+  whenApplied,
+} from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -511,7 +520,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await bulk.getByRole("button", { name: "Preview the change" }).click();
   await expect(count(page, "updated")).toHaveText("1");
   await bulk.getByRole("button", { name: "Apply 1 item" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("1 updated");
+  await whenApplied(page, 1);
   await geography(page);
   await expectCounts(page.getByTestId("geography-tree").locator('tr[data-row="unplaced"]'), 0, 0);
   await expectCounts(treeRow(page, americas), 5, 4);
@@ -535,8 +544,9 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(region(page, "Retire").locator('.alert-error[data-status="409"]')).toBeVisible();
   await expect(page.getByTestId("place")).toHaveAttribute("data-level", "location");
 
-  // The six kinds of record that 0.5.0 brought, and the nine that 0.6.0 brought, are
-  // among what a file may hold, in the order they are loaded.
+  // The six kinds of record that 0.5.0 brought, the nine that 0.6.0 brought and the
+  // contacts of agreements and contracts of 0.7.0 are among what a file may hold, in the
+  // order they are loaded.
   await page.goto("./import");
   await expect(page.getByLabel("Records").locator("option")).toHaveText([
     "As the file says",
@@ -555,6 +565,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "External systems",
     "Support agreements",
     "Contracts",
+    "Contacts of agreements and contracts",
     "Purchase requests",
     "Lines of purchase requests",
     "Items",
@@ -935,7 +946,7 @@ test("S28: an owner outside the team says why, once, and what is given to it is 
   await bulk.getByRole("button", { name: "Preview the change" }).click();
   await expect(count(page, "updated")).toHaveText("1");
   await bulk.getByRole("button", { name: "Apply 1 item" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("1 updated");
+  await whenApplied(page, 1);
 
   // A device group that is given that owner is marked in the same way, and the list of
   // groups finds it by that.
@@ -1290,7 +1301,7 @@ test("a new site is planned: spares and a stack are given a planned location the
   await bulk.getByRole("button", { name: "Preview the change" }).click();
   await expect(count(page, "updated")).toHaveText("2");
   await bulk.getByRole("button", { name: "Apply 2 items" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+  await whenApplied(page, 2);
 
   // The spares are where they were, and say where they are going: a plan of their own.
   await openItem(page, spare);
@@ -1545,7 +1556,7 @@ test("a room is rebuilt under a project name: a draft beside it, the cut-over, t
   await bulk.getByRole("button", { name: "Preview the change" }).click();
   await expect(count(page, "updated")).toHaveText("2");
   await bulk.getByRole("button", { name: "Apply 2 items" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+  await whenApplied(page, 2);
 
   // The cut-over is one change: the new room is made active, and what was planned for
   // it is there.

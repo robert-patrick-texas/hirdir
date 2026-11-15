@@ -1,14 +1,17 @@
-// The browser scenarios of release 0.3.0: files in and out, and one change to many items.
+// The browser scenarios of release 0.3.0: files in and out, and one change to many items,
+// as 0.7.0 applies them, in the background.
 //
-//   S15  Preview an import, change one of its rows in the web UI, then apply: nothing is
-//        applied, and a new preview is asked for.
+//   S15  Preview an import, change the record of one of its rows in the web UI, then
+//        apply: that row is not applied and is reported as changed since the preview,
+//        and every other row is applied.
 //   S16  Filter the grid, select rows, copy, and export CSV and JSON: the clipboard and
 //        both files hold the same rows and columns, each with `hid` first.
 //   S17  (the browser's part) A bulk edit whose rows somebody changed after the preview
-//        is shown which rows, and none of it is applied.
+//        is shown which rows, and nothing of it overwrites them; the rest are changed.
 //
-// On the way: a file refused whole, rejected rows left out on request, a vendor that an
-// import had to create and that is then reviewed, and a clipboard that refuses.
+// On the way: a file refused whole, rejected rows left out on request and listed with
+// why, a vendor that an import had to create and that is then reviewed, the rows left
+// out applied by previewing again, and a clipboard that refuses.
 //
 // The environment that names the server and the Admin is described in support.ts, with
 // what a spec file does to be run beside the others: this one signs in as an Admin of its
@@ -26,6 +29,7 @@ import {
   type Request,
   type TestInfo,
 } from "@playwright/test";
+import { whenApplied } from "./structure";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -159,11 +163,11 @@ function exportsSent(page: Page): Promise<Request> {
   );
 }
 
-test("S15: an import is previewed, and is not applied once a record has changed", async ({
+test("S15: an import is previewed, and a row whose record has changed since is left out", async ({
   page,
   account,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const seen = await watch(page.context());
   await signIn(page, account);
   await main(page).getByRole("link", { name: "Import" }).click();
@@ -198,13 +202,20 @@ test("S15: an import is previewed, and is not applied once a record has changed"
   // A preview has an address of its own: it is there again after a reload.
   await page.reload();
   await expect(count(page, "created")).toHaveText("3");
+  // The apply goes on in the background, and the page follows it to its end.
   await page.getByRole("button", { name: "Apply 3 rows" }).click();
-  await expect(page.getByTestId("preview-applied")).toContainText("3 created");
+  await whenApplied(page, 3);
   await expect(job).toHaveAttribute("data-status", "applied");
   await expect(page.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
-  // The rows now lead to the records they made, and the job is among the past imports.
+  await expect(page.getByTestId("apply-counts").locator('[data-count="worked"] dd')).toHaveText(
+    "3 of 3",
+  );
+  // The rows now lead to the records they made, each says what the apply did with it,
+  // and the job is among the past imports.
   await expect(previewRow(page, 1).getByRole("link")).toHaveAttribute("href", /\/items\//);
+  await expect(previewRow(page, 1)).toHaveAttribute("data-applied", "create");
   await expect(ownJobs(page, account).first()).toContainText(`items-${suffix}.csv`);
+  await expect(ownJobs(page, account).first().getByTestId("job-worked")).toHaveText("3 of 3");
 
   // The vendor the import had to create is marked unreviewed, and is reviewed here.
   await main(page).getByRole("link", { name: "Vendors" }).click();
@@ -220,68 +231,96 @@ test("S15: an import is previewed, and is not applied once a record has changed"
     "Unreviewed",
   );
 
-  // A second file: two rows change a description, the third names an owner nobody has.
-  const second = [
-    ["", vendor, pid, serials[0] ?? "", hosts[0] ?? "", "Distribution pair A", ""],
-    ["", vendor, pid, serials[1] ?? "", hosts[1] ?? "", "Distribution pair A", ""],
-    ["", vendor, pid, serials[2] ?? "", hosts[2] ?? "", "", `No Such Team ${suffix}`],
-  ];
+  // S15. A second file gives all three a description.
+  const described = hosts.map((host, place) => [
+    "",
+    vendor,
+    pid,
+    serials[place] ?? "",
+    host,
+    "Distribution pair A",
+  ]);
   await main(page).getByRole("link", { name: "Import" }).click();
-  await chooseFile(page, `items-${suffix}-changes.csv`, csv([...header, "owner"], second));
+  await chooseFile(page, `items-${suffix}-changes.csv`, csv(header, described));
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(job).toHaveAttribute("data-status", "previewed");
-  await expect(count(page, "updated")).toHaveText("2");
-  await expect(count(page, "rejected")).toHaveText("1");
-  await expect(previewRow(page, 1).locator('[data-field="description"]')).toHaveText(
+  await expect(count(page, "updated")).toHaveText("3");
+  await expect(previewRow(page, 2).locator('[data-field="description"]')).toHaveText(
     "description: (blank) → Distribution pair A",
   );
+
+  // Meanwhile the record of the second row is changed in the web UI.
+  await changeElsewhere(page, hosts[1] ?? "", `AT-${suffix}-1`);
+
+  // Apply: that row is left out as changed since the preview, and every other is applied.
+  const stalePath = new URL(page.url()).pathname;
+  await page.getByRole("button", { name: "Apply 3 rows" }).click();
+  await whenApplied(page, 2, { stale: 1 });
+  await expect(page.getByTestId("import-status")).toHaveText(
+    "Applied, without the rows changed since the preview",
+  );
+  const left = page.getByTestId("left-out-stale");
+  await expect(left.locator("tbody tr")).toHaveCount(1);
+  await expect(left.locator('tr[data-row="2"]')).toContainText(serials[1] ?? "");
+  await expect(left.locator('tr[data-row="2"]')).toContainText("changed since the preview");
+  await expect(page.getByTestId("left-out-rejected")).toHaveCount(0);
+  await expect(previewRow(page, 2)).toHaveAttribute("data-stale", "true");
+  await expect(previewRow(page, 1)).toHaveAttribute("data-applied", "update");
+  await expect(previewRow(page, 3)).toHaveAttribute("data-applied", "update");
+  // The row that was left out is applied by previewing the same file again: against the
+  // items as they are now, it alone is still to change.
+  await page.getByTestId("preview-applied").getByRole("button", { name: "Preview again" }).click();
+  await expect(job).toHaveAttribute("data-status", "previewed");
+  expect(new URL(page.url()).pathname).not.toBe(stalePath);
+  await expect(count(page, "updated")).toHaveText("1");
+  await expect(count(page, "unchanged")).toHaveText("2");
+  await expect(previewRow(page, 2)).toHaveAttribute("data-outcome", "update");
+  await page.getByRole("button", { name: "Apply 3 rows" }).click();
+  await whenApplied(page, 3);
+  await expect(page.getByTestId("import-status")).toHaveText("Applied");
+
+  // A third file: one row changes a description, the other names an owner nobody has.
+  const third = [
+    ["", vendor, pid, serials[2] ?? "", hosts[2] ?? "", "Distribution pair B", ""],
+    ["", vendor, pid, serials[0] ?? "", hosts[0] ?? "", "", `No Such Team ${suffix}`],
+  ];
+  await main(page).getByRole("link", { name: "Import" }).click();
+  await chooseFile(page, `items-${suffix}-owners.csv`, csv([...header, "owner"], third));
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(job).toHaveAttribute("data-status", "previewed");
+  await expect(count(page, "updated")).toHaveText("1");
+  await expect(count(page, "rejected")).toHaveText("1");
   // Only the rejected row, with the reason it is rejected for.
   await job.getByLabel("Show").selectOption("rejected");
   await expect(page.getByTestId("preview-rows").locator("tbody tr")).toHaveCount(1);
-  await expect(previewRow(page, 3)).toContainText(`there is no owner No Such Team ${suffix}`);
+  await expect(previewRow(page, 2)).toContainText(`there is no owner No Such Team ${suffix}`);
   await job.getByLabel("Show").selectOption("");
-  await expect(page.getByTestId("preview-rows").locator("tbody tr")).toHaveCount(3);
-  // With a rejected row the file is not applied as it is: the rest may be.
-  await expect(page.getByRole("button", { name: "Apply 3 rows" })).toHaveCount(0);
-  const applyRest = page.getByRole("button", { name: "Apply the other 2 rows" });
-  await expect(applyRest).toBeVisible();
-
-  // Meanwhile one of the previewed rows is changed in the web UI.
-  await changeElsewhere(page, hosts[0] ?? "", `AT-${suffix}-1`);
-
-  // Apply: nothing is applied, the row in the way is named, and a new preview is asked for.
-  const stalePath = new URL(page.url()).pathname;
-  await applyRest.click();
-  const refusal = page.getByTestId("preview-out-of-date");
-  await expect(refusal).toContainText("Nothing was applied.");
-  await expect(refusal.locator('li[data-row="1"]')).toContainText("changed since the preview");
-  await expect(refusal.locator("li")).toHaveCount(1);
-  await expect(job).toHaveAttribute("data-status", "failed");
-  await expect(page.getByTestId("import-status")).toHaveText("Failed: nothing was applied");
-  await expect(previewRow(page, 1)).toHaveAttribute("data-stale", "true");
-  await expect(page.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
-
-  // The new preview, from the same file: the same two changes, now against the item as it is.
-  await refusal.getByRole("button", { name: "Preview again" }).click();
-  await expect(job).toHaveAttribute("data-status", "previewed");
-  expect(new URL(page.url()).pathname).not.toBe(stalePath);
-  // Nothing of the failed apply was kept: both rows are still to be updated.
-  await expect(count(page, "updated")).toHaveText("2");
-  await applyRest.click();
-  await expect(page.getByTestId("preview-applied")).toContainText("2 updated");
+  await expect(page.getByTestId("preview-rows").locator("tbody tr")).toHaveCount(2);
+  // With a rejected row the file is not applied as it is: the rest may be, and the
+  // rejected one is listed as refused, with the reason of the preview.
+  await expect(page.getByRole("button", { name: "Apply 2 rows" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Apply the other 1 row" }).click();
+  await whenApplied(page, 1, { refused: 1 });
   await expect(page.getByTestId("import-status")).toHaveText("Applied, without the rejected rows");
+  const refused = page.getByTestId("left-out-rejected");
+  await expect(refused.locator('tr[data-row="2"]')).toContainText(
+    `there is no owner No Such Team ${suffix}`,
+  );
 
-  // The past imports, newest first: the one applied, the one that failed, the first.
+  // The past imports, newest first: the third, the second again, the second, the first.
   const jobs = ownJobs(page, account);
   await expect(jobs.nth(0)).toContainText("Applied, without the rejected rows");
-  await expect(jobs.nth(1)).toContainText("Failed: nothing was applied");
   await expect(jobs.nth(0)).toHaveAttribute("aria-current", "true");
-  // A past import is opened from the list.
-  await jobs.nth(1).getByRole("link").click();
-  await expect(job).toHaveAttribute("data-status", "failed");
+  await expect(jobs.nth(1)).toContainText("Applied");
+  await expect(jobs.nth(2)).toContainText("Applied, without the rows changed since the preview");
+  await expect(jobs.nth(2).getByTestId("job-worked")).toHaveText("3 of 3");
+  // A past import is opened from the list, with the row it left out.
+  await jobs.nth(2).getByRole("link").click();
+  await expect(job).toHaveAttribute("data-status", "applied");
   expect(new URL(page.url()).pathname).toBe(stalePath);
+  await expect(page.getByTestId("left-out-stale").locator('tr[data-row="2"]')).toBeVisible();
 
-  await expectClean(page, seen, ["422 POST", "409 POST"]);
+  await expectClean(page, seen, ["422 POST"]);
 });
 
 test("S16: the clipboard and the exported files hold the same rows and columns", async ({
@@ -425,11 +464,11 @@ test("a clipboard that refuses: the rows are shown, selected, to be copied by ha
   await expectClean(page, seen);
 });
 
-test("S17: a bulk edit shows before and after, and is not applied once an item has changed", async ({
+test("S17: a bulk edit shows before and after, and leaves an item changed since as it is", async ({
   page,
   account,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const seen = await watch(page.context());
   await signIn(page, account);
   await openGrid(page);
@@ -470,22 +509,23 @@ test("S17: a bulk edit shows before and after, and is not applied once an item h
   // Somebody changes one of the three in the meantime.
   await changeElsewhere(page, hosts[1] ?? "", `AT-${suffix}-2`);
 
-  // Apply: the row that was changed is named, and nothing at all is applied.
+  // Apply: it goes on in the background, and may be followed among the imports too. The
+  // item that was changed is left as it was, and named; the other two are changed.
   await form.getByRole("button", { name: "Apply 3 items" }).click();
-  const refusal = form.getByTestId("preview-out-of-date");
-  await expect(refusal).toContainText("Nothing was applied.");
-  await expect(refusal.locator("li")).toHaveCount(1);
-  await expect(refusal.locator('li[data-row="2"]')).toContainText(hosts[1] ?? "");
+  await whenApplied(form, 2, { stale: 1 });
+  const left = form.getByTestId("left-out-stale");
+  await expect(left.locator("tbody tr")).toHaveCount(1);
+  await expect(left.locator('tr[data-row="2"]')).toContainText(hosts[1] ?? "");
   await expect(previewRow(page, 2)).toHaveAttribute("data-stale", "true");
   await expect(form.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
 
-  // Previewed again, against the items as they are now, it applies.
-  await refusal.getByRole("button", { name: "Preview again" }).click();
-  await expect(form.getByTestId("preview-out-of-date")).toHaveCount(0);
-  // Nothing of the refused edit was kept: all three are still to be changed.
-  await expect(count(page, "updated")).toHaveText("3");
+  // Previewed again, against the items as they are now, the one left out is changed.
+  await form.getByTestId("preview-applied").getByRole("button", { name: "Preview again" }).click();
+  await expect(form.getByTestId("bulk-preview")).toHaveAttribute("data-status", "previewed");
+  await expect(count(page, "updated")).toHaveText("1");
+  await expect(count(page, "unchanged")).toHaveText("2");
   await form.getByRole("button", { name: "Apply 3 items" }).click();
-  await expect(form.getByTestId("preview-applied")).toContainText("3 updated");
+  await whenApplied(form, 3);
   await form.getByRole("button", { name: "Close" }).click();
   await expect(form).toHaveCount(0);
 
@@ -516,15 +556,15 @@ test("S17: a bulk edit shows before and after, and is not applied once an item h
     `comments: ${comment} → (blank)`,
   );
   await form.getByRole("button", { name: "Apply 2 items" }).click();
-  await expect(form.getByTestId("preview-applied")).toContainText("2 updated");
+  await whenApplied(form, 2);
   await form.getByRole("button", { name: "Close" }).click();
 
-  // The bulk edits are among the past previews, with the one that failed.
+  // The bulk edits are among the past previews, with the one that left an item out.
   await main(page).getByRole("link", { name: "Import" }).click();
   await page.getByRole("region", { name: "Past imports" }).getByLabel("Show").selectOption("bulk");
   const jobs = ownJobs(page, account);
   await expect(jobs.nth(0)).toContainText("Applied");
-  await expect(jobs.nth(2)).toContainText("Failed: nothing was applied");
+  await expect(jobs.nth(2)).toContainText("Applied, without the rows changed since the preview");
 
-  await expectClean(page, seen, ["409 POST"]);
+  await expectClean(page, seen);
 });

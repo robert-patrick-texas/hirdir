@@ -1,10 +1,10 @@
 // A stored preview, of an import or of a bulk edit, as a page shows it.
 //
-// The server works out what every row would do and keeps it. Nothing is decided here:
-// this turns the job and its rows into words, asks for the rows a page at a time, and
-// reads the refusal of an apply that found a record changed since.
+// The server works out what every row would do and keeps it, and applies it in the
+// background when asked. Nothing is decided here: this turns the job and its rows into
+// words, says how far an apply has got, and asks for the rows a page at a time.
 
-import type { ApiError, Schemas } from "../api/client";
+import type { Schemas } from "../api/client";
 import type { Option } from "./patch";
 
 export type Job = Schemas["ImportJobOut"];
@@ -110,12 +110,11 @@ export function reasonText(reason: Schemas["RowReason"]): string {
   return reason.field ? `${reason.field}: ${reason.message}` : reason.message;
 }
 
-/** The counts of a job in a sentence: "2 to create, 1 to update, 5 unchanged, 0 rejected". */
+/** The counts of a preview in a sentence: "2 to create, 1 to update, 5 unchanged, 0 rejected". */
 export function countsText(job: Job): string {
-  const done = job.status === "applied";
   return [
-    `${job.created} ${done ? "created" : "to create"}`,
-    `${job.updated} ${done ? "updated" : "to update"}`,
+    `${job.created} to create`,
+    `${job.updated} to update`,
     `${job.unchanged} unchanged`,
     `${job.rejected} rejected`,
   ].join(", ");
@@ -131,37 +130,96 @@ const STATUS_LABELS: Readonly<Record<Job["status"], string>> = {
 };
 
 export function statusLabel(job: Job): string {
-  if (job.status === "applied" && job.skip_rejected && job.rejected > 0) {
-    return "Applied, without the rejected rows";
+  if (job.status === "applied") {
+    const without: string[] = [];
+    if (job.skip_rejected && job.rejected > 0) without.push("the rejected rows");
+    if (job.stale > 0) without.push("the rows changed since the preview");
+    if (without.length > 0) return `Applied, without ${without.join(" and ")}`;
   }
   return STATUS_LABELS[job.status] ?? job.status;
 }
 
-const TITLE_OUT_OF_DATE = "Preview out of date";
+// --- the apply, in the background -----------------------------------------------------
+//
+// An apply answers at once, and the server works the rows in batches beside the
+// requests. The job says how far it has got, `rows_done` of `row_count`, and once every
+// row is worked how many were applied and how many were left out as changed since the
+// preview. What was worked and is neither was refused.
 
-/** An apply that was refused because a record changed after the preview was made. */
-export function isOutOfDate(error: ApiError | null | undefined): boolean {
-  return Boolean(error) && error?.status === 409 && error.title === TITLE_OUT_OF_DATE;
+/** The states of a job whose apply is under way: it is read again until it is in another. */
+export const WORKING: readonly Job["status"][] = ["queued", "applying"];
+
+export function isWorking(job: Pick<Job, "status">): boolean {
+  return WORKING.includes(job.status);
 }
 
-export interface StaleRow {
-  /** The row's number in the file, from 1. */
-  row: number;
-  message: string;
+/** The rows the apply refused: of those it worked, the ones neither applied nor stale. */
+export function refusedAtApply(job: Pick<Job, "rows_done" | "applied" | "stale">): number {
+  return Math.max(0, job.rows_done - job.applied - job.stale);
+}
+
+/** How far an apply has got: "120 of 300 rows worked". */
+export function progressText(
+  job: Pick<Job, "rows_done" | "row_count">,
+  noun: [one: string, many: string] = ["row", "rows"],
+): string {
+  const of = job.row_count === 1 ? noun[0] : noun[1];
+  return `${job.rows_done} of ${job.row_count} ${of} worked`;
 }
 
 /**
- * The rows that stood in the way of an apply, in the order of the file. The server names
- * each as the field `rows.N` of its refusal.
+ * What an apply did, in a sentence: "3 rows applied, 1 left out as changed since the
+ * preview, none refused".
  */
-export function staleRows(error: ApiError | null | undefined): StaleRow[] {
-  if (!error || !isOutOfDate(error)) return [];
-  const rows: StaleRow[] = [];
-  for (const [field, message] of Object.entries(error.fields)) {
-    const match = /^rows\.(\d+)$/.exec(field);
-    if (match) rows.push({ row: Number(match[1]), message });
-  }
-  return rows.sort((one, other) => one.row - other.row);
+export function appliedText(
+  job: Pick<Job, "rows_done" | "applied" | "stale">,
+  noun: [one: string, many: string] = ["row", "rows"],
+): string {
+  const refused = refusedAtApply(job);
+  return [
+    `${job.applied} ${job.applied === 1 ? noun[0] : noun[1]} applied`,
+    `${job.stale === 0 ? "none" : job.stale} left out as changed since the preview`,
+    `${refused === 0 ? "none" : refused} refused`,
+  ].join(", ");
+}
+
+/** What a stopped job had done when it stopped: "50 of 300 rows had been worked". */
+export function stoppedText(
+  job: Pick<Job, "rows_done" | "row_count">,
+  noun: [one: string, many: string] = ["row", "rows"],
+): string {
+  return `${job.rows_done} of ${job.row_count} ${job.row_count === 1 ? noun[0] : noun[1]} had been worked`;
+}
+
+export type AppliedOutcome = NonNullable<PreviewRow["applied_outcome"]>;
+
+const APPLIED_LABELS: Readonly<Record<AppliedOutcome, string>> = {
+  create: "Created",
+  update: "Updated",
+  unchanged: "Unchanged",
+  stale: "Changed since the preview",
+  rejected: "Refused",
+};
+
+/** What the apply did with a row, for people. Blank until it is worked. */
+export function appliedLabel(outcome: PreviewRow["applied_outcome"]): string {
+  return outcome ? (APPLIED_LABELS[outcome] ?? outcome) : "";
+}
+
+/** The rows an apply left out: those changed since the preview, and those it refused. */
+export type LeftOut = "stale" | "rejected";
+
+/** The query of `GET /imports/{hid}/rows` for one page of the rows an apply left out. */
+export function leftOutQuery(
+  outcome: LeftOut,
+  offset: number,
+): { applied_outcome: LeftOut; limit: number; offset: number } {
+  return { applied_outcome: outcome, limit: ROWS_PAGE, offset: Math.max(0, Math.floor(offset)) };
+}
+
+/** How many rows an apply left out of one kind, as the job counts them. */
+export function leftOutCount(job: Job, outcome: LeftOut): number {
+  return outcome === "stale" ? job.stale : refusedAtApply(job);
 }
 
 const PAGE_OF: Readonly<Record<string, string>> = {

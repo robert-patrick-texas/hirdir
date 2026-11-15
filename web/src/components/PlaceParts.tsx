@@ -56,6 +56,7 @@ import type { SortColumns } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
+import { Links } from "./Links";
 import {
   InForce,
   InstructionsNote,
@@ -470,6 +471,18 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 ))}
             </p>
             <PlaceFacts place={record} choices={choices} to={to} />
+            {/* The place's own links: it has none from the places above it (P-138). */}
+            <Links
+              key={`links ${record.hid} ${record.row_version}`}
+              links={record.links}
+              what={level}
+              mayEdit={editable}
+              save={(links) =>
+                patchPlace(level, record.hid, { row_version: record.row_version, links })
+              }
+              onSaved={() => changed("The links were saved.", false)}
+              onReload={place.reload}
+            />
             <InForce
               level={level}
               place={record}
