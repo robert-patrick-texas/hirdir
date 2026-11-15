@@ -36,6 +36,11 @@ Not every field applies to every item, and blanks are normal. A piece of test eq
 may have only a manufacturer, a model, a serial number and an owner. More can be added
 later, for example a Last Day of Support date on its model.
 
+Beside the items, from 0.8.0, `hirdir` keeps the telecommunication circuits the team
+looks after: the circuits that connect its sites to each other, to carriers and to
+cloud services, with their carriers, their monthly cost and the devices at each end
+(R15). A circuit is not an item and is in no component count.
+
 ## Terms
 
 | Term | Meaning |
@@ -365,6 +370,68 @@ as AI.
 - **R14.9** The balance is of the whole operations team, whose tools and services are
   shared by every region. Beside it the report MUST show how the demand splits by
   region, and divide no supply.
+- **R14.10** A region, a site and a location MAY carry a support weight of their own,
+  the work a place adds by itself beside what its devices weigh: distance and time
+  zones, a language the team does not speak, a campus spread across a metro area, a
+  restricted site that needs clearances. It is demand, and is not inherited by the
+  places beneath (P-139, P-155).
+- **R14.11** An Admin MAY set, for sites, for major items and for circuits, a default
+  support weight, counted where an object of the kind has none, and a minimum, which
+  raises a weight below it. The counts MUST show where a weight came from a default and
+  where it was raised (P-141, P-155).
+- **R14.12** The capacity report MUST offer a what-if, Try, that answers the balance
+  other defaults and minimums, another weight per engineer, another stack discount and
+  staff lines added, changed or left out would give, beside the balance in force,
+  saving nothing and auditing nothing (P-156).
+- **R14.13** The capacity balance and the other long reports MUST be worked out ahead,
+  each night and when the server starts, and given to every session alike while
+  nothing has changed them; an Admin MUST be able to check what is kept against
+  answers worked out anew, which says what differed (P-142, P-157).
+
+### R15 Circuits
+
+A first way to track telecommunication circuits beside the device inventory. A
+circuit shares what the inventory already holds: its ends are locations, with their
+sites, addresses and site contacts; its carriers are vendors; its contacts are contact
+records; its owner is an owner; its devices are items and device groups.
+
+- **R15.1** A circuit has a name, a description and notes, and MAY have the
+  enterprise's own circuit ID, unique where it is given, also where no carrier gives
+  the circuit a number, as for dark fiber a business partner provides (D-158, P-145).
+- **R15.2** A circuit has an A side and a Z side, each a location, or, for an end that
+  is not one of the enterprise's places such as the carrier's network, no location and
+  a note of where it ends; at least one side is a location (P-147).
+- **R15.3** A circuit MUST list the devices it connects, each on its side, and each
+  device and each location MUST show the circuits it is on (P-147).
+- **R15.4** A circuit has a primary carrier, or the other party that provides it, and
+  MAY have any number of other carriers, each with its part, such as a local exchange
+  carrier or the provider of a cross-connect in a co-location, and each carrier MAY give
+  it a number (P-148).
+- **R15.5** The account team and the support desk of a carrier are contact records
+  named once on the carrier, and each of its circuits has them, with their source,
+  unless it names its own. The site contacts of each side follow from its location, as
+  the contacts of places resolve, with any the circuit names of its own (P-149).
+- **R15.6** A circuit has a billing account number and the reference of its billing
+  contract, its install and activation dates, the day it was disconnected, whether it
+  carries production, its type, its speed, an optional support weight, and an owner,
+  the person or team responsible for it. Who pays for it is said by a tag or a note
+  (P-145, P-146).
+- **R15.7** A circuit's monthly recurring cost is entered as the lines the carrier
+  bills, and its annual cost is twelve times their sum. Its cost and its support weight
+  count at the site of its A side, or of its Z side where it is switched; an Admin
+  setting gives a new circuit its side (P-150).
+- **R15.8** A report MUST give the cost of circuits for a fiscal year by carrier, by
+  site, by region, by group, by type, by owner and by tag, with the monthly figure
+  beside it; a month in which a circuit is in service only in part counts for the days
+  of it, as the carrier bills it (P-151).
+- **R15.9** Circuits MAY be put into groups, a circuit into more than one, such as
+  Internet access or a cloud on-ramp, and the cost of a group MUST be read as one sum
+  (P-152).
+- **R15.10** Circuits are listed, filtered, sorted and exported as items are, are
+  loaded from files, where a row finds its circuit by the enterprise circuit ID, and
+  are reached from the API, the command line and the web UI (P-153, P-154).
+- **R15.11** Not in scope: cabling inside a building, the interfaces of a device, and
+  the accounting of what was paid.
 
 ## Qualities
 

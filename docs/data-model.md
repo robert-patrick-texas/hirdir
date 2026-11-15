@@ -13,7 +13,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines and catalog entries are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a contact of a contract, a coverage, a registration or a record of the capacity balance that was a mistake, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines, catalog entries, circuits and circuit groups are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a contact of a contract, a coverage, a registration or a record of the capacity balance that was a mistake, a contact of a vendor or of a circuit, a carrier, a cost line or a device of a circuit, and a member of a circuit group, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -30,7 +30,12 @@ where it came from.**
 
 | Field on | Inherits from, nearest first |
 |---|---|
-| Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew` | its catalog entry |
+| Item: `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew` | its catalog entry; for the `support_weight` of a major item, then the setting `default_item_weight` |
+| Site: `support_weight` | the setting `default_site_weight`. A region and a location have their own alone, and no place passes its weight down |
+| Circuit: `support_weight` | the setting `default_circuit_weight` |
+| Circuit: `down_mbps`, `up_mbps`, each by itself | its own `port_mbps`, the full rate of its port |
+| Circuit: the contacts of each role, `account_manager` and `support_contact`, all of one role together | its primary carrier, the vendor |
+| Circuit: the site contacts of each side, per role | the location of that side, resolved as for the location |
 | Catalog entry: `stack_discount_pct` | the global setting |
 | Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
 | Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of, and the group that group is nested in; then the location it is at, the locations above that, the site, and each region outward |
@@ -52,7 +57,7 @@ The API returns an inheritable field as its own stored value plus an `effective`
 ```
 
 `source` is one of `own`, `catalog`, `parent_item`, `device_group`, `location`, `site`,
-`region`, `agreement`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
+`region`, `agreement`, `vendor`, `port`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
 
@@ -76,6 +81,9 @@ A manufacturer, a support provider, or both. A name or alias belongs to one vend
 | `aliases` | list of text | Other spellings accepted on import: "Cisco Systems". An alias holds no semicolon, which separates aliases in a file |
 | `notes` | text | |
 | `review_status` | choice | `reviewed`, or `unreviewed` when an import created it |
+
+A vendor that is a carrier names its account team and its support desk once, in
+`vendor_contacts`, and its circuits have them (see `circuits`).
 
 ### `catalog_entries`
 
@@ -401,9 +409,9 @@ that holds what was removed.
 
 | Record | Fields | Rules |
 |---|---|---|
-| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `operator_hid`, `links`, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
-| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `links`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
-| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `links`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
+| `regions` | `code`, `name`, `parent_region_hid`, the shipping set, `operator_hid`, `support_weight`, `links`, `notes`, `record_status` | At most sixteen deep, no cycles. `name` unique among siblings. |
+| `sites` | `code`, `name`, `region_hid`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status` | `name` unique within its region. A site is in exactly one region. |
+| `locations` | `code`, `name`, `site_hid`, `parent_location_hid`, `kind`, address fields, the shipping set, `operator_hid`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status` | `name` unique among siblings. A parent location is in the same site. `kind` is a value of the `location_kind` list: building, floor, room, rack, warehouse or other. |
 
 Address fields are `address1`, `address2`, `city`, `state`, `postal_code`, `country`.
 The shipping set is the same six with the prefix `ship_`, plus `ship_instructions`. A
@@ -432,6 +440,17 @@ another parent. A site is moved by giving it another region, and a region with
 everything in it by giving it another parent. Each move is one change of one record,
 and one audit event. No record is ever beneath itself.
 
+**The support weight of a place**, `support_weight`, is the work that supporting the
+network there adds by itself, beside what its devices weigh: time zones and distance, a
+language the team does not speak, buildings spread across a metro area or a campus, a
+site restricted for national security that needs clearances and allows no cell phones.
+It is a decimal of two places, not below zero, and blank unless given. It is not
+inherited by the places beneath: a location divided for reasons of the network adds no
+work, and would otherwise count its place's weight once for each part. A site with none
+counts at the setting `default_site_weight` where it is set, and a site's weight below
+`minimum_site_weight` is raised to it; a region and a location count their own alone.
+It is demand in the capacity report (P-139, P-155).
+
 **The operator of a place**, `operator_hid`, is the operator of what is there and has
 none from elsewhere: see "The operator" under `items`. A place with none has that of
 the place it is in, as it has its contacts.
@@ -442,7 +461,8 @@ location that is retired is given to no further item.
 
 **Retiring.** A region, a site or a location is retired only when nothing that is not
 retired is in it: no region, site or location beneath it, and no item or device group
-placed there, and no item or device group planned for it. An item that has left the team's hands, in Released or in Archived,
+placed there, no item or device group planned for it, and no circuit that is not
+retired with a side there. An item that has left the team's hands, in Released or in Archived,
 holds no location open. A place is not brought back while what it is in is retired:
 the building first, then the room. Nor is an item or a device group brought back
 into a location that was retired after it: it is given another location, or none,
@@ -1045,6 +1065,172 @@ from its demand and its supply when it is read. The trend is a graph of one poin
 the records it was made of. One that was a mistake is removed outright, with an audit
 event that holds what it was.
 
+### `circuits`
+
+A telecommunication circuit the team looks after, beside the device inventory: a link
+between two of the enterprise's places, or from one of them into a carrier's network or
+a cloud service. A circuit shares what the inventory holds: its ends are locations,
+its carriers vendors, its contacts contact records, its owner an owner, and its devices
+items and device groups (D-157, D-158, P-145 to P-154).
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | text | required |
+| `enterprise_circuit_id` | text | the enterprise's own ID, assigned locally, as an asset tag is beside a serial number. Unique where given, without regard to case. Dark fiber that a business partner lets the enterprise use has one and no carrier's number |
+| `description`, `notes` | text | |
+| `circuit_type` | choice | a value of the `circuit_type` list: `internet`, `mpls`, `point_to_point`, `dark_fiber`, `wavelength`, `voice`, `other`. Optional |
+| `port_mbps` | decimal | the speed of the physical interface, in Mbps, more than zero |
+| `down_mbps`, `up_mbps` | decimal | the rates the circuit is limited to, download and upload, in Mbps, more than zero and not more than `port_mbps`, which they need. Blank is the full rate of the port |
+| `a_location_hid`, `z_location_hid` | reference | the A side, the source, and the Z side, the destination: each a location, or blank where that end is not one of the enterprise's places. At least one is given |
+| `a_note`, `z_note` | text | where a side ends: "carrier network", "cloud on-ramp", "demarc in the basement". Required for a side with no location |
+| `cost_side` | choice | `a` or `z`: the side whose site the circuit's cost and support weight count at. Given to a new circuit from the setting `circuit_cost_side` |
+| `carrier_hid` | reference | the primary carrier, or the other party that provides the circuit: a vendor. Optional |
+| `carrier_circuit_number` | text | the number the primary carrier gives the circuit. Optional, and needs `carrier_hid` |
+| `billing_account` | text | the billing account number |
+| `billing_contract` | text | the reference of the billing contract |
+| `installed_on`, `activated_on`, `disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation |
+| `production` | boolean | whether it carries the enterprise's production work. True unless said. It changes nothing of what the circuit costs |
+| `support_weight` | decimal | the work the circuit adds, blank unless given |
+| `owner_hid` | reference | the person or team responsible for the circuit, its primary stakeholder, who need not be the one who asked for it |
+| `record_status` | choice | see Conventions. A circuit takes tags |
+
+Who pays for a circuit in the enterprise, a sponsoring business unit or a working
+capital fund to which it is charged back, is said by a tag or in the notes: there is no
+field of a billing code. An owner outside the team marks the circuit as an exception,
+`owner_exception`, with the owner's reason, as it marks an item.
+
+**The speed** is shown short, `speed`: `1G` for a port of 1,000 at its full rate,
+`1G / 200M` for one limited to 200 both ways, `1G / 200M / 20M` for 200 down and 20
+up; a multiple of 1,000 is written in G and a speed below 1 in k. `effective.down_mbps`
+and `effective.up_mbps` are the rates in force, with the source `own`, or `port` where
+the rate is blank and is the port speed, and a list filters and sorts by them (P-146).
+
+**The two sides.** A side at a location has that location's site, region, address and
+site contacts, read when it is asked for, and nothing is typed again. The far end of an
+internet or an MPLS circuit is in the carrier's network: that side has no location and
+a note. A side is not given a location that is retired (P-147).
+
+**In service.** A circuit is in service on a day that is not before its
+`activated_on` and not after its `disconnected_on`, a blank being open, while it is
+active, or a draft in a view that includes drafts. A retired circuit that has a
+`disconnected_on` was in service until then; one retired with none was taken out, and
+is in service on no day.
+
+**Where it counts.** The cost and the support weight of a circuit count at one site:
+that of the location of its `cost_side`, or of the other side where that one has no
+location. `cost_site_hid` is that site, read when it is asked for. A new circuit is
+given `cost_side` from the setting `circuit_cost_side`, `a` unless an Admin makes it
+`z`. A change of the setting changes no circuit that exists, and any circuit may be
+given the other side, where the enterprise counts it at the far end. It is the one
+value of a circuit that a setting gives when the circuit is made rather than when it is
+read: a change of the default is for new circuits only (P-150).
+
+**Its cost** is `monthly_cost`, the sum of its cost lines in date today, and
+`annual_cost`, twelve times that, both worked out when they are read (D-158).
+
+### `circuit_carriers`
+
+The carriers of a circuit beside its primary one, any number of them (P-148).
+
+| Field | Type | Notes |
+|---|---|---|
+| `circuit_hid` | reference | not changed afterwards |
+| `vendor_hid` | reference | the carrier, a vendor |
+| `role` | choice | its part: a value of the `carrier_role` list, `local_exchange`, `cross_connect`, `last_mile`, `other` |
+| `circuit_number` | text | the number this carrier gives the circuit, where it gives one |
+| `priority` | integer | the order in which they are listed, from 1. Left out, one more than the highest |
+| `notes` | text | |
+
+A vendor is named once on a circuit, the primary carrier among them. A carrier's
+number is unique with that carrier, without regard to case, across every circuit and in
+both places, as its primary and as another, as a contract's number is with its vendor.
+A business partner that provides dark fiber is entered as a vendor too. An additional
+carrier is removed outright, with an audit event that holds what it was.
+
+### `circuit_costs`
+
+The monthly recurring cost of a circuit, as the lines the carrier bills (P-150).
+
+| Field | Type | Notes |
+|---|---|---|
+| `circuit_hid` | reference | not changed afterwards |
+| `description` | text | required, and unique within its circuit without regard to case: "Port", "Local loop", "Access", "Promotional credit" |
+| `monthly_cost` | money | required; below zero for a credit |
+| `vendor_hid` | reference | the carrier that bills the line. Blank is the circuit's primary carrier |
+| `starts_on`, `ends_on` | date | the days the line is billed. Optional, a blank being open: a new rate is a line that ends and one that begins |
+| `notes` | text | |
+
+A line is **in date** on a day that is not before `starts_on` and not after `ends_on`.
+A line that was a mistake is removed outright, with an audit event that holds what it
+was; one that was billed for a time is given an end.
+
+### `circuit_devices`
+
+The devices a circuit connects (P-147).
+
+| Field | Type | Notes |
+|---|---|---|
+| `circuit_hid` | reference | not changed afterwards |
+| `item_hid` or `group_hid` | reference | exactly one: an item, or a device group such as a pair of routers that share the circuit. Not changed afterwards |
+| `side` | choice | `a` or `z` |
+| `notes` | text | |
+
+A device is connected to one circuit once. The record of an item and of a device group
+lists, in `circuits` and to be read only, the circuits it is connected to, each with
+its side. A connection that was a mistake, or whose device was taken out, is removed
+outright, with an audit event that holds what it was. A replacement hands the
+connections of the item that left to the item that took its place, in the same change,
+as it hands over its memberships. A retired item stays listed where it was connected,
+marked so, and is connected to nothing new.
+
+### `vendor_contacts` and `circuit_contacts`
+
+The account team and the support desk of a carrier are named once on the carrier, and
+a circuit has them unless it names its own (P-149).
+
+| Field | Type | Notes |
+|---|---|---|
+| `vendor_contacts.vendor_hid` | reference | not changed afterwards |
+| `vendor_contacts.role` | choice | `account_manager`, the account team, for escalation, or `support_contact`, the support or repair desk |
+| `circuit_contacts.circuit_hid` | reference | not changed afterwards |
+| `circuit_contacts.side` | choice | blank for one of the carrier's, or `a` or `z` for a site contact of that side |
+| `circuit_contacts.role` | choice | with no side, `account_manager` or `support_contact`; with a side, a value of the `contact_role` list |
+| `contact_hid` | reference | the contact. The number and the address of a support desk are the telephone and the email of its contact record |
+| `priority` | integer | the order in which they are listed, from 1. Left out, one more than the highest there is for the record, side and role |
+
+A contact is named once for one record, side and role. **The carrier's.** For each of
+the two roles by itself, a circuit that names nobody of its own has those of its
+primary carrier, with the source `vendor`; one that names anybody has its own, all of
+them, in place of the carrier's, as a contract has its own in place of its agreement's.
+**The sites'.** For each side and each role of the `contact_role` list, a circuit has
+the contacts the circuit names for that side and role; with none, those of the
+location of the side, resolved as for the location, with the level each came from. A
+side with no location has only its own. The record of a circuit answers
+`effective.account_managers`, `effective.support_contacts` and
+`effective.site_contacts`, each contact as its record has it when it is read, a retired
+one marked so. Nothing is copied: a new telephone number of a carrier's support desk
+shows on every circuit of that carrier. A naming is removed outright, with an audit
+event that holds what it was.
+
+### `circuit_groups` and `circuit_group_members`
+
+A collection of circuits that may land at different sites, looked at and costed
+together: Internet access, or a cloud on-ramp such as Azure ExpressRoute (P-152).
+
+| Field | Type | Notes |
+|---|---|---|
+| `circuit_groups.name` | text, unique | required, without regard to case |
+| `circuit_groups.description`, `notes` | text | |
+| `circuit_groups.owner_hid` | reference | optional |
+| `circuit_groups.record_status` | choice | see Conventions. A group takes tags |
+| `circuit_group_members.group_hid`, `circuit_hid` | reference | a circuit is in one group once, and in any number of groups |
+
+A membership is removed outright, with an audit event that holds what it was: a group
+is a way of looking at circuits, not a fact of their history. A retired circuit stays
+listed in its groups, marked so, and is added to none; a retired group takes no new
+circuit. A group answers how many circuits it has, how many of them are in service
+today, and their `monthly_cost` and `annual_cost`, each circuit once.
+
 ### Links
 
 A region, a site, a location and a catalog entry have `links`: addresses to reach
@@ -1069,14 +1255,16 @@ record cannot be removed.
 
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
 lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
-`contact_role`, `location_kind`, `replacement_reason` and `capacity_category`.
-`contact_role` and `location_kind` are loaded with their defaults by release 0.5.0,
-the first to use them, and `capacity_category` by 0.6.0. A value is lower-case
+`contact_role`, `location_kind`, `replacement_reason`, `capacity_category`,
+`circuit_type` and `carrier_role`. `contact_role` and `location_kind` are loaded with
+their defaults by release 0.5.0, the first to use them, `capacity_category` by 0.6.0,
+and `circuit_type` and `carrier_role` by 0.8.0. A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
 
-A setting has a default, written in the code. The database has no row for a setting
+A setting has a default, written in the code, which for the six weights of P-155 is
+blank: nothing is counted until an Admin sets one. The database has no row for a setting
 that has never been changed. Setting it to nothing returns it to the default; the row
 then stays, empty, and keeps its `row_version`. A number has at most two decimal places
 and is refused, not rounded, when it has more.
@@ -1097,6 +1285,13 @@ and is refused, not rounded, when it has more.
 | `end_of_life_within_days` | 730 | how far ahead the end-of-life report counts a date as approaching. From 1 to 36,500 |
 | `end_of_life_date` | `ldos` | which of the four end-of-life dates the end-of-life report is of, unless asked |
 | `max_items_per_request` | 1000 | how many items one request may cover, add to a group or receive, from 100 to 5,000. The web UI and the command line send their pieces by it |
+| `default_item_weight` | blank | the support weight of a major item that neither it nor its model gives, with the source `setting`. From 0 to 1,000,000 |
+| `minimum_item_weight` | blank | a major item's weight in force below it is raised to it. From 0 to 1,000,000 |
+| `default_site_weight` | blank | the support weight of a site that gives none of its own. From 0 to 1,000,000 |
+| `minimum_site_weight` | blank | a site's weight in force below it is raised to it. From 0 to 1,000,000 |
+| `default_circuit_weight` | blank | the support weight of a circuit that gives none of its own. From 0 to 1,000,000 |
+| `minimum_circuit_weight` | blank | a circuit's weight in force below it is raised to it. From 0 to 1,000,000 |
+| `circuit_cost_side` | `a` | the side, `a` or `z`, whose site a new circuit's cost and support weight count at. A change of it changes no circuit that exists |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -1371,9 +1566,24 @@ For a set of items chosen by any filter:
 |---|---|
 | Component count | Major items of `count_kinds` in the view, whose state is one of `count_states` or is blank. The view decides whether drafts and retired records are among them; unless asked, they are not. An item with no catalog entry is counted as hardware. |
 | Managed-node count | Of those: each current stack counts as one, each current cluster as its `managed_as` says, and each item in neither counts as one. |
-| Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). Summed exactly, and rounded to two places once, half up. |
+| Support weight | Sum over major items in `weight_states` of effective `support_weight` × `quantity`, each stack member multiplied by (1 − its model's effective stack discount ÷ 100). Summed exactly, and rounded to two places once, half up. The effective weight of one unit is the item's own, its model's, or else `default_item_weight`, raised to `minimum_item_weight` where it is below it; then it is multiplied by the quantity, and then the stack discount is applied. |
 | Estimated value | Sum of effective `est_value` × `quantity` over all items in the set, major and minor. |
 | Annual support cost | Sum of effective `annual_support_cost` × `quantity` over all items in the set. No stack discount. |
+
+**A default and a minimum.** Where neither a major item nor its model gives a weight, the
+item counts at `default_item_weight`, with the source `setting`; a weight in force below
+`minimum_item_weight` is raised to it, and `effective.support_weight` then says
+`raised_from`, the weight before it was raised. A weight of zero is a weight, and is
+raised; nothing, blank with no default, is not. So an item with no weight of its own
+or of its model counts at 2 with a default of 2 and a minimum of 1, at 2 with a default
+of 1 and a minimum of 2, at 0 with no default and a minimum of 1, and at 1 with a
+default of 0 and a minimum of 1. A stack and a switch alone start from the same weight:
+the discount is applied after each member's weight is resolved and raised. A minor
+item has neither a default nor a minimum. Both apply wherever an item's weight is used:
+the summary, the scoreboard, the portfolio of a vendor and the capacity report. The
+capacity report says how many items counted at the default, `defaulted`, and how many
+were raised, `raised`; an export with `include_sources` writes `support_weight_source`,
+`setting` for the default (P-141, P-155).
 
 **How a cluster is managed** decides what it is on the network, and so how it is
 counted. A cluster says so itself, in `managed_as`:
@@ -1414,13 +1624,21 @@ of four switches.
 
 | Measure | Definition |
 |---|---|
-| Infrastructure demand | Support weight of the inventory ÷ `weight_per_resource_unit`. |
+| Infrastructure demand | Support weight of the inventory, of the places and of the circuits ÷ `weight_per_resource_unit`. |
 | Demand | Infrastructure demand plus the units of every active demand line in date. |
 | Supply | The units of every active supply line in date, in total and by category. |
 | Balance | Supply − demand. |
 | Coverage | Supply ÷ demand, as a percentage. |
 
-With drafts included, draft lines and draft items are counted as if active, and the
+**The support weight of the report** is that of the items, as above, and beside it
+that of the places, the weight in force of each region, site and location that is
+active, and of the circuits, the weight in force of each circuit that is active and not
+disconnected before today: `items_weight`, `places_weight` and `circuits_weight`, which
+add up to `support_weight`. A site with none counts at `default_site_weight` and a
+circuit at `default_circuit_weight`, each raised to its minimum; the report says how
+many items, sites and circuits counted at a default and how many were raised (P-155).
+
+With drafts included, draft lines, draft items, draft places and draft circuits are counted as if active, and the
 report shows both results side by side: `active` and `with_drafts`. Each number is
 worked out exactly and rounded to two places once, half up. Coverage is blank when
 there is no demand. The report also says how much of the supply is the team's own
@@ -1431,8 +1649,9 @@ network access control, remote access and the watch of the NOC, serve every regi
 line may name the region or the site it serves, which is kept and shown, and narrows
 nothing. Beside the balance the report says where the work is, `demand_by_region`:
 each region with the support weight of the items at or beneath it, by their location
-in force, the infrastructure demand that is, and its share of the whole, and a row for
-the items that are nowhere. A row of a region holds what is beneath it, so the regions
+in force, with the weights of the places at or beneath it and of the circuits that count
+at a site beneath it (P-150), the infrastructure demand that is, and its share of the
+whole, and a row for the items that are nowhere. A row of a region holds what is beneath it, so the regions
 at the top and the row of what is nowhere add up to the whole. No supply is divided
 among regions (D-188).
 
@@ -1464,7 +1683,9 @@ thirds, is the team's own six positions.
 
 Serial number, MAC address, asset tag, name, hostname, catalog entry, parent item,
 lifecycle state, disposition, owner, location, address, the item and the group of an
-address and of a membership, contract number, each end-of-life date, `updated_at`, and
+address and of a membership, contract number, enterprise circuit ID, the numbers that
+carriers give circuits, the locations of both sides of a circuit, the circuit and the
+device of a connection, the members of a circuit group, each end-of-life date, `updated_at`, and
 the tag links by record. Region and location
 ancestry is answered with recursive queries; a stored closure is added only if a
 measurement asks for it.

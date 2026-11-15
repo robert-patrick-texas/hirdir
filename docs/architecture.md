@@ -257,7 +257,9 @@ rendered as text, never as HTML.
   row names the `row_version` it was read at.
 - **What the server does by itself.** A few things are done at set times, by the
   server and not by a request: the record of the capacity balance each Monday just
-  after midnight. `hirdir/schedule.py` holds them as a list of jobs, each a name, when
+  after midnight, and each night just after midnight the long reports worked out ahead
+  and kept, the coverage report, the renewal worklist, the summary of the renewal alert
+  and the capacity report, each for the view its page opens with. `hirdir/schedule.py` holds them as a list of jobs, each a name, when
   it is due and what it does, run by a scheduler in the server's own process. The
   scheduler is started with the application and stopped with it. When the server
   starts, the jobs that run at start are run before the first request is answered, and
@@ -283,8 +285,9 @@ rendered as text, never as HTML.
 
 ### Answers that are kept
 
-The coverage report, the renewal worklist and the summary of the renewal alert are
-worked out once and given again while nothing could have changed them (D-184). Each
+The coverage report, the renewal worklist, the summary of the renewal alert and, from
+0.8.0, the capacity report are worked out once and given again while nothing could
+have changed them, to every person and in every session alike (D-184, P-157). Each
 answer is kept in the memory of the server process with the database it is of, the
 newest audit event there is, the day in the application's time zone and the request
 whole: filter, view, section, sort and page. Every change writes an audit event, a
@@ -292,10 +295,15 @@ setting's among them, so a newer event, or the turn of the day, leaves a kept an
 unused, and one that a change has made wrong is never given. At most 64 answers are
 kept, the least used dropped first, and a restart drops them all. What is kept is no
 record: it is worked out again from the records, so nothing inherited is copied down.
-The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. The summary of
-the renewal alert is worked out just after midnight in the application's time zone,
-and when the server starts, so that the first sign-in of the day is not kept waiting.
-`src/hirdir/io/kept.py` keeps them.
+The coverage report counts each section with a count of its own, which the database works out from what that section needs alone: one statement that tallied every section in one pass, as D-184 first had it, was measured at three times as long on the fixture. All four are
+worked out just after midnight in the application's time zone, and when the server
+starts, for the view each page opens with, so that the first person of the day is not
+kept waiting; any other view is worked out when it is first asked for, and then kept. A
+Try of the capacity report is worked out each time and never kept. An Admin may check
+what is kept, `POST /kept-answers/check`: each kept answer is worked out anew and
+compared with what was kept, and the check says which report and which request had
+differed, which none should. It is audited and leaves the kept answers good, since it
+changes no record. `src/hirdir/io/kept.py` keeps them.
 
 ## Package
 

@@ -19,10 +19,10 @@ and CLI's types are generated from it.
 | Fewer fields | `fields=hid,name,catalog.pid` returns only the fields named, of each record of a list. A name is a field of the record as the route returns it, or one field of a record within it, written with a dot. `hid` and `row_version` are always returned. A name the record does not have is a `422` |
 | Other paged tables | The users, the audit trail, the stored previews and their rows, the duplicates report, the members of a group, the coverage of a contract, the lines of a purchase request, the records of the capacity balance, and the minor items and the history of an item are paged with `limit` and `offset`, and take `sort` as a list does. With no `sort` each is in the order it always had. See [Sorting](#sorting) |
 | Default view | A list leaves out drafts, retired records and items in Archived. `include_drafts=true` and `include_archived=true` show them. A record is always reachable by its HID |
-| Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses and locations |
+| Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses, locations, circuits and circuit groups |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}` and `DELETE /capacity-records/{hid}` for one that was a mistake, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}` and `DELETE /circuit-groups/{hid}/members/{member_hid}` for one that was a mistake, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
@@ -33,7 +33,7 @@ and CLI's types are generated from it.
 |---|---|
 | Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me` |
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
-| Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio` |
+| Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio`; `GET` and `POST /vendors/{hid}/contacts`, `PATCH` and `DELETE /vendors/{hid}/contacts/{link_hid}` |
 | Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace` |
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}` |
 | Addresses | `/networks`, `/addresses` |
@@ -42,11 +42,13 @@ and CLI's types are generated from it.
 | Contracts | `/agreements`, `POST /agreements/{hid}/renew`, `POST /agreements/{hid}/retire`, `GET /agreements/{hid}/terms`, `/contracts`, `POST /contracts/{hid}/retire`, `POST /contracts/{hid}/renew`, `GET /contracts/{hid}/terms`, `GET` and `POST /contracts/{hid}/coverage`, `PATCH` and `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `GET /contract-coverage`; `GET` and `POST /agreements/{hid}/contacts`, `PATCH` and `DELETE /agreements/{hid}/contacts/{link_hid}`, and the same under `/contracts/{hid}` |
 | Purchases | `/purchase-requests`, `GET` and `POST /purchase-requests/{hid}/lines`, `GET /purchase-lines`, `GET` and `PATCH /purchase-lines/{hid}`, `POST /purchase-lines/{hid}/receive` |
 | External systems | `/external-systems`, `POST /external-systems/{hid}/retire`, `/registrations`, `DELETE /registrations/{hid}` |
-| Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
+| Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `POST /reports/capacity/try`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
+| Circuits | `/circuits`, `POST /circuits/query`, `POST /circuits/{hid}/retire`; `GET` and `POST /circuits/{hid}/carriers`, `PATCH` and `DELETE /circuits/{hid}/carriers/{link_hid}`; `GET` and `POST /circuits/{hid}/costs`, `PATCH` and `DELETE /circuits/{hid}/costs/{line_hid}`; `GET` and `POST /circuits/{hid}/devices`, `PATCH` and `DELETE /circuits/{hid}/devices/{link_hid}`; `GET` and `POST /circuits/{hid}/contacts`, `PATCH` and `DELETE /circuits/{hid}/contacts/{link_hid}`; `/circuit-groups`, `POST /circuit-groups/query`, `POST /circuit-groups/{hid}/retire`, `GET` and `POST /circuit-groups/{hid}/members`, `DELETE /circuit-groups/{hid}/members/{member_hid}` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
-| Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/duplicates` |
+| Reports | `GET /reports/summary`, `/reports/management`, `/reports/end-of-life`, `/reports/coverage`, `/reports/renewals`, `/reports/replacements`, `/reports/capacity`, `/reports/circuit-costs`, `/reports/duplicates` |
+| Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
 | Audit | `GET /audit-events` |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
@@ -59,6 +61,7 @@ and CLI's types are generated from it.
 | Create, change, retire, import, bulk-update inventory records | | yes | yes |
 | Edit choices, tags | | yes | yes |
 | Edit settings and lifecycle rules, force a lifecycle move | | | yes |
+| List and check the kept answers of the long reports | | | yes |
 | Users, groups, role grants, access codes, service tokens | | | yes |
 | Read audit events | yes | yes | yes |
 
@@ -85,6 +88,8 @@ out, these decide it:
 | `renewal_warning_days` | `within_days` of `GET /reports/coverage`, how far ahead its list of what runs out soon looks; the renewal worklist and the alert after sign-in |
 | `renewal_pending_overdue_days` | when a pending renewal is overdue: the renewal worklist, the alert and the coverage report |
 | `end_of_life_date`, `end_of_life_within_days` | `date` and `within_days` of `GET /reports/end-of-life` |
+| `circuit_cost_side` | the `cost_side` a new circuit is given where the request, or the row of a file, names none. A circuit that exists keeps its own |
+| `default_item_weight`, `minimum_item_weight`, `default_site_weight`, `minimum_site_weight`, `default_circuit_weight`, `minimum_circuit_weight` | the support weight in force of a major item, a site and a circuit that gives none, and the least it counts at, wherever the weight is used; `POST /reports/capacity/try` tries others |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 
 The fixed values are these. What was decided:
@@ -193,7 +198,18 @@ are the operator and the owner a group has in force, and `operator.label`,
 with everything it is in, and false for one that can be planned for. A
 location is also found by `site.name`, `site.code` and `region.name`, the name of the
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial
-number of any current member. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
+number of any current member. On the list of circuits, `carrier.name` is the name of
+its primary carrier, `carriers.vendor_hid` and `carriers.circuit_number` find it by any
+of its carriers and by the number any of them gives it, `location` by a side at a
+location, and takes `within` with a region, a site or a location, `a_location.name` and
+`z_location.name` are the names of its two sides, `cost_site_hid` is the site it counts
+at, `groups.name` finds it by any of its groups, `owner.label` and `owner_exception` go
+by its owner, `effective.support_weight` is its weight in force,
+`effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
+it gives none, `monthly_cost` and `annual_cost` what it costs today, and `in_service`
+is true where it is in service today. The list of circuit groups has `owner.label` and
+`circuits`, how many it has. The lists of regions, sites and locations have
+`support_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
@@ -265,6 +281,10 @@ what is worked out, the field is sorted by and not filtered by:
 | Purchase lines | Received, Pending, Of another model | `received_quantity`, `pending_quantity`, `mismatched_items` | the items that name the line, what is left of its quantity, and how many of those items are of another model than the line's |
 | External systems | Registrations | `registrations` | how many records are registered with it, those removed not counted |
 | Capacity lines | Units | `units` | `quantity` × `units_each`, and blank on a line that multiplies |
+| Circuits | Speed | `port_mbps` | the speed of the port; the rates in force are sorted by `effective.down_mbps` and `effective.up_mbps` |
+| Circuits | A side, Z side | `a_location.name`, `z_location.name` | the name of that side's location, a side with none last |
+| Circuits | Groups | `groups.name` | the first of its groups, by name |
+| Circuit groups | Circuits, Monthly cost, Annual cost | `circuits`, `monthly_cost`, `annual_cost` | how many circuits it has, and what those in service cost today |
 
 `mgmt_address`, `minor_items`, `serial_number` of a group, `health` of a group,
 `master.name`, `observed_master.name`, `member_count`, `uses`, `aliases`,
@@ -350,20 +370,23 @@ entry, `owner` for an owner's label. Release 0.3.0 carries the records that exis
 far, 0.4.0 adds networks, addresses, device groups and their members, 0.5.0
 regions, sites, locations, contacts, their assignments and the members of owners,
 0.6.0 contracts and their coverage, purchase requests and their lines, external
-systems and registrations, capacity lines and replacements, and 0.7.0 the contacts of 0.7.0 adds the links of
-agreements and contracts, and the flag not to renew on catalog entries and items.
-regions, sites, locations and catalog entries, and the lines that multiply.
+systems and registrations, capacity lines and replacements, 0.7.0 the contacts of
+agreements and contracts, the flag not to renew on catalog entries and items, the links
+of regions, sites, locations and catalog entries, and the lines that multiply, and 0.8.0
+the circuits with their carriers, cost lines, contacts and devices, circuit groups, the
+contacts of vendors, and the support weight of a place.
 
 | Entity | Columns that can be set | Further columns an export can write |
 |---|---|---|
 | `tags` | `label`, `colour`, `description` | |
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
+| `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
 | `contacts` | `name`, `organization`, `email`, `phone`, `notes`, `record_status`, `tags` | |
 | `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open` |
-| `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `links`, `notes`, `record_status`, `tags` | `path` |
-| `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `links`, `notes`, `record_status`, `tags` | `path` |
-| `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `links`, `notes`, `record_status`, `tags` | `path` |
+| `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
+| `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
+| `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `contact_assignments` | `region`, `site`, `location`, `role`, `contact`, `priority`, `stop_inheritance` | |
 | `owners` | `label`, `organization`, `is_external`, `exception_reason`, `record_status`, `tags` | |
 | `owner_members` | `owner`, `contact`, `role`, `priority` | |
@@ -382,6 +405,12 @@ regions, sites, locations and catalog entries, and the lines that multiply.
 | `purchase_requests` | `reference`, `requested_on`, `status`, `notes` | |
 | `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
 | `capacity_lines` | `side`, `category`, `name`, `effect`, `quantity`, `units_each`, `factor`, `share`, `applies_to`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
+| `circuit_groups` | `name`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
+| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `installed_on`, `activated_on`, `disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `support_weight_source` |
+| `circuit_carriers` | `circuit`, `vendor`, `role`, `circuit_number`, `priority`, `notes` | |
+| `circuit_costs` | `circuit`, `description`, `monthly_cost`, `vendor`, `starts_on`, `ends_on`, `notes` | |
+| `circuit_contacts` | `circuit`, `side`, `role`, `contact`, `priority` | |
+| `circuit_devices` | `circuit`, `side`, `item`, `group`, `notes` | |
 
 The address fields are `address1`, `address2`, `city`, `state`, `postal_code` and
 `country`, and the shipping set is the same six with `ship_` before them, and
@@ -401,7 +430,12 @@ are read there too.
 | Entities | Every record type on the data model page, including memberships, coverage, assignments and registrations. Tags are among them. Choices, settings, lifecycle rules and the access records are not carried by files |
 | Sending a file | The file is the body of `POST /imports/preview`, as `text/csv` or `application/json`, with `entity`, `mode` and `file_name` beside it in the URL. A JSON file names its entity and mode in its envelope, and the URL may leave them out; the two must not disagree |
 | Modes | `create` refuses a row that matches an existing record. `upsert` creates or updates. There is no mode that deletes |
-| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, an operator's label, a network's label, a device group's name. A region is found by its path, which is `parent` and `name`; a site by `region` and `name`; a location by `site`, `parent` and `name`. A contact is found by its email address, and a row with none by a name that one contact alone has, retired or not; of several of one name, such a row is the one that has no email address. An assignment is found by its place, its role and its contact, or as the one that stops inheritance for its place and role; a member of an owner by the owner and the contact. An agreement is found by its name. A contract is found by its number, with `vendor` where two vendors use one number; a contact of an agreement or of a contract by that record, its role and its contact; a coverage by its contract, its item and `starts_on`, or with no `starts_on` the one that is not ended; a purchase request by its reference and a line by its request and `line`; an external system by its name; a registration by its system and its item or group; a capacity line by its side and its name; a replacement by the item that left. For items, the order on the data model page. An address is found by its item or group, its address and its network; a membership by its group, its item and `joined_on`, or with no `joined_on` the current one. Two rows of one file that name the same record: the second is rejected |
+| Matching | By `hid` when given, otherwise by the entity's key: a tag's label, a vendor's name or alias, a catalog entry's vendor and PID, an owner's label, an operator's label, a network's label, a device group's name. A region is found by its path, which is `parent` and `name`; a site by `region` and `name`; a location by `site`, `parent` and `name`. A contact is found by its email address, and a row with none by a name that one contact alone has, retired or not; of several of one name, such a row is the one that has no email address. An assignment is found by its place, its role and its contact, or as the one that stops inheritance for its place and role; a member of an owner by the owner and the contact. An agreement is found by its name. A contract is found by its number, with `vendor` where two vendors use one number; a contact of an agreement or of a contract by that record, its role and its contact; a coverage by its contract, its item and `starts_on`, or with no `starts_on` the one that is not ended; a purchase request by its reference and a line by its request and `line`; an external system by its name; a registration by its system and its item or group; a capacity line by its side and its name; a replacement by the item that left. A
+contact of a vendor is found by its vendor, its role and its contact; a circuit group by
+its name; a circuit by the rules under "Circuits" below; a carrier of a circuit by its
+circuit and its vendor, a cost line by its circuit and its description, a device of a
+circuit by its circuit and its item or group, and a contact of a circuit by its circuit,
+its side, its role and its contact. For items, the order on the data model page. An address is found by its item or group, its address and its network; a membership by its group, its item and `joined_on`, or with no `joined_on` the current one. Two rows of one file that name the same record: the second is rejected |
 | References | By HID, or by the natural key: vendor name, `vendor` + `pid`, owner label, network label, contract number, geographic path, group name. A contact is named by its HID, its email address or a name that one contact alone has, and an export writes the email address when there is one. An item is named by its HID, or by a serial number, an asset tag or a name that one item alone has; an export writes the asset tag when there is one, then the serial number, then the name, and the HID when another item answers to the same text. A name that has the form of an HID is read as one, so an export writes the HID of a record so named |
 | Minor items | `parent` names the item a minor item is in, and `!clear` takes it out. An item that a file creates stands before the minor items the same file puts in it: an export sorted by `depth` writes them so. Rows that change items that exist are worked an item before its minor items, wherever they stand, so that a row with the owner or the state its item would inherit anyway leaves it inheriting, also when the same file changes the item above. A bulk edit is worked in the same order |
 | Management address | An item and a device group have a primary management address of each family. `mgmt_ipv4` and `mgmt_ipv6` set them, and `mgmt_address` takes an address of either family and files it under its own. A value changes the one there is or adds one; `!clear` removes it, and in `mgmt_address` removes both. `mgmt_network` is the label of the network the addresses of the row are under. It is optional: with no such column the network stays as it is, and a new address is in the unlabelled address space. An export writes it where both addresses are under one network, and leaves it blank where they are under two, so that a file loaded back moves neither. A row that names `mgmt_network` and no address is rejected. Every address of a record, these among them, is in the `addresses` entity, so an export writes these columns only when they are asked for by name |
@@ -434,7 +468,8 @@ are read there too.
 | Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
 | Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
-| Load order | tags, vendors, catalog entries, contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines. Addresses come after the groups, because a group has addresses too |
+| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the number that carrier gives the circuit, as its primary or as another; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. More than one answer is an error on the row, never a guess. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
+| Load order | tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply, in whichever batch they were made; after a resume, the request ID of the resume. The preview is an event on the job, and so are `apply_started`, `apply_resumed` and `apply_stopped`, the last made by the server, and `apply` at the end, with the counts of what the apply did |
 
 ### Export
@@ -804,6 +839,43 @@ region, is the items that are nowhere: the regions at the top and that row add u
 the whole. The report stays one balance for the whole operations team: no supply is
 divided among regions, and a line's region or site narrows nothing.
 
+**Places and circuits in the demand.** `support_weight` of each view is the weight of
+the items, of the places and of the circuits together, and beside it are its parts,
+`items_weight`, `places_weight` and `circuits_weight`, and `defaulted` and `raised`,
+each with `items`, `sites` and `circuits`: how many counted at a default setting and how
+many were raised to a minimum. A place counts its own weight in force, a site its own
+or `default_site_weight`, raised to `minimum_site_weight`, and a region and a location
+their own; a circuit counts its own or `default_circuit_weight`, raised to
+`minimum_circuit_weight`, while it is active, or a draft in `with_drafts`, and is not
+disconnected before today. A row of `demand_by_region` holds, beside the items at or
+beneath the region, the weights of the places at or beneath it and of the circuits that
+count at a site beneath it, at their `cost_side` (P-150, P-155), so that the regions at
+the top and the row of what is nowhere still add up to the whole.
+
+**Try**, `POST /reports/capacity/try`, is a what-if of the balance, and saves nothing:
+
+```json
+{ "default_item_weight": "1", "minimum_item_weight": null, "default_site_weight": "5",
+  "weight_per_resource_unit": "250", "stack_discount_pct": "40",
+  "staff": { "add": [ { "name": "Network engineer, new", "quantity": "2", "units_each": "1" } ],
+             "change": [ { "hid": "0193a1f4-...", "quantity": "4" } ],
+             "leave_out": [ "0193a1f4-..." ] } }
+```
+
+It takes any of the six weights of the settings, `weight_per_resource_unit`,
+`stack_discount_pct` and `staff`: a key left out is as it is in force, and `null` tries a
+weight blank. A staff line in `add` has a `name`, a `quantity` and `units_each`, one in
+`change` names a staff line that adds by its HID with another `quantity` or
+`units_each`, and `leave_out` names staff lines by their HIDs, counted as if they were
+not there. A staff line tried is active and in date in both views. A line that
+multiplies works on a changed line as it is tried, on none that is left out, and on no
+added line, since it names the lines it works on. The answer is `in_force`, the report
+as `GET /reports/capacity` answers it, `tried`, the same report as the values tried
+give it, and `parameters`, what was tried. A model's own stack discount still overrides
+the global one tried. Nothing is saved, nothing is written to the audit trail, and the
+answer is never kept; any role may Try. A value a setting would refuse, or a line that
+is no staff line, is a `422` that names it.
+
 **The records of the balance**, `GET /capacity-records`, keep the balance week by week,
 to show the trend. Each record is of one week, `week_of`, the Monday that begins it in
 the application's time zone, with `recorded_at`, `weight_per_resource_unit`, and for
@@ -862,6 +934,57 @@ out. `agreements` is the support agreements with the vendor, and `contracts` the
 contracts the vendor provides or that were bought through it, as `GET /contracts`
 returns them, and `capacity_lines` the lines that name it. The items are the item list with
 `filter`, and an export of them is the working list for a renewal.
+
+**What circuits cost**, `GET /reports/circuit-costs`, is of one fiscal year,
+`fiscal_year`, the one today is in unless asked, which begins on the first day of the
+`fiscal_year_start_month` setting and is named for the calendar year it ends in. It takes
+`filter` and `include_drafts` as the list of circuits does, and `by`: `carrier`, which
+it is unless asked, `site`, `region`, `group`, `circuit_type`, `owner` or `tag`.
+
+```json
+{ "fiscal_year": 2027, "starts_on": "2027-01-01", "ends_on": "2027-12-31",
+  "as_of": "2027-12-31", "by": "carrier", "currency": "USD",
+  "totals": { "circuits": 12, "cost": "141300.00", "monthly_cost": "12450.00",
+              "annual_cost": "149400.00" },
+  "rows": [ { "key": "0193a1f4-...", "label": "Example Telecom", "circuits": 9,
+              "cost": "108700.00", "monthly_cost": "9550.00", "annual_cost": "114600.00",
+              "filter": { "...": "..." } } ] }
+```
+
+`circuits` is how many were in service on any day of the year, `cost` what the year
+costs, `monthly_cost` what is billed for a month on `as_of`, today for the present
+year, the last day of a past one and the first day of one to come, and `annual_cost`
+twelve times that. A line counts its `monthly_cost` for each month of the year in which
+it is billed: a whole month in full, and a month that the line's dates and the circuit's
+service share only in part for the days they share, the monthly cost times those days
+over the days of the month, as the carrier bills it. A circuit of 1,000 a month activated
+on 10 April 2027 costs 8,700 in 2027. Every sum is exact, and rounded to two places once,
+half up. By `carrier` a line counts under the vendor that bills it, its own or the
+circuit's primary carrier, and a circuit is in the row of each carrier that bills any of
+it; by `site` it is in the row of the site it counts at; by `region` in that of each
+region at or above that site; by `group` in the row of each group it is in, and by `tag`
+of each tag; by `circuit_type` and `owner` in one row. The blank row is what has none,
+and the totals count each circuit once. A row's `filter` lists its circuits on `GET
+/circuits` (P-151).
+
+## Kept answers
+
+The coverage report, the renewal worklist, the summary of the renewal alert and the
+capacity report are kept as D-184 has it, and each is worked out just after midnight in
+the application's time zone and when the server starts, for the view its page opens
+with. `GET /kept-answers`, for an Admin, lists what is kept: `report`, `request`, the
+request whole, `kept_at`, when it was worked out, and `uses`, how many times it has been
+given since. `POST /kept-answers/check`, for an Admin, works out each kept answer anew,
+compares it with what was kept, and keeps the new one:
+
+```json
+{ "checked_at": "2027-03-02T14:05:09Z", "checked": 7, "differed": [] }
+```
+
+`differed` lists, for each answer that was not the same, its `report` and its
+`request`. None should differ: one that did is a defect to report. The check is an audit
+event, `kept_answers_checked`, with what it found, and it leaves the kept answers good,
+as a sign-in does (P-157).
 
 ## Geography
 
@@ -996,6 +1119,81 @@ it and on every contract that has it from its agreement, and no agreement or con
 is written to. The free text of `account_manager` and `support_contact` stays beside
 them, and is inherited by itself as before.
 
+## Circuits
+
+`GET /circuits/{hid}` answers the circuit's own fields, as the [data
+model](data-model.md#circuits) page names them, and what is worked out when it is read:
+
+```json
+{ "hid": "0193a1f4-...", "name": "Site-2 internet", "enterprise_circuit_id": "EC-0042",
+  "circuit_type": "internet", "port_mbps": "1000.00", "down_mbps": "200.00", "up_mbps": "20.00",
+  "speed": "1G / 200M / 20M",
+  "a_location_hid": null, "a_note": "carrier network",
+  "z_location_hid": "0193a1f4-...", "z_note": null, "cost_side": "a",
+  "cost_site_hid": "0193a1f4-...", "cost_site_path": "Americas > Central > Site-2",
+  "carrier_hid": "0193a1f4-...", "carrier_circuit_number": "EXT/12345/000/EXTL",
+  "monthly_cost": "1000.00", "annual_cost": "12000.00", "in_service": true,
+  "a_side": null,
+  "z_side": { "location_hid": "0193a1f4-...", "path": "Americas > Central > Site-2 > Building 1",
+              "site_hid": "0193a1f4-...", "region_hid": "0193a1f4-..." },
+  "carriers": [ { "hid": "...", "vendor_hid": "...", "vendor": "Example Local Exchange",
+                  "role": "local_exchange", "circuit_number": "LEC-778-0001", "priority": 1 } ],
+  "costs": [ { "hid": "...", "description": "Port", "monthly_cost": "850.00", "vendor_hid": null,
+               "starts_on": null, "ends_on": null, "in_date": true } ],
+  "devices": [ { "hid": "...", "side": "z", "item_hid": "...", "group_hid": null,
+                 "name": "site2-rtr-01", "record_status": "active" } ],
+  "groups": [ { "hid": "...", "name": "Internet access" } ],
+  "effective": {
+    "support_weight": { "value": "2.00", "source": "setting", "source_hid": null },
+    "down_mbps": { "value": "200.00", "source": "own", "source_hid": null },
+    "up_mbps": { "value": "20.00", "source": "own", "source_hid": null },
+    "account_managers": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
+    "support_contacts": { "value": [ "..." ], "source": "vendor", "source_hid": "0193a1f4-..." },
+    "site_contacts": { "a": [], "z": [ { "role": "technical", "value": [ "..." ],
+                                         "source": "site", "source_hid": "0193a1f4-..." } ] } } }
+```
+
+A side with no location is `null` in `a_side` or `z_side`. A list leaves `carriers`,
+`costs`, `devices`, `groups` and the contacts out of each row, which its own routes and
+the record answer; `fields` may ask for them. A new circuit with no `cost_side` takes
+the setting `circuit_cost_side`. A request that leaves both sides with no location,
+gives a side with no location no note, gives a rate with no port speed or above it,
+puts an activation before the installation or a disconnection before the activation,
+or gives a carrier's number with no carrier, is a `422` that names the field; an
+enterprise circuit ID or a carrier's number that another circuit has is a `409` that
+names it.
+
+**Its parts.** `GET /circuits/{hid}/carriers`, `/costs`, `/devices` and `/contacts`
+list the carriers beside its primary one, its cost lines, the devices it connects and
+the contacts it names of its own. `POST` adds one, `PATCH` changes one, and `DELETE`
+removes one that was a mistake, the audit event of the removal holding what it was;
+each takes the Inventory role. A part has a `row_version` of its own, which a `PATCH`
+names, and the circuit's is not asked for, as a contact of a contract does not ask for
+its contract's. A carrier is a vendor named once
+on the circuit; a device is an `item_hid` or a `group_hid` on a `side`, once; a contact
+is a `contact_hid` with a `side`, blank for one of the carrier's, and a `role`, once for
+one side and role. A retired circuit takes no new part, and a retired item, group,
+vendor or contact is not newly named: each is a `422`. `POST /circuits/{hid}/devices`
+takes several devices at once, as `members` of a group does.
+
+**The contacts of a vendor.** `GET /vendors/{hid}/contacts` lists the contacts a vendor
+names, `account_manager` or `support_contact`, by role and then by priority, and `POST`,
+`PATCH` and `DELETE` work as they do for a contract (see "Contacts of agreements and
+contracts"). The record of a vendor answers them in `contacts`.
+
+**Where a circuit is.** The record of an item and of a device group answers `circuits`,
+each with its HID, name, enterprise circuit ID and side, to be read only. The list of
+circuits finds those with a side at a location, or at or beneath a site or a region, by
+`location:within:`, which a location's page asks for.
+
+**Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, `circuits`,
+how many it has, `in_service`, how many of them are in service today, and their
+`monthly_cost` and `annual_cost`, each circuit once. `GET /circuit-groups/{hid}/members`
+lists its circuits, paged; `POST` adds circuits, several at a time, each once, and
+`DELETE /circuit-groups/{hid}/members/{member_hid}` takes one out, the audit event
+holding what it was. A retired group takes no circuit, and a retired circuit is added
+to none.
+
 ## CLI
 
 `hirdir` is one command with two halves.
@@ -1071,13 +1269,23 @@ hirdir registrations list --filter 'system.name:eq:NetWatch'
 hirdir capacity list                             # the lines of supply and of other work
 hirdir capacity record --note 'a contractor started'   # this week's balance, recorded again now
 hirdir capacity records                          # the balance week by week, the oldest first
+hirdir report capacity --try default_item_weight=1 --try weight_per_resource_unit=250 \
+    --try-staff-add 'Network engineer, new=2x1' --try-staff-leave-out 'Junior network engineer'
+hirdir circuits list --filter 'circuit_type:eq:internet effective.down_mbps:lt:100'
+hirdir circuits show EC-0042                     # by HID, enterprise circuit ID or name
+hirdir circuits set EC-0042 cost_side=z          # count it at the far end
+hirdir circuits add-contact EC-0042 noc@example.net --role support_contact
+hirdir circuit-groups show 'Internet access'     # its circuits, and what they cost
+hirdir circuit-groups add 'Internet access' EC-0042 EC-0043
+hirdir vendors add-contact 'Example Telecom' jordan.reyes@example.com --role account_manager
+hirdir report circuit-costs --year 2027 --by site
 ```
 
 | Subject | Rule |
 |---|---|
 | Server and token | `--url` and `--token`, or `HIRDIR_URL` and `HIRDIR_TOKEN`, or `~/.config/hirdir/config.toml`, in that order |
 | Output | A table on a terminal. `--format json` or `csv` for scripts. Data on stdout, messages on stderr |
-| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners`, `tags`, `networks`, `addresses`, `groups`, `regions`, `sites`, `locations`, `contacts`, `operators`, `agreements`, `contracts`, `purchases`, `systems`, `registrations` and `capacity` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
+| Lists | `hirdir items list`, and `vendors`, `catalog`, `owners`, `tags`, `networks`, `addresses`, `groups`, `regions`, `sites`, `locations`, `contacts`, `operators`, `agreements`, `contracts`, `purchases`, `systems`, `registrations`, `circuits`, `circuit-groups` and `capacity` in its place, take `--filter`, `--sort` and `--columns`. A table shows the first 50 rows, or as many as `--limit` says. As `csv` or `json` a list is every row, and is the very file that `hirdir export` writes for the same filter, sort and columns |
 | Times | In a message or a table, the application's time with the name of the zone, as the web UI shows it. `--format json` and `csv` carry what the API sends, in UTC |
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, a row left out as stale among them, `6` server or network, or an apply that stopped |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
@@ -1093,6 +1301,10 @@ hirdir capacity records                          # the balance week by week, the
 | A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the four kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
+| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set` changes its fields as `items set` does, and `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
+| Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...` |
+| Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
+| Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried. Nothing is saved |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the
@@ -1147,22 +1359,23 @@ fresh installation has it, with no account and an empty audit trail.
 |---|---|
 | Sign in | Username, access code, a Sign in button |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model |
 | Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew |
-| Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, the contracts and the capacity lines of the vendor, and its items as a grid that is exported like any other |
-| Groups | Stacks, clusters and controller domains, with members and roles |
+| Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, the contracts and the capacity lines of the vendor, and its items as a grid that is exported like any other. A carrier's page also lists its account team and its support desk, named and removed there, and its circuits |
+| Groups | Stacks, clusters and controller domains, with members and roles, and the circuits a group is connected to |
+| Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
 | Addresses | Every address, with the item or group that has it; the networks |
-| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it |
+| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it. A place shows its own support weight, a site the default where it has none and the minimum where it was raised, and a location's page lists the circuits that have a side there |
 | Contacts, Owners | Contacts: the list, and a contact with where it is assigned. Owners: the list, and an owner with its people, the primary first |
 | Operators | The labels, each with its colour, the person behind it and how much it is on. Hand a label over to another person, leave it open, release it and bring it back. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
 | Contracts | The support agreements, each with the contracts grouped into it, and the contracts that stand by themselves. An agreement has a page of its own: its fields, its contracts with what each has from it and what each overrides, shown as an inherited value is shown everywhere, and the terms it had before, its purchase history, as a contract has its own. An override says what the agreement gives in its place, as the server answers it, and where the two are the same it says so: it stays as it is when the agreement's changes. A contract is put into an agreement, and taken out of one, on its own page. The list of contracts with how many items each covers. A contract has a page of its own: its fields and tags, and the items it covers, each with its dates, to add to several at a time and to end. **Renew** asks for the new number and the new period, says how many items follow, and changes the one record; a renewal that is still to begin is shown as the next term, and can be withdrawn; the terms it had before are listed beneath, each with the dates it had in force, a date it had from its agreement shown as inherited. Renewing an agreement is the same, and lists every contract that shares its period, each with a choice: keep its number, the default, take a new number that begins with the new term, or end with this term, and with the status it is to have, which the operator confirms there for the members that move forward: one, some or all of them are selected and given a choice and a status at once, and nothing else in the renewal changes a member's status. The answer says what was done with each, which members are to review, and how many items not to be renewed were left behind. An agreement's page lists its contracts, to select one, some or all and change them at once: their status, taken out of the agreement, or retired; and its members to review. A number that waits on the agreement's next term is shown as the contract's next term, with the agreement's dates. A contract may be marked not to be renewed, the team's note, which changes nothing by itself and is shown as such. The earlier terms of a contract are the parts of its history, each with its days and what began it: a renewal, joining an agreement or leaving one. **Renewals**, under Contracts, is the worklist: the counts of each list first, by vendor and agreement, each count leading to its rows when it is opened, and the rows of a list with their end, how long a renewal has been pending, marked when overdue, and how many items each covers. A change of a contract or an agreement that is refused as stale says, where it has a next term, that the term may have begun since the page was read. A contract that has lapsed is marked, and so is one whose renewal is pending, with the account manager to go through. A coverage that was a mistake is removed, and one that was ended because its item left is marked until the vendor has been told. The gaps and the expiries are the coverage report |
 | Purchases | The requests, each with its lines and what is still to come. A request has a page of its own: its lines, and for each the items that arrived on it, and where some of them are of another model than the line's, which 0.6.0 let in, how many, leading to them in the item grid. The list of lines has Of another model in its column chooser. Receiving a line asks for the serial numbers, the asset tags or the names of what arrived, or how many arrived that nothing is known of yet, the day and the location |
 | External systems | The systems, each with how many records are registered with it, and the registrations of each. An item and a device group show what they are registered with, and are registered from their own page; a member of a stack or a cluster also shows, to be read only, what that group is registered with. A registration that was a mistake is removed |
 | Import | Upload, preview, apply, past jobs. An apply goes on in the background: the page shows how far it has got, from `rows_done` of `row_count`, and may be left and come back to. Once applied, the rows left out as stale and those refused are listed, each with why, and a job that stopped says why and is resumed from there |
-| Capacity | Demand beside supply by category, the balance and the coverage, with and without drafts, and the share of the supply that is the team's own positions; the lines, editable. The lines that multiply, each with its gain and the staff lines it works on; the demand of each region beside the balance, with no supply divided; and the trend, a graph of one point a week, demand and supply as two lines with the balance between them shaded and a switch that stacks the supply by category and splits the demand into the infrastructure and other work, a corrected week marked; a week recorded now, corrected with a note, and removed |
-| Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements |
+| Capacity | Demand beside supply by category, the balance and the coverage, with and without drafts, and the share of the supply that is the team's own positions; the lines, editable. The lines that multiply, each with its gain and the staff lines it works on; the demand of each region beside the balance, with no supply divided; and the trend, a graph of one point a week, demand and supply as two lines with the balance between them shaded and a switch that stacks the supply by category and splits the demand into the infrastructure and other work, a corrected week marked; a week recorded now, corrected with a note, and removed. The support weight is shown in its parts, the items, the places and the circuits, with how many counted at a default and were raised to a minimum. **Try** sets other defaults and minimums, another weight per engineer and another stack discount, adds, changes and leaves out staff lines, and shows the balance tried beside the one in force, saving nothing; an Admin is offered to save the settings tried |
+| Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements. Circuit costs: the year and the grouping to choose, by carrier unless another is chosen, each row with its circuits, the year's cost, and the monthly and annual figures, leading to its circuits |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
-| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
+| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. The Settings page has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 
 ### The grid
