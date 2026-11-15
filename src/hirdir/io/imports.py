@@ -497,6 +497,32 @@ def _context(db: Session, hid: str) -> AuditContext:
     return AuditContext(actor_hid=event.actor_hid, via=event.via, request_id=event.request_id)
 
 
+def _stubs_made(db: Session, hid: str) -> set[str]:
+    """Return the vendors and catalog entries that the batches a job has applied made
+    only because a row named them, and that no row has described since."""
+    requests = select(AuditEvent.request_id).where(
+        AuditEvent.record_type == "import_job",
+        AuditEvent.record_hid == hid,
+        AuditEvent.action.in_(("apply_started", "apply_resumed")),
+    )
+    made = select(AuditEvent.record_hid, AuditEvent.action).where(
+        AuditEvent.request_id.in_(requests),
+        AuditEvent.record_type.in_(("vendor", "catalog_entry")),
+        AuditEvent.action.in_(("create", "update")),
+    )
+    created, described = set(), set()
+    for record_hid, action in db.execute(made):
+        (created if action == "create" else described).add(record_hid)
+    own = set(
+        db.scalars(
+            select(ImportRow.record_hid).where(
+                ImportRow.job_hid == hid, ImportRow.applied_outcome == "create"
+            )
+        )
+    )
+    return {one for one in created - described - own if one is not None}
+
+
 def _stop(db: Session, hid: str, why: str) -> None:
     """Mark a job stopped, with why, to be resumed. The rows it applied stay applied."""
     dialect.hold_other_writers(db)
@@ -569,6 +595,9 @@ def _apply_row(run: Run, which: Entity, was: _Stored, values: dict[str, Any]) ->
         moved = _stale(
             was, replace(result, outcome=was.outcome, changes=was.changes, notes=was.notes)
         )
+        if moved is None and was.outcome == "create" and isinstance(error, Conflict):
+            # What the row would make has been made since the preview, by somebody else.
+            moved = "a record it would make was made since the preview: preview it again"
         if moved is not None:
             return _Done("stale", [reason("", moved)])
         return _Done("rejected", _reasons(which, error))
@@ -811,8 +840,23 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
         which = entity(job.entity)
         working = replace(context, via="import") if job.source == "file" else context
         run = Run(db, working, role, job.mode)
+        # A job that is resumed knows again what its earlier batches made only for a
+        # reference, so that a row that describes one of them is worked as previewed.
+        run.stubs |= _stubs_made(db, hid)
         cut, typed = _plan(db, hid, run, which)
         for number, batch in enumerate(cut):
+            if number and _role(db, context) != role:
+                # The role is asked of before each batch: one that is lost stops the job.
+                now = _role(db, context)
+                if now is None or not now.allows(Role.INVENTORY):
+                    _stop(
+                        db,
+                        hid,
+                        "who asked for it to be applied no longer holds the Inventory role; "
+                        "anybody who does may apply it again to resume it",
+                    )
+                    db.commit()
+                    return "stopped"
             if number and stop.wait(PAUSE_BETWEEN_BATCHES):
                 _stop(
                     db,

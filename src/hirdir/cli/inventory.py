@@ -896,10 +896,18 @@ def _ended(target: Target, job: dict[str, Any], *, as_json: bool) -> None:
         return
     rows = []
     for outcome in ("stale", "rejected"):
-        page = client.call(
-            target, "GET", f"/imports/{hid}/rows", params={"applied_outcome": outcome}
-        )
-        rows += [row for row in page["items"] if row["outcome"] != "rejected"]
+        offset = 0
+        while True:
+            page = client.call(
+                target,
+                "GET",
+                f"/imports/{hid}/rows",
+                params={"applied_outcome": outcome, "limit": 1000, "offset": offset},
+            )
+            rows += [row for row in page["items"] if row["outcome"] != "rejected"]
+            offset += len(page["items"])
+            if not page["items"] or offset >= page["total"]:
+                break
     if not as_json:
         _show_applied(sorted(rows, key=lambda row: row["row"]))
     said = [f"applied: {job['applied']} of {job['row_count']} rows"]

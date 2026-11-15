@@ -574,9 +574,9 @@ or in Pending-Removal, Released or Archived and whose cover goes on, and one who
 coverage was ended because it left while the term of its contract still runs. It is
 the list to send the vendor: cover that is paid for and no longer needed. `expiring`
 is the items in service whose cover runs out within `within_days`, the setting
-otherwise, and whose flag not to renew is not in force. `overlapping` is the items that more than one contract covers today: a
-`renewal_warning_days`, 90 unless changed, where it is not asked. `overlapping` is the items that more than one contract covers today: a
-list to look at before a renewal, and not a fault, since two contracts for one device
+`renewal_warning_days`, 90 unless changed, where it is not asked, and whose flag not
+to renew is not in force. `overlapping` is the items that more than one contract
+covers today: a list to look at before a renewal, and not a fault, since two contracts for one device
 are usually one too many and now and then are meant. `renewal_pending` is the items
 covered by a contract whose renewal is pending. `not_renewed` is the items in service
 that no contract covers today and whose flag not to renew is in force: what is left
@@ -593,13 +593,16 @@ to an export of them. A section's `filter` is blank only where the filter the re
 was asked with is already as large as a filter may be; its items are then read with
 `section`. `lapsed_contracts` is how many contracts have a period that has ended
 while their status still says active, with the filter that lists them on
-`GET /contracts`.
+`GET /contracts`: with no filter all of them, and with one those that have a coverage
+of an item of the view that follows the contract, as a lapsed contract covers nothing
+today (P-117). Its filter is blank where they are more than a filter can name.
 
 The coverage report, the renewal worklist and the summary of the renewal alert are
 kept once they are worked out, and given again while nothing could have changed them:
-each is kept with the newest audit event there is, the day in the application's time
-zone and the request whole, so that a change, which always writes an audit event, or
-the turn of the day leaves it unused. The report counts all its sections in one pass
+each is kept with the newest audit event of a change of the inventory or its settings,
+the day in the application's time zone and the request whole, so that a change, which
+always writes an audit event, or the turn of the day leaves it unused. A sign-in,
+seeing the alert, a preview and a change of an account leave it good. The report counts all its sections in one pass
 over the items. See "Answers that are kept" in
 [architecture.md](architecture.md#answers-that-are-kept).
 
@@ -612,7 +615,7 @@ otherwise.
 ```json
 { "as_of": "2026-11-15", "within_days": 90, "overdue_after": 60,
   "totals": { "ending": 4, "lapsed": 1, "renewal_pending": 3, "overdue": 1,
-              "ends_with_term": 1, "overlapping": 5 },
+              "ends_with_term": 1, "to_review": 2, "overlapping": 5 },
   "sections": {
     "ending":          { "count": 4, "include_archived": false, "filter": { "and": [ "..." ] } },
     "overlapping":     { "count": 5, "include_archived": false, "filter": { "...": "..." } } },
@@ -621,22 +624,27 @@ otherwise.
   "groups": [ { "vendor_hid": "0193a1f4-...", "vendor": "Cisco",
                 "agreement_hid": "0193a2c0-...", "agreement": "Cisco Enterprise Agreement",
                 "counts": { "ending": 3, "lapsed": 0, "renewal_pending": 2, "overdue": 1,
-                            "ends_with_term": 1, "overlapping": 4 },
+                            "ends_with_term": 1, "to_review": 2, "overlapping": 4 },
                 "filters": { "ending": { "...": "..." }, "overlapping": { "...": "..." } } } ],
   "section": "renewal_pending", "contracts": [ "..." ], "items": [],
   "total": 3, "limit": 100, "offset": 0 }
 ```
 
 The lists are of contracts but the last. `ending`: those that cover today and whose
-period in force ends from today to `within_days` ahead, that have no renewal entered,
-their own or, for one whose end is its agreement's, the agreement's, and that are not
-marked to end with their term. `lapsed`: those whose period has ended while they still
+period in force ends from today to `within_days` ahead, that have no renewal entered
+that is still to begin, their own or, for one whose end is its agreement's, the
+agreement's, and that the team has not marked not to renew. `lapsed`: those whose period has ended while they still
 say they are active. `renewal_pending`: those whose status in force is
 `renewal_pending`; each says `renewal_pending_days`, the days since the end of the
 term the renewal is for, and `overdue` is the part of them pending for longer than the
-`renewal_pending_overdue_days` setting, 60 unless changed. `ends_with_term`: those let
-go with their term, as when a site closes, that end within `within_days`: shown so
-that a person sees what is let go, and never in the alert. `overlapping`: the items
+`renewal_pending_overdue_days` setting, 60 unless changed. `ends_with_term`: those the
+team marked not to renew, as when a site closes, that end within `within_days` or have
+ended, until a person says they have expired or retires them: shown so that a person
+sees what is let go, and never in the alert. The mark changes no date, status or
+coverage by itself, and is not lapsed. `to_review`: the members of an agreement that
+runs on, renewed, that still say their renewal is pending or that they have expired,
+which no renewal of an agreement changes, so that a person makes each active, takes it
+out of the agreement or retires it. `overlapping`: the items
 that more than one contract covers today, as the coverage report has them. Each list
 says the `filter` that lists the same rows on `GET /contracts`, or on `GET /items` for
 `overlapping`. `groups` has one entry for each vendor and agreement that has something
@@ -646,8 +654,10 @@ standing alone last. Each counts its lists and says the filter of each. `agreeme
 counts the agreements that end, have lapsed or have a renewal pending in the same way:
 renewing one renews every contract that shares its period. `section` asks for a page
 of one list, the soonest end first, as `GET /contracts` returns the rows, or
-`GET /items` for `overlapping`; `renewal_pending_days`, `renewal_overdue` and
-`renewal_waiting` are fields of the contract list to filter and sort by.
+`GET /items` for `overlapping`; `renewal_pending_days`, `renewal_overdue`,
+`renewal_waiting` and `to_review` are fields of the contract list to filter and sort
+by. A filter of a section that would have to name more records than a filter takes is
+blank, never wider: its rows are then read with `section`.
 
 **The renewal alert**, `GET /renewals/alert`, answers for the person signed in
 (P-128):
@@ -658,31 +668,37 @@ of one list, the soonest end first, as `GET /contracts` returns the rows, or
   "lapsed": { "count": 1, "new": 1, "section": "lapsed" },
   "renewal_pending": { "count": 3, "new": 0, "section": "renewal_pending" },
   "overdue": 1,
-  "ending": { "count": 4, "new": 2, "section": "ending" } }
+  "ending": { "count": 4, "new": 2, "section": "ending" },
+  "agreements": { "ending": 1, "lapsed": 0, "renewal_pending": 0 } }
 ```
 
-Each count leads to its list of the worklist, `section`. `new` is how many of the
-contracts on a list were not on it when the person last said they had seen it, and
-`show` is true for a person with the Inventory or the Admin role when any is, and for
-everybody else always false. `POST /renewals/alert/seen`, with the `version` of the
-answer, keeps for the person who sends it the contracts that are on each list, and is
-an audit event on their own user, `alert_seen`; any role may send it, and it changes
-no contract. A `version` that is no longer the one in force, because a contract has
-come onto or left a list since the alert was read, is a `409`: the alert is read
-again, and what was new is shown. A contract that leaves a list and comes back after
-the person last saw it is new again. The answer is worked out just after midnight in
-the application's time zone and when the server starts, and kept as the reports are,
-so that the first sign-in of the day is not kept waiting.
+Each count leads to its list of the worklist, `section`, and `agreements` counts the
+agreements on the same lists. `show` is true for a person with the Inventory or the
+Admin role when a count is more than none and they have not dismissed the alert yet
+that day, in the application's time zone, and for everybody else always false: it is
+shown once a day to each person (the owner's answer of 2026-11-15). `new` is how many
+of the contracts on a list were not on it when the person last dismissed it.
+`POST /renewals/alert/seen` keeps, for the person who sends it, that they have seen it
+that day, with the contracts on each list then; `version` may be sent and is not
+required. It is an audit event on their own user, `alert_seen`; any role may send it,
+and it changes no contract. The answer is worked out just after midnight in the
+application's time zone and when the server starts, and kept as the reports are, so
+that the first sign-in of the day is not kept waiting.
 
 **An agreement renewed with its members.** `POST /agreements/{hid}/renew` takes,
 beside what a contract's renewal takes, `members`: for each contract that shares the
-agreement's period, `contract_hid` and `renewal`, `same`, `new_number` or `ends`, and
-for `new_number` its `number`, with `annual_cost` and `purchase_reference` where they
-are known. A member left out is `same`, or `ends` where it is marked to end with its
-term; a contract named that does not share the period is a `422` that names it. The
-answer is the agreement with `members`, what was done with each, and `left_behind`,
-how many coverages of items that are not to be renewed the renewal ended with the
-present term; a contract's own renewal answers `left_behind` too. A number that waits
+agreement's period, a contract in it whose end is the agreement's whatever its start,
+`contract_hid` and `renewal`, `same`, `new_number` or `ends`, and for `new_number` its
+`number`, with `annual_cost` and `purchase_reference` where they are known; two members
+are not given one number. A member left out is `same`; a contract named that does not
+share the period is a `422` that names it. The answer is the agreement with
+`members`, what was done with each, `to_review`, the members to look at, and
+`left_behind`, how many coverages of items that are not to be renewed the renewal
+ended with the present term; a contract's own renewal answers `left_behind` too. No
+member's status is changed by the renewal: a member that still says `renewal_pending`
+or `expired`, or that the team marked not to renew, is among `to_review`, and the
+agreement's record lists those that still say pending or expired in
+`members_to_review` for as long as they do. A number that waits
 on the agreement's next term is the member's `next_term` with `with_agreement` true,
 and the agreement's dates. See "An agreement renewed with its members" on the
 [data model](data-model.md#contracts-and-contract_coverage) page.
@@ -1127,19 +1143,19 @@ fresh installation has it, with no account and an empty audit trail.
 |---|---|
 | Sign in | Username, access code, a Sign in button |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right |
-| Catalog | Entries by vendor; the items of each entry |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model |
+| Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew |
 | Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, the contracts and the capacity lines of the vendor, and its items as a grid that is exported like any other |
 | Groups | Stacks, clusters and controller domains, with members and roles |
 | Addresses | Every address, with the item or group that has it; the networks |
-| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in |
+| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it |
 | Contacts, Owners | Contacts: the list, and a contact with where it is assigned. Owners: the list, and an owner with its people, the primary first |
 | Operators | The labels, each with its colour, the person behind it and how much it is on. Hand a label over to another person, leave it open, release it and bring it back. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
 | Contracts | The support agreements, each with the contracts grouped into it, and the contracts that stand by themselves. An agreement has a page of its own: its fields, its contracts with what each has from it and what each overrides, shown as an inherited value is shown everywhere, and the terms it had before, its purchase history, as a contract has its own. An override says what the agreement gives in its place, as the server answers it, and where the two are the same it says so: it stays as it is when the agreement's changes. A contract is put into an agreement, and taken out of one, on its own page. The list of contracts with how many items each covers. A contract has a page of its own: its fields and tags, and the items it covers, each with its dates, to add to several at a time and to end. **Renew** asks for the new number and the new period, says how many items follow, and changes the one record; a renewal that is still to begin is shown as the next term, and can be withdrawn; the terms it had before are listed beneath, each with the dates it had in force, a date it had from its agreement shown as inherited. Renewing an agreement is the same, and lists every contract that shares its period, each with a choice: keep its number, the default, take a new number that begins with the new term, or end with this term; the answer says what was done with each and how many items not to be renewed were left behind. A number that waits on the agreement's next term is shown as the contract's next term, with the agreement's dates. A contract may be marked to end with its term, and is then shown as ending by choice, and as expired once it has. The earlier terms of a contract are the parts of its history, each with its days and what began it: a renewal, joining an agreement or leaving one. **Renewals**, under Contracts, is the worklist: the counts of each list first, by vendor and agreement, each count leading to its rows when it is opened, and the rows of a list with their end, how long a renewal has been pending, marked when overdue, and how many items each covers. A change of a contract or an agreement that is refused as stale says, where it has a next term, that the term may have begun since the page was read. A contract that has lapsed is marked, and so is one whose renewal is pending, with the account manager to go through. A coverage that was a mistake is removed, and one that was ended because its item left is marked until the vendor has been told. The gaps and the expiries are the coverage report |
 | Purchases | The requests, each with its lines and what is still to come. A request has a page of its own: its lines, and for each the items that arrived on it, and where some of them are of another model than the line's, which 0.6.0 let in, how many, leading to them in the item grid. The list of lines has Of another model in its column chooser. Receiving a line asks for the serial numbers, the asset tags or the names of what arrived, or how many arrived that nothing is known of yet, the day and the location |
 | External systems | The systems, each with how many records are registered with it, and the registrations of each. An item and a device group show what they are registered with, and are registered from their own page; a member of a stack or a cluster also shows, to be read only, what that group is registered with. A registration that was a mistake is removed |
 | Import | Upload, preview, apply, past jobs. An apply goes on in the background: the page shows how far it has got, from `rows_done` of `row_count`, and may be left and come back to. Once applied, the rows left out as stale and those refused are listed, each with why, and a job that stopped says why and is resumed from there |
-| Capacity | Demand beside supply by category, the balance and the coverage, with and without drafts, and the share of the supply that is the team's own positions; the lines, editable |
+| Capacity | Demand beside supply by category, the balance and the coverage, with and without drafts, and the share of the supply that is the team's own positions; the lines, editable. The lines that multiply, each with its gain and the staff lines it works on; the demand of each region beside the balance, with no supply divided; and the trend, a graph of one point a week, demand and supply as two lines with the balance between them shaded and a switch that stacks the supply by category and splits the demand into the infrastructure and other work, a corrected week marked; a week recorded now, corrected with a note, and removed |
 | Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`; a `409` there reads the alert again and shows what is new |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |

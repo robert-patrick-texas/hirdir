@@ -214,6 +214,7 @@ def renewals(
     limit: Limit = DEFAULT_LIMIT,
     offset: Offset = 0,
     include_drafts: Drafts = False,
+    include_archived: Archived = False,
 ) -> r.RenewalsReport:
     """Say what a person must act on to keep the cover going: the renewal worklist.
 
@@ -224,7 +225,9 @@ def renewals(
     count says the filter that lists its rows. `section` asks for a page of one list,
     the soonest end first. The agreements on the same lists are counted beside them.
     """
-    asked = kept.asked(filter_, include_drafts, within_days, section, sort, limit, offset)
+    asked = kept.asked(
+        filter_, include_drafts, include_archived, within_days, section, sort, limit, offset
+    )
     return kept.answer(
         db,
         "renewals",
@@ -235,6 +238,7 @@ def renewals(
                 db,
                 filter_=filter_,
                 include_drafts=include_drafts,
+                include_archived=include_archived,
                 within_days=within_days,
                 section=section,
                 sort=sort,
@@ -249,18 +253,18 @@ def renewals(
 def renewal_alert(caller: Viewer, db: Db) -> r.RenewalAlert:
     """Say how many contracts have lapsed, have a renewal pending, of which overdue,
     and end within the warning period, each with the list of the worklist it leads to,
-    and whether to show it to the person signed in: for the Inventory and the Admin
-    role, once until a contract comes onto one of those lists that was not on it when
-    they last saw it."""
+    and the same of the agreements, and whether to show it to the person signed in:
+    for the Inventory and the Admin role, once a day while any count is more than
+    none."""
     return shapes.renewal_alert_out(alerts.alert(db, caller.user.hid, caller.role))
 
 
 @renewals_.post("/alert/seen")
 def renewal_alert_seen(body: r.AlertSeen, caller: Viewer, context: Audit, db: Db) -> r.AlertSeenOut:
-    """Keep that the person signed in has seen the alert as it was answered, by its
-    `version`. It is a change of their own, audited on their user, and changes no
-    contract. A version that is no longer in force is a `409`: read the alert again."""
-    view = alerts.seen(db, context, caller.user.hid, body.version)
+    """Keep that the person signed in has seen the alert today: it is not shown to them
+    again until the next day, in the application's time zone. It is a change of their
+    own, audited on their user, and changes no contract."""
+    view = alerts.seen(db, context, caller.user.hid)
     return r.AlertSeenOut(as_of=view.as_of, seen_at=view.seen_at)
 
 
