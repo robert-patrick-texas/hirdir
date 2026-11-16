@@ -4088,11 +4088,13 @@ import sys, urllib.parse
 print(urllib.parse.urlencode([("file_name", sys.argv[1]), ("kind", sys.argv[2]), ("title", sys.argv[3])]
                              + [("attach_to", record) for record in sys.argv[4:]]))' "${@:2}")
     if [ "$mode" = failed-upgrade ]; then
-        docker cp --quiet "$file" "$container:/tmp/upload" || true
+        # Not into /tmp: systemd mounts a tmpfs there inside the container, over the
+        # directory that docker cp writes into, so a file copied there is never seen.
+        docker cp --quiet "$file" "$container:/srv/upload" || true
         inside /opt/hirdir/python/bin/python3 -I -c '
 import sys, urllib.error, urllib.request
 
-with open("/tmp/upload", "rb") as sent:
+with open("/srv/upload", "rb") as sent:
     request = urllib.request.Request(
         "http://127.0.0.1:8715/api/v1/reference-files?" + sys.argv[2],
         data=sent.read(),
