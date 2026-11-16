@@ -54,7 +54,7 @@ TLS, shows the one line it will add to the site you choose, checks the result wi
 | `--prefix /inventory` | Serve under another prefix. `/` serves at the root of the site |
 | `--yes` | Ask nothing |
 | `--remove` | Take `hirdir` out of the site again |
-| `--renew` | Write the nginx snippet again as this version ships it, under the prefix it has. The package does this itself at install and at each upgrade |
+| `--renew` | Write the nginx snippet again as this version ships it, under the prefix it has, with the limit of a body that `/etc/hirdir/config.toml` gives. The package does this itself at install and at each upgrade |
 | `--self-signed` | Create a site with a throwaway certificate. For test containers only |
 
 The prefix lives in one file, `/etc/nginx/snippets/hirdir.conf`. Running
@@ -62,48 +62,48 @@ The prefix lives in one file, `/etc/nginx/snippets/hirdir.conf`. Running
 restart of the service.
 
 That file is written by the package and by `hirdir-setup`, from
-`/usr/share/hirdir/nginx/snippet.conf`. Change the prefix in it with `hirdir-setup`
-and leave the rest as it is: an upgrade writes the file again as the new version ships
-it and keeps the prefix, but a file that was changed by hand in anything else is left
-alone, and then lacks whatever the new version added.
+`/usr/share/hirdir/nginx/snippet.conf`. Change the prefix in it with `hirdir-setup`,
+the limit of a body in `/etc/hirdir/config.toml`, and leave the rest as it is: an
+upgrade writes the file again as the new version ships it and keeps the prefix, but a
+file that was changed by hand in anything else is left alone, and then lacks whatever
+the new version added.
 
 ### Uploads
 
-An import sends its file through nginx as the body of a request. `hirdir` takes a file
-of up to 20 MB, and the snippet tells nginx to let that much through, where nginx left
-to itself stops at 1 MB:
+An import sends its file through nginx as the body of a request, and so does an upload
+of a reference file, a photograph of a site or the administration guide of a model.
+`hirdir` takes an import of up to 20 MB and a reference file of up to 100 MB, and the
+snippet tells nginx to let the larger through, where nginx left to itself stops at
+1 MB:
 
 ```nginx
-client_max_body_size 20m;
+client_max_body_size 100m;
 ```
 
-A larger file is refused by nginx, with `413 Request Entity Too Large` and a page of
-its own, and never reaches `hirdir`. If a load balancer or another proxy stands in
-front of nginx, it has to let 20 MB through as well. When an import of a file between 1
-and 20 MB is answered with that page, the snippet is not the one this version ships:
-`sudo hirdir-setup --renew` says why and puts it right.
+A larger body is refused by nginx, with `413 Request Entity Too Large` and a page of
+its own, and never reaches `hirdir`; an import between 20 and 100 MB is refused by
+`hirdir` itself, with the reason. If a load balancer or another proxy stands in front
+of nginx, it has to let 100 MB through as well. When an upload of a file between 1 and
+100 MB is answered with the page of nginx, the snippet is not the one this version
+ships: `sudo hirdir-setup --renew` says why and puts it right.
 
-A site that wants larger files raises the limit in two places, to the same figure, and
-restarts both:
+A site that wants another limit sets it in the configuration file, and `hirdir-setup
+--renew` gives nginx the larger of the two:
 
 ```toml
 # /etc/hirdir/config.toml
 [files]
-max_megabytes = 50
-```
-
-```nginx
-# /etc/nginx/snippets/hirdir.conf
-client_max_body_size 50m;
+max_megabytes = 50                  # an import
+max_reference_megabytes = 250       # a reference file
 ```
 
 ```bash
-sudo systemctl restart hirdir && sudo nginx -t && sudo systemctl reload nginx
+sudo hirdir-setup --renew && sudo systemctl restart hirdir
 ```
 
-Raising one alone changes nothing: the lower of the two decides. A snippet changed in
-this line is one that an upgrade leaves alone from then on, and says so. A file still
-holds at most 100,000 rows.
+A file of an import still holds at most 100,000 rows. The kinds of file a reference may
+be are a setting of the inventory, `reference_file_types`, that an Admin changes on the
+Settings page; a web page, an SVG drawing, a script or a program is never taken.
 
 ## Sign in
 
@@ -394,6 +394,12 @@ journalctl -u hirdir
 curl -s http://127.0.0.1:8715/api/v1/health/ready
 ```
 
+`hirdir admin check` says which schema revision the database is at, whether it is
+whole, and how many reference files there are and what they take in
+`/var/lib/hirdir/files/`. It names each file whose content is not there, which is a
+failure and exits with an error, and each content that no reference names, which is
+not: the service removes it when it starts, a day after it was put there.
+
 ## Upgrade
 
 `hirdir-setup` is part of the package, so the tool that upgrades `hirdir` is already on
@@ -494,7 +500,8 @@ The upgrade does six things, in this order:
    /var/lib/hirdir/backups/hirdir-20261111T210000-0500.db`.
 3. It applies the schema changes of the new version.
 4. It writes `/etc/nginx/snippets/hirdir.conf` again as the new version ships it, under
-   the prefix the file has. When that changes the file, it reloads nginx and says so:
+   the prefix the file has and with the limit of a body that `/etc/hirdir/config.toml`
+   gives. When that changes the file, it reloads nginx and says so:
    `hirdir: /etc/nginx/snippets/hirdir.conf is now as this version of hirdir ships it,
    for /hirdir/. nginx was reloaded.`
 5. It puts the settings that are new in this version into `/etc/hirdir/config.toml`,
@@ -514,13 +521,13 @@ have it, and the site that includes the snippet. `hirdir` stays under the prefix
 
 Step 4 is checked with `nginx -t` before nginx is reloaded, and the snippet is put back
 as it was when nginx objects. A snippet that was changed by hand in more than its
-prefix is not written again. The upgrade goes on and says so:
+prefix and its limit is not written again. The upgrade goes on and says so:
 
 ```text
-hirdir-setup: /etc/nginx/snippets/hirdir.conf differs from what hirdir ships in more than its prefix, so it is left as it is. This version ships /usr/share/hirdir/nginx/snippet.conf: bring over by hand what is new there, then run: sudo nginx -t && sudo systemctl reload nginx
+hirdir-setup: /etc/nginx/snippets/hirdir.conf differs from what hirdir ships in more than its prefix and its limit, so it is left as it is. This version ships /usr/share/hirdir/nginx/snippet.conf: bring over by hand what is new there, then run: sudo nginx -t && sudo systemctl reload nginx
 hirdir: /etc/nginx/snippets/hirdir.conf was left as it was, for the reason given above.
-hirdir: nginx refuses an import of more than 1 MB until it is as this version
-hirdir: ships it. With the cause put right, run: sudo hirdir-setup --renew
+hirdir: nginx refuses an import or a file of more than 1 MB until it is as this
+hirdir: version ships it. With the cause put right, run: sudo hirdir-setup --renew
 ```
 
 Installing the version that is already installed does the same six things and changes
@@ -1147,6 +1154,99 @@ The first command stops at the database, as it is meant to. 0.7.0 knows no circu
 circuit group, no contact of a vendor, no weight of a place and none of the seven
 settings, so whatever was entered of those with 0.8.0 is lost with the rest that was
 entered since the upgrade.
+
+### From 0.8.0 to 0.9.0
+
+The schema goes from revision `0010` to `0011`. Two tables are added, for the reference
+files:
+
+- `reference_files`, the references: each a file kept by `hirdir`, with the name it
+  was uploaded with, its type, its size and the checksum of its content, or a link to
+  a file kept elsewhere, and each with a title, a kind and notes;
+- `reference_attachments`, the records a reference is on, each a catalog entry, a
+  region, a site, a location, a circuit or an item.
+
+One list is loaded with its defaults: `reference_kind`, twelve kinds from `photograph`
+to `other`. 0.8.0 has no such list, and a value that a site has put into one by other
+means is left as it is.
+
+**Nothing that is held changes.** Every record is as it was, field for field and at
+the `row_version` it had, and every item has its history. There is no reference until
+somebody adds one, and the upgrade writes no audit event.
+
+**Where the files are.** The content of a reference file is kept beside the database
+and never in it, in `/var/lib/hirdir/files/`, which the upgrade makes, for the `hirdir`
+user alone, empty. Each backup puts the content its database names into
+`/var/lib/hirdir/backups/files/`, as under [Backup and restore](#backup-and-restore);
+the backup that the upgrade takes is of the database of 0.8.0, which names none. When
+the service starts it removes what an upload that was cut short left behind, and
+content that no reference names and that is more than a day old.
+
+**Settings.** One setting of the inventory is new, `reference_file_types`: the
+extensions of the files a reference may be, twenty-four of them, from `jpg` to `zip`,
+until an Admin changes it. `GET /api/v1/settings` lists it, and beside it two values
+that are fixed, `refused_file_types`, the web pages, scripts and programs that are never
+taken, and `max_attachments_per_request`. The configuration file has one key more,
+`max_reference_megabytes` under `[files]`, the largest reference file, 100 MB unless it
+says otherwise. The upgrade puts it into `/etc/hirdir/config.toml`, commented out at its
+default, and says so: `hirdir: /etc/hirdir/config.toml has the new settings of this
+version, commented out at their defaults: files.max_reference_megabytes. Nothing you set
+was changed.`
+
+**nginx.** The limit of a body in `/etc/nginx/snippets/hirdir.conf` goes from `20m` to
+`100m`, the larger of the two limits of the configuration file, and the upgrade writes
+the snippet again and reloads nginx, and says so, as in step 4 above. From now on the
+line is written from the configuration file, by every upgrade and by `sudo
+hirdir-setup --renew`, and is no longer changed by hand. A site that raised it by hand
+with 0.8.0, together with `max_megabytes`, as this page then said to, has its snippet
+written again all the same, with the larger of its two limits: with `max_megabytes =
+50` the line says `100m`, and with `max_megabytes = 250` it says `250m`. A limit
+raised in the snippet alone, which 0.8.0 did not take either, and one lowered there,
+come to the larger of the two of the configuration file as well: set the limits you
+want there, and run `sudo hirdir-setup --renew && sudo systemctl restart hirdir`. A
+snippet changed by hand in anything more is left as it is, as before, and then lets
+no upload over 20 MB through: bring over the new limit by hand. A load balancer or
+another proxy in front of nginx has to let 100 MB through for an upload.
+
+Some of what is held is read differently from now on, for a script that reads it:
+
+- A body between 20 and 100 MB that is not the upload of a reference file, an import
+  among them, which nginx refused with its own page, is refused by `hirdir` itself,
+  with a `413` problem document that says the limit.
+- The page's `Content-Security-Policy` allows `img-src 'self' blob:`: a picture that
+  the page has fetched itself, which is how it shows a photograph of a reference.
+- `/api/v1/reference-files` and `GET /api/v1/<records>/<HID>/references`, for catalog
+  entries, regions, sites, locations, circuits and items, are new, and so is `hirdir
+  references`.
+- `hirdir admin backup` puts the files into `backups/files/`; `hirdir admin restore`
+  takes them back from the `files/` beside the backup or from `--files DIR`, and
+  refuses, before it changes anything, where some are missing, unless
+  `--allow-missing-files` is given; `hirdir admin reset` erases every reference with
+  its content; and `hirdir admin check` has a line for the files, `reference files:`,
+  and fails where a reference names content that is not there.
+
+Going back to 0.8.0 is as under
+[Going back to the release before](#going-back-to-the-release-before), with the backup
+of this upgrade, which is at revision `0010`:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.8.0_amd64.deb
+sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-<time of the upgrade>.db
+sudo dpkg --configure hirdir
+```
+
+The first command stops at the database, as it is meant to. 0.8.0 knows no reference
+and no kind of file, so every file that was uploaded and every link that was made with
+0.9.0 is lost with the rest that was entered since the upgrade. 0.8.0 reads neither
+`/var/lib/hirdir/files/` nor `/var/lib/hirdir/backups/files/`, and leaves both as they
+are, with what was uploaded in them: remove them once you are sure, or leave them for
+0.9.0 to tidy when it is installed again. 0.8.0 does not know the snippet that 0.9.0
+wrote either, takes it for one changed by hand, leaves it as it is and says so: nginx
+then lets 100 MB through, and 0.8.0 refuses an import over 20 MB itself, or nginx
+answers it with a `502`. To have the snippet of 0.8.0 back, copy
+`/usr/share/hirdir/nginx/snippet.conf` over it, then give it the prefix it had with
+`sudo hirdir-setup --prefix`, or, under `/hirdir/`, run `sudo nginx -t && sudo
+systemctl reload nginx`.
 
 ### If the upgrade stops
 

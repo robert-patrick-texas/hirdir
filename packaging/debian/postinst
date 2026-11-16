@@ -1,22 +1,25 @@
 #!/bin/sh
 # postinst for hirdir.
 #
-# On a first install: creates the hirdir user, /var/lib/hirdir and its backup directory,
-# compiles the byte-code, creates the signing key, runs the migrations, enables and
-# starts the service and the backup timer, and prints what to do next.
+# On a first install: creates the hirdir user, /var/lib/hirdir with its backup directory
+# and the store of reference files, compiles the byte-code, creates the signing key,
+# runs the migrations, enables and starts the service and the backup timer, and prints
+# what to do next.
 #
-# On an upgrade, and when the same version is installed again: stops the service, backs
-# the database up, runs the migrations and starts the service again. If the migration
-# fails, the upgrade stops, the service stays stopped, and the message says where the
-# backup is and how to go back to the version that was installed before. A migration
-# that fails is undone as a whole. The way back restores the backup all the same, so
-# that going back never depends on that.
+# On an upgrade, and when the same version is installed again: makes the store of
+# reference files where it is missing, stops the service, backs the database up, runs
+# the migrations and starts the service again. If the migration fails, the upgrade
+# stops, the service stays stopped, and the message says where the backup is and how to
+# go back to the version that was installed before. A migration that fails is undone as
+# a whole. The way back restores the backup all the same, so that going back never
+# depends on that.
 #
 # Both times, once the migrations are done: writes /etc/nginx/snippets/hirdir.conf as
-# this version ships it, under the URL prefix that file already has, and on an upgrade
-# has nginx reload when the file changed. And brings /etc/hirdir/config.toml up to date:
-# written on a first install, and at an upgrade given the settings it does not have
-# yet, commented out at their defaults, with nothing that a site set changed.
+# this version ships it, under the URL prefix that file already has and with the limit
+# of a body that /etc/hirdir/config.toml gives, and on an upgrade has nginx reload when
+# the file changed. And brings /etc/hirdir/config.toml up to date: written on a first
+# install, and at an upgrade given the settings it does not have yet, commented out at
+# their defaults, with nothing that a site set changed.
 set -e
 
 STATE=/var/lib/hirdir
@@ -37,8 +40,8 @@ renew_snippet() {
     before=$(cksum "$SNIPPET" 2>/dev/null || true)
     if ! renewed=$(hirdir-setup --renew --no-reload --yes); then
         echo "hirdir: $SNIPPET was left as it was, for the reason given above." >&2
-        echo "hirdir: nginx refuses an import of more than 1 MB until it is as this version" >&2
-        echo "hirdir: ships it. With the cause put right, run: sudo hirdir-setup --renew" >&2
+        echo "hirdir: nginx refuses an import or a file of more than 1 MB until it is as this" >&2
+        echo "hirdir: version ships it. With the cause put right, run: sudo hirdir-setup --renew" >&2
         return 0
     fi
     # A first install has no site that includes the snippet yet, and nothing to say.
@@ -81,8 +84,10 @@ case "$1" in
         fi
         # The backup directory too, and here: "hirdir admin backup" makes it when it is
         # missing, with whatever umask it is run under, and run by hand as root that
-        # leaves a directory that other users may list.
-        install -d -o hirdir -g hirdir -m 0750 "$STATE" "$STATE/backups"
+        # leaves a directory that other users may list. And the store of reference
+        # files, which the server makes when it is missing, for the same reason; at each
+        # upgrade as well, so that one from a version before 0.9.0 has it.
+        install -d -o hirdir -g hirdir -m 0750 "$STATE" "$STATE/backups" "$STATE/files"
 
         # The package ships no byte-code. Compile it once here: the service cannot
         # write under /opt, and a command run by root must not leave files there that

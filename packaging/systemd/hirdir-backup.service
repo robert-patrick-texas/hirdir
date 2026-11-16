@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up the hirdir database
+Description=Back up the hirdir database and its reference files
 
 [Service]
 Type=oneshot

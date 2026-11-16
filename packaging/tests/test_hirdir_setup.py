@@ -7,6 +7,8 @@ from pathlib import Path
 import hirdir_setup as setup
 import pytest
 
+from hirdir import config
+
 PACKAGING = Path(__file__).resolve().parents[1]
 SNIPPET = (PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8")
 
@@ -320,7 +322,7 @@ EARLIER = sorted((PACKAGING / "tests" / "snippets").glob("*.conf"))
 # is added to SHIPPED_BEFORE in hirdir_setup.py, and the new value is written here.
 # Without the first two, an upgrade would take the snippet of a host for one edited by
 # hand and leave it as it was.
-SHIPPED_NOW = "d15e6122c83438ceaae535e5af86611aa0364a6756d94e4eb115a73387590735"
+SHIPPED_NOW = "4c3b7f2fb616aa2cfbac701b3b4bc86dea5483845aa659e09bb73054da4638a3"
 
 
 def test_a_changed_snippet_is_not_shipped_without_remembering_the_one_before() -> None:
@@ -330,10 +332,70 @@ def test_a_changed_snippet_is_not_shipped_without_remembering_the_one_before() -
     assert kept == set(setup.SHIPPED_BEFORE)
 
 
-def test_the_body_of_a_snippet_is_the_same_under_every_prefix() -> None:
-    assert len(setup.body(SNIPPET).splitlines()) == len(SNIPPET.splitlines()) - 3
+def test_the_body_of_a_snippet_is_the_same_under_every_prefix_and_every_limit() -> None:
+    assert len(setup.body(SNIPPET).splitlines()) == len(SNIPPET.splitlines()) - 4
     for prefix in ("/inventory", "/tools/inventory", "/"):
         assert setup.body(setup.with_prefix(SNIPPET, prefix)) == setup.body(SNIPPET)
+    for megabytes in (1, 20, 250, 2048):
+        assert setup.body(setup.with_limit(SNIPPET, megabytes)) == setup.body(SNIPPET)
+
+
+def test_a_new_limit_rewrites_the_line_of_the_limit_and_nothing_else() -> None:
+    changed = setup.with_limit(SNIPPET, 250)
+    lines = [
+        (old, new)
+        for old, new in zip(SNIPPET.splitlines(), changed.splitlines(), strict=True)
+        if old != new
+    ]
+    assert lines == [("    client_max_body_size 100m;", "    client_max_body_size 250m;")]
+    assert setup.with_limit(changed, 100) == SNIPPET
+    # A snippet of before 0.3.0 has no such line, and none is added to it.
+    first = EARLIER[0].read_text(encoding="utf-8")
+    assert setup.with_limit(first, 250) == first
+
+
+@pytest.mark.parametrize(
+    ("settings", "megabytes"),
+    [
+        (None, 100),
+        ("", 100),
+        ("[files]\nmax_megabytes = 50\n", 100),
+        ("[files]\nmax_megabytes = 250\n", 250),
+        ("[files]\nmax_reference_megabytes = 250\n", 250),
+        ("[files]\nmax_megabytes = 50\nmax_reference_megabytes = 30\n", 50),
+        ("[files]\nmax_reference_megabytes = 0\nmax_megabytes = 0\n", 1),
+        ("[files]\nmax_reference_megabytes = 9999\n", 2048),
+        ("[files]\nmax_megabytes = 3000\n", 3000),
+        ("# [files]\n# max_megabytes = 50\n[backup]\nkeep = 7\n", 100),
+    ],
+)
+def test_the_limit_is_the_larger_of_the_two_of_the_configuration_file(
+    settings: str | None, megabytes: int
+) -> None:
+    assert setup.limit_megabytes(settings) == megabytes
+
+
+@pytest.mark.parametrize(
+    "settings", ["[files\n", '[files]\nmax_megabytes = "lots"\n', "[files]\nmax_megabytes = []\n"]
+)
+def test_a_limit_that_cannot_be_read_is_refused(settings: str) -> None:
+    with pytest.raises(setup.SetupError, match=str(setup.SETTINGS)):
+        setup.limit_megabytes(settings)
+
+
+def test_the_limits_and_their_bounds_are_those_of_hirdir() -> None:
+    hirdir_reads = {
+        "max_megabytes": (config.default("files", "max_megabytes"), 1, None),
+        "max_reference_megabytes": (
+            config.default("files", "max_reference_megabytes"),
+            1,
+            config.MOST_REFERENCE_MEGABYTES,
+        ),
+    }
+    assert hirdir_reads == setup.LIMITS
+    # And so the shipped snippet has the limit of a configuration file that sets neither.
+    (limit,) = [line for line in SNIPPET.splitlines() if setup.LIMIT_LINE.match(line)]
+    assert limit.strip() == f"client_max_body_size {setup.limit_megabytes(None)}m;"
 
 
 @pytest.mark.parametrize("prefix", ["/hirdir", "/inventory", "/tools/inventory", "/"])
@@ -345,10 +407,25 @@ def test_the_snippet_of_an_earlier_version_is_renewed_under_the_prefix_it_has(
     after = setup.renewed(before, SNIPPET)
     assert after == setup.with_prefix(SNIPPET, prefix)
     assert setup.snippet_prefix(after) == prefix
-    assert "client_max_body_size" not in before
-    assert "client_max_body_size 20m;" in after
+    assert "client_max_body_size 100m;" in after
     # Renewed a second time, it is left as it is.
     assert setup.renewed(after, SNIPPET) == after
+    # With the limit of the configuration file, that limit.
+    assert setup.renewed(before, SNIPPET, megabytes=250) == setup.with_limit(after, 250)
+
+
+@pytest.mark.parametrize("megabytes", [5, 50, 250])
+def test_a_snippet_of_0_8_0_whose_limit_was_changed_by_hand_is_renewed(megabytes: int) -> None:
+    """install.md of 0.8.0 told a site that wanted larger files to raise the limit in the
+    snippet by hand, together with max_megabytes. That snippet is still the package's."""
+    of_0_8_0 = (PACKAGING / "tests" / "snippets" / "0.8.0.conf").read_text(encoding="utf-8")
+    assert "    client_max_body_size 20m;" in of_0_8_0
+    raised = setup.with_prefix(setup.with_limit(of_0_8_0, megabytes), "/inventory")
+    assert setup.shipped(raised, SNIPPET)
+    renewed = setup.renewed(raised, SNIPPET, megabytes=max(megabytes, 100))
+    assert renewed == setup.with_limit(
+        setup.with_prefix(SNIPPET, "/inventory"), max(megabytes, 100)
+    )
 
 
 def test_with_no_snippet_on_the_host_the_shipped_one_is_written() -> None:
@@ -382,6 +459,8 @@ class Host:
         self.template.parent.mkdir(parents=True)
         self.template.write_text(SNIPPET, encoding="utf-8")
         self.nginx = tmp_path / "nginx"
+        # The configuration file, which is not there until a test writes it.
+        self.settings = tmp_path / "etc" / "hirdir" / "config.toml"
         self.site = str(tmp_path / "etc" / "nginx" / "site")
         self.includes = True  # Whether a site includes the snippet.
         self.loads = True  # Whether nginx accepts its configuration before the change.
@@ -390,6 +469,7 @@ class Host:
         monkeypatch.setattr(setup, "SNIPPET", self.snippet)
         monkeypatch.setattr(setup, "TEMPLATE", self.template)
         monkeypatch.setattr(setup, "NGINX", str(self.nginx))
+        monkeypatch.setattr(setup, "SETTINGS", self.settings)
         monkeypatch.setattr(setup, "_run", self.run)
 
     def install_nginx(self) -> None:
@@ -444,7 +524,7 @@ def test_renew_keeps_the_prefix_and_reloads_nginx_when_a_site_includes_the_snipp
     assert host.renew() == 0
     assert host.snippet.read_text(encoding="utf-8") == setup.with_prefix(SNIPPET, "/inventory")
     shown = capsys.readouterr().out
-    assert "+    client_max_body_size 20m;" in shown
+    assert "+    client_max_body_size 100m;" in shown
     last = shown.splitlines()[-1]
     assert last.startswith(f"{host.snippet} is now as this version of hirdir ships it, for ")
     assert "for /inventory/. " in last
@@ -519,13 +599,57 @@ def test_renew_leaves_a_snippet_edited_by_hand_and_says_where_the_shipped_one_is
 ) -> None:
     host.install_nginx()
     host.snippet.parent.mkdir(parents=True)
-    edited = SNIPPET.replace("client_max_body_size 20m;", "client_max_body_size 5m;")
+    edited = SNIPPET.replace(
+        "    proxy_set_header Host", "    proxy_read_timeout 300s;\n    proxy_set_header Host"
+    )
     host.snippet.write_text(edited, encoding="utf-8")
 
     with pytest.raises(setup.SetupError, match="left as it is") as refused:
         host.renew()
     assert str(host.template) in str(refused.value)
     assert host.snippet.read_text(encoding="utf-8") == edited
+    assert host.commands == []
+
+
+def test_renew_writes_the_limit_that_the_configuration_file_gives(
+    host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    host.install_nginx()
+    host.snippet.parent.mkdir(parents=True)
+    of_0_8_0 = (PACKAGING / "tests" / "snippets" / "0.8.0.conf").read_text(encoding="utf-8")
+    host.snippet.write_text(setup.with_prefix(of_0_8_0, "/inventory"), encoding="utf-8")
+    host.settings.parent.mkdir(parents=True)
+    host.settings.write_text(
+        "[files]\nmax_megabytes = 50\nmax_reference_megabytes = 250\n", encoding="utf-8"
+    )
+
+    assert host.renew() == 0
+    moved = setup.with_prefix(SNIPPET, "/inventory")
+    assert host.snippet.read_text(encoding="utf-8") == setup.with_limit(moved, 250)
+    shown = capsys.readouterr().out
+    assert "-    client_max_body_size 20m;" in shown
+    assert "+    client_max_body_size 250m;" in shown
+    assert host.reloaded()
+
+    # A site that changes the limit in the configuration file alone, and runs it again.
+    host.settings.write_text("[files]\n# max_reference_megabytes = 100\n", encoding="utf-8")
+    assert host.renew() == 0
+    assert host.snippet.read_text(encoding="utf-8") == moved
+    assert host.renew() == 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("Nothing to change: ")
+
+
+def test_renew_leaves_the_snippet_when_the_configuration_file_cannot_be_read(host: Host) -> None:
+    host.install_nginx()
+    host.snippet.parent.mkdir(parents=True)
+    before = (PACKAGING / "tests" / "snippets" / "0.8.0.conf").read_text(encoding="utf-8")
+    host.snippet.write_text(before, encoding="utf-8")
+    host.settings.parent.mkdir(parents=True)
+    host.settings.write_text("[files\nmax_megabytes = 50\n", encoding="utf-8")
+
+    with pytest.raises(setup.SetupError, match="not well-formed TOML"):
+        host.renew()
+    assert host.snippet.read_text(encoding="utf-8") == before
     assert host.commands == []
 
 
