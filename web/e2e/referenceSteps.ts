@@ -10,6 +10,7 @@ import {
   expect,
   type Locator,
   type Page,
+  test,
 } from "@playwright/test";
 import type { Account } from "./support";
 
@@ -130,7 +131,9 @@ export async function downloaded(page: Page, within: Locator, title: string, exp
     .click();
   const saved = await download;
   expect(saved.suggestedFilename()).toBe(expected.name);
-  const path = await saved.path();
+  // Copied here first: the browser may be elsewhere, as it is in the package test.
+  const path = test.info().outputPath(`downloaded-${expected.name}`);
+  await saved.saveAs(path);
   expect(Buffer.compare(await readFile(path), expected.buffer), "the bytes downloaded").toBe(0);
 }
 
