@@ -44,6 +44,15 @@ renewal is pending or that they have expired, which puts them on the list to rev
 and the operations team has capacity lines, by region and by site, some that multiply
 the staff lines, a draft or two and one that has ended, with the balance recorded for
 each of the last four weeks.
+
+What 0.8.0 added is there as well, made through `hirdir.domain`: eight invented
+carriers, each with an account manager and a repair desk; some 2,000 circuits across
+the sites, the larger sites having more, with another carrier for a part of a few
+hundred, one or two cost lines for most, a router at an end, a contact of their own
+for a few, and a few dozen groups; a support weight on some regions, sites and rooms;
+and a few models that came in without their weight. The six weights of the settings
+are left at their defaults: the timing sets them in runs of its own, as the fixture's
+Admin, an account made beside the one that reads.
 """
 
 import argparse
@@ -75,23 +84,36 @@ from hirdir.db.models import (
     CapacityLine,
     CapacityRecord,
     CatalogEntry,
+    Circuit,
+    CircuitCarrier,
+    CircuitContact,
+    CircuitCost,
+    CircuitDevice,
+    CircuitGroup,
+    CircuitGroupMember,
     Contract,
     ContractCoverage,
     DeviceGroup,
     DeviceGroupMember,
     Item,
     LifecycleRule,
+    Location,
     PurchaseLine,
     PurchaseRequest,
     Region,
+    Site,
     TagLink,
+    VendorContact,
 )
 from hirdir.domain import (
     accounts,
     addresses,
     audit,
     capacity,
+    carrier_contacts,
     catalog,
+    circuit_groups,
+    circuit_records,
     contacts,
     contracts,
     geography,
@@ -119,9 +141,13 @@ DOMAIN = "example.net"
 MAIL = "example.com"
 ITEMS = 50_000
 LEAST = 200
-# The account the timing signs in with, made in the fixture's database and nowhere else.
+# The accounts the timing signs in with, made in the fixture's database and nowhere
+# else: one that reads, and an Admin that sets the weights of the settings for the runs
+# that try them and checks what is kept.
 USERNAME = "timing"
 ACCESS_CODE = "timing-viewer-code"
+ADMIN_USERNAME = "timing-admin"
+ADMIN_ACCESS_CODE = "timing-admin-code"
 CHUNK = 2_000
 
 
@@ -224,6 +250,10 @@ class Shape:
     @property
     def owners(self) -> int:
         return self.scaled(40, 6)
+
+    @property
+    def circuits(self) -> int:
+        return self.scaled(2000, 24)
 
 
 # The major items that are not phones, by use.
@@ -477,6 +507,8 @@ class Place:
     rooms: list[str] = field(default_factory=list)
     racks: list[str] = field(default_factory=list)
     store: str | None = None
+    # The main distribution room of building 1, where the racks are.
+    core: str | None = None
 
 
 @dataclass
@@ -512,6 +544,10 @@ def _catalog(
     for use, type_, models in FAMILIES:
         for vendor, pid, model, function, value, weight, cost in models:
             for variant in range(VARIANTS):
+                # A few of the last variants came in from a file without their weight,
+                # for which the default of the settings stands in where one is set (P-155).
+                unweighed = variant == VARIANTS - 1 and dice.chance(0.3, "unweighed", pid)
+                weighs = Decimal(weight) if weight and not unweighed else None
                 fields: dict[str, Any] = {
                     "vendor_hid": vendors[vendor],
                     "pid": pid if variant == 0 else f"{pid}-V{variant:02d}",
@@ -519,7 +555,7 @@ def _catalog(
                     "type": type_,
                     "function": function,
                     "est_value": Decimal(value + 100 * variant),
-                    "support_weight": Decimal(weight) if weight else None,
+                    "support_weight": weighs,
                     "annual_support_cost": Decimal(cost) if cost else None,
                 }
                 if dice.chance(0.35, "old", pid, variant):
@@ -582,6 +618,7 @@ def _places(db: Session, dice: Dice, shape: Shape) -> list[Place]:
             house = _location(db, site.hid, f"Building {building}", f"B{building}", "building")
             if building == 1:
                 core = _location(db, site.hid, "MDF", "B1-MDF", "room", house)
+                place.core = core
                 for rack in range(1, dice.between(2, 6, "racks", number) + 1):
                     place.racks.append(
                         _location(db, site.hid, f"Rack {rack}", f"B1-MDF-R{rack}", "rack", core)
@@ -1279,6 +1316,498 @@ def make_groups(db: Session, planned_groups: list[dict[str, Any]]) -> None:
             groups.add_members(db, SEED, group.hid, members[start : start + at_once])
 
 
+# --- the circuits of 0.8.0, and the weights of places, made through the rules -------------
+
+# The carriers, every one invented: the name, what it is, and the prefix of the numbers
+# it gives. The last two provide only a part of another's circuit: the local loop, or a
+# cross-connect in a colocation hall.
+CARRIERS = (
+    ("Example Telecom", "A fictional carrier", "EXT"),
+    ("Example Broadband", "A fictional provider of business internet", "EXB"),
+    ("Example Metro Networks", "A fictional metropolitan carrier", "EXM"),
+    ("Example Global Transit", "A fictional carrier of MPLS between the regions", "EXG"),
+    ("Example Fiber", "A fictional carrier of dark fiber and wavelengths", "EXF"),
+    ("Example Voice", "A fictional carrier of voice trunks", "EXV"),
+    ("Example Local Exchange", "A fictional local exchange carrier", "LEC"),
+    ("Example Colocation", "A fictional provider of cross-connects", "XC"),
+)
+PART_CARRIERS = ("Example Local Exchange", "Example Colocation")
+# The carrier of a part of another's circuit, the part it plays, how often, and the
+# line it bills.
+PARTS = (
+    ("Example Local Exchange", "local_exchange", 55.0, "Local loop"),
+    ("Example Local Exchange", "last_mile", 25.0, "Last mile"),
+    ("Example Colocation", "cross_connect", 20.0, "Cross-connect"),
+)
+# The shares of the status of the circuits that are given them rather than chosen.
+RARE_CIRCUITS = {2: 0.0, 3: 0.05, 4: 0.10}
+# A second line of a circuit that has no other carrier, billed by its own.
+EXTRAS = ("Access", "Managed router", "Equipment rental", "Static addresses")
+
+
+@dataclass(frozen=True)
+class CircuitKind:
+    """A kind of circuit: its type, how often it is found, the short name its circuits
+    are named by, the speeds of its port in Mbps, what its far end is called where it
+    is not another site, its carriers, and what its port costs a month at the least and
+    the most."""
+
+    type: str
+    share: float
+    short: str
+    ports: tuple[int, ...]
+    far_end: str | None
+    carriers: tuple[str, ...]
+    cost: tuple[int, int]
+
+
+CIRCUIT_KINDS = (
+    CircuitKind(
+        "internet",
+        34.0,
+        "INET",
+        (100, 500, 1000, 10000),
+        "carrier network",
+        ("Example Broadband", "Example Telecom", "Example Metro Networks"),
+        (300, 4500),
+    ),
+    CircuitKind(
+        "mpls",
+        28.0,
+        "MPLS",
+        (50, 100, 200, 1000),
+        "MPLS network",
+        ("Example Global Transit", "Example Telecom"),
+        (600, 6000),
+    ),
+    CircuitKind(
+        "point_to_point",
+        12.0,
+        "P2P",
+        (100, 1000, 10000),
+        None,
+        ("Example Metro Networks", "Example Telecom"),
+        (500, 3500),
+    ),
+    CircuitKind("dark_fiber", 4.0, "DF", (10000, 100000), None, ("Example Fiber",), (1500, 6000)),
+    CircuitKind(
+        "wavelength",
+        4.0,
+        "WAVE",
+        (10000, 100000),
+        None,
+        ("Example Fiber", "Example Global Transit"),
+        (2500, 9000),
+    ),
+    CircuitKind(
+        "voice",
+        16.0,
+        "SIP",
+        (10, 50, 100),
+        "carrier voice network",
+        ("Example Voice", "Example Telecom"),
+        (150, 1200),
+    ),
+    CircuitKind("other", 2.0, "OOB", (10,), "carrier network", ("Example Broadband",), (60, 200)),
+)
+# The kinds in the underlay of the SD-WAN of a region, and those between data centers.
+UNDERLAY = ("internet", "mpls")
+INTERCONNECT = ("dark_fiber", "wavelength")
+
+
+def _money(amount: float) -> Decimal:
+    return Decimal(str(round(amount, 2))).quantize(Decimal("0.01"))
+
+
+def _carriers(db: Session) -> tuple[dict[str, str], dict[str, str]]:
+    """Make the carriers, and their account managers and support desks (P-149).
+
+    Return the vendor of each carrier, and a desk of each that provides whole circuits,
+    which some circuits name in place of the carrier's own.
+    """
+    vendors: dict[str, str] = {}
+    desks: dict[str, str] = {}
+    for number, (name, notes, prefix) in enumerate(CARRIERS):
+        vendor = catalog.create_vendor(db, SEED, {"name": name, "aliases": [], "notes": notes})
+        vendors[name] = vendor.hid
+        slug = prefix.lower()
+        people = [
+            ("account_manager", f"{name} account manager", f"account.manager.{slug}"),
+            ("support_contact", f"{name} repair desk", f"repair.{slug}"),
+        ]
+        if number % 2 == 0:
+            people.append(("support_contact", f"{name} network operations", f"noc.{slug}"))
+        for role, label, mailbox in people:
+            person = contacts.create_contact(
+                db, SEED, {"name": label, "organization": name, "email": f"{mailbox}@{MAIL}"}
+            )
+            carrier_contacts.add_vendor_contact(
+                db, SEED, vendor.hid, {"role": role, "contact_hid": person.hid}
+            )
+        if name not in PART_CARRIERS:
+            desks[name] = contacts.create_contact(
+                db,
+                SEED,
+                {
+                    "name": f"{name} major accounts desk",
+                    "organization": name,
+                    "email": f"major.accounts.{slug}@{MAIL}",
+                },
+            ).hid
+    return vendors, desks
+
+
+@dataclass
+class PlannedCircuit:
+    """One circuit as it is to be made, with what is to be done with it after."""
+
+    fields: dict[str, Any]
+    kind: CircuitKind
+    place: Place
+    far: Place | None
+    part: tuple[str, str, str] | None = None
+    lines: list[dict[str, Any]] = field(default_factory=list)
+    retire: bool = False
+    hid: str = ""
+
+
+def _span(dice: Dice, number: int, today: date) -> dict[str, Any]:
+    """Return the dates and the status of a circuit: most in service for years, a few
+    on order, some disconnected, and some to be disconnected soon."""
+    activated = today - timedelta(days=dice.between(10, 2600, "activated", number))
+    fields: dict[str, Any] = {
+        "installed_on": activated - timedelta(days=dice.between(2, 30, "installed", number)),
+        "activated_on": activated,
+        "record_status": "active",
+    }
+    # The second, the third and the fourth of every fixture are on order, disconnected
+    # and to be disconnected, so that one of a few sites has each.
+    roll = RARE_CIRCUITS.get(number, dice.share("circuit status", number))
+    if roll < 0.03:
+        # On order: a draft, to be installed and activated in the weeks to come.
+        fields["activated_on"] = today + timedelta(days=dice.between(10, 120, "due", number))
+        fields["installed_on"] = (
+            fields["activated_on"] - timedelta(days=7)
+            if dice.chance(0.5, "installed first", number)
+            else None
+        )
+        fields["record_status"] = "draft"
+    elif roll < 0.09:
+        # Disconnected some time ago.
+        fields["disconnected_on"] = today - timedelta(days=dice.between(1, 500, "gone", number))
+    elif roll < 0.11:
+        # To be disconnected soon.
+        fields["disconnected_on"] = today + timedelta(days=dice.between(5, 120, "going", number))
+    gone = fields.get("disconnected_on")
+    if gone is not None and gone < fields["activated_on"]:
+        fields["activated_on"] = gone - timedelta(days=dice.between(200, 1500, "ran", number))
+        fields["installed_on"] = fields["activated_on"] - timedelta(days=10)
+    return fields
+
+
+def _lines(
+    dice: Dice, number: int, kind: CircuitKind, port: int, part: tuple[str, str, str] | None
+) -> list[dict[str, Any]]:
+    """Return the cost lines of a circuit: most have one or two and a few none; the
+    part another carrier plays is billed by it; some were repriced this year, and some
+    have a credit for some months of it."""
+    if dice.chance(0.04, "unbilled", number):
+        return []
+    low, high = kind.cost
+    step = kind.ports.index(port) / max(1, len(kind.ports) - 1)
+    base = low + (high - low) * step * (0.8 + 0.4 * dice.share("price", number))
+    lines: list[dict[str, Any]] = [
+        {"description": "Monthly recurring charge", "monthly_cost": _money(base)}
+    ]
+    if part is not None:
+        vendor, _, description = part
+        lines.append(
+            {
+                "description": description,
+                "monthly_cost": _money(base * 0.2 + 40),
+                "vendor_hid": vendor,
+            }
+        )
+    elif dice.chance(0.35, "second line", number):
+        lines.append(
+            {
+                "description": dice.pick(EXTRAS, "extra", number),
+                "monthly_cost": _money(30 + 250 * dice.share("extra cost", number)),
+            }
+        )
+    today = clock.today()
+    year = date(today.year, 1, 1)
+    passed = (today - year).days
+    if passed > 60 and dice.chance(0.05, "repriced", number):
+        # Repriced this year: the first line ended, and the new price began the day after.
+        begins = year + timedelta(days=dice.between(30, passed - 1, "repriced on", number))
+        lines[0]["ends_on"] = begins - timedelta(days=1)
+        lines.append(
+            {
+                "description": "Monthly recurring charge, renewed",
+                "monthly_cost": _money(base * 0.85),
+                "starts_on": begins,
+            }
+        )
+    if passed > 60 and dice.chance(0.05, "credit", number):
+        # A credit for an outage, for some months of this year.
+        begins = year + timedelta(days=dice.between(0, passed - 31, "credit from", number))
+        lines.append(
+            {
+                "description": "Service credit",
+                "monthly_cost": _money(-base * 0.1),
+                "starts_on": begins,
+                "ends_on": begins + timedelta(days=dice.between(30, 90, "credit for", number)),
+            }
+        )
+    return lines
+
+
+def _circuit_fields(
+    dice: Dice, made: Made, number: int, kind: CircuitKind, place: Place, far: Place | None
+) -> dict[str, Any]:
+    """Return what one circuit is made with."""
+    port = dice.pick(kind.ports, "port", number)
+    carrier = dice.pick(kind.carriers, "carrier", number)
+    prefix = next(prefix for name, _, prefix in CARRIERS if name == carrier)
+    ends = f"{place.code}-{far.code}" if far is not None else place.code
+    team = made.team_owner
+    fields: dict[str, Any] = {
+        "name": f"{ends}-{kind.short}-{number:04d}",
+        "circuit_type": kind.type,
+        "port_mbps": Decimal(port),
+        "a_location_hid": dice.pick(place.racks or place.rooms, "a side", number),
+        "carrier": carrier,
+        "billing_account": f"BA-{prefix}-{place.region + 1:02d}{number % 7:02d}",
+        "billing_contract": f"MSA-{prefix}-{2020 + number % 6}",
+        "owner_hid": team["Voice Services"] if kind.type == "voice" else team[TEAMS[0]],
+        **_span(dice, number, clock.today()),
+    }
+    if far is not None:
+        fields["z_location_hid"] = dice.pick(far.racks or far.rooms, "z side", number)
+        if dice.chance(0.1, "counted far", number):
+            fields["cost_side"] = "z"
+    else:
+        fields["z_note"] = kind.far_end or "carrier network"
+    if dice.chance(0.85, "enterprise id", number):
+        fields["enterprise_circuit_id"] = f"EC-{number:05d}"
+    if dice.chance(0.9, "carrier number", number):
+        fields["carrier_circuit_number"] = f"{prefix}/{number:06d}/000"
+    if kind.type == "internet" and port >= 500 and dice.chance(0.4, "limited", number):
+        # Bought at a rate below its port.
+        fields["down_mbps"] = Decimal(port // 2)
+        fields["up_mbps"] = Decimal(port // 5)
+    if dice.chance(0.05, "not production", number):
+        fields["production"] = False
+    if dice.chance(0.15, "circuit weight", number):
+        weight = dice.pick(("0.25", "0.5", "1", "2"), "how heavy a circuit", number)
+        fields["support_weight"] = Decimal(weight)
+    if dice.chance(0.1, "other owner", number):
+        fields["owner_hid"] = dice.weighted(made.owners, "circuit owner", number)
+    if dice.chance(0.08, "critical circuit", number):
+        fields["tags"] = ["critical"]
+    return fields
+
+
+def plan_circuits(
+    dice: Dice, made: Made, shape: Shape, vendors: dict[str, str]
+) -> list[PlannedCircuit]:
+    """Return the circuits to be made, across the sites, the larger ones having more."""
+    today = clock.today()
+    by_top: dict[int, list[Place]] = defaultdict(list)
+    for place in made.places:
+        by_top[place.region // 4].append(place)
+    sizes = [(one, one.weight) for one in made.places]
+    kinds = [(kind, kind.share) for kind in CIRCUIT_KINDS]
+    planned = []
+    for number in range(1, shape.circuits + 1):
+        kind = dice.weighted(kinds, "circuit kind", number)
+        place = dice.weighted(sizes, "circuit site", number)
+        far = None
+        if kind.far_end is None:
+            # Between sites: another in the same part of the world, if there is one.
+            near = [one for one in by_top[place.region // 4] if one is not place]
+            others = near or [one for one in made.places if one is not place]
+            far = dice.pick(others, "far site", number) if others else None
+        fields = _circuit_fields(dice, made, number, kind, place, far)
+        port = int(fields["port_mbps"])
+        fields["carrier_hid"] = vendors[fields.pop("carrier")]
+        circuit = PlannedCircuit(fields, kind, place, far)
+        if kind.type != "voice" and dice.chance(0.16, "another carrier", number):
+            vendor, role, _, description = dice.weighted(
+                [((v, r, s, d), s) for v, r, s, d in PARTS], "part", number
+            )
+            circuit.part = (vendors[vendor], role, description)
+        circuit.lines = _lines(dice, number, kind, port, circuit.part)
+        gone = fields.get("disconnected_on")
+        circuit.retire = (
+            gone is not None
+            and gone < today
+            and (number == 3 or dice.chance(0.6, "retired circuit", number))
+        ) or dice.chance(0.01, "taken out", number)
+        planned.append(circuit)
+    return planned
+
+
+def _routers(planned: list[Planned]) -> dict[str, list[str]]:
+    """Return the routers in service at each site."""
+    found: dict[str, list[str]] = defaultdict(list)
+    for one in planned:
+        row = one.row
+        serving = row["lifecycle_state"] == "Prod" and row["record_status"] == "active"
+        if one.depth == 0 and one.use == "router" and serving:
+            found[one.place.hid].append(row["hid"])
+    return found
+
+
+def _connect(
+    db: Session,
+    dice: Dice,
+    number: int,
+    one: PlannedCircuit,
+    routers: dict[str, list[str]],
+    desks: dict[str, str],
+    site_desks: dict[str, str],
+) -> None:
+    """Give a circuit that has been made its parts: its other carrier, its cost lines,
+    a router at an end, and the contacts some name of their own."""
+    if one.part is not None:
+        vendor, role, _ = one.part
+        circuit_records.add_carrier(
+            db,
+            SEED,
+            one.hid,
+            {"vendor_hid": vendor, "role": role, "circuit_number": f"PART/{number:06d}"},
+        )
+    for line in one.lines:
+        circuit_records.add_cost(db, SEED, one.hid, line)
+    devices = []
+    near = routers.get(one.place.hid)
+    if near and dice.chance(0.85, "router at a", number):
+        devices.append({"item_hid": dice.pick(near, "router a", number), "side": "a"})
+    far = routers.get(one.far.hid) if one.far is not None else None
+    if far and dice.chance(0.5, "router at z", number):
+        devices.append({"item_hid": dice.pick(far, "router z", number), "side": "z"})
+    if devices:
+        circuit_records.add_devices(db, SEED, one.hid, devices)
+    if dice.chance(0.04, "own desk", number):
+        # The carrier's major accounts desk, in place of its repair desk.
+        desk = desks[one.fields["carrier_hid"]]
+        carrier_contacts.add_circuit_contact(
+            db, SEED, one.hid, {"role": "support_contact", "contact_hid": desk}
+        )
+    if dice.chance(0.03, "site desk", number):
+        # Who lets the carrier's technician into the room at the A side.
+        code = one.place.code
+        if code not in site_desks:
+            fields = {
+                "name": f"Facilities desk, {code}",
+                "email": f"facilities.{code.lower()}@{MAIL}",
+            }
+            site_desks[code] = contacts.create_contact(db, SEED, fields).hid
+        carrier_contacts.add_circuit_contact(
+            db, SEED, one.hid, {"side": "a", "role": "operational", "contact_hid": site_desks[code]}
+        )
+
+
+def _circuit_groups(
+    made: Made, circuits: list[PlannedCircuit], shape: Shape
+) -> list[tuple[str, str, str | None, list[PlannedCircuit]]]:
+    """Return the groups of circuits: the underlay of each region, the interconnects and
+    the voice trunks of each part of the world, what is billed under some agreements of
+    the carriers, and the diverse pairs of the largest sites."""
+    # The parts of the world in the order they were made, which a site's region counts.
+    parts = [(top, part) for top, _, below in REGIONS for part in below]
+    tops = [name for name, _, _ in REGIONS]
+    live = [one for one in circuits if not one.retire]
+    engineering, voice = made.team_owner[TEAMS[0]], made.team_owner["Voice Services"]
+    planned: list[tuple[str, str, str | None, list[PlannedCircuit]]] = []
+    for index, (top, part) in enumerate(parts):
+        mine = [one for one in live if one.place.region == index and one.kind.type in UNDERLAY]
+        name = f"SD-WAN underlay, {top} {part}"
+        planned.append((name, "Internet and MPLS under the SD-WAN", engineering, mine))
+    for index, top in enumerate(tops):
+        near = [one for one in live if one.place.region // 4 == index]
+        between = [one for one in near if one.kind.type in INTERCONNECT]
+        planned.append((f"Data center interconnect, {top}", "Fiber between sites", None, between))
+        trunks = [one for one in near if one.kind.type == "voice"]
+        planned.append((f"Voice trunks, {top}", "SIP trunks to the carriers", voice, trunks))
+    under: dict[str, list[PlannedCircuit]] = defaultdict(list)
+    for one in live:
+        under[one.fields["billing_contract"]].append(one)
+    # The oldest agreement of each carrier: its year is the last part of its reference.
+    oldest = sorted(under, key=lambda reference: (reference[-4:], reference))
+    for contract in oldest[: shape.scaled(6, 1)]:
+        planned.append((f"Billed under {contract}", "One agreement", engineering, under[contract]))
+    for place in sorted(made.places, key=lambda one: -one.weight)[: shape.scaled(12, 1)]:
+        pair: dict[str, PlannedCircuit] = {}
+        for one in live:
+            if one.place is place and one.kind.type == "internet":
+                pair.setdefault(one.fields["carrier_hid"], one)
+        if len(pair) >= 2:
+            two = list(pair.values())[:2]
+            planned.append((f"Diverse internet, {place.code}", "Two carriers", engineering, two))
+    return [group for group in planned if group[3]]
+
+
+def make_circuits(
+    db: Session, dice: Dice, made: Made, shape: Shape, planned: list[Planned]
+) -> None:
+    """Make the carriers and the circuits, with their other carriers, their cost lines,
+    a router at an end, the contacts some name of their own, and their groups.
+
+    The circuits that are to be retired are put into a group first, of the circuits
+    decommissioned, which is then retired too: retiring ends no membership.
+    """
+    vendors, desks = _carriers(db)
+    desks = {vendors[name]: hid for name, hid in desks.items()}
+    routers = _routers(planned)
+    circuits = plan_circuits(dice, made, shape, vendors)
+    site_desks: dict[str, str] = {}
+    for number, one in enumerate(circuits, start=1):
+        one.hid = circuit_records.create_circuit(db, SEED, dict(one.fields)).hid
+        _connect(db, dice, number, one, routers, desks, site_desks)
+    gone = [one for one in circuits if one.retire]
+    for name, description, owner, members in _circuit_groups(made, circuits, shape):
+        group = circuit_groups.create_group(
+            db, SEED, {"name": name, "description": description, "owner_hid": owner}
+        )
+        circuit_groups.add_members(db, SEED, group.hid, [one.hid for one in members])
+    if gone:
+        fields = {"name": "Decommissioned circuits", "description": "Kept for their history"}
+        group = circuit_groups.create_group(db, SEED, fields)
+        circuit_groups.add_members(db, SEED, group.hid, [one.hid for one in gone])
+        for one in gone:
+            circuit = circuit_records.get_circuit(db, one.hid)
+            circuit_records.retire_circuit(db, SEED, one.hid, circuit.row_version)
+        circuit_groups.retire_group(db, SEED, group.hid, group.row_version)
+    db.flush()
+
+
+def weigh_places(db: Session, dice: Dice, places: list[Place]) -> None:
+    """Give some places a support weight of their own (P-139, P-155): three parts of
+    the world for their operations centers, a third of the sites, and the main room of
+    some."""
+    regions = db.scalars(
+        select(Region).where(Region.parent_region_hid.is_not(None)).order_by(Region.code_key)
+    ).all()
+    weighed: list[tuple[str, str, Decimal]] = [
+        (geography.REGION, region.hid, Decimal(weight))
+        for region, weight in zip(regions[::5], ("4", "2.5", "1"), strict=False)
+    ]
+    for place in places:
+        if place is places[0] or dice.chance(0.33, "site weight", place.code):
+            weight = dice.pick(("0.5", "1", "1.5", "2", "4"), "how heavy a site", place.code)
+            weighed.append((geography.SITE, place.hid, Decimal(weight)))
+        if place.core is not None and dice.chance(0.2, "room weight", place.code):
+            weight = dice.pick(("0.5", "1", "1.5"), "how heavy a room", place.code)
+            weighed.append((geography.LOCATION, place.core, Decimal(weight)))
+    for level, hid, weight in weighed:
+        record = geography.get_place(db, level, hid).record
+        geography.update_place(db, SEED, level, hid, record.row_version, {"support_weight": weight})
+    db.flush()
+
+
 # --- the capacity of the operations team, made through the rules ---------------------------
 
 # The staff lines of each region: the position, how many units one gives, and how many
@@ -1591,6 +2120,11 @@ def counts(db: Session) -> dict[str, int]:
         "contracts to end with their term": of(Contract, Contract.ends_with_term.is_(True)),
         "contracts to review": of(Contract, contracts.to_review_value()),
         "catalog entries not to be renewed": of(CatalogEntry, CatalogEntry.do_not_renew.is_(True)),
+        "models of major items with no weight": of(
+            CatalogEntry,
+            CatalogEntry.support_weight.is_(None),
+            CatalogEntry.annual_support_cost.is_not(None),
+        ),
         "items with their own word on renewing": of(Item, Item.do_not_renew.is_not(None)),
         "purchase requests": of(PurchaseRequest),
         "purchase lines": of(PurchaseLine),
@@ -1611,6 +2145,25 @@ def counts(db: Session) -> dict[str, int]:
         "capacity lines": of(CapacityLine),
         "capacity lines that multiply": of(CapacityLine, CapacityLine.effect == capacity.MULTIPLY),
         "capacity records": of(CapacityRecord),
+        "regions with a weight": of(Region, Region.support_weight.is_not(None)),
+        "sites with a weight": of(Site, Site.support_weight.is_not(None)),
+        "locations with a weight": of(Location, Location.support_weight.is_not(None)),
+        "circuits": of(Circuit),
+        "circuits in service today": of(Circuit, circuit_records.in_service_column()),
+        "draft circuits": of(Circuit, Circuit.record_status == "draft"),
+        "retired circuits": of(Circuit, Circuit.record_status == "retired"),
+        "circuits with a weight": of(Circuit, Circuit.support_weight.is_not(None)),
+        "circuits with another carrier": of(
+            Circuit,
+            select(CircuitCarrier.hid).where(CircuitCarrier.circuit_hid == Circuit.hid).exists(),
+        ),
+        "cost lines": of(CircuitCost),
+        "credit lines": of(CircuitCost, CircuitCost.monthly_cost < 0),
+        "circuit devices": of(CircuitDevice),
+        "circuit groups": of(CircuitGroup),
+        "circuit group members": of(CircuitGroupMember),
+        "contacts of carriers": of(VendorContact),
+        "contacts of circuits": of(CircuitContact),
         "audit events": of(AuditEvent),
     }
 
@@ -1627,6 +2180,10 @@ def build(folder: Path, items_wanted: int = ITEMS, seed: str = "hirdir") -> dict
         with make_sessions(engine)() as db:
             user, _ = accounts.create_user(db, SEED, username=USERNAME, access_code=ACCESS_CODE)
             accounts.grant_role(db, SEED, role="viewer", user_hid=user.hid)
+            admin, _ = accounts.create_user(
+                db, SEED, username=ADMIN_USERNAME, access_code=ADMIN_ACCESS_CODE
+            )
+            accounts.grant_role(db, SEED, role="admin", user_hid=admin.hid)
             made = build_small(db, dice, shape)
             rules = {rule.state: rule for rule in db.scalars(select(LifecycleRule))}
             writer = Writer(db)
@@ -1638,6 +2195,8 @@ def build(folder: Path, items_wanted: int = ITEMS, seed: str = "hirdir") -> dict
             write_coverage(writer, dice, made, planned)
             writer.write_events()
             make_groups(db, planned_groups)
+            weigh_places(db, dice, made.places)
+            make_circuits(db, dice, made, shape, planned)
             make_capacity(db, dice, made.places)
             db.commit()
             facts = {
@@ -1646,6 +2205,8 @@ def build(folder: Path, items_wanted: int = ITEMS, seed: str = "hirdir") -> dict
                 "seed": seed,
                 "username": USERNAME,
                 "access_code": ACCESS_CODE,
+                "admin_username": ADMIN_USERNAME,
+                "admin_access_code": ADMIN_ACCESS_CODE,
                 "counts": counts(db),
                 "seconds": round(time.monotonic() - started, 1),
             }

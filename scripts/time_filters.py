@@ -17,9 +17,20 @@ filters and sorts that 0.6.0 and 0.6.1 added to the item list, beside the list w
 filter as the baseline; the flag not to renew of 0.7.0 on the item list, and the
 members to review and the overdue renewals on the contract list; and the reports of
 0.7.0: the coverage report, the renewal worklist and the renewal alert, each worked out
-anew and kept, and the capacity balance with the demand of each region.
+anew and kept. And what 0.8.0 adds: a page of the circuit grid, with the fields the
+grid asks for, under its filters; a circuit's record with its parts and contacts; the
+list of circuit groups and a group's record and members; the report of what circuits
+cost, by carrier, site, region and group, for the present fiscal year, whole and
+narrowed to a region; the capacity report anew and kept, with none of the six weights of
+the settings and with all six set, and a Try; the item grid and the summary with the
+default and the minimum weight of an item set, against the same without; and the check
+of what is kept, with the four long reports kept.
 
-An answer that is kept (D-184) is timed twice. "anew" drops every kept answer,
+A request that is timed with settings set has them set by the fixture's Admin before
+its warm-ups, through `PUT /settings/{key}` as a person sets them, and returned to
+their defaults after its runs, so that every other request is timed with none.
+
+An answer that is kept (D-184, P-157) is timed twice. "anew" drops every kept answer,
 `hirdir.io.kept.drop()`, before each run, outside what is timed, so that each run works
 it out from the records as the first request after a change does; "kept" asks the same
 again unchanged, as every request after the first does until something changes. With
@@ -34,7 +45,12 @@ such as `HIRDIR_CONFIG=fixture-data/config.toml uv run hirdir admin serve --dev`
 `--explain` is not available, because the statements are then in the other process.
 
 The host is shared, so the load is printed before and after: numbers taken on a busy
-host are slower than the host can do.
+host are slower than the host can do. For the same reason the process is kept to 3 GiB
+of memory, `--memory` to say another: a run takes a few hundred MB, and a
+request that would take more fails in this process rather than the host running out.
+A request that is not answered, refused or failed, is said so with what it was
+answered and after how long, the others are timed all the same, and the run ends with
+the status 1.
 """
 
 import argparse
@@ -68,26 +84,108 @@ NOT_RENEWED = "effective.do_not_renew"
 REGION_FILTER = "location:within:Americas"
 # How much of the parameters of a statement is written out with it.
 SHOWN = 400
+# The most memory the timing may take, in GiB. The host is shared: a request that would
+# take more fails in this process, and is said not to be answered, before the host
+# runs out. A run takes a few hundred MB.
+MEMORY_GIB = 3.0
+# The fields the circuit grid asks for: GRID_FIELDS in web/src/lib/circuits.ts. They
+# name the carriers and the groups, so the parts of each circuit of a page are read.
+CIRCUIT_FIELDS = (
+    "name",
+    "enterprise_circuit_id",
+    "description",
+    "notes",
+    "circuit_type",
+    "port_mbps",
+    "down_mbps",
+    "up_mbps",
+    "speed",
+    "a_location_hid",
+    "a_note",
+    "a_side",
+    "z_location_hid",
+    "z_note",
+    "z_side",
+    "cost_side",
+    "cost_site_hid",
+    "cost_site_path",
+    "carrier_hid",
+    "carrier",
+    "carrier_circuit_number",
+    "carriers",
+    "billing_account",
+    "billing_contract",
+    "installed_on",
+    "activated_on",
+    "disconnected_on",
+    "production",
+    "support_weight",
+    "owner_hid",
+    "owner",
+    "owner_exception",
+    "owner_exception_reason",
+    "monthly_cost",
+    "annual_cost",
+    "in_service",
+    "groups",
+    "effective.support_weight",
+    "effective.down_mbps",
+    "effective.up_mbps",
+    "tags",
+    "record_status",
+    "created_at",
+    "updated_at",
+)
+# The six weights of the settings (P-155), as a run with all six set sets them; the two
+# of a major item; and what a Try tries beside two staff lines (P-156).
+WEIGHTS = {
+    "default_item_weight": "0.5",
+    "minimum_item_weight": "0.1",
+    "default_site_weight": "1",
+    "minimum_site_weight": "0.5",
+    "default_circuit_weight": "0.5",
+    "minimum_circuit_weight": "0.25",
+}
+ITEM_WEIGHTS = {key: WEIGHTS[key] for key in ("default_item_weight", "minimum_item_weight")}
+TRIED = {"default_item_weight": "0.5", "minimum_circuit_weight": "0.25"}
+# The long reports that are kept, each for the view its page opens with (P-157).
+LONG_REPORTS = ("/reports/coverage", "/reports/renewals", "/renewals/alert", "/reports/capacity")
 
 
 @dataclass(frozen=True)
 class Case:
-    """One request to time. `anew` drops the kept answers before each run (D-184)."""
+    """One request to time. `anew` drops the kept answers before each run (D-184).
+
+    `settings` are set by the Admin for its runs and returned to their defaults after;
+    `admin` sends it as the Admin, for a route that asks for one; and `keeps` are the
+    routes asked first, after the kept answers are dropped, so that they alone are kept.
+    """
 
     label: str
     path: str
     params: dict[str, Any]
     anew: bool = False
+    method: str = "GET"
+    body: dict[str, Any] | None = None
+    settings: dict[str, str] = field(default_factory=dict)
+    admin: bool = False
+    keeps: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class Picked:
     """The records some of the requests name: the contract that covers the most items,
-    and the one that still counts the most items that are out of service."""
+    and the one that still counts the most items that are out of service; and of 0.8.0
+    the carrier that bills the most circuits, the circuit with the most parts, the
+    circuit group with the most circuits, and a staff line for a Try to change."""
 
     number: str
     counting_number: str
     counting_hid: str
+    carrier_hid: str = ""
+    circuit_hid: str = ""
+    group_hid: str = ""
+    staff_hid: str = ""
 
 
 def cases(picked: Picked) -> list[Case]:
@@ -184,8 +282,119 @@ def cases(picked: Picked) -> list[Case]:
                 report("GET /renewals/alert", "/renewals/alert", anew),
             )
         ),
+        *cases_of_0_8_0(picked),
+    ]
+
+
+def cases_of_0_8_0(picked: Picked) -> list[Case]:
+    """Return the requests that 0.8.0 adds: the circuits, their groups and what they
+    cost, the capacity report with and without the weights of the settings and a Try,
+    the item grid and the summary with and without the weights of an item, and the
+    check of what is kept."""
+
+    def circuits(label: str, filter_: str = "", sort: str = "name") -> Case:
+        params: dict[str, Any] = {
+            "sort": sort,
+            "limit": PAGE,
+            "offset": 0,
+            "fields": list(CIRCUIT_FIELDS),
+        }
+        if filter_:
+            params["filter"] = filter_
+        return Case(f"circuits, {label}", f"{API}/circuits", params)
+
+    def costs(by: str, filter_: str = "") -> Case:
+        narrowed = f" {filter_}" if filter_ else ""
+        params = {"by": by, **({"filter": filter_} if filter_ else {})}
+        return Case(
+            f"GET /reports/circuit-costs by={by}{narrowed}", f"{API}/reports/circuit-costs", params
+        )
+
+    def capacity(weighed: bool, anew: bool) -> Case:
+        label = "GET /reports/capacity" + (", the six weights set" if weighed else "")
+        return Case(
+            f"{label}, {'anew' if anew else 'kept'}",
+            f"{API}/reports/capacity",
+            {},
+            anew,
+            settings=WEIGHTS if weighed else {},
+        )
+
+    def weighed(label: str, path: str, params: dict[str, Any], on: bool) -> Case:
+        suffix = ", the item weights set" if on else ", no weight set"
+        return Case(f"{label}{suffix}", f"{API}{path}", params, settings=ITEM_WEIGHTS if on else {})
+
+    page = {"limit": PAGE, "offset": 0}
+    tried = {
+        **TRIED,
+        "staff": {
+            "add": [{"name": "Network engineer, tried", "quantity": "2", "units_each": "1"}],
+            "change": [{"hid": picked.staff_hid, "quantity": "4"}],
+        },
+    }
+    return [
+        circuits("no filter, by name"),
+        circuits(f"{REGION_FILTER}, by name", REGION_FILTER),
+        circuits("billed_by:eq:<one>, by name", f"billed_by:eq:{picked.carrier_hid}"),
+        circuits("effective.down_mbps:lt:200, by name", "effective.down_mbps:lt:200"),
+        circuits("in_service:eq:true, by name", "in_service:eq:true"),
+        circuits("monthly_cost:gt:2000, by name", "monthly_cost:gt:2000"),
+        circuits("monthly_cost:gt:2000, by -monthly_cost", "monthly_cost:gt:2000", "-monthly_cost"),
+        circuits("no filter, by -monthly_cost", "", "-monthly_cost"),
         Case(
-            "GET /reports/capacity, with the demand of each region", f"{API}/reports/capacity", {}
+            "GET /circuits/{hid}, the one with the most parts",
+            f"{API}/circuits/{picked.circuit_hid}",
+            {},
+        ),
+        Case("GET /circuit-groups", f"{API}/circuit-groups", page),
+        Case(
+            "GET /circuit-groups/{hid}, the largest", f"{API}/circuit-groups/{picked.group_hid}", {}
+        ),
+        Case(
+            "GET /circuit-groups/{hid}/members, the largest",
+            f"{API}/circuit-groups/{picked.group_hid}/members",
+            page,
+        ),
+        *(
+            costs(by, filter_)
+            for by in ("carrier", "site", "region", "group")
+            for filter_ in ("", REGION_FILTER)
+        ),
+        *(capacity(on, anew) for on in (False, True) for anew in (True, False)),
+        Case(
+            "POST /reports/capacity/try, a default, a minimum and two staff lines",
+            f"{API}/reports/capacity/try",
+            {},
+            method="POST",
+            body=tried,
+        ),
+        *(
+            case
+            for on in (False, True)
+            for case in (
+                weighed(
+                    "is_major:eq:true, by name (the grid's first page)",
+                    "/items",
+                    {"filter": "is_major:eq:true", "sort": "name", **page},
+                    on,
+                ),
+                weighed(
+                    "no filter, by -effective.support_weight",
+                    "/items",
+                    {"sort": "-effective.support_weight", **page},
+                    on,
+                ),
+                weighed("GET /reports/summary", "/reports/summary", {}, on),
+                weighed("GET /reports/summary by=region", "/reports/summary", {"by": "region"}, on),
+            )
+        ),
+        Case(
+            "POST /kept-answers/check, the four long reports kept",
+            f"{API}/kept-answers/check",
+            {},
+            method="POST",
+            admin=True,
+            keeps=LONG_REPORTS,
         ),
     ]
 
@@ -209,6 +418,8 @@ class Timed:
     total: Any = None
     # The load average of the host over the minute in which the runs ended.
     load: float = 0.0
+    # Why it was not answered, after how long, where it was not.
+    failed: str | None = None
 
     @property
     def median(self) -> float:
@@ -223,10 +434,47 @@ class Timed:
 ALERTED = ("lapsed", "renewal_pending", "ending")
 
 
+def _balance(answer: dict[str, Any]) -> dict[str, Any]:
+    """Return the demand, the supply and the parts of the support weight of a capacity
+    balance, and how many counted at a default or were raised to a minimum."""
+    view = answer["active"]
+    return {
+        "demand": view["demand"],
+        "supply": view["supply"],
+        "regions": len(view["demand_by_region"]),
+        "weights": [view[name] for name in ("items_weight", "places_weight", "circuits_weight")],
+        "defaulted": view["defaulted"],
+        "raised": view["raised"],
+    }
+
+
 def total_of(case: Case, answer: dict[str, Any]) -> Any:
     """Return what an answer counted: a page's total, or a section's; the totals of a
-    report; the counts of the alert; or the demand and supply of the capacity balance."""
-    if "section" in case.params or ("total" in answer and "totals" not in answer):
+    report; the counts of the alert; the demand and supply of the capacity balance, and
+    of a Try beside it; the parts of a circuit; what a group of circuits costs; or how
+    many kept answers a check checked and how many differed."""
+    if "section" in case.params:
+        return answer["total"]
+    if "checked" in answer:
+        return {"checked": answer["checked"], "differed": len(answer["differed"])}
+    if "tried" in answer:
+        return {"in_force": answer["in_force"]["active"]["demand"], **_balance(answer["tried"])}
+    if "costs" in answer:
+        parts = ("carriers", "costs", "devices", "groups", "contacts")
+        return {name: len(answer[name] or []) for name in parts}
+    if "in_service" in answer and "total" not in answer:
+        return {name: answer[name] for name in ("circuits", "in_service", "monthly_cost")}
+    if "fiscal_year" in answer:
+        totals = answer["totals"]
+        return {"rows": len(answer["rows"]), "circuits": totals["circuits"], "cost": totals["cost"]}
+    if "by_kind" in answer.get("totals", {}):
+        totals = answer["totals"]
+        return {
+            "rows": len(answer["rows"]),
+            "items": totals["items"],
+            "weight": totals["support_weight"],
+        }
+    if "total" in answer and "totals" not in answer:
         return answer["total"]
     if "totals" in answer:
         return answer["totals"]
@@ -236,19 +484,41 @@ def total_of(case: Case, answer: dict[str, Any]) -> Any:
             "overdue": answer["overdue"],
             "agreements": answer["agreements"],
         }
-    view = answer["active"]
-    return {
-        "demand": view["demand"],
-        "supply": view["supply"],
-        "regions": len(view["demand_by_region"]),
-    }
+    return _balance(answer)
 
 
-def ask(client: httpx2.Client, case: Case) -> dict[str, Any]:
-    response = client.get(case.path, params=case.params)
+def ask(client: httpx2.Client, case: Case, admin: dict[str, str] | None = None) -> dict[str, Any]:
+    """Send one request, as the Admin where it asks for one."""
+    response = client.request(
+        case.method,
+        case.path,
+        params=case.params,
+        json=case.body,
+        headers=admin if case.admin else None,
+    )
     if response.status_code != 200:
-        raise SystemExit(f"{case.label}: {response.status_code} {response.text[:500]}")
+        problem = (
+            response.json() if response.headers.get("content-type", "").endswith("json") else {}
+        )
+        said = problem.get("title") if isinstance(problem, dict) else None
+        raise Unanswered(f"{response.status_code} {said or response.text[:300]}")
     return response.json()
+
+
+class Unanswered(Exception):
+    """A request that was answered with anything but 200."""
+
+
+def cap_memory(gib: float) -> None:
+    """Keep this process to so much memory: a request that would take more fails here,
+    with MemoryError, rather than the shared host running out of memory."""
+    import resource
+
+    _, hard = resource.getrlimit(resource.RLIMIT_AS)
+    limit = int(gib * 2**30)
+    if hard != resource.RLIM_INFINITY:
+        limit = min(limit, hard)
+    resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
 
 
 def drop_kept() -> None:
@@ -258,22 +528,77 @@ def drop_kept() -> None:
     kept.drop()
 
 
-def time_case(client: httpx2.Client, case: Case, runs: int, warm_up: int) -> Timed:
+def put_settings(
+    client: httpx2.Client, admin: dict[str, str] | None, values: dict[str, str | None]
+) -> None:
+    """Give settings values as the Admin gives them, one audited change each; None
+    returns one to its default."""
+    if not values:
+        return
+    if admin is None:
+        raise SystemExit("the settings are set by the Admin: run `make fixture` again")
+    held = client.get(f"{API}/settings", headers=admin)
+    versions = {one["key"]: one["row_version"] for one in held.json()}
+    for key, value in values.items():
+        response = client.put(
+            f"{API}/settings/{key}",
+            json={"value": value, "row_version": versions[key]},
+            headers=admin,
+        )
+        if response.status_code != 200:
+            raise SystemExit(f"setting {key}: {response.status_code} {response.text[:500]}")
+
+
+@contextmanager
+def settings_set(
+    client: httpx2.Client, case: Case, admin: dict[str, str] | None
+) -> Generator[None]:
+    """Set the settings a request is timed with while the block runs, and return them to
+    their defaults after."""
+    put_settings(client, admin, dict(case.settings))
+    try:
+        yield
+    finally:
+        put_settings(client, admin, dict.fromkeys(case.settings))
+
+
+def keep_first(client: httpx2.Client, case: Case, anew: bool) -> None:
+    """Drop the kept answers, where they are in this process, and ask the routes a
+    request keeps first, so that what is kept is theirs."""
+    if not case.keeps:
+        return
+    if anew:
+        drop_kept()
+    for route in case.keeps:
+        ask(client, Case(route, f"{API}{route}", {}))
+
+
+def time_case(
+    client: httpx2.Client,
+    case: Case,
+    runs: int,
+    warm_up: int,
+    admin: dict[str, str] | None = None,
+    anew: bool = True,
+) -> Timed:
     """Ask for one request warm_up times, then time it runs times. One to be worked out
-    anew has the kept answers dropped before each run, outside what is timed."""
+    anew has the kept answers dropped before each run, outside what is timed; one with
+    settings has them set before its warm-ups and returned after its runs."""
     timed = Timed(case)
-    for _ in range(warm_up):
-        if case.anew:
-            drop_kept()
-        timed.total = total_of(case, ask(client, case))
-    for _ in range(runs):
-        if case.anew:
-            drop_kept()
-        started = time.perf_counter()
-        answer = ask(client, case)
-        timed.runs.append((time.perf_counter() - started) * 1000)
-        timed.total = total_of(case, answer)
-    timed.load = os.getloadavg()[0]
+    with settings_set(client, case, admin):
+        keep_first(client, case, anew)
+        for _ in range(warm_up):
+            if case.anew:
+                drop_kept()
+            timed.total = total_of(case, ask(client, case, admin))
+        for _ in range(runs):
+            if case.anew:
+                drop_kept()
+            started = time.perf_counter()
+            answer = ask(client, case, admin)
+            timed.runs.append((time.perf_counter() - started) * 1000)
+            timed.total = total_of(case, answer)
+        timed.load = os.getloadavg()[0]
     return timed
 
 
@@ -327,15 +652,23 @@ def plan_of(engine: Engine, statement: Statement) -> list[str]:
     return lines
 
 
-def explain(engine: Engine, client: httpx2.Client, chosen: Sequence[Case], out: Path) -> None:
+def explain(
+    engine: Engine,
+    client: httpx2.Client,
+    chosen: Sequence[Case],
+    out: Path,
+    admin: dict[str, str] | None = None,
+) -> None:
     """Write, for each request, every statement it sent, what it took and its plan."""
     with out.open("w", encoding="utf-8") as handle:
         for case in chosen:
-            if case.anew:
-                drop_kept()
-            with recorded(engine) as sent:
+            with settings_set(client, case, admin), recorded(engine) as sent:
+                keep_first(client, case, anew=True)
+                if case.anew:
+                    drop_kept()
+                sent.clear()
                 started = time.perf_counter()
-                ask(client, case)
+                ask(client, case, admin)
                 whole = (time.perf_counter() - started) * 1000
             in_sql = sum(one.ms for one in sent)
             handle.write(f"=== {case.label}\n{case.path} {json.dumps(case.params)}\n")
@@ -369,6 +702,53 @@ def sign_in(client: httpx2.Client, facts: dict[str, Any]) -> None:
     client.headers["Authorization"] = f"Bearer {response.json()['token']}"
 
 
+def sign_in_admin(client: httpx2.Client, facts: dict[str, Any]) -> dict[str, str] | None:
+    """Sign in as the fixture's Admin and return the header that sends a request as it,
+    or None for a fixture made before 0.8.0, which has none."""
+    if "admin_username" not in facts:
+        return None
+    response = client.post(
+        f"{API}/auth/sign-in",
+        json={"username": facts["admin_username"], "access_code": facts["admin_access_code"]},
+    )
+    if response.status_code != 200:
+        raise SystemExit(f"cannot sign in as the Admin: {response.status_code} {response.text}")
+    return {"Authorization": f"Bearer {response.json()['token']}"}
+
+
+def picked_of_0_8_0(client: httpx2.Client) -> tuple[dict[str, str], list[str]]:
+    """Return the records the requests of 0.8.0 name, and what to say of each: the
+    carrier that bills the most circuits, the circuit with the most parts of the first
+    thousand, the circuit group with the most circuits, and the first staff line."""
+    costs = client.get(f"{API}/reports/circuit-costs", params={"by": "carrier"}).json()
+    carrier = max(costs["rows"], key=lambda row: (row["circuits"], row["key"] or ""))
+    listed = client.get(
+        f"{API}/circuits",
+        params={"limit": 1000, "fields": ["name", "carriers", "costs", "devices", "groups"]},
+    ).json()["items"]
+    parts = ("carriers", "costs", "devices", "groups")
+    circuit = max(
+        listed, key=lambda one: (sum(len(one[name] or []) for name in parts), one["name"])
+    )
+    group = client.get(f"{API}/circuit-groups", params={"sort": "-circuits", "limit": 1}).json()
+    staff = client.get(
+        f"{API}/capacity-lines", params={"filter": "category:eq:staff", "sort": "name", "limit": 1}
+    ).json()
+    biggest = group["items"][0]
+    said = [
+        f"billed_by is {carrier['label']}, which bills the most circuits: {carrier['circuits']:,}",
+        f"the circuit with the most parts is {circuit['name']}",
+        f"the largest circuit group is {biggest['name']}: {biggest['circuits']:,} circuits",
+        f"the staff line a Try changes is {staff['items'][0]['name']}",
+    ]
+    return {
+        "carrier_hid": carrier["key"],
+        "circuit_hid": circuit["hid"],
+        "group_hid": biggest["hid"],
+        "staff_hid": staff["items"][0]["hid"],
+    }, said
+
+
 def largest_contract(client: httpx2.Client) -> tuple[str, int]:
     """Return the number of the contract that covers the most items today, and how many."""
     response = client.get(f"{API}/contracts", params={"sort": "-covered_items", "limit": 1})
@@ -400,8 +780,8 @@ def most_counting(client: httpx2.Client) -> tuple[str, str, int]:
 
 def over_target(one: Timed) -> bool:
     """Say whether a request misses the target of D-165: the median under TARGET_MS and
-    the 95th percentile under twice that."""
-    return one.median > TARGET_MS or one.p95 > 2 * TARGET_MS
+    the 95th percentile under twice that. One that was not answered misses it."""
+    return one.failed is not None or one.median > TARGET_MS or one.p95 > 2 * TARGET_MS
 
 
 def table(results: Sequence[Timed]) -> str:
@@ -410,6 +790,9 @@ def table(results: Sequence[Timed]) -> str:
     width = max(len(one.case.label) for one in results)
     lines = [f"{'request':<{width}}  {'median':>7}  {'p95':>7}  {'load':>5}  total"]
     for one in results:
+        if one.failed is not None:
+            lines.append(f"{one.case.label:<{width}}  not answered: {one.failed}")
+            continue
         over = "  over" if over_target(one) else ""
         total = json.dumps(one.total) if isinstance(one.total, dict) else f"{one.total:,}"
         lines.append(
@@ -434,6 +817,9 @@ def run(
     """Time the requests. `anew` is false where the kept answers cannot be dropped, in
     a server of another process, and the requests anew are then left out."""
     sign_in(client, facts)
+    admin = sign_in_admin(client, facts)
+    if admin is None:
+        raise SystemExit("the fixture was made before 0.8.0: run `make fixture` again")
     number, covered = largest_contract(client)
     say(f"contract.number is {number}, the contract that covers the most items: {covered:,}")
     counting_number, counting_hid, counted = most_counting(client)
@@ -441,20 +827,37 @@ def run(
         f"out_of_service_contract is {counting_number}, which still counts the most items "
         f"that are out of service: {counted:,}"
     )
-    picked = Picked(number, counting_number, counting_hid)
+    named, said = picked_of_0_8_0(client)
+    for line in said:
+        say(line)
+    picked = Picked(number, counting_number, counting_hid, **named)
     chosen = [case for case in cases(picked) if only is None or only in case.label]
     if not anew and any(case.anew for case in chosen):
         say("the requests anew are left out: the kept answers are in the server's process")
         chosen = [case for case in chosen if not case.anew]
     results = []
     for case in chosen:
-        results.append(time_case(client, case, runs, warm_up))
-        timed = results[-1]
+        started = time.perf_counter()
+        try:
+            timed = time_case(client, case, runs, warm_up, admin, anew)
+        except (Unanswered, MemoryError) as error:
+            took = time.perf_counter() - started
+            why = str(error) or type(error).__name__
+            timed = Timed(case, load=os.getloadavg()[0], failed=f"{why}, after {took:.1f} s")
+        results.append(timed)
+        if timed.failed is not None:
+            say(f"  {case.label}: not answered: {timed.failed}")
+            continue
         say(f"  {case.label}: {timed.median:.0f} / {timed.p95:.0f} ms, load {timed.load:.2f}")
     if explain_to is not None and engine is not None:
-        explain(engine, client, chosen, explain_to)
+        explain(engine, client, chosen, explain_to, admin)
         say(f"statements and plans written to {explain_to}")
     return results
+
+
+def said(line: str) -> None:
+    """Print a line at once, so that what was timed is there if the run is stopped."""
+    print(line, flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -466,6 +869,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--explain", type=Path, help="write the statements and plans here")
     parser.add_argument("--save", type=Path, help="write every run, as JSON, here")
     parser.add_argument("--url", help="time a server that is running, at this address")
+    parser.add_argument(
+        "--memory",
+        type=float,
+        default=MEMORY_GIB,
+        help=f"the most memory this process may take, in GiB, {MEMORY_GIB} unless said",
+    )
     given = parser.parse_args(argv)
     facts_path = given.folder / FACTS
     if not facts_path.is_file():
@@ -473,8 +882,9 @@ def main(argv: list[str] | None = None) -> int:
     if given.url and given.explain:
         parser.error("--explain times the application in this process, and not with --url")
     facts = json.loads(facts_path.read_text(encoding="utf-8"))
-    print(f"fixture of {facts['built_on']}: {facts['counts']['items']:,} items")
-    print(f"before: {load()}")
+    cap_memory(given.memory)
+    print(f"fixture of {facts['built_on']}: {facts['counts']['items']:,} items", flush=True)
+    print(f"before: {load()}", flush=True)
     options = {
         "runs": given.runs,
         "warm_up": given.warm_up,
@@ -483,14 +893,14 @@ def main(argv: list[str] | None = None) -> int:
     }
     if given.url:
         with httpx2.Client(base_url=given.url, timeout=120) as client:
-            results = run(client, facts, engine=None, anew=False, **options)
+            results = run(client, facts, engine=None, anew=False, say=said, **options)
     else:
         from hirdir.app import create_app
         from hirdir.config import Config
 
         app = create_app(Config(state_dir=given.folder))
         with TestClient(app) as client:
-            results = run(client, facts, engine=app.state.engine, **options)
+            results = run(client, facts, engine=app.state.engine, say=said, **options)
         app.state.engine.dispose()
     print(f"after: {load()}")
     print()
@@ -504,11 +914,12 @@ def main(argv: list[str] | None = None) -> int:
                 "runs": one.runs,
                 "load": one.load,
                 "total": one.total,
+                "failed": one.failed,
             }
             for one in results
         ]
         given.save.write_text(json.dumps(saved, indent=2) + "\n", encoding="utf-8")
-    return 0
+    return 1 if any(one.failed is not None for one in results) else 0
 
 
 if __name__ == "__main__":

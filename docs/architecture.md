@@ -1352,15 +1352,30 @@ are marked to end with their term, and a few that share an agreement's period st
 say their renewal is pending or that they have expired, so are to review; and the
 operations team has 24 capacity lines, by region and by site, three of them lines that
 multiply, two drafts and one that has ended, with the balance recorded for each of the
-last four weeks. It takes about a minute. `--items` makes a smaller one of the same
-shape, and a folder that the script did not make is left alone.
+last four weeks. What 0.8.0 added is there as well: eight invented carriers, each with
+an account manager and a repair desk, and 2,000 circuits across the sites, the larger
+sites having more: internet, MPLS and voice with their far end in the carrier's
+network, and point-to-point, dark fiber and wavelengths to another site of the same
+part of the world. Most have one or two cost lines, some were repriced this year and
+some have a credit for months of it; some 270 have another carrier for the local loop
+or a cross-connect, which bills a line of its own; most have a router at an end; a few
+are drafts on order, some were disconnected, some are to be disconnected soon, and
+about a hundred are retired. Some 300 have a weight of their own, a few name a contact
+of their own, and 37 groups hold them, one of them retired. Three regions, some 35
+sites and some 20 main rooms have a support weight of their own, and a few models came
+in without theirs. The six weights of the settings are left at their defaults: the
+timing sets them in runs of their own. The fixture has an Admin account beside the
+one that reads, to set them and to check what is kept. It takes about a minute and a
+half. `--items` makes a smaller one of the same shape, and a folder that the script
+did not make is left alone.
 
-The fixture is for timing and bypasses the rules. What there are few of is made through
-`hirdir.domain`; the items, their tags, addresses and coverage are written in bulk, as
+The fixture is for timing and bypasses the rules. What there are few of, the circuits
+and their parts among them, is made through `hirdir.domain`; the items, their tags,
+addresses and coverage are written in bulk, as
 rows that an import of the same inventory would have written, with an audit event for
 each. Dates are counted from the day it is made, so what has lapsed and what is pending
 renewal is so on that day. The folder also holds `fixture.json`, which says what is in
-it and the account to sign in with, and a `config.toml`, so that
+it and the accounts to sign in with, and a `config.toml`, so that
 `HIRDIR_CONFIG=fixture-data/config.toml uv run hirdir admin serve --dev` serves it on
 127.0.0.1:8726.
 
@@ -1374,13 +1389,31 @@ the first page of the contract list, with no filter, `to_review` and `renewal_ov
 the coverage report, whole, narrowed to a region and a page of a section, the renewal
 worklist, whole and a page of a section, and the renewal alert, each of the three
 worked out anew, with every kept answer dropped (`hirdir.io.kept.drop()`) before each
-run and outside what is timed, and kept, asked again unchanged; and the capacity
-balance with the demand of each region. Each request is asked 15 times after 2
+run and outside what is timed, and kept, asked again unchanged. Of 0.8.0 it asks for
+the first page of the circuit grid, 100 circuits with the fields the grid asks for,
+their carriers and groups among them, with no filter and under `location:within:`,
+`billed_by`, `effective.down_mbps:lt:`, `in_service:eq:true` and `monthly_cost:gt:`;
+the circuit with the most parts, as its page reads it; the list of circuit groups, and
+the largest group with a page of its members; the report of what circuits cost in the
+present fiscal year by carrier, site, region and group, whole and narrowed to a region;
+the capacity report anew and kept, with none of the six weights of the settings set and
+with all six; a Try with a default, a minimum and two staff lines; the grid's first
+page, the item list by `-effective.support_weight` and the summary, whole and by
+region, with `default_item_weight` and `minimum_item_weight` set and without; and the
+check of what is kept, as the Admin, with the four long reports kept and nothing else.
+A request timed with settings has them set by the Admin through `PUT /settings/{key}`
+before its warm-ups, as a person sets them, and returned to their defaults after its
+runs. Each request is asked 15 times after 2
 warm-ups, and the median and the 95th percentile are printed, each with the load
 average of the host over the minute its runs ended in, because a busy host is slower
 than the host can be. `--explain FILE` writes every statement of each request with how
 long it took and the plan SQLite made for it, and `--url` asks a server that is running
-instead, without the requests anew, whose kept answers are in the other process.
+instead, without the requests anew, whose kept answers are in the other process. The
+host is shared, so the timing keeps itself to 3 GiB of memory, `--memory` to say
+another, where a run takes a few hundred MB: a request that would take more fails in
+its process, before the host runs out. A request that is not answered is printed as
+such, with its status and after how long, the others are timed all the same, and the
+run ends with the status 1.
 
 `make time-import` runs `scripts/time_import.py`, which holds the import quality of
 [requirements.md](requirements.md#qualities) against the fixture: 10,000 rows preview
@@ -1513,20 +1546,124 @@ and 877 ms. A sign-in waits for the batch that holds the one writer to end, so h
 it waits is how long a batch takes, under a second (D-185: "a fraction of a second at
 most") only while 50 rows take under a second.
 
+**Measured at 0.8.0.** On the same host, median and 95th percentile in milliseconds of
+15 runs after 2 warm-ups, with the host otherwise quiet: its load average over the
+minute of each request was 0.9 to 1.5, of which about 1 is the timing itself. The
+requests of 0.7.0 were timed first on the fixture as 0.7.0 made it, and then on the
+fixture of 0.8.0, with its circuits and the weights of places. The item list:
+
+| Request | 0.7.0 | 0.8.0, fixture of 0.7.0 | 0.8.0 |
+|---|--:|--:|--:|
+| No filter, by name | 271 / 454 | 257 / 480 | 237 / 478 |
+| The grid's first page, major items | 180 / 234 | 182 / 198 | 184 / 221 |
+| `covered:eq:true`, by name | 376 / 582 | 394 / 435 | 401 / 810 |
+| `covered:eq:false`, by `covered_until` | 575 / 752 | 565 / 896 | 555 / 806 |
+| `contract_count:gt:1`, by `-contract_count` | 488 / 714 | 496 / 596 | 493 / 720 |
+| No filter, by `contract.number` | 356 / 590 | 367 / 645 | 359 / 438 |
+| `out_of_service_cover:eq:true` | 280 / 487 | 334 / 523 | 308 / 369 |
+| `contract.status:eq:renewal_pending` | 429 / 614 | 415 / 654 | 412 / 702 |
+| `effective.do_not_renew:eq:true`, by name | 242 / 259 | 268 / 565 | 250 / 333 |
+| `covered:eq:false effective.do_not_renew:eq:true`, by name | 462 / 670 | 494 / 732 | 482 / 778 |
+
+Neither 0.8.0 nor its circuits move any of them at the median by more than a fifth, most
+by less than a tenth, either way; the 95th percentile moves as the slowest of fifteen
+runs does. The contract list:
+no filter 144 / 192, `to_review:eq:true` 29 / 33, `renewal_overdue:eq:true` 37 / 43.
+The reports that are kept, worked out anew and kept:
+
+| Request | Anew | Kept |
+|---|--:|--:|
+| `GET /reports/coverage` | 1414 / 1504 | 14 / 17 |
+| `GET /reports/coverage`, `location:within:Americas` | 1888 / 2006 | 14 / 15 |
+| `GET /reports/coverage`, a page of `uncovered` | 1895 / 2057 | 37 / 49 |
+| `GET /reports/renewals` | 199 / 220 | 16 / 17 |
+| `GET /reports/renewals`, a page of `ending` | 237 / 617 | 17 / 20 |
+| `GET /renewals/alert` | 208 / 251 | 10 / 11 |
+| `GET /reports/capacity` | 2418 / 2683 | 11 / 12 |
+| `GET /reports/capacity`, the six weights set | 2512 / 2744 | 9 / 10 |
+
+What 0.8.0 adds, on its fixture: a page is 100 circuits with the fields the circuit grid
+asks for, and the total counted.
+
+| Request | Median / p95 | Answered |
+|---|--:|--:|
+| Circuits, no filter, by name | 96 / 118 | 1,831 |
+| `location:within:Americas`, by name | 118 / 428 | 665 |
+| `billed_by:eq:`, the carrier that bills the most, by name | 125 / 173 | 714 |
+| `effective.down_mbps:lt:200`, by name | 94 / 400 | 791 |
+| `in_service:eq:true`, by name | 94 / 113 | 1,785 |
+| `monthly_cost:gt:2000`, by name | 111 / 151 | 922 |
+| `monthly_cost:gt:2000`, by `-monthly_cost` | 129 / 203 | 922 |
+| No filter, by `-monthly_cost` | 172 / 546 | 1,831 |
+| `GET /circuits/{hid}`, with its parts and contacts | 23 / 27 | |
+| `GET /circuit-groups` | 187 / 573 | 36 |
+| `GET /circuit-groups/{hid}`, the largest | 24 / 31 | 171 circuits |
+| `GET /circuit-groups/{hid}/members`, a page of it | 24 / 29 | 171 |
+| `GET /reports/circuit-costs` by carrier | 269 / 679 | 8 rows |
+| by site | 301 / 701 | 120 rows |
+| by region | 324 / 693 | 15 rows |
+| by group | 267 / 666 | 38 rows |
+| any of the four, `location:within:Americas` | not answered | |
+| `POST /reports/capacity/try`, a default, a minimum and two staff lines | 5036 / 5366 | |
+| `POST /kept-answers/check`, the four long reports kept | 4299 / 4599 | 4, none differed |
+
+The weight in force, with `default_item_weight` and `minimum_item_weight` set against
+the same requests with neither: the grid's first page 200 / 280 and 176 / 209; the item
+list by `-effective.support_weight` 259 / 604 and 273 / 628; `GET /reports/summary`
+2514 / 2597 and 2468 / 2576, and by region 4119 / 4386 and 3952 / 4345. The default and
+the minimum cost nothing that can be told from one run to another. With all six set,
+the capacity report anew takes 2512 / 2744 against 2418 / 2683, counts 1,984 items, 85
+sites and 1,516 circuits at a default, and raises 17,145 items, the phones, to the
+minimum.
+
+Every page of the circuit grid meets the target, and the record of a circuit and of a
+group, and the list of groups. The report of what circuits cost, whole, does not: over
+300 ms at the median by site and by region, and over 600 ms at the 95th percentile by
+each of the four. Narrowed by a filter that names a place, it is not answered:
+`circuit_costs` reads the filter without the joins of the circuit list, so each place
+the filter names is a cross join, which neither narrows the circuits nor counts each
+once. On the fixture the process grew past 6 GB before the kernel stopped it; under the
+3 GiB the timing now allows it fails after 13 to 14 s; on a small database it answers,
+with each circuit counted several times over. That is a defect and not a matter of
+speed. Read with the joins, as the list of circuits reads it, the four take 105 to 124
+ms at the median and 352 to 394 ms at the 95th percentile, and count the 675 circuits
+of the region.
+
+The capacity report anew is slower than at 0.7.0, 2.4 s against 1.3 s. Each of its two
+views reads the items twice, for the sums by region, 0.6 s, and, since 0.8.0, for the
+items at a default or raised to the minimum (P-155), 0.5 s. It is kept now (P-157),
+and given in 10 ms to every request after the first. A Try works out the balance in
+force and the balance tried, eight passes over the items, 5.0 s; the balance in force is
+what the report answers, and taken from the kept answer a Try takes 2480 / 2961. The
+check of what is kept works out the four long reports anew one after another, 4.3 s.
+
 **Left for the timing of 1.0.0**, with what each costs now:
 
-- The coverage report anew, 1.4 s whole and 1.8 s narrowed to a region, counted
+- The coverage report anew, 1.4 s whole and 1.9 s narrowed to a region, counted
   section by section. Under a second needs what D-184 says of the terms of each
   contract, worked out once for a request and read by every item.
-- The capacity balance anew, 1.3 s, which is not kept: keeping it as the coverage
-  report is kept would be a change of D-184.
-- An import of 10,000 rows: 122 s to preview and 168 s to apply, against 30 s and 60
-  s. The apply cannot meet the minute while a row costs 13.6 ms: after the pauses, 23.9
-  s, and the order of the rows, 3.4 s, a row would have to take under 3.3 ms. What a
-  row reads, the record in its file shape and the places and operators in force, would
-  have to be read for a batch at once, or for the file, as the order of the rows
-  already is. A batch of 50 rows at 13.6 ms is also how long a sign-in waits behind it,
-  up to 0.9 s.
+- The capacity report anew, 2.4 s, and 2.5 s with the six weights set: four passes
+  over the items, two of them to count what is at a default or raised, which the pass
+  of the sums could count. Kept, it is 10 ms, and it is worked out at midnight and at
+  start.
+- A Try, 5.0 s, or 2.5 s with the balance in force taken from the kept report: the
+  balance tried is worked out each time and never kept, so it costs what the report
+  does anew.
+- The check of what is kept, 4.3 s with the four long reports kept: the sum of them
+  anew.
+- The summary, 2.5 s whole and 4.0 s by region: four passes over the items, each 0.5 to
+  0.7 s, the stacks and clusters of each worked out again.
+- The report of what circuits cost, whole: 267 to 324 ms at the median and 666 to 701
+  ms at the 95th percentile. Every circuit of the year and its lines are read and
+  counted in Python.
+- The list of circuit groups, 187 / 573 for 36 groups: three counts for each group.
+- An import of 10,000 rows, not timed again at 0.8.0: 122 s to preview and 168 s to
+  apply at 0.7.0, against 30 s and 60 s. The apply cannot meet the minute while a row
+  costs 13.6 ms: after the pauses, 23.9 s, and the order of the rows, 3.4 s, a row
+  would have to take under 3.3 ms. What a row reads, the record in its file shape and
+  the places and operators in force, would have to be read for a batch at once, or for
+  the file, as the order of the rows already is (P-143). A batch of 50 rows at 13.6 ms
+  is also how long a sign-in waits behind it, up to 0.9 s.
 - Each filter is worked out twice, once for the count and once for the page: 60 to 170
   ms each for the coverage filters at 0.6.1. Counting and paging one set of matched
   rows needs `listing.page` made anew.
@@ -1539,7 +1676,8 @@ most") only while 50 rows take under a second.
   with an index, would not.
 - About one run in fifteen is some 200 ms slower, which looks like the collector of
   Python's memory: the 95th percentile of 15 runs is the slowest of them, so it is that
-  run. At 0.7.0 the alert anew shows it, 189 ms at the median and 467 ms at the 95th.
+  run. At 0.7.0 the alert anew shows it, 189 ms at the median and 467 ms at the 95th;
+  at 0.8.0 a page of circuits in a region, 118 ms and 428 ms.
 
 A run on a host that other work shares is not a measurement: S36 at 1.0.0 is run with
 the host to itself.
