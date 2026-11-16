@@ -116,7 +116,11 @@ class Row:
 
 @dataclass
 class CircuitCosts:
-    """The report of what circuits cost in one fiscal year."""
+    """The report of what circuits cost in one fiscal year.
+
+    The filters of its rows list the circuits on the circuit list with retired ones
+    among them, `include_archived`, and drafts where the report counted them.
+    """
 
     fiscal_year: int
     starts_on: date
@@ -124,8 +128,10 @@ class CircuitCosts:
     as_of: date
     by: str
     currency: str
+    include_drafts: bool
     totals: Row
     rows: list[Row] = field(default_factory=list)
+    include_archived: bool = True
 
 
 @dataclass
@@ -138,9 +144,10 @@ class _Tally:
 def _condition(by: str, key: str | None, label: str | None) -> dict[str, Any]:
     """Return the condition of the circuit list that finds the circuits of a row."""
     if by == "carrier":
+        # The carrier that bills a line: the line's own, or else the primary carrier.
         if key is None:
-            return {"field": "carrier_hid", "op": "empty", "value": True}
-        return {"field": "carriers.vendor_hid", "op": "eq", "value": key}
+            return {"field": "billed_by", "op": "empty", "value": True}
+        return {"field": "billed_by", "op": "eq", "value": key}
     if by == "site":
         return {"field": "cost_site_hid", "op": "eq", "value": key}
     if by == "region":
@@ -159,6 +166,41 @@ def _condition(by: str, key: str | None, label: str | None) -> dict[str, Any]:
     if key is None:
         return {"field": name, "op": "empty", "value": True}
     return {"field": name, "op": "eq", "value": key}
+
+
+def _window(first: date, last: date) -> dict[str, Any]:
+    """Return the condition of the circuit list that keeps the circuits in service on
+    some day from `first` to `last`, as `service_in` has it: activated by the last day,
+    not disconnected before the first, and, retired, with a disconnection."""
+    return {
+        "and": [
+            {
+                "or": [
+                    {"field": "activated_on", "op": "empty", "value": True},
+                    {"field": "activated_on", "op": "lte", "value": last.isoformat()},
+                ]
+            },
+            {
+                "or": [
+                    {"field": "disconnected_on", "op": "empty", "value": True},
+                    {"field": "disconnected_on", "op": "gte", "value": first.isoformat()},
+                ]
+            },
+            {
+                "or": [
+                    {"field": "record_status", "op": "ne", "value": "retired"},
+                    {"field": "disconnected_on", "op": "empty", "value": False},
+                ]
+            },
+        ]
+    }
+
+
+def _overlaps(line: CircuitCost, served: tuple[date, date]) -> bool:
+    """Say whether a line is billed on some day of a circuit's service in the year."""
+    return not (line.starts_on and line.starts_on > served[1]) and not (
+        line.ends_on and line.ends_on < served[0]
+    )
 
 
 def circuit_costs(
@@ -221,6 +263,9 @@ def circuit_costs(
         by_carrier: dict[str | None, _Tally] = defaultdict(_Tally)
         whole = _Tally()
         for line in lines[circuit.hid]:
+            if not _overlaps(line, served):
+                # A line billed on no day of the year's service bills nothing of it.
+                continue
             cost = billed(line.monthly_cost, served[0], served[1], line.starts_on, line.ends_on)
             monthly = (
                 Fraction(line.monthly_cost) if on_day and _in_date(line, as_of) else Fraction(0)
@@ -244,8 +289,10 @@ def circuit_costs(
             tallies[key].monthly += whole.monthly
 
     labels = _labels(db, atlas, by, [key for key in tallies if key is not None])
+    # The filters list the circuits in service on some day of the year (P-151).
+    in_year = filters.both(asked, _window(first, last))
     rows = [
-        _row(by, key, labels.get(key) if key is not None else None, tally, asked)
+        _row(by, key, labels.get(key) if key is not None else None, tally, in_year)
         for key, tally in tallies.items()
     ]
     rows.sort(key=lambda one: (one.key is None, (one.label or "").casefold(), one.key or ""))
@@ -256,7 +303,8 @@ def circuit_costs(
         as_of,
         by,
         str(settings.value(db, "currency")),
-        _row(by, None, None, totals, asked, whole=True),
+        include_drafts,
+        _row(by, None, None, totals, in_year, whole=True),
         rows,
     )
 
@@ -293,15 +341,14 @@ def _row(
 def _memberships(
     db: Session, hids: list[str], by: str
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Return the groups that are not retired and the tags of each circuit, read once."""
+    """Return the groups and the tags of each circuit, read once."""
     grouped: dict[str, list[str]] = defaultdict(list)
     tagged: dict[str, list[str]] = defaultdict(list)
     if by == "group":
+        # A retired group keeps its circuits, and its row: retiring it ends no membership.
         for circuit_hid, group_hid in db.execute(
-            select(CircuitGroupMember.circuit_hid, CircuitGroupMember.group_hid)
-            .join(CircuitGroup, CircuitGroup.hid == CircuitGroupMember.group_hid)
-            .where(
-                CircuitGroupMember.circuit_hid.in_(hids), CircuitGroup.record_status != "retired"
+            select(CircuitGroupMember.circuit_hid, CircuitGroupMember.group_hid).where(
+                CircuitGroupMember.circuit_hid.in_(hids)
             )
         ):
             grouped[circuit_hid].append(group_hid)

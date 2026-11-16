@@ -134,8 +134,9 @@ def test_the_rows_by_carrier_site_region_and_group(places: dict[str, Any], db: S
         "Example Telecom": (2, "15600.00", "1300.00", "15600.00"),
         "Northwind Exchange": (1, "2400.00", "200.00", "2400.00"),
     }
-    assert by_carrier.rows[0].filter == {
-        "field": "carriers.vendor_hid",
+    assert by_carrier.rows[0].filter is not None
+    assert by_carrier.rows[0].filter["and"][-1] == {
+        "field": "billed_by",
         "op": "eq",
         "value": carrier,
     }
@@ -225,11 +226,13 @@ def test_the_route_answers_the_report_to_any_role(
     assert (found["fiscal_year"], found["starts_on"], found["by"]) == (2027, "2027-01-01", "site")
     assert found["totals"]["annual_cost"] == "10800.00"
     assert found["rows"][0]["label"] == "Americas > Central > Hub"
-    assert found["rows"][0]["filter"] == {
+    # The row's filter is the year's window of service and the row's own condition.
+    assert found["rows"][0]["filter"]["and"][-1] == {
         "field": "cost_site_hid",
         "op": "eq",
         "value": places["hub"]["hid"],
     }
+    assert (found["include_archived"], found["include_drafts"]) == (True, False)
     refused = client.get(f"{API}/reports/circuit-costs", params={"by": "colour"}, headers=viewer)
     assert refused.status_code == 422
 
@@ -270,10 +273,13 @@ def test_a_filter_of_the_circuit_list_chooses_what_is_counted(
     found = response.json()
     assert (found["totals"]["circuits"], found["totals"]["annual_cost"]) == (1, "6000.00")
     asked = {"field": "circuit_type", "op": "eq", "value": "internet"}
-    assert found["totals"]["filter"] == asked
-    assert found["rows"][0]["filter"] == {
-        "and": [asked, {"field": "cost_site_hid", "op": "eq", "value": places["hub"]["hid"]}]
-    }
+    # The report's filter first, then the year's window, then the row's own condition.
+    assert found["totals"]["filter"]["and"][0] == asked
+    row = found["rows"][0]["filter"]["and"]
+    assert (row[0], row[-1]) == (
+        asked,
+        {"field": "cost_site_hid", "op": "eq", "value": places["hub"]["hid"]},
+    )
     refused = client.get(
         f"{API}/reports/circuit-costs", params={"filter": "colour:eq:red"}, headers=viewer
     )

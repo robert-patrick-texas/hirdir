@@ -8514,6 +8514,10 @@ export interface components {
       currency: string;
       ends_on: string;
       fiscal_year: number;
+      /** The view the filters of the rows are of: retired circuits among them, since one that was disconnected ran for part of the year. */
+      include_archived: boolean;
+      /** Drafts among them, where the report counted them. */
+      include_drafts: boolean;
       rows: components["schemas"]["CircuitCostRow"][];
       starts_on: string;
       totals: components["schemas"]["CircuitCostRow"];

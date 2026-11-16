@@ -1125,8 +1125,10 @@ given the other side, where the enterprise counts it at the far end. It is the o
 value of a circuit that a setting gives when the circuit is made rather than when it is
 read: a change of the default is for new circuits only (P-150).
 
-**Its cost** is `monthly_cost`, the sum of its cost lines in date today, and
-`annual_cost`, twelve times that, both worked out when they are read (D-158).
+**Its cost** is `monthly_cost`, the sum of its cost lines in date today while it is in
+service, and nothing on a day it is not, and `annual_cost`, twelve times that, both
+worked out when they are read (D-158). The lines keep their amounts, so a circuit that
+is ordered and not yet activated shows what it will cost line by line.
 
 ### `circuit_carriers`
 
@@ -1184,8 +1186,9 @@ lists, in `circuits` and to be read only, the circuits it is connected to, each 
 its side. A connection that was a mistake, or whose device was taken out, is removed
 outright, with an audit event that holds what it was. A replacement hands the
 connections of the item that left to the item that took its place, in the same change,
-as it hands over its memberships. A retired item stays listed where it was connected,
-marked so, and is connected to nothing new.
+as it hands over its memberships, on every circuit that is not retired: a retired
+circuit keeps the device it connected while it ran. A retired item stays listed where it
+was connected, marked so, and is connected to nothing new.
 
 ### `vendor_contacts` and `circuit_contacts`
 

@@ -1920,12 +1920,33 @@ _FIRST_CIRCUIT_GROUP = (
     .correlate(Circuit)
     .scalar_subquery()
 )
-# What a circuit costs a month today: the sum of its lines in date (D-158, P-150).
-_CIRCUIT_MONTHLY = (
-    select(circuit_records.hundredths_of_lines())
-    .where(CircuitCost.circuit_hid == Circuit.hid, circuit_records.line_in_date_column())
-    .correlate(Circuit)
-    .scalar_subquery()
+# Who bills a circuit: the carrier of each of its cost lines, the line's own or else the
+# primary carrier, and the primary carrier of a circuit with no line (P-151).
+_BILLING: Any = aliased(Circuit, name="billed_circuit")
+_BILLED_BY: Any = union_all(
+    select(
+        CircuitCost.circuit_hid.label("circuit_hid"),
+        func.coalesce(CircuitCost.vendor_hid, _BILLING.carrier_hid).label("vendor_hid"),
+    ).join(_BILLING, _BILLING.hid == CircuitCost.circuit_hid),
+    select(_SELF.hid, _SELF.carrier_hid).where(
+        _SELF.carrier_hid.is_not(None),
+        ~select(CircuitCost.hid).where(CircuitCost.circuit_hid == _SELF.hid).exists(),
+    ),
+).subquery("billed_by")
+_ANY_BILLER = _one_of(select(_BILLED_BY.c.vendor_hid), _BILLED_BY.c.circuit_hid == Circuit.hid)
+# What a circuit costs a month today: the sum of its lines in date (D-158, P-150), and
+# nothing on a day it is not in service. A draft is in service in a view of drafts, the
+# only view that lists one.
+_IN_SERVICE = circuit_records.in_service_column(include_drafts=True)
+_CIRCUIT_MONTHLY = case(
+    (
+        _IN_SERVICE,
+        select(circuit_records.hundredths_of_lines())
+        .where(CircuitCost.circuit_hid == Circuit.hid, circuit_records.line_in_date_column())
+        .correlate(Circuit)
+        .scalar_subquery(),
+    ),
+    else_=0,
 )
 
 
@@ -1977,6 +1998,7 @@ CIRCUITS = Listing(
         "carrier.name": Field("text", _PRIMARY_CARRIER.name),
         # Any of its carriers, the primary one among them, and the number any gives it.
         "carriers.vendor_hid": Field("reference", _EVERY_CARRIER.c.vendor_hid, among=_ANY_CARRIER),
+        "billed_by": Field("reference", _BILLED_BY.c.vendor_hid, among=_ANY_BILLER),
         "carriers.circuit_number": Field(
             "text",
             _EVERY_CARRIER.c.circuit_number,
@@ -2001,7 +2023,7 @@ CIRCUITS = Listing(
         "annual_cost": Field(
             "number", circuit_records.as_money(_CIRCUIT_MONTHLY, circuit_records.MONTHS)
         ),
-        "in_service": Field("boolean", circuit_records.in_service_column()),
+        "in_service": Field("boolean", _IN_SERVICE),
         "tags": _tags(circuit_records.RECORD_TYPE, Circuit),
     },
     joined=lambda query: (

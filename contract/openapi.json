@@ -6105,6 +6105,16 @@
             "title": "Fiscal Year",
             "type": "integer"
           },
+          "include_archived": {
+            "description": "The view the filters of the rows are of: retired circuits among them, since one that was disconnected ran for part of the year.",
+            "title": "Include Archived",
+            "type": "boolean"
+          },
+          "include_drafts": {
+            "description": "Drafts among them, where the report counted them.",
+            "title": "Include Drafts",
+            "type": "boolean"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/CircuitCostRow"
@@ -6128,6 +6138,8 @@
           "as_of",
           "by",
           "currency",
+          "include_archived",
+          "include_drafts",
           "totals",
           "rows"
         ],

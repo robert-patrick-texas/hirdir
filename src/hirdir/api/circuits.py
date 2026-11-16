@@ -40,7 +40,9 @@ def _circuits(db: Db, listed: lists.ListRequest) -> Page[c.CircuitOut]:
     )
     return lists.narrowed(
         Page(
-            items=circuit_shapes.circuits_out(db, page, parts=parts),
+            items=circuit_shapes.circuits_out(
+                db, page, parts=parts, include_drafts=listed.include_drafts
+            ),
             total=total,
             limit=listed.limit,
             offset=listed.offset,

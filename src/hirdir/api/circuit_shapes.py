@@ -6,6 +6,7 @@ rows refer to are each read once for the page.
 
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -38,6 +39,7 @@ from hirdir.domain.inheritance import Effective
 
 # The parts of a circuit that a list leaves out unless `fields` names them.
 PARTS = ("carriers", "costs", "devices", "groups", "contacts")
+ZERO = Decimal("0.00")
 # The contacts in force, which a list reads with the parts.
 CONTACTS_IN_FORCE = (
     "effective.account_managers",
@@ -167,7 +169,9 @@ _SHAPED = (
 )
 
 
-def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> list[c.CircuitOut]:
+def circuits_out(
+    db: Session, found: Sequence[Circuit], parts: bool = True, include_drafts: bool = False
+) -> list[c.CircuitOut]:
     """Return circuits with what they refer to and what is worked out when they are read.
 
     Without parts, the carriers, cost lines, devices and groups of each are left out.
@@ -208,7 +212,10 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
         outside = owner is not None and owner.is_external
         counted_at = circuits.cost_location_hid(circuit)
         place = atlas.location(counted_at) if counted_at else None
-        monthly = circuit_records.monthly_cost(lines[circuit.hid], day)
+        # What it costs today: nothing on a day it is not in service; a draft is in
+        # service in a view of drafts (P-145).
+        serving = circuits.in_service_on(circuit, day, include_drafts)
+        monthly = circuit_records.monthly_cost(lines[circuit.hid], day) if serving else ZERO
         rates = circuit_records.rates_in_force(circuit)
         weight = weights.of_circuit(circuit, figures)
         carrier = vendors.get(circuit.carrier_hid or "")
@@ -230,7 +237,7 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
                 owner_exception_reason=owner.exception_reason if owner and outside else None,
                 monthly_cost=monthly,
                 annual_cost=monthly * circuit_records.MONTHS,
-                in_service=circuits.in_service_on(circuit, day),
+                in_service=serving,
                 carriers=[carried[link.hid] for link in carriers[circuit.hid]] if parts else None,
                 costs=[costed[line.hid] for line in lines[circuit.hid]] if parts else None,
                 devices=[connected[link.hid] for link in devices[circuit.hid]] if parts else None,
@@ -315,7 +322,9 @@ def members_out(
                     "circuit_type": circuit.circuit_type,
                     "speed": circuit_records.speed(circuit),
                     "in_service": circuits.in_service_on(circuit, day),
-                    "monthly_cost": circuit_records.monthly_cost(lines[circuit.hid], day),
+                    "monthly_cost": circuit_records.monthly_cost(lines[circuit.hid], day)
+                    if circuits.in_service_on(circuit, day)
+                    else ZERO,
                     "record_status": circuit.record_status,
                 }
             ),

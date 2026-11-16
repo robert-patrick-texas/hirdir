@@ -495,6 +495,11 @@ class CircuitCostsOut(Model):
     as_of: date
     by: CostsBy
     currency: str
+    include_archived: bool = Field(
+        description="The view the filters of the rows are of: retired circuits among them, "
+        "since one that was disconnected ran for part of the year."
+    )
+    include_drafts: bool = Field(description="Drafts among them, where the report counted them.")
     totals: CircuitCostRow
     rows: list[CircuitCostRow]
 
@@ -550,6 +555,8 @@ def circuit_cost_report(
         as_of=found.as_of,
         by=by,
         currency=found.currency,
+        include_archived=found.include_archived,
+        include_drafts=found.include_drafts,
         totals=_cost_row(found.totals),
         rows=[_cost_row(row) for row in found.rows],
     )
