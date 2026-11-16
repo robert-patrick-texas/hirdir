@@ -14,6 +14,8 @@ export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
   { value: "vendors", label: "Vendors" },
   { value: "catalog_entries", label: "Catalog entries" },
   { value: "contacts", label: "Contacts" },
+  // 0.8.0: the account team and the support desk of a vendor follow the contacts (P-153).
+  { value: "vendor_contacts", label: "Contacts of vendors" },
   { value: "operators", label: "Operators" },
   { value: "regions", label: "Regions" },
   { value: "sites", label: "Sites" },
@@ -36,6 +38,14 @@ export const ENTITIES: ReadonlyArray<Option & { value: Entity }> = [
   { value: "contract_coverage", label: "Coverage of items under contracts" },
   { value: "registrations", label: "Registrations with external systems" },
   { value: "capacity_lines", label: "Capacity lines" },
+  // 0.8.0: the circuits come last, their groups first and their devices after the items
+  // and the device groups they name (P-153).
+  { value: "circuit_groups", label: "Circuit groups" },
+  { value: "circuits", label: "Circuits" },
+  { value: "circuit_carriers", label: "Carriers of circuits" },
+  { value: "circuit_costs", label: "Cost lines of circuits" },
+  { value: "circuit_contacts", label: "Contacts of circuits" },
+  { value: "circuit_devices", label: "Devices of circuits" },
 ];
 
 export function isEntity(value: string): value is Entity {

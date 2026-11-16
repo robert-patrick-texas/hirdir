@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
+import { ConnectedCircuits } from "../components/CircuitConnections";
 import { ConfirmButton } from "../components/ConfirmButton";
 import {
   FromAbove,
@@ -766,6 +767,8 @@ export function DeviceGroupDetail() {
           )}
           <Members group={record} mayEdit={open} onChanged={changed} onReload={group.reload} />
           <Nested group={record} />
+          {/* 0.8.0: the circuits it is connected to, each with its side (P-147). */}
+          <ConnectedCircuits circuits={record.circuits} whose={record.name} />
           <Addresses
             key={`addresses ${record.hid}`}
             holder={{ group_hid: record.hid }}

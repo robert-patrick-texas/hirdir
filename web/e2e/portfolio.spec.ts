@@ -143,8 +143,9 @@ test("S31: the portfolio lists all four kinds with cost and weight totals, and e
   await expect(portfolio).toContainText("There is no support agreement with this vendor.");
   await expect(portfolio).toContainText("No capacity line names this vendor.");
 
-  // Its items, as a grid: the item list with the filter of the portfolio.
-  await expect(page.getByTestId("grid-total")).toHaveText("5 items");
+  // Its items, as a grid: the item list with the filter of the portfolio. The page holds
+  // the grid of the vendor's circuits as well since 0.8.0: this is the portfolio's.
+  await expect(portfolio.getByTestId("grid-total")).toHaveText("5 items");
   const grid = page.getByTestId("grid-vendor-items");
   for (const name of names) {
     await expect(grid.getByRole("link", { name, exact: true })).toBeVisible();
@@ -158,7 +159,7 @@ test("S31: the portfolio lists all four kinds with cost and weight totals, and e
     (request) => request.method() === "POST" && request.url().endsWith("/api/v1/exports"),
   );
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export CSV" }).click();
+  await portfolio.getByRole("button", { name: "Export CSV" }).click();
   const asked = (await sent).postDataJSON() as { entity: string; filter: unknown };
   expect(asked.entity).toBe("items");
   expect(JSON.stringify(asked.filter)).toContain("catalog.vendor_hid");

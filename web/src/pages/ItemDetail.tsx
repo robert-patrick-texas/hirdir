@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Addresses, ManagementAddresses } from "../components/Addresses";
 import { BringBackElsewhere, refusedForItsPlace } from "../components/BringBack";
+import { ConnectedCircuits } from "../components/CircuitConnections";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { ItemCoverage } from "../components/Coverage";
 import { FromAbove, InheritedFrom, OwnerNote, PlaceNote } from "../components/Descent";
@@ -198,6 +199,8 @@ export function ItemDetail() {
             onChanged={changed}
           />
           <Memberships item={record} />
+          {/* 0.8.0: the circuits it is connected to, each with its side (P-147). */}
+          <ConnectedCircuits circuits={record.circuits} whose={itemName(record)} />
           <Addresses
             key={`addresses ${record.hid}`}
             holder={{ item_hid: record.hid }}

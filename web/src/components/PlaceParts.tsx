@@ -56,6 +56,7 @@ import type { SortColumns } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
 // 0.8.0: the support weight of a place (P-139, P-155).
 import { siteWeightHint } from "../lib/weights";
+import { CircuitsHere } from "./CircuitConnections";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
 import { Links } from "./Links";
@@ -524,6 +525,8 @@ export function PlaceDetail(props: PlaceDetailProps) {
               onChanged={(text) => changed(text, false)}
             />
             <PlannedHere level={level} place={record} planned={planned} />
+            {/* 0.8.0: the circuits that have a side here, or within (P-147). */}
+            <CircuitsHere key={`circuits ${record.hid} ${turn}`} place={record} />
             {editable && record.record_status === "draft" && (
               <MakeActive
                 level={level}

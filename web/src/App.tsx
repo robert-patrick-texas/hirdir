@@ -40,6 +40,9 @@ const pages = {
   userDetail: () => import("./pages/UserDetail"),
   users: () => import("./pages/Users"),
   vendors: () => import("./pages/Vendors"),
+  // 0.8.0: circuits and circuit groups (P-145 to P-154).
+  circuits: () => import("./pages/Circuits"),
+  circuitGroups: () => import("./pages/CircuitGroups"),
   // 0.8.0, web lane B: the report of what circuits cost (P-151).
   circuitCosts: () => import("./pages/CircuitCosts"),
   // End of 0.8.0, web lane B.
@@ -123,6 +126,17 @@ const UserDetail = lazy(() => pages.userDetail().then((page) => ({ default: page
 const Users = lazy(() => pages.users().then((page) => ({ default: page.Users })));
 const VendorDetail = lazy(() => pages.vendors().then((page) => ({ default: page.VendorDetail })));
 const Vendors = lazy(() => pages.vendors().then((page) => ({ default: page.Vendors })));
+// 0.8.0: circuits and circuit groups (P-145 to P-154).
+const Circuits = lazy(() => pages.circuits().then((page) => ({ default: page.Circuits })));
+const CircuitDetail = lazy(() =>
+  pages.circuits().then((page) => ({ default: page.CircuitDetail })),
+);
+const CircuitGroups = lazy(() =>
+  pages.circuitGroups().then((page) => ({ default: page.CircuitGroups })),
+);
+const CircuitGroupDetail = lazy(() =>
+  pages.circuitGroups().then((page) => ({ default: page.CircuitGroupDetail })),
+);
 // 0.8.0, web lane B: the report of what circuits cost (P-151).
 const CircuitCostsReport = lazy(() =>
   pages.circuitCosts().then((page) => ({ default: page.CircuitCostsReport })),
@@ -196,6 +210,39 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <DeviceGroupDetail />
+                </RequireRole>
+              }
+            />
+            {/* 0.8.0: circuits and circuit groups (P-145 to P-154). */}
+            <Route
+              path="circuits"
+              element={
+                <RequireRole needs="viewer">
+                  <Circuits />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="circuits/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <CircuitDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="circuit-groups"
+              element={
+                <RequireRole needs="viewer">
+                  <CircuitGroups />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="circuit-groups/:hid"
+              element={
+                <RequireRole needs="viewer">
+                  <CircuitGroupDetail />
                 </RequireRole>
               }
             />
