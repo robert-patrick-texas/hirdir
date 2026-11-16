@@ -94,6 +94,7 @@ def test_a_circuit_answers_its_sides_its_speed_and_the_site_it_counts_at(
         "value": None,
         "source": "none",
         "source_hid": None,
+        "raised_from": None,
     }
     assert (made["carriers"], made["costs"], made["devices"], made["groups"]) == ([], [], [], [])
     assert desk.audit(record_type="circuit", record_hid=made["hid"])[0]["action"] == "create"
