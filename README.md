@@ -7,7 +7,17 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.7.0, renewals in practice, and links. A worklist and an alert
+**Status:** release 0.8.0, circuits. The telecommunication circuits the team looks after
+are kept beside the inventory and share what it holds: their two ends are locations with
+their site contacts, their carriers are vendors whose account team and support desk are
+named once, their devices are items and groups, and their owner is an owner. Each has a
+type, a speed of port, download and upload, and its monthly cost as the lines the carrier
+bills; what circuits cost is reported by fiscal year, by carrier, site, region and group,
+a part month as the carrier bills it, and circuits are put in groups whose cost is one
+sum. A place may weigh by itself in the capacity balance, a default and a minimum
+support weight give a quick estimate, Try answers what other figures would give without
+saving anything, and the long reports are worked out each night and checked by an Admin.
+This stands on 0.7.0, renewals in practice, and links. A worklist and an alert
 after sign-in say what has to be acted on to keep the cover going; an agreement is
 renewed with its member contracts, each confirmed by the operator, and those still
 pending or expired are listed to review; a model or a device is flagged as not to be
