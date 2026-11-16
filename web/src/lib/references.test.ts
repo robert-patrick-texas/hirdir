@@ -217,6 +217,7 @@ describe("a file chosen to upload", () => {
       refusedText({
         status: 409,
         message: "this file is on that record already, as Floor plan",
+        detail: "this file is on that record already, as Floor plan",
         fields: { file: "the same content is reference ref-1, Floor plan" },
       }),
     ).toBe(
@@ -226,6 +227,7 @@ describe("a file chosen to upload", () => {
       refusedText({
         status: 422,
         message: "the file is refused: it is a web page",
+        detail: "the file is refused: it is a web page",
         fields: { file: "it is a web page" },
       }),
     ).toBe("The file is refused: it is a web page.");
@@ -233,9 +235,16 @@ describe("a file chosen to upload", () => {
       refusedText({
         status: 413,
         message: "a reference file is at most 100 MB",
+        detail: "a reference file is at most 100 MB",
         fields: { file: "too large" },
       }),
     ).toBe("A reference file is at most 100 MB.");
+  });
+
+  it("refused by the proxy in front, which gives no reason, is said to be too large", () => {
+    expect(
+      refusedText({ status: 413, message: "The server answered 413", detail: "", fields: {} }),
+    ).toBe("The file is larger than the server takes.");
   });
 
   it("is held to the limit the server named when it refused a larger one", () => {

@@ -232,7 +232,13 @@ export function tooLarge(limit: number): string {
  * where that adds to it, as the reference that has the same content (409). A file over
  * the limit (413) is said to be so, with the limit, and nothing more.
  */
-export function refusedText(error: Pick<ApiError, "message" | "fields" | "status">): string {
+export function refusedText(
+  error: Pick<ApiError, "message" | "fields" | "status" | "detail">,
+): string {
+  // Refused by the proxy in front before the application read it: no reason of its own.
+  if (error.status === 413 && error.detail === "") {
+    return "The file is larger than the server takes.";
+  }
   const said = [sentence(error.message)];
   if (error.status !== 413) {
     for (const message of Object.values(error.fields)) {

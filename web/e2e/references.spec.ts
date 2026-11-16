@@ -158,7 +158,9 @@ test("S51: a photograph and a floor plan on a location, viewed and downloaded", 
   // Escape closes it, and the address is let go.
   await page.keyboard.press("Escape");
   await expect(viewer).toBeHidden();
-  await expect.poll(() => page.evaluate(() => (window as unknown as Watched).revoked)).toContain(address);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Watched).revoked))
+    .toContain(address);
 
   // The plan is downloaded, byte for byte, under its name.
   await downloaded(page, own, PLAN_TITLE, PLAN);
