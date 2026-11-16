@@ -504,6 +504,11 @@ so each has of its own what another could disturb:
 The browser scenarios of the renewal alert run in a project of their own, "the alert
 alone", after the others and with one worker: the alert is shown once a day to each
 person, and a scenario that dismisses it must not meet another that expects it shown.
+The browser scenarios of the weights, `weights.spec.ts`, run in a project of their own,
+"the weights alone", after the alert's and with one worker: they change the six weights
+of the settings and the staff lines that the capacity page of every other file reads,
+note each setting as they found it, put it back, and retire the lines and places they
+made.
 
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
 but one: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
