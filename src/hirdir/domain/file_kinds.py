@@ -162,7 +162,9 @@ REFUSED: tuple[str, ...] = (
 # How a program and a web page begin, whatever their name says. A web page is looked
 # for after any byte-order mark and white space, without regard to case.
 PROGRAM_MARKS = (b"MZ", b"\x7fELF", b"#!", b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe")
-PAGE_MARKS = (b"<!doctype html", b"<html", b"<script", b"<svg", b"<?xml", b"<head", b"<body")
+# An XML document that is no page, such as the configuration a router writes out, is
+# taken as text: nothing that is downloaded runs within hirdir whatever it holds.
+PAGE_MARKS = (b"<!doctype html", b"<html", b"<script", b"<svg", b"<head", b"<body")
 
 
 def extension_of(file_name: str) -> str:

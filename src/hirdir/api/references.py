@@ -6,11 +6,13 @@ and is written into the store as it arrives. A download is the content, byte for
 served so that a browser downloads it and runs nothing of it.
 """
 
+import os
+from collections.abc import Iterator
 from typing import Annotated, Any, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
 
@@ -23,8 +25,10 @@ from hirdir.db import dialect
 from hirdir.db.models import ReferenceFile, User
 from hirdir.domain import idempotency
 from hirdir.domain import references as refs
+from hirdir.domain.errors import NotFound
 from hirdir.domain.references import Holder, Listed
 from hirdir.io import files, tables
+from hirdir.io import store as stores
 from hirdir.io.store import Incoming, OverLimit, Store
 
 # An upload takes no Idempotency-Key: content that a record has already is refused
@@ -73,7 +77,11 @@ async def _received(request: Request) -> Incoming:
         async for piece in request.stream():
             await run_in_threadpool(content.write, piece)
     except OverLimit:
-        async for _ in request.stream():
+        try:
+            async for _ in request.stream():
+                pass
+        except RuntimeError:
+            # The piece that went over was the last: there is nothing more to read.
             pass
         raise files.TooLarge(
             f"a reference file is at most {limit // (1024 * 1024)} MB", {"file": "too large"}
@@ -191,9 +199,10 @@ async def upload_reference(
     attach_to: Annotated[
         list[str],
         Query(
-            max_length=1000,
-            description="The HID of a record it goes on, once for each: a catalog entry, a "
-            "region, a site, a location, a circuit or an item.",
+            max_length=refs.MAX_UPLOAD_RECORDS,
+            description="The HID of a record it goes on, once for each, up to 100: a "
+            "catalog entry, a region, a site, a location, a circuit or an item. More are "
+            "added with `POST /reference-files/{hid}/attachments`.",
         ),
     ],
     notes: Annotated[str | None, Query(max_length=10_000)] = None,
@@ -206,6 +215,9 @@ async def upload_reference(
     under any reference, is a `409` that names that reference.
     """
     store = _store(request)
+    # What signing in wrote, the last use of a service token, is stored before the body
+    # is read: the one writer is not held while a large file arrives.
+    await run_in_threadpool(db.commit)
     content = await _received(request)
     try:
         reference = await run_in_threadpool(
@@ -266,6 +278,7 @@ async def replace_content(
     unless another reference holds the same. It is checked as an upload is.
     """
     store = _store(request)
+    await run_in_threadpool(db.commit)
     content = await _received(request)
     try:
         reference = await run_in_threadpool(
@@ -283,7 +296,7 @@ async def replace_content(
     return reference_out(db, store, reference)
 
 
-@references.get("/{hid}/content", response_class=FileResponse, responses=DOWNLOAD)
+@references.get("/{hid}/content", response_class=StreamingResponse, responses=DOWNLOAD)
 def download_reference(request: Request, hid: str, _: Viewer, context: Audit, db: Db) -> Any:
     """Download a file, byte for byte. It is an audit event, `download`.
 
@@ -295,13 +308,26 @@ def download_reference(request: Request, hid: str, _: Viewer, context: Audit, db
     reference = refs.opened(db, context, store, hid)
     name = reference.file_name or "file"
     fallback = name.encode("ascii", "replace").decode().replace('"', "'").replace("?", "_")
-    return FileResponse(
-        store.path_of(reference.sha256 or ""),
+    # Opened now, so that a new edition or an erasure while it is sent leaves what is
+    # sent whole: a file that is open is read to its end after it is removed.
+    try:
+        handle = store.open(reference.sha256 or "")
+    except FileNotFoundError:
+        raise NotFound(f"the content of {reference.title} is gone: it was erased") from None
+
+    def pieces() -> Iterator[bytes]:
+        with handle:
+            while piece := handle.read(stores.CHUNK):
+                yield piece
+
+    return StreamingResponse(
+        pieces(),
         media_type=reference.media_type,
         headers={
             "Content-Disposition": (
                 f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name)}"
             ),
+            "Content-Length": str(os.fstat(handle.fileno()).st_size),
             "Content-Security-Policy": CONTENT_POLICY,
         },
     )

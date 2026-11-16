@@ -39,8 +39,10 @@ from hirdir.domain.geography import Atlas, Place
 from hirdir.io import store as stores
 from hirdir.io.store import Incoming, Store
 
-# How many records one request may put a reference on (P-162).
+# How many records one request may put a reference on (P-162), and one upload, whose
+# records are named in its address, which a proxy holds to a few kilobytes.
 MAX_ATTACHMENTS = 1000
+MAX_UPLOAD_RECORDS = 100
 KIND_LIST = "reference_kind"
 TYPES_SETTING = "reference_file_types"
 MAX_TITLE = 200
@@ -192,14 +194,15 @@ def get_holder(db: Session, kind: str, hid: str) -> Holder:
     return Holder(kind, found)
 
 
-def _holders(db: Session, hids: Any, field: str) -> list[Holder]:
+def _holders(db: Session, hids: Any, field: str, most: int = MAX_ATTACHMENTS) -> list[Holder]:
     if isinstance(hids, str):
         hids = [hids]
     if not isinstance(hids, list | tuple) or not hids:
         raise Invalid("a reference goes on a record", {field: "the HID of one record or more"})
-    if len(hids) > MAX_ATTACHMENTS:
+    if len(hids) > most:
         raise Invalid(
-            "too many records for one request", {field: f"at most {MAX_ATTACHMENTS:,} records"}
+            "too many records for one request",
+            {field: f"at most {most:,} records; put it on more with its attachments"},
         )
     found: dict[str, Holder] = {}
     for hid in hids:
@@ -444,7 +447,7 @@ def upload(
     _checked_content(content, extension)
     sha256 = content.finish()
     dialect.hold_other_writers(db)
-    holders = _holders(db, attach_to, "attach_to")
+    holders = _holders(db, attach_to, "attach_to", MAX_UPLOAD_RECORDS)
     _refuse_twice(db, holders, sha256)
     reference = ReferenceFile(
         **values,
@@ -534,10 +537,11 @@ def update(
     if "title" in fields:
         values["title"] = _title(fields["title"])
     if "kind" in fields:
-        kind = fields["kind"]
-        values["kind"] = choices.checked(
-            db, KIND_LIST, kind if isinstance(kind, str) else "", "kind"
-        )
+        kind = fields["kind"] if isinstance(fields["kind"], str) else ""
+        # A kind made inactive since stays on a reference that has it, as it does on a
+        # circuit: only a new value is held to what the list offers.
+        same = records.key(kind) == records.key(reference.kind)
+        values["kind"] = reference.kind if same else choices.checked(db, KIND_LIST, kind, "kind")
     if "notes" in fields:
         values["notes"] = _notes(fields["notes"])
     if "url" in fields:
@@ -569,13 +573,16 @@ def replace_content(
 ) -> ReferenceFile:
     """Put a new edition of a file in place of the one it had, on every record it is on
     (P-160). The content it had is erased unless another reference holds it too."""
+    # The writer's place first, and the reference as it is stored now, so that a stale
+    # edition is refused before its content is put in place.
+    dialect.hold_other_writers(db)
     reference = get(db, hid)
+    db.refresh(reference)
     if reference.sha256 is None:
         raise Invalid("a link has no content", {"file": "a link is changed by its url"})
     name, extension = checked_file_name(db, file_name)
     _checked_content(content, extension)
     sha256 = content.finish()
-    dialect.hold_other_writers(db)
     holders = [holder_of(db, attachment) for attachment in reference.attachments]
     _refuse_twice(db, holders, sha256, other_than=reference.hid)
     old = reference.sha256
@@ -596,6 +603,8 @@ def replace_content(
     for field, value in values.items():
         setattr(reference, field, value)
     audit.record(db, context, "replace_content", RECORD, reference.hid, changes)
+    # Stored before the content is put in place: a change that collides is refused here.
+    db.flush()
     with stores.LOCK:
         store.keep(content)
         db.commit()

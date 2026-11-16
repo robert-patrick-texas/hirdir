@@ -3,7 +3,7 @@
 import json
 import os
 import tomllib
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,15 +92,20 @@ def call(
     body: Any = None,
     *,
     params: dict[str, Any] | None = None,
-    content: bytes | None = None,
+    content: bytes | Iterable[bytes] | None = None,
     content_type: str | None = None,
+    length: int | None = None,
     timeout: float = 30,
 ) -> Any:
     """Call the API and return the decoded answer, or exit with the code for the error.
 
-    `body` is sent as JSON. `content` is sent as it is, as a file is, with its type.
+    `body` is sent as JSON. `content` is sent as it is, as a file is, with its type: a
+    file read in pieces says its `length`, so that it is not sent in chunks.
     """
-    headers = _headers(target, {"Content-Type": content_type} if content_type else None)
+    more = {"Content-Type": content_type} if content_type else {}
+    if length is not None:
+        more["Content-Length"] = str(length)
+    headers = _headers(target, more or None)
     given = {name: value for name, value in (params or {}).items() if value is not None}
     try:
         response = httpx2.request(
