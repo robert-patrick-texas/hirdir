@@ -13,13 +13,14 @@ import socket
 import sqlite3
 import stat
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from pathlib import Path
 from typing import Annotated, NamedTuple, TextIO
 
 import typer
 import uvicorn
 from sqlalchemy import Engine, func, inspect, select, text
+from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir import config as config_module
@@ -40,6 +41,8 @@ NAMED_IN_A_MESSAGE = 5
 # The umask of hirdir.service, UMask= in its unit: what it writes in the state directory
 # is for the hirdir user and its group alone.
 SERVICE_UMASK = 0o027
+# The lock that one backup or restore at a time holds, in the backup directory.
+BACKUP_LOCK = "backup.lock"
 
 admin = typer.Typer(
     no_args_is_help=True,
@@ -201,14 +204,21 @@ def reset_access_code(
 
 
 def _copy_database(source: Path, target: Path) -> None:
-    """Copy a SQLite database with the online backup, which is safe while it is in use."""
-    with sqlite3.connect(source) as origin, sqlite3.connect(target) as copy:
+    """Copy a SQLite database with the online backup, which is safe while it is in use.
+
+    Both connections are closed before it returns, so that the copy is whole in its one
+    file: `with sqlite3.connect()` alone ends a transaction and closes nothing.
+    """
+    with (
+        contextlib.closing(sqlite3.connect(source)) as origin,
+        contextlib.closing(sqlite3.connect(target)) as copy,
+    ):
         origin.backup(copy)
     target.chmod(0o600)
 
 
 def _integrity(path: Path) -> str:
-    with sqlite3.connect(path) as connection:
+    with contextlib.closing(sqlite3.connect(path)) as connection:
         return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
 
 
@@ -277,23 +287,46 @@ def _hold(live: Store, kept: Store, checksums: Iterable[str]) -> list[str]:
             # Erased since it was looked for.
             lacking.append(sha256)
         except OSError:
-            part = target.with_name(f".{target.name}{file_store.PART}")
-            try:
-                shutil.copyfile(source, part)
-            except FileNotFoundError:
-                part.unlink(missing_ok=True)
+            if not _copied(source, target):
                 lacking.append(sha256)
-                continue
-            part.chmod(0o640)
-            os.replace(part, target)
     return lacking
 
 
-def _prune(kept: Store, backups: Iterable[Path]) -> None:
-    """Remove from the files of the backups every content that no backup kept names.
+def _part_of(target: Path) -> Path:
+    """Return the name a copy is written under until it is whole."""
+    return target.with_name(f".{target.name}{file_store.PART}")
 
-    A backup that cannot be read may name any of them, so then nothing is removed.
+
+def _copied(source: Path, target: Path) -> bool:
+    """Copy content to target under another name, flushed to the disk before it takes
+    its own, so that a name is only ever had by content that is whole. A copy cut short
+    leaves nothing. Return False where the source is gone: erased since it was listed."""
+    part = _part_of(target)
+    try:
+        with source.open("rb") as origin, part.open("wb") as copy:
+            shutil.copyfileobj(origin, copy, file_store.CHUNK)
+            copy.flush()
+            os.fsync(copy.fileno())
+    except FileNotFoundError:
+        part.unlink(missing_ok=True)
+        return False
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    part.chmod(0o640)
+    os.replace(part, target)
+    return True
+
+
+def _prune(kept: Store, backups: Iterable[Path]) -> None:
+    """Remove from the files of the backups every content that no backup kept names, and
+    what a copy that was cut short left. Call it holding the lock of the backups, so that
+    no other backup is copying meanwhile.
+
+    A backup that cannot be read may name any of them, so then no content is removed.
     """
+    for part in kept.root.glob(f"*/.*{file_store.PART}"):
+        part.unlink(missing_ok=True)
     named: set[str] = set()
     for backup in backups:
         try:
@@ -314,16 +347,47 @@ def _prune(kept: Store, backups: Iterable[Path]) -> None:
                 path.parent.rmdir()
 
 
-def _backup(config: Config) -> Path:
-    """Copy the database into the backup directory with the content of the reference
-    files it names, keep only the newest few, and return the copy (P-161)."""
-    source = _sqlite_path(config)
-    if not source.is_file():
-        raise _fail(f"there is no database at {source}")
+@contextlib.contextmanager
+def _backups_held(config: Config) -> Generator[None]:
+    """Hold the lock of the backup directory while a backup is taken, its rotation and
+    pruning with it, or while a restore reads what the backups hold. Another backup,
+    such as the daily timer's beside one taken by hand, waits for it: otherwise the
+    pruning of one could remove content that the other has just been made to name.
+    """
     # Readable by the service and its group and by nobody else, whatever the umask of
     # whoever takes the first backup.
     config.backup_dir.parent.mkdir(parents=True, exist_ok=True)
     _private_directory(config.backup_dir)
+    descriptor = os.open(config.backup_dir / BACKUP_LOCK, os.O_RDWR | os.O_CREAT, 0o640)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            typer.echo(
+                f"hirdir: another backup or restore is at work in {config.backup_dir}: "
+                "waiting for it",
+                err=True,
+            )
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        # Closing it lets the lock go.
+        os.close(descriptor)
+
+
+def _backup(config: Config) -> Path:
+    """Copy the database into the backup directory with the content of the reference
+    files it names, keep only the newest few, and return the copy (P-161). One backup
+    is taken at a time."""
+    source = _sqlite_path(config)
+    if not source.is_file():
+        raise _fail(f"there is no database at {source}")
+    with _backups_held(config):
+        return _backup_held(config, source)
+
+
+def _backup_held(config: Config, source: Path) -> Path:
+    """Take a backup, holding the lock of the backups."""
     live, kept = Store(config.files_dir), Store(config.backup_dir / "files")
     _private_directory(kept.root)
     # The content first, so that the copy names nothing that is not there; then what was
@@ -350,8 +414,14 @@ def _backup(config: Config) -> Path:
 
 @admin.command()
 def backup() -> None:
-    """Copy the database into the backup directory and keep only the newest few."""
-    typer.echo(str(_backup(_load())))
+    """Copy the database into the backup directory, with the content of the reference
+    files it names beside it, and keep only the newest few."""
+    config = _load()
+    try:
+        made = _backup(config)
+    except OSError as error:
+        raise _fail(f"the backup could not be made: {error}") from None
+    typer.echo(str(made))
 
 
 def _time_zone(config: Config) -> str:
@@ -377,11 +447,12 @@ def _made_at(path: Path) -> float:
 
 
 def _checksum(path: Path) -> str | None:
-    """Return the SHA-256 of a file read through, or None when there is no such file."""
+    """Return the SHA-256 of a file read through, or None where there is no such file or
+    it cannot be read, whatever the reason: it is then counted with what is missing."""
     try:
         with path.open("rb") as handle:
             return hashlib.file_digest(handle, "sha256").hexdigest()
-    except FileNotFoundError, IsADirectoryError:
+    except OSError:
         return None
 
 
@@ -392,9 +463,21 @@ def _listed(references: list[Named]) -> str:
     return shown + (f" and {more} more" if more > 0 else "")
 
 
+def _linked(source: Path, target: Path) -> bool:
+    """Put content into the store as a hard link to source, and say whether it was. It
+    is not where the two are on two file systems, or the link is refused."""
+    target.parent.mkdir(mode=file_store.DIRECTORY_MODE, parents=True, exist_ok=True)
+    try:
+        os.link(source, target)
+    except FileExistsError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def _copy_into(live: Store, source: Path, sha256: str) -> None:
-    """Copy content into the store, checked again on the way: a copy and never a link,
-    since the store is the service's own and changes without the backup."""
+    """Copy content into the store, checked again on the way."""
     with file_store.LOCK, source.open("rb") as handle:
         upload = live.receive(limit=os.fstat(handle.fileno()).st_size)
         try:
@@ -432,12 +515,58 @@ def restore(
     names. Stop the hirdir service first.
 
     Nothing is changed until every file that the backup names has been found, in the
-    store or in DIR with its checksum.
+    store or in DIR with its checksum. The database as it was is kept beside it, and the
+    files it named that the backup does not are set aside beside the store.
     """
     config = _load()
     target = _sqlite_path(config)
+    aside = target.with_name(target.name + ".before-restore")
     if not file.is_file():
         raise _fail(f"there is no file {file}")
+    # A restore writes the database over its copy before it reads the file it restores.
+    if file.resolve() in (target.resolve(), aside.resolve()):
+        kept = config.backup_dir / "before-restore.db"
+        raise _fail(
+            f"{file} is the database, or the copy of it that a restore keeps, which a "
+            "restore writes over before it reads it. Copy it elsewhere first and restore "
+            f"the copy: sudo cp -p {file} {kept} && sudo hirdir admin restore {kept} "
+            f"--files {config.files_dir.with_name(config.files_dir.name + '.before-restore')}"
+        )
+    with _backups_held(config):
+        _restore(config, target, aside, file, files, allow_missing_files)
+
+
+def _set_aside(live: Store, aside: Path, named: set[str]) -> int:
+    """Move each content of the store that named lacks into aside, under its checksum,
+    beside what earlier restores set aside there, and return how many were moved.
+
+    Content is named by its checksum, so one there already is the same and the store's
+    is let go. Each is moved under another name and then given its own, so that a name
+    there is only ever had by content that is whole.
+    """
+    unnamed = [sha256 for sha256 in live.contents() if sha256 not in named]
+    for sha256 in unnamed:
+        _private_directory(aside)
+        moved = file_store.path_in(aside, sha256)
+        if moved.is_file():
+            live.path_of(sha256).unlink()
+            continue
+        _private_directory(moved.parent)
+        # A rename, or a copy where a site keeps the store on a volume of its own.
+        shutil.move(live.path_of(sha256), _part_of(moved))
+        os.replace(_part_of(moved), moved)
+    return len(unnamed)
+
+
+def _restore(
+    config: Config,
+    target: Path,
+    aside: Path,
+    file: Path,
+    files: Path | None,
+    allow_missing_files: bool,
+) -> None:
+    """Restore a backup, holding the lock of the backups."""
     verdict = _integrity(file)
     if verdict != "ok":
         raise _fail(f"{file} fails its integrity check: {verdict}")
@@ -458,48 +587,51 @@ def restore(
         where = f"in {source.root}" if source.root.is_dir() else f"there is no {source.root}"
         raise _fail(
             f"{len(lost)} of the {len(references)} reference files that {file} names have "
-            f"their content neither in {live.root} nor, with its checksum, {where}: "
-            f"{_listed(lost)}. Nothing was changed. Name where the files are with "
+            f"their content neither in {live.root} nor, readable and with its checksum, "
+            f"{where}: {_listed(lost)}. Nothing was changed. Name where the files are with "
             "--files DIR, or restore without them with --allow-missing-files."
         )
 
     if target.is_file():
-        aside = target.with_name(target.name + ".before-restore")
         _copy_database(target, aside)
         typer.echo(f"the database as it was is kept at {aside}")
-    # The content first and the database after it, so that a restore that stops on the
-    # way leaves a database whose files are all there. The store makes its directories
-    # as the service does, under its umask, whatever the umask of whoever restores.
+    # The content that the backup names first, then what the database as it was names
+    # set aside, and the database last: a restore that stops on the way leaves every
+    # content in the store or set aside, and a database whose files are all there. The
+    # content of the backups' own files/ is linked, as the backup linked it; from
+    # anywhere else it is copied. The store makes its directories as the service does,
+    # under its umask, whatever the umask of whoever restores.
     _private_directory(live.root)
+    own = source.root.resolve() == (config.backup_dir / "files").resolve()
     umask = os.umask(SERVICE_UMASK)
     try:
         for sha256 in needed:
-            _copy_into(live, source.path_of(sha256), sha256)
+            if not (own and _linked(source.path_of(sha256), live.path_of(sha256))):
+                _copy_into(live, source.path_of(sha256), sha256)
+        aside_files = live.root.with_name(f"{live.root.name}.before-restore")
+        moved = _set_aside(live, aside_files, named)
     finally:
         os.umask(umask)
     if needed:
-        typer.echo(f"the content of {len(needed)} files was copied from {source.root}")
-    for leftover in (target, Path(f"{target}-wal"), Path(f"{target}-shm")):
-        leftover.unlink(missing_ok=True)
-    shutil.copyfile(file, target)
-    target.chmod(0o600)
-    migrations.upgrade(config.database_url)
-    # What the restored database does not name is set aside, as the database was.
-    unnamed = [sha256 for sha256 in live.contents() if sha256 not in named]
-    aside_files = live.root.with_name(f"{live.root.name}.before-restore")
-    if aside_files.exists():
-        shutil.rmtree(aside_files)
-    if unnamed:
-        _private_directory(aside_files)
-        for sha256 in unnamed:
-            moved = file_store.path_in(aside_files, sha256)
-            _private_directory(moved.parent)
-            # A rename, or a copy where a site keeps the store on a volume of its own.
-            shutil.move(live.path_of(sha256), moved)
+        typer.echo(f"the content of {len(needed)} files was taken from {source.root}")
+    if moved:
         typer.echo(
-            f"the content of {len(unnamed)} files that the restored database does not name "
+            f"the content of {moved} files that the restored database does not name "
             f"is kept at {aside_files}"
         )
+    # Written beside it under another name and then put in its place in one step, so
+    # that a copy that stops leaves the database as it was rather than none.
+    staged = target.with_name(target.name + ".restoring")
+    try:
+        shutil.copyfile(file, staged)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
+    staged.chmod(0o600)
+    for leftover in (Path(f"{target}-wal"), Path(f"{target}-shm")):
+        leftover.unlink(missing_ok=True)
+    os.replace(staged, target)
+    migrations.upgrade(config.database_url)
     typer.echo(f"restored {file} to {target}")
     if lost:
         typer.echo(
@@ -602,20 +734,36 @@ def _check_files(config: Config, engine: Engine) -> bool:
     """Report the store of reference files beside what the database names, and say
     whether every content that a reference names is there. Content that none names is
     reported and is no failure: the server removes it when it starts, a day after it was
-    put there."""
+    put there.
+
+    The service may be at work meanwhile, and the names and the store are not read in
+    one moment: content erased between the two would look missing, and content uploaded
+    between them unnamed. So each that looks so is looked at again, in a transaction
+    begun after the store was read, and reported only where it is so still.
+    """
     live = Store(config.files_dir)
     with make_sessions(engine)() as db:
         references = db.scalar(
             select(func.count()).select_from(ReferenceFile).where(ReferenceFile.sha256.is_not(None))
         )
         named = file_store.named_by(db)
-        held = set(live.contents())
-        missing = sorted(named - held)
+    held = set(live.contents())
+    with make_sessions(engine)() as db:
+        missing = [
+            sha256
+            for sha256 in sorted(named - held)
+            if not live.has(sha256) and _named_now(db, sha256)
+        ]
         lacking = db.execute(
             select(ReferenceFile.sha256, ReferenceFile.hid, ReferenceFile.file_name)
             .where(ReferenceFile.sha256.in_(missing))
             .order_by(ReferenceFile.sha256, ReferenceFile.hid)
         ).all()
+        unnamed = [
+            sha256
+            for sha256 in sorted(held - named)
+            if live.has(sha256) and not _named_now(db, sha256)
+        ]
     count, size = live.size()
     typer.echo(
         f"reference files: {references:,} with content, kept in {count:,} files of "
@@ -623,9 +771,16 @@ def _check_files(config: Config, engine: Engine) -> bool:
     )
     for sha256, hid, file_name in lacking:
         typer.echo(f"missing content: {sha256} of {hid} ({file_name})")
-    for sha256 in sorted(held - named):
+    for sha256 in unnamed:
         typer.echo(f"unnamed content: {sha256}, which no reference names")
     return not missing
+
+
+def _named_now(db: Session, sha256: str) -> bool:
+    """Say whether a reference names content with this checksum, as the database has it
+    now."""
+    found = select(ReferenceFile.hid).where(ReferenceFile.sha256 == sha256).limit(1)
+    return db.scalar(found) is not None
 
 
 @admin.command()
