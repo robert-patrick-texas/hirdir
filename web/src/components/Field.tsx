@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, type ReactNode, type Ref, useEffect, useId, useState } from "react";
 
 interface FieldProps {
   label: string;
@@ -21,6 +21,8 @@ interface TextFieldProps extends FieldProps {
   inputRef?: Ref<HTMLInputElement>;
   /** The id of a <datalist> of suggestions. */
   list?: string;
+  /** A key pressed in the box: as Enter, to add what was typed rather than send the form. */
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
 }
 
 function describedBy(...ids: Array<string | false | undefined>): string | undefined {

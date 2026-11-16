@@ -9,10 +9,12 @@ import {
   IMPORTS_SORT,
   MEMBERS_SORT,
   PREVIEW_ROWS_SORT,
+  REFERENCES_SORT,
   USERS_SORT,
 } from "./tableSorts";
 
 const ALL = {
+  REFERENCES_SORT,
   USERS_SORT,
   AUDIT_SORT,
   CAPACITY_RECORDS_SORT,
@@ -90,6 +92,21 @@ describe("the sort fields of the paged tables", () => {
       location: "location.name",
       minor: "minor_items",
     });
+  });
+
+  it("sorts the references by the fields of their route, the records by how many", () => {
+    expect(REFERENCES_SORT).toEqual({
+      title: "title",
+      kind: "kind",
+      form: "form",
+      file_name: "file_name",
+      size: "size_bytes",
+      records: "attachment_count",
+      added: "created_at",
+    });
+    expect(sortParam({ column: "records", descending: true }, REFERENCES_SORT)).toBe(
+      "-attachment_count",
+    );
   });
 
   it("sorts an audit event by its record as it is shown: the type, then the HID", () => {

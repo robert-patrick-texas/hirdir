@@ -59,8 +59,42 @@ type DownloadRoutes = {
     : never;
 }[keyof paths];
 
+/**
+ * The routes that take a file of any kind as the body of a request, as a reference file
+ * is (P-162): the file itself, with everything else about it in the URL.
+ */
+type BinaryRoutes<M extends "post" | "put"> = {
+  [P in keyof paths]: paths[P] extends Record<
+    M,
+    { requestBody: { content: { "application/octet-stream": unknown } } }
+  >
+    ? P
+    : never;
+}[keyof paths];
+/** What a file sent as the body of a request is sent with. */
+type FileOptions<O> = Part<"path", PathOf<O>> & {
+  query?: QueryOf<O>;
+  file: Blob;
+  onProgress?: (progress: Progress) => void;
+  signal?: AbortSignal;
+};
+/** The routes that answer a `GET` with a file: the content of a reference. */
+type ContentRoutes = {
+  [P in keyof paths]: paths[P] extends {
+    get: { responses: { 200: { content: { "application/octet-stream": unknown } } } };
+  }
+    ? P
+    : never;
+}[keyof paths];
+
 /** The kinds of file the server reads and writes. */
 export type FileType = "text/csv" | "application/json";
+
+/** How much of a file has been sent, in bytes. */
+export interface Progress {
+  sent: number;
+  total: number;
+}
 
 /** A file the server sent: its content, and the name the server gave it. */
 export interface Download {
@@ -71,7 +105,7 @@ export interface Download {
 
 interface LooseOptions {
   path?: Record<string, string | number>;
-  query?: Record<string, string | number | boolean | null | undefined>;
+  query?: Record<string, string | number | boolean | readonly string[] | null | undefined>;
   body?: unknown;
   /** A file to send as the body, as it is, under its own content type. */
   file?: { content: Blob; type: FileType };
@@ -165,6 +199,11 @@ export interface ClientDeps {
   /** The page's base URI, read when a request is made. */
   baseURI: () => string;
   fetch: (input: string, init: RequestInit) => Promise<Response>;
+  /**
+   * A new XMLHttpRequest, for the one kind of request that says how far it has got: the
+   * upload of a reference file. `fetch` cannot tell how much of a body it has sent.
+   */
+  xhr?: () => XMLHttpRequest;
   sessions: {
     get: () => Session | null;
     clear: (reason: EndReason) => void;
@@ -225,6 +264,70 @@ export interface Client {
     route: P,
     options: { body: BodyOf<Operation<"post", P>>; signal?: AbortSignal },
   ): Promise<Download>;
+
+  /**
+   * Send a file of any kind as the body of a route that takes one, as a reference file
+   * is sent, saying as it goes how much of it has been sent. It is sent as every request
+   * is, with the bearer token, and the answer is read as every answer is.
+   */
+  sendFile<P extends BinaryRoutes<"post">>(
+    method: "post",
+    route: P,
+    options: FileOptions<Operation<"post", P>>,
+  ): Promise<AnswerOf<Operation<"post", P>>>;
+  sendFile<P extends BinaryRoutes<"put">>(
+    method: "put",
+    route: P,
+    options: FileOptions<Operation<"put", P>>,
+  ): Promise<AnswerOf<Operation<"put", P>>>;
+
+  /**
+   * Fetch the content of a route that answers a `GET` with a file, as everything else is
+   * fetched, with the bearer token and no cookie, and hand it over to be shown or saved.
+   */
+  content<P extends ContentRoutes>(
+    route: P,
+    options: Part<"path", PathOf<Operation<"get", P>>> & { signal?: AbortSignal },
+  ): Promise<Download>;
+}
+
+interface TransferOptions {
+  path?: Record<string, string | number>;
+  query?: LooseOptions["query"];
+  file: Blob;
+  onProgress?: (progress: Progress) => void;
+  signal?: AbortSignal;
+}
+
+const NO_ANSWER = {
+  status: 0,
+  title: "No answer",
+  detail: "The server could not be reached. Check the connection and try again.",
+};
+
+/** The headers of an XMLHttpRequest's answer, as those of a fetch are read. */
+function headersOf(request: XMLHttpRequest): Headers {
+  const headers = new Headers();
+  for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    try {
+      headers.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+    } catch {
+      // A header no fetch would hand over: nothing that is read here.
+    }
+  }
+  return headers;
+}
+
+/** An XMLHttpRequest's answer as a Response, so that it is read as every other answer. */
+function responseOf(request: XMLHttpRequest): Response {
+  const empty = request.status === 204 || request.status === 205 || request.status === 304;
+  return new Response(empty ? null : String(request.responseText ?? ""), {
+    status: request.status,
+    statusText: request.statusText,
+    headers: headersOf(request),
+  });
 }
 
 export function createClient(deps: ClientDeps): Client {
@@ -265,12 +368,13 @@ export function createClient(deps: ClientDeps): Client {
       response = await deps.fetch(url, init);
     } catch {
       if (options.signal?.aborted) throw new ApiError({ status: 0, title: "Aborted" });
-      throw new ApiError({
-        status: 0,
-        title: "No answer",
-        detail: "The server could not be reached. Check the connection and try again.",
-      });
+      throw new ApiError(NO_ANSWER);
     }
+    return checked(response, session);
+  }
+
+  /** The answer, or what the server refused the request with. */
+  async function checked(response: Response, session: Session | null): Promise<Response> {
     if (response.status === 401) {
       // The session is no longer good. Forgetting it brings the sign-in page back.
       const problem = await problemOf(response);
@@ -279,6 +383,65 @@ export function createClient(deps: ClientDeps): Client {
     }
     if (!response.ok) throw await problemOf(response);
     return response;
+  }
+
+  /**
+   * Send a file as the body of a request with an XMLHttpRequest, which says how much of
+   * it has gone, and read the answer as every other. It is given no cookie to send, as
+   * none is ever set, and it follows no redirect: an answer from anywhere else than
+   * where it was sent is taken for no answer, as `fetch` is told to.
+   */
+  async function transfer(
+    method: string,
+    route: string,
+    options: TransferOptions,
+  ): Promise<unknown> {
+    const make = deps.xhr;
+    if (!make) throw new ApiError({ ...NO_ANSWER, detail: "This page cannot send a file." });
+    const session = deps.sessions.get();
+    const url = apiUrl(deps.baseURI(), route, options.path, options.query);
+    const { file, onProgress, signal } = options;
+    const response = await new Promise<Response>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new ApiError({ status: 0, title: "Aborted" }));
+        return;
+      }
+      const request = make();
+      const stop = () => request.abort();
+      request.open(method.toUpperCase(), url);
+      request.withCredentials = false;
+      request.responseType = "text";
+      request.setRequestHeader("Accept", "application/json");
+      request.setRequestHeader("X-Hirdir-Client", "web");
+      if (session) request.setRequestHeader("Authorization", `Bearer ${session.token}`);
+      request.setRequestHeader("Content-Type", "application/octet-stream");
+      request.upload.addEventListener("progress", (event) => {
+        const total = event.lengthComputable ? event.total : file.size;
+        onProgress?.({ sent: event.loaded, total });
+      });
+      request.addEventListener("load", () => {
+        signal?.removeEventListener("abort", stop);
+        const moved = request.responseURL !== "" && request.responseURL !== url;
+        if (moved) reject(new ApiError(NO_ANSWER));
+        else resolve(responseOf(request));
+      });
+      request.addEventListener("error", () => {
+        signal?.removeEventListener("abort", stop);
+        reject(new ApiError(NO_ANSWER));
+      });
+      request.addEventListener("abort", () => {
+        reject(new ApiError({ status: 0, title: "Aborted" }));
+      });
+      signal?.addEventListener("abort", stop, { once: true });
+      request.send(file);
+    });
+    await checked(response, session);
+    if (response.status === 204) return undefined;
+    try {
+      return await response.json();
+    } catch {
+      throw unreadable(response);
+    }
   }
 
   function unreadable(response: Response): ApiError {
@@ -299,8 +462,13 @@ export function createClient(deps: ClientDeps): Client {
     }
   }
 
-  async function download(route: string, options: LooseOptions): Promise<Download> {
-    const response = await exchange("post", route, options, "text/csv, application/json");
+  async function download(
+    route: string,
+    options: LooseOptions,
+    method = "post",
+    accept = "text/csv, application/json",
+  ): Promise<Download> {
+    const response = await exchange(method, route, options, accept);
     try {
       return {
         blob: await response.blob(),
@@ -322,5 +490,9 @@ export function createClient(deps: ClientDeps): Client {
     }) as Client["upload"],
     download: ((route: string, options: LooseOptions) =>
       download(route, options)) as Client["download"],
+    sendFile: ((method: string, route: string, options: TransferOptions) =>
+      transfer(method, route, options)) as Client["sendFile"],
+    content: ((route: string, options: LooseOptions) =>
+      download(route, options, "get", "*/*")) as Client["content"],
   };
 }

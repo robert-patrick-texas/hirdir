@@ -17,6 +17,7 @@ import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { ItemPurchaseLine } from "../components/PurchaseLine";
 import { EditForm } from "../components/RecordForm";
+import { References } from "../components/References";
 import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -201,6 +202,15 @@ export function ItemDetail() {
           <Memberships item={record} />
           {/* 0.8.0: the circuits it is connected to, each with its side (P-147). */}
           <ConnectedCircuits circuits={record.circuits} whose={itemName(record)} />
+          {/*
+            0.9.0: its own references, its model's and those of where it is (P-158). A
+            retired item keeps its references and takes more.
+          */}
+          <References
+            key={`references ${record.hid}`}
+            holder={{ kind: "item", hid: record.hid }}
+            mayEdit={mayEdit}
+          />
           <Addresses
             key={`addresses ${record.hid}`}
             holder={{ item_hid: record.hid }}

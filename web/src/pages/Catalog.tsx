@@ -8,6 +8,7 @@ import { DataGrid } from "../components/grid/DataGrid";
 import { Links } from "../components/Links";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { References } from "../components/References";
 import { Time } from "../components/Time";
 import { effectiveText, inheritHint, isInherited, sourceHint, sourceLabel } from "../lib/effective";
 import { itemsPath } from "../lib/filter";
@@ -404,22 +405,25 @@ export function CatalogEntryDetail() {
       {record && (
         <>
           <EntryFacts entry={record} choices={choices.data} />
-          {/* The links of the model, which every item of it shows (D-189). */}
-          <Links
-            key={`links ${record.hid} ${record.row_version}`}
-            links={record.links}
-            what="catalog entry"
-            level={2}
-            mayEdit={mayEdit && record.record_status !== "retired"}
-            save={(links) =>
-              api.request("patch", "/api/v1/catalog-entries/{hid}", {
-                path: { hid: record.hid },
-                body: { row_version: record.row_version, links },
-              })
-            }
-            onSaved={() => changed("The links were saved.")}
-            onReload={entry.reload}
-          />
+          {/* 0.9.0: the documents of the model, after its links of 0.7.0 (P-162, P-163). */}
+          <References holder={{ kind: "catalog_entry", hid: record.hid }} mayEdit={mayEdit}>
+            {/* The links of the model, which every item of it shows (D-189). */}
+            <Links
+              key={`links ${record.hid} ${record.row_version}`}
+              links={record.links}
+              what="catalog entry"
+              level={3}
+              mayEdit={mayEdit && record.record_status !== "retired"}
+              save={(links) =>
+                api.request("patch", "/api/v1/catalog-entries/{hid}", {
+                  path: { hid: record.hid },
+                  body: { row_version: record.row_version, links },
+                })
+              }
+              onSaved={() => changed("The links were saved.")}
+              onReload={entry.reload}
+            />
+          </References>
           {mayEdit && record.record_status !== "retired" && (
             <EntryDetails
               key={`details ${record.hid} ${record.row_version}`}

@@ -71,6 +71,7 @@ import {
 import { MakeActive, PlannedHere, usePlanned } from "./PlacePlanned";
 import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
+import { References } from "./References";
 import { SortTh } from "./SortTh";
 import { Time } from "./Time";
 // 0.8.0: the support weight of a place (P-139, P-155).
@@ -494,18 +495,31 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 ))}
             </p>
             <PlaceFacts place={record} choices={choices} to={to} />
-            {/* The place's own links: it has none from the places above it (D-189). */}
-            <Links
-              key={`links ${record.hid} ${record.row_version}`}
-              links={record.links}
-              what={level}
-              mayEdit={editable}
-              save={(links) =>
-                patchPlace(level, record.hid, { row_version: record.row_version, links })
-              }
-              onSaved={() => changed("The links were saved.", false)}
-              onReload={place.reload}
-            />
+            {/*
+              0.9.0: its references and those of the places above it, each under the place
+              it is on, after its own links of 0.7.0 (P-162, P-163). A retired place keeps
+              its references and takes more (P-158).
+            */}
+            <References
+              key={`references ${record.hid}`}
+              holder={{ kind: level, hid: record.hid }}
+              mayEdit={mayEdit}
+              level={3}
+            >
+              {/* The place's own links: it has none from the places above it (D-189). */}
+              <Links
+                key={`links ${record.hid} ${record.row_version}`}
+                links={record.links}
+                what={level}
+                level={4}
+                mayEdit={editable}
+                save={(links) =>
+                  patchPlace(level, record.hid, { row_version: record.row_version, links })
+                }
+                onSaved={() => changed("The links were saved.", false)}
+                onReload={place.reload}
+              />
+            </References>
             <InForce
               level={level}
               place={record}

@@ -174,6 +174,10 @@ export function AdminNav() {
         <li>
           <NavLink to="/admin/tags">Tags</NavLink>
         </li>
+        {/* 0.9.0: every reference, for every role to read (P-162). */}
+        <li>
+          <NavLink to="/admin/files">Files</NavLink>
+        </li>
       </ul>
     </nav>
   );

@@ -76,14 +76,14 @@ interface LinksProps {
   /** Read the record again, as when somebody else changed it. */
   onReload: () => void;
   /** The level of the section's heading among those of the page. */
-  level?: 2 | 3;
+  level?: 2 | 3 | 4;
 }
 
 /** A record's own links, and the editor of them for whoever may change the record. */
 export function Links(props: LinksProps) {
   const { links, what, mayEdit, save, onSaved, onReload, level = 3 } = props;
   const [editing, setEditing] = useState(false);
-  const Heading = level === 2 ? "h2" : "h3";
+  const Heading = level === 2 ? "h2" : level === 3 ? "h3" : "h4";
   return (
     <section aria-labelledby="record-links" data-testid="record-links">
       <Heading id="record-links">Links</Heading>
