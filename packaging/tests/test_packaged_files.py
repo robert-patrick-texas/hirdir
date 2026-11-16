@@ -21,6 +21,7 @@ LOAD_ORDER = [
     "vendors",
     "catalog-entries",
     "contacts",
+    "vendor-contacts",
     "operators",
     "regions",
     "sites",
@@ -47,6 +48,7 @@ LOAD_ORDER = [
     "circuits",
     "circuit-carriers",
     "circuit-costs",
+    "circuit-contacts",
     "circuit-devices",
 ]
 

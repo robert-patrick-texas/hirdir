@@ -20,6 +20,8 @@ from hirdir.db.models import (
     CapacityRecord,
     CatalogEntry,
     Choice,
+    Circuit,
+    CircuitContact,
     Contact,
     ContactAssignment,
     Contract,
@@ -45,10 +47,12 @@ from hirdir.db.models import (
     Tag,
     User,
     Vendor,
+    VendorContact,
 )
 from hirdir.domain import (
     addresses,
     capacity,
+    carrier_contacts,
     choices,
     contacts,
     contract_contacts,
@@ -161,9 +165,21 @@ def _address_refs(db: Session, field: str, hids: list[str]) -> dict[str, list[sh
     }
 
 
-def vendor_out(vendor: Vendor) -> shapes.VendorOut:
-    """Return a vendor."""
-    return shapes.VendorOut.model_validate(vendor)
+def vendors_out(db: Session, found: list[Vendor]) -> list[shapes.VendorOut]:
+    """Return vendors, each with the contacts it names (P-149), read for all at once."""
+    named = carrier_contacts.named_by_vendors(db, [vendor.hid for vendor in found])
+    return [
+        shapes.VendorOut(
+            **_own(vendor, shapes.VendorOut, ("contacts",)),
+            contacts=[vendor_contact_out(one) for one in named[vendor.hid]],
+        )
+        for vendor in found
+    ]
+
+
+def vendor_out(db: Session, vendor: Vendor) -> shapes.VendorOut:
+    """Return a vendor, with the contacts it names."""
+    return vendors_out(db, [vendor])[0]
 
 
 def _owner_ref(owner: Owner) -> shapes.OwnerRef:
@@ -1326,6 +1342,92 @@ def _contacts_in_force(
             source_hid=its.source_hid,
         )
         for role, its in found.items()
+    }
+
+
+# --- the contacts of carriers and of circuits (P-149) --------------------------------
+
+
+def vendor_contact_out(named: tuple[VendorContact, Contact]) -> shapes.VendorContactOut:
+    """Return one naming of a contact for a vendor, with the contact as its record is now."""
+    link, contact = named
+    return shapes.VendorContactOut(
+        **_own(link, shapes.VendorContactOut, ("contact",)), contact=_contact_ref(contact)
+    )
+
+
+def vendor_contacts_out(db: Session, hid: str) -> list[shapes.VendorContactOut]:
+    """Return what one vendor names, by role and then by priority."""
+    return [vendor_contact_out(one) for one in carrier_contacts.named_by_vendors(db, [hid])[hid]]
+
+
+def circuit_contact_out(named: tuple[CircuitContact, Contact]) -> shapes.CircuitContactOut:
+    """Return one naming of a contact for a circuit, with the contact as its record is now."""
+    link, contact = named
+    return shapes.CircuitContactOut(
+        **_own(link, shapes.CircuitContactOut, ("contact",)), contact=_contact_ref(contact)
+    )
+
+
+def circuit_contacts_out(db: Session, hid: str) -> list[shapes.CircuitContactOut]:
+    """Return what one circuit names of its own: the carrier's first, then each side's."""
+    return [circuit_contact_out(one) for one in carrier_contacts.named_by_circuits(db, [hid])[hid]]
+
+
+def _named_contacts(named: list[carrier_contacts.Naming]) -> list[shapes.NamedContact]:
+    return [
+        shapes.NamedContact(
+            hid=one.hid,
+            role=one.role,
+            priority=one.priority,
+            contact_hid=one.contact.hid,
+            contact=_contact_ref(one.contact),
+        )
+        for one in named
+    ]
+
+
+def _contacts_of_circuit(found: carrier_contacts.OfCircuit) -> shapes.CircuitContactsEffective:
+    carrier = {
+        carrier_contacts.IN_FORCE[role]: shapes.CarrierContacts(
+            value=_named_contacts(its.named), source=its.source, source_hid=its.source_hid
+        )
+        for role, its in found.carrier.items()
+    }
+    sites = {
+        side: [
+            shapes.SiteRoleContacts(
+                role=one.role,
+                value=_named_contacts(one.named),
+                source=one.source,
+                source_hid=one.source_hid,
+            )
+            for one in listed
+        ]
+        for side, listed in found.sites.items()
+    }
+    return shapes.CircuitContactsEffective(
+        account_managers=carrier["account_managers"],
+        support_contacts=carrier["support_contacts"],
+        site_contacts=shapes.SiteContacts(a=sites["a"], z=sites["z"]),
+    )
+
+
+def circuits_contacts(
+    db: Session, found: list[Circuit]
+) -> dict[str, tuple[list[shapes.CircuitContactOut], shapes.CircuitContactsEffective]]:
+    """Return, for each circuit by its HID, the contacts it names of its own, for its
+    `contacts`, and those it has in force, for its `effective` block:
+    `account_managers`, `support_contacts` and `site_contacts`.
+
+    The circuits are read together, so that a page of them costs a handful of
+    statements, as one circuit does. Nothing is copied: each contact is as its record
+    is now.
+    """
+    held = carrier_contacts.of_circuits(db, found)
+    return {
+        hid: ([circuit_contact_out(one) for one in its.own], _contacts_of_circuit(its))
+        for hid, its in held.items()
     }
 
 

@@ -12,7 +12,15 @@ from sqlalchemy.orm import Session
 
 from hirdir import ids
 from hirdir.db import dialect
-from hirdir.db.models import Contact, ContactAssignment, ContractContact, Operator, OwnerMember
+from hirdir.db.models import (
+    CircuitContact,
+    Contact,
+    ContactAssignment,
+    ContractContact,
+    Operator,
+    OwnerMember,
+    VendorContact,
+)
 from hirdir.domain import audit, choices, geography, records, tags
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
@@ -44,6 +52,9 @@ USED_BY: tuple[Any, ...] = (
     # Named for an agreement or a contract (D-183): counted, so that a person about to
     # retire a contact sees every place it is named.
     ContractContact.contact_hid,
+    # Named for a carrier or for a circuit (P-149), for the same reason.
+    VendorContact.contact_hid,
+    CircuitContact.contact_hid,
 )
 
 

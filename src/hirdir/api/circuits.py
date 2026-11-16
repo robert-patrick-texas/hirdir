@@ -33,7 +33,11 @@ def _page_of(items: list[Any], limit: int, offset: int) -> Page[Any]:
 def _circuits(db: Db, listed: lists.ListRequest) -> Page[c.CircuitOut]:
     page, total = lists.read(db, fields.CIRCUITS, listed)
     # A list leaves the parts of each circuit out, unless `fields` names one of them.
-    parts = any(name.partition(".")[0] in circuit_shapes.PARTS for name in listed.fields)
+    parts = any(
+        name.partition(".")[0] in circuit_shapes.PARTS
+        or name.startswith(circuit_shapes.CONTACTS_IN_FORCE)
+        for name in listed.fields
+    )
     return lists.narrowed(
         Page(
             items=circuit_shapes.circuits_out(db, page, parts=parts),

@@ -27,11 +27,12 @@ def _changes(body: r.Model) -> dict:
 
 @vendors.get("")
 def list_vendors(_: Viewer, db: Db, listed: Listed) -> Page[r.VendorOut]:
-    """List vendors, by name unless a sort says otherwise."""
+    """List vendors, by name unless a sort says otherwise, each with the contacts it
+    names."""
     page, total = lists.read(db, fields.VENDORS, listed)
     return lists.narrowed(
         Page(
-            items=[shapes.vendor_out(vendor) for vendor in page],
+            items=shapes.vendors_out(db, page),
             total=total,
             limit=listed.limit,
             offset=listed.offset,
@@ -44,13 +45,13 @@ def list_vendors(_: Viewer, db: Db, listed: Listed) -> Page[r.VendorOut]:
 @vendors.post("", status_code=201)
 def create_vendor(body: r.VendorCreate, _: Inventory, context: Audit, db: Db) -> r.VendorOut:
     """Create a vendor."""
-    return shapes.vendor_out(catalog.create_vendor(db, context, body.model_dump()))
+    return shapes.vendor_out(db, catalog.create_vendor(db, context, body.model_dump()))
 
 
 @vendors.get("/{hid}")
 def get_vendor(hid: str, _: Viewer, db: Db) -> r.VendorOut:
-    """Return one vendor."""
-    return shapes.vendor_out(catalog.get_vendor(db, hid))
+    """Return one vendor, with the account team and the support desk it names."""
+    return shapes.vendor_out(db, catalog.get_vendor(db, hid))
 
 
 @vendors.patch("/{hid}")
@@ -59,7 +60,7 @@ def update_vendor(
 ) -> r.VendorOut:
     """Change a vendor."""
     vendor = catalog.update_vendor(db, context, hid, body.row_version, _changes(body))
-    return shapes.vendor_out(vendor)
+    return shapes.vendor_out(db, vendor)
 
 
 @vendors.get("/{hid}/portfolio")

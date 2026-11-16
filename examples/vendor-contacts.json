@@ -1,0 +1,4 @@
+{"schema": "hirdir/1", "entity": "vendor_contacts", "mode": "upsert", "records": [
+  {"vendor": "Example Telecom", "role": "account_manager", "contact": "morgan.ellis@example.org", "priority": 1},
+  {"vendor": "Example Telecom", "role": "support_contact", "contact": "repair@example.org", "priority": 1}
+]}

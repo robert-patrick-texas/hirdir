@@ -25,6 +25,7 @@ LOAD_ORDER = (
     "vendors",
     "catalog_entries",
     "contacts",
+    "vendor_contacts",
     "operators",
     "regions",
     "sites",
@@ -51,6 +52,7 @@ LOAD_ORDER = (
     "circuits",
     "circuit_carriers",
     "circuit_costs",
+    "circuit_contacts",
     "circuit_devices",
 )
 ROUTES = {
@@ -84,6 +86,7 @@ ROUTES = {
 CIRCUIT_PARTS = {
     "circuit_carriers": "carriers",
     "circuit_costs": "costs",
+    "circuit_contacts": "contacts",
     "circuit_devices": "devices",
 }
 IVY = ("ivy", "acceptance-inventory")
@@ -175,6 +178,11 @@ class Desk:
             return sum(
                 self.get(f"/circuits/{circuit['hid']}/{CIRCUIT_PARTS[entity]}")["total"]
                 for circuit in circuits["items"]
+            )
+        if entity == "vendor_contacts":
+            # The contacts of each vendor are on its record.
+            return sum(
+                len(vendor["contacts"]) for vendor in self.get("/vendors", limit=1000)["items"]
             )
         if entity == "device_group_members":
             # Memberships are listed a group at a time, the ones that have ended too.

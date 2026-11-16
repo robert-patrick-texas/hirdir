@@ -36,6 +36,7 @@ from hirdir.db.models import (
     CatalogEntry,
     Circuit,
     CircuitCarrier,
+    CircuitContact,
     CircuitCost,
     CircuitDevice,
     CircuitGroup,
@@ -64,6 +65,7 @@ from hirdir.db.models import (
     Tag,
     TagLink,
     Vendor,
+    VendorContact,
 )
 from hirdir.domain import (
     circuit_records,
@@ -1496,6 +1498,53 @@ CONTRACT_CONTACTS = Listing(
     has_status=False,
 )
 
+# --- the contacts of carriers and of circuits (P-149) --------------------------------
+
+_CARRIER_CONTACT: Any = aliased(Contact, name="carrier_contact")
+_NAMING_VENDOR: Any = aliased(Vendor, name="naming_vendor")
+
+VENDOR_CONTACTS = Listing(
+    model=VendorContact,
+    fields={
+        **_bookkeeping(VendorContact),
+        **_columns(VendorContact, "reference", "vendor_hid", "contact_hid"),
+        "role": Field("choice", VendorContact.role),
+        "priority": Field("integer", VendorContact.priority),
+        "vendor.name": Field("text", _NAMING_VENDOR.name),
+        "contact.name": Field("text", _CARRIER_CONTACT.name),
+        "contact.email": Field("text", _CARRIER_CONTACT.email),
+    },
+    joined=lambda query: query.join(
+        _NAMING_VENDOR, _NAMING_VENDOR.hid == VendorContact.vendor_hid
+    ).join(_CARRIER_CONTACT, _CARRIER_CONTACT.hid == VendorContact.contact_hid),
+    default_sort=("vendor.name", "role", "priority", "contact.name"),
+    has_status=False,
+)
+
+_SITE_CONTACT: Any = aliased(Contact, name="site_contact")
+_NAMING_CIRCUIT: Any = aliased(Circuit, name="naming_circuit")
+
+CIRCUIT_CONTACTS = Listing(
+    model=CircuitContact,
+    fields={
+        **_bookkeeping(CircuitContact),
+        **_columns(CircuitContact, "reference", "circuit_hid", "contact_hid"),
+        # Blank for one of the carrier's, `a` or `z` for a site contact of that side.
+        "side": Field("choice", CircuitContact.side),
+        "role": Field("choice", CircuitContact.role),
+        "priority": Field("integer", CircuitContact.priority),
+        "circuit.name": Field("text", _NAMING_CIRCUIT.name),
+        "circuit.enterprise_circuit_id": Field("text", _NAMING_CIRCUIT.enterprise_circuit_id),
+        "contact.name": Field("text", _SITE_CONTACT.name),
+        "contact.email": Field("text", _SITE_CONTACT.email),
+    },
+    joined=lambda query: query.join(
+        _NAMING_CIRCUIT, _NAMING_CIRCUIT.hid == CircuitContact.circuit_hid
+    ).join(_SITE_CONTACT, _SITE_CONTACT.hid == CircuitContact.contact_hid),
+    default_sort=("circuit.name", "side", "role", "priority", "contact.name"),
+    has_status=False,
+)
+
 # --- purchases -----------------------------------------------------------------------
 
 _ARRIVED: Any = aliased(Item, name="arrived_item")
@@ -2135,6 +2184,9 @@ LISTINGS: tuple[Listing, ...] = (
     CIRCUIT_CARRIERS,
     CIRCUIT_COSTS,
     CIRCUIT_DEVICES,
+    # The contacts of carriers and of circuits (P-149).
+    VENDOR_CONTACTS,
+    CIRCUIT_CONTACTS,
 )
 
 

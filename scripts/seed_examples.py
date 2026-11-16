@@ -32,6 +32,7 @@ from hirdir.domain import (
     addresses,
     audit,
     capacity,
+    carrier_contacts,
     catalog,
     circuit_groups,
     circuit_records,
@@ -609,6 +610,15 @@ CONTACTS = (
     # The account team of a vendor, at an address of their own.
     ("Jordan Reyes", "Cisco", "jordan.reyes@example.com", "+1 555 0142"),
     ("Casey Lund", "Cisco", "casey.lund@example.com", "+1 555 0144"),
+    # The account manager and the repair desk of a carrier.
+    ("Morgan Ellis", "Example Telecom", "morgan.ellis@example.org", "+1 555 0160"),
+    ("Example Telecom Repair Desk", "Example Telecom", "repair@example.org", "+1 555 0161"),
+)
+# The account team and the support desk of a carrier, named once on the carrier: each
+# of its circuits has them unless it names its own (P-149).
+VENDOR_CONTACTS: tuple[tuple[str, str, str], ...] = (
+    ("Example Telecom", "account_manager", "Morgan Ellis"),
+    ("Example Telecom", "support_contact", "Example Telecom Repair Desk"),
 )
 # Who answers for a place, in which role: the path of the place, the role and the
 # contact, in the order of their priority. A contact of None says: none here, and do
@@ -948,6 +958,13 @@ CIRCUITS: tuple[tuple[Any, ...], ...] = (
         (("Fiber lease", "300.00", {"starts_on": "2026-01-01"}),),
         (("site2-rtr-wan-02", "a"),),
     ),
+)
+# The contacts a circuit names of its own (P-149): the circuit, the side, or None for
+# one of the carrier's, the role and the contact. The desk that lets the carrier's
+# technician into the room at the A side of the internet circuit stands in place of
+# what the room has from its site in that role.
+CIRCUIT_CONTACTS: tuple[tuple[str, str | None, str, str], ...] = (
+    ("Site-2 internet", "a", "operational", "Facilities Help Desk"),
 )
 # The groups of circuits: name, description, and the circuits in it.
 CIRCUIT_GROUPS = (
@@ -1305,6 +1322,10 @@ def build(db: Session) -> None:
                 "phone": phone,
             },
         )
+    for carrier, role, person in VENDOR_CONTACTS:
+        carrier_contacts.add_vendor_contact(
+            db, SEED, vendors[carrier].hid, {"role": role, "contact_hid": people[person].hid}
+        )
     for label, description, colour, person in OPERATORS:
         marks[label] = operators.create_operator(
             db,
@@ -1587,6 +1608,13 @@ def build(db: Session) -> None:
                 else {"item_hid": item(holder).hid, "side": side}
                 for holder, side in devices
             ],
+        )
+    for name, side, role, person in CIRCUIT_CONTACTS:
+        carrier_contacts.add_circuit_contact(
+            db,
+            SEED,
+            its_circuits[name].hid,
+            {"side": side, "role": role, "contact_hid": people[person].hid},
         )
     for name, description, members in CIRCUIT_GROUPS:
         group = circuit_groups.create_group(

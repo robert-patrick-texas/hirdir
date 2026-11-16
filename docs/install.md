@@ -183,6 +183,7 @@ hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
 hirdir import examples/contacts.csv --entity contacts --apply
+hirdir import examples/vendor-contacts.csv --entity vendor_contacts --apply
 hirdir import examples/operators.csv --entity operators --apply
 hirdir import examples/regions.csv --entity regions --apply
 hirdir import examples/sites.csv --entity sites --apply
@@ -209,6 +210,7 @@ hirdir import examples/circuit-groups.csv --entity circuit_groups --apply
 hirdir import examples/circuits.csv --entity circuits --apply
 hirdir import examples/circuit-carriers.csv --entity circuit_carriers --apply
 hirdir import examples/circuit-costs.csv --entity circuit_costs --apply
+hirdir import examples/circuit-contacts.csv --entity circuit_contacts --apply
 hirdir import examples/circuit-devices.csv --entity circuit_devices --apply
 ```
 
@@ -258,7 +260,11 @@ each connects. An internet circuit of Site-2 has its far end in the carrier's ne
 with no location and a note; a point-to-point circuit between Site-1 and Site-2 has a
 local exchange carrier with a number of its own beside the carrier's; and a dark fiber
 lent by a business partner has an enterprise circuit ID and no carrier's number, and
-counts at its far end. Three carriers are among the vendors.
+counts at its far end. Three carriers are among the vendors, and a circuit names a contact of its own.
+
+The contacts of vendors are new in 0.8.0: Example Telecom, a fictional carrier, names
+its account manager and its repair desk once, and every circuit of that carrier has them
+unless it names its own.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:

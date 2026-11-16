@@ -1187,10 +1187,34 @@ primary carrier or one of its other carriers, blank being the primary, and any o
 vendor is a `422` that names it; a carrier that a line names is not removed, a `409`,
 and the primary carrier is not replaced while a line names it by name, a `422`.
 
+**Its contacts.** `GET /circuits/{hid}/contacts` lists the carrier's first, then those of
+the A side and of the Z side, each by role and then by priority. A contact named once
+more for the same side and role is a `409` that names `contact_hid`. Left out, the
+`priority` is one more than the highest there is for the circuit, the side and the
+role. With no side the role is `account_manager` or `support_contact`, and with a side
+a value of the `contact_role` list. A `PATCH` may change the side, the role, the
+priority or the contact of a naming, which stays with its circuit, and its role is then
+one that its side takes. The contacts are audited as `circuit_contact`.
+
+**Its contacts in force.** `effective.account_managers` and `effective.support_contacts`
+are each the list in force for the role: with the source `own` and the circuit in
+`source_hid` where the circuit names any of its own in the role, with `vendor` and its
+primary carrier where it has the carrier's, and otherwise `none`. `effective.site_contacts`
+has, for `a` and for `z`, one entry for each role that has contacts on that side, in the
+order of the `contact_role` list: its `role`, its `value`, and `source` with
+`source_hid`, which are `own` and the circuit for those the circuit names for that side,
+or else the level they came from as the location of the side resolves them, `location`
+for that location or one above it, `site` or `region`, with that place. Each entry of a
+`value` is the naming it comes by, a contact of the circuit, of its carrier or, among
+the site contacts, an assignment of the place: its `hid`, its `role`, its `priority`
+and `contact_hid`, with the contact as its record is when it is read, its name,
+organization, email address, telephone number and record status.
+
 **The contacts of a vendor.** `GET /vendors/{hid}/contacts` lists the contacts a vendor
 names, `account_manager` or `support_contact`, by role and then by priority, and `POST`,
 `PATCH` and `DELETE` work as they do for a contract (see "Contacts of agreements and
-contracts"). The record of a vendor answers them in `contacts`.
+contracts"), audited as `vendor_contact`. The record of a vendor, in the list of
+vendors as well, answers them in `contacts`.
 
 **Where a circuit is.** The record of an item and of a device group answers `circuits`,
 each with its HID, name, enterprise circuit ID and side, the HID of the connection,

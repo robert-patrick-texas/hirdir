@@ -12,6 +12,8 @@ from typing import Annotated, Literal
 from pydantic import Field, PlainSerializer, WithJsonSchema
 
 from hirdir.api.records import (
+    CarrierContacts,
+    CircuitContactOut,
     EffectiveValue,
     Hid,
     LongText,
@@ -19,6 +21,7 @@ from hirdir.api.records import (
     OwnerRef,
     RecordStatus,
     ShortText,
+    SiteContacts,
     VendorRef,
     Weight,
 )
@@ -218,8 +221,20 @@ class CircuitEffective(Model):
     up_mbps: EffectiveValue = Field(
         description="The rate in force up: its own, or the full rate of the port, `port`."
     )
-    # The contacts in force of P-149, `account_managers`, `support_contacts` and
-    # `site_contacts`, are added here at the merge of 0.8.0.
+    account_managers: CarrierContacts | None = Field(
+        default=None,
+        description="The carrier's account team in force (P-149): its own, or its primary "
+        "carrier's, `vendor`. Null in a list unless `fields` asks for it.",
+    )
+    support_contacts: CarrierContacts | None = Field(
+        default=None,
+        description="The carrier's support desk in force (P-149), as `account_managers`.",
+    )
+    site_contacts: SiteContacts | None = Field(
+        default=None,
+        description="The site contacts of each side, its own or its location's with the "
+        "level they came from (P-149). Null in a list unless `fields` asks for it.",
+    )
 
 
 class CircuitOut(Model):
@@ -271,6 +286,9 @@ class CircuitOut(Model):
     costs: list[CircuitCostOut] | None = Field(description="Its cost lines, by description.")
     devices: list[CircuitDeviceOut] | None = Field(description="The devices it connects.")
     groups: list[CircuitGroupRef] | None = Field(description="The groups it is in, by name.")
+    contacts: list[CircuitContactOut] | None = Field(
+        default=None, description="The contacts it names of its own (P-149)."
+    )
     effective: CircuitEffective
     tags: list[str]
     record_status: RecordStatus

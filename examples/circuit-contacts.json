@@ -1,0 +1,3 @@
+{"schema": "hirdir/1", "entity": "circuit_contacts", "mode": "upsert", "records": [
+  {"circuit": "EC-0101", "side": "a", "role": "operational", "contact": "facilities@example.net", "priority": 1}
+]}

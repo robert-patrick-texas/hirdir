@@ -1038,18 +1038,20 @@ def _source(place: Place, asked: Place) -> str:
     return "own" if place.hid == asked.hid else place.level
 
 
-def effective(db: Session, place: Place) -> InForce:
-    """Return what a place has in force, each thing with the level it came from.
+def contacts_in_force(
+    db: Session, places: Sequence[Place], atlas: Atlas | None = None
+) -> dict[str, list[RoleContacts]]:
+    """Return the contacts each of the places has in force, by its HID: one entry for
+    each role of the `contact_role` list, with the level it came from.
 
     For a role, the first level that has any assignment supplies all of its contacts,
     and a level whose assignment says "none here, and do not look further up" supplies
-    none and ends the search. The shipping address is taken whole from the nearest
-    record that has one, of its own or as its street address, and the shipping
-    instructions likewise by themselves. Each says which level above it overrides.
+    none and ends the search. The places are read together, so that the sides of a
+    page of circuits cost a handful of statements and not a handful each.
     """
-    atlas = Atlas(db)
-    chain = atlas.chain(place)
-    paths = {one.hid: atlas.path(one) for one in chain}
+    atlas = atlas or Atlas(db)
+    chains = {place.hid: atlas.chain(place) for place in places}
+    paths = {one.hid: atlas.path(one) for chain in chains.values() for one in chain}
     columns = {
         REGION: ContactAssignment.region_hid,
         SITE: ContactAssignment.site_hid,
@@ -1057,45 +1059,70 @@ def effective(db: Session, place: Place) -> InForce:
     }
     assigned: dict[tuple[str, str], list[tuple[ContactAssignment, Contact | None]]] = {}
     for level, column in columns.items():
-        hids = [one.hid for one in chain if one.level == level]
-        if not hids:
-            continue
-        rows = db.execute(
-            select(ContactAssignment, Contact)
-            .outerjoin(Contact, Contact.hid == ContactAssignment.contact_hid)
-            .where(column.in_(hids))
-            .order_by(ContactAssignment.priority, Contact.name_key, ContactAssignment.hid)
-        )
-        for assignment, contact in rows:
-            assigned.setdefault((getattr(assignment, column.key), assignment.role), []).append(
-                (assignment, contact)
+        hids = sorted({one.hid for chain in chains.values() for one in chain if one.level == level})
+        for start in range(0, len(hids), 500):
+            rows = db.execute(
+                select(ContactAssignment, Contact)
+                .outerjoin(Contact, Contact.hid == ContactAssignment.contact_hid)
+                .where(column.in_(hids[start : start + 500]))
+                .order_by(ContactAssignment.priority, Contact.name_key, ContactAssignment.hid)
             )
-    roles = [(choice.value, choice.label) for choice in choices.list_choices(db, ROLE_LIST)]
-    known = {value for value, _ in roles}
-    roles += sorted({(role, role) for _, role in assigned if role not in known})
-    by_role: list[RoleContacts] = []
-    for role, label in roles:
-        having = [one for one in chain if assigned.get((one.hid, role))]
-        if not having:
-            by_role.append(RoleContacts(role, label, "none", None, None, False))
-            continue
-        one, here = having[0], assigned[having[0].hid, role]
-        above = having[1] if len(having) > 1 else None
-        by_role.append(
-            RoleContacts(
-                role,
-                label,
-                _source(one, place),
-                one.hid,
-                paths[one.hid],
-                stopped=any(assignment.stop_inheritance for assignment, _ in here),
-                contacts=[
-                    (assignment, contact) for assignment, contact in here if contact is not None
-                ],
-                overrides_hid=above.hid if above is not None else None,
-                overrides_path=paths[above.hid] if above is not None else None,
-            )
+            for assignment, contact in rows:
+                assigned.setdefault((getattr(assignment, column.key), assignment.role), []).append(
+                    (assignment, contact)
+                )
+    listed = [(choice.value, choice.label) for choice in choices.list_choices(db, ROLE_LIST)]
+    known = {value for value, _ in listed}
+    # A role that is assigned and is of the list no longer, by the place it is assigned at.
+    unlisted: dict[str, set[str]] = {}
+    for hid, role in assigned:
+        if role not in known:
+            unlisted.setdefault(hid, set()).add(role)
+    found: dict[str, list[RoleContacts]] = {}
+    for place in places:
+        chain = chains[place.hid]
+        roles = listed + sorted(
+            {(role, role) for one in chain for role in unlisted.get(one.hid, ())}
         )
+        by_role: list[RoleContacts] = []
+        for role, label in roles:
+            having = [one for one in chain if assigned.get((one.hid, role))]
+            if not having:
+                by_role.append(RoleContacts(role, label, "none", None, None, False))
+                continue
+            one, here = having[0], assigned[having[0].hid, role]
+            above = having[1] if len(having) > 1 else None
+            by_role.append(
+                RoleContacts(
+                    role,
+                    label,
+                    _source(one, place),
+                    one.hid,
+                    paths[one.hid],
+                    stopped=any(assignment.stop_inheritance for assignment, _ in here),
+                    contacts=[
+                        (assignment, contact) for assignment, contact in here if contact is not None
+                    ],
+                    overrides_hid=above.hid if above is not None else None,
+                    overrides_path=paths[above.hid] if above is not None else None,
+                )
+            )
+        found[place.hid] = by_role
+    return found
+
+
+def effective(db: Session, place: Place) -> InForce:
+    """Return what a place has in force, each thing with the level it came from.
+
+    Its contacts are resolved for each role as `contacts_in_force` says. The shipping
+    address is taken whole from the nearest record that has one, of its own or as its
+    street address, and the shipping instructions likewise by themselves. Each says
+    which level above it overrides.
+    """
+    atlas = Atlas(db)
+    chain = atlas.chain(place)
+    paths = {one.hid: atlas.path(one) for one in chain}
+    by_role = contacts_in_force(db, [place], atlas)[place.hid]
 
     def address(one: Place) -> tuple[dict[str, Any], bool] | None:
         """Return the shipping address a level has, and whether it is its street address."""

@@ -1863,6 +1863,138 @@ export interface paths {
       };
     };
   };
+  "/api/v1/circuits/{hid}/contacts": {
+    /**
+     * List the contact records a circuit names of its own: the carrier's first, then
+     * the site contacts of the A side and of the Z side, each by role, then by priority.
+     * Those in force, its own, its carrier's and its locations', are in `effective` on
+     * the circuit.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitContactOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Name a contact record for a circuit: with no side, one of the carrier's, which
+     * with the others of its role stands in place of the carrier's; with a side, a site
+     * contact of that side, which stands in place of what the location gives in its
+     * role. A contact is named once for one circuit, side and role.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitContactAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/contacts/{link_hid}": {
+    /**
+     * Remove a naming of a circuit that was a mistake. The audit event of the removal
+     * holds what it was. A circuit that names nobody left in a role has its carrier's, or
+     * its location's, again.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the side, the role, the priority or the contact of a naming of a circuit. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/circuits/{hid}/costs": {
     /** List the cost lines of a circuit, by description. */
     get: {
@@ -3633,7 +3765,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -3647,7 +3779,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices";
+            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -7153,7 +7285,10 @@ export interface paths {
     };
   };
   "/api/v1/vendors": {
-    /** List vendors, by name unless a sort says otherwise. */
+    /**
+     * List vendors, by name unless a sort says otherwise, each with the contacts it
+     * names.
+     */
     get: {
       parameters: {
         query?: {
@@ -7221,7 +7356,7 @@ export interface paths {
     };
   };
   "/api/v1/vendors/{hid}": {
-    /** Return one vendor. */
+    /** Return one vendor, with the account team and the support desk it names. */
     get: {
       parameters: {
         query?: never;
@@ -7265,6 +7400,134 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["VendorOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/vendors/{hid}/contacts": {
+    /**
+     * List the contact records a vendor names, its account team and its support desk:
+     * by role, then by priority. Each circuit of the carrier that names nobody of its own
+     * in a role has these.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_VendorContactOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Name a contact record for a vendor, as an account manager or a support contact.
+     * A contact is named once for one vendor and one role.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VendorContactAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["VendorContactOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/vendors/{hid}/contacts/{link_hid}": {
+    /**
+     * Remove a naming of a vendor that was a mistake. The audit event of the removal
+     * holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the role, the priority or the contact of a naming of a vendor. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["VendorContactPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["VendorContactOut"];
           };
         };
         /** Validation Error */
@@ -7865,6 +8128,16 @@ export interface components {
       supply: string;
       support_weight: string;
     };
+    /**
+     * The carrier's contacts of a circuit in force for one role: its own where it names
+     * any, else those of its primary carrier, else none.
+     */
+    CarrierContacts: {
+      source: "own" | "vendor" | "none";
+      /** The circuit for its own, the vendor for the carrier's. */
+      source_hid: string | null;
+      value: components["schemas"]["NamedContact"][];
+    };
     /** The values in force of the fields a catalog entry inherits. */
     CatalogEffective: {
       stack_discount_pct: components["schemas"]["EffectiveValue"];
@@ -8040,6 +8313,51 @@ export interface components {
       /** The side of the circuit the device is on. */
       side: "a" | "z";
     };
+    /**
+     * A contact record to name for a circuit: one of the carrier's, or a site contact of
+     * a side.
+     */
+    CircuitContactAdd: {
+      contact_hid: string;
+      /** Left out, one more than the highest there is for the circuit, the side and the role. */
+      priority?: number | null;
+      role: string;
+      /** Left out, one of the carrier's, in the role `account_manager` or `support_contact`; `a` or `z`, a site contact of that side, in a role of the `contact_role` list. */
+      side?: "a" | "z" | null;
+    };
+    /**
+     * A contact a circuit names of its own: one of the carrier's, with no side, or a
+     * site contact of a side.
+     */
+    CircuitContactOut: {
+      circuit_hid: string;
+      /** The contact as its record is now. A retired one is still listed, so marked. */
+      contact: components["schemas"]["ContactRef"];
+      contact_hid: string;
+      created_at: string;
+      /** The naming: what is changed and removed. */
+      hid: string;
+      /** The order in which they are listed, from 1. */
+      priority: number;
+      /** With no side, `account_manager` or `support_contact`; with a side, a value of the `contact_role` list. */
+      role: string;
+      row_version: number;
+      /** Blank for one of the carrier's; `a` or `z` for a site contact of that side. */
+      side: "a" | "z" | null;
+      updated_at: string;
+    };
+    /**
+     * Fields of a naming of a circuit to change, and the version they were read at. It
+     * stays with its circuit, and its role is one its side takes.
+     */
+    CircuitContactPatch: {
+      contact_hid?: string | null;
+      priority?: number | null;
+      role?: string | null;
+      row_version: number;
+      /** Sent as null, the naming is one of the carrier's. */
+      side?: "a" | "z" | null;
+    };
     /** A new cost line of a circuit. */
     CircuitCostAdd: {
       description: string;
@@ -8168,8 +8486,14 @@ export interface components {
     };
     /** The values a circuit has in force, each with where it came from. */
     CircuitEffective: {
+      /** The carrier's account team in force (P-149): its own, or its primary carrier's, `vendor`. Null in a list unless `fields` asks for it. */
+      account_managers?: components["schemas"]["CarrierContacts"] | null;
       /** The rate in force down: its own, or the full rate of the port, `port`. */
       down_mbps: components["schemas"]["EffectiveValue"];
+      /** The site contacts of each side, its own or its location's with the level they came from (P-149). Null in a list unless `fields` asks for it. */
+      site_contacts?: components["schemas"]["SiteContacts"] | null;
+      /** The carrier's support desk in force (P-149), as `account_managers`. */
+      support_contacts?: components["schemas"]["CarrierContacts"] | null;
       /** Its own, or none. The default of the settings comes with 0.8.0. */
       support_weight: components["schemas"]["EffectiveValue"];
       /** The rate in force up: its own, or the full rate of the port, `port`. */
@@ -8259,6 +8583,8 @@ export interface components {
       /** Its carriers beside the primary one, by priority. */
       carriers: components["schemas"]["CircuitCarrierOut"][] | null;
       circuit_type: string | null;
+      /** The contacts it names of its own (P-149). */
+      contacts?: components["schemas"]["CircuitContactOut"][] | null;
       /** The side whose site its cost and weight count at. */
       cost_side: "a" | "z";
       /** The site its cost and weight count at. */
@@ -9093,7 +9419,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices";
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "vendor_contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_contacts" | "circuit_devices";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -9929,6 +10255,20 @@ export interface components {
       /** `factor` less 1, times `share`, times `base_units`: its gain. */
       units: string;
     };
+    /**
+     * A contact in force for a circuit, with what names it: a contact of the circuit
+     * or of its carrier, or, among the site contacts, an assignment of a place.
+     */
+    NamedContact: {
+      /** The contact as its record is when it is read. A retired one is marked so. */
+      contact: components["schemas"]["ContactRef"];
+      contact_hid: string;
+      /** The naming, or the assignment, it comes by. */
+      hid: string;
+      /** The order in which they are listed, from 1. */
+      priority: number;
+      role: string;
+    };
     /** A new network label. */
     NetworkCreate: {
       kind?: "network" | "vrf" | "other";
@@ -10164,6 +10504,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_CircuitContactOut_: {
+      items: components["schemas"]["CircuitContactOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_CircuitCostOut_: {
       items: components["schemas"]["CircuitCostOut"][];
       limit: number;
@@ -10322,6 +10668,12 @@ export interface components {
     };
     Page_UserOut_: {
       items: components["schemas"]["UserOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_VendorContactOut_: {
+      items: components["schemas"]["VendorContactOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -10997,6 +11349,14 @@ export interface components {
       access_code: string;
       username: string;
     };
+    /**
+     * The site contacts in force of each side of a circuit: one entry for each role
+     * that has any, in the order of the `contact_role` list.
+     */
+    SiteContacts: {
+      a: components["schemas"]["SiteRoleContacts"][];
+      z: components["schemas"]["SiteRoleContacts"][];
+    };
     /** A new site, in one region. */
     SiteCreate: {
       address1?: string | null;
@@ -11093,6 +11453,18 @@ export interface components {
       ship_state?: string | null;
       state?: string | null;
       tags?: string[] | null;
+    };
+    /**
+     * The site contacts of one side of a circuit in force for one role, and the level
+     * they came from: the circuit's own, or as the location of the side resolves them.
+     */
+    SiteRoleContacts: {
+      role: string;
+      /** `own` for those the circuit names; `location` for the location of the side or one above it, `site` or `region` for the level they came from. */
+      source: "own" | "location" | "site" | "region";
+      /** The circuit, or the place, they came from. */
+      source_hid: string;
+      value: components["schemas"]["NamedContact"][];
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
@@ -11219,6 +11591,38 @@ export interface components {
       msg: string;
       type: string;
     };
+    /** A contact record to name for a vendor, in a role. */
+    VendorContactAdd: {
+      contact_hid: string;
+      /** Left out, one more than the highest there is for the vendor and the role. */
+      priority?: number | null;
+      role: "account_manager" | "support_contact";
+    };
+    /** A contact record named for a vendor: its account team or its support desk. */
+    VendorContactOut: {
+      /** The contact as its record is now: the number and the address of a support desk are its telephone and its email. A retired one is still listed, so marked. */
+      contact: components["schemas"]["ContactRef"];
+      contact_hid: string;
+      created_at: string;
+      /** The naming: what is changed and removed. */
+      hid: string;
+      /** The order in which they are listed, from 1. */
+      priority: number;
+      role: "account_manager" | "support_contact";
+      row_version: number;
+      updated_at: string;
+      vendor_hid: string;
+    };
+    /**
+     * Fields of a naming of a vendor to change, and the version they were read at. It
+     * stays with its vendor.
+     */
+    VendorContactPatch: {
+      contact_hid?: string | null;
+      priority?: number | null;
+      role?: "account_manager" | "support_contact" | null;
+      row_version: number;
+    };
     /** A new vendor. */
     VendorCreate: {
       aliases?: string[];
@@ -11229,6 +11633,8 @@ export interface components {
     /** A manufacturer, a support provider, or both. */
     VendorOut: {
       aliases: string[];
+      /** The account team and the support desk it names, by role and then by priority. Each circuit of the carrier that names nobody of its own in a role has these. */
+      contacts: components["schemas"]["VendorContactOut"][];
       created_at: string;
       hid: string;
       name: string;

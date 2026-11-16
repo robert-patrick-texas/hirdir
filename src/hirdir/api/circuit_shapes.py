@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.api import circuit_schemas as c
 from hirdir.api import records as r
+from hirdir.api import shapes
 from hirdir.db.models import (
     Circuit,
     CircuitCarrier,
@@ -29,7 +30,13 @@ from hirdir.domain import circuit_groups, circuit_records, circuits, geography, 
 from hirdir.domain.inheritance import Effective
 
 # The parts of a circuit that a list leaves out unless `fields` names them.
-PARTS = ("carriers", "costs", "devices", "groups")
+PARTS = ("carriers", "costs", "devices", "groups", "contacts")
+# The contacts in force, which a list reads with the parts.
+CONTACTS_IN_FORCE = (
+    "effective.account_managers",
+    "effective.support_contacts",
+    "effective.site_contacts",
+)
 
 
 def _by_hid(db: Session, model: Any, hids: set[str | None]) -> dict[str, Any]:
@@ -174,6 +181,8 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
     carriers = circuit_records.carriers_of(db, wanted)
     devices = circuit_records.devices_of(db, wanted)
     its_groups = circuit_groups.groups_of(db, wanted)
+    # The contacts named and in force (P-149), read together for the page.
+    named = shapes.circuits_contacts(db, list(found)) if parts else {}
     carried = {
         one.hid: one
         for one in carriers_out(db, [link for listed in carriers.values() for link in listed])
@@ -234,8 +243,11 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
                     ),
                     down_mbps=_effective(rates["down_mbps"], _mbps(rates["down_mbps"].value)),
                     up_mbps=_effective(rates["up_mbps"], _mbps(rates["up_mbps"].value)),
-                    # The contacts in force of P-149 are added here at the merge of 0.8.0.
+                    account_managers=named[circuit.hid][1].account_managers if parts else None,
+                    support_contacts=named[circuit.hid][1].support_contacts if parts else None,
+                    site_contacts=named[circuit.hid][1].site_contacts if parts else None,
                 ),
+                contacts=named[circuit.hid][0] if parts else None,
                 tags=labels[circuit.hid],
             )
         )

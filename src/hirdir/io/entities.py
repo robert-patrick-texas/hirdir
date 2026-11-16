@@ -27,6 +27,7 @@ from hirdir.db.models import (
     CatalogEntry,
     Circuit,
     CircuitCarrier,
+    CircuitContact,
     CircuitCost,
     CircuitDevice,
     CircuitGroup,
@@ -52,10 +53,12 @@ from hirdir.db.models import (
     Site,
     Tag,
     Vendor,
+    VendorContact,
 )
 from hirdir.domain import (
     addresses,
     capacity,
+    carrier_contacts,
     catalog,
     circuit_groups,
     circuit_records,
@@ -3037,6 +3040,190 @@ class ContractContacts(Entity):
         return rows
 
 
+# --- the contacts of carriers and of circuits (P-149) --------------------------------
+
+
+class VendorContacts(Entity):
+    """The contact records named for vendors, each in a role: the account team and the
+    support desk of a carrier (P-149)."""
+
+    name = "vendor_contacts"
+    record_type = carrier_contacts.VENDOR_TYPE
+    model = VendorContact
+    listing = fields.VENDOR_CONTACTS
+    columns = (
+        HID,
+        Column("vendor"),
+        Column("role", limit=20),
+        Column("contact", limit=254),
+        Column("priority", "integer"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "vendor_hid": "vendor",
+        "vendor.name": "vendor",
+        "contact_hid": "contact",
+        "contact.name": "contact",
+        "contact.email": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"vendor_hid": "vendor", "contact_hid": "contact"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a naming: by its vendor, its role and its contact."""
+        vendor, role, contact = values.get("vendor"), values.get("role"), values.get("contact")
+        if not vendor or not role or not contact:
+            return None
+        known = run.vendor(vendor)
+        if known is None:
+            return None
+        return run.db.scalar(
+            select(VendorContact).where(
+                VendorContact.vendor_hid == known.hid,
+                VendorContact.role == records.key(role),
+                VendorContact.contact_hid == run.contact(contact).hid,
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("vendor", "role", "contact")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("role", "priority"))
+        if "contact" in values:
+            contact = values["contact"]
+            given["contact_hid"] = run.contact(contact).hid if contact is not None else None
+        if record is None:
+            text = values.get("vendor")
+            if not text:
+                raise Invalid("a contact is named for a vendor", {"vendor": "must not be blank"})
+            # A vendor that is not there yet is made, to be reviewed, as for every file.
+            vendor = run.vendor(text, create=True)
+            assert vendor is not None  # noqa: S101 - made when it was not there
+            return carrier_contacts.add_vendor_contact(run.db, run.context, vendor.hid, _new(given))
+        if "vendor" in values:
+            text = values["vendor"]
+            vendor = run.vendor(text) if text else None
+            if vendor is None or vendor.hid != record.vendor_hid:
+                raise Invalid(
+                    "a contact stays with its vendor",
+                    {"vendor": "remove this contact and name it where it belongs"},
+                )
+        return carrier_contacts.update_vendor_contact(
+            run.db, run.context, record.vendor_hid, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        vendors = _by_hid(db, Vendor, {one.vendor_hid for one in found})
+        people = _by_hid(db, Contact, {one.contact_hid for one in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        return [
+            {
+                **_kept(one),
+                "vendor": items.name_or_hid(vendors[one.vendor_hid].name, one.vendor_hid),
+                "role": one.role,
+                "contact": named[one.contact_hid],
+                "priority": one.priority,
+            }
+            for one in found
+        ]
+
+
+class CircuitContacts(Entity):
+    """The contact records circuits name of their own: with no side, of the carrier's;
+    with a side, a site contact of that side (P-149)."""
+
+    name = "circuit_contacts"
+    record_type = carrier_contacts.CIRCUIT_TYPE
+    model = CircuitContact
+    listing = fields.CIRCUIT_CONTACTS
+    columns = (
+        HID,
+        Column("circuit"),
+        Column("side", limit=1),
+        Column("role", limit=40),
+        Column("contact", limit=254),
+        Column("priority", "integer"),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "circuit_hid": "circuit",
+        "circuit.name": "circuit",
+        "circuit.enterprise_circuit_id": "circuit",
+        "contact_hid": "contact",
+        "contact.name": "contact",
+        "contact.email": "contact",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"circuit_hid": "circuit", "contact_hid": "contact"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a naming: by its circuit, its side, its role and its contact. A
+        blank side is one of the carrier's."""
+        circuit, role, contact = values.get("circuit"), values.get("role"), values.get("contact")
+        if not circuit or not role or not contact:
+            return None
+        side = values.get("side")
+        return run.db.scalar(
+            select(CircuitContact).where(
+                CircuitContact.circuit_hid
+                == circuit_records.the_one(run.db, circuit, "circuit").hid,
+                CircuitContact.side.is_(None)
+                if not side
+                else CircuitContact.side == records.key(side),
+                CircuitContact.role == records.key(role),
+                CircuitContact.contact_hid == run.contact(contact).hid,
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("circuit", "side", "role", "contact")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("side", "role", "priority"))
+        if "contact" in values:
+            contact = values["contact"]
+            given["contact_hid"] = run.contact(contact).hid if contact is not None else None
+        if record is None:
+            text = values.get("circuit")
+            if not text:
+                raise Invalid("a contact is named for a circuit", {"circuit": "must not be blank"})
+            circuit = circuit_records.the_one(run.db, text, "circuit")
+            return carrier_contacts.add_circuit_contact(
+                run.db, run.context, circuit.hid, _new(given)
+            )
+        if "circuit" in values:
+            text = values["circuit"]
+            if (
+                not text
+                or circuit_records.the_one(run.db, text, "circuit").hid != record.circuit_hid
+            ):
+                raise Invalid(
+                    "a contact stays with its circuit",
+                    {"circuit": "remove this contact and name it where it belongs"},
+                )
+        return carrier_contacts.update_circuit_contact(
+            run.db, run.context, record.circuit_hid, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        held = _by_hid(db, Circuit, {one.circuit_hid for one in found})
+        called = circuit_records.reference_texts(db, list(held.values()))
+        people = _by_hid(db, Contact, {one.contact_hid for one in found})
+        named = contacts.reference_texts(db, list(people.values()))
+        return [
+            {
+                **_kept(one),
+                "circuit": called[one.circuit_hid],
+                "side": one.side,
+                "role": one.role,
+                "contact": named[one.contact_hid],
+                "priority": one.priority,
+            }
+            for one in found
+        ]
+
+
 class PurchaseRequests(Entity):
     """Purchase requests."""
 
@@ -4459,6 +4646,7 @@ ENTITIES: Mapping[str, Entity] = {
         Vendors(),
         CatalogEntries(),
         Contacts(),
+        VendorContacts(),
         Operators(),
         Regions(),
         Sites(),
@@ -4486,6 +4674,7 @@ ENTITIES: Mapping[str, Entity] = {
         Circuits(),
         CircuitCarriers(),
         CircuitCosts(),
+        CircuitContacts(),
         CircuitDevices(),
     )
 }
@@ -4496,6 +4685,7 @@ LOAD_ORDER = (
     "vendors",
     "catalog_entries",
     "contacts",
+    "vendor_contacts",
     "operators",
     "regions",
     "sites",
@@ -4524,6 +4714,7 @@ LOAD_ORDER = (
     "circuits",
     "circuit_carriers",
     "circuit_costs",
+    "circuit_contacts",
     "circuit_devices",
 )
 
