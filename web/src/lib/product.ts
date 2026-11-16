@@ -184,11 +184,12 @@ export function mailtoHref(email: string): string {
 
 /**
  * Where a link to call a number leads, or null where there is nothing to dial: the `+`
- * before its first digit and its ASCII digits, up to the first letter, where an extension
- * begins (`+1 555 0100 ext. 12` dials `+15550100`).
+ * before its first digit and its ASCII digits, up to the first letter, comma or `#`,
+ * where an extension begins (`+1 555 0100 ext. 12` and `+1 555 0100, 12` dial
+ * `+15550100`), so that the extension is never dialled as part of the number.
  */
 export function telHref(phone: string): string | null {
-  const [number = ""] = phone.split(/\p{L}/u);
+  const [number = ""] = phone.split(/[\p{L},#]/u);
   const digits = number.replace(/\D/g, "");
   if (digits === "") return null;
   const plus = /^[^\d]*\+/.test(number) ? "+" : "";

@@ -187,6 +187,8 @@ describe("mailtoHref and telHref", () => {
     expect(telHref("+1 (555) 0100 x12")).toBe("tel:+15550100");
     expect(telHref("(+1) 555-0100")).toBe("tel:+15550100");
     expect(telHref("555.0100")).toBe("tel:5550100");
+    expect(telHref("+1 555 0100, 12")).toBe("tel:+15550100");
+    expect(telHref("+1 555 0100 #12")).toBe("tel:+15550100");
   });
 
   it("drops a + that is not before the first digit, and every other mark", () => {
