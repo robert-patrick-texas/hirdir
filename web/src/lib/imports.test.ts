@@ -18,6 +18,8 @@ describe("entities", () => {
       "catalog_entries",
       // A place may name an operator, and an operator a contact: both come before the places.
       "contacts",
+      // 0.8.0: a vendor names its account team and its support desk among the contacts.
+      "vendor_contacts",
       "operators",
       "regions",
       "sites",
@@ -44,7 +46,32 @@ describe("entities", () => {
       "contract_coverage",
       "registrations",
       "capacity_lines",
+      // 0.8.0: the circuits come last, their devices after the items and the groups.
+      "circuit_groups",
+      "circuits",
+      "circuit_carriers",
+      "circuit_costs",
+      "circuit_contacts",
+      "circuit_devices",
     ]);
+  });
+
+  it("know the seven kinds of record that came with circuits, and guess each from its file", () => {
+    const labels: Record<string, [label: string, file: string]> = {
+      vendor_contacts: ["Contacts of vendors", "vendor-contacts.csv"],
+      circuit_groups: ["Circuit groups", "circuit-groups.csv"],
+      circuits: ["Circuits", "circuits.json"],
+      circuit_carriers: ["Carriers of circuits", "circuit-carriers.csv"],
+      circuit_costs: ["Cost lines of circuits", "circuit-costs.csv"],
+      circuit_contacts: ["Contacts of circuits", "circuit-contacts.json"],
+      circuit_devices: ["Devices of circuits", "circuit-devices.csv"],
+    };
+    for (const [entity, [label, file]] of Object.entries(labels)) {
+      expect(isEntity(entity), entity).toBe(true);
+      expect(entityLabel(entity)).toBe(label);
+      // Neither the vendors nor the contacts, nor the circuits, though the name holds them.
+      expect(guessEntity(file), file).toBe(entity);
+    }
   });
 
   it("know the nine kinds of record that came with contracts, purchases and capacity", () => {

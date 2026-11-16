@@ -42,6 +42,17 @@ export function Shell() {
                 <li>
                   <NavLink to="/groups">Groups</NavLink>
                 </li>
+                {/* 0.8.0: circuits, and their groups under them (P-154). */}
+                <li>
+                  <NavLink
+                    to="/circuits"
+                    className={({ isActive }) =>
+                      isActive || pathname.startsWith("/circuit-groups") ? "active" : ""
+                    }
+                  >
+                    Circuits
+                  </NavLink>
+                </li>
                 <li>
                   <NavLink to="/addresses">Addresses</NavLink>
                 </li>

@@ -39,6 +39,9 @@ export const CHOICE_LISTS: readonly Option[] = [
   { value: "location_kind", label: "Location kind" },
   { value: "replacement_reason", label: "Replacement reason" },
   { value: "capacity_category", label: "Capacity category" },
+  // 0.8.0: the type of a circuit and the part of a carrier (P-146, P-148).
+  { value: "circuit_type", label: "Circuit type" },
+  { value: "carrier_role", label: "Carrier role" },
 ];
 
 /**

@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { VendorContacts } from "../components/CircuitContacts";
+import { CircuitsGrid } from "../components/CircuitsGrid";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { VendorPortfolio } from "../components/Portfolio";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
+import { circuitsOfCarrier } from "../lib/circuits";
 import { formatTime } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -179,6 +182,27 @@ export function VendorDetail() {
             <dd className="mono">{record.hid}</dd>
           </dl>
           <VendorPortfolio key={record.hid} vendor={record} />
+          {/* 0.8.0: a carrier's account team and support desk, and its circuits (P-149). */}
+          <VendorContacts
+            key={`contacts ${record.hid} ${record.row_version}`}
+            vendor={record}
+            mayEdit={allows(user.role, "inventory")}
+            onChanged={(text) => {
+              setDone(text);
+              vendor.reload();
+            }}
+          />
+          <section aria-labelledby="vendor-circuits">
+            <h2 id="vendor-circuits">Circuits</h2>
+            <p className="hint">
+              The circuits {record.name} is a carrier of, as the primary carrier or another.
+            </p>
+            <CircuitsGrid
+              id="vendor-circuits"
+              within={{ filter: circuitsOfCarrier(record.hid) }}
+              switches
+            />
+          </section>
           {allows(user.role, "inventory") && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
