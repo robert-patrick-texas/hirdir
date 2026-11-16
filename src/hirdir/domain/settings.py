@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.db.models import Setting
-from hirdir.domain import lifecycle, records
+from hirdir.domain import file_kinds, lifecycle, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
@@ -155,6 +155,30 @@ def _one_of(key: str, allowed: Callable[[], tuple[str, ...]]) -> Check:
         return name
 
     return Check("one of the options", check, allowed)
+
+
+def _extensions(key: str) -> Check:
+    """A list of the extensions of files: those hirdir knows are offered, and an Admin
+    may add another of letters and digits, but never one of a web page, a script or a
+    program (P-159)."""
+    expected = (
+        "a list of extensions of letters and digits, up to ten each, such as pdf, "
+        "and none of a web page, a script or a program: " + ", ".join(file_kinds.REFUSED)
+    )
+
+    def check(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            raise _refuse(key, expected)
+        chosen: list[str] = []
+        for entry in value:
+            name = entry.strip().lower().removeprefix(".") if isinstance(entry, str) else ""
+            if not file_kinds.EXTENSION.fullmatch(name) or name in file_kinds.REFUSED:
+                raise _refuse(key, expected)
+            if name not in chosen:
+                chosen.append(name)
+        return chosen
+
+    return Check(expected, check, lambda: file_kinds.DEFAULT_TYPES)
 
 
 def _states() -> tuple[str, ...]:
@@ -290,6 +314,13 @@ SPECS: dict[str, Spec] = {
         None,
         "the least support weight a circuit counts at, where it has one",
         _number("minimum_circuit_weight", Decimal(0), MOST_WEIGHT),
+    ),
+    "reference_file_types": Spec(
+        list(file_kinds.DEFAULT_TYPES),
+        "the extensions of the files a reference may be; one that hirdir does not know "
+        "is kept and downloaded as application/octet-stream. A change of it changes no "
+        "file that is kept",
+        _extensions("reference_file_types"),
     ),
     "circuit_cost_side": Spec(
         "a",
@@ -463,7 +494,16 @@ def fixed_values() -> dict[str, Fixed]:
     """
     from hirdir.auth import throttle
     from hirdir.db import dialect, engine
-    from hirdir.domain import contracts, geography, groups, health, idempotency, items, purchases
+    from hirdir.domain import (
+        contracts,
+        geography,
+        groups,
+        health,
+        idempotency,
+        items,
+        purchases,
+        references,
+    )
     from hirdir.io import entities, exports, files, filters, imports, listing
 
     found = (
@@ -509,6 +549,14 @@ def fixed_values() -> dict[str, Fixed]:
             "not known yet",
             DECIDED,
             "P-14",
+        ),
+        Fixed(
+            "refused_file_types",
+            file_kinds.REFUSED,
+            "the extensions of a web page, a script or a program, which no reference may "
+            "have, whatever reference_file_types says",
+            DECIDED,
+            "P-159",
         ),
         Fixed(
             "default_page_size",
@@ -600,6 +648,12 @@ def fixed_values() -> dict[str, Fixed]:
             "sign_in_window_seconds",
             int(throttle.FORGET_AFTER_SECONDS),
             "how long wrong access codes are remembered",
+            PROTECTS,
+        ),
+        Fixed(
+            "max_attachments_per_request",
+            references.MAX_ATTACHMENTS,
+            "the records one request puts a reference on",
             PROTECTS,
         ),
         Fixed(

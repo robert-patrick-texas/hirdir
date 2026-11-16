@@ -17,6 +17,8 @@ from typing import Any
 
 DEFAULT_PATH = Path("/etc/hirdir/config.toml")
 DEFAULT_STATE_DIR = Path("/var/lib/hirdir")
+# The largest limit a site may set for a reference file, in megabytes (P-159).
+MOST_REFERENCE_MEGABYTES = 2048
 
 
 @dataclass(frozen=True)
@@ -49,8 +51,14 @@ How many wrong access codes in a row are answered at once. The next ones are del
 _KEEP = """\
 How many of the newest backups "hirdir admin backup" keeps in /var/lib/hirdir/backups."""
 _MAX_MEGABYTES = """\
-The largest file an import takes, in megabytes. nginx has to let as much through:
-client_max_body_size in /etc/nginx/snippets/hirdir.conf, to the same figure."""
+The largest file an import takes, in megabytes, and the largest body of any request
+but the upload of a reference file. "sudo hirdir-setup --renew" gives nginx the
+larger of this and max_reference_megabytes, as client_max_body_size in
+/etc/nginx/snippets/hirdir.conf."""
+_MAX_REFERENCE_MEGABYTES = """\
+The largest reference file, a photograph, a floor plan or a vendor's guide, in
+megabytes, from 1 to 2048. Run "sudo hirdir-setup --renew" after a change, so that
+nginx lets as much through."""
 _PROXY = """\
 "hirdir-setup --check" and "hirdir-setup --upgrade" ask GitHub for the latest release,
 and so does hirdir-upgrade.timer each night where a site has turned it on. Where the
@@ -68,6 +76,7 @@ KEYS: tuple[Key, ...] = (
     Key("access", "sign_in_failures_before_delay", 5, _FAILURES),
     Key("backup", "keep", 14, _KEEP),
     Key("files", "max_megabytes", 20, _MAX_MEGABYTES),
+    Key("files", "max_reference_megabytes", 100, _MAX_REFERENCE_MEGABYTES),
     # Read by hirdir-setup, and not by the service.
     Key("upgrades", "proxy", "", _PROXY),
 )
@@ -93,6 +102,7 @@ class Config:
     sign_in_failures_before_delay: int = default("access", "sign_in_failures_before_delay")
     backup_keep: int = default("backup", "keep")
     max_file_megabytes: int = default("files", "max_megabytes")
+    max_reference_megabytes: int = default("files", "max_reference_megabytes")
     source: Path | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
@@ -109,6 +119,16 @@ class Config:
     def max_file_bytes(self) -> int:
         """The largest file an import takes, and so the largest body of a request."""
         return self.max_file_megabytes * 1024 * 1024
+
+    @property
+    def max_reference_bytes(self) -> int:
+        """The largest reference file, and so the largest body of an upload of one."""
+        return self.max_reference_megabytes * 1024 * 1024
+
+    @property
+    def files_dir(self) -> Path:
+        """Where the content of reference files is kept, beside the database (P-161)."""
+        return self.state_dir / "files"
 
     @property
     def backup_dir(self) -> Path:
@@ -166,6 +186,17 @@ def load(path: Path | None = None) -> Config:
         backup_keep=int(data.get("backup", {}).get("keep", Config.backup_keep)),
         max_file_megabytes=max(
             1, int(data.get("files", {}).get("max_megabytes", Config.max_file_megabytes))
+        ),
+        max_reference_megabytes=min(
+            MOST_REFERENCE_MEGABYTES,
+            max(
+                1,
+                int(
+                    data.get("files", {}).get(
+                        "max_reference_megabytes", Config.max_reference_megabytes
+                    )
+                ),
+            ),
         ),
         source=path if path.is_file() else None,
     )

@@ -54,7 +54,8 @@ _kept: OrderedDict[tuple[Any, ...], Kept] = OrderedDict()
 # good: signing in, seeing the alert, a preview, checking what is kept, and the
 # accounts (the role of the person asking is applied to a kept answer, never kept in it).
 CHECKED = "kept_answers_checked"
-UNKEPT_ACTIONS = ("sign_in", "sign_in_failed", "alert_seen", "preview", CHECKED)
+# A download of a reference file changes nothing (P-162).
+UNKEPT_ACTIONS = ("sign_in", "sign_in_failed", "alert_seen", "preview", "download", CHECKED)
 UNKEPT_RECORDS = ("user", "user_group", "role_grant", "service_token")
 
 

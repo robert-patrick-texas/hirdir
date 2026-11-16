@@ -560,14 +560,14 @@ URL_COMMENT = "# The database, as a SQLAlchemy URL. Left out, hirdir.db in the s
 
 def test_a_settings_file_nobody_edited_becomes_the_one_this_version_ships() -> None:
     merged, added = setup.with_new_settings(SETTINGS_OF_0_2_1, SETTINGS_NOW)
-    assert added == ["files.max_megabytes", "upgrades.proxy"]
+    assert added == ["files.max_megabytes", "files.max_reference_megabytes", "upgrades.proxy"]
     assert URL_COMMENT in SETTINGS_NOW
     assert merged == SETTINGS_NOW.replace(URL_COMMENT, "")
 
 
 def test_new_settings_are_put_in_and_nothing_a_site_wrote_is_changed() -> None:
     merged, added = setup.with_new_settings(EDITED, SETTINGS_NOW)
-    assert added == ["files.max_megabytes", "upgrades.proxy"]
+    assert added == ["files.max_megabytes", "files.max_reference_megabytes", "upgrades.proxy"]
     # Every line of the site's file is still there, in its place, and the rest follows.
     assert merged.startswith(EDITED.rstrip("\n") + "\n")
     assert "# Our own note: the off-site copy is taken at 03:00." in merged

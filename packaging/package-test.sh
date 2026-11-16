@@ -3646,7 +3646,7 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
 # The tables that hirdir admin reset clears: the inventory, those of 0.4.0, of 0.5.0, of
 # 0.6.0, of 0.7.0 and of 0.8.0 among it, and what was stored about it. A test in packaging/tests/
 # fails when a table that a reset clears is not named here.
-inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts operators contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines capacity_line_targets capacity_records contract_contacts renewal_alert_views circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members"
+inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts operators contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines capacity_line_targets capacity_records contract_contacts renewal_alert_views circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members reference_files reference_attachments"
 
 # Which of those tables hold a row, and whether the table of accounts does. It is read
 # from the database file with the Python of the package, because the service is stopped

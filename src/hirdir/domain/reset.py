@@ -51,6 +51,8 @@ from hirdir.db.models import (
     OwnerMember,
     PurchaseLine,
     PurchaseRequest,
+    ReferenceAttachment,
+    ReferenceFile,
     Region,
     Registration,
     RenewalAlertView,
@@ -73,6 +75,9 @@ from hirdir.domain.audit import AuditContext, change
 # record goes before the record.
 CLEARED: tuple[Any, ...] = (
     TagLink,
+    # References and the records they are on (P-158); their content goes with them.
+    ReferenceAttachment,
+    ReferenceFile,
     CircuitGroupMember,
     CircuitGroup,
     CircuitContact,
@@ -167,6 +172,8 @@ RECORD_TYPES = (
     # The contacts of carriers and of circuits (P-149).
     "vendor_contact",
     "circuit_contact",
+    # References (P-158).
+    "reference_file",
 )
 
 

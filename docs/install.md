@@ -69,40 +69,219 @@ alone, and then lacks whatever the new version added.
 
 ### Uploads
 
-An import sends its file through nginx as the body of a request, and so does an upload
-of a reference file, a photograph of a site or the administration guide of a model.
-`hirdir` takes an import of up to 20 MB and a reference file of up to 100 MB, and the
-snippet tells nginx to let the larger through, where nginx left to itself stops at
-1 MB:
+An import sends its file through nginx as the body of a request. `hirdir` takes a file
+of up to 20 MB, and the snippet tells nginx to let that much through, where nginx left
+to itself stops at 1 MB:
 
 ```nginx
-client_max_body_size 100m;
+client_max_body_size 20m;
 ```
 
-A larger body is refused by nginx, with `413 Request Entity Too Large` and a page of
-its own, and never reaches `hirdir`; an import between 20 and 100 MB is refused by
-`hirdir` itself, with the reason. If a load balancer or another proxy stands in front
-of nginx, it has to let 100 MB through as well. When an upload of a file between 1 and
-100 MB is answered with the page of nginx, the snippet is not the one this version
-ships: `sudo hirdir-setup --renew` says why and puts it right.
+A larger file is refused by nginx, with `413 Request Entity Too Large` and a page of
+its own, and never reaches `hirdir`. If a load balancer or another proxy stands in
+front of nginx, it has to let 20 MB through as well. When an import of a file between 1
+and 20 MB is answered with that page, the snippet is not the one this version ships:
+`sudo hirdir-setup --renew` says why and puts it right.
 
-A site that wants another limit sets it in the configuration file, and `hirdir-setup
---renew` gives nginx the larger of the two:
+A site that wants larger files raises the limit in two places, to the same figure, and
+restarts both:
 
 ```toml
 # /etc/hirdir/config.toml
 [files]
-max_megabytes = 50                  # an import
-max_reference_megabytes = 250       # a reference file
+max_megabytes = 50
+```
+
+```nginx
+# /etc/nginx/snippets/hirdir.conf
+client_max_body_size 50m;
 ```
 
 ```bash
-sudo hirdir-setup --renew && sudo systemctl restart hirdir
+sudo systemctl restart hirdir && sudo nginx -t && sudo systemctl reload nginx
 ```
 
-A file of an import still holds at most 100,000 rows. The kinds of file a reference may
-be are a setting of the inventory, `reference_file_types`, that an Admin changes on the
-Settings page; a web page, an SVG drawing, a script or a program is never taken.
+Raising one alone changes nothing: the lower of the two decides. A snippet changed in
+this line is one that an upgrade leaves alone from then on, and says so. A file still
+holds at most 100,000 rows.
+
+## Sign in
+
+Open the address in a browser and sign in with the username and access code. The
+session lasts 12 hours and is kept in the browser's local storage. `hirdir` sets no
+cookies.
+
+From a terminal on any machine that has the `hirdir` command:
+
+```bash
+hirdir sign-in --url https://inventory.example.net/hirdir
+hirdir whoami
+```
+
+## Accounts and roles
+
+An Admin manages accounts under **Admin** in the web UI.
+
+| Role | May |
+|---|---|
+| View-only | Read everything |
+| Inventory | Read and change inventory records |
+| Admin | All of that, and manage users, groups, roles and tokens |
+
+A role is granted to a user or to a user group. A user holds the highest role granted
+either way. A user with no role can sign in and see nothing. A change of role takes
+effect on the user's next request.
+
+Resetting a user's access code, disabling the user or choosing "Sign out everywhere"
+ends every session that user has. From the server:
+
+```bash
+sudo hirdir admin reset-access-code ada
+```
+
+## Automation
+
+Scripts and other tools use a token that belongs to a service account, never a person's
+access code. In the web UI, create a user marked as a service account, grant it a role,
+and create a token for it. The token is shown once.
+
+```bash
+curl -H "Authorization: Bearer $HIRDIR_TOKEN" https://inventory.example.net/hirdir/api/v1/auth/me
+```
+
+The token acts with the role of its service account. With View-only it reads the
+inventory, for example every item in production, by host name:
+
+```bash
+curl -H "Authorization: Bearer $HIRDIR_TOKEN" \
+    'https://inventory.example.net/hirdir/api/v1/items?filter=lifecycle_state:eq:Prod&sort=hostname'
+```
+
+The routes and the filter grammar are on the [interfaces](interfaces.md) page. The
+`hirdir` command reads the same token from `HIRDIR_TOKEN`, and the server from
+`HIRDIR_URL`.
+
+## Try it with the examples
+
+The package carries a small, fictional inventory in `/usr/share/doc/hirdir/examples/`:
+one file for each kind of record, as CSV and as JSON, the same records in both. They
+are the files of [Examples](../examples/README.md). Use them to try an import, and take
+the columns from them for a file of your own.
+
+**Load them where the inventory can be cleared again.** Nothing is deleted from an
+inventory in the web UI or through the API. On the server, `sudo hirdir admin reset`
+clears the whole inventory, the examples and anything else in it: see
+[Start over](#start-over). Where real records are already in, do not load the examples
+beside them.
+
+Sign in as a user who holds Inventory or Admin, then load the files in this order,
+because a record names the ones it refers to:
+
+```bash
+cd /usr/share/doc/hirdir
+hirdir import examples/tags.csv --entity tags --apply
+hirdir import examples/vendors.csv --entity vendors --apply
+hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
+hirdir import examples/contacts.csv --entity contacts --apply
+hirdir import examples/vendor-contacts.csv --entity vendor_contacts --apply
+hirdir import examples/operators.csv --entity operators --apply
+hirdir import examples/regions.csv --entity regions --apply
+hirdir import examples/sites.csv --entity sites --apply
+hirdir import examples/locations.csv --entity locations --apply
+hirdir import examples/contact-assignments.csv --entity contact_assignments --apply
+hirdir import examples/owners.csv --entity owners --apply
+hirdir import examples/owner-members.csv --entity owner_members --apply
+hirdir import examples/networks.csv --entity networks --apply
+hirdir import examples/external-systems.csv --entity external_systems --apply
+hirdir import examples/agreements.csv --entity agreements --apply
+hirdir import examples/contracts.csv --entity contracts --apply
+hirdir import examples/contract-contacts.csv --entity contract_contacts --apply
+hirdir import examples/purchase-requests.csv --entity purchase_requests --apply
+hirdir import examples/purchase-lines.csv --entity purchase_lines --apply
+hirdir import examples/items.csv --entity items --apply
+hirdir import examples/device-groups.csv --entity device_groups --apply
+hirdir import examples/device-group-members.csv --entity device_group_members --apply
+hirdir import examples/item-replacements.csv --entity item_replacements --apply
+hirdir import examples/addresses.csv --entity addresses --apply
+hirdir import examples/contract-coverage.csv --entity contract_coverage --apply
+hirdir import examples/registrations.csv --entity registrations --apply
+hirdir import examples/capacity-lines.csv --entity capacity_lines --apply
+hirdir import examples/circuit-groups.csv --entity circuit_groups --apply
+hirdir import examples/circuits.csv --entity circuits --apply
+hirdir import examples/circuit-carriers.csv --entity circuit_carriers --apply
+hirdir import examples/circuit-costs.csv --entity circuit_costs --apply
+hirdir import examples/circuit-contacts.csv --entity circuit_contacts --apply
+hirdir import examples/circuit-devices.csv --entity circuit_devices --apply
+```
+
+Without `--apply` a command shows what the file would do and changes nothing. Loaded a
+second time, every row is `unchanged`. Four of the files are new in 0.4.0: the networks,
+the device groups, which are stacks, clusters and a controller domain, their members,
+and the addresses of items and of groups. So are the minor items among the items. From
+0.4.1 the same nine files also show the condition of an item and what is observed of
+it, a stack whose master is seen to be another switch than the one intended, clusters
+that say how they are managed, and an address that two routers share, which their
+cluster holds.
+
+Seven of the files are new in 0.5.0: the contacts, the operators, which are the labels
+of who looks after what, the regions, the sites and the locations within them, who is
+the contact of which place in which role, and the people of each owner. The items and
+the device groups say where they are and which operator they have of their own.
+
+Nine of the files are new in 0.6.0: the external systems and what is registered with
+them; two support agreements, a Cisco one and a Juniper one, with the contracts
+grouped into them, a contract that stands by itself for switches bought lately, and
+what each contract covers; two purchase requests with their lines, on one of which two
+switches have arrived; the capacity lines of the worked example on the
+[data model](data-model.md#capacity-balance) page, one of them a draft; and one
+replacement. The dates of the contracts are fixed in the files, so what the coverage
+report says of them changes as the calendar moves on. The capacity report of the
+examples is not the one of that page: the lines are the same, a supply of 9.0, but
+the examples have a support weight of 32 where the worked example has 2,400, so the
+demand is 2.11 and the balance 6.89, where the page has a demand of 10.0 and a
+balance of −1.0.
+
+One of the files is new in 0.7.0: the contacts of the contracts, by which the Cisco
+agreement names two account managers, in their order, and one contract in it names an
+account manager of its own in place of the agreement's, while the other has the
+agreement's. The files from before say more as well. The model of the IP telephones is
+marked not to be renewed, so that the one of them in Prod that no contract covers is
+counted by itself on the coverage report, and not as a gap. The C9300-48P has a link to
+its data sheet, Site-2 one to its page and Room 102 two, to its floor plan and its
+racks. The second line of the request for Site-3 has, beside its model, the part number
+of a spare power supply as procurement wrote it, and a third line,
+of hook-and-loop tape, has no model: it is not tracked, takes no item and waits for
+nothing. The capacity lines have the columns of a line that multiplies, though none of
+them does.
+
+Five of the files are new in 0.8.0: a group of circuits, the circuits, the carriers of a
+circuit beside its primary one, the lines of what each costs a month, and the devices
+each connects. An internet circuit of Site-2 has its far end in the carrier's network,
+with no location and a note; a point-to-point circuit between Site-1 and Site-2 has a
+local exchange carrier with a number of its own beside the carrier's; and a dark fiber
+lent by a business partner has an enterprise circuit ID and no carrier's number, and
+counts at its far end. Three carriers are among the vendors, and a circuit names a contact of its own.
+
+The contacts of vendors are new in 0.8.0: Example Telecom, a fictional carrier, names
+its account manager and its repair desk once, and every circuit of that carrier has them
+unless it names its own.
+
+A script sends a file straight to the API, with a token whose service account holds
+Inventory. The file is the body of the request:
+
+```bash
+curl -H "Authorization: Bearer $HIRDIR_TOKEN" -H 'Content-Type: text/csv' \
+    --data-binary @/usr/share/doc/hirdir/examples/tags.csv \
+    'https://inventory.example.net/hirdir/api/v1/imports/preview?entity=tags'
+```
+
+The answer is the preview: what each row would do, and the HID of the stored job.
+`POST /api/v1/imports/<that HID>/apply` then loads it in the background: it answers at
+once, and `GET /api/v1/imports/<that HID>` says how far it has got, until its `status`
+is `applied`. A script waits for that before it previews the next file of the load
+order, whose rows refer to what this one makes; `hirdir import --apply` waits by
+itself. The rules of an import are under "Import and export" on the
+[interfaces](interfaces.md#import-and-export) page.
 
 ## Configuration
 

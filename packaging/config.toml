@@ -37,9 +37,16 @@
 # keep = 14
 
 [files]
-# The largest file an import takes, in megabytes. nginx has to let as much through:
-# client_max_body_size in /etc/nginx/snippets/hirdir.conf, to the same figure.
+# The largest file an import takes, in megabytes, and the largest body of any request
+# but the upload of a reference file. "sudo hirdir-setup --renew" gives nginx the
+# larger of this and max_reference_megabytes, as client_max_body_size in
+# /etc/nginx/snippets/hirdir.conf.
 # max_megabytes = 20
+
+# The largest reference file, a photograph, a floor plan or a vendor's guide, in
+# megabytes, from 1 to 2048. Run "sudo hirdir-setup --renew" after a change, so that
+# nginx lets as much through.
+# max_reference_megabytes = 100
 
 [upgrades]
 # "hirdir-setup --check" and "hirdir-setup --upgrade" ask GitHub for the latest release,

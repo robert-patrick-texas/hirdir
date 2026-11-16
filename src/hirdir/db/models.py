@@ -1099,6 +1099,88 @@ class CircuitGroupMember(Bookkeeping, Base):
     circuit_hid: Mapped[str] = mapped_column(ForeignKey("circuits.hid"), index=True)
 
 
+class ReferenceFile(Bookkeeping, Base):
+    """A reference: a file kept by hirdir, or a link to one kept elsewhere (P-158).
+
+    A file has its name, its type, its size and the checksum of its content, which is
+    kept beside the database under that checksum and never in it (P-161); a link has
+    its address. It is on one record or more, through its attachments.
+    """
+
+    __tablename__ = "reference_files"
+    __table_args__ = (
+        CheckConstraint("(url IS NULL) <> (sha256 IS NULL)", name="reference_files_file_or_link"),
+        CheckConstraint(
+            "(sha256 IS NULL) = (file_name IS NULL) AND (sha256 IS NULL) = (size_bytes IS NULL)"
+            " AND (sha256 IS NULL) = (media_type IS NULL)",
+            name="reference_files_whole_file",
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    title: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(40))
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    url: Mapped[str | None] = mapped_column(String(2000), default=None)
+    file_name: Mapped[str | None] = mapped_column(String(255), default=None)
+    media_type: Mapped[str | None] = mapped_column(String(100), default=None)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    sha256: Mapped[str | None] = mapped_column(String(64), default=None, index=True)
+
+    attachments: Mapped[list[ReferenceAttachment]] = relationship(
+        back_populates="reference", cascade="all, delete-orphan"
+    )
+
+
+# The records a reference may be on, each a column of an attachment (P-158).
+ATTACHABLE = (
+    "catalog_entry_hid",
+    "region_hid",
+    "site_hid",
+    "location_hid",
+    "circuit_hid",
+    "item_hid",
+)
+
+
+class ReferenceAttachment(Bookkeeping, Base):
+    """A reference on one record: a catalog entry, a place, a circuit or an item."""
+
+    __tablename__ = "reference_attachments"
+    __table_args__ = (
+        CheckConstraint(
+            " + ".join(f"(CASE WHEN {column} IS NULL THEN 0 ELSE 1 END)" for column in ATTACHABLE)
+            + " = 1",
+            name="reference_attachments_one_record",
+        ),
+        *(
+            UniqueConstraint(
+                "reference_file_hid", column, name=f"reference_attachments_{column}_once"
+            )
+            for column in ATTACHABLE
+        ),
+    )
+
+    hid: Mapped[str] = _hid()
+    reference_file_hid: Mapped[str] = mapped_column(ForeignKey("reference_files.hid"), index=True)
+    catalog_entry_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("catalog_entries.hid"), default=None, index=True
+    )
+    region_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("regions.hid"), default=None, index=True
+    )
+    site_hid: Mapped[str | None] = mapped_column(ForeignKey("sites.hid"), default=None, index=True)
+    location_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("locations.hid"), default=None, index=True
+    )
+    circuit_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("circuits.hid"), default=None, index=True
+    )
+    item_hid: Mapped[str | None] = mapped_column(ForeignKey("items.hid"), default=None, index=True)
+
+    reference: Mapped[ReferenceFile] = relationship(back_populates="attachments")
+
+
 class Tag(Bookkeeping, Base):
     """A label that may be put on most records."""
 

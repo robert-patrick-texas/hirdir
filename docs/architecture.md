@@ -74,7 +74,7 @@ imports on one set of rules.
 ```nginx
 location ^~ /hirdir/ {
     proxy_pass http://hirdir/;                      # the trailing slash strips /hirdir
-    client_max_body_size 100m;                      # a reference file is of up to 100 MB
+    client_max_body_size 20m;                       # an import is a file of up to 20 MB
     proxy_set_header X-Forwarded-Prefix /hirdir;
     proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -428,18 +428,15 @@ file names. With nothing newer published it changes nothing. Installing the same
 the same steps and changes nothing in the database.
 
 **The nginx snippet** holds the `location` block shown under "URL prefix" and one line
-more, `client_max_body_size 100m;`. An import sends its file as the body of a request
-and `hirdir` takes a file of up to 20 MB, and a reference file of up to 100 MB, where
-nginx left to itself refuses a body of more than 1 MB. nginx is given the larger of the
-application's two limits and no more: `hirdir-setup --renew` writes the line from
-`max_megabytes` and `max_reference_megabytes` under `[files]` in the configuration
-file, so a site changes a limit in that file alone and runs it (P-162). A body over
-the larger limit is refused by nginx, with a `413` and the page of nginx, and never
-reaches `hirdir`. A body under it and over the limit of its route, an import of 30 MB
-or a change of an item of 30 MB, is refused by `hirdir` itself with a `413` problem
-document. The application reads the rest of such a body and throws it away before it
-answers: an answer sent while nginx is still sending can be turned by nginx into a
-`502`.
+more, `client_max_body_size 20m;`. An import sends its file as the body of a request
+and `hirdir` takes a file of up to 20 MB, where nginx left to itself refuses a body of
+more than 1 MB. nginx is given the limit of the application and no more. A body over
+20 MB is therefore refused by nginx, with a `413` and the page of nginx, and never
+reaches `hirdir`, whose own `413` is a problem document. A higher limit in nginx would
+let the application answer, but it answers as soon as it has read 20 MB and closes the
+connection with the rest unread, which nginx, still sending, can turn into a `502`.
+A site that wants larger files raises both limits to the same figure: `max_megabytes`
+under `[files]` in the configuration file, and this line of the snippet.
 
 The snippet is not a conffile, because `hirdir-setup --prefix` writes the prefix into
 it. dpkg asks about a conffile that was changed on the host whenever a new version
@@ -452,7 +449,7 @@ are done, so that an upgrade that stops there has changed nothing of nginx's. Th
 result is tested with `nginx -t`: when nginx objects, the file is put back as it was.
 When it changed at an upgrade, nginx is reloaded and the upgrade says so. A snippet
 that differs from every snippet the package has shipped in more than its three prefix
-lines and its line of the limit was edited by hand. It is left alone, and the message says where the shipped
+lines was edited by hand. It is left alone, and the message says where the shipped
 one is. A purge removes the snippet with the rest.
 
 A failed migration stops the upgrade with the backup's path in the message, and leaves
@@ -467,8 +464,7 @@ newer one has migrated. The steps for an operator are under "Upgrade" in
 **`hirdir-setup`** reads `nginx -T`, lists the sites that already terminate TLS, and
 adds `include snippets/hirdir.conf;` to the one chosen, after showing the change.
 `--prefix /inventory` rewrites the snippet's three prefix lines. `--renew` writes the
-snippet again as this version ships it, under the prefix it has, with the limit of the
-configuration file. `--self-signed`
+snippet again as this version ships it, under the prefix it has. `--self-signed`
 creates a site with a throwaway certificate, for test containers only.
 
 A container image is LATER. It runs the same package contents with the database on a

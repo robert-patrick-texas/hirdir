@@ -17,6 +17,7 @@ from hirdir.db.models import (
     Item,
     ItemReplacement,
     Location,
+    ReferenceFile,
 )
 from hirdir.domain import audit, records
 from hirdir.domain.audit import AuditContext, change
@@ -33,6 +34,7 @@ LISTS = (
     "capacity_category",
     "circuit_type",
     "carrier_role",
+    "reference_kind",
 )
 VALUE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 FIELDS = ("list_name", "value", "label", "sort", "active")
@@ -54,6 +56,7 @@ USES: dict[str, tuple[tuple[Any, ...], ...]] = {
     ),
     "circuit_type": ((Circuit, Circuit.circuit_type),),
     "carrier_role": ((CircuitCarrier, CircuitCarrier.role),),
+    "reference_kind": ((ReferenceFile, ReferenceFile.kind),),
     "location_kind": ((Location, Location.kind),),
     "capacity_category": ((CapacityLine, CapacityLine.category),),
 }

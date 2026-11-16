@@ -212,7 +212,7 @@ def test_the_configuration_file_is_all_comments_and_shows_every_default(tmp_path
     documented = re.search(r"## Configuration.*?```toml\n(.*?)```", ARCHITECTURE, re.DOTALL)
     assert documented is not None
     assert tomllib.loads(uncommented) == tomllib.loads(documented.group(1))
-    assert len(keys) == 9
+    assert len(keys) == 10
 
     as_shipped = tmp_path / "shipped.toml"
     as_shipped.write_text(shipped, encoding="utf-8")
