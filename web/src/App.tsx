@@ -46,6 +46,8 @@ const pages = {
   // 0.8.0, web lane B: the report of what circuits cost (P-151).
   circuitCosts: () => import("./pages/CircuitCosts"),
   // End of 0.8.0, web lane B.
+  // 0.9.0: every reference, Admin › Files (P-162).
+  files: () => import("./pages/Files"),
 };
 
 const AgreementDetail = lazy(() =>
@@ -142,6 +144,8 @@ const CircuitCostsReport = lazy(() =>
   pages.circuitCosts().then((page) => ({ default: page.CircuitCostsReport })),
 );
 // End of 0.8.0, web lane B.
+// 0.9.0: every reference, Admin › Files (P-162).
+const Files = lazy(() => pages.files().then((page) => ({ default: page.Files })));
 
 // How long after the first page is shown the other pages are fetched, in milliseconds.
 const WARM_AFTER = 400;
@@ -598,6 +602,15 @@ export function App() {
               element={
                 <RequireRole needs="viewer">
                   <Tags />
+                </RequireRole>
+              }
+            />
+            {/* 0.9.0: every reference, for every role to read (P-162, D-60). */}
+            <Route
+              path="admin/files"
+              element={
+                <RequireRole needs="viewer">
+                  <Files />
                 </RequireRole>
               }
             />

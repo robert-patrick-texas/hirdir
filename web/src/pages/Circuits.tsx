@@ -19,6 +19,7 @@ import {
 import { CircuitsGrid } from "../components/CircuitsGrid";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { References } from "../components/References";
 import { Retire } from "../components/Retire";
 import {
   CIRCUIT_TYPE_LIST,
@@ -440,6 +441,12 @@ export function CircuitDetail() {
             onChanged={changed}
           />
           <CircuitGroupsOf circuit={record} />
+          {/* 0.9.0: its own references, as a letter of authorization (P-158). */}
+          <References
+            key={`references ${record.hid}`}
+            holder={{ kind: "circuit", hid: record.hid }}
+            mayEdit={mayEdit}
+          />
           {open && (
             <CircuitDetails
               key={`details ${record.hid} ${record.row_version}`}

@@ -28,13 +28,16 @@ export function slashed(baseURI: string, pathname: string): string | null {
  * The full URL of an API route under the base.
  *
  * `route` is a path of the contract such as `/api/v1/users/{hid}`. Each `{name}` is
- * filled from `params`, and `query` is added, leaving out blank values.
+ * filled from `params`, and `query` is added, leaving out blank values. A list is sent
+ * as the parameter given once for each of its values, as `attach_to` is.
  */
 export function apiUrl(
   baseURI: string,
   route: string,
   params: Readonly<Record<string, string | number>> = {},
-  query: Readonly<Record<string, string | number | boolean | null | undefined>> = {},
+  query: Readonly<
+    Record<string, string | number | boolean | readonly string[] | null | undefined>
+  > = {},
 ): string {
   const filled = route.replace(/^\/+/, "").replace(/\{([^}]+)\}/g, (_, name: string) => {
     const value = params[name];
@@ -45,7 +48,9 @@ export function apiUrl(
   });
   const url = new URL(filled, new URL(basePath(baseURI), baseURI));
   for (const [name, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null && value !== "") {
+    if (Array.isArray(value)) {
+      for (const one of value) if (one !== "") url.searchParams.append(name, String(one));
+    } else if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(name, String(value));
     }
   }
