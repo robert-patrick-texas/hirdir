@@ -1284,6 +1284,39 @@ answers it with a `502`. To have the snippet of 0.8.0 back, copy
 `sudo hirdir-setup --prefix`, or, under `/hirdir/`, run `sudo nginx -t && sudo
 systemctl reload nginx`.
 
+### From 0.9.0 to 0.9.1
+
+The schema stays at revision `0011`: 0.9.1 has no migration. Nothing that is held is
+changed by the upgrade. Every record and every reference file is as it was, at the
+`row_version` it had, and the upgrade writes no audit event. It takes its backup and
+stops and starts the service all the same. `/etc/hirdir/config.toml` gains no setting,
+and `/etc/nginx/snippets/hirdir.conf` is the one 0.9.0 wrote, so the upgrade says
+nothing of either and nginx is not reloaded.
+
+Two things are new:
+
+- **`hirdir admin load-examples`** loads the examples into an empty inventory with one
+  command, with the service stopped, and `hirdir admin reset` takes them again: see
+  [Try it with the examples](#try-it-with-the-examples). The package carries a copy of
+  the examples inside the application for it, in `/opt/hirdir/venv/`, beside the one in
+  `/usr/share/doc/hirdir/examples/`. It refuses an inventory that holds any record.
+- **A restore tidies what it sets aside.** `/var/lib/hirdir/files.before-restore/` holds
+  what undoing the last restore takes, and no more, as under
+  [Backup and restore](#backup-and-restore). What the restores of 0.9.0 set aside there
+  stays until the first restore of 0.9.1, which lets go of what undoing it does not
+  take, and says how many files: to keep them, copy the folder elsewhere first.
+
+Going back to 0.9.0 needs no backup, because the schema is the same and 0.9.0 reads
+the database as 0.9.1 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.0_amd64.deb
+```
+
+The command goes through and starts the service, and that is all. What was entered
+with 0.9.1 stays, the examples among it, but 0.9.0 has no `hirdir admin load-examples`,
+and its restores let `files.before-restore/` grow again.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,

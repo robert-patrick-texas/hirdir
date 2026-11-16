@@ -7,7 +7,7 @@ operations team answers for, from the purchase request to disposal: what there i
 where it is, who owns it, what it costs to keep supported, how much work it is, and when
 it must be replaced.
 
-**Status:** release 0.9.0, reference files. Photographs, maps, sketches and floor plans
+**Status:** release 0.9.1, reference files. Photographs, maps, sketches and floor plans
 are kept with the region, site or location they show, the documents of a vendor with the
 models they are for, a carrier's letter of authorization with its circuit, and a
 photograph of a device's labels with the device: each a file that `hirdir` keeps and
@@ -19,6 +19,9 @@ and of where it is. Files are of kinds an Admin chooses, up to 100 MB; a picture
 in the page and every other file is downloaded, so that nothing of one runs as part of
 the application; removing one erases it at once; and the files are in the backup and come
 back with a restore, on the same host or a clean one.
+0.9.1 adds one command, `hirdir admin load-examples`, that loads the examples into an
+empty inventory for a reset to take again, and a restore keeps set aside only what
+undoing it takes.
 This stands on 0.8.0, circuits. The telecommunication circuits the team looks after
 are kept beside the inventory and share what it holds: their two ends are locations with
 their site contacts, their carriers are vendors whose account team and support desk are
