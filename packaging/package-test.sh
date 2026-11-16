@@ -53,8 +53,10 @@
 #                      a street address, planned locations and a site made active,
 #                      what a group gives its members, contracts and what they
 #                      cover, a purchase received, a stack registered, a draft site
-#                      and an archived item, then the inventory made by hand, and
-#                      the capacity balance of the worked example
+#                      and an archived item, reference files uploaded and downloaded
+#                      through nginx and a backup of them restored on a second, clean
+#                      host, then the inventory made by hand, and the capacity balance
+#                      of the worked example
 #   --e2e              in the fresh pass, also run the browser scenarios of web/
 #                      against the container (npm --prefix web run e2e). The browser
 #                      runs in Playwright's container image unless E2E_HOST_BROWSER=1
@@ -363,6 +365,8 @@ browser=hirdir-package-test-browser-$run_id
 
 cleanup() {
     docker rm --force "$container" >/dev/null 2>&1 || true
+    # The second host of reference_files, where a pass stopped before it was removed.
+    docker rm --force "$container-clean" >/dev/null 2>&1 || true
     docker rm --force "$browser" >/dev/null 2>&1 || true
     docker image rm --force "$image" >/dev/null 2>&1 || true
     rm -rf "$work"
@@ -903,13 +907,16 @@ conffiles() {
 settings_file() { inside cat /etc/hirdir/config.toml 2>&1 || true; }
 
 # settings_kept BEFORE: whether the settings file still holds every line of the text in
-# the file BEFORE, in its place, with only more after it.
+# the file BEFORE, each as it was and in its order, with nothing taken out or changed:
+# only lines put in among them, where a new setting goes to the end of its table.
 settings_kept() {
     settings_file >"$work/settings-now.toml"
     python3 -c '
-import sys
+import difflib, sys
 before, now = (open(path, encoding="utf-8").read() for path in sys.argv[1:3])
-print("kept" if now.startswith(before.rstrip("\n") + "\n") else "changed", "same" if now == before else "more")' \
+steps = difflib.SequenceMatcher(None, before.splitlines(), now.splitlines(), autojunk=False).get_opcodes()
+kept = all(step[0] in ("equal", "insert") for step in steps)
+print("kept" if kept else "changed", "same" if now == before else "more")' \
         "$1" "$work/settings-now.toml"
 }
 
@@ -1383,12 +1390,12 @@ failed_upgrade() {
 
     # The settings file, which nobody edited in this pass, as the upgrade pass has one
     # that the operator edited: every line of it stays, and the settings of the new
-    # version that it lacks are put after them. A line that only says more of a setting
-    # the file has is not put in.
+    # version that it lacks are put in, each at the end of its table. A line that only
+    # says more of a setting the file has is not put in.
     new_settings >"$work/new-settings.txt"
     found=$(settings_kept "$work/settings-before-failure.toml")
     if [ -s "$work/new-settings.txt" ]; then
-        expect "pkg the settings file, which nobody edited, holds every line it had and after them every setting that $version has and $previous_version had not ($(cut -f1 "$work/new-settings.txt" | xargs))" \
+        expect "pkg the settings file, which nobody edited, holds every line it had, each as it was and in its order, and among them every setting that $version has and $previous_version had not ($(cut -f1 "$work/new-settings.txt" | xargs))" \
             "$found $(cut -f2 "$work/new-settings.txt" | grep -cvxF -f "$work/settings-now.toml" || true)" "kept more 0"
     else
         expect "pkg the settings file, which nobody edited, is as $previous_version wrote it: $version has no setting that it had not" \
@@ -1545,8 +1552,12 @@ witness_room=""
 witness_contracts=""
 witness_renewed=""
 witness_circuited=""
-# What came after the groups, which witness_places, witness_money, witness_renewals and
-# witness_circuits make where the previous release has it. Each list is kept and
+witness_referenced=""
+# The files that witness_references uploads, as "HID:the file on this host", whose
+# content must come back byte for byte.
+witness_files=()
+# What came after the groups, which witness_places, witness_money, witness_renewals,
+# witness_circuits and witness_references make where the previous release has it. Each list is kept and
 # compared record for record, as "NAME PATH", and each answer that is worked out of the
 # records, a tree or a report, by what one expression makes of it, as
 # "NAME|PATH|EXPRESSION|what it is, in words".
@@ -1996,11 +2007,12 @@ witness_structure() {
             "$(counted_now '?filter=group.name:eq:upgrade-cluster')" '[2, 2, 1, 1.0, "0.00", "1800.00"]'
     fi
 
-    # What came with revisions 0007 to 0010, where the previous release has it.
+    # What came with revisions 0007 to 0011, where the previous release has it.
     if previous_at 0007; then witness_places; fi
     if previous_at 0008; then witness_money; fi
     if previous_at 0009; then witness_renewals; fi
     if previous_at 0010; then witness_circuits; fi
+    if previous_at 0011; then witness_references; fi
 }
 
 # day_from_today DAYS: the day that many days after today, or before it. The days that
@@ -2655,6 +2667,61 @@ witness_circuits() {
         "weights-set|/settings|sorted([s[\"key\"], s[\"value\"], s[\"is_default\"]] for s in d if s[\"key\"] in \"$weight_settings\".split())|GET /settings has the six weights and the side a new circuit counts at as the Admin set them")
 }
 
+# witness_references: what came with revision 0011, made through the API of the previous
+# release for an upgrade to carry: on each of the six kinds of record that take one, the
+# catalog entry, the region, the site and the room from before, the first circuit and the
+# item with every value, a file of its own and a link; and one file more, on all six at
+# once. The content of the files is in the store beside the database, and each must
+# come back from it byte for byte after the upgrade.
+#
+# witness_structure runs this where previous_at says that the previous release is at
+# revision 0011, after witness_circuits, so the places, the circuit and the item are
+# there. No release before 0.9.0 can store any of it: the upgrade to 0.9.0 starts from a
+# release that could not, and this is for the upgrades after it. Every name is
+# invented, and every address is of a domain reserved for examples.
+witness_references() {
+    local land link entry records="" records_of type value hid made="" wanted="" number=0 sums="" hids=()
+
+    witness_referenced=yes
+    api GET '/regions?limit=1000'
+    land=$(json '[r["hid"] for r in d["items"] if r["name"] == "Upgrade Land"][0]')
+    api GET '/circuits?limit=1000'
+    link=$(json '[c["hid"] for c in d["items"] if c["name"] == "Upgrade Witness Link"][0]')
+    for entry in "catalog-entries $witness_entry pdf data_sheet" "regions $land pdf map" \
+        "sites $witness_site png photograph" "locations $witness_room pdf floor_plan" \
+        "circuits $link pdf letter_of_authorization" "items $witness_full png photograph"; do
+        read -r records_of hid type value <<<"$entry"
+        number=$((number + 1))
+        reference_file "$work/witness-$number.$type" "$type" 0.05
+        upload "$work/witness-$number.$type" "witness-$number.$type" "$value" "Upgrade witness file $number" "$hid"
+        made="$made $status"
+        wanted="$wanted 201"
+        witness_files+=("$(json_field hid):$work/witness-$number.$type")
+        witness_undo=("reference-files/$(json_field hid)" "${witness_undo[@]}")
+        api POST /reference-files/links "{\"title\": \"Upgrade witness link $number\", \"kind\": \"other\", \"url\": \"https://www.example.net/upgrade/witness-$number\", \"notes\": \"Made with the release before\", \"attach_to\": [\"$hid\"]}"
+        made="$made $status"
+        wanted="$wanted 201"
+        witness_undo=("reference-files/$(json_field hid)" "${witness_undo[@]}")
+        records="${records:+$records, }\"$hid\""
+        witness_lists+=("references-$records_of /$records_of/$hid/references?limit=1000")
+    done
+    reference_file "$work/witness-all.pdf" pdf 0.1
+    upload "$work/witness-all.pdf" witness-all.pdf other "Upgrade witness on every kind of record" "$witness_entry"
+    made="$made $status"
+    hid=$(json_field hid)
+    api POST "/reference-files/$hid/attachments" "{\"records\": [${records#*, }]}"
+    made="$made $status $(json_field attachment_count)"
+    witness_files+=("$hid:$work/witness-all.pdf")
+    witness_undo=("reference-files/$hid" "${witness_undo[@]}")
+    for entry in "${witness_files[@]}"; do
+        hids+=("${entry%%:*}")
+        sums="$sums $(sha "${entry#*:}")"
+    done
+    expect "pkg $previous_version holds a file and a link on each of the six kinds of record from before, the catalog entry, the region, the site, the room, the first circuit and the item with every value, and one file more on all six, and gives back each file byte for byte" \
+        "$made $(stored_sums "${hids[@]}" | xargs)" "$wanted 201 200 6$sums"
+    witness_lists+=("references /reference-files?limit=1000")
+}
+
 # counted_now [QUERY]: what a release counts of a view of the items: items, components,
 # managed nodes and the support weight as a number, the estimated value and the annual
 # support cost. The first four are in the summary. The money is in the management
@@ -2750,6 +2817,9 @@ witness_kept() {
     fi
     if [ -n "$witness_circuited" ]; then
         witness_tables="$witness_tables circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members"
+    fi
+    if [ -n "$witness_referenced" ]; then
+        witness_tables="$witness_tables reference_files reference_attachments"
     fi
     # And the tables beside the inventory that the file of a migration names.
     witness_tables="$witness_tables${more_tables:+ $more_tables}"
@@ -2885,6 +2955,17 @@ witness_carried() {
         done
         expect "pkg $when every record of what came after the groups is as it was, field for field and at the row_version it had, the drafts and the retired among them: $listed" \
             "$differing" ""
+        if [ "${#witness_files[@]}" -gt 0 ]; then
+            hid=""
+            found=""
+            for entry in "${witness_files[@]}"; do
+                hid="$hid ${entry%%:*}"
+                found="$found $(sha "${entry#*:}")"
+            done
+            # shellcheck disable=SC2086  # The HIDs are words of their own.
+            expect "pkg $when the content of each of the ${#witness_files[@]} files from before comes back from the store byte for byte" \
+                "$(stored_sums $hid | xargs)" "${found# }"
+        fi
         for entry in "${witness_answers[@]}"; do
             IFS='|' read -r name path expression words <<<"$entry"
             api GET "$path"
@@ -3049,11 +3130,12 @@ carried_inventory() {
 }
 
 # witness_undone: take out again, with the new version, what witness_places,
-# witness_money, witness_renewals and witness_circuits made, so that the rest of the
-# upgrade pass starts from lists, a tree and reports as empty as those of a new
-# installation. The items and the groups are retired by then. Nothing is deleted but
-# what the API removes outright, an assignment, a person of an owner and a contact that
-# a contract, a vendor or a circuit names: a capacity line, an external system, a
+# witness_money, witness_renewals, witness_circuits and witness_references made, so that
+# the rest of the upgrade pass starts from lists, a tree and reports as empty as those of
+# a new installation. The items and the groups are retired by then. Nothing is deleted
+# but what the API removes outright, an assignment, a person of an owner, a contact that
+# a contract, a vendor or a circuit names, and a reference, which is erased with its
+# content first: a capacity line, an external system, a
 # contract, an agreement, a circuit, a circuit group, an operator, a contact and a place
 # are retired, a registration is marked as removed, a coverage is ended with a day, a
 # purchase request is cancelled, and a setting is returned to its default. A circuit is
@@ -3089,7 +3171,8 @@ witness_undone() {
     fi
     for entry in "${witness_undo[@]}"; do
         case $entry in
-            contact-assignments/* | owners/*/members/* | */contacts/*)
+            # A reference is erased outright, with its content (P-160).
+            contact-assignments/* | owners/*/members/* | */contacts/* | reference-files/*)
                 api DELETE "/$entry"
                 wanted="${wanted}204 "
                 ;;
@@ -3106,7 +3189,7 @@ witness_undone() {
         made="$made$status "
     done
     api GET /geography/tree
-    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: the assignments, the people of the owner and whatever contacts the agreements, the contracts, the vendors and the circuits named are removed, the operators, the contacts and the places are retired, whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts, agreements, circuits and circuit groups is retired, marked as removed, ended or cancelled, and whatever weights were set are blank again; the tree of places is empty" \
+    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: whatever references there were are erased, the assignments, the people of the owner and whatever contacts the agreements, the contracts, the vendors and the circuits named are removed, the operators, the contacts and the places are retired, whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts, agreements, circuits and circuit groups is retired, marked as removed, ended or cancelled, and whatever weights were set are blank again; the tree of places is empty" \
         "$made$status $(json 'd["roots"]')" "${wanted}200 []"
 }
 
@@ -3261,7 +3344,7 @@ upgrade() {
     # one had not, the file is left as it is.
     new_settings >"$work/new-settings.txt"
     if [ -s "$work/new-settings.txt" ]; then
-        expect "pkg the settings file holds every line the operator had, in its place, and more after them" \
+        expect "pkg the settings file holds every line the operator had, each as it was and in its order, with the new settings put in among them" \
             "$(settings_kept "$work/settings-before.toml")" "kept more"
         while IFS=$'\t' read -r name line; do
             grep -qxF -- "$line" "$work/settings-now.toml" || missing="$missing$name "
@@ -3496,6 +3579,11 @@ installed() {
     # Made by the package, so that its mode does not depend on who takes the first backup.
     expect "pkg so does /var/lib/hirdir/backups, which the package makes" \
         "$(inside stat -c '%a %U:%G' /var/lib/hirdir/backups 2>&1)" "750 hirdir:hirdir"
+    # From 0.9.0 the content of reference files is kept there, beside the database.
+    if dpkg --compare-versions "$version" ge 0.9.0; then
+        expect "pkg and so does /var/lib/hirdir/files, the store of reference files, which the package makes" \
+            "$(inside stat -c '%a %U:%G' /var/lib/hirdir/files 2>&1)" "750 hirdir:hirdir"
+    fi
     check "S01 the install compiled the byte-code, so nothing writes under /opt later" \
         inside bash -c 'test -d /opt/hirdir/venv/lib/python3.*/site-packages/hirdir/__pycache__'
     check "pkg the regex package's compiled module is installed and loads in the package's Python" \
@@ -3624,8 +3712,9 @@ with open(path, "w", encoding="utf-8", newline="") as out:
 megabytes() { python3 -c 'import os, sys; print(f"{os.path.getsize(sys.argv[1]) / 1048576:.1f} MB")' "$1"; }
 
 # limit_files: write the files that the limits of a file are tried with. They are those
-# of docs/interfaces.md: 20 MB and 100,000 rows. The first two files name a column that
-# no record has, so hirdir refuses each at its first line, whatever its size.
+# of docs/interfaces.md: 20 MB and 100,000 rows. The first three files name a column that
+# no record has, so hirdir refuses each at its first line, whatever its size; the third
+# is of 30 MB, which nginx lets through for a reference file.
 limit_files() {
     python3 -c '
 import sys
@@ -3633,7 +3722,7 @@ import sys
 work = sys.argv[1]
 limit = 20 * 1024 * 1024
 head, line = b"no_such_column\n", b"x" * 99 + b"\n"
-for name, size in (("at-the-limit.csv", limit), ("over-the-limit.csv", limit + 1)):
+for name, size in (("at-the-limit.csv", limit), ("over-the-limit.csv", limit + 1), ("thirty.csv", 30 * 1024 * 1024)):
     with open(f"{work}/{name}", "wb") as out:
         out.write(head)
         out.write(line * ((size - len(head)) // len(line)))
@@ -3836,7 +3925,8 @@ files() {
         "$status $(job_counts)" "201 [\"previewed\", $rows, 0, 0, $rows, 0]"
 
     # nginx refuses a body of more than a megabyte unless it is told otherwise, and the
-    # snippet of the package tells it: client_max_body_size 20m.
+    # snippet of the package tells it: client_max_body_size 100m, the limit of a reference
+    # file, which is larger than an import's.
     large_file "$work/large.csv" Cisco C9300-48P
     check "pkg a file of $large_rows items is written that is larger than 1 MB ($(megabytes "$work/large.csv"))" \
         test "$(stat -c %s "$work/large.csv")" -gt 1048576
@@ -3859,10 +3949,14 @@ files() {
     expect "pkg a body of exactly 20 MB passes nginx and is answered by hirdir, which refuses the file for its unknown column" \
         "$status $(header content-type) $(json 'd["errors"][0]["field"]')" "422 application/problem+json column"
     send '/imports/preview?entity=tags' "$work/over-the-limit.csv"
-    expect "pkg a body of 20 MB and one byte is refused by nginx: a 413 with the page of nginx, which is not a problem document and has no request ID of hirdir" \
-        "$status $(header content-type) request-id:$(header x-request-id)" "413 text/html request-id:"
-    expect "pkg sent straight to the service, past nginx, a body of that size is refused by hirdir itself: a 413 that is a problem document" \
+    expect "pkg a body of 20 MB and one byte passes nginx, which takes the 100 MB of a reference file, and is refused by hirdir itself: a 413 that is a problem document, which names the limit, with the request ID that every answer of hirdir carries" \
+        "$status $(header content-type) $(json '"is at most 20 MB" in d["detail"]') $([ -n "$(header x-request-id)" ] && echo request-id)" \
+        "413 application/problem+json true request-id"
+    expect "pkg sent straight to the service, past nginx, a body of that size is refused by hirdir in the same way" \
         "$(past_nginx $((limit + 1)))" "413 application/problem+json"
+    send '/imports/preview?entity=tags' "$work/thirty.csv"
+    expect "pkg an import of 30 MB is answered by hirdir with the same 413 problem document: hirdir reads the rest of the body before it answers, so nginx, still sending, does not turn the answer into a 502" \
+        "$status $(header content-type) $(json '"is at most 20 MB" in d["detail"]')" "413 application/problem+json true"
     send '/imports/preview?entity=tags' "$work/too-many-rows.csv"
     expect "pkg a file of 100,001 rows, which nginx takes, is refused by hirdir with its own 413, and nginx passes that on as it is" \
         "$status $(header content-type) $(json_field title)" "413 application/problem+json Too large"
@@ -3877,6 +3971,16 @@ files() {
     first_file
     multiplied_and_seen
 
+    # A file and a link on a location of the examples, from 0.9.0, for the reset to clear
+    # with the content of the file.
+    api GET '/locations?limit=1'
+    hid=$(json '[l["hid"] for l in d["items"]][0]')
+    reference_file "$work/reset-plan.pdf" pdf 0.2
+    upload "$work/reset-plan.pdf" reset-plan.pdf floor_plan "Plan before the reset" "$hid"
+    made=$status
+    api POST /reference-files/links "{\"title\": \"Plan kept elsewhere\", \"kind\": \"floor_plan\", \"url\": \"https://www.example.net/plans/reset\", \"attach_to\": [\"$hid\"]}"
+    expect "pkg a file and a link on a location of the examples, from 0.9.0, for the reset to clear" "$made $status" "201 201"
+
     # hirdir admin reset is how a site clears test data, on the server and nowhere else.
     # Here it clears the examples and what structure(), geography(),
     # operators_and_plans(), cover_and_purchases() and multiplied_and_seen() made beside
@@ -3888,12 +3992,15 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, and keeps the accounts" \
         "$code $(inventory_left)" "0 users"
+    expect "pkg it erases the content of the file from the store, says so, and its backup holds it beside it" \
+        "$(grep -c '^the content of 1 files was erased from /var/lib/hirdir/files; the backup holds it in /var/lib/hirdir/backups/files$' "$work/reset.out") $(inside find /var/lib/hirdir/files -type f ! -path '*/.incoming/*' 2>&1 | wc -l) $(inside test -f "/var/lib/hirdir/backups/files/$(sha "$work/reset-plan.pdf" | cut -c1-2)/$(sha "$work/reset-plan.pdf")" && echo held)" \
+        "1 0 held"
     expect "pkg it took a backup first and says how to put it back" \
         "$(grep -c '^backup: /var/lib/hirdir/backups/hirdir-' "$work/reset.out") $(grep -c 'hirdir admin restore /var/lib/hirdir/backups/hirdir-' "$work/reset.out")" "1 1"
     check "pkg hirdir admin restore of the backup taken before the examples were imported" \
@@ -3913,6 +4020,285 @@ files() {
     made=$(json_field total)
     api GET "${every_address/limit=1000/limit=1}"
     expect "pkg and no device group and no address but those there were before" "$status $made $(json_field total)" "200 $groups_before 0"
+}
+
+# ---- reference files --------------------------------------------------------------------
+
+# reference_file PATH png|pdf MEGABYTES: write a file of about that size that is what its
+# name says, a PNG picture or a PDF, made of bytes that no other file has, so that no
+# two are ever the same content.
+reference_file() {
+    python3 -c '
+import os, sys, zlib
+
+path, kind, size = sys.argv[1], sys.argv[2], int(float(sys.argv[3]) * 1024 * 1024)
+if kind == "png":
+    def chunk(name, data):
+        body = name + data
+        return len(data).to_bytes(4, "big") + body + zlib.crc32(body).to_bytes(4, "big")
+    width = 1024
+    height = max(1, size // (width * 3 + 1))
+    rows = b"".join(b"\x00" + os.urandom(width * 3) for _ in range(height))
+    header = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 2, 0, 0, 0])
+    content = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows, 0))
+               + chunk(b"IEND", b""))
+else:
+    head, tail = b"%PDF-1.7\n% A fictional document, for the package test\n%", b"\n%%EOF\n"
+    content = head + os.urandom(max(0, size - len(head) - len(tail))) + tail
+with open(path, "wb") as out:
+    out.write(content)' "$@"
+}
+
+# sha FILE: the SHA-256 of a file on the host.
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+
+# upload FILE NAME KIND TITLE RECORD...: POST a file as the body of a request to
+# /reference-files under $prefix, to be put on the records named by their HIDs, as the
+# web UI and hirdir references add do. A large file has two minutes. The pass that
+# installs no nginx sends it inside the container, straight to the service, as api does.
+upload() {
+    local file=$1 query
+    query=$(python3 -c '
+import sys, urllib.parse
+print(urllib.parse.urlencode([("file_name", sys.argv[1]), ("kind", sys.argv[2]), ("title", sys.argv[3])]
+                             + [("attach_to", record) for record in sys.argv[4:]]))' "${@:2}")
+    if [ "$mode" = failed-upgrade ]; then
+        docker cp --quiet "$file" "$container:/tmp/upload" || true
+        inside /opt/hirdir/python/bin/python3 -I -c '
+import sys, urllib.error, urllib.request
+
+with open("/tmp/upload", "rb") as sent:
+    request = urllib.request.Request(
+        "http://127.0.0.1:8715/api/v1/reference-files?" + sys.argv[2],
+        data=sent.read(),
+        method="POST",
+        headers={"Content-Type": "application/octet-stream", "Authorization": "Bearer " + sys.argv[1]},
+    )
+try:
+    answer = urllib.request.urlopen(request, timeout=120)
+except urllib.error.HTTPError as error:
+    answer = error
+print(answer.code)
+sys.stdout.write(answer.read().decode())' "$token" "$query" >"$work/answer" 2>&1 || true
+        status=$(head -n 1 "$work/answer")
+        tail -n +2 "$work/answer" >"$work/body"
+        return 0
+    fi
+    authorized POST "$prefix/api/v1/reference-files?$query" --header 'Content-Type: application/octet-stream' \
+        --data-binary "@$file" --max-time 120
+}
+
+# downloaded HID FILE: download the content of a reference through nginx, asking for it
+# compressed, and say how it came: its status, whether it is FILE byte for byte, its
+# type, and the headers that keep a browser from running it.
+downloaded() {
+    authorized GET "$prefix/api/v1/reference-files/$1/content" --header 'Accept-Encoding: gzip' --max-time 120
+    local same=differs
+    if [ "$(sha "$work/body")" = "$(sha "$2")" ]; then same=same; fi
+    printf '%s %s %s %s %s %s encoding:%s' "$status" "$same" "$(header content-type)" \
+        "$(header content-disposition | cut -d';' -f1)" "$(header x-content-type-options)" \
+        "$(header content-security-policy | grep -o sandbox)" "$(header content-encoding)"
+}
+
+# stored_sums HID...: the SHA-256 of the content of each reference, downloaded straight
+# from the service inside the container with the token in $token, one to a line, or the
+# status where it was not given. For every pass, the one with no nginx among them.
+stored_sums() {
+    inside /opt/hirdir/python/bin/python3 -I -c '
+import hashlib, sys, urllib.error, urllib.request
+
+for hid in sys.argv[2:]:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:8715/api/v1/reference-files/{hid}/content",
+        headers={"Authorization": "Bearer " + sys.argv[1]},
+    )
+    try:
+        print(hashlib.sha256(urllib.request.urlopen(request, timeout=60).read()).hexdigest())
+    except urllib.error.HTTPError as error:
+        print(error.code)' "$token" "$@" 2>&1
+}
+
+# in_clean COMMAND...: run a command in the second container, which has never had hirdir.
+in_clean() { docker exec --env DEBIAN_FRONTEND=noninteractive "$clean_container" "$@"; }
+clean_container=""
+
+# clean_install: start a second container from the same image, with no port published,
+# and install the package in it, as on another host. Prints nothing; says how it went.
+clean_install() {
+    local state=starting
+    clean_container=$container-clean
+    if ! docker run --detach --name "$clean_container" --privileged --cgroupns=private \
+        --tmpfs /run --tmpfs /run/lock "$image" >/dev/null 2>"$work/docker-run-clean.log"; then
+        cat "$work/docker-run-clean.log"
+        return 1
+    fi
+    for _ in $(seq 60); do
+        state=$(in_clean systemctl is-system-running 2>/dev/null || true)
+        case $state in running | degraded) break ;; esac
+        sleep 1
+    done
+    in_clean mkdir -p /srv/debs
+    docker cp --quiet "$deb" "$clean_container:/srv/debs/hirdir-new.deb"
+    in_clean chmod -R a+rX /srv/debs
+    in_clean apt-get -o Dpkg::Use-Pty=0 --yes update >"$work/apt-clean.log" 2>&1 &&
+        in_clean apt-get -o Dpkg::Use-Pty=0 --yes install /srv/debs/hirdir-new.deb >>"$work/apt-clean.log" 2>&1
+}
+
+# clean_downloads USERNAME ACCESS_CODE HID...: in the second container, sign in straight
+# to the service and download the content of each reference. Prints the HID and the
+# SHA-256 of what came, or the status, one to a line.
+clean_downloads() {
+    in_clean /opt/hirdir/python/bin/python3 -I -c '
+import hashlib, json, sys, urllib.error, urllib.request
+
+def call(path, body=None, token=None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    request = urllib.request.Request("http://127.0.0.1:8715/api/v1" + path, data=body, headers=headers)
+    return urllib.request.urlopen(request, timeout=60)
+
+signed = call("/auth/sign-in", json.dumps({"username": sys.argv[1], "access_code": sys.argv[2]}).encode())
+token = json.load(signed)["token"]
+for hid in sys.argv[3:]:
+    try:
+        print(hid, hashlib.sha256(call(f"/reference-files/{hid}/content", token=token).read()).hexdigest())
+    except urllib.error.HTTPError as error:
+        print(hid, error.code)' "$@" 2>&1
+}
+
+# reference_files: S51 and S53 through nginx under the prefix, and what the acceptance
+# test cannot reach: the limits of nginx and of hirdir, which differ, and a backup
+# restored on another host with the files beside it. The inventory is backed up first
+# and put back at the end, as files() does.
+reference_files() {
+    section "reference files uploaded and downloaded through nginx under $prefix/, and restored on another host"
+    local before backup made region site room photo plan survey listed clean_restore names wanted
+
+    before=$(inside hirdir admin backup 2>/dev/null || true)
+    check "pkg hirdir admin backup keeps the inventory as it is before any reference file is uploaded (${before:-no backup})" \
+        inside test -s "${before:-/nonexistent}"
+    api POST /regions '{"name": "Reference Land"}'
+    made=$status
+    region=$(json_field hid)
+    api POST /sites "{\"name\": \"Reference Site\", \"region_hid\": \"$region\"}"
+    made="$made $status"
+    site=$(json_field hid)
+    api POST /locations "{\"name\": \"Reference Room\", \"site_hid\": \"$site\", \"kind\": \"room\"}"
+    expect "pkg a region, a site in it and a room at the site, to put the files on" "$made $status" "201 201 201"
+    room=$(json_field hid)
+
+    # A picture and a PDF of a few megabytes on the room, and on the site a file of 30 MB,
+    # which is over the limit of an import and under that of a reference file.
+    reference_file "$work/rack-row.png" png 3
+    reference_file "$work/room-plan.pdf" pdf 4
+    reference_file "$work/site-survey.pdf" pdf 30
+    upload "$work/rack-row.png" rack-row.png photograph "Rack row" "$room"
+    photo=$(json_field hid)
+    expect "S51 through nginx under $prefix/, a picture of $(megabytes "$work/rack-row.png") is uploaded to the room: a file, typed image/png, of its size and its checksum, which the page shows, on the room" \
+        "$status $(json '[d["form"], d["media_type"], d["size_bytes"], d["sha256"], d["shown_in_page"], [a["record_hid"] for a in d["attachments"]]]')" \
+        "201 [\"file\", \"image/png\", $(stat -c %s "$work/rack-row.png"), \"$(sha "$work/rack-row.png")\", true, [\"$room\"]]"
+    upload "$work/room-plan.pdf" room-plan.pdf floor_plan "Room plan" "$room"
+    plan=$(json_field hid)
+    expect "S51 and a PDF of $(megabytes "$work/room-plan.pdf"), a floor plan, which is downloaded rather than shown" \
+        "$status $(json '[d["media_type"], d["size_bytes"], d["sha256"], d["shown_in_page"]]')" \
+        "201 [\"application/pdf\", $(stat -c %s "$work/room-plan.pdf"), \"$(sha "$work/room-plan.pdf")\", false]"
+    upload "$work/site-survey.pdf" site-survey.pdf other "Site survey" "$site"
+    survey=$(json_field hid)
+    expect "S53 a file of $(megabytes "$work/site-survey.pdf") on the site, over the 20 MB of an import and under the 100 MB of a reference file, passes nginx and is taken" \
+        "$status $(json '[d["size_bytes"], d["sha256"]]')" "201 [$(stat -c %s "$work/site-survey.pdf"), \"$(sha "$work/site-survey.pdf")\"]"
+    api GET "/locations/$room/references?limit=1000"
+    expect "S51 the room lists its two as its own and the survey of its site after them" \
+        "$status $(json '[[r["hid"], r["source"]] for r in d["items"]]')" \
+        "200 [[\"$photo\", \"own\"], [\"$plan\", \"own\"], [\"$survey\", \"site\"]]"
+    expect "S51 the picture comes back through nginx byte for byte, as image/png, as an attachment, not to be sniffed, sandboxed, and not compressed again though the client asks for gzip" \
+        "$(downloaded "$photo" "$work/rack-row.png")" "200 same image/png attachment nosniff sandbox encoding:"
+    expect "S51 and so does the PDF, as application/pdf" \
+        "$(downloaded "$plan" "$work/room-plan.pdf")" "200 same application/pdf attachment nosniff sandbox encoding:"
+    expect "S53 and the file of 30 MB" \
+        "$(downloaded "$survey" "$work/site-survey.pdf")" "200 same application/pdf attachment nosniff sandbox encoding:"
+    # A body over the larger limit is refused by nginx before it reaches hirdir.
+    truncate -s $((100 * 1024 * 1024 + 1)) "$work/over-the-reference-limit.pdf"
+    upload "$work/over-the-reference-limit.pdf" too-large.pdf other "Too large" "$room"
+    expect "S53 a body of 100 MB and one byte is refused by nginx: a 413 with the page of nginx, which is not a problem document and has no request ID of hirdir" \
+        "$status $(header content-type) request-id:$(header x-request-id)" "413 text/html request-id:"
+    rm -f "$work/over-the-reference-limit.pdf"
+
+    # The backup holds the files beside it, once each, linked to the store.
+    backup=$(inside hirdir admin backup 2>"$work/backup.log" || true)
+    check "S53 hirdir admin backup prints the file it wrote ($backup), and says nothing more" \
+        bash -c "[ -n '$backup' ] && [ ! -s '$work/backup.log' ]"
+    made=""
+    for listed in "$work/rack-row.png" "$work/room-plan.pdf" "$work/site-survey.pdf"; do
+        names=$(sha "$listed")
+        made="$made $(inside bash -c "s=/var/lib/hirdir/files/${names:0:2}/$names; b=/var/lib/hirdir/backups/files/${names:0:2}/$names; [ \"\$(stat -c %i \"\$s\")\" = \"\$(stat -c %i \"\$b\")\" ] && stat -c '%a:%U' \"\$b\"" 2>&1 || echo not-linked)"
+    done
+    expect "S53 the content of each of the three is in /var/lib/hirdir/backups/files/, under its checksum, a hard link to the file in the store, the hirdir user's alone" \
+        "$made" " 640:hirdir 640:hirdir 640:hirdir"
+    expect "pkg /var/lib/hirdir/backups/files/ is the hirdir user's alone, as the backups are" \
+        "$(inside stat -c '%a %U:%G' /var/lib/hirdir/backups/files 2>&1)" "750 hirdir:hirdir"
+
+    # Another host: the package installed, the backup copied there, and then the files
+    # beside it, as docs/install.md says to.
+    rm -rf "$work/copied" && mkdir -p "$work/copied"
+    docker cp --quiet "$container:$backup" "$work/copied/" || true
+    docker cp --quiet "$container:/var/lib/hirdir/backups/files" "$work/copied/files" || true
+    if clean_install; then
+        pass "S53 the package installs on a second, clean host"
+    else
+        fail "S53 the package installs on a second, clean host"
+        tail -n 20 "$work/apt-clean.log"
+    fi
+    in_clean systemctl stop hirdir.service || true
+    docker cp --quiet "$work/copied/${backup##*/}" "$clean_container:/var/lib/hirdir/backups/" || true
+    in_clean chown -R hirdir:hirdir /var/lib/hirdir/backups || true
+    clean_restore=0
+    in_clean hirdir admin restore "/var/lib/hirdir/backups/${backup##*/}" >"$work/restore-clean.log" 2>&1 || clean_restore=$?
+    expect "S53 copied there without the files beside it, the backup is not restored: hirdir admin restore says that the three files are missing, names them, and changes nothing" \
+        "$clean_restore $(grep -c "3 of the 3 reference files" "$work/restore-clean.log") $(grep -c 'Nothing was changed' "$work/restore-clean.log") $(grep -c "$photo (rack-row.png)" "$work/restore-clean.log") $(in_clean test -e /var/lib/hirdir/hirdir.db.before-restore && echo aside || echo none)" \
+        "1 1 1 1 none"
+    docker cp --quiet "$work/copied/files" "$clean_container:/var/lib/hirdir/backups/files" || true
+    in_clean chown -R hirdir:hirdir /var/lib/hirdir/backups || true
+    clean_restore=0
+    in_clean hirdir admin restore "/var/lib/hirdir/backups/${backup##*/}" >"$work/restore-clean.log" 2>&1 || clean_restore=$?
+    expect "S53 with the files/ beside it, hirdir admin restore puts the backup in place and copies the content of the three into the store" \
+        "$clean_restore $(grep -c '^the content of 3 files was copied from /var/lib/hirdir/backups/files$' "$work/restore-clean.log")" "0 1"
+    in_clean systemctl start hirdir.service || true
+    for _ in $(seq 30); do
+        if in_clean /opt/hirdir/python/bin/python3 -I -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8715/api/v1/health/ready", timeout=2)' 2>/dev/null; then break; fi
+        sleep 1
+    done
+    wanted="$photo $(sha "$work/rack-row.png")
+$plan $(sha "$work/room-plan.pdf")
+$survey $(sha "$work/site-survey.pdf")"
+    expect "S53 there, the Admin signs in with the access code from the first host, and every file comes back byte for byte" \
+        "$(clean_downloads "$admin" "$admin_code" "$photo" "$plan" "$survey")" "$wanted"
+    expect "S53 and hirdir admin check there counts the three, and exits 0" \
+        "$(in_clean hirdir admin check 2>&1 | grep -c '^reference files: 3 with content, kept in 3 files of ') $(in_clean hirdir admin check >/dev/null 2>&1 && echo 0)" "1 0"
+    expect "S53 the store there holds copies, the hirdir user's alone, and no link to the backup" \
+        "$(in_clean bash -c 'find /var/lib/hirdir/files -type f ! -path "*/.incoming/*" -printf "%m:%u:%n\n" | sort | uniq -c | xargs' 2>&1)" "3 640:hirdir:1"
+    docker rm --force "$clean_container" >/dev/null 2>&1 || true
+    clean_container=""
+
+    # Back on this host, the inventory as it was before the files: the restore sets their
+    # content aside, beside the store, as it does the database.
+    check "pkg systemctl stop hirdir, to put the inventory back as it was before the files" inside systemctl stop hirdir.service
+    clean_restore=0
+    inside hirdir admin restore "${before:-/nonexistent}" >"$work/restore.log" 2>&1 || clean_restore=$?
+    expect "pkg hirdir admin restore of the backup taken before them sets aside the content of the three, which that backup does not name, in /var/lib/hirdir/files.before-restore/" \
+        "$clean_restore $(grep -c '^the content of 3 files that the restored database does not name is kept at /var/lib/hirdir/files.before-restore$' "$work/restore.log") $(inside bash -c 'find /var/lib/hirdir/files -type f ! -path "*/.incoming/*" | wc -l; find /var/lib/hirdir/files.before-restore -type f | wc -l' 2>&1 | xargs)" \
+        "0 1 0 3"
+    check "pkg systemctl start hirdir" inside systemctl start hirdir.service
+    if wait_ready; then
+        pass "pkg hirdir answers again through nginx"
+    else
+        fail "pkg hirdir answers again through nginx (got $status)"
+    fi
+    api GET '/reference-files?limit=1'
+    made="$status $(json_field total)"
+    api GET '/regions?include_drafts=true&include_archived=true&limit=1000'
+    expect "pkg and there is no reference and no Reference Land, for the checks that follow" \
+        "$made $status $(json '[r["name"] for r in d["items"] if r["name"] == "Reference Land"]')" "200 0 200 []"
 }
 
 # ---- the client commands ----------------------------------------------------------------
@@ -6410,8 +6796,8 @@ inventory() {
     local vendor c9300 c9500 owner first second filter long
 
     api GET /choices
-    expect "pkg the migrations loaded the default choices of all ten lists, contact_role, location_kind, capacity_category, circuit_type and carrier_role among them" \
-        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category carrier_role catalog_function catalog_type circuit_type contact_role item_condition location_kind replacement_reason state_reason"
+    expect "pkg the migrations loaded the default choices of all eleven lists, contact_role, location_kind, capacity_category, circuit_type, carrier_role and reference_kind among them" \
+        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category carrier_role catalog_function catalog_type circuit_type contact_role item_condition location_kind reference_kind replacement_reason state_reason"
     expect "pkg the circuit_type list offers at least its seven defaults, and the carrier_role list its four" \
         "$(json '[sorted(set(w.split()) - {c["value"] for c in d if c["list"] == k}) for k, w in (("circuit_type", "internet mpls point_to_point dark_fiber wavelength voice other"), ("carrier_role", "local_exchange cross_connect last_mile other"))]')" \
         '[[], []]'
@@ -6964,6 +7350,7 @@ else
         setup
         through_nginx
         files
+        reference_files
         inventory
         capacity_balance
         reinstall
