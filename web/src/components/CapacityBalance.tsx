@@ -21,6 +21,8 @@ import {
 import { placePath } from "../lib/places";
 import { decimalValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
+// 0.8.0: the support weight in its parts (P-155).
+import { WeightParts } from "./CapacityParts";
 import { SortTh } from "./SortTh";
 
 function Dash() {
@@ -126,6 +128,8 @@ export function Balance({ report, money }: BalanceProps) {
         items count as if they were active. Every number is worked out exactly by the server and
         rounded to two places once.
       </p>
+      {/* 0.8.0: the support weight in its parts, with its defaults and minimums (P-155). */}
+      <WeightParts report={report} />
       <Multiplying report={report} />
       <DemandByRegion report={report} />
     </section>
@@ -293,7 +297,8 @@ function DemandByRegion({ report }: { report: CapacityReport }) {
       <p className="hint">
         The balance is of the whole operations team, whose tools and services serve every region: no
         supply is divided among the regions. This says where the work is. A region holds what is
-        beneath it, so the regions at the top and the items that are nowhere add up to the whole.
+        beneath it: its items, the weights of its places, and the circuits that count at a site in
+        it. So the regions at the top and what is nowhere add up to the whole.
       </p>
       <div className="scroll">
         <table data-testid="demand-by-region">
@@ -332,7 +337,7 @@ function DemandByRegion({ report }: { report: CapacityReport }) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="muted">
-                  No item carries a support weight.
+                  Nothing carries a support weight.
                 </td>
               </tr>
             )}
@@ -372,7 +377,9 @@ function RegionLine({ row, indent }: { row: RegionRow; indent: boolean }) {
         className={indent && row.depth > 0 ? `tree-depth-${Math.min(row.depth, 9)}` : undefined}
       >
         {row.path === null ? (
-          <span className="muted">Nowhere: items with no location in force</span>
+          <span className="muted">
+            Nowhere: items with no location in force, and circuits that count at no site
+          </span>
         ) : row.key ? (
           <Link to={placePath("region", row.key)}>{row.path}</Link>
         ) : (

@@ -67,6 +67,17 @@
 // the banner on its pages, as an account of its own has seen nothing: it is a region
 // named "Renewals to act on", and a file looks within its own regions, as it does.
 
+// 0.8.0, the support weight (P-139, P-141, P-155 to P-157): weights.spec.ts sets the six
+// defaults and minimums of support weight, which every count of a weight reads (the
+// summary, the scoreboard, a vendor's portfolio, an item's page and the capacity report),
+// writes staff lines and reads the capacity report, which rule 5 leaves to
+// capacity.spec.ts alone, and checks the kept reports, which a change of any other file
+// sets aside. It runs in the project "the weights alone" of playwright.config.ts, by
+// itself, after "the alert alone"; it notes each setting as it found it and puts it back
+// when it ends, and retires the staff lines and the places it made. circuit-costs.spec.ts
+// makes circuits with cost lines of its own, filters the report down to them, and runs
+// beside the others.
+
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import {

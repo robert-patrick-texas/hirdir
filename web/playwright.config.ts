@@ -49,6 +49,13 @@ const AFTER_THE_OTHERS = /stale-term\.spec\.ts$/;
  * project has ended. See the note under the rules at the top of e2e/support.ts.
  */
 const THE_ALERT_ALONE = /renewal-alert\.spec\.ts$/;
+/**
+ * 0.8.0: weights.spec.ts sets the defaults and minimums of support weight, which every
+ * count of a weight reads, writes staff lines and reads the capacity report, and checks
+ * the kept reports, which a change of any other file sets aside. It runs by itself, last.
+ * See the note under the rules at the top of e2e/support.ts.
+ */
+const THE_WEIGHTS_ALONE = /weights\.spec\.ts$/;
 
 const browsers = [
   { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -75,7 +82,7 @@ export default defineConfig({
   projects: [
     ...browsers.map((project) => ({
       ...project,
-      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS, THE_ALERT_ALONE],
+      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS, THE_ALERT_ALONE, THE_WEIGHTS_ALONE],
     })),
     {
       name: "the writer alone",
@@ -94,6 +101,15 @@ export default defineConfig({
       name: "the alert alone",
       testMatch: THE_ALERT_ALONE,
       dependencies: ["after the others"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // 0.8.0: the weights of places, a default and a minimum, Try and the kept reports,
+    // one file by itself, when every other project has ended.
+    {
+      name: "the weights alone",
+      testMatch: THE_WEIGHTS_ALONE,
+      dependencies: ["the alert alone"],
       workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },
