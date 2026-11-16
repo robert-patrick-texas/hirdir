@@ -2,8 +2,9 @@
 the demand of each region beside the balance of the whole, and the balance kept week
 by week, recorded by hand, corrected, removed, and recorded by the server by itself."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -328,7 +329,9 @@ def test_with_nothing_weighed_every_share_is_blank(make: Maker) -> None:
 
 
 def monday() -> date:
-    today = datetime.now(UTC).date()
+    """Return the Monday that begins this week in the application's time zone, as a
+    record of the balance is dated."""
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     return today - timedelta(days=today.weekday())
 
 
@@ -420,8 +423,13 @@ def test_the_records_are_the_oldest_week_first_and_sorted_by_any_column(
     make: Maker, staff: dict, db
 ) -> None:
     this_week = monday()
+    # Noon of the Wednesday of each earlier week, in the application's time zone: a
+    # moment so many weeks before now may fall into another week late on a Sunday, where
+    # the clocks changed between.
+    zone = ZoneInfo("America/New_York")
     for weeks in (3, 1, 2):
-        balance.record(db, audit.SYSTEM, datetime.now(UTC) - timedelta(weeks=weeks))
+        wednesday = this_week - timedelta(weeks=weeks) + timedelta(days=2)
+        balance.record(db, audit.SYSTEM, datetime.combine(wednesday, time(12), tzinfo=zone))
     db.commit()
     made = make.post("/capacity-records", {})
     listed = make.get("/capacity-records")

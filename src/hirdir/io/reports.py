@@ -451,7 +451,14 @@ def weight_counts(
     db: Session, include_drafts: bool = False, figures: weights.Figures | None = None
 ) -> tuple[int, int]:
     """Return how many items of the whole inventory that carry support weight count at
-    the default of `default_item_weight`, and how many were raised to the minimum."""
+    the default of `default_item_weight`, and how many were raised to the minimum.
+
+    Where neither is set no item can have been either, and the items are not read a
+    second time for it: the capacity report reads them once, as before 0.8.0.
+    """
+    held = weights.in_force(db) if figures is None else figures
+    if held.default("item") is None and held.minimum("item") is None:
+        return 0, 0
     terms = _terms(db, None, False, include_drafts, figures)
     defaulted, raised = _run(db, terms.source(select(terms.defaulted, terms.raised)))[0]
     return int(defaulted or 0), int(raised or 0)
