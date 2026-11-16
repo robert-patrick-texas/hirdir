@@ -22,10 +22,10 @@ and CLI's types are generated from it.
 | Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses, locations, circuits and circuit groups |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
-| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}` and `DELETE /circuit-groups/{hid}/members/{member_hid}` for one that was a mistake, and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
-| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
+| Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
 ### Routes
 
@@ -44,6 +44,7 @@ and CLI's types are generated from it.
 | External systems | `/external-systems`, `POST /external-systems/{hid}/retire`, `/registrations`, `DELETE /registrations/{hid}` |
 | Capacity | `/capacity-lines`, `POST /capacity-lines/{hid}/retire`, `GET /reports/capacity`, `POST /reports/capacity/try`, `GET` and `POST /capacity-records`, `GET`, `PATCH` and `DELETE /capacity-records/{hid}` |
 | Circuits | `/circuits`, `POST /circuits/query`, `POST /circuits/{hid}/retire`; `GET` and `POST /circuits/{hid}/carriers`, `PATCH` and `DELETE /circuits/{hid}/carriers/{link_hid}`; `GET` and `POST /circuits/{hid}/costs`, `PATCH` and `DELETE /circuits/{hid}/costs/{line_hid}`; `GET` and `POST /circuits/{hid}/devices`, `PATCH` and `DELETE /circuits/{hid}/devices/{link_hid}`; `GET` and `POST /circuits/{hid}/contacts`, `PATCH` and `DELETE /circuits/{hid}/contacts/{link_hid}`; `/circuit-groups`, `POST /circuit-groups/query`, `POST /circuit-groups/{hid}/retire`, `GET` and `POST /circuit-groups/{hid}/members`, `DELETE /circuit-groups/{hid}/members/{member_hid}` |
+| References | `GET` and `POST /reference-files`, `POST /reference-files/links`, `GET`, `PATCH` and `DELETE /reference-files/{hid}`, `GET` and `PUT /reference-files/{hid}/content`, `POST /reference-files/{hid}/attachments`, `DELETE /reference-files/{hid}/attachments/{attachment_hid}`; `GET /catalog-entries/{hid}/references`, `GET /regions/{hid}/references`, `GET /sites/{hid}/references`, `GET /locations/{hid}/references`, `GET /circuits/{hid}/references` and `GET /items/{hid}/references` |
 | Labels and lists | `/tags`, `/choices`, `/settings`, `PUT /settings/{key}`, `/lifecycle-rules` |
 | Bulk | `POST /items/bulk-update`, `POST /items/bulk-update/{hid}/apply` |
 | Files | `POST /imports/preview`, `POST /imports/{hid}/apply`, `GET /imports`, `GET /imports/{hid}`, `GET /imports/{hid}/rows`, `POST /exports` |
@@ -58,9 +59,11 @@ and CLI's types are generated from it.
 | Action | View-only | Inventory | Admin |
 |---|:-:|:-:|:-:|
 | Read any inventory record, run reports, export | yes | yes | yes |
+| Download a reference file | yes | yes | yes |
+| Upload, link, change, attach, take off, replace and erase references | | yes | yes |
 | Create, change, retire, import, bulk-update inventory records | | yes | yes |
 | Edit choices, tags | | yes | yes |
-| Edit settings and lifecycle rules, force a lifecycle move | | | yes |
+| Edit settings and lifecycle rules, force a lifecycle move, and so the kinds of file a reference may be | | | yes |
 | List and check the kept answers of the long reports | | | yes |
 | Users, groups, role grants, access codes, service tokens | | | yes |
 | Read audit events | yes | yes | yes |
@@ -90,6 +93,7 @@ out, these decide it:
 | `end_of_life_date`, `end_of_life_within_days` | `date` and `within_days` of `GET /reports/end-of-life` |
 | `circuit_cost_side` | the `cost_side` a new circuit is given where the request, or the row of a file, names none. A circuit that exists keeps its own |
 | `default_item_weight`, `minimum_item_weight`, `default_site_weight`, `minimum_site_weight`, `default_circuit_weight`, `minimum_circuit_weight` | the support weight in force of a major item, a site and a circuit that gives none, and the least it counts at, wherever the weight is used; `POST /reports/capacity/try` tries others |
+| `reference_file_types` | the extensions a file of `POST /reference-files` and `PUT /reference-files/{hid}/content` may have; any other is a `422` that names the setting. A file that is kept keeps its content when the list changes |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 
 The fixed values are these. What was decided:
@@ -101,6 +105,7 @@ The fixed values are these. What was decided:
 | `received_state` | Delivered, the state of an item received on a purchase line | D-145 |
 | `condition_health` | failed and dead say failed, degraded and suspect degraded, good good; any other condition says nothing of health | D-112 |
 | `review_status_of_what_a_file_makes` | unreviewed | P-14 |
+| `refused_file_types` | the extensions of a web page, a script or a program, which no reference may have whatever `reference_file_types` says | P-159 |
 
 And the limits that protect the service: `default_page_size` 100 and `max_page_size`
 1000, the rows of a page of a list, and `max_offset` 10,000,000; `max_filter_length`
@@ -112,7 +117,7 @@ of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (
 `max_minor_item_depth` 3, `max_group_nesting` 8, `max_location_depth` 8 and
 `max_region_depth` 16; `max_request_lines` 1000 and `max_line_quantity` 100,000;
 `sign_in_max_delay_seconds` 300 and `sign_in_window_seconds` 3600;
-`idempotency_key_hours` 24, `max_idempotency_key_length` 200 and
+`max_attachments_per_request` 1000, the records one `POST /reference-files/{hid}/attachments` or one upload puts a reference on; `idempotency_key_hours` 24, `max_idempotency_key_length` 200 and
 `max_kept_answer_bytes` 1,048,576; and `writer_wait_seconds` 5, how long a change waits
 for the one writer before it is answered `503`. Each is listed with the value the code
 uses, read from where it is used.
@@ -1301,6 +1306,77 @@ lists its circuits by name, paged, each with its `circuit`; `POST` adds circuits
 holding what it was. A retired group takes no circuit, and a retired circuit is added
 to none.
 
+## Reference files
+
+A reference is a file that `hirdir` keeps, or a link to one kept elsewhere, with a
+title and a kind, on one record or more: a region, a site, a location, a catalog entry,
+a circuit or an item ([data model](data-model.md#reference_files-and-reference_attachments),
+P-158 to P-162).
+
+**Uploading.** `POST /reference-files` takes the file itself as the body of the
+request, as an import does (D-80), and in the address `title`, `kind`, `file_name`,
+which gives its extension, `notes`, and `attach_to`, the HID of a record it goes on,
+given once for each record and at least once. A body over `max_reference_megabytes`
+is a `413`; an extension that `reference_file_types` does not take, or content that is
+not what the extension says, a `422` with the reason; a record that is not one of the
+six kinds, a `422` naming it; and content that a record has already, under any
+reference, a `409` that names that reference. The answer is `201` with the reference.
+`POST /reference-files/links` makes a link from a JSON body of `title`, `kind`, `url`,
+`notes` and `attach_to`, a list of HIDs.
+
+```json
+{ "hid": "0193a1f4-...", "title": "Building 1, second floor", "kind": "floor_plan",
+  "form": "file", "file_name": "b1-floor-2.pdf", "media_type": "application/pdf",
+  "size_bytes": 4718592, "sha256": "9f86d081...", "url": null, "notes": null,
+  "shown_in_page": false, "content_missing": false,
+  "attachments": [ { "hid": "...", "record_type": "location", "record_hid": "...",
+                     "label": "Americas > Central > Site-2 > Building 1 > Floor 2" } ],
+  "attachment_count": 1, "row_version": 1,
+  "created_at": "2026-11-16T15:04:05Z", "created_by": "...", "updated_at": "...", "updated_by": "..." }
+```
+
+`shown_in_page` is true for a JPEG, PNG, GIF or WebP picture, which the web UI shows;
+every other file is downloaded. `content_missing` is true only after a restore that was
+told to go on without some content (P-161).
+
+**Reading and downloading.** `GET /reference-files/{hid}` answers one, with the
+records it is on. `GET /reference-files/{hid}/content` answers the content, byte for
+byte, as `Content-Type` its `media_type`, with `Content-Disposition: attachment` and
+its file name, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox;
+default-src 'none'` and `Cache-Control: no-store`, uncompressed, and is an audit event,
+`download`. A link has no content, and asking for it is a `422`; content missing
+after a restore is a `404` that says so. `GET /reference-files` lists every reference,
+paged with `limit` and `offset`, sorted by `sort` over `title`, `kind`, `form`,
+`file_name`, `size_bytes`, `attachment_count`, `created_at` and `updated_at`, title
+first unless asked, and narrowed by `kind`, by `form`, `file` or `link`, and by
+`title`, which the title contains without regard to case.
+
+**What a record has.** `GET /locations/{hid}/references`, and the same under
+`/regions`, `/sites`, `/catalog-entries`, `/circuits` and `/items`, lists what the
+record has, paged with `limit` and `offset`: its own first, then each level it stands
+under, nearest first, as the data model tables, and within a level by title. Each entry
+is the reference, as above, with `attachment_hid`, the attachment it is listed by,
+`source`, `own`, `catalog`, `location`, `site` or `region`, `source_hid` and
+`source_label`, the path or name of the record it is attached to. A reference attached
+at two levels is listed at the nearer.
+
+**Changing.** `PATCH /reference-files/{hid}` changes `title`, `kind`, `notes`, and the
+`url` of a link, with `row_version`. `PUT /reference-files/{hid}/content` takes a new
+edition as its body, with `file_name` and `row_version` in the address, and is checked
+as an upload is; the reference keeps its HID, title, kind and attachments, and the
+content it had is erased unless another reference holds it too. `POST
+/reference-files/{hid}/attachments` takes `records`, a list of up to 1,000 HIDs, and
+puts the reference on each; a record that has it already is passed over, and the
+answer is the reference. `DELETE /reference-files/{hid}/attachments/{attachment_hid}`
+takes it off one record and answers `{ "erased": false }`, or `true` when that was
+the last record and the reference was erased with it. `DELETE /reference-files/{hid}`
+erases it from every record at once. Each of these is an audit event of the reference,
+`create`, `update`, `replace_content`, `attach`, `detach` or `erase`, and an erasure's
+event holds the title, kind, file name, size, checksum and the records it was on.
+
+The body of any other request stays at the limit of an import, `max_megabytes`: the
+application refuses a larger one itself, whatever nginx lets through.
+
 ## CLI
 
 `hirdir` is one command with two halves.
@@ -1386,7 +1462,29 @@ hirdir circuit-groups show 'Internet access'     # its circuits, and what they c
 hirdir circuit-groups add 'Internet access' EC-0042 EC-0043
 hirdir vendors add-contact 'Example Telecom' jordan.reyes@example.com --role account_manager
 hirdir report circuit-costs --year 2027 --by site
+hirdir references add b1-floor-2.pdf --to 'location:Americas > Central > Site-2 > Building 1 > Floor 2' \
+    --kind floor_plan --title 'Building 1, second floor'
+hirdir references add rack-*.jpg --to 'location:Americas > Central > Site-2 > Building 1 > Room 102' \
+    --kind photograph                            # several at once, each titled by its file name
+hirdir references add c9300-admin.pdf --to 'model:Cisco C9300-24P' --to 'model:Cisco C9300-48P' \
+    --kind administration_guide
+hirdir references link https://docs.example.com/c9300 --to 'model:Cisco C9300-48P' \
+    --kind data_sheet --title 'Data sheet'
+hirdir references list --of 'location:Americas > Central > Site-2 > Building 1 > Room 102'
+hirdir references list --of item:FCW0000X001    # its own, its model's, and those of where it is
+hirdir references get <hid> --output b1-floor-2.pdf
+hirdir references replace <hid> c9300-admin-2027.pdf  # a new edition, on every model at once
+hirdir references attach <hid> --to 'model:Cisco C9300-24UX'
+hirdir references detach <hid> --from 'model:Cisco C9300-24P'
+hirdir references remove <hid>                   # erases it from every record, after asking
 ```
+
+A record is named for `--to`, `--from` and `--of` as its kind and the text the other
+commands take for it, `location:`, `site:` and `region:` with a path, `model:` with the
+vendor and the PID, `item:` with a serial number, an asset tag or a name, and
+`circuit:` with an enterprise circuit ID or a name; or by its HID alone. `add` of
+several files uploads them one after another and says what became of each; one that is
+refused leaves the others as they went.
 
 | Subject | Rule |
 |---|---|
@@ -1466,13 +1564,13 @@ fresh installation has it, with no account and an empty audit trail.
 |---|---|
 | Sign in | Username, access code, a Sign in button |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
-| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model |
-| Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew |
+| Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model, and Files and links: its own references, its model's and those of where it is |
+| Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew; and Files and links, the documents of the model |
 | Vendors | The list of vendors. A vendor has a page of its own, the portfolio: the totals, the four kinds, the models with their dates and their cover, the contracts and the capacity lines of the vendor, and its items as a grid that is exported like any other. A carrier's page also lists its account team and its support desk, named and removed there, and its circuits |
 | Groups | Stacks, clusters and controller domains, with members and roles, and the circuits a group is connected to |
-| Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
+| Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; Files and links, its own references; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
 | Addresses | Every address, with the item or group that has it; the networks |
-| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it. A place shows its own support weight, a site the default where it has none and the minimum where it was raised, and a location's page lists the circuits that have a side there |
+| Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it. Files and links lists a place's own references and then those of the places above it, each under the place it is on. A place shows its own support weight, a site the default where it has none and the minimum where it was raised, and a location's page lists the circuits that have a side there |
 | Contacts, Owners | Contacts: the list, and a contact with where it is assigned. Owners: the list, and an owner with its people, the primary first |
 | Operators | The labels, each with its colour, the person behind it and how much it is on. Hand a label over to another person, leave it open, release it and bring it back. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
 | Contracts | The support agreements, each with the contracts grouped into it, and the contracts that stand by themselves. An agreement has a page of its own: its fields, its contracts with what each has from it and what each overrides, shown as an inherited value is shown everywhere, and the terms it had before, its purchase history, as a contract has its own. An override says what the agreement gives in its place, as the server answers it, and where the two are the same it says so: it stays as it is when the agreement's changes. A contract is put into an agreement, and taken out of one, on its own page. The list of contracts with how many items each covers. A contract has a page of its own: its fields and tags, and the items it covers, each with its dates, to add to several at a time and to end. **Renew** asks for the new number and the new period, says how many items follow, and changes the one record; a renewal that is still to begin is shown as the next term, and can be withdrawn; the terms it had before are listed beneath, each with the dates it had in force, a date it had from its agreement shown as inherited. Renewing an agreement is the same, and lists every contract that shares its period, each with a choice: keep its number, the default, take a new number that begins with the new term, or end with this term, and with the status it is to have, which the operator confirms there for the members that move forward: one, some or all of them are selected and given a choice and a status at once, and nothing else in the renewal changes a member's status. The answer says what was done with each, which members are to review, and how many items not to be renewed were left behind. An agreement's page lists its contracts, to select one, some or all and change them at once: their status, taken out of the agreement, or retired; and its members to review. A number that waits on the agreement's next term is shown as the contract's next term, with the agreement's dates. A contract may be marked not to be renewed, the team's note, which changes nothing by itself and is shown as such. The earlier terms of a contract are the parts of its history, each with its days and what began it: a renewal, joining an agreement or leaving one. **Renewals**, under Contracts, is the worklist: the counts of each list first, by vendor and agreement, each count leading to its rows when it is opened, and the rows of a list with their end, how long a renewal has been pending, marked when overdue, and how many items each covers. A change of a contract or an agreement that is refused as stale says, where it has a next term, that the term may have begun since the page was read. A contract that has lapsed is marked, and so is one whose renewal is pending, with the account manager to go through. A coverage that was a mistake is removed, and one that was ended because its item left is marked until the vendor has been told. The gaps and the expiries are the coverage report |
@@ -1482,7 +1580,8 @@ fresh installation has it, with no account and an empty audit trail.
 | Capacity | Demand beside supply by category, the balance and the coverage, with and without drafts, and the share of the supply that is the team's own positions; the lines, editable. The lines that multiply, each with its gain and the staff lines it works on; the demand of each region beside the balance, with no supply divided; and the trend, a graph of one point a week, demand and supply as two lines with the balance between them shaded and a switch that stacks the supply by category and splits the demand into the infrastructure and other work, a corrected week marked; a week recorded now, corrected with a note, and removed. The support weight is shown in its parts, the items, the places and the circuits, with how many counted at a default and were raised to a minimum. **Try** sets other defaults and minimums, another weight per engineer and another stack discount, adds, changes and leaves out staff lines, and shows the balance tried beside the one in force, saving nothing; an Admin is offered to save the settings tried |
 | Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements. Circuit costs: the year and the grouping to choose, by carrier unless another is chosen, each row with its circuits, the year's cost, and the monthly and annual figures, leading to its circuits |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
-| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags. The Settings page has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
+| Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, for as many days as backups are kept. A file that is refused says why, and the others go on |
+| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. The Settings page has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | Version, the versions table, release notes |
 
 ### The grid

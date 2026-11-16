@@ -245,6 +245,24 @@ Optional reference material, kept with the record it is about.
 - The files are in the backup and come back with a restore, and an upgrade leaves
   them as they were.
 
+When 0.9.0 was started the owner answered what the list above left open (P-158 to
+P-163):
+
+- a region, a site, a location, a catalog entry, a circuit and a single device take
+  files, as the four that take links do and two more: a carrier's letter of
+  authorization for a cross-connect, the photograph of a device's labels;
+- a guide that covers a family of models is uploaded once and attached to each of
+  them, and a new edition replaces it on all of them at once;
+- a place lists its own files and then those of the places above it, each marked with
+  the place it is on, so the floor plan of a floor is one step from each of its racks;
+- a file is of up to 100 MB, a limit a site may change in one place;
+- the kinds of file are a list an Admin may change, from pictures, PDF, the files of
+  Office and Visio, drawings, plain text and ZIP; a picture is shown in the page and
+  every other file is downloaded; a web page, an SVG drawing, a script or a program is
+  refused;
+- removing a file erases its content at once, and the backups on the host keep a copy
+  until they are rotated out, so that each backup restores whole.
+
 ## Acceptance scenarios
 
 Each scenario is one automated test in `tests/acceptance/`, named by its number, run by

@@ -433,6 +433,36 @@ records; its owner is an owner; its devices are items and device groups.
 - **R15.11** Not in scope: cabling inside a building, the interfaces of a device, and
   the accounting of what was paid.
 
+### R16 Reference files
+
+Reference material kept with the record it is about: photographs, maps, sketches and
+floor plans of a place, and the documents of a vendor for a model, served by `hirdir`
+itself where a closed network has no way out to the internet.
+
+- **R16.1** A region, a site, a location, a catalog entry, a circuit and an item MAY
+  have references: each a file that is uploaded and kept by `hirdir`, or a link to one
+  kept elsewhere, with a title and a kind from a list that can be edited (P-158).
+- **R16.2** A reference MAY be on more than one record, and is uploaded once: an
+  administration guide that covers six models is attached to all six, and a new
+  edition of it replaces it on all six at once (P-158, P-160).
+- **R16.3** A place MUST list its own references and then those of the places above
+  it, and an item its own, those of its model and those of the places it is at, each
+  with the record it comes from; nothing is copied down (P-158).
+- **R16.4** A file is at most 100 MB unless a site sets another limit, and MUST be of
+  a kind that an Admin allows; a web page, an SVG drawing, a script or a program is
+  never taken, and a file whose content is not what its name says is refused
+  (P-159).
+- **R16.5** No file is served in a way that lets it run in the browser as part of the
+  application: a picture is shown in the page, and every other file is downloaded
+  (P-159).
+- **R16.6** Any role MAY download; uploading, linking, changing, attaching, taking
+  off and erasing need the Inventory role; and each of these, downloads among them, is
+  an audit event (P-162).
+- **R16.7** Removing a file erases its content at once; the backups on the host keep
+  their copy until they are rotated out, so that each backup restores whole (P-160).
+- **R16.8** The files MUST be in the backup, come back byte for byte with a restore on
+  the same host or a clean one, and be left as they were by an upgrade (P-161).
+
 ## Qualities
 
 | Quality | Target |

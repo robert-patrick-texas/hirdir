@@ -13,7 +13,7 @@ to every interface, so it is made here first.
 | Identity | Every table has `hid`, a UUID version 7 in lower-case canonical text, assigned by the server. It is the primary key and the only thing other records reference. |
 | Bookkeeping | Every editable table has `created_at`, `updated_at` (UTC), `created_by`, `updated_by` (user HID) and `row_version` (integer, starts at 1, plus one per change). |
 | Stale edits | An update names the `row_version` it was made against. A mismatch is refused with `409`. The database makes the same check as it writes, so of two changes made against one version at the same moment only the first is applied. |
-| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines, catalog entries, circuits and circuit groups are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a contact of a contract, a coverage, a registration or a record of the capacity balance that was a mistake, a contact of a vendor or of a circuit, a carrier, a cost line or a device of a circuit, and a member of a circuit group, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. |
+| Removal | Items, device groups, regions, sites, locations, contacts, operators, owners, agreements, contracts, external systems, capacity lines, catalog entries, circuits and circuit groups are never deleted. They carry `record_status`. A membership of a group and a coverage under a contract are ended with a date. A registration is given the status `removed`, and a purchase request the status `cancelled`. An address, a contact assignment, a member of an owner, a contact of a contract, a coverage, a registration or a record of the capacity balance that was a mistake, a contact of a vendor or of a circuit, a carrier, a cost line or a device of a circuit, and a member of a circuit group, an attachment of a reference, and a network or a tag that nothing uses, is removed outright, and the audit event of the removal holds what it was. A reference is erased, with its content, when it is taken off the last record it is on or erased from all of them at once (P-160). |
 | `record_status` | `draft`, `active` or `retired`. Draft and retired records are left out of counts and default views. |
 | Dates and times | Dates are `YYYY-MM-DD`. Timestamps are stored, and travel through the API and files, as ISO 8601 in UTC. One that comes in naming no zone, in a request, a file or a filter, is in the application's time zone. A person is shown the application's time with the name of the zone, `2026-01-31 14:05:09 EST`: the `time_zone` setting, the same for everybody whatever zone they are in. |
 | Money | Decimal with two places, one currency for the installation, named in settings. |
@@ -1240,6 +1240,70 @@ listed in its groups, marked so, and is added to none; a retired group takes no 
 circuit. A group answers how many circuits it has, how many of them are in service
 today, and their `monthly_cost` and `annual_cost`, each circuit once.
 
+### `reference_files` and `reference_attachments`
+
+Reference material kept with the record it is about: photographs, maps, sketches and
+floor plans of a place, the documents of a vendor for a model, a carrier's letter of
+authorization for a circuit, a photograph of a device's labels (D-157, P-158 to P-162).
+A reference is a file that is uploaded and kept by `hirdir`, or a link to one that is
+kept elsewhere, and is attached to one record or more.
+
+| Field | Type | Notes |
+|---|---|---|
+| `reference_files.title` | text | required, at most 200 characters, with neither `<` nor `>` |
+| `reference_files.kind` | choice | required, a value of the `reference_kind` list |
+| `reference_files.notes` | text | |
+| `reference_files.url` | text | a link's address, as a link of D-189 has it: `https://` or `http://`, no space, at most 2,000 characters. Blank on a file |
+| `reference_files.file_name` | text | the name a file was uploaded with, at most 255 characters, without a directory, with an extension that `reference_file_types` takes. Blank on a link |
+| `reference_files.media_type` | text | worked out from the extension when the file is uploaded: `application/pdf`, `image/jpeg`, and `application/octet-stream` for an extension an Admin added |
+| `reference_files.size_bytes` | integer | the size of the content, at most `max_reference_megabytes` |
+| `reference_files.sha256` | text | the SHA-256 checksum of the content, in lower-case hexadecimal. Two references may hold the same content |
+| `reference_attachments.reference_file_hid` | reference | required |
+| `reference_attachments.catalog_entry_hid`, `region_hid`, `site_hid`, `location_hid`, `circuit_hid` or `item_hid` | reference | exactly one, and not changed afterwards. A record has a reference once |
+
+A reference is a file or a link, `form` `file` or `link`, and never both: a file has
+`file_name`, `media_type`, `size_bytes` and `sha256`, and a link has `url`. A file's
+content is kept by `hirdir`, once whatever the number of references that hold it,
+beside the database and never in it (see [architecture.md](architecture.md#database)).
+It is never changed in place: a new edition replaces it, and the reference keeps its
+HID, title, kind and attachments.
+
+**What a record lists.** A record lists the references attached to it and those it has
+from the records it stands under, worked out when it is read and copied nowhere:
+
+| Record | Lists, nearest first |
+|---|---|
+| Location | its own; the parent locations, outward; its site; each region outward |
+| Site | its own; each region outward |
+| Region | its own; each region above it |
+| Item | its own; its catalog entry's, `catalog`; the location it is at in force and the places above it, as a location lists them |
+| Catalog entry, circuit | its own |
+
+Each reference is listed once, at the nearest level that has it, with `source`, one of
+`own`, `catalog`, `location`, `site` and `region`, `source_hid`, the record it is
+attached to, and `source_label`, that record's path or name. A retired record keeps its
+references and may be given more.
+
+**Removal.** An attachment is removed outright, with an audit event that holds what it
+was. A reference taken off the last record it is on is erased, and one may be erased
+from every record at once: the record goes, the content goes with it unless another
+reference holds the same, and the audit event keeps the title, kind, file name, size,
+checksum and the records it was on. This is the one way a record of the inventory is
+deleted outside `hirdir admin reset`, as the owner asked (P-160): a photograph that shows
+what it should not is gone at once. The backups on the host keep a copy until they are
+rotated out.
+
+**Kinds and limits.** A file's extension is one that the setting `reference_file_types`
+takes, and never one of `refused_file_types`, a web page, a script or a program. Where
+`hirdir` knows the extension the content is what it says: a PDF begins `%PDF-`, a JPEG,
+PNG, GIF, WebP, TIFF or HEIC picture as its format does, a file of Office or Visio of
+today and a ZIP as a ZIP archive, a file of the Office of before 2007, `doc`, `xls`,
+`ppt` and `vsd`, as such a file does, a DWG drawing `AC10`, and a text file, `txt`,
+`csv`, `log` and `dxf`, holds no zero byte. Whatever its name, a file whose content
+begins as a program does, `MZ` or the mark of an ELF file, or as a web page does, an
+HTML document or an SVG drawing, is refused. A file is at most `max_reference_megabytes`,
+100 unless the configuration file says otherwise, and holds at least one byte.
+
 ### Links
 
 A region, a site, a location and a catalog entry have `links`: addresses to reach
@@ -1265,9 +1329,12 @@ record cannot be removed.
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
 lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
 `contact_role`, `location_kind`, `replacement_reason`, `capacity_category`,
-`circuit_type` and `carrier_role`. `contact_role` and `location_kind` are loaded with
+`circuit_type`, `carrier_role` and `reference_kind`. `contact_role` and `location_kind` are loaded with
 their defaults by release 0.5.0, the first to use them, `capacity_category` by 0.6.0,
-and `circuit_type` and `carrier_role` by 0.8.0. A value is lower-case
+`circuit_type` and `carrier_role` by 0.8.0, and `reference_kind` by 0.9.0, with
+`photograph`, `map`, `sketch`, `floor_plan`, `diagram`, `administration_guide`,
+`installation_guide`, `data_sheet`, `release_notes`, `letter_of_authorization`,
+`test_results` and `other`. A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
@@ -1301,6 +1368,7 @@ and is refused, not rounded, when it has more.
 | `default_circuit_weight` | blank | the support weight of a circuit that gives none of its own. From 0 to 1,000,000 |
 | `minimum_circuit_weight` | blank | a circuit's weight in force below it is raised to it. From 0 to 1,000,000 |
 | `circuit_cost_side` | `a` | the side, `a` or `z`, whose site a new circuit's cost and support weight count at. A change of it changes no circuit that exists |
+| `reference_file_types` | jpg, jpeg, png, gif, webp, heic, heif, tif, tiff, pdf, doc, docx, xls, xlsx, ppt, pptx, vsd, vsdx, dwg, dxf, txt, csv, log, zip | the extensions of the files a reference may be. An Admin may add another of letters and digits, up to ten, kept as `application/octet-stream`, and never one of `refused_file_types`. A change of it changes no file that is kept |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
@@ -1694,7 +1762,8 @@ Serial number, MAC address, asset tag, name, hostname, catalog entry, parent ite
 lifecycle state, disposition, owner, location, address, the item and the group of an
 address and of a membership, contract number, enterprise circuit ID, the numbers that
 carriers give circuits, the locations of both sides of a circuit, the circuit and the
-device of a connection, the members of a circuit group, each end-of-life date, `updated_at`, and
+device of a connection, the members of a circuit group, the checksum of a reference's
+content, each record of an attachment, each end-of-life date, `updated_at`, and
 the tag links by record. Region and location
 ancestry is answered with recursive queries; a stored closure is added only if a
 measurement asks for it.

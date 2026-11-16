@@ -8,8 +8,9 @@ How `hirdir` is built, packaged and run. The records are in
 ```text
 browser ──HTTPS──┐
 hirdir CLI ──────┤   nginx (Ubuntu's)            hirdir.service
-integrations ────┘   terminates TLS,      ──▶    one Python process       ──▶  SQLite file
-                     strips the prefix           FastAPI: API + web UI         /var/lib/hirdir
+integrations ────┘   terminates TLS,      ──▶    one Python process       ──▶  SQLite file and
+                     strips the prefix           FastAPI: API + web UI         reference files
+                                                                               /var/lib/hirdir
 ```
 
 One process serves both the API and the built web UI. nginx does TLS and nothing else
@@ -47,7 +48,7 @@ src/hirdir/
   domain/            the rules: inheritance, lifecycle, matching, counting, geography
   api/               routers under /api/v1, one module per record type
   auth/              providers (local now; RADIUS and SAML later), tokens, roles
-  io/                filter grammar, CSV and JSON import and export
+  io/                filter grammar, CSV and JSON import and export, the store of reference files
   cli/               the hirdir command: client commands and `hirdir admin`
   static/            the built web UI (generated, not committed)
 web/                 TypeScript source of the web UI
@@ -73,7 +74,7 @@ imports on one set of rules.
 ```nginx
 location ^~ /hirdir/ {
     proxy_pass http://hirdir/;                      # the trailing slash strips /hirdir
-    client_max_body_size 20m;                       # an import is a file of up to 20 MB
+    client_max_body_size 100m;                      # a reference file is of up to 100 MB
     proxy_set_header X-Forwarded-Prefix /hirdir;
     proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -161,10 +162,23 @@ about a tenth.
 ### Browser hardening
 
 The token is readable by any script on the page, so no script from anywhere else is
-allowed to run: `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`,
-with the narrowest style allowance the grid needs. All front-end code and fonts ship in
-the package. Requests are same-origin and CORS is off. Text from the inventory is
-rendered as text, never as HTML.
+allowed to run: `Content-Security-Policy: default-src 'self'; img-src 'self' blob:;
+frame-ancestors 'none'`, with the narrowest style allowance the grid needs. All
+front-end code and fonts ship in the package. Requests are same-origin and CORS is off.
+Text from the inventory is rendered as text, never as HTML.
+
+**Reference files** never run as part of the page (P-159). No cookie is ever set, so a
+plain link cannot carry the session to a download: the page fetches the content with
+its token, as it fetches everything, and makes of it a `blob:` address of its own. A
+JPEG, PNG, GIF or WebP picture is shown from that address in an `<img>`, which runs no
+script whatever the picture holds, and is all that `img-src 'self' blob:` allows; every
+other file is handed to the browser as a download with its name, typed
+`application/octet-stream`, and is never shown in a frame, a tab or an object of the
+page. The answer of the content route itself carries `Content-Disposition:
+attachment`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox;
+default-src 'none'`, so that a browser sent to it by other means downloads it too and
+runs nothing of it. A web page, an SVG drawing, a script or a program is refused at
+upload, by its extension and by its first bytes.
 
 ## Database
 
@@ -271,14 +285,43 @@ rendered as text, never as HTML.
   miss one also runs at start and looks for what is missing: the server records the
   balance when it starts in a week that has no record. The tests run a job for a
   moment they choose, through `run_due`, and do not wait for a Monday.
+- **Reference files.** The content of a file is kept beside the database and never in
+  it, in `files/` under the state directory, `/var/lib/hirdir/files/`, in a file named
+  for its SHA-256 checksum under a directory of its first two characters:
+  `files/9f/9f86d081...`. The same content is kept once, whatever the number of
+  references that hold it. A preview of an import works on a copy of the database and
+  a backup copies it whole, neither of which should be made to copy gigabytes of
+  photographs. An upload is written as it arrives into `files/.incoming/`, counted and
+  checksummed on the way, so that a file of 100 MB is never held in memory, and is
+  refused as soon as it is over the limit; it is then checked, moved into place and
+  its record stored. Content is written before the record that names it and removed
+  only after the last such record is gone, under one lock of the server process, so
+  that what the database names is there; there is one process for one database. A
+  part left in `files/.incoming/` by an upload that was cut short is removed when the
+  server starts, with any content that no record names and that is more than a day
+  old. `src/hirdir/io/store.py` keeps them (P-161).
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
-  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. A backup is named
+  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. It then puts into
+  `backups/files/` the content of every reference that its copy names and that is not
+  there yet: a hard link where the two directories are on one file system, which takes
+  no room, and a copy where they are not. Content is never changed, so a link is as
+  good as a copy, and each file is held once among all the backups however many name
+  it. The rotation then removes from `backups/files/` what no backup that is kept
+  names, so that a file erased in the application leaves the host when the last
+  backup that held it is rotated out (P-160). A backup is named
   for when it was made, in the application's time zone with its offset from UTC:
   `hirdir-20261111T210000-0500.db`. Which are the last 14 is told from the moment in
   each name, so a change of time zone, or the hour that comes twice in the autumn, puts
   none out of order. `hirdir admin restore
-  FILE` puts one back. Copying backups off the host is the host's job.
-- **Reset.** `hirdir admin reset` is the one place where records are deleted. It is a
+  FILE` puts one back: it takes the content of the files from the `files/` beside the
+  backup, or from `--files DIR`, and checks, before it changes anything, that it has
+  the content of every reference the backup names, each with its checksum. The
+  content that the restored database does not name is set aside in
+  `files.before-restore/`, as the database is in `hirdir.db.before-restore`. Copying
+  backups off the host, the `files/` beside them with them, is the host's job.
+- **Reset.** `hirdir admin reset` is the one place where records are deleted, beside
+  the erasure of a reference, which the owner asked for (P-160); it erases every
+  reference and its content after the backup it takes. It is a
   command on the server, with no route behind it, and runs only while the service is
   stopped, after a backup. Every table is named in `domain/reset.py` as one that a
   reset clears or one that it keeps, and a test fails when a new table is in neither.
@@ -325,7 +368,7 @@ changes no record. `src/hirdir/io/kept.py` keeps them.
 | `/usr/lib/systemd/system/hirdir.service` | runs `hirdir admin serve` as user `hirdir`, listening on `127.0.0.1:8715` |
 | `/usr/lib/systemd/system/hirdir-backup.{service,timer}` | the daily backup |
 | `/usr/lib/systemd/system/hirdir-upgrade.{service,timer}` | the nightly upgrade from GitHub. Shipped, and not enabled: a site turns it on |
-| `/var/lib/hirdir/` | database, signing key, backups (created at install, never shipped) |
+| `/var/lib/hirdir/` | database, signing key, the content of reference files in `files/`, backups with the files they name in `backups/files/` (created at install, never shipped) |
 | `/usr/share/doc/hirdir/` | this documentation as HTML, and the release notes |
 | `/usr/share/doc/hirdir/examples/` | the CSV and JSON files of `examples/`, to try an import with and to start a file from |
 
@@ -385,15 +428,18 @@ file names. With nothing newer published it changes nothing. Installing the same
 the same steps and changes nothing in the database.
 
 **The nginx snippet** holds the `location` block shown under "URL prefix" and one line
-more, `client_max_body_size 20m;`. An import sends its file as the body of a request
-and `hirdir` takes a file of up to 20 MB, where nginx left to itself refuses a body of
-more than 1 MB. nginx is given the limit of the application and no more. A body over
-20 MB is therefore refused by nginx, with a `413` and the page of nginx, and never
-reaches `hirdir`, whose own `413` is a problem document. A higher limit in nginx would
-let the application answer, but it answers as soon as it has read 20 MB and closes the
-connection with the rest unread, which nginx, still sending, can turn into a `502`.
-A site that wants larger files raises both limits to the same figure: `max_megabytes`
-under `[files]` in the configuration file, and this line of the snippet.
+more, `client_max_body_size 100m;`. An import sends its file as the body of a request
+and `hirdir` takes a file of up to 20 MB, and a reference file of up to 100 MB, where
+nginx left to itself refuses a body of more than 1 MB. nginx is given the larger of the
+application's two limits and no more: `hirdir-setup --renew` writes the line from
+`max_megabytes` and `max_reference_megabytes` under `[files]` in the configuration
+file, so a site changes a limit in that file alone and runs it (P-162). A body over
+the larger limit is refused by nginx, with a `413` and the page of nginx, and never
+reaches `hirdir`. A body under it and over the limit of its route, an import of 30 MB
+or a change of an item of 30 MB, is refused by `hirdir` itself with a `413` problem
+document. The application reads the rest of such a body and throws it away before it
+answers: an answer sent while nginx is still sending can be turned by nginx into a
+`502`.
 
 The snippet is not a conffile, because `hirdir-setup --prefix` writes the prefix into
 it. dpkg asks about a conffile that was changed on the host whenever a new version
@@ -406,7 +452,7 @@ are done, so that an upgrade that stops there has changed nothing of nginx's. Th
 result is tested with `nginx -t`: when nginx objects, the file is put back as it was.
 When it changed at an upgrade, nginx is reloaded and the upgrade says so. A snippet
 that differs from every snippet the package has shipped in more than its three prefix
-lines was edited by hand. It is left alone, and the message says where the shipped
+lines and its line of the limit was edited by hand. It is left alone, and the message says where the shipped
 one is. A purge removes the snippet with the rest.
 
 A failed migration stops the upgrade with the backup's path in the message, and leaves
@@ -421,7 +467,8 @@ newer one has migrated. The steps for an operator are under "Upgrade" in
 **`hirdir-setup`** reads `nginx -T`, lists the sites that already terminate TLS, and
 adds `include snippets/hirdir.conf;` to the one chosen, after showing the change.
 `--prefix /inventory` rewrites the snippet's three prefix lines. `--renew` writes the
-snippet again as this version ships it, under the prefix it has. `--self-signed`
+snippet again as this version ships it, under the prefix it has, with the limit of the
+configuration file. `--self-signed`
 creates a site with a throwaway certificate, for test containers only.
 
 A container image is LATER. It runs the same package contents with the database on a
@@ -1704,7 +1751,8 @@ sign_in_failures_before_delay = 5
 keep = 14
 
 [files]
-max_megabytes = 20                   # the largest file an import takes; nginx must allow as much
+max_megabytes = 20                   # the largest file an import takes, and any other body of a request
+max_reference_megabytes = 100        # the largest reference file; hirdir-setup --renew gives nginx the larger of the two
 
 [upgrades]
 proxy = ""                           # the proxy through which hirdir-setup reaches GitHub, if any
