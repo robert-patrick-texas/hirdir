@@ -966,7 +966,7 @@ differing, are tried, and all of it is taken out again.
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
-`addresses` was for 0.4.0, `owner_members` for 0.5.0, `capacity_lines` for 0.6.0 and
+`addresses` was for 0.4.0, `owner_members` for 0.5.0, `capacity_lines` for 0.6.0,
 `capacity_records` for 0.7.0 and `circuit_group_members` is for 0.8.0, so that
 everything else the migration does is done
 before it fails: migration `0007`
