@@ -1024,6 +1024,106 @@ a contract, no flag not to renew, no line that is not tracked or that multiplies
 record of the balance and no link, so whatever was entered of those with 0.7.0 is lost
 with the rest that was entered since the upgrade.
 
+### From 0.7.0 to 0.8.0
+
+The schema goes from revision `0009` to `0010`. Eight tables are added, for the
+circuits and what is known of them:
+
+- `circuits`, the telecommunication circuits, each with its two sides, its primary
+  carrier and the number that carrier gives it;
+- `circuit_carriers`, the carriers of a circuit beside its primary one, each with its
+  part and its own number;
+- `circuit_costs`, the lines of what a circuit costs a month, a credit among them;
+- `circuit_devices`, the items and device groups that a circuit connects, each on a
+  side;
+- `vendor_contacts`, the account team and the support desk that a vendor names once,
+  for every circuit of that carrier;
+- `circuit_contacts`, the contacts that a circuit names of its own, in place of its
+  carrier's or of what the location of a side gives;
+- `circuit_groups` and `circuit_group_members`, the groups that circuits are looked
+  at and costed in.
+
+`regions`, `sites` and `locations` each gain `support_weight`, blank. To add it,
+SQLite makes each of the three tables anew and copies every row across, with its
+indexes, inside the one transaction that the whole upgrade runs in: every place keeps
+its addresses, its shipping instructions, its operator, its links and the contacts
+assigned there. Two lists are loaded with their defaults: `circuit_type`, seven types
+from `internet` to `other`, and `carrier_role`, four parts from `local_exchange` to
+`other`. 0.7.0 has neither list, and a value that a site has put into one by other
+means is left as it is.
+
+**Nothing that is held changes.** Every record is as it was, field for field and at
+the `row_version` it had, and every item has its history. No place is given a weight,
+no setting is set, there is no circuit and no contact of a vendor until somebody enters
+one, and the upgrade writes no audit event.
+
+**What the server does by itself.** Each day just after midnight, and when it starts,
+the service works out the long reports and keeps them, for the view each page opens
+with: the coverage report, the renewal worklist and the summary of the renewal alert, as
+0.7.0 did, and now the capacity report as well. It writes nothing. A report so kept is
+given to every person alike while nothing has changed that it is worked out of; any
+change leaves it to be worked out again when it is next asked for. An Admin can see
+what is kept, `GET /api/v1/kept-answers`, and have each kept answer worked out anew and
+compared, `POST /api/v1/kept-answers/check`, which should find none that differs. The
+record of the capacity balance of each week is made as it was.
+
+**Settings.** Seven settings of the inventory are new. Six are the weights, each blank
+until an Admin sets one, and so changing nothing until then: `default_item_weight` and
+`minimum_item_weight`, for the major items, `default_site_weight` and
+`minimum_site_weight`, and `default_circuit_weight` and `minimum_circuit_weight`. A
+default is had by what has no weight of its own, and a minimum raises a weight below
+it. `GET /api/v1/settings` lists each with a `default` of null. The seventh,
+`circuit_cost_side`, is `a`: a new circuit counts its cost and its support weight at
+the site of its A side unless an Admin makes it `z`, and a change of it changes no
+circuit that there is. 0.8.0 adds no setting to `/etc/hirdir/config.toml`, so the
+upgrade leaves the file as it is, edited or not, and says nothing of it, and
+`/etc/nginx/snippets/hirdir.conf` is the one 0.7.0 wrote, so nginx is not reloaded.
+
+Some of what is held is read differently from now on, for a script that reads it:
+
+- The capacity report gives its `support_weight` in its parts, `items_weight`,
+  `places_weight` and `circuits_weight`, with how many items, sites and circuits
+  counted at a default, `defaulted`, and how many were raised to a minimum, `raised`.
+  Until a place or a circuit is given a weight, or an Admin sets a default, the whole
+  is the items', as it was, and the other counts are 0. A record of the capacity
+  balance made before 0.8.0 has no parts, and gives them as null.
+- The capacity report is kept, as above, and `POST /api/v1/reports/capacity/try`
+  answers it beside what other weights and staff lines would make of it, saving
+  nothing.
+- A region, a site and a location have `support_weight`, and a site its weight in
+  force, `effective.support_weight`; the weight in force of an item says
+  `raised_from`, which is null until a minimum raises it.
+- The record of an item and of a device group lists the circuits it is connected to,
+  `circuits`, and that of a vendor its contacts, `contacts`: both empty until one is
+  entered.
+- The files of regions, sites and locations have a `support_weight` column, which
+  0.7.0 rejected as unknown, and there are seven kinds of file more, of the contacts
+  of vendors, circuit groups, circuits, their carriers, their cost lines, their
+  contacts and their devices.
+- `/api/v1/circuits`, `/api/v1/circuit-groups`, `/api/v1/vendors/<HID>/contacts`,
+  `GET /api/v1/reports/circuit-costs` and `/api/v1/kept-answers` are new, and so are
+  `hirdir circuits`, `hirdir circuit-groups`, `hirdir report circuit-costs` and
+  `hirdir report capacity --try`.
+
+The package now carries thirty-three example files, where it carried twenty-six: the
+contacts of vendors, and six of circuits. See
+[Try it with the examples](#try-it-with-the-examples).
+
+Going back to 0.7.0 is as under
+[Going back to the release before](#going-back-to-the-release-before), with the backup
+of this upgrade, which is at revision `0009`:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.7.0_amd64.deb
+sudo hirdir admin restore /var/lib/hirdir/backups/hirdir-<time of the upgrade>.db
+sudo dpkg --configure hirdir
+```
+
+The first command stops at the database, as it is meant to. 0.7.0 knows no circuit, no
+circuit group, no contact of a vendor, no weight of a place and none of the seven
+settings, so whatever was entered of those with 0.8.0 is lost with the rest that was
+entered since the upgrade.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
