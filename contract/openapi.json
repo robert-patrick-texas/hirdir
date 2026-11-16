@@ -4780,6 +4780,142 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "CircuitCostRow": {
+        "additionalProperties": false,
+        "description": "What the circuits of one value of `by` cost in the year, or all of them.",
+        "properties": {
+          "annual_cost": {
+            "examples": [
+              "12000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Annual Cost",
+            "type": "string"
+          },
+          "circuits": {
+            "title": "Circuits",
+            "type": "integer"
+          },
+          "cost": {
+            "examples": [
+              "12000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Cost",
+            "type": "string"
+          },
+          "filter": {
+            "additionalProperties": true,
+            "title": "Filter",
+            "type": "object"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "monthly_cost": {
+            "examples": [
+              "12000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Monthly Cost",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "circuits",
+          "cost",
+          "monthly_cost",
+          "annual_cost",
+          "filter"
+        ],
+        "title": "CircuitCostRow",
+        "type": "object"
+      },
+      "CircuitCostsOut": {
+        "additionalProperties": false,
+        "description": "What circuits cost in one fiscal year, in total and for each value of `by`.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "by": {
+            "enum": [
+              "carrier",
+              "site",
+              "region",
+              "group",
+              "circuit_type",
+              "owner",
+              "tag"
+            ],
+            "title": "By",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitCostRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CircuitCostRow"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "starts_on",
+          "ends_on",
+          "as_of",
+          "by",
+          "currency",
+          "totals",
+          "rows"
+        ],
+        "title": "CircuitCostsOut",
+        "type": "object"
+      },
       "ContactCreate": {
         "additionalProperties": false,
         "description": "A new contact.",
@@ -33519,6 +33655,93 @@
           }
         },
         "summary": "Capacity",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/circuit-costs": {
+      "get": {
+        "description": "Say what circuits cost in one fiscal year: `cost`, what the year costs, with a\nmonth in which a circuit or a line is in service only in part counted for its days,\nas the carrier bills it; `monthly_cost`, what is billed for a month on `as_of`, and\n`annual_cost`, twelve times that. Each row's `filter` lists its circuits; the\ntotals count each circuit once (P-151).",
+        "operationId": "circuit_cost_report_api_v1_reports_circuit_costs_get",
+        "parameters": [
+          {
+            "description": "The fiscal year, named for the calendar year it ends in. Left out, the one today is in.",
+            "in": "query",
+            "name": "fiscal_year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9998,
+                  "minimum": 2,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The fiscal year, named for the calendar year it ends in. Left out, the one today is in.",
+              "title": "Fiscal Year"
+            }
+          },
+          {
+            "description": "What the rows are of.",
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "default": "carrier",
+              "description": "What the rows are of.",
+              "enum": [
+                "carrier",
+                "site",
+                "region",
+                "group",
+                "circuit_type",
+                "owner",
+                "tag"
+              ],
+              "title": "By",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Count draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Count draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitCostsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Circuit Cost Report",
         "tags": [
           "Reports"
         ]

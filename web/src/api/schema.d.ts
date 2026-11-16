@@ -5106,6 +5106,44 @@ export interface paths {
       };
     };
   };
+  "/api/v1/reports/circuit-costs": {
+    /**
+     * Say what circuits cost in one fiscal year: `cost`, what the year costs, with a
+     * month in which a circuit or a line is in service only in part counted for its days,
+     * as the carrier bills it; `monthly_cost`, what is billed for a month on `as_of`, and
+     * `annual_cost`, twelve times that. Each row's `filter` lists its circuits; the
+     * totals count each circuit once (P-151).
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The fiscal year, named for the calendar year it ends in. Left out, the one today is in. */
+          fiscal_year?: number | null;
+          /** What the rows are of. */
+          by?: "carrier" | "site" | "region" | "group" | "circuit_type" | "owner" | "tag";
+          /** Count draft records as well. */
+          include_drafts?: boolean;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitCostsOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/coverage": {
     /**
      * Say what contracts cover today: the items in service that none covers, the items
@@ -7111,6 +7149,29 @@ export interface components {
       label?: string | null;
       row_version: number;
       sort?: number | null;
+    };
+    /** What the circuits of one value of `by` cost in the year, or all of them. */
+    CircuitCostRow: {
+      annual_cost: string;
+      circuits: number;
+      cost: string;
+      filter: {
+        [key: string]: unknown;
+      };
+      key: string | null;
+      label: string | null;
+      monthly_cost: string;
+    };
+    /** What circuits cost in one fiscal year, in total and for each value of `by`. */
+    CircuitCostsOut: {
+      as_of: string;
+      by: "carrier" | "site" | "region" | "group" | "circuit_type" | "owner" | "tag";
+      currency: string;
+      ends_on: string;
+      fiscal_year: number;
+      rows: components["schemas"]["CircuitCostRow"][];
+      starts_on: string;
+      totals: components["schemas"]["CircuitCostRow"];
     };
     /** A new contact. */
     ContactCreate: {

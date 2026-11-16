@@ -2519,6 +2519,53 @@ def end_of_life_report(
         _table(years)
 
 
+@report.command("circuit-costs")
+def circuit_cost_report(
+    year: Annotated[
+        int | None,
+        typer.Option(help="The fiscal year, named for the year it ends in. Left out, this one."),
+    ] = None,
+    by: Annotated[
+        str,
+        typer.Option(help="carrier, site, region, group, circuit_type, owner or tag."),
+    ] = "carrier",
+    include_drafts: Drafts = False,
+    format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
+    output: Output = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show what circuits cost in a fiscal year, in total and for each value of --by:
+    the year's cost, with a part month counted for its days as the carrier bills it,
+    and the monthly and annual figures beside it."""
+    _checked_format(format_)
+    target = client.load_target(url, token)
+    params: dict[str, Any] = {"by": by, "include_drafts": include_drafts}
+    if year is not None:
+        params["fiscal_year"] = year
+    found = client.call(target, "GET", "/reports/circuit-costs", params=params)
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    rows = [[by, "circuits", "cost", "monthly_cost", "annual_cost"]]
+    for row in [*found["rows"], {**found["totals"], "label": "total"}]:
+        rows.append(
+            [
+                row["label"] or "(none)",
+                str(row["circuits"]),
+                row["cost"],
+                row["monthly_cost"],
+                row["annual_cost"],
+            ]
+        )
+    if format_ == "table":
+        typer.echo(
+            f"Fiscal year {found['fiscal_year']}, {found['starts_on']} to {found['ends_on']}; "
+            f"the monthly figure of {found['as_of']}, in {found['currency']}"
+        )
+    _rows(format_, output, rows)
+
+
 @report.command("replacements")
 def replacements_report(
     filter_: Filter = None,

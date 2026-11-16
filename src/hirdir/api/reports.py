@@ -1,9 +1,11 @@
 """The routes of reports: the summary of a view, and the addresses held more than once."""
 
-from datetime import datetime
-from typing import Annotated
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
+from pydantic import PlainSerializer, WithJsonSchema
 
 from hirdir.api import records as r
 from hirdir.api import shapes
@@ -11,7 +13,7 @@ from hirdir.api.deps import Admin, Audit, Db, Viewer
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Model, Page
 from hirdir.domain import settings
-from hirdir.io import alerts, balance, filters, kept, planning, reports, tables
+from hirdir.io import alerts, balance, circuit_costs, filters, kept, planning, reports, tables
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 renewals_ = APIRouter(prefix="/renewals", tags=["Reports"])
@@ -444,6 +446,92 @@ def work_out_ahead(db: Db) -> None:
     renewals_answer(db)
     alerts.summary(db)
     capacity_answer(db)
+
+
+def _two_places(value: Decimal) -> str:
+    return f"{value:.2f}"
+
+
+# A sum of what circuits cost: a credit line is below zero, so a sum may be too.
+CostSum = Annotated[
+    Decimal,
+    PlainSerializer(_two_places, return_type=str, when_used="json"),
+    WithJsonSchema({"type": "string", "pattern": r"^-?\d+\.\d{2}$", "examples": ["12000.00"]}),
+]
+CostsBy = Literal["carrier", "site", "region", "group", "circuit_type", "owner", "tag"]
+
+
+class CircuitCostRow(Model):
+    """What the circuits of one value of `by` cost in the year, or all of them."""
+
+    key: str | None
+    label: str | None
+    circuits: int
+    cost: CostSum
+    monthly_cost: CostSum
+    annual_cost: CostSum
+    filter: dict[str, Any]
+
+
+class CircuitCostsOut(Model):
+    """What circuits cost in one fiscal year, in total and for each value of `by`."""
+
+    fiscal_year: int
+    starts_on: date
+    ends_on: date
+    as_of: date
+    by: CostsBy
+    currency: str
+    totals: CircuitCostRow
+    rows: list[CircuitCostRow]
+
+
+def _cost_row(row: circuit_costs.Row) -> CircuitCostRow:
+    return CircuitCostRow(
+        key=row.key,
+        label=row.label,
+        circuits=row.circuits,
+        cost=row.cost,
+        monthly_cost=row.monthly_cost,
+        annual_cost=row.annual_cost,
+        filter=row.filter,
+    )
+
+
+@router.get("/circuit-costs")
+def circuit_cost_report(
+    _: Viewer,
+    db: Db,
+    fiscal_year: Annotated[
+        int | None,
+        Query(
+            ge=2,
+            le=9998,
+            description="The fiscal year, named for the calendar year it "
+            "ends in. Left out, the one today is in.",
+        ),
+    ] = None,
+    by: Annotated[CostsBy, Query(description="What the rows are of.")] = "carrier",
+    include_drafts: Drafts = False,
+) -> CircuitCostsOut:
+    """Say what circuits cost in one fiscal year: `cost`, what the year costs, with a
+    month in which a circuit or a line is in service only in part counted for its days,
+    as the carrier bills it; `monthly_cost`, what is billed for a month on `as_of`, and
+    `annual_cost`, twelve times that. Each row's `filter` lists its circuits; the
+    totals count each circuit once (P-151)."""
+    found = circuit_costs.circuit_costs(
+        db, fiscal_year=fiscal_year, by=by, include_drafts=include_drafts
+    )
+    return CircuitCostsOut(
+        fiscal_year=found.fiscal_year,
+        starts_on=found.starts_on,
+        ends_on=found.ends_on,
+        as_of=found.as_of,
+        by=by,
+        currency=found.currency,
+        totals=_cost_row(found.totals),
+        rows=[_cost_row(row) for row in found.rows],
+    )
 
 
 class KeptAnswer(Model):
