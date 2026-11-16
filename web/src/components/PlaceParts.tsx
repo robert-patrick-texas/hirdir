@@ -54,6 +54,8 @@ import {
 import { fieldErrors } from "../lib/problems";
 import type { SortColumns } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
+// 0.8.0: the support weight of a place (P-139, P-155).
+import { siteWeightHint } from "../lib/weights";
 import { CircuitsHere } from "./CircuitConnections";
 import { ConfirmButton } from "./ConfirmButton";
 import { CheckField, SelectField, TextField } from "./Field";
@@ -71,6 +73,8 @@ import { Notice, Problem } from "./Problem";
 import { CreateForm, EditForm } from "./RecordForm";
 import { SortTh } from "./SortTh";
 import { Time } from "./Time";
+// 0.8.0: the support weight of a place (P-139, P-155).
+import { PlaceWeightFacts } from "./Weight";
 
 type Choice = Schemas["ChoiceOut"];
 /** A change to a place: the version it was read at, and the fields to change. */
@@ -233,6 +237,24 @@ export function placeSpecs(
       })),
       hint: "A tag is made under Admin, then used here",
     },
+    // 0.8.0: the support weight of a place, its own, not passed down (P-139, P-155).
+    {
+      name: "support_weight",
+      label: "Support weight",
+      kind: "decimal",
+      places: 2,
+      hint: [
+        "The work supporting the network here adds by itself, beside what its devices weigh: distance, a language the team does not speak, a campus spread across a city, a restricted site. The places beneath do not take it.",
+        current && "effective" in current
+          ? siteWeightHint(current.support_weight, current.effective.support_weight)
+          : level === "site"
+            ? siteWeightHint(null, null)
+            : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    },
+    // End of 0.8.0.
     {
       name: "operator_hid",
       label: "Operator",
@@ -635,6 +657,8 @@ function PlaceFacts(props: { place: Place; choices: readonly Choice[] | undefine
             `${plural(place.locations, "location")} directly in it, and ${plural(place.items, "item")} placed here itself`}
         </span>
       </Fact>
+      {/* 0.8.0: the support weight of a place, and a site's in force (P-139, P-155). */}
+      <PlaceWeightFacts place={place} />
       {!isRegion(place) && (
         <Fact label="Deliveries">
           {place.ship_same_as_address && (

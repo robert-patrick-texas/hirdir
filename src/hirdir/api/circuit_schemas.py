@@ -279,9 +279,16 @@ class CircuitOut(Model):
     owner: OwnerRef | None
     owner_exception: bool = Field(description="Its owner is outside the operations team.")
     owner_exception_reason: str | None = Field(description="That owner's reason.")
-    monthly_cost: SignedMoneySum = Field(description="The sum of its cost lines in date today.")
+    monthly_cost: SignedMoneySum = Field(
+        description="The sum of its cost lines in date today while it is in service, and "
+        "nothing on a day it is not; a draft is in service in a view of drafts, and when "
+        "it is read by itself."
+    )
     annual_cost: SignedMoneySum = Field(description="Twelve times the monthly cost.")
-    in_service: bool = Field(description="It is in service today.")
+    in_service: bool = Field(
+        description="It is in service today: active, or a draft in a view of drafts or read "
+        "by itself, and not before its activation or after its disconnection."
+    )
     carriers: list[CircuitCarrierOut] | None = Field(
         description="Its carriers beside the primary one, by priority."
     )
@@ -376,8 +383,15 @@ class CircuitRef(Model):
     enterprise_circuit_id: str | None
     circuit_type: str | None
     speed: str | None
-    in_service: bool = Field(description="It is in service today.")
-    monthly_cost: SignedMoneySum = Field(description="The sum of its cost lines in date today.")
+    in_service: bool = Field(
+        description="It is in service today: active, or a draft in a view of drafts or read "
+        "by itself, and not before its activation or after its disconnection."
+    )
+    monthly_cost: SignedMoneySum = Field(
+        description="The sum of its cost lines in date today while it is in service, and "
+        "nothing on a day it is not; a draft is in service in a view of drafts, and when "
+        "it is read by itself."
+    )
     record_status: RecordStatus
 
 

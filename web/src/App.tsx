@@ -43,6 +43,9 @@ const pages = {
   // 0.8.0: circuits and circuit groups (P-145 to P-154).
   circuits: () => import("./pages/Circuits"),
   circuitGroups: () => import("./pages/CircuitGroups"),
+  // 0.8.0, web lane B: the report of what circuits cost (P-151).
+  circuitCosts: () => import("./pages/CircuitCosts"),
+  // End of 0.8.0, web lane B.
 };
 
 const AgreementDetail = lazy(() =>
@@ -134,6 +137,11 @@ const CircuitGroups = lazy(() =>
 const CircuitGroupDetail = lazy(() =>
   pages.circuitGroups().then((page) => ({ default: page.CircuitGroupDetail })),
 );
+// 0.8.0, web lane B: the report of what circuits cost (P-151).
+const CircuitCostsReport = lazy(() =>
+  pages.circuitCosts().then((page) => ({ default: page.CircuitCostsReport })),
+);
+// End of 0.8.0, web lane B.
 
 // How long after the first page is shown the other pages are fetched, in milliseconds.
 const WARM_AFTER = 400;
@@ -334,6 +342,16 @@ export function App() {
                 </RequireRole>
               }
             />
+            {/* 0.8.0, web lane B: the report of what circuits cost (P-151). */}
+            <Route
+              path="reports/circuit-costs"
+              element={
+                <RequireRole needs="viewer">
+                  <CircuitCostsReport />
+                </RequireRole>
+              }
+            />
+            {/* End of 0.8.0, web lane B. */}
             <Route
               path="contracts"
               element={

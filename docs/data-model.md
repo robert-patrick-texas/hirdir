@@ -1128,7 +1128,9 @@ read: a change of the default is for new circuits only (P-150).
 **Its cost** is `monthly_cost`, the sum of its cost lines in date today while it is in
 service, and nothing on a day it is not, and `annual_cost`, twelve times that, both
 worked out when they are read (D-158). The lines keep their amounts, so a circuit that
-is ordered and not yet activated shows what it will cost line by line.
+is disconnected shows what it cost line by line. A draft is in service in a view that
+includes drafts, and so is its record read by itself: an ordered circuit shows what it
+will cost.
 
 ### `circuit_carriers`
 

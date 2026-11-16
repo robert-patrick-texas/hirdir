@@ -1,280 +1,215 @@
-// The browser scenario of what circuits cost in release 0.8.0 (P-150, P-152, scenario S48
-// as far as a page of a circuit and of a group show it; the report by year is a tab of
-// Reports, tested with it):
+// The browser scenario of the report of what circuits cost, in release 0.8.0 (P-151):
 //
-//   Two circuits of one carrier, loaded from a file of circuits. The first is given three
-//   monthly cost lines: its monthly cost is their sum and its annual cost twelve times
-//   that. A line given an end in the past is no longer billed, and leaves the sum. The
-//   second is given a line of its own; both are put into one group, several at once, and
-//   the group shows what they cost as one sum, each circuit once. One taken out of the
-//   group leaves its cost.
+//   Two circuits of this file's own, made through the API, each at a site of its own: one
+//   of 1,000 a month activated on 10 April, which costs 8,700 in its first year, May to
+//   December in full and 21 of April's 30 days, as the carrier bills it; and one in service
+//   all year, of a port and a credit billed by its carrier and a local loop billed by a
+//   second carrier. The report of that year by carrier has a row for each carrier, the
+//   second circuit in both, and the totals count each circuit once; by site, a row for each
+//   site; each row with its circuits, the year's cost, the monthly figure on the last day of
+//   the year and twelve times that, and leading to the circuits it counted in the circuit
+//   grid, by its filter with the year's window of service. The circuit grid is another
+//   web lane's: this file reads where a row leads, and does not follow it.
 //
-// It keeps to the rules of support.ts: an account and names of its own, and nothing
-// changed that another file reads.
+// The year is a past one, so that the figures do not depend on the day the file is run,
+// and the report is filtered down to the circuits of this file by their names (rule 4 of
+// support.ts). The fiscal year is the calendar year: the `fiscal_year_start_month` setting
+// at its default, which no file changes.
 
-import { expect, type Page } from "@playwright/test";
-import { importFile, region } from "./structure";
-import { expectClean, mark, signIn, test, watch } from "./support";
+import { type APIRequestContext, expect, type Locator } from "@playwright/test";
+import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
 
-const random = mark("x").slice(2);
-const suffix = mark("circuit-costs", random);
-const upper = random.toUpperCase();
-
+const suffix = mark("circuit-costs");
 const carrier = `Example Telecom ${suffix}`;
-const regionName = `Cost Region ${suffix}`;
-const siteName = `Cost Site ${suffix}`;
-const site = `${regionName} > ${siteName}`;
-const building = `Cost Building ${suffix}`;
-const buildingPath = `${site} > ${building}`;
-const first = `Cost internet ${suffix}`;
-const firstId = `EC-${upper}-C1`;
-const second = `Cost backup ${suffix}`;
-const secondId = `EC-${upper}-C2`;
-const ordered = `Cost ordered ${suffix}`;
-const orderedId = `EC-${upper}-C3`;
-const group = `Internet access ${suffix}`;
+const loop = `Northwind Fiber ${suffix}`;
+const regionName = `Circuit Costs Region ${suffix}`;
+const east = `Circuit Costs East ${suffix}`;
+const west = `Circuit Costs West ${suffix}`;
+const first = `WAN east ${suffix}`;
+const second = `WAN west ${suffix}`;
+const mine = `name:contains:${suffix}`;
+const YEAR = 2025;
 
-async function openCircuit(page: Page, enterpriseId: string, name: string, more = "") {
-  await page.goto(
-    `./circuits?filter=${encodeURIComponent(`enterprise_circuit_id:eq:${enterpriseId}`)}${more ? `&${more}` : ""}`,
-  );
-  await page.getByTestId("grid-circuits").getByRole("link", { name, exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: new RegExp(`^${name}`) })).toBeVisible();
+type Headers = { Authorization: string };
+
+async function session(request: APIRequestContext, account: Account): Promise<Headers> {
+  const answer = await request.post("./api/v1/auth/sign-in", {
+    data: { username: account.username, access_code: account.accessCode },
+  });
+  expect(answer.status(), "the account of the file signs in through the API").toBe(200);
+  const { token } = (await answer.json()) as { token: string };
+  return { Authorization: `Bearer ${token}` };
 }
 
-/** Add a cost line on the page of the circuit on show. */
-async function addLine(page: Page, description: string, cost: string) {
-  const form = region(page, "Add a cost line");
-  await form.getByLabel("Line (required)").fill(description);
-  await form.getByLabel("Monthly cost (required)").fill(cost);
-  await form.getByRole("button", { name: "Add the line" }).click();
-  await expect(page.getByText(new RegExp(`^The line ${description} was added to`))).toBeVisible();
+async function make(
+  request: APIRequestContext,
+  headers: Headers,
+  path: string,
+  data: unknown,
+): Promise<{ hid: string }> {
+  const answer = await request.post(`./api/v1${path}`, { headers, data });
+  expect(answer.status(), `post ${path}: ${await answer.text()}`).toBe(201);
+  return (await answer.json()) as { hid: string };
 }
 
-test("S48: the monthly cost of a circuit is the sum of its lines, and the annual twelve times that", async ({
+const ids: Record<string, string> = {};
+
+/**
+ * Where a link of the report leads: the circuit grid, with the conditions of its filter,
+ * a tree in the address, those joined at the top by AND one by one, and the switches of
+ * the grid.
+ */
+async function gridLink(link: Locator) {
+  const href = (await link.getAttribute("href")) ?? "";
+  const address = new URL(href, "http://example.invalid/");
+  expect(address.pathname.endsWith("/circuits")).toBe(true);
+  const text = address.searchParams.get("filter") ?? "";
+  expect(text.startsWith("{"), `a filter tree: ${text}`).toBe(true);
+  const tree = JSON.parse(text) as { and?: unknown[] };
+  return {
+    conditions: tree.and ?? [tree],
+    archived: address.searchParams.get("archived"),
+    drafts: address.searchParams.get("drafts"),
+  };
+}
+
+test("what circuits cost in a year, by carrier and by site, each row leading to its circuits", async ({
   page,
   account,
+  request,
 }) => {
-  test.setTimeout(300_000);
-  const seen = await watch(page.context());
-  await signIn(page, account);
-  await importFile(page, "vendors", `vendors-${suffix}.csv`, ["name"], [[carrier]]);
-  await importFile(page, "regions", `regions-${suffix}.csv`, ["name"], [[regionName]]);
-  await importFile(
-    page,
-    "sites",
-    `sites-${suffix}.csv`,
-    ["name", "region"],
-    [[siteName, regionName]],
-  );
-  await importFile(
-    page,
-    "locations",
-    `locations-${suffix}.csv`,
-    ["name", "site", "kind"],
-    [[building, site, "building"]],
-  );
-  // The circuits come from a file of their own, which the Import page knows by its name.
-  await importFile(
-    page,
-    "circuits",
-    `circuits-${suffix}.csv`,
-    [
-      "name",
-      "enterprise_circuit_id",
-      "circuit_type",
-      "port_mbps",
-      "a_location",
-      "z_note",
-      "carrier",
-      "record_status",
-    ],
-    [
-      [first, firstId, "internet", "1000", buildingPath, "carrier network", carrier, "active"],
-      [second, secondId, "internet", "100", buildingPath, "carrier network", carrier, "active"],
-      [ordered, orderedId, "internet", "100", buildingPath, "carrier network", carrier, "draft"],
-    ],
-  );
-
-  await openCircuit(page, firstId, first);
-  await expect(page.getByTestId("monthly-cost")).toHaveText("0.00");
-  await addLine(page, "Port", "850.00");
-  await addLine(page, "Local loop", "120");
-  await addLine(page, "Access", "30.00");
-  await expect(page.getByTestId("costs").locator("tbody tr")).toHaveCount(3);
-  await expect(page.getByTestId("monthly-cost")).toHaveText("1,000.00");
-  await expect(page.getByTestId("annual-cost")).toHaveText("12,000.00");
-
-  // A credit is a line below zero; an amount that is no amount is refused before it is sent.
-  const form = region(page, "Add a cost line");
-  await form.getByLabel("Line (required)").fill("Promotional credit");
-  await form.getByLabel("Monthly cost (required)").fill("ten");
-  await expect(form.getByRole("button", { name: "Add the line" })).toBeDisabled();
-  await expect(form.getByText("below zero for a credit.", { exact: false }).first()).toBeVisible();
-  await addLine(page, "Promotional credit", "-20");
-  await expect(page.getByTestId("monthly-cost")).toHaveText("980.00");
-
-  // A line that was billed for a time is given an end: ended in the past, it is billed no more.
-  const credit = page.getByTestId("costs").locator('tr[data-line="Promotional credit"]');
-  await expect(credit.getByTestId("line-cost")).toHaveText("-20.00");
-  await credit.getByRole("button", { name: "End" }).click();
-  const ending = region(page, "End the line Promotional credit");
-  await ending.getByLabel("Last day billed (required)").fill("2020-01-31");
-  await ending.getByRole("button", { name: "End the line" }).click();
-  await expect(
-    page.getByText("The line Promotional credit is billed until 2020-01-31."),
-  ).toBeVisible();
-  await expect(credit.getByTestId("line-billed")).toHaveText("No");
-  await expect(credit.getByTestId("line-ends")).toHaveText("2020-01-31");
-  await expect(page.getByTestId("monthly-cost")).toHaveText("1,000.00");
-  await expect(page.getByTestId("annual-cost")).toHaveText("12,000.00");
-
-  // A line changed keeps its place in the sum; one entered by mistake is removed outright.
-  const lines = page.getByTestId("costs");
-  await lines.locator('tr[data-line="Access"]').getByRole("button", { name: "Change" }).click();
-  const changing = region(page, "Change the line Access");
-  await changing.getByLabel("Line (required)").fill("Access charge");
-  await changing.getByRole("button", { name: "Save the line" }).click();
-  await expect(page.getByText("The line Access charge was saved.")).toBeVisible();
-  await expect(lines.locator('tr[data-line="Access charge"] [data-testid="line-cost"]')).toHaveText(
-    "30.00",
-  );
-  await addLine(page, "Install fee", "99");
-  await expect(page.getByTestId("monthly-cost")).toHaveText("1,099.00");
-  await lines
-    .locator('tr[data-line="Install fee"]')
-    .getByRole("button", { name: "Remove" })
-    .click();
-  await page.getByRole("dialog").getByRole("button", { name: "Remove the line" }).click();
-  await expect(page.getByText(`The line Install fee was removed from ${first}.`)).toBeVisible();
-  await expect(lines.locator('tr[data-line="Install fee"]')).toHaveCount(0);
-  await expect(page.getByTestId("monthly-cost")).toHaveText("1,000.00");
-
-  // A description that the circuit has already is refused under its field, by the server.
-  await region(page, "Add a cost line").getByLabel("Line (required)").fill("port");
-  await region(page, "Add a cost line").getByLabel("Monthly cost (required)").fill("5");
-  await region(page, "Add a cost line").getByRole("button", { name: "Add the line" }).click();
-  await expect(region(page, "Add a cost line").getByLabel("Line (required)")).toHaveAttribute(
-    "aria-invalid",
-    "true",
-  );
-
-  // The second circuit, of the same carrier.
-  await openCircuit(page, secondId, second);
-  await addLine(page, "Port", "500");
-  await expect(page.getByTestId("monthly-cost")).toHaveText("500.00");
-  await expect(page.getByTestId("annual-cost")).toHaveText("6,000.00");
-
-  // The grid shows what each costs. The draft, ordered and not in service, is left out.
-  await page.goto(`./circuits?filter=${encodeURIComponent(`carrier.name:eq:${carrier}`)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText("2 circuits");
-  const grid = page.getByTestId("grid-circuits");
-  const rowOf = (name: string) => grid.locator("[row-id]", { hasText: name });
-  await expect(rowOf(first).locator('[col-id="monthly_cost"]')).toHaveText("1,000.00");
-  await expect(rowOf(second).locator('[col-id="monthly_cost"]')).toHaveText("500.00");
-  // The annual cost, which the grid holds beyond the right edge of a narrow window, is
-  // filtered by the server.
-  await page.goto(
-    `./circuits?filter=${encodeURIComponent(`carrier.name:eq:${carrier} annual_cost:gte:12000`)}`,
-  );
-  await expect(page.getByTestId("grid-total")).toHaveText("1 circuit");
-  await expect(grid.getByRole("link", { name: first, exact: true })).toBeVisible();
-
-  // An ordered circuit, a draft, keeps the amounts of its lines and costs nothing yet; a
-  // link that asks for drafts by the list's own name for it finds it.
-  await openCircuit(page, orderedId, ordered, "include_drafts=true");
-  await expect(page.getByTestId("circuit-status")).toHaveText("Draft");
-  await addLine(page, "Port", "75");
-  await expect(
-    page.getByTestId("costs").locator('tr[data-line="Port"] [data-testid="line-cost"]'),
-  ).toHaveText("75.00");
-  await expect(page.getByTestId("monthly-cost")).toHaveText("0.00");
-  await expect(page.getByTestId("annual-cost")).toHaveText("0.00");
-  await expect(page.getByTestId("not-in-service")).toContainText("It is a draft");
-
-  await expectClean(page, seen, ["409 POST"]);
-});
-
-test("S48: both circuits in one group, whose cost is one sum", async ({ page, account }) => {
-  test.setTimeout(240_000);
-  const seen = await watch(page.context());
-  await signIn(page, account);
-
-  await page.goto("./circuit-groups");
-  await expect(page.getByRole("heading", { level: 1, name: "Circuit groups" })).toBeVisible();
-  await page.getByRole("button", { name: "New circuit group" }).click();
-  const made = region(page, "New circuit group");
-  await made.getByLabel("Name (required)").fill(group);
-  await made.getByRole("button", { name: "Create group" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: group })).toBeVisible();
-  await expect(page.getByTestId("group-circuits")).toHaveText("0");
-
-  // Both circuits chosen, and put in together.
-  const adding = region(page, "Add circuits");
-  for (const [id, name] of [
-    [firstId, first],
-    [secondId, second],
-  ] as const) {
-    await adding.getByLabel("Add a circuit").fill(id);
-    await adding
-      .getByRole("list", { name: "Circuits that match" })
-      .getByRole("button", { name: `${name} (${id})` })
-      .click();
+  test.setTimeout(150_000);
+  const headers = await session(request, account);
+  const telecom = await make(request, headers, "/vendors", { name: carrier });
+  const fiber = await make(request, headers, "/vendors", { name: loop });
+  const top = await make(request, headers, "/regions", { name: regionName });
+  const eastSite = await make(request, headers, "/sites", { name: east, region_hid: top.hid });
+  const westSite = await make(request, headers, "/sites", { name: west, region_hid: top.hid });
+  const eastRoom = await make(request, headers, "/locations", {
+    name: "Telecom room",
+    site_hid: eastSite.hid,
+  });
+  const westRoom = await make(request, headers, "/locations", {
+    name: "Telecom room",
+    site_hid: westSite.hid,
+  });
+  const one = await make(request, headers, "/circuits", {
+    name: first,
+    a_location_hid: eastRoom.hid,
+    z_note: "carrier network",
+    carrier_hid: telecom.hid,
+    activated_on: `${YEAR}-04-10`,
+    port_mbps: "1000",
+  });
+  await make(request, headers, `/circuits/${one.hid}/costs`, {
+    description: "Port",
+    monthly_cost: "1000",
+  });
+  const two = await make(request, headers, "/circuits", {
+    name: second,
+    a_location_hid: westRoom.hid,
+    z_note: "carrier network",
+    carrier_hid: telecom.hid,
+    activated_on: `${YEAR - 1}-06-01`,
+    port_mbps: "500",
+  });
+  // The second carrier provides the last mile, and bills it.
+  await make(request, headers, `/circuits/${two.hid}/carriers`, {
+    vendor_hid: fiber.hid,
+    role: "last_mile",
+  });
+  for (const line of [
+    { description: "Port", monthly_cost: "500" },
+    { description: "Local loop", monthly_cost: "250", vendor_hid: fiber.hid },
+    { description: "Credit", monthly_cost: "-50" },
+  ]) {
+    await make(request, headers, `/circuits/${two.hid}/costs`, line);
   }
-  await expect(adding.getByTestId("circuits-to-add").locator("tbody tr")).toHaveCount(2);
-  await adding.getByRole("button", { name: "Put 2 circuits in" }).click();
-  await expect(page.getByText(`2 circuits were put into ${group}.`)).toBeVisible();
-  await expect(page.getByTestId("group-circuits")).toHaveText("2");
-  await expect(page.getByTestId("group-in-service")).toHaveText("2");
-  await expect(page.getByTestId("group-monthly-cost")).toHaveText("1,500.00");
-  await expect(page.getByTestId("group-annual-cost")).toHaveText("18,000.00");
-  const members = page.getByTestId("grid-circuit-group-circuits");
-  await expect(members.getByRole("link", { name: first, exact: true })).toBeVisible();
-  await expect(members.getByRole("link", { name: second, exact: true })).toBeVisible();
+  Object.assign(ids, {
+    telecom: telecom.hid,
+    fiber: fiber.hid,
+    east: eastSite.hid,
+    west: westSite.hid,
+  });
 
-  // The list of groups says the same, and the circuit lists its group.
-  await page.goto(`./circuit-groups?filter=${encodeURIComponent(`name:eq:${group}`)}`);
-  const row = page.getByTestId("grid-circuit-groups").locator("[row-id]").first();
-  await expect(row.locator('[col-id="circuits"]')).toHaveText("2");
-  await expect(row.locator('[col-id="monthly_cost"]')).toHaveText("1,500.00");
-  await expect(row.locator('[col-id="annual_cost"]')).toHaveText("18,000.00");
-  await openCircuit(page, secondId, second);
-  await expect(
-    page.getByTestId("groups-of-circuit").getByRole("link", { name: group, exact: true }),
-  ).toBeVisible();
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto(`./reports/circuit-costs?filter=${encodeURIComponent(mine)}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Circuit costs" })).toBeVisible();
+  // The present year unless another is chosen, and by carrier.
+  const report = page.getByTestId("circuit-costs");
+  await expect(report).toHaveAttribute("data-by", "carrier");
+  await page.getByRole("textbox", { name: "Fiscal year" }).fill(String(YEAR));
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(report).toHaveAttribute("data-fiscal-year", String(YEAR));
+  await expect(page.getByTestId("circuit-costs-period")).toContainText(
+    `From ${YEAR}-01-01 to ${YEAR}-12-31.`,
+  );
+  await expect(page.getByTestId("circuit-costs-period")).toContainText(`a month on ${YEAR}-12-31`);
 
-  // The grid of circuits finds them by their group.
-  await page.goto(`./circuits?filter=${encodeURIComponent(`groups.name:eq:${group}`)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText("2 circuits");
+  const rows = page.getByTestId("circuit-costs-rows");
+  const expectRow = async (key: string, figures: [number, string, string, string]) => {
+    const row =
+      key === "totals"
+        ? rows.getByTestId("circuit-costs-totals")
+        : rows.locator(`tbody tr[data-key="${key}"]`);
+    const [circuits, cost, monthly, annual] = figures;
+    await expect(row.getByTestId("cost-circuits")).toHaveAttribute("data-value", String(circuits));
+    await expect(row.getByTestId("cost-year")).toHaveText(cost);
+    await expect(row.getByTestId("cost-monthly")).toHaveText(monthly);
+    await expect(row.getByTestId("cost-annual")).toHaveText(annual);
+    return row;
+  };
 
-  // The second taken out of the group: the group's cost is the first's alone.
-  await page.goto(`./circuit-groups?filter=${encodeURIComponent(`name:eq:${group}`)}`);
-  await page
-    .getByTestId("grid-circuit-groups")
-    .getByRole("link", { name: group, exact: true })
-    .click();
-  await expect(page.getByRole("heading", { level: 1, name: group })).toBeVisible();
-  const secondRow = page
-    .getByTestId("grid-circuit-group-circuits")
-    .locator("[row-id]", { hasText: second });
-  await secondRow.locator('[col-id="enterprise_circuit_id"]').click();
-  await page.getByRole("button", { name: "Take out of the group" }).click();
-  await expect(page.getByText(`1 circuit was taken out of ${group}.`)).toBeVisible();
-  await expect(page.getByTestId("group-circuits")).toHaveText("1");
-  await expect(page.getByTestId("group-monthly-cost")).toHaveText("1,000.00");
-  await expect(page.getByTestId("group-annual-cost")).toHaveText("12,000.00");
+  // By carrier: the first circuit's 8,700 for its part year and the second's port and
+  // credit under the carrier, the second's local loop under the carrier that bills it.
+  await expect(rows.locator("tbody tr")).toHaveCount(2);
+  const telecomRow = await expectRow(ids.telecom ?? "", [2, "14,100.00", "1,450.00", "17,400.00"]);
+  await expectRow(ids.fiber ?? "", [1, "3,000.00", "250.00", "3,000.00"]);
+  // The totals count each circuit once.
+  await expectRow("totals", [2, "17,100.00", "1,700.00", "20,400.00"]);
+  // A row leads to the circuits it counted, in the circuit grid: its filter, the report's
+  // with the year's window of service and the row's own condition, is in the address, with
+  // the retired circuits asked for, as the report says its filters are of.
+  const telecomLink = await gridLink(telecomRow.getByRole("link", { name: carrier, exact: true }));
+  expect(telecomLink.archived).toBe("1");
+  expect(telecomLink.drafts).toBeNull();
+  expect(telecomLink.conditions).toContainEqual({ field: "name", op: "contains", value: suffix });
+  expect(telecomLink.conditions).toContainEqual({
+    field: "billed_by",
+    op: "eq",
+    value: ids.telecom,
+  });
+  expect(JSON.stringify(telecomLink.conditions)).toContain(`${YEAR}-12-31`);
+  const totalsLink = await gridLink(rows.getByTestId("circuit-costs-totals").getByRole("link"));
+  expect(totalsLink.conditions).toContainEqual({ field: "name", op: "contains", value: suffix });
 
-  // Retired, the group keeps its circuit and takes no new one; brought back, it is active.
-  await page.getByRole("button", { name: "Retire this group" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Retire", exact: true }).click();
-  await expect(page.getByText(`${group} was retired.`)).toBeVisible();
-  await expect(page.getByTestId("group-circuits")).toHaveText("1");
-  await expect(region(page, "Add circuits")).toHaveCount(0);
-  await page.getByRole("button", { name: "Bring back" }).click();
-  await expect(page.getByText(`${group} is back.`)).toBeVisible();
-  await expect(region(page, "Add circuits")).toBeVisible();
+  // By site: each circuit at the site of its A side.
+  await page.getByRole("combobox", { name: "By", exact: true }).selectOption({ label: "Site" });
+  await expect(report).toHaveAttribute("data-by", "site");
+  await expect(page).toHaveURL(/by=site/);
+  await expect(rows.locator("tbody tr")).toHaveCount(2);
+  const eastRow = await expectRow(ids.east ?? "", [1, "8,700.00", "1,000.00", "12,000.00"]);
+  await expectRow(ids.west ?? "", [1, "8,400.00", "700.00", "8,400.00"]);
+  await expectRow("totals", [2, "17,100.00", "1,700.00", "20,400.00"]);
+  await expect(eastRow.locator("th")).toContainText(`${regionName} > ${east}`);
+  expect((await gridLink(eastRow.getByRole("link"))).conditions).toContainEqual({
+    field: "cost_site_hid",
+    op: "eq",
+    value: ids.east,
+  });
+  // Sorted by its headers: the dearer site first, by the year's cost turned round.
+  const costHeader = rows.getByRole("button", { name: /^Cost of the year/ });
+  await costHeader.click();
+  await costHeader.click();
+  await expect(rows.locator("tbody tr").first()).toHaveAttribute("data-key", ids.east ?? "");
 
+  // The view is in the address: read again, it is the same report.
+  await page.reload();
+  await expect(report).toHaveAttribute("data-fiscal-year", String(YEAR));
+  await expect(report).toHaveAttribute("data-by", "site");
+  await expectRow("totals", [2, "17,100.00", "1,700.00", "20,400.00"]);
   await expectClean(page, seen);
 });

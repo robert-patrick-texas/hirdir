@@ -359,10 +359,10 @@ export function readMoney(typed: string): { value: string | null } | { error: st
 
 /**
  * Why a circuit costs nothing today, though its lines have their amounts: it is not in
- * service. A draft is one ordered and not yet in service; one activated later than today
- * is not yet in service; one disconnected, or retired with no day it was disconnected,
- * no longer is. Blank for a circuit in service. `day` is today, as the application's
- * time zone has it.
+ * service. One activated later than today is not yet in service; one disconnected, or
+ * retired with no day it was disconnected, no longer is. A draft, an ordered circuit, is
+ * read as a view of drafts reads it: in service, at what it will cost. Blank for a
+ * circuit in service. `day` is today, as the application's time zone has it.
  */
 export function notInServiceText(
   circuit: Pick<Circuit, "in_service" | "record_status" | "activated_on" | "disconnected_on">,
@@ -371,9 +371,6 @@ export function notInServiceText(
   if (circuit.in_service) return "";
   const then =
     "Its lines keep their amounts, and its monthly and annual cost are 0.00 while it is not in service.";
-  if (circuit.record_status === "draft") {
-    return `It is a draft: ordered, and not in service until it is made active. ${then}`;
-  }
   if (circuit.activated_on && circuit.activated_on > day) {
     return `It is not in service until it is activated on ${circuit.activated_on}. ${then}`;
   }

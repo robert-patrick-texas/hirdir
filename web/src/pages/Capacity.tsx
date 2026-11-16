@@ -4,6 +4,8 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Balance } from "../components/CapacityBalance";
 import { CapacityTrend } from "../components/CapacityRecords";
+// 0.8.0: Try, the what-if of the capacity report (P-156).
+import { CapacityTry } from "../components/CapacityTry";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { Notice, Problem } from "../components/Problem";
@@ -32,6 +34,7 @@ import {
   useChoices,
   useMoney,
   useRegionOptions,
+  useSettings,
   useSiteOptions,
   useVendorOptions,
   withCurrent,
@@ -433,14 +436,17 @@ export function Capacity() {
     api.request("get", "/api/v1/reports/capacity", { signal }),
   );
   const money = useMoney();
+  // 0.8.0: the figures in force, which Try starts from (P-156).
+  const settings = useSettings();
 
   return (
     <>
       <h1>Capacity</h1>
       <p>
-        The support weight of the inventory is demand. It is balanced against the resource units
-        that staff positions, services, smart hands and tools supply, and against other work that
-        calls on the same people. The balance is of the whole installation, as of today.
+        The support weight of the inventory, of the places and of the circuits is demand. It is
+        balanced against the resource units that staff positions, services, smart hands and tools
+        supply, and against other work that calls on the same people. The balance is of the whole
+        installation, as of today.
       </p>
       <Problem error={report.error} />
       <Problem error={choices.error ?? error} />
@@ -450,6 +456,18 @@ export function Capacity() {
         </p>
       )}
       {report.data && <Balance report={report.data} money={money} />}
+      {/* 0.8.0: Try, beside the balance in force, saving nothing (P-156). */}
+      <Problem error={settings.error} />
+      {settings.data && (
+        <CapacityTry
+          settings={settings.data}
+          maySave={allows(user.role, "admin")}
+          onSaved={() => {
+            settings.reload();
+            report.reload();
+          }}
+        />
+      )}
       <CapacityTrend mayEdit={allows(user.role, "inventory")} />
       <section aria-labelledby="capacity-lines">
         <h2 id="capacity-lines">Lines</h2>

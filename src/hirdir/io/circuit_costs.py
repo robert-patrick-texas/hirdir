@@ -145,8 +145,9 @@ def _condition(by: str, key: str | None, label: str | None) -> dict[str, Any]:
     """Return the condition of the circuit list that finds the circuits of a row."""
     if by == "carrier":
         # The carrier that bills a line: the line's own, or else the primary carrier.
+        # The lines that no carrier bills are those of a circuit with no primary carrier.
         if key is None:
-            return {"field": "billed_by", "op": "empty", "value": True}
+            return {"field": "carrier_hid", "op": "empty", "value": True}
         return {"field": "billed_by", "op": "eq", "value": key}
     if by == "site":
         return {"field": "cost_site_hid", "op": "eq", "value": key}
@@ -317,15 +318,12 @@ def _row(
     filter_: dict[str, Any] | None,
     whole: bool = False,
 ) -> Row:
-    if whole:
-        condition = filter_
-    else:
-        condition = filters.both(filter_, _condition(by, key, label))
-        try:
-            filters.parse(condition)
-        except Invalid:
-            # More than the grammar takes: the row has no filter of its own.
-            condition = None
+    condition = filter_ if whole else filters.both(filter_, _condition(by, key, label))
+    try:
+        filters.parse(condition)
+    except Invalid:
+        # More than the grammar takes: the row, or the totals, have no filter.
+        condition = None
     monthly = rounded(tally.monthly)
     return Row(
         key,

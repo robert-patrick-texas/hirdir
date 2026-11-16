@@ -37,19 +37,19 @@ describe("a circuit that is not in service", () => {
 
   it("says why it costs nothing today, though its lines keep their amounts", () => {
     expect(notInServiceText({ ...base, in_service: true }, day)).toBe("");
-    expect(notInServiceText({ ...base, record_status: "draft" }, day)).toMatch(
-      /^It is a draft: ordered, and not in service until it is made active\. Its lines keep their amounts/,
-    );
-    expect(notInServiceText({ ...base, activated_on: "2027-05-01" }, day)).toMatch(
-      /^It is not in service until it is activated on 2027-05-01\./,
-    );
+    // An ordered circuit, a draft, is read at what it will cost: in service, as the server
+    // answers it, unless it is to be activated later.
+    expect(notInServiceText({ ...base, in_service: true, record_status: "draft" }, day)).toBe("");
+    expect(
+      notInServiceText({ ...base, record_status: "draft", activated_on: "2027-05-01" }, day),
+    ).toMatch(/^It is not in service until it is activated on 2027-05-01\. Its lines keep/);
     expect(notInServiceText({ ...base, disconnected_on: "2027-03-31" }, day)).toMatch(
       /^It was disconnected on 2027-03-31\./,
     );
     expect(notInServiceText({ ...base, record_status: "retired" }, day)).toMatch(
       /^It was retired with no day it was disconnected/,
     );
-    expect(notInServiceText({ ...base, record_status: "draft" }, day)).toContain("0.00");
+    expect(notInServiceText({ ...base, disconnected_on: "2027-03-31" }, day)).toContain("0.00");
   });
 });
 

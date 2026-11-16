@@ -265,8 +265,9 @@ def circuits_out(
 
 
 def circuit_out(db: Session, circuit: Circuit) -> c.CircuitOut:
-    """Return one circuit, with its parts."""
-    return circuits_out(db, [circuit])[0]
+    """Return one circuit, with its parts. A draft read by itself is read as a view of
+    drafts reads it: in service on the days it will be, at what it will cost."""
+    return circuits_out(db, [circuit], include_drafts=True)[0]
 
 
 # --- circuit groups ------------------------------------------------------------------

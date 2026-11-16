@@ -207,11 +207,12 @@ at and `cost_location` the location it counts at, which takes `within` as `locat
 does, `groups.name` and `groups.hid` find it by any of its groups, `owner.label` and `owner_exception` go
 by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
-it gives none, `billed_by` finds it by a carrier that bills one of its lines, the line's
-own or else the primary carrier, or the primary carrier where it has no line,
+it gives none, `billed_by` finds it by its primary carrier or a carrier that bills one of
+its lines,
 `monthly_cost` and `annual_cost` what it costs today, nothing on a day it is not in
 service, and `in_service` is true where it is in service today, a draft in a view that
-includes drafts. The list of circuit groups has `owner.label` and
+includes drafts. The record of a draft, read by itself, answers both as a view of drafts
+does: what it will cost. The list of circuit groups has `owner.label` and
 `circuits`, how many it has, and `in_service`, `monthly_cost` and `annual_cost` as its
 record has them. The lists of regions, sites and locations have
 `support_weight`, the place's own, and the list of sites `effective.support_weight`, the
@@ -246,7 +247,8 @@ takes `within` is a place, and a list is sorted by the name of the place and not
 the place: by `location.name`, `planned_location.name`, `site` and `region` on the
 lists of items and of device groups, and by `region.name` on the list of sites. The
 fields that name the records a record has several of, `group.hid`,
-`member.item_hid`, `member.serial_number` and `member.contact_hid`, have no order.
+`member.item_hid`, `member.serial_number` and `member.contact_hid`, and on the list of
+circuits `carriers.vendor_hid`, `billed_by` and `groups.hid`, have no order.
 
 A field that a record may have several of is sorted by the least of them, in the order
 of that value, and a record with none comes last in either direction, as a blank does.
@@ -984,6 +986,7 @@ it is unless asked, `site`, `region`, `group`, `circuit_type`, `owner` or `tag`.
 ```json
 { "fiscal_year": 2027, "starts_on": "2027-01-01", "ends_on": "2027-12-31",
   "as_of": "2027-12-31", "by": "carrier", "currency": "USD",
+  "include_archived": true, "include_drafts": false,
   "totals": { "circuits": 12, "cost": "141300.00", "monthly_cost": "12450.00",
               "annual_cost": "149400.00" },
   "rows": [ { "key": "0193a1f4-...", "label": "Example Telecom", "circuits": 9,
@@ -1011,10 +1014,14 @@ of each tag; by `circuit_type` and `owner` in one row. The blank row is what has
 and the totals count each circuit once. A row's `filter` lists its circuits on `GET
 /circuits`, with the report's filter, the year's window of service (activated by its last
 day, not disconnected before its first, and, retired, with a disconnection) and the
-row's own condition: by `billed_by`, the circuits that carrier bills a line of, by
+row's own condition: by `billed_by`, the circuits that carrier provides or bills a line
+of, whatever the dates of the line, so that it may list a circuit more than the row
+counts where the carrier's only line on it was billed before or after the year, and by
+`carrier_hid` empty for the blank row, the circuits with no primary carrier; by
 `cost_site_hid`, by `cost_location` `within` the region, by `groups.hid`, by
 `circuit_type`, by `owner_hid` or by `tags`; the totals' filter is the report's with the
-window. A row whose filter would be more than the grammar takes has none (P-151).
+window. A row whose filter, or the totals whose filter, would be more than the grammar
+takes has none (P-151).
 
 ## Kept answers
 
@@ -1400,7 +1407,7 @@ hirdir report circuit-costs --year 2027 --by site
 | A purchase | `hirdir purchases show` takes the HID or the reference of a request, and prints each line with its model, or as not tracked, and the part number procurement gave it. `hirdir purchases receive LINE` takes a line as `RITM0012345/2` and one `--serial`, `--asset-tag` or `--name` for each item that arrived, and `--count` for those that nothing is known of yet, with `--location` and `--on` for where and when |
 | A vendor | `hirdir vendors portfolio VENDOR` prints the totals, the four kinds and the models. With `--format csv` or `json` and `--output` it writes the items of the vendor, one row each, with their coverage |
 | A value | `field=value` sets, `field=` clears. A field is named as a column of an import |
-| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as its record names it, as a change on its page does: a value given is the circuit's own, also one that is the default it has, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
+| A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set CIRCUIT field=value` changes the fields of one circuit, each named as a column of its file names it (`carrier`, `owner`, `a_location`), as a change on its page does: a value given is the circuit's own, also one that is the default it has, and its groups are changed with `hirdir circuit-groups`. `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...`, which change the group's memberships at once, with no preview, as members are added to a device group by one request: what changes is named on the command line |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
 | Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
