@@ -40,6 +40,8 @@ const ownManager = `Avery Example ${suffix}`;
 const ownMail = `avery-${random}@example.org`;
 const ownSite = `Kai Example ${suffix}`;
 const ownSiteMail = `kai-${random}@example.net`;
+const desk = `Repair Desk ${suffix}`;
+const deskMail = `repair-${random}@example.org`;
 
 async function openCircuit(page: Page, enterpriseId: string, name: string) {
   await page.goto(
@@ -92,7 +94,16 @@ test("S49: the site contacts of each side and the carrier's account manager, eac
       [manager, carrier, managerMail, "555 0120"],
       [ownManager, carrier, ownMail, "555 0130"],
       [ownSite, "", ownSiteMail, "555 0140"],
+      [desk, carrier, deskMail, "555 0150"],
     ],
+  );
+  // The carrier's support desk comes in a file of the contacts of vendors.
+  await importFile(
+    page,
+    "vendor_contacts",
+    `vendor-contacts-${suffix}.csv`,
+    ["vendor", "role", "contact", "priority"],
+    [[carrier, "support_contact", deskMail, "1"]],
   );
   await importFile(page, "regions", `regions-${suffix}.csv`, ["name"], [[regionName]]);
   await importFile(
@@ -161,7 +172,9 @@ test("S49: the site contacts of each side and the carrier's account manager, eac
   ).toHaveAttribute("data-source", "vendor");
   await expect(
     page.getByTestId("carrier-contact-sources").locator('li[data-role="support_contact"]'),
-  ).toHaveAttribute("data-source", "none");
+  ).toHaveAttribute("data-source", "vendor");
+  await expect(carrierRow(page, desk)).toHaveAttribute("data-role", "support_contact");
+  await expect(carrierRow(page, desk).getByTestId("contact-phone")).toHaveText("555 0150");
   // The site contacts of the A side come from its site, with that level; the Z side,
   // which ends in the carrier's network, has none.
   await expect(siteRow(page, "a", siteContact)).toHaveAttribute("data-source", "site");
@@ -213,6 +226,26 @@ test("S49: the site contacts of each side and the carrier's account manager, eac
   ).toBeVisible();
   await expect(carrierRow(page, manager)).toHaveAttribute("data-source", "vendor");
   await expect(siteRow(page, "a", ownSite)).toHaveAttribute("data-source", "own");
+
+  // The carrier's account manager removed on the carrier's page: no circuit has it then.
+  await openVendor(page);
+  await page
+    .getByTestId("vendor-contacts")
+    .locator(`tr[data-contact="${manager}"]`)
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove the naming" }).click();
+  await expect(
+    page.getByText(`${manager} is no longer named as account manager of ${carrier}.`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("vendor-contacts").locator(`tr[data-contact="${manager}"]`),
+  ).toHaveCount(0);
+  await openCircuit(page, firstId, first);
+  await expect(carrierRow(page, manager)).toHaveCount(0);
+  await expect(
+    page.getByTestId("carrier-contact-sources").locator('li[data-role="account_manager"]'),
+  ).toHaveAttribute("data-source", "none");
 
   await expectClean(page, seen);
 });

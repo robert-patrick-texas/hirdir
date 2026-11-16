@@ -13,7 +13,7 @@
 // changed that another file reads. The setting `circuit_cost_side` is read, not changed.
 
 import { expect, type Locator, type Page } from "@playwright/test";
-import { importFile, openItem, region } from "./structure";
+import { importFile, openGroup, openItem, region } from "./structure";
 import { expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -40,6 +40,7 @@ const linkNumber = `EXT/${upper}/000/EXTL`;
 const loopNumber = `LEC-${upper}-0001`;
 const fiber = `Dark fiber ${suffix}`;
 const fiberId = `EC-${upper}-DF`;
+const pair = `cir-pair-${random}`;
 
 /** Search for a location in one side's field of the form, and choose it by its path. */
 async function chooseSide(form: Locator, side: "a" | "z", typed: string, path: string) {
@@ -259,4 +260,109 @@ test("S47: a dark fiber found by its enterprise ID, which no other circuit may h
   await expect(page.getByTestId("grid-total")).toHaveText("1 circuit");
 
   await expectClean(page, seen, ["409 POST"]);
+});
+
+test("the parts of a circuit changed: a carrier, the devices, a refused value, retired and back", async ({
+  page,
+  account,
+}) => {
+  test.setTimeout(300_000);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await importFile(
+    page,
+    "device_groups",
+    `device-groups-${suffix}.csv`,
+    ["name", "type", "location"],
+    [[pair, "cluster", westPath]],
+  );
+
+  // A pair of routers in a group shares the circuit at its Z side.
+  await openCircuit(page, linkId, link);
+  const connect = region(page, "Connect devices");
+  await connect.getByLabel("Side of what is chosen next").selectOption("z");
+  await connect.getByLabel("Add a device group").fill(pair);
+  await connect
+    .getByRole("list", { name: "Device groups that match" })
+    .getByRole("button", { name: pair, exact: true })
+    .click();
+  await connect.getByRole("button", { name: "Connect 1 device" }).click();
+  await expect(page.getByText(`${pair} is now connected to ${link}.`)).toBeVisible();
+  await openGroup(page, pair);
+  const onPair = page.getByTestId("connected-circuits").locator(`tr[data-circuit="${link}"]`);
+  await expect(onPair.getByTestId("circuit-side")).toHaveText("Z side");
+
+  // A router moved to the other side, and one disconnected.
+  await openCircuit(page, linkId, link);
+  const devices = page.getByTestId("devices");
+  await devices
+    .locator(`tr[data-device="${eastRouter}"]`)
+    .getByRole("button", { name: "To the Z side" })
+    .click();
+  await expect(page.getByText(`${eastRouter} is now on the Z side of ${link}.`)).toBeVisible();
+  await expect(devices.locator(`tr[data-device="${eastRouter}"]`)).toHaveAttribute(
+    "data-side",
+    "z",
+  );
+  await devices
+    .locator(`tr[data-device="${westRouter}"]`)
+    .getByRole("button", { name: "Disconnect" })
+    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByText(`${westRouter} is no longer connected to ${link}.`)).toBeVisible();
+  await expect(devices.locator(`tr[data-device="${westRouter}"]`)).toHaveCount(0);
+  await openItem(page, westRouter);
+  await expect(page.getByTestId("connected-circuits")).toContainText(
+    "It is connected to no circuit.",
+  );
+
+  // The local exchange carrier's number changed, and the carrier then removed.
+  await openCircuit(page, linkId, link);
+  const carriers = page.getByTestId("carriers");
+  await carriers
+    .locator(`tr[data-carrier="${exchange}"]`)
+    .getByRole("button", { name: "Change" })
+    .click();
+  const change = region(page, `Change ${exchange}`);
+  await change.getByLabel("Circuit number").fill(`${loopNumber}-B`);
+  await change.getByRole("button", { name: "Save the carrier" }).click();
+  await expect(page.getByText(`${exchange} was saved as a carrier of ${link}.`)).toBeVisible();
+  await expect(
+    carriers.locator(`tr[data-carrier="${exchange}"] [data-testid="carrier-number"]`),
+  ).toHaveText(`${loopNumber}-B`);
+  await carriers
+    .locator(`tr[data-carrier="${exchange}"]`)
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove the carrier" }).click();
+  await expect(page.getByText(`${exchange} is no longer a carrier of ${link}.`)).toBeVisible();
+  await expect(carriers.locator(`tr[data-carrier="${exchange}"]`)).toHaveCount(0);
+
+  // A rate above the port speed is refused by the server, under its field, with its reason.
+  const details = region(page, "Details");
+  await details.getByLabel("Rate down (Mbps)").fill("2000");
+  await details.getByRole("button", { name: "Save" }).click();
+  await expect(details.getByLabel("Rate down (Mbps)")).toHaveAttribute("aria-invalid", "true");
+  await expect(details.getByText("not more than port_mbps")).toBeVisible();
+  await details.getByRole("button", { name: "Undo changes" }).click();
+
+  // Retired, it is marked so and stays on its devices; brought back, it is active again.
+  await page.getByRole("button", { name: "Retire this circuit" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retire", exact: true }).click();
+  await expect(page.getByText(`${link} was retired.`)).toBeVisible();
+  await expect(page.getByTestId("circuit-status")).toHaveText("Retired");
+  await expect(page.getByTestId("in-service")).toHaveText("No");
+  await openGroup(page, pair);
+  await expect(
+    page.getByTestId("connected-circuits").locator(`tr[data-circuit="${link}"]`),
+  ).toContainText("Retired");
+  await page
+    .getByTestId("connected-circuits")
+    .getByRole("link", { name: link, exact: true })
+    .click();
+  await page.getByRole("button", { name: "Bring back" }).click();
+  await expect(page.getByText(`${link} is back.`)).toBeVisible();
+  await expect(page.getByTestId("circuit-status")).toHaveCount(0);
+
+  await expectClean(page, seen, ["422 PATCH"]);
 });

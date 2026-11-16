@@ -131,6 +131,27 @@ test("S48: the monthly cost of a circuit is the sum of its lines, and the annual
   await expect(page.getByTestId("monthly-cost")).toHaveText("1,000.00");
   await expect(page.getByTestId("annual-cost")).toHaveText("12,000.00");
 
+  // A line changed keeps its place in the sum; one entered by mistake is removed outright.
+  const lines = page.getByTestId("costs");
+  await lines.locator('tr[data-line="Access"]').getByRole("button", { name: "Change" }).click();
+  const changing = region(page, "Change the line Access");
+  await changing.getByLabel("Line (required)").fill("Access charge");
+  await changing.getByRole("button", { name: "Save the line" }).click();
+  await expect(page.getByText("The line Access charge was saved.")).toBeVisible();
+  await expect(lines.locator('tr[data-line="Access charge"] [data-testid="line-cost"]')).toHaveText(
+    "30.00",
+  );
+  await addLine(page, "Install fee", "99");
+  await expect(page.getByTestId("monthly-cost")).toHaveText("1,099.00");
+  await lines
+    .locator('tr[data-line="Install fee"]')
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove the line" }).click();
+  await expect(page.getByText(`The line Install fee was removed from ${first}.`)).toBeVisible();
+  await expect(lines.locator('tr[data-line="Install fee"]')).toHaveCount(0);
+  await expect(page.getByTestId("monthly-cost")).toHaveText("1,000.00");
+
   // A description that the circuit has already is refused under its field, by the server.
   await region(page, "Add a cost line").getByLabel("Line (required)").fill("port");
   await region(page, "Add a cost line").getByLabel("Monthly cost (required)").fill("5");
@@ -244,6 +265,16 @@ test("S48: both circuits in one group, whose cost is one sum", async ({ page, ac
   await expect(page.getByTestId("group-circuits")).toHaveText("1");
   await expect(page.getByTestId("group-monthly-cost")).toHaveText("1,000.00");
   await expect(page.getByTestId("group-annual-cost")).toHaveText("12,000.00");
+
+  // Retired, the group keeps its circuit and takes no new one; brought back, it is active.
+  await page.getByRole("button", { name: "Retire this group" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retire", exact: true }).click();
+  await expect(page.getByText(`${group} was retired.`)).toBeVisible();
+  await expect(page.getByTestId("group-circuits")).toHaveText("1");
+  await expect(region(page, "Add circuits")).toHaveCount(0);
+  await page.getByRole("button", { name: "Bring back" }).click();
+  await expect(page.getByText(`${group} is back.`)).toBeVisible();
+  await expect(region(page, "Add circuits")).toBeVisible();
 
   await expectClean(page, seen);
 });
