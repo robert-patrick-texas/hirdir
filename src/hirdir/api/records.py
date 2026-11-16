@@ -1200,6 +1200,20 @@ class EffectiveOperator(EffectiveReference):
     is_open: bool = Field(description="Nobody is behind the label.")
 
 
+# --- the circuits a device is connected to (P-147) -----------------------------------
+
+
+class CircuitConnection(Model):
+    """A circuit, as the item or the device group it connects lists it."""
+
+    hid: str = Field(description="The HID of the circuit.")
+    name: str
+    enterprise_circuit_id: str | None
+    side: Literal["a", "z"] = Field(description="The side of the circuit the device is on.")
+    link_hid: str = Field(description="The HID of the connection, a device of the circuit.")
+    record_status: RecordStatus = Field(description="That of the circuit.")
+
+
 class ItemEffective(Model):
     """The values in force of the fields an item inherits: the amounts and the dates
     from its catalog entry, and for a minor item the owner, the location and the
@@ -1340,6 +1354,10 @@ class ItemOut(Model):
             "What a stack or a cluster it is a current member of is registered with: to be "
             "read, and changed on the group."
         )
+    )
+    # The circuits the item is connected to (P-147).
+    circuits: list[CircuitConnection] = Field(
+        description="The circuits it is connected to, each with its side: to be read only."
     )
     tags: list[str]
     record_status: RecordStatus
@@ -1651,6 +1669,10 @@ class DeviceGroupOut(Model):
     addresses: list[AddressRef]
     registrations: list[RegistrationRef] = Field(
         description="The external systems the group is registered with, as one device."
+    )
+    # The circuits the group is connected to (P-147).
+    circuits: list[CircuitConnection] = Field(
+        description="The circuits it is connected to, each with its side: to be read only."
     )
     tags: list[str]
     record_status: RecordStatus
@@ -3532,6 +3554,12 @@ EntityName = Literal[
     "contract_coverage",
     "registrations",
     "capacity_lines",
+    # Circuits and their parts, and circuit groups (P-153).
+    "circuit_groups",
+    "circuits",
+    "circuit_carriers",
+    "circuit_costs",
+    "circuit_devices",
 ]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
 # What an apply in the background did with a row (D-185).

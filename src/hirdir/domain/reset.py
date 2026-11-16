@@ -157,6 +157,13 @@ RECORD_TYPES = (
     "capacity_line",
     "capacity_record",
     "contract_contact",
+    # Circuits, their carriers, cost lines and devices, and circuit groups (0.8.0).
+    "circuit",
+    "circuit_carrier",
+    "circuit_cost",
+    "circuit_device",
+    "circuit_group",
+    "circuit_group_member",
 )
 
 

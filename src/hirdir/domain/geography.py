@@ -23,6 +23,7 @@ from hirdir.db.models import (
     ADDRESS_FIELDS,
     DEGREE_PLACES,
     SHIP_FIELDS,
+    Circuit,
     Contact,
     ContactAssignment,
     DeviceGroup,
@@ -931,7 +932,20 @@ def _within_it(db: Session, place: Place) -> list[str]:
                 "device groups",
             )
         )
+        # A circuit that is not retired with a side there (P-147).
+        found.append(
+            (
+                _count(
+                    db,
+                    Circuit,
+                    or_(Circuit.a_location_hid == hid, Circuit.z_location_hid == hid),
+                    _live(Circuit),
+                ),
+                "circuits",
+            )
+        )
     one = {"regions": "region", "sites": "site", "locations": "location", "items": "item"}
+    one["circuits"] = "circuit"
     one.update({"device groups": "device group", "planned items": "item planned for it"})
     one["planned groups"] = "device group planned for it"
     many = {

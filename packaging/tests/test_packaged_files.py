@@ -43,6 +43,11 @@ LOAD_ORDER = [
     "contract-coverage",
     "registrations",
     "capacity-lines",
+    "circuit-groups",
+    "circuits",
+    "circuit-carriers",
+    "circuit-costs",
+    "circuit-devices",
 ]
 
 

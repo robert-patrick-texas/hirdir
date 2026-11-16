@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from hirdir.api import circuit_shapes
 from hirdir.api import records as shapes
 from hirdir.db.models import (
     Address,
@@ -865,6 +866,8 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     cover = _cover(db, hids, today)
     registered = _registration_refs(db, "item_hid", hids)
     through_groups = _group_registration_refs(db, hids)
+    # The circuits each is connected to (P-147).
+    connected = circuit_shapes.connections_out(db, "item_hid", hids)
     arrived_on = _line_refs(db, {item.purchase_line_hid for item in items})
     out = []
     for item in items:
@@ -951,6 +954,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                 ),
                 registrations=registered[item.hid],
                 group_registrations=through_groups[item.hid],
+                circuits=connected[item.hid],
                 tags=labels[item.hid],
                 effective=shapes.ItemEffective(
                     operator_hid=marks.in_force(looked_after[item.hid], holders),
@@ -1000,6 +1004,7 @@ _ITEM_SHAPED = (
     "out_of_service_contracts",
     "registrations",
     "group_registrations",
+    "circuits",
     "tags",
     "effective",
 )
@@ -1046,6 +1051,8 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 nested[group.parent_group_hid].append(_group_ref(group))
     counts = groups.member_counts(db, hids)
     registered = _registration_refs(db, "group_hid", hids)
+    # The circuits each is connected to (P-147).
+    connected = circuit_shapes.connections_out(db, "group_hid", hids)
     masters = groups.masters(db, [group.hid for group in found if group.type == "stack"])
     seen = groups.observed_masters(db, found)
     master_refs = item_refs(
@@ -1118,6 +1125,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
                 member_count=counts[group.hid],
                 addresses=its_addresses[group.hid],
                 registrations=registered[group.hid],
+                circuits=connected[group.hid],
                 tags=labels[group.hid],
             )
         )
@@ -1144,6 +1152,7 @@ _GROUP_SHAPED = (
     "member_count",
     "addresses",
     "registrations",
+    "circuits",
     "tags",
 )
 

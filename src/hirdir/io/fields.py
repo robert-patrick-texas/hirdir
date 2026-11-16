@@ -22,6 +22,7 @@ from sqlalchemy import (
     or_,
     select,
     type_coerce,
+    union_all,
 )
 from sqlalchemy.orm import Session, aliased
 
@@ -33,6 +34,12 @@ from hirdir.db.models import (
     CapacityLine,
     CapacityLineTarget,
     CatalogEntry,
+    Circuit,
+    CircuitCarrier,
+    CircuitCost,
+    CircuitDevice,
+    CircuitGroup,
+    CircuitGroupMember,
     Contact,
     ContactAssignment,
     Contract,
@@ -59,6 +66,8 @@ from hirdir.db.models import (
     Vendor,
 )
 from hirdir.domain import (
+    circuit_records,
+    circuits,
     contacts,
     contracts,
     descent,
@@ -1797,6 +1806,284 @@ TAGS = Listing(
     has_status=False,
 )
 
+# --- circuits and circuit groups (P-145 to P-154) ------------------------------------
+
+_A_LOCATION: Any = aliased(Location, name="a_location")
+_A_SITE: Any = aliased(Site, name="a_site")
+_Z_LOCATION: Any = aliased(Location, name="z_location")
+_Z_SITE: Any = aliased(Site, name="z_site")
+_COST_LOCATION: Any = aliased(Location, name="cost_location")
+_COST_SITE: Any = aliased(Site, name="cost_site")
+_PRIMARY_CARRIER: Any = aliased(Vendor, name="primary_carrier")
+_CIRCUIT_OWNER: Any = aliased(Owner, name="circuit_owner")
+_SELF: Any = aliased(Circuit, name="carrier_of_circuit")
+
+
+def _either_side(db: Session, text: str) -> ColumnElement[bool]:
+    """Return the test that a side of a circuit is at or beneath a place a filter names."""
+    a_side = _within(_A_LOCATION.hid, _A_LOCATION.site_hid, _A_SITE.region_hid)(db, text)
+    z_side = _within(_Z_LOCATION.hid, _Z_LOCATION.site_hid, _Z_SITE.region_hid)(db, text)
+    return or_(a_side, z_side)
+
+
+# Every carrier of a circuit, its primary one among them, with the number each gives it.
+_EVERY_CARRIER: Any = union_all(
+    select(
+        _SELF.hid.label("circuit_hid"),
+        _SELF.carrier_hid.label("vendor_hid"),
+        _SELF.carrier_circuit_number.label("circuit_number"),
+    ).where(_SELF.carrier_hid.is_not(None)),
+    select(CircuitCarrier.circuit_hid, CircuitCarrier.vendor_hid, CircuitCarrier.circuit_number),
+).subquery("every_carrier")
+_ANY_CARRIER = _one_of(
+    select(_EVERY_CARRIER.c.vendor_hid), _EVERY_CARRIER.c.circuit_hid == Circuit.hid
+)
+_FIRST_NUMBER = (
+    select(func.min(dialect.folded(_EVERY_CARRIER.c.circuit_number)))
+    .where(_EVERY_CARRIER.c.circuit_hid == Circuit.hid)
+    .correlate(Circuit)
+    .scalar_subquery()
+)
+# The groups a circuit is in, retired ones too: retiring a group ends no membership.
+_ITS_CIRCUIT_GROUPS = (CircuitGroupMember.circuit_hid == Circuit.hid,)
+_CIRCUIT_GROUPS = _one_of(
+    select(CircuitGroupMember.hid).join(
+        CircuitGroup, CircuitGroup.hid == CircuitGroupMember.group_hid
+    ),
+    *_ITS_CIRCUIT_GROUPS,
+)
+_FIRST_CIRCUIT_GROUP = (
+    select(func.min(CircuitGroup.name_key))
+    .select_from(CircuitGroupMember)
+    .join(CircuitGroup, CircuitGroup.hid == CircuitGroupMember.group_hid)
+    .where(*_ITS_CIRCUIT_GROUPS)
+    .correlate(Circuit)
+    .scalar_subquery()
+)
+# What a circuit costs a month today: the sum of its lines in date (D-158, P-150).
+_CIRCUIT_MONTHLY = (
+    select(circuit_records.hundredths_of_lines())
+    .where(CircuitCost.circuit_hid == Circuit.hid, circuit_records.line_in_date_column())
+    .correlate(Circuit)
+    .scalar_subquery()
+)
+
+
+def _rate_in_force(rate: Any) -> ColumnElement[Any]:
+    """Return the rate in force one way: its own, or the full rate of the port."""
+    return func.coalesce(rate, Circuit.port_mbps, type_=rate.type)
+
+
+CIRCUITS = Listing(
+    model=Circuit,
+    fields={
+        **_bookkeeping(Circuit),
+        **_columns(
+            Circuit,
+            "text",
+            "name",
+            "enterprise_circuit_id",
+            "description",
+            "notes",
+            "a_note",
+            "z_note",
+            "carrier_circuit_number",
+            "billing_account",
+            "billing_contract",
+        ),
+        **_columns(Circuit, "choice", "circuit_type", "cost_side", "record_status"),
+        **_columns(Circuit, "number", "port_mbps", "down_mbps", "up_mbps", "support_weight"),
+        **_columns(Circuit, "date", "installed_on", "activated_on", "disconnected_on"),
+        "production": Field("boolean", Circuit.production),
+        **_columns(
+            Circuit, "reference", "a_location_hid", "z_location_hid", "carrier_hid", "owner_hid"
+        ),
+        # A side at a location, or at or beneath a site or a region.
+        "location": Field(
+            "place",
+            func.coalesce(Circuit.a_location_hid, Circuit.z_location_hid),
+            within=_either_side,
+        ),
+        "a_location.name": Field("text", _A_LOCATION.name),
+        "z_location.name": Field("text", _Z_LOCATION.name),
+        # Where its cost and its weight count: the location of the side it counts at,
+        # and that location's site.
+        "cost_location": Field(
+            "place",
+            circuits.cost_location_column(),
+            within=_within(_COST_LOCATION.hid, _COST_LOCATION.site_hid, _COST_SITE.region_hid),
+        ),
+        "cost_site_hid": Field("reference", _COST_LOCATION.site_hid),
+        "carrier.name": Field("text", _PRIMARY_CARRIER.name),
+        # Any of its carriers, the primary one among them, and the number any gives it.
+        "carriers.vendor_hid": Field("reference", _EVERY_CARRIER.c.vendor_hid, among=_ANY_CARRIER),
+        "carriers.circuit_number": Field(
+            "text",
+            _EVERY_CARRIER.c.circuit_number,
+            among=_ANY_CARRIER,
+            ordered_by=_FIRST_NUMBER,
+        ),
+        "groups.hid": Field("reference", CircuitGroup.hid, among=_CIRCUIT_GROUPS),
+        "groups.name": Field(
+            "text", CircuitGroup.name, among=_CIRCUIT_GROUPS, ordered_by=_FIRST_CIRCUIT_GROUP
+        ),
+        "owner.label": Field("text", _CIRCUIT_OWNER.label),
+        "owner_exception": Field("boolean", func.coalesce(_CIRCUIT_OWNER.is_external, false())),
+        "owner_exception_reason": Field(
+            "text", case((_CIRCUIT_OWNER.is_external.is_(True), _CIRCUIT_OWNER.exception_reason))
+        ),
+        # Its own weight. The default and the minimum of the settings are added to this
+        # at the merge of 0.8.0 (P-155).
+        "effective.support_weight": Field("number", Circuit.support_weight),
+        "effective.down_mbps": Field("number", _rate_in_force(Circuit.down_mbps)),
+        "effective.up_mbps": Field("number", _rate_in_force(Circuit.up_mbps)),
+        "monthly_cost": Field("number", circuit_records.as_money(_CIRCUIT_MONTHLY)),
+        "annual_cost": Field(
+            "number", circuit_records.as_money(_CIRCUIT_MONTHLY, circuit_records.MONTHS)
+        ),
+        "in_service": Field("boolean", circuit_records.in_service_column()),
+        "tags": _tags(circuit_records.RECORD_TYPE, Circuit),
+    },
+    joined=lambda query: (
+        query.outerjoin(_A_LOCATION, _A_LOCATION.hid == Circuit.a_location_hid)
+        .outerjoin(_A_SITE, _A_SITE.hid == _A_LOCATION.site_hid)
+        .outerjoin(_Z_LOCATION, _Z_LOCATION.hid == Circuit.z_location_hid)
+        .outerjoin(_Z_SITE, _Z_SITE.hid == _Z_LOCATION.site_hid)
+        .outerjoin(_COST_LOCATION, _COST_LOCATION.hid == circuits.cost_location_column())
+        .outerjoin(_COST_SITE, _COST_SITE.hid == _COST_LOCATION.site_hid)
+        .outerjoin(_PRIMARY_CARRIER, _PRIMARY_CARRIER.hid == Circuit.carrier_hid)
+        .outerjoin(_CIRCUIT_OWNER, _CIRCUIT_OWNER.hid == Circuit.owner_hid)
+    ),
+    default_sort=("name",),
+)
+
+_MEMBER_CIRCUIT: Any = aliased(Circuit, name="member_circuit")
+_GROUP_OWNER: Any = aliased(Owner, name="circuit_group_owner")
+_OF_GROUP = (CircuitGroupMember.group_hid == CircuitGroup.hid,)
+# How many circuits a group has, how many of them are in service today, and what those
+# in service cost today, each circuit once.
+_GROUP_CIRCUITS: ColumnElement[Any] = (
+    select(func.count())
+    .select_from(CircuitGroupMember)
+    .where(*_OF_GROUP)
+    .correlate(CircuitGroup)
+    .scalar_subquery()
+)
+_GROUP_IN_SERVICE: ColumnElement[Any] = (
+    select(func.count())
+    .select_from(CircuitGroupMember)
+    .join(_MEMBER_CIRCUIT, _MEMBER_CIRCUIT.hid == CircuitGroupMember.circuit_hid)
+    .where(*_OF_GROUP, circuit_records.in_service_column(_MEMBER_CIRCUIT))
+    .correlate(CircuitGroup)
+    .scalar_subquery()
+)
+_GROUP_MONTHLY: ColumnElement[Any] = (
+    select(circuit_records.hundredths_of_lines())
+    .select_from(CircuitGroupMember)
+    .join(_MEMBER_CIRCUIT, _MEMBER_CIRCUIT.hid == CircuitGroupMember.circuit_hid)
+    .join(CircuitCost, CircuitCost.circuit_hid == _MEMBER_CIRCUIT.hid)
+    .where(
+        *_OF_GROUP,
+        circuit_records.in_service_column(_MEMBER_CIRCUIT),
+        circuit_records.line_in_date_column(),
+    )
+    .correlate(CircuitGroup)
+    .scalar_subquery()
+)
+
+CIRCUIT_GROUPS = Listing(
+    model=CircuitGroup,
+    fields={
+        **_bookkeeping(CircuitGroup),
+        **_columns(CircuitGroup, "text", "name", "description", "notes"),
+        "owner_hid": Field("reference", CircuitGroup.owner_hid),
+        "owner.label": Field("text", _GROUP_OWNER.label),
+        "record_status": Field("choice", CircuitGroup.record_status),
+        "tags": _tags("circuit_group", CircuitGroup),
+        "circuits": Field("integer", _GROUP_CIRCUITS),
+        "in_service": Field("integer", _GROUP_IN_SERVICE),
+        "monthly_cost": Field("number", circuit_records.as_money(_GROUP_MONTHLY)),
+        "annual_cost": Field(
+            "number", circuit_records.as_money(_GROUP_MONTHLY, circuit_records.MONTHS)
+        ),
+    },
+    joined=lambda query: query.outerjoin(_GROUP_OWNER, _GROUP_OWNER.hid == CircuitGroup.owner_hid),
+    default_sort=("name",),
+)
+
+# The parts of circuits, as files carry them: each by the name of its circuit.
+_PART_CIRCUIT: Any = aliased(Circuit, name="circuit_of_part")
+_CARRIER_VENDOR: Any = aliased(Vendor, name="carrier_vendor")
+_COST_VENDOR: Any = aliased(Vendor, name="cost_vendor")
+_CONNECTED_ITEM: Any = aliased(Item, name="connected_item")
+_CONNECTED_GROUP: Any = aliased(DeviceGroup, name="connected_group")
+
+CIRCUIT_CARRIERS = Listing(
+    model=CircuitCarrier,
+    fields={
+        **_bookkeeping(CircuitCarrier),
+        **_columns(CircuitCarrier, "reference", "circuit_hid", "vendor_hid"),
+        "role": Field("choice", CircuitCarrier.role),
+        **_columns(CircuitCarrier, "text", "circuit_number", "notes"),
+        "priority": Field("integer", CircuitCarrier.priority),
+        "circuit.name": Field("text", _PART_CIRCUIT.name),
+        "vendor.name": Field("text", _CARRIER_VENDOR.name),
+    },
+    joined=lambda query: query.join(
+        _PART_CIRCUIT, _PART_CIRCUIT.hid == CircuitCarrier.circuit_hid
+    ).join(_CARRIER_VENDOR, _CARRIER_VENDOR.hid == CircuitCarrier.vendor_hid),
+    default_sort=("circuit.name", "priority", "vendor.name"),
+    has_status=False,
+)
+
+CIRCUIT_COSTS = Listing(
+    model=CircuitCost,
+    fields={
+        **_bookkeeping(CircuitCost),
+        **_columns(CircuitCost, "reference", "circuit_hid", "vendor_hid"),
+        **_columns(CircuitCost, "text", "description", "notes"),
+        "monthly_cost": Field("number", CircuitCost.monthly_cost),
+        **_columns(CircuitCost, "date", "starts_on", "ends_on"),
+        "in_date": Field("boolean", circuit_records.line_in_date_column()),
+        "circuit.name": Field("text", _PART_CIRCUIT.name),
+        "vendor.name": Field("text", _COST_VENDOR.name),
+    },
+    joined=lambda query: query.join(
+        _PART_CIRCUIT, _PART_CIRCUIT.hid == CircuitCost.circuit_hid
+    ).outerjoin(_COST_VENDOR, _COST_VENDOR.hid == CircuitCost.vendor_hid),
+    default_sort=("circuit.name", "description"),
+    has_status=False,
+)
+
+CIRCUIT_DEVICES = Listing(
+    model=CircuitDevice,
+    fields={
+        **_bookkeeping(CircuitDevice),
+        **_columns(CircuitDevice, "reference", "circuit_hid", "item_hid", "group_hid"),
+        "side": Field("choice", CircuitDevice.side),
+        "notes": Field("text", CircuitDevice.notes),
+        "circuit.name": Field("text", _PART_CIRCUIT.name),
+        # The device, by the name it is shown by: a group's, or an item's.
+        "device.name": Field(
+            "text",
+            func.coalesce(
+                _CONNECTED_GROUP.name,
+                _CONNECTED_ITEM.name,
+                _CONNECTED_ITEM.hostname,
+                _CONNECTED_ITEM.serial_number,
+                _CONNECTED_ITEM.asset_tag,
+            ),
+        ),
+    },
+    joined=lambda query: (
+        query.join(_PART_CIRCUIT, _PART_CIRCUIT.hid == CircuitDevice.circuit_hid)
+        .outerjoin(_CONNECTED_ITEM, _CONNECTED_ITEM.hid == CircuitDevice.item_hid)
+        .outerjoin(_CONNECTED_GROUP, _CONNECTED_GROUP.hid == CircuitDevice.group_hid)
+    ),
+    default_sort=("circuit.name", "side", "device.name"),
+    has_status=False,
+)
+
 
 def default_view(
     listing: Listing, include_archived: bool, include_drafts: bool
@@ -1843,6 +2130,11 @@ LISTINGS: tuple[Listing, ...] = (
     CAPACITY_LINES,
     REPLACEMENTS,
     TAGS,
+    CIRCUITS,
+    CIRCUIT_GROUPS,
+    CIRCUIT_CARRIERS,
+    CIRCUIT_COSTS,
+    CIRCUIT_DEVICES,
 )
 
 

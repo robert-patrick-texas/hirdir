@@ -69,6 +69,12 @@ SHOWN = {
     "external_systems": "name,kind,url,record_status",
     "registrations": "system,item,group,external_id,status,confirmed_at",
     "capacity_lines": "side,category,name,effect,quantity,units_each,units,vendor,record_status",
+    # Circuits and circuit groups (P-154).
+    "circuits": (
+        "name,enterprise_circuit_id,circuit_type,speed,carrier,carrier_circuit_number,"
+        "a_site,z_site,monthly_cost,record_status"
+    ),
+    "circuit_groups": "name,description,owner,circuits,monthly_cost,annual_cost,record_status",
 }
 # What a minor item may have from the item it is in.
 FROM_ABOVE = ("lifecycle_state", "disposition", "expected_online")
@@ -191,6 +197,8 @@ purchases = _lists("purchase_requests", "purchase requests")
 systems = _lists("external_systems", "external systems")
 registrations = _lists("registrations", "registrations")
 capacity = _lists("capacity_lines", "capacity lines")
+circuits = _lists("circuits", "circuits")
+circuit_groups = _lists("circuit_groups", "circuit groups")
 geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
 GROUPS = {
@@ -213,6 +221,8 @@ GROUPS = {
     "systems": systems,
     "registrations": registrations,
     "capacity": capacity,
+    "circuits": circuits,
+    "circuit-groups": circuit_groups,
     "geography": geography,
     "report": report,
 }
@@ -2747,3 +2757,351 @@ def capacity_records(
         adjusted = "true" if one["adjusted"] else "false"
         rows.append([one["week_of"], *figures, adjusted, one["note"] or ""])
     _rows(format_, output, rows)
+
+
+# --- circuits and circuit groups (P-154) ---------------------------------------------
+
+# The fields of a circuit that `circuits set` sends as they are given. The carrier, the
+# owner and the two locations are named as a file names them, and found first.
+CIRCUIT_FIELDS = (
+    "name",
+    "enterprise_circuit_id",
+    "description",
+    "circuit_type",
+    "port_mbps",
+    "down_mbps",
+    "up_mbps",
+    "a_note",
+    "z_note",
+    "cost_side",
+    "carrier_circuit_number",
+    "billing_account",
+    "billing_contract",
+    "installed_on",
+    "activated_on",
+    "disconnected_on",
+    "production",
+    "support_weight",
+    "notes",
+    "record_status",
+)
+CIRCUIT_REFERENCES = ("carrier", "owner", "a_location", "z_location", "tags")
+
+
+def find_circuit(target: Target, text: str) -> dict[str, Any]:
+    """Return the one circuit known by text: its HID, its enterprise circuit ID or a name
+    that one circuit alone has. When more than one answers they are listed, and nothing
+    is done."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"/circuits/{text}")
+    known_by = ("enterprise_circuit_id", "name")
+    query = {
+        "filter": {"or": [{"field": name, "op": "eq", "value": text} for name in known_by]},
+        "include_archived": True,
+        "include_drafts": True,
+        "limit": 20,
+    }
+    found = client.call(target, "POST", "/circuits/query", query)["items"]
+    if len(found) == 1:
+        return client.call(target, "GET", f"/circuits/{found[0]['hid']}")
+    if not found:
+        raise client.fail(f"there is no circuit {text}", client.EXIT_INVALID)
+    for one in found:
+        typer.echo(f"  {one['hid']}  {one['name']}", err=True)
+    raise client.fail(
+        f"more than one circuit answers to {text}: name the one meant by its HID",
+        client.EXIT_INVALID,
+    )
+
+
+def _circuit_side(circuit: dict[str, Any], side: str) -> str | None:
+    """Return one side of a circuit as one line: its location's path, or its note."""
+    at, note = circuit[f"{side}_side"], circuit[f"{side}_note"]
+    if at is None:
+        return note
+    retired = " (retired)" if at["record_status"] == "retired" else ""
+    return f"{at['path']}{retired}" + (f", {note}" if note else "")
+
+
+def _named_contact(named: Any) -> str:
+    """Return a contact in force as one line: who, and how to reach them."""
+    contact = named.get("contact", named) if isinstance(named, dict) else {"name": str(named)}
+    reached = " ".join(part for part in (contact.get("email"), contact.get("phone")) if part)
+    retired = " (retired)" if contact.get("record_status") == "retired" else ""
+    return f"{contact.get('name', '')} {reached}".rstrip() + retired
+
+
+def _circuit_contacts(circuit: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return a line for each contact a circuit has in force: the site contacts of each
+    side with the level each came from, and the account team and the support desk,
+    marked `(vendor)` where they are the carrier's."""
+    effective = circuit["effective"]
+    lines = []
+    for side in ("a", "z"):
+        for role in (effective.get("site_contacts") or {}).get(side) or []:
+            source = role.get("source")
+            came = f" ({source})" if source and source != "own" else ""
+            for named in role.get("value") or []:
+                lines.append((f"{side}_side.{role.get('role')}", _named_contact(named) + came))
+    for name in ("account_managers", "support_contacts"):
+        in_force = effective.get(name) or {}
+        marked = " (vendor)" if in_force.get("source") == "vendor" else ""
+        for named in in_force.get("value") or []:
+            lines.append((name, _named_contact(named) + marked))
+    return lines
+
+
+def _cost_line(line: dict[str, Any]) -> str:
+    """Return a cost line as one line: what it is, what it costs, and when."""
+    shown = f"{line['description']}: {line['monthly_cost']} a month"
+    if line["vendor"]:
+        shown += f", billed by {line['vendor']}"
+    if line["starts_on"] or line["ends_on"]:
+        shown += f", {_period(line['starts_on'], line['ends_on'])}"
+    return shown + ("" if line["in_date"] else ", not billed today")
+
+
+@circuits.command("show")
+def show_circuit(
+    circuit: Annotated[str, typer.Argument(help="An HID, an enterprise circuit ID or a name.")],
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show one circuit: its sides and their site contacts, its carriers and their
+    numbers, the account team and the support desk in force, its devices, its cost lines
+    with the monthly and annual totals, and its groups."""
+    target = client.load_target(url, token)
+    found = find_circuit(target, circuit)
+    if format_ == "json":
+        typer.echo(json.dumps(found, indent=2))
+        return
+    zone = _zone(target)
+    carrier = found["carrier"]["name"] if found["carrier"] else None
+    if carrier and found["carrier_circuit_number"]:
+        carrier += f" {found['carrier_circuit_number']}"
+    weight = found["effective"]["support_weight"]
+    if weight["value"] is not None and weight["source"] != "own":
+        weight = {**weight, "value": f"{weight['value']} ({weight['source']})"}
+    lines: list[tuple[str, Any]] = [
+        ("hid", found["hid"]),
+        ("name", found["name"]),
+        ("enterprise_circuit_id", found["enterprise_circuit_id"]),
+        ("circuit_type", found["circuit_type"]),
+        ("speed", found["speed"]),
+        ("a_side", _circuit_side(found, "a")),
+        ("z_side", _circuit_side(found, "z")),
+        ("counts_at", f"{found['cost_site_path']} (the {found['cost_side'].upper()} side)"),
+        ("carrier", carrier),
+    ]
+    for one in found["carriers"] or []:
+        parts = (one["vendor"], f"({one['role']})", one["circuit_number"])
+        lines.append(("carrier", " ".join(part for part in parts if part)))
+    lines += [
+        ("billing_account", found["billing_account"]),
+        ("billing_contract", found["billing_contract"]),
+        *((name, found[name]) for name in ("installed_on", "activated_on", "disconnected_on")),
+        ("production", found["production"]),
+        ("in_service", found["in_service"]),
+        ("support_weight", weight["value"]),
+        ("owner", found["owner"]["label"] if found["owner"] else None),
+        ("owner_exception", found["owner_exception_reason"] or found["owner_exception"] or None),
+        *_circuit_contacts(found),
+    ]
+    for device in found["devices"] or []:
+        retired = " (retired)" if device["record_status"] == "retired" else ""
+        lines.append(("device", f"{device['name']} on the {device['side'].upper()} side{retired}"))
+    lines += [("cost", _cost_line(line)) for line in found["costs"] or []]
+    lines += [("monthly_cost", found["monthly_cost"]), ("annual_cost", found["annual_cost"])]
+    for group in found["groups"] or []:
+        retired = " (retired)" if group["record_status"] == "retired" else ""
+        lines.append(("group", group["name"] + retired))
+    lines += [
+        ("notes", found["notes"]),
+        ("tags", ", ".join(found["tags"]) or None),
+        ("record_status", found["record_status"]),
+        ("updated_at", clock.shown(datetime.fromisoformat(found["updated_at"]), zone)),
+        ("row_version", found["row_version"]),
+    ]
+    for name, value in lines:
+        if value is not None:
+            shown = str(value).lower() if isinstance(value, bool) else value
+            typer.echo(f"{name + ':':<21}{shown}")
+
+
+@circuits.command("set")
+def set_circuit(
+    circuit: Annotated[str, typer.Argument(help="An HID, an enterprise circuit ID or a name.")],
+    changes: Annotated[
+        list[str],
+        typer.Argument(
+            help="field=value to set and field= to clear, a field named as a column of a "
+            "file: carrier= takes a vendor's name, owner= a label, a_location= and "
+            "z_location= a path, and tags= labels joined with ;."
+        ),
+    ],
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Change a circuit. cost_side=z counts it at its far end."""
+    target = client.load_target(url, token)
+    found = find_circuit(target, circuit)
+    body: dict[str, Any] = {"row_version": found["row_version"]}
+    for argument in changes:
+        name, equals, value = argument.partition("=")
+        name, value = name.strip(), value.strip()
+        if not equals or not name:
+            raise client.fail(f"{argument!r} is not field=value", 2)
+        if name == "carrier":
+            body["carrier_hid"] = (
+                _one_named(target, "/vendors", "name", value, "vendor")["hid"] if value else None
+            )
+        elif name == "owner":
+            body["owner_hid"] = (
+                _one_named(target, "/owners", "label", value, "owner")["hid"] if value else None
+            )
+        elif name in ("a_location", "z_location"):
+            body[f"{name}_hid"] = find_place(target, value, "location")["hid"] if value else None
+        elif name == "tags":
+            body["tags"] = [label.strip() for label in value.split(";") if label.strip()]
+        elif name in CIRCUIT_FIELDS:
+            body[name] = value or None
+        else:
+            known = ", ".join((*CIRCUIT_FIELDS, *CIRCUIT_REFERENCES))
+            raise client.fail(f"{name} is not a field of a circuit: one of {known}", 2)
+    changed = client.call(target, "PATCH", f"/circuits/{found['hid']}", body)
+    typer.echo(
+        f"{changed['name']}: {changed['speed'] or 'no speed'}, counted at "
+        f"{changed['cost_site_path']} (the {changed['cost_side'].upper()} side), "
+        f"{changed['monthly_cost']} a month"
+    )
+
+
+@circuits.command("retire")
+def retire_circuit(
+    circuit: Annotated[str, typer.Argument(help="An HID, an enterprise circuit ID or a name.")],
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Retire a circuit. Its parts and its groups stay on record."""
+    target = client.load_target(url, token)
+    found = find_circuit(target, circuit)
+    retired = client.call(
+        target, "POST", f"/circuits/{found['hid']}/retire", {"row_version": found["row_version"]}
+    )
+    typer.echo(f"{retired['name']}: retired")
+
+
+def find_circuit_group(target: Target, text: str) -> dict[str, Any]:
+    """Return the circuit group with an HID or a name."""
+    return _one_named(target, "/circuit-groups", "name", text, "circuit group")
+
+
+def _group_members(target: Target, group_hid: str) -> list[dict[str, Any]]:
+    members: list[dict[str, Any]] = []
+    while True:
+        page = client.call(
+            target,
+            "GET",
+            f"/circuit-groups/{group_hid}/members",
+            params={"limit": 1000, "offset": len(members)},
+        )
+        members += page["items"]
+        if not page["items"] or len(members) >= page["total"]:
+            return members
+
+
+@circuit_groups.command("show")
+def show_circuit_group(
+    group: Annotated[str, typer.Argument(help="An HID or a name.")],
+    format_: Annotated[str, typer.Option("--format", help="table or json")] = "table",
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Show one circuit group with its circuits and what they cost."""
+    target = client.load_target(url, token)
+    found = find_circuit_group(target, group)
+    members = _group_members(target, found["hid"])
+    if format_ == "json":
+        typer.echo(json.dumps({**found, "members": members}, indent=2))
+        return
+    lines: list[tuple[str, Any]] = [
+        ("hid", found["hid"]),
+        ("name", found["name"]),
+        ("description", found["description"]),
+        ("owner", found["owner"]["label"] if found["owner"] else None),
+        ("circuits", found["circuits"]),
+        ("in_service", found["in_service"]),
+        ("monthly_cost", found["monthly_cost"]),
+        ("annual_cost", found["annual_cost"]),
+        ("notes", found["notes"]),
+        ("tags", ", ".join(found["tags"]) or None),
+        ("record_status", found["record_status"]),
+        ("row_version", found["row_version"]),
+    ]
+    for name, value in lines:
+        if value is not None:
+            typer.echo(f"{name + ':':<21}{value}")
+    if members:
+        typer.echo("")
+        head = ["name", "enterprise_circuit_id", "circuit_type", "speed", "in_service"]
+        rows = [[*head, "monthly_cost", "record_status"]]
+        for member in members:
+            one = member["circuit"]
+            rows.append(
+                [
+                    one["name"],
+                    one["enterprise_circuit_id"] or "",
+                    one["circuit_type"] or "",
+                    one["speed"] or "",
+                    "true" if one["in_service"] else "false",
+                    one["monthly_cost"],
+                    one["record_status"],
+                ]
+            )
+        _table(rows)
+
+
+CircuitsNamed = Annotated[
+    list[str],
+    typer.Argument(metavar="CIRCUIT...", help="Circuits: HIDs, enterprise circuit IDs or names."),
+]
+
+
+@circuit_groups.command("add")
+def add_to_circuit_group(
+    group: Annotated[str, typer.Argument(help="The group: an HID or a name.")],
+    named: CircuitsNamed,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Put circuits into a group, all together. A circuit is in a group once."""
+    target = client.load_target(url, token)
+    found = find_circuit_group(target, group)
+    hids = list(dict.fromkeys(find_circuit(target, text)["hid"] for text in named))
+    client.call(target, "POST", f"/circuit-groups/{found['hid']}/members", {"circuit_hids": hids})
+    now = find_circuit_group(target, found["hid"])
+    typer.echo(f"{now['name']}: {len(hids)} added, {now['circuits']} circuits in all")
+
+
+@circuit_groups.command("remove")
+def remove_from_circuit_group(
+    group: Annotated[str, typer.Argument(help="The group: an HID or a name.")],
+    named: CircuitsNamed,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Take circuits out of a group. The audit trail keeps what each membership was."""
+    target = client.load_target(url, token)
+    found = find_circuit_group(target, group)
+    held = {member["circuit_hid"]: member for member in _group_members(target, found["hid"])}
+    taken = []
+    for text in named:
+        one = find_circuit(target, text)
+        if one["hid"] not in held:
+            raise client.fail(f"{one['name']} is not in {found['name']}", client.EXIT_INVALID)
+        taken.append(held[one["hid"]])
+    for member in taken:
+        client.call(target, "DELETE", f"/circuit-groups/{found['hid']}/members/{member['hid']}")
+    now = find_circuit_group(target, found["hid"])
+    typer.echo(f"{now['name']}: {len(taken)} taken out, {now['circuits']} circuits in all")

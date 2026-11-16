@@ -1300,6 +1300,848 @@ export interface paths {
       };
     };
   };
+  "/api/v1/circuit-groups": {
+    /** List circuit groups, by name unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitGroupOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Create a circuit group: circuits to be looked at and costed together. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitGroupCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuit-groups/query": {
+    /** List circuit groups, with the filter and the sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitGroupOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuit-groups/{hid}": {
+    /** Return one circuit group, with how many circuits it has and what they cost. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a circuit group. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitGroupPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuit-groups/{hid}/members": {
+    /** List the circuits of a group, by name, retired ones too, which say so. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitGroupMemberOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Put circuits into a group, all together, each once. A retired group takes none,
+     * and a retired circuit is added to none.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitGroupMembersAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitGroupMemberOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuit-groups/{hid}/members/{member_hid}": {
+    /** Take a circuit out of a group. The audit event of the removal holds what it was. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          member_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuit-groups/{hid}/retire": {
+    /** Retire a circuit group. Its circuits stay listed in it, and it takes no new one. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits": {
+    /**
+     * List circuits, by name unless a sort says otherwise.
+     *
+     * Drafts and retired circuits are left out unless asked for. The carriers, cost
+     * lines, devices and groups of each are null unless `fields` names them.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON. */
+          filter?: string;
+          /** Field names, `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+          /** Show retired records and items in Archived as well. */
+          include_archived?: boolean;
+          /** Show draft records as well. */
+          include_drafts?: boolean;
+          /** Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come. */
+          fields?: string[] | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Create a circuit. At least one side is a location, and a side with none has a
+     * note of where it ends. One that names no `cost_side` is given the setting's.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitCreate"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/query": {
+    /** List circuits, with the filter and the sort in the body. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ListQuery"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}": {
+    /** Return one circuit, whatever its status, with its parts. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a circuit. `record_status` of `active` or `draft` brings a retired one back. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/carriers": {
+    /** List the carriers of a circuit beside its primary one, by priority. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitCarrierOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Name a carrier of a circuit beside its primary one: a local exchange carrier, the
+     * provider of a cross-connect. A vendor is named once on a circuit.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitCarrierAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitCarrierOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/carriers/{link_hid}": {
+    /**
+     * Remove a carrier of a circuit that was a mistake. One that a cost line names is
+     * not removed. The audit event of the removal holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a carrier of a circuit. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitCarrierPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitCarrierOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/costs": {
+    /** List the cost lines of a circuit, by description. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitCostOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Add a line of what a carrier bills for a circuit each month: the port, the local
+     * loop, a credit below zero. A new rate is a line that ends and one that begins.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitCostAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitCostOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/costs/{line_hid}": {
+    /** Remove a cost line that was a mistake. The audit event holds what it was. */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          line_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change a cost line. One that was billed for a time is given an end. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          line_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitCostPatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitCostOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/devices": {
+    /** List the devices a circuit connects, the A side first. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_CircuitDeviceOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Connect items and device groups to a circuit, each on a side, all together. A
+     * device is connected to a circuit once.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitDevicesAdd"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["CircuitDeviceOut"][];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/devices/{link_hid}": {
+    /**
+     * Remove a device of a circuit that was a mistake, or that was taken out. The audit
+     * event of the removal holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the side of a device of a circuit, or its notes. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          link_hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CircuitDevicePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitDeviceOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/retire": {
+    /** Retire a circuit. Its parts and its groups stay on record. */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["RowVersion"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CircuitOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/contact-assignments": {
     /**
      * List contact assignments: those of one place with `region_hid`, `site_hid` or
@@ -2791,7 +3633,7 @@ export interface paths {
       parameters: {
         query?: {
           /** The records the file holds. A JSON file may name it instead. */
-          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | null;
+          entity?: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices" | null;
           /** Left out, `upsert`, or what a JSON file says. */
           mode?: "create" | "upsert" | null;
           file_name?: string | null;
@@ -2805,7 +3647,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
+            entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices";
             mode?: "create" | "upsert";
             records: {
               [key: string]: unknown;
@@ -7150,6 +7992,93 @@ export interface components {
       row_version: number;
       sort?: number | null;
     };
+    /** A carrier to name for a circuit. Left out, its priority puts it last. */
+    CircuitCarrierAdd: {
+      circuit_number?: string | null;
+      notes?: string | null;
+      priority?: number | null;
+      role: string;
+      vendor_hid: string;
+    };
+    /** A carrier of a circuit beside its primary one, in its part, with its number. */
+    CircuitCarrierOut: {
+      circuit_hid: string;
+      /** The number this carrier gives the circuit. */
+      circuit_number: string | null;
+      created_at: string;
+      hid: string;
+      notes: string | null;
+      /** The order in which they are listed, from 1. */
+      priority: number;
+      /** Its part: a value of the carrier_role list. */
+      role: string;
+      row_version: number;
+      updated_at: string;
+      /** The name of the vendor. */
+      vendor: string;
+      vendor_hid: string;
+    };
+    /** Fields of a carrier of a circuit to change, and the version they were read at. */
+    CircuitCarrierPatch: {
+      circuit_number?: string | null;
+      notes?: string | null;
+      priority?: number | null;
+      role?: string | null;
+      row_version: number;
+      vendor_hid?: string | null;
+    };
+    /** A circuit, as the item or the device group it connects lists it. */
+    CircuitConnection: {
+      enterprise_circuit_id: string | null;
+      /** The HID of the circuit. */
+      hid: string;
+      /** The HID of the connection, a device of the circuit. */
+      link_hid: string;
+      name: string;
+      /** That of the circuit. */
+      record_status: "draft" | "active" | "retired";
+      /** The side of the circuit the device is on. */
+      side: "a" | "z";
+    };
+    /** A new cost line of a circuit. */
+    CircuitCostAdd: {
+      description: string;
+      ends_on?: string | null;
+      monthly_cost: string;
+      notes?: string | null;
+      starts_on?: string | null;
+      vendor_hid?: string | null;
+    };
+    /** One line of what a carrier bills for a circuit each month. */
+    CircuitCostOut: {
+      circuit_hid: string;
+      created_at: string;
+      description: string;
+      ends_on: string | null;
+      hid: string;
+      /** It is billed today. */
+      in_date: boolean;
+      /** Below zero for a credit. */
+      monthly_cost: string;
+      notes: string | null;
+      row_version: number;
+      starts_on: string | null;
+      updated_at: string;
+      /** The name of the vendor the line names, if any. */
+      vendor: string | null;
+      /** The carrier that bills the line; blank is the circuit's primary carrier. */
+      vendor_hid: string | null;
+    };
+    /** Fields of a cost line to change, and the version they were read at. */
+    CircuitCostPatch: {
+      description?: string | null;
+      ends_on?: string | null;
+      monthly_cost?: string | null;
+      notes?: string | null;
+      row_version: number;
+      starts_on?: string | null;
+      vendor_hid?: string | null;
+    };
     /** What the circuits of one value of `by` cost in the year, or all of them. */
     CircuitCostRow: {
       annual_cost: string;
@@ -7172,6 +8101,273 @@ export interface components {
       rows: components["schemas"]["CircuitCostRow"][];
       starts_on: string;
       totals: components["schemas"]["CircuitCostRow"];
+    };
+    /**
+     * A new circuit. A side with no location has a note of where it ends, and at least
+     * one side is a location. `cost_side` left out is the setting's.
+     */
+    CircuitCreate: {
+      a_location_hid?: string | null;
+      a_note?: string | null;
+      activated_on?: string | null;
+      billing_account?: string | null;
+      billing_contract?: string | null;
+      carrier_circuit_number?: string | null;
+      carrier_hid?: string | null;
+      circuit_type?: string | null;
+      cost_side?: "a" | "z" | null;
+      description?: string | null;
+      disconnected_on?: string | null;
+      down_mbps?: string | null;
+      enterprise_circuit_id?: string | null;
+      installed_on?: string | null;
+      name: string;
+      notes?: string | null;
+      owner_hid?: string | null;
+      port_mbps?: string | null;
+      production?: boolean;
+      record_status?: "draft" | "active";
+      support_weight?: string | null;
+      tags?: string[];
+      up_mbps?: string | null;
+      z_location_hid?: string | null;
+      z_note?: string | null;
+    };
+    /** A device to connect: one item or one device group, on a side. */
+    CircuitDeviceAdd: {
+      group_hid?: string | null;
+      item_hid?: string | null;
+      notes?: string | null;
+      side: "a" | "z";
+    };
+    /** An item or a device group that a circuit connects, on one of its sides. */
+    CircuitDeviceOut: {
+      circuit_hid: string;
+      created_at: string;
+      group_hid: string | null;
+      hid: string;
+      item_hid: string | null;
+      /** What the device is called: an item's name, a group's name. */
+      name: string;
+      notes: string | null;
+      /** That of the device; a retired one says so. */
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      side: "a" | "z";
+      updated_at: string;
+    };
+    /** Fields of a device of a circuit to change, and the version they were read at. */
+    CircuitDevicePatch: {
+      notes?: string | null;
+      row_version: number;
+      side?: "a" | "z" | null;
+    };
+    /** Devices to connect to a circuit, all together. */
+    CircuitDevicesAdd: {
+      devices: components["schemas"]["CircuitDeviceAdd"][];
+    };
+    /** The values a circuit has in force, each with where it came from. */
+    CircuitEffective: {
+      /** The rate in force down: its own, or the full rate of the port, `port`. */
+      down_mbps: components["schemas"]["EffectiveValue"];
+      /** Its own, or none. The default of the settings comes with 0.8.0. */
+      support_weight: components["schemas"]["EffectiveValue"];
+      /** The rate in force up: its own, or the full rate of the port, `port`. */
+      up_mbps: components["schemas"]["EffectiveValue"];
+    };
+    /** A new circuit group. */
+    CircuitGroupCreate: {
+      description?: string | null;
+      name: string;
+      notes?: string | null;
+      owner_hid?: string | null;
+      record_status?: "draft" | "active";
+      tags?: string[];
+    };
+    /** One circuit in one group. */
+    CircuitGroupMemberOut: {
+      circuit: components["schemas"]["CircuitRef"];
+      circuit_hid: string;
+      created_at: string;
+      group_hid: string;
+      hid: string;
+    };
+    /** Circuits to put into a group, all together, each once. */
+    CircuitGroupMembersAdd: {
+      circuit_hids: string[];
+    };
+    /** Circuits that may land at different sites, looked at and costed together. */
+    CircuitGroupOut: {
+      /** Twelve times the monthly cost. */
+      annual_cost: string;
+      /** How many circuits it has. */
+      circuits: number;
+      created_at: string;
+      created_by: string | null;
+      description: string | null;
+      hid: string;
+      /** How many of them are in service today. */
+      in_service: number;
+      /** What those in service cost a month today, each circuit once. */
+      monthly_cost: string;
+      name: string;
+      notes: string | null;
+      owner: components["schemas"]["OwnerRef"] | null;
+      owner_hid: string | null;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      tags: string[];
+      updated_at: string;
+      updated_by: string | null;
+    };
+    /** Fields of a circuit group to change, and the version they were read at. */
+    CircuitGroupPatch: {
+      description?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      owner_hid?: string | null;
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      tags?: string[] | null;
+    };
+    /** A circuit group, as a circuit lists it. */
+    CircuitGroupRef: {
+      hid: string;
+      name: string;
+      record_status: "draft" | "active" | "retired";
+    };
+    /**
+     * A telecommunication circuit, with what is worked out when it is read.
+     *
+     * A list leaves `carriers`, `costs`, `devices` and `groups` out of each row, as null,
+     * unless `fields` names them; the record has them always.
+     */
+    CircuitOut: {
+      a_location_hid: string | null;
+      a_note: string | null;
+      /** Null for a side with no location. */
+      a_side: components["schemas"]["CircuitSide"] | null;
+      activated_on: string | null;
+      /** Twelve times the monthly cost. */
+      annual_cost: string;
+      billing_account: string | null;
+      billing_contract: string | null;
+      /** The primary carrier. */
+      carrier: components["schemas"]["VendorRef"] | null;
+      carrier_circuit_number: string | null;
+      carrier_hid: string | null;
+      /** Its carriers beside the primary one, by priority. */
+      carriers: components["schemas"]["CircuitCarrierOut"][] | null;
+      circuit_type: string | null;
+      /** The side whose site its cost and weight count at. */
+      cost_side: "a" | "z";
+      /** The site its cost and weight count at. */
+      cost_site_hid: string | null;
+      cost_site_path: string | null;
+      /** Its cost lines, by description. */
+      costs: components["schemas"]["CircuitCostOut"][] | null;
+      created_at: string;
+      created_by: string | null;
+      description: string | null;
+      /** The devices it connects. */
+      devices: components["schemas"]["CircuitDeviceOut"][] | null;
+      disconnected_on: string | null;
+      /** Its own rate down. Blank is the port's. */
+      down_mbps: string | null;
+      effective: components["schemas"]["CircuitEffective"];
+      enterprise_circuit_id: string | null;
+      /** The groups it is in, by name. */
+      groups: components["schemas"]["CircuitGroupRef"][] | null;
+      hid: string;
+      /** It is in service today. */
+      in_service: boolean;
+      installed_on: string | null;
+      /** The sum of its cost lines in date today. */
+      monthly_cost: string;
+      name: string;
+      notes: string | null;
+      owner: components["schemas"]["OwnerRef"] | null;
+      /** Its owner is outside the operations team. */
+      owner_exception: boolean;
+      /** That owner's reason. */
+      owner_exception_reason: string | null;
+      owner_hid: string | null;
+      port_mbps: string | null;
+      production: boolean;
+      record_status: "draft" | "active" | "retired";
+      row_version: number;
+      /** The speed written short: 1G / 200M / 20M. */
+      speed: string | null;
+      support_weight: string | null;
+      tags: string[];
+      /** Its own rate up. Blank is the port's. */
+      up_mbps: string | null;
+      updated_at: string;
+      updated_by: string | null;
+      z_location_hid: string | null;
+      z_note: string | null;
+      /** Null for a side with no location. */
+      z_side: components["schemas"]["CircuitSide"] | null;
+    };
+    /** Fields of a circuit to change, and the version they were read at. */
+    CircuitPatch: {
+      a_location_hid?: string | null;
+      a_note?: string | null;
+      activated_on?: string | null;
+      billing_account?: string | null;
+      billing_contract?: string | null;
+      carrier_circuit_number?: string | null;
+      carrier_hid?: string | null;
+      circuit_type?: string | null;
+      cost_side?: "a" | "z" | null;
+      description?: string | null;
+      disconnected_on?: string | null;
+      down_mbps?: string | null;
+      enterprise_circuit_id?: string | null;
+      installed_on?: string | null;
+      name?: string | null;
+      notes?: string | null;
+      owner_hid?: string | null;
+      port_mbps?: string | null;
+      production?: boolean | null;
+      /** Brings a retired circuit back. */
+      record_status?: "draft" | "active" | null;
+      row_version: number;
+      support_weight?: string | null;
+      tags?: string[] | null;
+      up_mbps?: string | null;
+      z_location_hid?: string | null;
+      z_note?: string | null;
+    };
+    /** A circuit, as a group lists it. */
+    CircuitRef: {
+      circuit_type: string | null;
+      enterprise_circuit_id: string | null;
+      hid: string;
+      /** It is in service today. */
+      in_service: boolean;
+      /** The sum of its cost lines in date today. */
+      monthly_cost: string;
+      name: string;
+      record_status: "draft" | "active" | "retired";
+      speed: string | null;
+    };
+    /**
+     * A side of a circuit at a location: the location's path, its site and its region,
+     * read when it is asked for.
+     */
+    CircuitSide: {
+      location_hid: string;
+      /** The name of the location. */
+      name: string;
+      /** The path of the location, from the top region down. */
+      path: string;
+      /** That of the location. */
+      record_status: "draft" | "active" | "retired";
+      region_hid: string;
+      site_hid: string;
+      /** The path of its site. */
+      site_path: string;
     };
     /** A new contact. */
     ContactCreate: {
@@ -7302,7 +8498,7 @@ export interface components {
       from_agreement_label: string | null;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -7314,7 +8510,7 @@ export interface components {
     ContractEffectiveValue: {
       /** What the agreement gives for this field today, whether the contract overrides it or not. Blank for a contract in no agreement, and where the agreement has nothing. */
       from_agreement: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -7677,6 +8873,8 @@ export interface components {
     /** A stack, a cluster, a controller domain or another labelled set of items. */
     DeviceGroupOut: {
       addresses: components["schemas"]["AddressRef"][];
+      /** The circuits it is connected to, each with its side: to be read only. */
+      circuits: components["schemas"]["CircuitConnection"][];
       created_at: string;
       effective: components["schemas"]["GroupEffective"];
       expected_members: number | null;
@@ -7809,7 +9007,7 @@ export interface components {
       /** The name of its site. */
       site: string | null;
       site_hid: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or the group it came from. Null for its own. */
       source_label: string | null;
@@ -7826,7 +9024,7 @@ export interface components {
       is_open: boolean;
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
       source_label: string | null;
@@ -7846,7 +9044,7 @@ export interface components {
     EffectiveReference: {
       /** What people call the record. */
       label: string | null;
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The HID of the record. */
       value: string | null;
@@ -7869,7 +9067,7 @@ export interface components {
      * A decimal and a date are text, and a truth value is true or false.
      */
     EffectiveValue: {
-      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "setting" | "none";
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       value: string | boolean | null;
     };
@@ -7895,7 +9093,7 @@ export interface components {
     ExportRequest: {
       /** Left out, the columns that can be set. `hid` is always first. */
       columns?: string[] | null;
-      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines";
+      entity: "tags" | "vendors" | "catalog_entries" | "contacts" | "operators" | "regions" | "sites" | "locations" | "contact_assignments" | "owners" | "owner_members" | "networks" | "external_systems" | "agreements" | "contracts" | "contract_contacts" | "purchase_requests" | "purchase_lines" | "items" | "device_groups" | "device_group_members" | "item_replacements" | "addresses" | "contract_coverage" | "registrations" | "capacity_lines" | "circuit_groups" | "circuits" | "circuit_carriers" | "circuit_costs" | "circuit_devices";
       /** A filter tree, or the short form. */
       filter?: {
         [key: string]: unknown;
@@ -8238,6 +9436,8 @@ export interface components {
       asset_tag: string | null;
       catalog: components["schemas"]["ItemCatalog"] | null;
       catalog_entry_hid: string | null;
+      /** The circuits it is connected to, each with its side: to be read only. */
+      circuits: components["schemas"]["CircuitConnection"][];
       comments: string | null;
       /** The state of the hardware, as a person knows it. */
       condition: string | null;
@@ -8954,6 +10154,42 @@ export interface components {
     };
     Page_CatalogEntryOut_: {
       items: components["schemas"]["CatalogEntryOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitCarrierOut_: {
+      items: components["schemas"]["CircuitCarrierOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitCostOut_: {
+      items: components["schemas"]["CircuitCostOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitDeviceOut_: {
+      items: components["schemas"]["CircuitDeviceOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitGroupMemberOut_: {
+      items: components["schemas"]["CircuitGroupMemberOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitGroupOut_: {
+      items: components["schemas"]["CircuitGroupOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_CircuitOut_: {
+      items: components["schemas"]["CircuitOut"][];
       limit: number;
       offset: number;
       total: number;

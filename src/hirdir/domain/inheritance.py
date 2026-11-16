@@ -33,6 +33,9 @@ Source = Literal[
     "site",
     "region",
     "agreement",
+    # A circuit's contacts from its primary carrier, and its rates from its port (0.8.0).
+    "vendor",
+    "port",
     "setting",
     "none",
 ]

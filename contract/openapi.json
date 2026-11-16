@@ -4780,6 +4780,572 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "CircuitCarrierAdd": {
+        "additionalProperties": false,
+        "description": "A carrier to name for a circuit. Left out, its priority puts it last.",
+        "properties": {
+          "circuit_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Number"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "maxLength": 40,
+            "title": "Role",
+            "type": "string"
+          },
+          "vendor_hid": {
+            "maxLength": 36,
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor_hid",
+          "role"
+        ],
+        "title": "CircuitCarrierAdd",
+        "type": "object"
+      },
+      "CircuitCarrierOut": {
+        "additionalProperties": false,
+        "description": "A carrier of a circuit beside its primary one, in its part, with its number.",
+        "properties": {
+          "circuit_hid": {
+            "title": "Circuit Hid",
+            "type": "string"
+          },
+          "circuit_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The number this carrier gives the circuit.",
+            "title": "Circuit Number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "priority": {
+            "description": "The order in which they are listed, from 1.",
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "description": "Its part: a value of the carrier_role list.",
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vendor": {
+            "description": "The name of the vendor.",
+            "title": "Vendor",
+            "type": "string"
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "circuit_hid",
+          "vendor_hid",
+          "vendor",
+          "role",
+          "circuit_number",
+          "priority",
+          "notes",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CircuitCarrierOut",
+        "type": "object"
+      },
+      "CircuitCarrierPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a carrier of a circuit to change, and the version they were read at.",
+        "properties": {
+          "circuit_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Number"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "vendor_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Hid"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitCarrierPatch",
+        "type": "object"
+      },
+      "CircuitConnection": {
+        "additionalProperties": false,
+        "description": "A circuit, as the item or the device group it connects lists it.",
+        "properties": {
+          "enterprise_circuit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Circuit Id"
+          },
+          "hid": {
+            "description": "The HID of the circuit.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "link_hid": {
+            "description": "The HID of the connection, a device of the circuit.",
+            "title": "Link Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "record_status": {
+            "description": "That of the circuit.",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "side": {
+            "description": "The side of the circuit the device is on.",
+            "enum": [
+              "a",
+              "z"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "enterprise_circuit_id",
+          "side",
+          "link_hid",
+          "record_status"
+        ],
+        "title": "CircuitConnection",
+        "type": "object"
+      },
+      "CircuitCostAdd": {
+        "additionalProperties": false,
+        "description": "A new cost line of a circuit.",
+        "properties": {
+          "description": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "monthly_cost": {
+            "examples": [
+              "-50.00"
+            ],
+            "pattern": "^-?\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Monthly Cost",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "vendor_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Hid"
+          }
+        },
+        "required": [
+          "description",
+          "monthly_cost"
+        ],
+        "title": "CircuitCostAdd",
+        "type": "object"
+      },
+      "CircuitCostOut": {
+        "additionalProperties": false,
+        "description": "One line of what a carrier bills for a circuit each month.",
+        "properties": {
+          "circuit_hid": {
+            "title": "Circuit Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "in_date": {
+            "description": "It is billed today.",
+            "title": "In Date",
+            "type": "boolean"
+          },
+          "monthly_cost": {
+            "description": "Below zero for a credit.",
+            "examples": [
+              "-50.00"
+            ],
+            "pattern": "^-?\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Monthly Cost",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name of the vendor the line names, if any.",
+            "title": "Vendor"
+          },
+          "vendor_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The carrier that bills the line; blank is the circuit's primary carrier.",
+            "title": "Vendor Hid"
+          }
+        },
+        "required": [
+          "hid",
+          "circuit_hid",
+          "description",
+          "monthly_cost",
+          "vendor_hid",
+          "vendor",
+          "starts_on",
+          "ends_on",
+          "in_date",
+          "notes",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CircuitCostOut",
+        "type": "object"
+      },
+      "CircuitCostPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a cost line to change, and the version they were read at.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "monthly_cost": {
+            "anyOf": [
+              {
+                "examples": [
+                  "-50.00"
+                ],
+                "pattern": "^-?\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Cost"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "vendor_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Hid"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitCostPatch",
+        "type": "object"
+      },
       "CircuitCostRow": {
         "additionalProperties": false,
         "description": "What the circuits of one value of `by` cost in the year, or all of them.",
@@ -4914,6 +5480,1991 @@
           "rows"
         ],
         "title": "CircuitCostsOut",
+        "type": "object"
+      },
+      "CircuitCreate": {
+        "additionalProperties": false,
+        "description": "A new circuit. A side with no location has a note of where it ends, and at least\none side is a location. `cost_side` left out is the setting's.",
+        "properties": {
+          "a_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Location Hid"
+          },
+          "a_note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Note"
+          },
+          "activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated On"
+          },
+          "billing_account": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Account"
+          },
+          "billing_contract": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Contract"
+          },
+          "carrier_circuit_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Circuit Number"
+          },
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Hid"
+          },
+          "circuit_type": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Type"
+          },
+          "cost_side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Side"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnected On"
+          },
+          "down_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Down Mbps"
+          },
+          "enterprise_circuit_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Circuit Id"
+          },
+          "installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed On"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "port_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Mbps"
+          },
+          "production": {
+            "default": true,
+            "title": "Production",
+            "type": "boolean"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Weight"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "up_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up Mbps"
+          },
+          "z_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Location Hid"
+          },
+          "z_note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Note"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CircuitCreate",
+        "type": "object"
+      },
+      "CircuitDeviceAdd": {
+        "additionalProperties": false,
+        "description": "A device to connect: one item or one device group, on a side.",
+        "properties": {
+          "group_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Hid"
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Hid"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "side": {
+            "enum": [
+              "a",
+              "z"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side"
+        ],
+        "title": "CircuitDeviceAdd",
+        "type": "object"
+      },
+      "CircuitDeviceOut": {
+        "additionalProperties": false,
+        "description": "An item or a device group that a circuit connects, on one of its sides.",
+        "properties": {
+          "circuit_hid": {
+            "title": "Circuit Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Hid"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "item_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Hid"
+          },
+          "name": {
+            "description": "What the device is called: an item's name, a group's name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_status": {
+            "description": "That of the device; a retired one says so.",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "a",
+              "z"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "circuit_hid",
+          "side",
+          "item_hid",
+          "group_hid",
+          "name",
+          "record_status",
+          "notes",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CircuitDeviceOut",
+        "type": "object"
+      },
+      "CircuitDevicePatch": {
+        "additionalProperties": false,
+        "description": "Fields of a device of a circuit to change, and the version they were read at.",
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitDevicePatch",
+        "type": "object"
+      },
+      "CircuitDevicesAdd": {
+        "additionalProperties": false,
+        "description": "Devices to connect to a circuit, all together.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitDeviceAdd"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Devices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "title": "CircuitDevicesAdd",
+        "type": "object"
+      },
+      "CircuitEffective": {
+        "additionalProperties": false,
+        "description": "The values a circuit has in force, each with where it came from.",
+        "properties": {
+          "down_mbps": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "The rate in force down: its own, or the full rate of the port, `port`."
+          },
+          "support_weight": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "Its own, or none. The default of the settings comes with 0.8.0."
+          },
+          "up_mbps": {
+            "$ref": "#/components/schemas/EffectiveValue",
+            "description": "The rate in force up: its own, or the full rate of the port, `port`."
+          }
+        },
+        "required": [
+          "support_weight",
+          "down_mbps",
+          "up_mbps"
+        ],
+        "title": "CircuitEffective",
+        "type": "object"
+      },
+      "CircuitGroupCreate": {
+        "additionalProperties": false,
+        "description": "A new circuit group.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "record_status": {
+            "default": "active",
+            "enum": [
+              "draft",
+              "active"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CircuitGroupCreate",
+        "type": "object"
+      },
+      "CircuitGroupMemberOut": {
+        "additionalProperties": false,
+        "description": "One circuit in one group.",
+        "properties": {
+          "circuit": {
+            "$ref": "#/components/schemas/CircuitRef"
+          },
+          "circuit_hid": {
+            "title": "Circuit Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group_hid": {
+            "title": "Group Hid",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "group_hid",
+          "circuit_hid",
+          "circuit",
+          "created_at"
+        ],
+        "title": "CircuitGroupMemberOut",
+        "type": "object"
+      },
+      "CircuitGroupMembersAdd": {
+        "additionalProperties": false,
+        "description": "Circuits to put into a group, all together, each once.",
+        "properties": {
+          "circuit_hids": {
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Circuit Hids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "circuit_hids"
+        ],
+        "title": "CircuitGroupMembersAdd",
+        "type": "object"
+      },
+      "CircuitGroupOut": {
+        "additionalProperties": false,
+        "description": "Circuits that may land at different sites, looked at and costed together.",
+        "properties": {
+          "annual_cost": {
+            "description": "Twelve times the monthly cost.",
+            "examples": [
+              "1000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Annual Cost",
+            "type": "string"
+          },
+          "circuits": {
+            "description": "How many circuits it has.",
+            "title": "Circuits",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "in_service": {
+            "description": "How many of them are in service today.",
+            "title": "In Service",
+            "type": "integer"
+          },
+          "monthly_cost": {
+            "description": "What those in service cost a month today, each circuit once.",
+            "examples": [
+              "1000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Monthly Cost",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "description",
+          "notes",
+          "owner_hid",
+          "owner",
+          "circuits",
+          "in_service",
+          "monthly_cost",
+          "annual_cost",
+          "tags",
+          "record_status",
+          "row_version",
+          "created_at",
+          "updated_at",
+          "created_by",
+          "updated_by"
+        ],
+        "title": "CircuitGroupOut",
+        "type": "object"
+      },
+      "CircuitGroupPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a circuit group to change, and the version they were read at.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitGroupPatch",
+        "type": "object"
+      },
+      "CircuitGroupRef": {
+        "additionalProperties": false,
+        "description": "A circuit group, as a circuit lists it.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "record_status"
+        ],
+        "title": "CircuitGroupRef",
+        "type": "object"
+      },
+      "CircuitOut": {
+        "additionalProperties": false,
+        "description": "A telecommunication circuit, with what is worked out when it is read.\n\nA list leaves `carriers`, `costs`, `devices` and `groups` out of each row, as null,\nunless `fields` names them; the record has them always.",
+        "properties": {
+          "a_location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Location Hid"
+          },
+          "a_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Note"
+          },
+          "a_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitSide"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a side with no location."
+          },
+          "activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated On"
+          },
+          "annual_cost": {
+            "description": "Twelve times the monthly cost.",
+            "examples": [
+              "1000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Annual Cost",
+            "type": "string"
+          },
+          "billing_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Account"
+          },
+          "billing_contract": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Contract"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VendorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The primary carrier."
+          },
+          "carrier_circuit_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Circuit Number"
+          },
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Hid"
+          },
+          "carriers": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CircuitCarrierOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its carriers beside the primary one, by priority.",
+            "title": "Carriers"
+          },
+          "circuit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Type"
+          },
+          "cost_side": {
+            "description": "The side whose site its cost and weight count at.",
+            "enum": [
+              "a",
+              "z"
+            ],
+            "title": "Cost Side",
+            "type": "string"
+          },
+          "cost_site_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The site its cost and weight count at.",
+            "title": "Cost Site Hid"
+          },
+          "cost_site_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Site Path"
+          },
+          "costs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CircuitCostOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its cost lines, by description.",
+            "title": "Costs"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "devices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CircuitDeviceOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The devices it connects.",
+            "title": "Devices"
+          },
+          "disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnected On"
+          },
+          "down_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own rate down. Blank is the port's.",
+            "title": "Down Mbps"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/CircuitEffective"
+          },
+          "enterprise_circuit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Circuit Id"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CircuitGroupRef"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The groups it is in, by name.",
+            "title": "Groups"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "in_service": {
+            "description": "It is in service today.",
+            "title": "In Service",
+            "type": "boolean"
+          },
+          "installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed On"
+          },
+          "monthly_cost": {
+            "description": "The sum of its cost lines in date today.",
+            "examples": [
+              "1000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Monthly Cost",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_exception": {
+            "description": "Its owner is outside the operations team.",
+            "title": "Owner Exception",
+            "type": "boolean"
+          },
+          "owner_exception_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That owner's reason.",
+            "title": "Owner Exception Reason"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "port_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Mbps"
+          },
+          "production": {
+            "title": "Production",
+            "type": "boolean"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The speed written short: 1G / 200M / 20M.",
+            "title": "Speed"
+          },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Weight"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "up_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its own rate up. Blank is the port's.",
+            "title": "Up Mbps"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "z_location_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Location Hid"
+          },
+          "z_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Note"
+          },
+          "z_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CircuitSide"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a side with no location."
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "enterprise_circuit_id",
+          "description",
+          "notes",
+          "circuit_type",
+          "port_mbps",
+          "down_mbps",
+          "up_mbps",
+          "speed",
+          "a_location_hid",
+          "a_note",
+          "z_location_hid",
+          "z_note",
+          "a_side",
+          "z_side",
+          "cost_side",
+          "cost_site_hid",
+          "cost_site_path",
+          "carrier_hid",
+          "carrier",
+          "carrier_circuit_number",
+          "billing_account",
+          "billing_contract",
+          "installed_on",
+          "activated_on",
+          "disconnected_on",
+          "production",
+          "support_weight",
+          "owner_hid",
+          "owner",
+          "owner_exception",
+          "owner_exception_reason",
+          "monthly_cost",
+          "annual_cost",
+          "in_service",
+          "carriers",
+          "costs",
+          "devices",
+          "groups",
+          "effective",
+          "tags",
+          "record_status",
+          "row_version",
+          "created_at",
+          "updated_at",
+          "created_by",
+          "updated_by"
+        ],
+        "title": "CircuitOut",
+        "type": "object"
+      },
+      "CircuitPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a circuit to change, and the version they were read at.",
+        "properties": {
+          "a_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Location Hid"
+          },
+          "a_note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Note"
+          },
+          "activated_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated On"
+          },
+          "billing_account": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Account"
+          },
+          "billing_contract": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Contract"
+          },
+          "carrier_circuit_number": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Circuit Number"
+          },
+          "carrier_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Hid"
+          },
+          "circuit_type": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Type"
+          },
+          "cost_side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Side"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disconnected_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnected On"
+          },
+          "down_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Down Mbps"
+          },
+          "enterprise_circuit_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Circuit Id"
+          },
+          "installed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed On"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "owner_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Hid"
+          },
+          "port_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Mbps"
+          },
+          "production": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production"
+          },
+          "record_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Brings a retired circuit back.",
+            "title": "Record Status"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Weight"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "up_mbps": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1000.00"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up Mbps"
+          },
+          "z_location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Location Hid"
+          },
+          "z_note": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Note"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitPatch",
+        "type": "object"
+      },
+      "CircuitRef": {
+        "additionalProperties": false,
+        "description": "A circuit, as a group lists it.",
+        "properties": {
+          "circuit_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Type"
+          },
+          "enterprise_circuit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Circuit Id"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "in_service": {
+            "description": "It is in service today.",
+            "title": "In Service",
+            "type": "boolean"
+          },
+          "monthly_cost": {
+            "description": "The sum of its cost lines in date today.",
+            "examples": [
+              "1000.00"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Monthly Cost",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "record_status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "enterprise_circuit_id",
+          "circuit_type",
+          "speed",
+          "in_service",
+          "monthly_cost",
+          "record_status"
+        ],
+        "title": "CircuitRef",
+        "type": "object"
+      },
+      "CircuitSide": {
+        "additionalProperties": false,
+        "description": "A side of a circuit at a location: the location's path, its site and its region,\nread when it is asked for.",
+        "properties": {
+          "location_hid": {
+            "title": "Location Hid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the location.",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "The path of the location, from the top region down.",
+            "title": "Path",
+            "type": "string"
+          },
+          "record_status": {
+            "description": "That of the location.",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Record Status",
+            "type": "string"
+          },
+          "region_hid": {
+            "title": "Region Hid",
+            "type": "string"
+          },
+          "site_hid": {
+            "title": "Site Hid",
+            "type": "string"
+          },
+          "site_path": {
+            "description": "The path of its site.",
+            "title": "Site Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location_hid",
+          "name",
+          "path",
+          "site_hid",
+          "site_path",
+          "region_hid",
+          "record_status"
+        ],
+        "title": "CircuitSide",
         "type": "object"
       },
       "ContactCreate": {
@@ -5759,6 +8310,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -5826,6 +8379,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -8061,6 +10616,14 @@
             "title": "Addresses",
             "type": "array"
           },
+          "circuits": {
+            "description": "The circuits it is connected to, each with its side: to be read only.",
+            "items": {
+              "$ref": "#/components/schemas/CircuitConnection"
+            },
+            "title": "Circuits",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8477,6 +11040,7 @@
           "member_count",
           "addresses",
           "registrations",
+          "circuits",
           "tags",
           "record_status",
           "row_version",
@@ -9081,6 +11645,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -9202,6 +11768,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -9365,6 +11933,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -9506,6 +12076,8 @@
               "site",
               "region",
               "agreement",
+              "vendor",
+              "port",
               "setting",
               "none"
             ],
@@ -9689,7 +12261,12 @@
               "addresses",
               "contract_coverage",
               "registrations",
-              "capacity_lines"
+              "capacity_lines",
+              "circuit_groups",
+              "circuits",
+              "circuit_carriers",
+              "circuit_costs",
+              "circuit_devices"
             ],
             "title": "Entity",
             "type": "string"
@@ -11705,6 +14282,14 @@
             ],
             "title": "Catalog Entry Hid"
           },
+          "circuits": {
+            "description": "The circuits it is connected to, each with its side: to be read only.",
+            "items": {
+              "$ref": "#/components/schemas/CircuitConnection"
+            },
+            "title": "Circuits",
+            "type": "array"
+          },
           "comments": {
             "anyOf": [
               {
@@ -12439,6 +15024,7 @@
           "out_of_service_contracts",
           "registrations",
           "group_registrations",
+          "circuits",
           "tags",
           "record_status",
           "row_version",
@@ -16544,6 +19130,198 @@
           "offset"
         ],
         "title": "Page[CatalogEntryOut]",
+        "type": "object"
+      },
+      "Page_CircuitCarrierOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitCarrierOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitCarrierOut]",
+        "type": "object"
+      },
+      "Page_CircuitCostOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitCostOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitCostOut]",
+        "type": "object"
+      },
+      "Page_CircuitDeviceOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitDeviceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitDeviceOut]",
+        "type": "object"
+      },
+      "Page_CircuitGroupMemberOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitGroupMemberOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitGroupMemberOut]",
+        "type": "object"
+      },
+      "Page_CircuitGroupOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitGroupOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitGroupOut]",
+        "type": "object"
+      },
+      "Page_CircuitOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitOut]",
         "type": "object"
       },
       "Page_ContactOut_": {
@@ -25542,6 +28320,1734 @@
         ]
       }
     },
+    "/api/v1/circuit-groups": {
+      "get": {
+        "description": "List circuit groups, by name unless a sort says otherwise.",
+        "operationId": "list_groups_api_v1_circuit_groups_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitGroupOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Groups",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Create a circuit group: circuits to be looked at and costed together.",
+        "operationId": "create_group_api_v1_circuit_groups_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitGroupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Group",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuit-groups/query": {
+      "post": {
+        "description": "List circuit groups, with the filter and the sort in the body.",
+        "operationId": "query_groups_api_v1_circuit_groups_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitGroupOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Groups",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuit-groups/{hid}": {
+      "get": {
+        "description": "Return one circuit group, with how many circuits it has and what they cost.",
+        "operationId": "get_group_api_v1_circuit_groups__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Group",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change a circuit group.",
+        "operationId": "update_group_api_v1_circuit_groups__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitGroupPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Group",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuit-groups/{hid}/members": {
+      "get": {
+        "description": "List the circuits of a group, by name, retired ones too, which say so.",
+        "operationId": "list_members_api_v1_circuit_groups__hid__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitGroupMemberOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Members",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Put circuits into a group, all together, each once. A retired group takes none,\nand a retired circuit is added to none.",
+        "operationId": "add_members_api_v1_circuit_groups__hid__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitGroupMembersAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CircuitGroupMemberOut"
+                  },
+                  "title": "Response Add Members Api V1 Circuit Groups  Hid  Members Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Members",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuit-groups/{hid}/members/{member_hid}": {
+      "delete": {
+        "description": "Take a circuit out of a group. The audit event of the removal holds what it was.",
+        "operationId": "remove_member_api_v1_circuit_groups__hid__members__member_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_hid",
+            "required": true,
+            "schema": {
+              "title": "Member Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Member",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuit-groups/{hid}/retire": {
+      "post": {
+        "description": "Retire a circuit group. Its circuits stay listed in it, and it takes no new one.",
+        "operationId": "retire_group_api_v1_circuit_groups__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitGroupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Group",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits": {
+      "get": {
+        "description": "List circuits, by name unless a sort says otherwise.\n\nDrafts and retired circuits are left out unless asked for. The carriers, cost\nlines, devices and groups of each are null unless `fields` names them.",
+        "operationId": "list_circuits_api_v1_circuits_get",
+        "parameters": [
+          {
+            "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "The short form, `field:op:value` conditions separated by spaces, or a filter tree as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Field names, `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Show retired records and items in Archived as well.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show retired records and items in Archived as well.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Show draft records as well.",
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Show draft records as well.",
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these fields of each record, such as `name,catalog.pid`. Repeat or separate by commas. `hid` and `row_version` always come.",
+              "title": "Fields"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Circuits",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Create a circuit. At least one side is a location, and a side with none has a\nnote of where it ends. One that names no `cost_side` is given the setting's.",
+        "operationId": "create_circuit_api_v1_circuits_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Circuit",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/query": {
+      "post": {
+        "description": "List circuits, with the filter and the sort in the body.",
+        "operationId": "query_circuits_api_v1_circuits_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Circuits",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}": {
+      "get": {
+        "description": "Return one circuit, whatever its status, with its parts.",
+        "operationId": "get_circuit_api_v1_circuits__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Circuit",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change a circuit. `record_status` of `active` or `draft` brings a retired one back.",
+        "operationId": "update_circuit_api_v1_circuits__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Circuit",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/carriers": {
+      "get": {
+        "description": "List the carriers of a circuit beside its primary one, by priority.",
+        "operationId": "list_carriers_api_v1_circuits__hid__carriers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitCarrierOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Carriers",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Name a carrier of a circuit beside its primary one: a local exchange carrier, the\nprovider of a cross-connect. A vendor is named once on a circuit.",
+        "operationId": "add_carrier_api_v1_circuits__hid__carriers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitCarrierAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitCarrierOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Carrier",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/carriers/{link_hid}": {
+      "delete": {
+        "description": "Remove a carrier of a circuit that was a mistake. One that a cost line names is\nnot removed. The audit event of the removal holds what it was.",
+        "operationId": "remove_carrier_api_v1_circuits__hid__carriers__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Carrier",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change a carrier of a circuit.",
+        "operationId": "update_carrier_api_v1_circuits__hid__carriers__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitCarrierPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitCarrierOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Carrier",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/costs": {
+      "get": {
+        "description": "List the cost lines of a circuit, by description.",
+        "operationId": "list_costs_api_v1_circuits__hid__costs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitCostOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Costs",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Add a line of what a carrier bills for a circuit each month: the port, the local\nloop, a credit below zero. A new rate is a line that ends and one that begins.",
+        "operationId": "add_cost_api_v1_circuits__hid__costs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitCostAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitCostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Cost",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/costs/{line_hid}": {
+      "delete": {
+        "description": "Remove a cost line that was a mistake. The audit event holds what it was.",
+        "operationId": "remove_cost_api_v1_circuits__hid__costs__line_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_hid",
+            "required": true,
+            "schema": {
+              "title": "Line Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Cost",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change a cost line. One that was billed for a time is given an end.",
+        "operationId": "update_cost_api_v1_circuits__hid__costs__line_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_hid",
+            "required": true,
+            "schema": {
+              "title": "Line Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitCostPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitCostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Cost",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/devices": {
+      "get": {
+        "description": "List the devices a circuit connects, the A side first.",
+        "operationId": "list_devices_api_v1_circuits__hid__devices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitDeviceOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Connect items and device groups to a circuit, each on a side, all together. A\ndevice is connected to a circuit once.",
+        "operationId": "add_devices_api_v1_circuits__hid__devices_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitDevicesAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CircuitDeviceOut"
+                  },
+                  "title": "Response Add Devices Api V1 Circuits  Hid  Devices Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Devices",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/devices/{link_hid}": {
+      "delete": {
+        "description": "Remove a device of a circuit that was a mistake, or that was taken out. The audit\nevent of the removal holds what it was.",
+        "operationId": "remove_device_api_v1_circuits__hid__devices__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Device",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change the side of a device of a circuit, or its notes.",
+        "operationId": "update_device_api_v1_circuits__hid__devices__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitDevicePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitDeviceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Device",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/retire": {
+      "post": {
+        "description": "Retire a circuit. Its parts and its groups stay on record.",
+        "operationId": "retire_circuit_api_v1_circuits__hid__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Circuit",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
     "/api/v1/contact-assignments": {
       "get": {
         "description": "List contact assignments: those of one place with `region_hid`, `site_hid` or\n`location_hid` in the filter, those of one contact with `contact_hid`.",
@@ -28754,7 +33260,12 @@
                     "addresses",
                     "contract_coverage",
                     "registrations",
-                    "capacity_lines"
+                    "capacity_lines",
+                    "circuit_groups",
+                    "circuits",
+                    "circuit_carriers",
+                    "circuit_costs",
+                    "circuit_devices"
                   ],
                   "type": "string"
                 },
@@ -28859,7 +33370,12 @@
                       "addresses",
                       "contract_coverage",
                       "registrations",
-                      "capacity_lines"
+                      "capacity_lines",
+                      "circuit_groups",
+                      "circuits",
+                      "circuit_carriers",
+                      "circuit_costs",
+                      "circuit_devices"
                     ],
                     "title": "Entity",
                     "type": "string"

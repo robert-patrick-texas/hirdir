@@ -9,7 +9,8 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,6 +54,15 @@ def _free_port() -> int:
 @pytest.fixture
 def server(tmp_path: Path) -> Iterator[Server]:
     """Start a server on an empty database and create its first Admin."""
+    with started(tmp_path) as running:
+        yield running
+
+
+@contextmanager
+def started(tmp_path: Path) -> Generator[Server]:
+    """Start a server on an empty database in a directory, with its first Admin, and
+    stop it again: a scenario that needs a second, empty inventory starts one."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
     port = _free_port()
     config = tmp_path / "config.toml"
     config.write_text(f'[server]\nlisten = "127.0.0.1:{port}"\nstate_dir = "."\n')

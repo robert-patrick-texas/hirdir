@@ -200,7 +200,7 @@ location is also found by `site.name`, `site.code` and `region.name`, the name o
 region its site is in. On the list of groups, `member.serial_number` finds a stack by the serial
 number of any current member. On the list of circuits, `carrier.name` is the name of
 its primary carrier, `carriers.vendor_hid` and `carriers.circuit_number` find it by any
-of its carriers and by the number any of them gives it, `location` by a side at a
+of its carriers, the primary one among them, and by the number any of them gives it, `location` by a side at a
 location, and takes `within` with a region, a site or a location, `a_location.name` and
 `z_location.name` are the names of its two sides, `cost_site_hid` is the site it counts
 at and `cost_location` the location it counts at, which takes `within` as `location`
@@ -209,7 +209,8 @@ by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
 it gives none, `monthly_cost` and `annual_cost` what it costs today, and `in_service`
 is true where it is in service today. The list of circuit groups has `owner.label` and
-`circuits`, how many it has. The lists of regions, sites and locations have
+`circuits`, how many it has, and `in_service`, `monthly_cost` and `annual_cost` as its
+record has them. The lists of regions, sites and locations have
 `support_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
@@ -469,7 +470,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
 | Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
 | Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
-| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the number that carrier gives the circuit, as its primary or as another; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. More than one answer is an error on the row, never a guess. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
+| Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the number that carrier gives the circuit, as its primary or as another; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
 | Load order | tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply, in whichever batch they were made; after a resume, the request ID of the resume. The preview is an event on the job, and so are `apply_started`, `apply_resumed` and `apply_stopped`, the last made by the server, and `apply` at the end, with the counts of what the apply did |
 
@@ -1137,12 +1138,14 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
   "carrier_hid": "0193a1f4-...", "carrier_circuit_number": "EXT/12345/000/EXTL",
   "monthly_cost": "1000.00", "annual_cost": "12000.00", "in_service": true,
   "a_side": null,
-  "z_side": { "location_hid": "0193a1f4-...", "path": "Americas > Central > Site-2 > Building 1",
-              "site_hid": "0193a1f4-...", "region_hid": "0193a1f4-..." },
+  "z_side": { "location_hid": "0193a1f4-...", "name": "Building 1",
+              "path": "Americas > Central > Site-2 > Building 1",
+              "site_hid": "0193a1f4-...", "site_path": "Americas > Central > Site-2",
+              "region_hid": "0193a1f4-...", "record_status": "active" },
   "carriers": [ { "hid": "...", "vendor_hid": "...", "vendor": "Example Local Exchange",
                   "role": "local_exchange", "circuit_number": "LEC-778-0001", "priority": 1 } ],
   "costs": [ { "hid": "...", "description": "Port", "monthly_cost": "850.00", "vendor_hid": null,
-               "starts_on": null, "ends_on": null, "in_date": true } ],
+               "vendor": null, "starts_on": null, "ends_on": null, "in_date": true } ],
   "devices": [ { "hid": "...", "side": "z", "item_hid": "...", "group_hid": null,
                  "name": "site2-rtr-01", "record_status": "active" } ],
   "groups": [ { "hid": "...", "name": "Internet access" } ],
@@ -1157,8 +1160,9 @@ model](data-model.md#circuits) page names them, and what is worked out when it i
 ```
 
 A side with no location is `null` in `a_side` or `z_side`. A list leaves `carriers`,
-`costs`, `devices`, `groups` and the contacts out of each row, which its own routes and
-the record answer; `fields` may ask for them. A new circuit with no `cost_side` takes
+`costs`, `devices`, `groups` and the contacts out of each row, as `null`, which its own
+routes and the record answer; `fields` may ask for them. The record also answers
+`owner_exception` and `owner_exception_reason`, as an item does. A new circuit with no `cost_side` takes
 the setting `circuit_cost_side`. A request that leaves both sides with no location,
 gives a side with no location no note, gives a rate with no port speed or above it,
 puts an activation before the installation or a disconnection before the activation,
@@ -1177,7 +1181,11 @@ on the circuit; a device is an `item_hid` or a `group_hid` on a `side`, once; a 
 is a `contact_hid` with a `side`, blank for one of the carrier's, and a `role`, once for
 one side and role. A retired circuit takes no new part, and a retired item, group,
 vendor or contact is not newly named: each is a `422`. `POST /circuits/{hid}/devices`
-takes several devices at once, as `members` of a group does.
+takes several devices at once, as `members` of a group does: `devices`, each an
+`item_hid` or a `group_hid` with its `side`. A cost line's `vendor_hid` is the circuit's
+primary carrier or one of its other carriers, blank being the primary, and any other
+vendor is a `422` that names it; a carrier that a line names is not removed, a `409`,
+and the primary carrier is not replaced while a line names it by name, a `422`.
 
 **The contacts of a vendor.** `GET /vendors/{hid}/contacts` lists the contacts a vendor
 names, `account_manager` or `support_contact`, by role and then by priority, and `POST`,
@@ -1185,14 +1193,17 @@ names, `account_manager` or `support_contact`, by role and then by priority, and
 contracts"). The record of a vendor answers them in `contacts`.
 
 **Where a circuit is.** The record of an item and of a device group answers `circuits`,
-each with its HID, name, enterprise circuit ID and side, to be read only. The list of
+each with its HID, name, enterprise circuit ID and side, the HID of the connection,
+`link_hid`, and the circuit's `record_status`, to be read only. The list of
 circuits finds those with a side at a location, or at or beneath a site or a region, by
 `location:within:`, which a location's page asks for.
 
 **Circuit groups.** `GET /circuit-groups/{hid}` answers the group's fields, `circuits`,
 how many it has, `in_service`, how many of them are in service today, and their
 `monthly_cost` and `annual_cost`, each circuit once. `GET /circuit-groups/{hid}/members`
-lists its circuits, paged; `POST` adds circuits, several at a time, each once, and
+lists its circuits by name, paged, each with its `circuit`; `POST` adds circuits,
+`circuit_hids`, several at a time, each once, a circuit already in the group being a
+`409`, and
 `DELETE /circuit-groups/{hid}/members/{member_hid}` takes one out, the audit event
 holding what it was. A retired group takes no circuit, and a retired circuit is added
 to none.

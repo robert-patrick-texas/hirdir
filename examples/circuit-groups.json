@@ -1,0 +1,3 @@
+{"schema": "hirdir/1", "entity": "circuit_groups", "mode": "upsert", "records": [
+  {"name": "Inter-site links", "description": "The circuits between the sites", "owner": "Network Engineering", "notes": null, "record_status": "active", "tags": []}
+]}

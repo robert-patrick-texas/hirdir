@@ -38,6 +38,11 @@ Load the files in this order, because a record names the ones it refers to:
 24. `contract-coverage.csv`
 25. `registrations.csv`
 26. `capacity-lines.csv`
+27. `circuit-groups.csv`
+28. `circuits.csv`
+29. `circuit-carriers.csv`
+30. `circuit-costs.csv`
+31. `circuit-devices.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
@@ -68,6 +73,11 @@ hirdir import examples/addresses.csv --entity addresses
 hirdir import examples/contract-coverage.csv --entity contract_coverage
 hirdir import examples/registrations.csv --entity registrations
 hirdir import examples/capacity-lines.csv --entity capacity_lines
+hirdir import examples/circuit-groups.csv --entity circuit_groups
+hirdir import examples/circuits.csv --entity circuits
+hirdir import examples/circuit-carriers.csv --entity circuit_carriers
+hirdir import examples/circuit-costs.csv --entity circuit_costs
+hirdir import examples/circuit-devices.csv --entity circuit_devices
 ```
 
 Loaded a second time, every row is `unchanged`. The `hid` column is there and blank:

@@ -205,6 +205,11 @@ hirdir import examples/addresses.csv --entity addresses --apply
 hirdir import examples/contract-coverage.csv --entity contract_coverage --apply
 hirdir import examples/registrations.csv --entity registrations --apply
 hirdir import examples/capacity-lines.csv --entity capacity_lines --apply
+hirdir import examples/circuit-groups.csv --entity circuit_groups --apply
+hirdir import examples/circuits.csv --entity circuits --apply
+hirdir import examples/circuit-carriers.csv --entity circuit_carriers --apply
+hirdir import examples/circuit-costs.csv --entity circuit_costs --apply
+hirdir import examples/circuit-devices.csv --entity circuit_devices --apply
 ```
 
 Without `--apply` a command shows what the file would do and changes nothing. Loaded a
@@ -246,6 +251,14 @@ of a spare power supply as procurement wrote it, and a third line,
 of hook-and-loop tape, has no model: it is not tracked, takes no item and waits for
 nothing. The capacity lines have the columns of a line that multiplies, though none of
 them does.
+
+Five of the files are new in 0.8.0: a group of circuits, the circuits, the carriers of a
+circuit beside its primary one, the lines of what each costs a month, and the devices
+each connects. An internet circuit of Site-2 has its far end in the carrier's network,
+with no location and a note; a point-to-point circuit between Site-1 and Site-2 has a
+local exchange carrier with a number of its own beside the carrier's; and a dark fiber
+lent by a business partner has an enterprise circuit ID and no carrier's number, and
+counts at its far end. Three carriers are among the vendors.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:

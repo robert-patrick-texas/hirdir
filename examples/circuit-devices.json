@@ -1,0 +1,5 @@
+{"schema": "hirdir/1", "entity": "circuit_devices", "mode": "upsert", "records": [
+  {"circuit": "Site-1 to Site-2", "side": "z", "item": "AT-000141", "group": null, "notes": null},
+  {"circuit": "EC-0101", "side": "a", "item": null, "group": "site2-fw-edge", "notes": null},
+  {"circuit": "EC-0103", "side": "a", "item": "AT-000142", "group": null, "notes": null}
+]}

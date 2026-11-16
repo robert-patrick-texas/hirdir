@@ -1088,7 +1088,7 @@ items and device groups (D-157, D-158, P-145 to P-154).
 | `carrier_circuit_number` | text | the number the primary carrier gives the circuit. Optional, and needs `carrier_hid` |
 | `billing_account` | text | the billing account number |
 | `billing_contract` | text | the reference of the billing contract |
-| `installed_on`, `activated_on`, `disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation |
+| `installed_on`, `activated_on`, `disconnected_on` | date | the day it was installed; the day it was activated, from which the carrier bills it; the last day it was in service. Each optional; no activation before the installation, no disconnection before the activation, or, where it has none, before the installation |
 | `production` | boolean | whether it carries the enterprise's production work. True unless said. It changes nothing of what the circuit costs |
 | `support_weight` | decimal | the work the circuit adds, blank unless given |
 | `owner_hid` | reference | the person or team responsible for the circuit, its primary stakeholder, who need not be the one who asked for it |
@@ -1145,7 +1145,8 @@ A vendor is named once on a circuit, the primary carrier among them. A carrier's
 number is unique with that carrier, without regard to case, across every circuit and in
 both places, as its primary and as another, as a contract's number is with its vendor.
 A business partner that provides dark fiber is entered as a vendor too. An additional
-carrier is removed outright, with an audit event that holds what it was.
+carrier is removed outright, with an audit event that holds what it was; one that a cost
+line names is neither removed nor given another vendor while the line names it.
 
 ### `circuit_costs`
 
@@ -1156,13 +1157,16 @@ The monthly recurring cost of a circuit, as the lines the carrier bills (P-150).
 | `circuit_hid` | reference | not changed afterwards |
 | `description` | text | required, and unique within its circuit without regard to case: "Port", "Local loop", "Access", "Promotional credit" |
 | `monthly_cost` | money | required; below zero for a credit |
-| `vendor_hid` | reference | the carrier that bills the line: the circuit's primary carrier or one of its other carriers. Blank is the primary carrier |
+| `vendor_hid` | reference | the carrier that bills the line: the circuit's primary carrier or one of its other carriers. Blank is the primary carrier, and a vendor that is neither is refused |
 | `starts_on`, `ends_on` | date | the days the line is billed. Optional, a blank being open: a new rate is a line that ends and one that begins |
 | `notes` | text | |
 
 A line is **in date** on a day that is not before `starts_on` and not after `ends_on`.
 A line that was a mistake is removed outright, with an audit event that holds what it
-was; one that was billed for a time is given an end.
+was; one that was billed for a time is given an end. The primary carrier of a circuit is
+not replaced while a line names it by name: the line is given another carrier, or a
+blank one, first, so that no line is billed by a vendor that is no carrier of its
+circuit.
 
 ### `circuit_devices`
 
