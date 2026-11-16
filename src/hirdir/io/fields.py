@@ -1920,18 +1920,17 @@ _FIRST_CIRCUIT_GROUP = (
     .correlate(Circuit)
     .scalar_subquery()
 )
-# Who bills a circuit: the carrier of each of its cost lines, the line's own or else the
-# primary carrier, and the primary carrier of a circuit with no line (P-151).
+# Who bills a circuit: its primary carrier, and the carrier of each of its cost lines,
+# the line's own or else the primary carrier (P-151). The dates of the lines are not
+# looked at: the report of a year counts only the lines it bills, and the filter of a
+# carrier's row lists the circuits of the year that carrier bills or provides.
 _BILLING: Any = aliased(Circuit, name="billed_circuit")
 _BILLED_BY: Any = union_all(
     select(
         CircuitCost.circuit_hid.label("circuit_hid"),
         func.coalesce(CircuitCost.vendor_hid, _BILLING.carrier_hid).label("vendor_hid"),
     ).join(_BILLING, _BILLING.hid == CircuitCost.circuit_hid),
-    select(_SELF.hid, _SELF.carrier_hid).where(
-        _SELF.carrier_hid.is_not(None),
-        ~select(CircuitCost.hid).where(CircuitCost.circuit_hid == _SELF.hid).exists(),
-    ),
+    select(_SELF.hid, _SELF.carrier_hid).where(_SELF.carrier_hid.is_not(None)),
 ).subquery("billed_by")
 _ANY_BILLER = _one_of(select(_BILLED_BY.c.vendor_hid), _BILLED_BY.c.circuit_hid == Circuit.hid)
 # What a circuit costs a month today: the sum of its lines in date (D-158, P-150), and

@@ -123,10 +123,11 @@ def test_a_draft_is_in_service_in_a_view_of_drafts(
     assert [(one["name"], one["in_service"], one["monthly_cost"]) for one in listed["items"]] == [
         ("Ordered", True, "100.00")
     ]
-    # Read by itself, in no view of drafts, it is not in service, and costs nothing yet.
+    # Read by itself it is read as a view of drafts reads it: what it will cost.
     alone = make.get(f"/circuits/{draft.hid}")
-    assert (alone["in_service"], alone["monthly_cost"]) == (False, "0.00")
-    assert alone["costs"][0]["monthly_cost"] == "100.00"
+    assert (alone["in_service"], alone["monthly_cost"]) == (True, "100.00")
+    # In a view of what is active it is not listed at all.
+    assert make.get("/circuits", filter="in_service:eq:true")["total"] == 0
 
 
 def test_a_disconnected_circuit_costs_nothing_today(
@@ -206,3 +207,43 @@ def test_a_file_row_finds_a_circuit_by_its_primary_carriers_number_only(
     assert other["rows"][0]["record_hid"] is None, other["rows"][0]
     assert [reason["field"] for reason in other["rows"][0]["reasons"]] == ["carrier_circuit_number"]
     assert db.get(Circuit, circuit.hid) is not None
+
+
+# --- what the second review, of the corrections, found ----------------------------------
+
+
+def test_a_carriers_row_lists_every_circuit_it_counted(
+    places: dict[str, Any], db: Session, client: TestClient, viewer: dict[str, str]
+) -> None:
+    carrier, lec = places["carrier"]["hid"], places["lec"]["hid"]
+    room = places["hub_room"]["hid"]
+    # Its primary carrier bills nothing of it in 2027: its only line, the local exchange
+    # carrier's, ended in 2025. It is counted in the primary carrier's row.
+    resold = _circuit(db, "Resold", a_location_hid=room, carrier_hid=carrier)
+    db.add(
+        CircuitCarrier(circuit_hid=resold.hid, vendor_hid=lec, role="local_exchange", priority=1)
+    )
+    _line(db, resold, "Loop", "100", vendor_hid=lec, ends_on=date(2025, 12, 31))
+    # No primary carrier, and a line that nobody is named to bill.
+    _line(db, _circuit(db, "Unbilled", a_location_hid=room), "Port", "50")
+    db.commit()
+    found = _report(client, viewer, fiscal_year=2027, by="carrier")
+    rows = {row["label"]: row for row in found["rows"]}
+    assert rows["Example Telecom"]["circuits"] == 1
+    assert _listed(client, viewer, found, rows["Example Telecom"]) == {"Resold"}
+    assert rows[None]["circuits"] == 1
+    assert _listed(client, viewer, found, rows[None]) == {"Unbilled"}
+
+
+def test_totals_whose_filter_would_be_too_deep_have_none(
+    places: dict[str, Any], db: Session, client: TestClient, viewer: dict[str, str]
+) -> None:
+    _line(db, _circuit(db, "Hub link", a_location_hid=places["hub_room"]["hid"]), "Port", "10")
+    db.commit()
+    asked = {"or": [{"field": "name", "op": "eq", "value": f"x{n}"} for n in range(96)]}
+    asked["or"].append({"field": "name", "op": "eq", "value": "Hub link"})
+    import json
+
+    found = _report(client, viewer, fiscal_year=2027, filter=json.dumps(asked))
+    assert found["totals"]["circuits"] == 1
+    assert found["totals"]["filter"] is None

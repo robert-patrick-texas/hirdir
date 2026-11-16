@@ -8499,7 +8499,7 @@ export interface components {
       annual_cost: string;
       circuits: number;
       cost: string;
-      /** The filter that lists the circuits of the row on `GET /circuits`, with the report's own. Blank for the totals of a report asked with none. */
+      /** The filter that lists the circuits of the row on `GET /circuits`, in the view `include_archived` and `include_drafts` say: the report's own, the year's window of service and the row's condition. A carrier's lists the circuits of the year it provides or bills a line of, whatever the dates of the line. Blank where it would be more than the grammar takes. */
       filter: {
         [key: string]: unknown;
       } | null;
@@ -8707,10 +8707,10 @@ export interface components {
       /** The groups it is in, by name. */
       groups: components["schemas"]["CircuitGroupRef"][] | null;
       hid: string;
-      /** It is in service today. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
       in_service: boolean;
       installed_on: string | null;
-      /** The sum of its cost lines in date today. */
+      /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
       name: string;
       notes: string | null;
@@ -8772,9 +8772,9 @@ export interface components {
       circuit_type: string | null;
       enterprise_circuit_id: string | null;
       hid: string;
-      /** It is in service today. */
+      /** It is in service today: active, or a draft in a view of drafts or read by itself, and not before its activation or after its disconnection. */
       in_service: boolean;
-      /** The sum of its cost lines in date today. */
+      /** The sum of its cost lines in date today while it is in service, and nothing on a day it is not; a draft is in service in a view of drafts, and when it is read by itself. */
       monthly_cost: string;
       name: string;
       record_status: "draft" | "active" | "retired";

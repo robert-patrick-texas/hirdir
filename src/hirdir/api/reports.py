@@ -481,8 +481,11 @@ class CircuitCostRow(Model):
     monthly_cost: CostSum
     annual_cost: CostSum
     filter: dict[str, Any] | None = Field(
-        description="The filter that lists the circuits of the row on `GET /circuits`, with "
-        "the report's own. Blank for the totals of a report asked with none."
+        description="The filter that lists the circuits of the row on `GET /circuits`, in "
+        "the view `include_archived` and `include_drafts` say: the report's own, the year's "
+        "window of service and the row's condition. A carrier's lists the circuits of the "
+        "year it provides or bills a line of, whatever the dates of the line. Blank where it "
+        "would be more than the grammar takes."
     )
 
 
