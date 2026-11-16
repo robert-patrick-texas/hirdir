@@ -151,3 +151,21 @@ def test_a_link_is_made_attached_and_removed(run, desk: Desk, laid_out: dict) ->
     assert desk.listed("locations", laid_out["room"]) == []
     run("references", "list", "--of", "vendor:Cisco", expect=2)
     run("references", "list", "--of", "nothing", expect=2)
+
+
+def test_long_notes_go_with_an_upload_from_the_command_line(
+    run, desk: Desk, laid_out: dict
+) -> None:
+    notes = "Taken from the east door. " * 300
+    run(
+        "references",
+        "add",
+        str(laid_out["files"] / "plan.pdf"),
+        "--to",
+        f"location:{ROOM}",
+        "--kind",
+        "floor_plan",
+        "--notes",
+        notes,
+    )
+    assert desk.listed("locations", laid_out["room"])[0]["notes"] == notes.strip()

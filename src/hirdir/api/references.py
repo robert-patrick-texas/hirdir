@@ -205,7 +205,6 @@ async def upload_reference(
             "added with `POST /reference-files/{hid}/attachments`.",
         ),
     ],
-    notes: Annotated[str | None, Query(max_length=10_000)] = None,
 ) -> s.ReferenceFileOut:
     """Upload a file and put it on the records it is for.
 
@@ -230,7 +229,6 @@ async def upload_reference(
             kind=kind,
             file_name=file_name,
             attach_to=attach_to,
-            notes=notes,
         )
     finally:
         content.discard()

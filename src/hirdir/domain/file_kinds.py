@@ -165,6 +165,10 @@ PROGRAM_MARKS = (b"MZ", b"\x7fELF", b"#!", b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\x
 # An XML document that is no page, such as the configuration a router writes out, is
 # taken as text: nothing that is downloaded runs within hirdir whatever it holds.
 PAGE_MARKS = (b"<!doctype html", b"<html", b"<script", b"<svg", b"<head", b"<body")
+# What may stand before the first tag of a page, each with how it ends: so that an SVG
+# drawing saved with its XML declaration, or a page that begins with a comment, is
+# seen for what it is.
+PREAMBLES = ((b"<?xml", b"?>"), (b"<!--", b"-->"), (b"<!doctype", b">"))
 
 
 def extension_of(file_name: str) -> str:
@@ -191,9 +195,20 @@ def looks_like_a_program_or_a_page(head: bytes) -> str | None:
     if head.startswith(PROGRAM_MARKS):
         return "a program"
     text = head.removeprefix(b"\xef\xbb\xbf").lstrip().lower()
-    if text.startswith(PAGE_MARKS):
-        return "a web page"
-    return None
+    # A page may begin with what comes before its first tag: an XML declaration, a
+    # comment, a document type that is not HTML's. Each is passed over, as far as the
+    # start that is read goes, and what follows is looked at.
+    while not text.startswith(PAGE_MARKS):
+        for opening, closing in PREAMBLES:
+            if text.startswith(opening):
+                end = text.find(closing, len(opening))
+                if end < 0:
+                    return None
+                text = text[end + len(closing) :].lstrip()
+                break
+        else:
+            return None
+    return "a web page"
 
 
 def wrong_content(extension: str, head: bytes) -> str | None:

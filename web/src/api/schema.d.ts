@@ -5790,7 +5790,6 @@ export interface paths {
           file_name: string;
           /** The HID of a record it goes on, once for each, up to 100: a catalog entry, a region, a site, a location, a circuit or an item. More are added with `POST /reference-files/{hid}/attachments`. */
           attach_to: string[];
-          notes?: string | null;
         };
         path?: never;
         header?: never;

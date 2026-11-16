@@ -40252,23 +40252,6 @@
               "title": "Attach To",
               "type": "array"
             }
-          },
-          {
-            "in": "query",
-            "name": "notes",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 10000,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Notes"
-            }
           }
         ],
         "requestBody": {

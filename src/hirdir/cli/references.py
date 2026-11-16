@@ -295,14 +295,18 @@ def add_files(
     records = [find_record(target, text) for text in to]
     refused = code = 0
     for path in files:
-        params = {
-            "title": title or path.stem,
-            "kind": kind,
-            "notes": notes,
-            "attach_to": records,
-        }
+        params = {"title": title or path.stem, "kind": kind, "attach_to": records}
         try:
             made = _upload(target, path, params)
+            if notes:
+                # Notes may be long, and the address of an upload holds little: they
+                # are given to the reference once it is there.
+                made = client.call(
+                    target,
+                    "PATCH",
+                    f"/reference-files/{made['hid']}",
+                    {"notes": notes, "row_version": made["row_version"]},
+                )
         except typer.Exit as stopped:
             if len(files) == 1:
                 raise

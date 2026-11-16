@@ -1315,10 +1315,12 @@ P-158 to P-162).
 
 **Uploading.** `POST /reference-files` takes the file itself as the body of the
 request, as an import does (D-80), and in the address `title`, `kind`, `file_name`,
-which gives its extension, `notes`, and `attach_to`, the HID of a record it goes on,
+which gives its extension, and `attach_to`, the HID of a record it goes on,
 given once for each record, at least once and at most 100: the address of a request
 holds no more, and more records are given the reference afterwards with `POST
-/reference-files/{hid}/attachments`. A body over `max_reference_megabytes`
+/reference-files/{hid}/attachments`. Notes, which may be long, are given afterwards
+with `PATCH`, since nginx holds the address of a request to a few kilobytes. A body over
+`max_reference_megabytes`
 is a `413`; an extension that `reference_file_types` does not take, or content that is
 not what the extension says, a `422` with the reason; a record that is not one of the
 six kinds, a `422` naming it; and content that a record has already, under any

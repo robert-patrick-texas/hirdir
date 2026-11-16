@@ -203,3 +203,25 @@ def test_a_record_named_by_its_hid_alone_is_found_without_a_word_of_refusal(
     said = run("references", "list", "--of", switch["hid"])
     assert "Guide" in said.output
     assert "there is no" not in said.output
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'<?xml version="1.0"?>\n<!-- drawn by hand -->\n<svg xmlns="x"><script/></svg>',
+        b'<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x">\n<svg/>',
+        b'<?xml version="1.0"?><!DOCTYPE html PUBLIC "x" "y"><html><body/></html>',
+        b"<!-- a comment first --><html><script>alert(1)</script></html>",
+    ],
+)
+def test_a_page_that_begins_with_a_declaration_or_a_comment_is_refused_under_any_name(
+    desk: Desk, floor: dict, content: bytes
+) -> None:
+    refused = desk.upload(content, "diagram.txt", floor, expect=422)
+    assert "a web page" in str(refused)
+
+
+def test_an_xml_file_that_is_no_page_is_taken_as_text(desk: Desk, floor: dict) -> None:
+    config = b'<?xml version="1.0"?>\n<!-- show configuration -->\n<configuration><system/>'
+    kept = desk.upload(config, "router.txt", floor)
+    assert desk.content(kept).content == config
