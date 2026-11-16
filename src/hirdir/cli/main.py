@@ -8,7 +8,7 @@ import typer
 
 import hirdir
 from hirdir import clock
-from hirdir.cli import client, inventory
+from hirdir.cli import client, inventory, references
 from hirdir.cli.admin import admin
 
 app = typer.Typer(
@@ -22,6 +22,8 @@ users = typer.Typer(no_args_is_help=True, help="Accounts. Needs the Admin role."
 app.add_typer(users, name="users")
 for name, group in inventory.GROUPS.items():
     app.add_typer(group, name=name)
+# References: files kept by hirdir and links to files kept elsewhere (P-162).
+app.add_typer(references.group, name="references")
 app.command("import")(inventory.import_file)
 app.command("export")(inventory.export)
 app.command("renewals")(inventory.renewals_worklist)

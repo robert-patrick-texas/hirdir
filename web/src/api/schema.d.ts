@@ -1155,6 +1155,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/catalog-entries/{hid}/references": {
+    /** List the references a catalog entry has: its own, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/catalog-entries/{hid}/retire": {
     /** Retire a catalog entry. Items of the model keep it. */
     post: {
@@ -2229,6 +2259,36 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["CircuitDeviceOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/circuits/{hid}/references": {
+    /** List the references a circuit has: its own, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
           };
         };
         /** Validation Error */
@@ -4228,6 +4288,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/items/{hid}/references": {
+    /** List the references a item has: its own, then those of its model, then those of the location it is at in force and of each place above it, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items/{hid}/replace": {
     /**
      * Record that another item took the place of this one, and link the two.
@@ -4635,6 +4725,36 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OpeningOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/locations/{hid}/references": {
+    /** List the references a location has: its own, then those of the locations above it, of its site and of each region outward, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
           };
         };
         /** Validation Error */
@@ -5619,6 +5739,336 @@ export interface paths {
       };
     };
   };
+  "/api/v1/reference-files": {
+    /** List every reference, by title unless a sort says otherwise. */
+    get: {
+      parameters: {
+        query?: {
+          kind?: string | null;
+          form?: "file" | "link" | null;
+          /** What the title holds, without case. */
+          title?: string | null;
+          /** What to sort by: `title`, `kind`, `form`, `file_name`, `size_bytes`, `attachment_count`, `created_at`, `updated_at`. `-` in front for descending. Repeat or separate by commas. */
+          sort?: string[] | null;
+          limit?: number;
+          offset?: number;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ReferenceFileOut_"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Upload a file and put it on the records it is for.
+     *
+     * The file is the body of the request. Its extension must be one that the setting
+     * `reference_file_types` takes, and its content what the extension says; a file over
+     * `max_reference_megabytes` is a `413`. Content that one of the records has already,
+     * under any reference, is a `409` that names that reference.
+     */
+    post: {
+      parameters: {
+        query: {
+          title: string;
+          /** A value of `reference_kind`. */
+          kind: string;
+          /** Its name, whose extension says what it is. */
+          file_name: string;
+          /** The HID of a record it goes on, once for each: a catalog entry, a region, a site, a location, a circuit or an item. */
+          attach_to: string[];
+          notes?: string | null;
+        };
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/octet-stream": string;
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reference-files/links": {
+    /** Make a link to a file that is kept elsewhere, and put it on the records it is for. */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReferenceLinkNew"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reference-files/{hid}": {
+    /** Return one reference, with the records it is on. */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Erase a reference from every record it is on, and its content with it unless
+     * another reference holds the same. The backups on the server keep a copy until they
+     * are rotated out. The audit event holds what it was.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /** Change the title, the kind or the notes of a reference, or the address of a link. */
+    patch: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReferencePatch"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reference-files/{hid}/attachments": {
+    /**
+     * Put a reference on more records. A record that has it already is passed over; one
+     * that has the same content under another reference is a `409`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReferenceAttach"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reference-files/{hid}/attachments/{attachment_hid}": {
+    /**
+     * Take a reference off one record. Taken off the last record it is on, it is erased
+     * with its content, and the answer says so.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+          attachment_hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Detached"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/reference-files/{hid}/content": {
+    /**
+     * Download a file, byte for byte. It is an audit event, `download`.
+     *
+     * It comes as an attachment with its file name, with `X-Content-Type-Options: nosniff`
+     * and a content security policy that lets nothing of it run. A link has no content,
+     * a `422`; content missing after a restore is a `404` that says so.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** The content, byte for byte, as an attachment with its file name. */
+        200: {
+          content: {
+            "application/octet-stream": string;
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+    /**
+     * Put a new edition of a file in place of the one it had, on every record it is on.
+     *
+     * The reference keeps its HID, title, kind and records. The content it had is erased,
+     * unless another reference holds the same. It is checked as an upload is.
+     */
+    put: {
+      parameters: {
+        query: {
+          file_name: string;
+          row_version: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/octet-stream": string;
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ReferenceFileOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/regions": {
     /** List regions, by name unless a sort says otherwise. */
     get: {
@@ -5795,6 +6245,36 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OpeningOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/regions/{hid}/references": {
+    /** List the references a region has: its own, then those of each region above it, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
           };
         };
         /** Validation Error */
@@ -6770,6 +7250,36 @@ export interface paths {
         200: {
           content: {
             "application/json": components["schemas"]["OpeningOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/sites/{hid}/references": {
+    /** List the references a site has: its own, then those of its region and of each region above it, nearest first, each once, and by title within a level. */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Page_ListedReference_"];
           };
         };
         /** Validation Error */
@@ -9274,6 +9784,11 @@ export interface components {
       /** In service, under no contract, and not flagged as not to be renewed. */
       uncovered: number;
     };
+    /** What taking a reference off a record did. */
+    Detached: {
+      /** True where that was the last record it was on: it was erased, and its content with it unless another reference holds the same. */
+      erased: boolean;
+    };
     /** A new device group, with its first members if they are known. */
     DeviceGroupCreate: {
       expected_members?: number | null;
@@ -10133,6 +10648,52 @@ export interface components {
       /** Field names, `-` in front for descending. */
       sort?: string[];
     };
+    /**
+     * A reference as a record lists it: its own, or one it has from a record it stands
+     * under, nearest first.
+     */
+    ListedReference: {
+      attachment_count: number;
+      /** The attachment it is listed by. */
+      attachment_hid: string;
+      /** The records it is on. */
+      attachments: components["schemas"]["ReferenceRecord"][];
+      /** True only after a restore that was told to go on without the content of this file: a download of it is a 404. */
+      content_missing: boolean;
+      created_at: string;
+      created_by: string | null;
+      /** The username of whoever added it. */
+      created_by_name: string | null;
+      /** The name a file was uploaded with. */
+      file_name: string | null;
+      /** `file`, kept by hirdir, or `link`. */
+      form: "file" | "link";
+      hid: string;
+      /** A value of the `reference_kind` list. */
+      kind: string;
+      /** What a file is served as, from its extension: `application/pdf`, `image/jpeg`, and `application/octet-stream` for an extension an Admin added. */
+      media_type: string | null;
+      notes: string | null;
+      row_version: number;
+      /** The SHA-256 checksum of a file's content. */
+      sha256: string | null;
+      /** A JPEG, PNG, GIF or WebP picture, which the web UI shows in the page. Every other file is downloaded. */
+      shown_in_page: boolean;
+      size_bytes: number | null;
+      /** `own`, attached to this record; `catalog`, to an item's model; `location`, `site` or `region`, to a place it is in or at. */
+      source: "own" | "catalog" | "location" | "site" | "region";
+      /** The record it is attached to. */
+      source_hid: string;
+      /** That record's path or name. */
+      source_label: string;
+      title: string;
+      updated_at: string;
+      updated_by: string | null;
+      /** The username of whoever changed it last. */
+      updated_by_name: string | null;
+      /** The address of a link. Blank on a file. */
+      url: string | null;
+    };
     /** A new location: in a site, or within a location of one. */
     LocationCreate: {
       address1?: string | null;
@@ -10722,6 +11283,12 @@ export interface components {
       offset: number;
       total: number;
     };
+    Page_ListedReference_: {
+      items: components["schemas"]["ListedReference"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
     Page_LocationOut_: {
       items: components["schemas"]["LocationOut"][];
       limit: number;
@@ -10766,6 +11333,12 @@ export interface components {
     };
     Page_PurchaseRequestOut_: {
       items: components["schemas"]["PurchaseRequestOut"][];
+      limit: number;
+      offset: number;
+      total: number;
+    };
+    Page_ReferenceFileOut_: {
+      items: components["schemas"]["ReferenceFileOut"][];
       limit: number;
       offset: number;
       total: number;
@@ -11074,6 +11647,74 @@ export interface components {
       /** The line has a model. One that has none takes no item, is in no count and is not waited for. */
       tracked: boolean;
       updated_at: string;
+    };
+    /** More records to put a reference on. */
+    ReferenceAttach: {
+      records: string[];
+    };
+    /** A reference: a file kept by hirdir, or a link to one kept elsewhere. */
+    ReferenceFileOut: {
+      attachment_count: number;
+      /** The records it is on. */
+      attachments: components["schemas"]["ReferenceRecord"][];
+      /** True only after a restore that was told to go on without the content of this file: a download of it is a 404. */
+      content_missing: boolean;
+      created_at: string;
+      created_by: string | null;
+      /** The username of whoever added it. */
+      created_by_name: string | null;
+      /** The name a file was uploaded with. */
+      file_name: string | null;
+      /** `file`, kept by hirdir, or `link`. */
+      form: "file" | "link";
+      hid: string;
+      /** A value of the `reference_kind` list. */
+      kind: string;
+      /** What a file is served as, from its extension: `application/pdf`, `image/jpeg`, and `application/octet-stream` for an extension an Admin added. */
+      media_type: string | null;
+      notes: string | null;
+      row_version: number;
+      /** The SHA-256 checksum of a file's content. */
+      sha256: string | null;
+      /** A JPEG, PNG, GIF or WebP picture, which the web UI shows in the page. Every other file is downloaded. */
+      shown_in_page: boolean;
+      size_bytes: number | null;
+      title: string;
+      updated_at: string;
+      updated_by: string | null;
+      /** The username of whoever changed it last. */
+      updated_by_name: string | null;
+      /** The address of a link. Blank on a file. */
+      url: string | null;
+    };
+    /** A link to a file kept elsewhere, to put on one record or more. */
+    ReferenceLinkNew: {
+      /** The records it goes on: catalog entries, regions, sites, locations, circuits or items. */
+      attach_to: string[];
+      /** A value of the `reference_kind` list. */
+      kind: string;
+      notes?: string | null;
+      title: string;
+      /** `https://` or `http://`, with no space. */
+      url: string;
+    };
+    /** What to change of a reference. A field left out is left alone. */
+    ReferencePatch: {
+      kind?: string | null;
+      notes?: string | null;
+      row_version: number;
+      title?: string | null;
+      /** The address of a link. A file has none. */
+      url?: string | null;
+    };
+    /** A record a reference is on. */
+    ReferenceRecord: {
+      /** The attachment: what is taken off. */
+      hid: string;
+      /** How the record is named: a place by its path, a model by its vendor and PID, a circuit by its enterprise circuit ID or name, an item by its host name, name, asset tag or serial number. */
+      label: string;
+      record_hid: string;
+      record_type: "catalog_entry" | "region" | "site" | "location" | "circuit" | "item";
     };
     /** A new region. */
     RegionCreate: {
