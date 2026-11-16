@@ -15,6 +15,7 @@ import { type ApiError, api, type Schemas, sessions } from "./api";
 import { Problem } from "./components/Problem";
 import { setZone } from "./lib/format";
 import { toApiError } from "./lib/hooks";
+import { site, siteOfAbout, useSite } from "./lib/product";
 import { SignIn } from "./pages/SignIn";
 
 type User = Schemas["UserOut"];
@@ -46,6 +47,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const token = session?.token ?? null;
   const expiresAt = session?.expires_at ?? null;
   const navigate = useNavigate();
+  const { productName } = useSite();
   const [known, setKnown] = useState<{ token: string; user: User } | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [turn, setTurn] = useState(0);
@@ -74,6 +76,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
       () => undefined,
     );
     const me = api.request("get", "/api/v1/auth/me", { signal: controller.signal });
+    // 0.9.2: the name the site gives the product, which an Admin may have changed since
+    // the page was served (P-168). The page shows the name it was served with meanwhile.
+    api.request("get", "/api/v1/about", { signal: controller.signal }).then(
+      (about) => {
+        if (!controller.signal.aborted) site.update(siteOfAbout(about));
+      },
+      () => undefined,
+    );
     Promise.all([me, zone]).then(
       ([user, timeZone]) => {
         if (controller.signal.aborted) return;
@@ -110,7 +120,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!auth) {
     return (
       <main className="center">
-        <h1>hirdir</h1>
+        <h1>{productName}</h1>
         {error && error.status !== 401 ? (
           <>
             <Problem error={error} />

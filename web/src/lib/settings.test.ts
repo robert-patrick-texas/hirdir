@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   listValue,
   settingInput,
+  settingStart,
   settingText,
   settingValue,
   splitSettings,
@@ -28,11 +29,15 @@ describe("settingText", () => {
     expect(settingText({ a: 1 })).toBe("a: 1");
   });
 
+  it("writes true and false as Yes and No", () => {
+    expect(settingText(true)).toBe("Yes");
+    expect(settingText(false)).toBe("No");
+  });
+
   it("is blank for a kind it does not know", () => {
     expect(settingText(null)).toBe("");
     expect(settingText(undefined)).toBe("");
     expect(settingText(Number.NaN)).toBe("");
-    expect(settingText(true)).toBe("");
   });
 });
 
@@ -74,6 +79,20 @@ describe("settingInput", () => {
     expect(settingInput({ key: "max_items_per_request", value: 1000, default: 1000 })).toBe("text");
   });
 
+  it("chooses Yes or No for a setting that is true or false", () => {
+    expect(settingInput({ key: "help_on_sign_in", value: false, default: false })).toBe("flag");
+    expect(settingInput({ key: "help_on_sign_in", value: true, default: false })).toBe("flag");
+  });
+
+  it("types a setting whose default is blank, as a weight or whom to ask", () => {
+    expect(settingInput({ key: "help_email", value: null, default: null })).toBe("text");
+    expect(
+      settingInput({ key: "help_url", value: "https://help.example.net/", default: null }),
+    ).toBe("text");
+    expect(settingInput({ key: "product_name", value: "hirdir", default: "hirdir" })).toBe("text");
+    expect(settingInput({ key: "default_site_weight", value: null, default: null })).toBe("text");
+  });
+
   it("makes the kinds of file a list of extensions, to which another is added", () => {
     expect(
       settingInput({
@@ -104,7 +123,48 @@ describe("withExtension", () => {
   });
 });
 
+describe("settingStart", () => {
+  it("starts the form of a setting that is true or false at what it is", () => {
+    expect(settingStart({ key: "help_on_sign_in", value: true, default: false })).toBe("true");
+    expect(settingStart({ key: "help_on_sign_in", value: false, default: false })).toBe("false");
+  });
+
+  it("starts any other at its value as text, and a blank one empty", () => {
+    expect(
+      settingStart({ key: "product_name", value: "Example Inventory", default: "hirdir" }),
+    ).toBe("Example Inventory");
+    expect(settingStart({ key: "help_phone", value: null, default: null })).toBe("");
+    expect(settingStart({ key: "stack_discount_pct", value: 50, default: 50 })).toBe("50");
+  });
+});
+
 describe("settingValue", () => {
+  it("sends true or false as JSON's true or false, and nothing else", () => {
+    expect(settingValue({ default: false }, "true")).toEqual({ ok: true, value: true });
+    expect(settingValue({ default: false }, "false")).toEqual({ ok: true, value: false });
+    expect(settingValue({ default: false }, "Yes")).toEqual({
+      ok: false,
+      error: "Choose Yes or No.",
+    });
+    expect(settingValue({ default: false }, "").ok).toBe(false);
+  });
+
+  it("sends what is typed for a setting whose default is blank, as it stands", () => {
+    expect(settingValue({ default: null }, "  tools@example.net ")).toEqual({
+      ok: true,
+      value: "tools@example.net",
+    });
+    expect(settingValue({ default: null }, "+1 555 0100")).toEqual({
+      ok: true,
+      value: "+1 555 0100",
+    });
+    expect(settingValue({ default: "hirdir" }, " Example Inventory ")).toEqual({
+      ok: true,
+      value: "Example Inventory",
+    });
+    expect(settingValue({ default: null }, " ").ok).toBe(false);
+  });
+
   it("sends a whole number as a number, where the default is one", () => {
     expect(settingValue({ default: 1 }, " 7 ")).toEqual({ ok: true, value: 7 });
     expect(settingValue({ default: 300 }, "450")).toEqual({ ok: true, value: 450 });

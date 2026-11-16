@@ -8,12 +8,14 @@ import {
   useNavigationType,
 } from "react-router";
 import { useAuth } from "../auth";
+import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
 import { RenewalAlert } from "./RenewalAlert";
 
 /** The frame around every page: the product name, the navigation, and who is signed in. */
 export function Shell() {
   const { user, signOut } = useAuth();
+  const { productName } = useSite();
   const { pathname } = useLocation();
   const how = useNavigationType();
   const main = useRef<HTMLElement>(null);
@@ -36,8 +38,9 @@ export function Shell() {
         Skip to content
       </button>
       <header className="top">
-        <Link className="brand" to="/">
-          hirdir
+        {/* 0.9.2: the name the site gives the product (P-168). */}
+        <Link className="brand" to="/" data-testid="brand">
+          {productName}
         </Link>
         <nav aria-label="Main">
           <ul>

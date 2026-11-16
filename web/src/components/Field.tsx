@@ -270,3 +270,51 @@ export function CheckGroupField(props: CheckGroupFieldProps) {
     </fieldset>
   );
 }
+
+interface RadioGroupFieldProps extends FieldProps {
+  name: string;
+  /** What may be chosen. */
+  options: ReadonlyArray<{ value: string; label: string }>;
+  /** What is chosen. */
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+/** One of a few values under one heading, each on show: Yes or No. */
+export function RadioGroupField(props: RadioGroupFieldProps) {
+  const id = useId();
+  const { label, error, hint, name, options, value, onChange, disabled } = props;
+  return (
+    <fieldset
+      className="field check-group"
+      aria-describedby={describedBy(hint && `${id}-hint`, error && `${id}-error`)}
+    >
+      <legend>{label}</legend>
+      {options.map((option, place) => (
+        <span className="choice" key={option.value}>
+          <input
+            id={`${id}-${place}`}
+            type="radio"
+            name={name}
+            value={option.value}
+            checked={value === option.value}
+            disabled={disabled}
+            onChange={() => onChange(option.value)}
+          />
+          <label htmlFor={`${id}-${place}`}>{option.label}</label>
+        </span>
+      ))}
+      {hint && (
+        <p className="hint" id={`${id}-hint`}>
+          {hint}
+        </p>
+      )}
+      {error && (
+        <p className="field-error" id={`${id}-error`}>
+          {error}
+        </p>
+      )}
+    </fieldset>
+  );
+}

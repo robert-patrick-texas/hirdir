@@ -56,6 +56,13 @@ const THE_ALERT_ALONE = /renewal-alert\.spec\.ts$/;
  * See the note under the rules at the top of e2e/support.ts.
  */
 const THE_WEIGHTS_ALONE = /weights\.spec\.ts$/;
+/**
+ * 0.9.2: product.spec.ts names the product, which the title of every page, the sign-in
+ * page and the name of every download read, and sets whom to ask, which the sign-in page
+ * lists. It runs by itself, after the weights. See the note under the rules at the top of
+ * e2e/support.ts.
+ */
+const THE_NAME_ALONE = /product\.spec\.ts$/;
 
 const browsers = [
   { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -82,7 +89,13 @@ export default defineConfig({
   projects: [
     ...browsers.map((project) => ({
       ...project,
-      testIgnore: [HOLDS_THE_WRITER, AFTER_THE_OTHERS, THE_ALERT_ALONE, THE_WEIGHTS_ALONE],
+      testIgnore: [
+        HOLDS_THE_WRITER,
+        AFTER_THE_OTHERS,
+        THE_ALERT_ALONE,
+        THE_WEIGHTS_ALONE,
+        THE_NAME_ALONE,
+      ],
     })),
     {
       name: "the writer alone",
@@ -110,6 +123,14 @@ export default defineConfig({
       name: "the weights alone",
       testMatch: THE_WEIGHTS_ALONE,
       dependencies: ["the alert alone"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // 0.9.2: the product name and whom to ask, one file by itself, after the weights.
+    {
+      name: "the name alone",
+      testMatch: THE_NAME_ALONE,
+      dependencies: ["the weights alone"],
       workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },

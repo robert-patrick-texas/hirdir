@@ -21,6 +21,7 @@ import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { isWebAddress } from "../lib/links";
 import { useChoices } from "../lib/lists";
 import { choiceFilterOptions, choiceLabel } from "../lib/options";
+import { useSite } from "../lib/product";
 import { fileTypesOf, KIND_LIST, type Reference, sizeText } from "../lib/references";
 import { allows } from "../lib/roles";
 import { REFERENCES_SORT } from "../lib/tableSorts";
@@ -45,6 +46,7 @@ interface Narrowed {
 export function Files() {
   useTitle("Files");
   const { user } = useAuth();
+  const { productName } = useSite();
   const mayEdit = allows(user.role, "inventory");
   const [params, setParams] = useSearchParams();
   const kind = params.get("kind") ?? "";
@@ -124,9 +126,9 @@ export function Files() {
       <AdminNav />
       <h1>Files</h1>
       <p>
-        Every reference of the inventory: a file that hirdir keeps, or a link to one kept elsewhere,
-        each on the records it is listed with. A picture is shown on the page of a record it is on;
-        every other file is downloaded.
+        Every reference of the inventory: a file that {productName} keeps, or a link to one kept
+        elsewhere, each on the records it is listed with. A picture is shown on the page of a record
+        it is on; every other file is downloaded.
       </p>
       <form onSubmit={submit} className="inline" aria-label="Narrow the files">
         <SelectField label="Kind" name="kind" value={wantedKind} onChange={setWantedKind}>

@@ -9,6 +9,7 @@ import { plural } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { useSettings } from "../lib/lists";
 import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
+import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
 import { settingList } from "../lib/summary";
 
@@ -190,6 +191,7 @@ function Cover() {
 export function Home() {
   useTitle("Home");
   const { user, signOut, signOutEverywhere } = useAuth();
+  const { productName } = useSite();
   const action = useAction();
   const name = user.display_name || user.username;
 
@@ -203,7 +205,7 @@ export function Home() {
             You are signed in as <strong>{user.username}</strong>, but no role has been granted to
             you, so there is nothing for you to see here yet.
           </p>
-          <p>Ask an administrator of hirdir to grant you a role, then reload this page.</p>
+          <p>Ask an administrator of {productName} to grant you a role, then reload this page.</p>
         </section>
       ) : (
         <>

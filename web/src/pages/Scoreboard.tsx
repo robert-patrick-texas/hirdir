@@ -12,6 +12,7 @@ import { HEALTHS } from "../lib/health";
 import { type Loaded, useLoad, useTitle } from "../lib/hooks";
 import { markOf } from "../lib/operators";
 import { placePath } from "../lib/places";
+import { namedFile, useSite } from "../lib/product";
 import {
   BY_WEIGHT,
   board,
@@ -128,6 +129,7 @@ type Summary = Loaded<Schemas["SummaryOut"]>;
 /** The operators, the one with the most support weight first, and what nobody is assigned to. */
 function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const data = summary.data;
+  const { productName } = useSite();
   // Every row, what nobody is assigned to among them, by support weight at first: the
   // headers sort them by any column, and the file that is saved follows the order on show.
   const sorting = useSorting(board(data?.rows), scoreColumns(NOBODY), { initial: BY_WEIGHT });
@@ -249,7 +251,12 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
             <button
               type="button"
               disabled={rows.length === 0}
-              onClick={() => saveCsv(operatorsCsv(rows, whole), "hirdir-scoreboard-operators.csv")}
+              onClick={() =>
+                saveCsv(
+                  operatorsCsv(rows, whole),
+                  namedFile(productName, "scoreboard-operators.csv"),
+                )
+              }
             >
               Export CSV
               <span className="visually-hidden"> of the operators</span>
@@ -286,6 +293,7 @@ function ShareCell({ part, whole, of }: { part: string; whole: string; of: strin
 /** The sites, the one with the most support weight first, each with the operators involved. */
 function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const data = summary.data;
+  const { productName } = useSite();
   // Every row, the items that are nowhere among them, by support weight at first.
   const sorting = useSorting(board(data?.rows), scoreColumns(NOWHERE), { initial: BY_WEIGHT });
   const rows = sorting.rows;
@@ -390,7 +398,9 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
             <button
               type="button"
               disabled={rows.length === 0}
-              onClick={() => saveCsv(sitesCsv(rows), "hirdir-scoreboard-sites.csv")}
+              onClick={() =>
+                saveCsv(sitesCsv(rows), namedFile(productName, "scoreboard-sites.csv"))
+              }
             >
               Export CSV
               <span className="visually-hidden"> of the sites</span>

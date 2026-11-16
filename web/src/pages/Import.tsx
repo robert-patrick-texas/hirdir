@@ -37,6 +37,7 @@ import {
   statusLabel,
 } from "../lib/preview";
 import { fieldErrors } from "../lib/problems";
+import { useSite } from "../lib/product";
 import { allows } from "../lib/roles";
 import { IMPORTS_SORT } from "../lib/tableSorts";
 import type { Entity } from "../lib/transfer";
@@ -145,6 +146,7 @@ interface UploadProps {
 
 /** The form that sends a file: the file, the records it holds and the mode beside it. */
 function Upload({ busy, error, onPreview }: UploadProps) {
+  const { productName } = useSite();
   const [file, setFile] = useState<File | null>(null);
   const [entity, setEntity] = useState<Entity | "">("");
   const [mode, setMode] = useState<Mode | "">("");
@@ -153,7 +155,7 @@ function Upload({ busy, error, onPreview }: UploadProps) {
 
   function choose(chosen: File | null) {
     setFile(chosen);
-    if (chosen && entity === "") setEntity(guessEntity(chosen.name));
+    if (chosen && entity === "") setEntity(guessEntity(chosen.name, productName));
   }
 
   function submit(event: FormEvent) {
