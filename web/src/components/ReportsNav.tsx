@@ -25,6 +25,10 @@ export function ReportsNav() {
         <li>
           <NavLink to="/reports/replacements">Replacements</NavLink>
         </li>
+        {/* 0.8.0: what circuits cost, by fiscal year (P-151). */}
+        <li>
+          <NavLink to="/reports/circuit-costs">Circuit costs</NavLink>
+        </li>
         <li>
           <NavLink to="/reports/duplicates">Addresses held more than once</NavLink>
         </li>

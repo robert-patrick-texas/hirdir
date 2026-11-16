@@ -19,6 +19,8 @@ import { EditForm } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+// 0.8.0: a default and a minimum of the support weight of a major item (P-155).
+import { Raised } from "../components/Weight";
 import { aboveItem, descentHint, isFromAbove, knownAbove, ownerSource } from "../lib/descent";
 import {
   effectiveLabel,
@@ -68,6 +70,8 @@ import { dateValue, decimalValue } from "../lib/sort";
 import { HISTORY_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
+// 0.8.0: the default of a major item names its setting (P-155).
+import { raisedText, weightSource } from "../lib/weights";
 
 type Item = Schemas["ItemOut"];
 type Choice = Schemas["ChoiceOut"];
@@ -571,7 +575,11 @@ function ValuesInForce({ item }: { item: Item }) {
       if (field === "do_not_renew") return text || null;
       return INHERITED_DATES.has(field) ? dateValue(text) : decimalValue(text);
     },
-    source: ([field]) => sourceLabel(item.effective[field]),
+    // 0.8.0: the weight's source as its cell says it (P-155).
+    source: ([field]) =>
+      field === "support_weight"
+        ? weightSource(item.effective.support_weight, "item")
+        : sourceLabel(item.effective[field]),
   });
   return (
     <section aria-labelledby="values">
@@ -607,9 +615,16 @@ function ValuesInForce({ item }: { item: Item }) {
                     title={sourceHint(effective) || undefined}
                   >
                     {effectiveText(effective) || <Dash />}
+                    {/* 0.8.0: a weight raised to the minimum of a major item (P-155). */}
+                    {field === "support_weight" && (
+                      <Raised weight={item.effective.support_weight} kind="item" />
+                    )}
                   </td>
                   <td className={inherited ? "inherited" : undefined}>
-                    {sourceLabel(effective)}
+                    {/* 0.8.0: the default of a major item names its setting (P-155). */}
+                    {field === "support_weight"
+                      ? weightSource(item.effective.support_weight, "item")
+                      : sourceLabel(effective)}
                     <span className="visually-hidden"> ({effective.source})</span>
                   </td>
                 </tr>
@@ -1046,6 +1061,9 @@ function Details({ item, onSaved, onReload }: DetailsProps) {
       item.effective[field].source === "own" ? null : item.effective[field],
     );
   }
+  // 0.8.0: a weight in force raised to the minimum of a major item says so (P-155).
+  const raised = raisedText(item.effective.support_weight, "item");
+  if (raised) hints.support_weight = `${hints.support_weight} ${raised}.`;
   hints.do_not_renew = notRenewedHint(item);
   // The location and the planned location of an item that has something above it:
   // with one of its own the form says that it is an override and how to give it up;

@@ -40,6 +40,9 @@ const pages = {
   userDetail: () => import("./pages/UserDetail"),
   users: () => import("./pages/Users"),
   vendors: () => import("./pages/Vendors"),
+  // 0.8.0, web lane B: the report of what circuits cost (P-151).
+  circuitCosts: () => import("./pages/CircuitCosts"),
+  // End of 0.8.0, web lane B.
 };
 
 const AgreementDetail = lazy(() =>
@@ -120,6 +123,11 @@ const UserDetail = lazy(() => pages.userDetail().then((page) => ({ default: page
 const Users = lazy(() => pages.users().then((page) => ({ default: page.Users })));
 const VendorDetail = lazy(() => pages.vendors().then((page) => ({ default: page.VendorDetail })));
 const Vendors = lazy(() => pages.vendors().then((page) => ({ default: page.Vendors })));
+// 0.8.0, web lane B: the report of what circuits cost (P-151).
+const CircuitCostsReport = lazy(() =>
+  pages.circuitCosts().then((page) => ({ default: page.CircuitCostsReport })),
+);
+// End of 0.8.0, web lane B.
 
 // How long after the first page is shown the other pages are fetched, in milliseconds.
 const WARM_AFTER = 400;
@@ -287,6 +295,16 @@ export function App() {
                 </RequireRole>
               }
             />
+            {/* 0.8.0, web lane B: the report of what circuits cost (P-151). */}
+            <Route
+              path="reports/circuit-costs"
+              element={
+                <RequireRole needs="viewer">
+                  <CircuitCostsReport />
+                </RequireRole>
+              }
+            />
+            {/* End of 0.8.0, web lane B. */}
             <Route
               path="contracts"
               element={

@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { api, type Schemas } from "../api";
 import { CheckGroupField, SelectField, TextField } from "../components/Field";
+// 0.8.0: the kept reports and their check (P-157).
+import { KeptAnswers } from "../components/KeptAnswers";
 import { Notice, Problem } from "../components/Problem";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
@@ -31,6 +33,11 @@ type Setting = Schemas["SettingOut"];
 const OPTION_LABELS: Readonly<Record<string, readonly Option[]>> = {
   count_kinds: CATALOG_KINDS,
   end_of_life_date: END_OF_LIFE_DATES,
+  // 0.8.0: the side a new circuit's cost and support weight count at (P-150).
+  circuit_cost_side: [
+    { value: "a", label: "A side" },
+    { value: "z", label: "Z side" },
+  ],
 };
 
 function optionsOf(setting: Setting): Option[] {
@@ -43,6 +50,8 @@ function optionsOf(setting: Setting): Option[] {
 
 /** A value as the page shows it: an option by its name, where it has one. */
 function shownValue(setting: Setting, value: unknown): string {
+  // 0.8.0: a default or a minimum of support weight is blank unless an Admin sets one (P-155).
+  if (value === null) return "blank";
   const named = OPTION_LABELS[setting.key];
   if (!named) return settingText(value);
   const name = (one: unknown) =>
@@ -139,6 +148,8 @@ export function Settings() {
           </section>
         </>
       )}
+      {/* 0.8.0: what is kept of the long reports, and the check of it (P-157). */}
+      <KeptAnswers />
     </>
   );
 }
@@ -156,8 +167,9 @@ interface SettingsTableProps {
 function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTableProps) {
   const sorting = useSorting(settings, {
     key: (setting) => setting.key,
-    value: (setting) => shownValue(setting, setting.value),
-    default: (setting) => shownValue(setting, setting.default),
+    // A blank value is sorted last, as every blank is.
+    value: (setting) => (setting.value === null ? null : shownValue(setting, setting.value)),
+    default: (setting) => (setting.default === null ? null : shownValue(setting, setting.default)),
     standing: (setting) => (setting.is_default ? "At its default" : "Set here"),
     meaning: (setting) => setting.meaning,
     accepts: (setting) => setting.accepts,
@@ -208,10 +220,10 @@ function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTabl
                 {setting.key}
               </th>
               <td data-testid={`value-${setting.key}`}>
-                {shownValue(setting, setting.value) || <span className="muted">—</span>}
+                <Shown setting={setting} value={setting.value} />
               </td>
               <td data-testid={`default-${setting.key}`}>
-                {shownValue(setting, setting.default) || <span className="muted">—</span>}
+                <Shown setting={setting} value={setting.default} />
               </td>
               <td data-testid={`standing-${setting.key}`}>
                 {setting.is_default ? (
@@ -254,6 +266,12 @@ function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTabl
       </table>
     </div>
   );
+}
+
+/** A value in the table: a blank one is said to be blank, lighter. */
+function Shown({ setting, value }: { setting: Setting; value: unknown }) {
+  if (value === null) return <span className="muted">Blank</span>;
+  return shownValue(setting, value) || <span className="muted">—</span>;
 }
 
 /** The values fixed in the code, sorted by their headers. Nothing here is changed. */
