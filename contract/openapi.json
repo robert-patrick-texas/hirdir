@@ -6015,9 +6015,17 @@
             "type": "string"
           },
           "filter": {
-            "additionalProperties": true,
-            "title": "Filter",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filter that lists the circuits of the row on `GET /circuits`, with the report's own. Blank for the totals of a report asked with none.",
+            "title": "Filter"
           },
           "key": {
             "anyOf": [
@@ -40025,6 +40033,19 @@
                 "tag"
               ],
               "title": "By",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A filter of the circuit list, in the short form or as JSON.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "A filter of the circuit list, in the short form or as JSON.",
+              "maxLength": 8000,
+              "title": "Filter",
               "type": "string"
             }
           },

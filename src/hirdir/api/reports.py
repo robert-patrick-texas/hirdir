@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
-from pydantic import PlainSerializer, WithJsonSchema
+from pydantic import Field, PlainSerializer, WithJsonSchema
 
 from hirdir.api import records as r
 from hirdir.api import shapes
@@ -480,7 +480,10 @@ class CircuitCostRow(Model):
     cost: CostSum
     monthly_cost: CostSum
     annual_cost: CostSum
-    filter: dict[str, Any]
+    filter: dict[str, Any] | None = Field(
+        description="The filter that lists the circuits of the row on `GET /circuits`, with "
+        "the report's own. Blank for the totals of a report asked with none."
+    )
 
 
 class CircuitCostsOut(Model):
@@ -522,6 +525,14 @@ def circuit_cost_report(
         ),
     ] = None,
     by: Annotated[CostsBy, Query(description="What the rows are of.")] = "carrier",
+    filter_: Annotated[
+        str,
+        Query(
+            alias="filter",
+            max_length=filters.MAX_FILTER_LENGTH,
+            description="A filter of the circuit list, in the short form or as JSON.",
+        ),
+    ] = "",
     include_drafts: Drafts = False,
 ) -> CircuitCostsOut:
     """Say what circuits cost in one fiscal year: `cost`, what the year costs, with a
@@ -530,7 +541,7 @@ def circuit_cost_report(
     `annual_cost`, twelve times that. Each row's `filter` lists its circuits; the
     totals count each circuit once (P-151)."""
     found = circuit_costs.circuit_costs(
-        db, fiscal_year=fiscal_year, by=by, include_drafts=include_drafts
+        db, fiscal_year=fiscal_year, by=by, include_drafts=include_drafts, filter_=filter_ or None
     )
     return CircuitCostsOut(
         fiscal_year=found.fiscal_year,

@@ -248,3 +248,33 @@ def test_the_command_line_prints_the_report(places: dict[str, Any], db: Session,
         ["Americas > Central > Hub", "1", "12000.00", "1000.00", "12000.00"],
         ["total", "1", "12000.00", "1000.00", "12000.00"],
     ]
+
+
+def test_a_filter_of_the_circuit_list_chooses_what_is_counted(
+    places: dict[str, Any], db: Session, client: Any, viewer: dict[str, str]
+) -> None:
+    from tests.api.inventory import API
+
+    room = places["hub_room"]["hid"]
+    internet = _circuit(db, "Hub internet", a_location_hid=room, circuit_type="internet")
+    _line(db, internet, "Access", "500")
+    other = _circuit(db, "Hub voice", a_location_hid=room, circuit_type="voice")
+    _line(db, other, "Trunk", "100")
+    db.commit()
+    response = client.get(
+        f"{API}/reports/circuit-costs",
+        params={"fiscal_year": 2027, "filter": "circuit_type:eq:internet", "by": "site"},
+        headers=viewer,
+    )
+    assert response.status_code == 200, response.text
+    found = response.json()
+    assert (found["totals"]["circuits"], found["totals"]["annual_cost"]) == (1, "6000.00")
+    asked = {"field": "circuit_type", "op": "eq", "value": "internet"}
+    assert found["totals"]["filter"] == asked
+    assert found["rows"][0]["filter"] == {
+        "and": [asked, {"field": "cost_site_hid", "op": "eq", "value": places["hub"]["hid"]}]
+    }
+    refused = client.get(
+        f"{API}/reports/circuit-costs", params={"filter": "colour:eq:red"}, headers=viewer
+    )
+    assert refused.status_code == 422

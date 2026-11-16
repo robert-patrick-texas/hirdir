@@ -38,6 +38,7 @@ from hirdir.domain import circuits as rules
 from hirdir.domain import contracts, settings
 from hirdir.domain.errors import Invalid
 from hirdir.domain.geography import Atlas
+from hirdir.io import fields, filters, listing
 from hirdir.io.planning import fiscal_year as fiscal_year_of
 
 BY = ("carrier", "site", "region", "group", "circuit_type", "owner", "tag")
@@ -106,7 +107,7 @@ class Row:
 
     key: str | None
     label: str | None
-    filter: dict[str, Any]
+    filter: dict[str, Any] | None
     circuits: int = 0
     cost: Decimal = Decimal(0)
     monthly_cost: Decimal = Decimal(0)
@@ -166,13 +167,14 @@ def circuit_costs(
     fiscal_year: int | None = None,
     by: str = "carrier",
     include_drafts: bool = False,
-    circuit_hids: Iterable[str] | None = None,
-    filter_: dict[str, Any] | None = None,
+    filter_: Any = None,
 ) -> CircuitCosts:
     """Say what circuits cost in a fiscal year, in total and for each value of `by`.
 
-    `circuit_hids`, where given, are the circuits a filter of the circuit list chose,
-    and `filter_` that filter, which each row's filter narrows.
+    `filter_` is a filter of the circuit list, in the short form or as JSON, which
+    chooses the circuits counted; each row's filter narrows it, so that it lists the
+    circuits of the row. Retired circuits are among those it may choose, since one that
+    was disconnected ran for part of a year.
     """
     if by not in BY:
         raise Invalid("the report cannot be grouped so", {"by": f"one of {', '.join(BY)}"})
@@ -189,9 +191,10 @@ def circuit_costs(
         )
     as_of = min(max(today, first), last)
 
+    asked = filters.to_tree(filters.parse(filter_))
     query = select(Circuit)
-    if circuit_hids is not None:
-        query = query.where(Circuit.hid.in_(list(circuit_hids)))
+    if asked is not None:
+        query = query.where(*listing.where_of(db, fields.CIRCUITS, asked, True, include_drafts, ()))
     held = list(db.scalars(query))
     lines: dict[str, list[CircuitCost]] = defaultdict(list)
     for line in db.scalars(
@@ -242,7 +245,7 @@ def circuit_costs(
 
     labels = _labels(db, atlas, by, [key for key in tallies if key is not None])
     rows = [
-        _row(by, key, labels.get(key) if key is not None else None, tally, filter_)
+        _row(by, key, labels.get(key) if key is not None else None, tally, asked)
         for key, tally in tallies.items()
     ]
     rows.sort(key=lambda one: (one.key is None, (one.label or "").casefold(), one.key or ""))
@@ -253,7 +256,7 @@ def circuit_costs(
         as_of,
         by,
         str(settings.value(db, "currency")),
-        _row(by, None, None, totals, filter_, whole=True),
+        _row(by, None, None, totals, asked, whole=True),
         rows,
     )
 
@@ -267,11 +270,14 @@ def _row(
     whole: bool = False,
 ) -> Row:
     if whole:
-        condition = filter_ or {}
-    elif filter_:
-        condition = {"and": [filter_, _condition(by, key, label)]}
+        condition = filter_
     else:
-        condition = _condition(by, key, label)
+        condition = filters.both(filter_, _condition(by, key, label))
+        try:
+            filters.parse(condition)
+        except Invalid:
+            # More than the grammar takes: the row has no filter of its own.
+            condition = None
     monthly = rounded(tally.monthly)
     return Row(
         key,

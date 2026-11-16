@@ -1,7 +1,8 @@
-"""Scenarios S47 and S50 of docs/build-plan.md, against a real server process: a circuit
+"""Scenarios S47 to S50 of docs/build-plan.md, against a real server process: a circuit
 with its two sides, its carriers and their numbers and the devices at each end, a dark
-fiber known by the enterprise's own ID, and circuits carried to an empty inventory in
-files and back."""
+fiber known by the enterprise's own ID, what circuits cost by carrier, site and group,
+the site contacts and the carrier's account manager of a circuit, and circuits carried
+to an empty inventory in files and back."""
 
 import csv
 import io
@@ -295,3 +296,99 @@ def test_s50_circuits_go_to_an_empty_inventory_in_files_and_a_second_load_change
             assert loading.apply(preview)["status"] == "applied"
         # The only events since are the previews and the applies, each begun and ended.
         assert empty.get("/audit-events", limit=1)["total"] - events == 3 * len(CARRIED)
+
+
+def test_s48_what_circuits_cost_by_carrier_by_site_and_by_group(desk: Desk) -> None:
+    places = _two_sites(desk)
+    telecom = desk.vendor("Example Telecom")
+    first = desk.circuit(
+        "Site-2 to Site-3",
+        a_location_hid=places["room"]["hid"],
+        z_location_hid=places["annex"]["hid"],
+        carrier_hid=telecom["hid"],
+    )
+    for description, monthly in (("Port", "800.00"), ("Local loop", "150.00"), ("Access", "50.00")):
+        desk.part(first, "costs", {"description": description, "monthly_cost": monthly})
+    second = desk.circuit(
+        "Site-3 internet",
+        a_location_hid=places["annex"]["hid"],
+        z_note="carrier network",
+        carrier_hid=telecom["hid"],
+    )
+    desk.part(second, "costs", {"description": "Port", "monthly_cost": "500.00"})
+    group = desk.post("/circuit-groups", {"name": "Wide area network"})
+    desk.post(
+        f"/circuit-groups/{group['hid']}/members", {"circuit_hids": [first["hid"], second["hid"]]}
+    )
+    # The monthly cost of each is the sum of its lines, and its annual cost twelve times it.
+    record = desk.get(f"/circuits/{first['hid']}")
+    assert (record["monthly_cost"], record["annual_cost"]) == ("1000.00", "12000.00")
+    assert desk.get(f"/circuits/{second['hid']}")["annual_cost"] == "6000.00"
+
+    def rows(by: str) -> dict[str | None, tuple[int, str, str]]:
+        found = desk.get("/reports/circuit-costs", by=by)
+        assert (found["totals"]["annual_cost"], found["totals"]["monthly_cost"]) == (
+            "18000.00",
+            "1500.00",
+        )
+        return {
+            row["label"]: (row["circuits"], row["annual_cost"], row["monthly_cost"])
+            for row in found["rows"]
+        }
+
+    # The report totals both by carrier, by site at the A side of each, and by the group.
+    assert rows("carrier") == {"Example Telecom": (2, "18000.00", "1500.00")}
+    assert rows("site") == {
+        "Americas > Central > Site-2": (1, "12000.00", "1000.00"),
+        "Americas > Central > Site-3": (1, "6000.00", "500.00"),
+    }
+    assert rows("group") == {"Wide area network": (2, "18000.00", "1500.00")}
+    assert desk.get(f"/circuit-groups/{group['hid']}")["annual_cost"] == "18000.00"
+    # Each row leads to its circuits.
+    by_site = desk.get("/reports/circuit-costs", by="site")["rows"]
+    (site3,) = [row for row in by_site if row["label"].endswith("Site-3")]
+    listed = desk.post("/circuits/query", {"filter": site3["filter"]}, 200)
+    assert [one["hid"] for one in listed["items"]] == [second["hid"]]
+
+
+def test_s49_a_circuit_shows_its_site_contacts_and_its_carriers_account_manager(
+    desk: Desk,
+) -> None:
+    places = _two_sites(desk)
+    telecom = desk.vendor("Example Telecom")
+    robin = desk.contact("Robin Achterberg")
+    jordan = desk.post("/contacts", {"name": "Jordan Reyes", "email": "jordan.reyes@example.com"})
+    casey = desk.post("/contacts", {"name": "Casey Lund", "email": "casey.lund@example.com"})
+    # The A side's site has a site contact; the carrier has an account manager.
+    desk.assign(robin, "technical", site_hid=places["site"]["hid"])
+    desk.post(
+        f"/vendors/{telecom['hid']}/contacts",
+        {"contact_hid": jordan["hid"], "role": "account_manager"},
+    )
+    circuit = desk.circuit(
+        "Site-2 to Site-3",
+        a_location_hid=places["room"]["hid"],
+        z_location_hid=places["annex"]["hid"],
+        carrier_hid=telecom["hid"],
+    )
+    other = desk.circuit(
+        "Site-3 internet",
+        a_location_hid=places["annex"]["hid"],
+        z_note="carrier network",
+        carrier_hid=telecom["hid"],
+    )
+    desk.part(other, "contacts", {"contact_hid": casey["hid"], "role": "account_manager"})
+    effective = desk.get(f"/circuits/{circuit['hid']}")["effective"]
+    # The site contacts of each side are resolved from its location, with their source.
+    (technical,) = [one for one in effective["site_contacts"]["a"] if one["role"] == "technical"]
+    assert (technical["source"], technical["source_hid"]) == ("site", places["site"]["hid"])
+    assert [one["contact"]["name"] for one in technical["value"]] == ["Robin Achterberg"]
+    assert all(one["role"] != "technical" for one in effective["site_contacts"]["z"])
+    # The carrier's account manager, from the carrier.
+    managers = effective["account_managers"]
+    assert (managers["source"], managers["source_hid"]) == ("vendor", telecom["hid"])
+    assert [one["contact"]["name"] for one in managers["value"]] == ["Jordan Reyes"]
+    # The second circuit names its own, in place of the carrier's.
+    own = desk.get(f"/circuits/{other['hid']}")["effective"]["account_managers"]
+    assert own["source"] == "own"
+    assert [one["contact"]["name"] for one in own["value"]] == ["Casey Lund"]

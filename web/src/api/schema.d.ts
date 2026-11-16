@@ -6131,6 +6131,8 @@ export interface paths {
           fiscal_year?: number | null;
           /** What the rows are of. */
           by?: "carrier" | "site" | "region" | "group" | "circuit_type" | "owner" | "tag";
+          /** A filter of the circuit list, in the short form or as JSON. */
+          filter?: string;
           /** Count draft records as well. */
           include_drafts?: boolean;
         };
@@ -8497,9 +8499,10 @@ export interface components {
       annual_cost: string;
       circuits: number;
       cost: string;
+      /** The filter that lists the circuits of the row on `GET /circuits`, with the report's own. Blank for the totals of a report asked with none. */
       filter: {
         [key: string]: unknown;
-      };
+      } | null;
       key: string | null;
       label: string | null;
       monthly_cost: string;
