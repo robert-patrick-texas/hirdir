@@ -37,6 +37,9 @@ from hirdir.io.store import Store
 DEV_CONFIG = '[server]\nstate_dir = "."\n'
 # How many references a message names before it says how many more there are.
 NAMED_IN_A_MESSAGE = 5
+# The umask of hirdir.service, UMask= in its unit: what it writes in the state directory
+# is for the hirdir user and its group alone.
+SERVICE_UMASK = 0o027
 
 admin = typer.Typer(
     no_args_is_help=True,
@@ -460,10 +463,15 @@ def restore(
         _copy_database(target, aside)
         typer.echo(f"the database as it was is kept at {aside}")
     # The content first and the database after it, so that a restore that stops on the
-    # way leaves a database whose files are all there.
+    # way leaves a database whose files are all there. The store makes its directories
+    # as the service does, under its umask, whatever the umask of whoever restores.
     _private_directory(live.root)
-    for sha256 in needed:
-        _copy_into(live, source.path_of(sha256), sha256)
+    umask = os.umask(SERVICE_UMASK)
+    try:
+        for sha256 in needed:
+            _copy_into(live, source.path_of(sha256), sha256)
+    finally:
+        os.umask(umask)
     if needed:
         typer.echo(f"the content of {len(needed)} files was copied from {source.root}")
     for leftover in (target, Path(f"{target}-wal"), Path(f"{target}-shm")):

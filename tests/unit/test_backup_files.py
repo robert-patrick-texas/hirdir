@@ -278,12 +278,22 @@ def test_a_restore_onto_an_empty_state_directory_from_a_copied_backup(
     shutil.copy2(backup, clean / "backups" / backup.name)
     shutil.copytree(backup.parent / "files", clean / "backups" / "files")
 
-    result = _run("restore", str(clean / "backups" / backup.name))
+    # Run as an operator runs it under sudo, whose umask lets others read.
+    umask = os.umask(0o022)
+    try:
+        result = _run("restore", str(clean / "backups" / backup.name))
+    finally:
+        os.umask(umask)
     assert "before-restore" not in result.stdout
     config = Config(state_dir=clean)
     live = Store(config.files_dir)
     assert {sha256: live.path_of(sha256).read_bytes() for sha256 in live.contents()} == contents
     assert live.root.stat().st_mode & 0o777 == 0o750
+    # Made as the service makes them, whatever the umask of whoever restores.
+    for directory in {live.path_of(sha256).parent for sha256 in contents} | {
+        live.root / ".incoming"
+    }:
+        assert directory.stat().st_mode & 0o777 == 0o750
     assert _named(config) == set(contents)
     checked = _run("check")
     assert "reference files: 3 with content, kept in 3 files of" in checked.stdout
