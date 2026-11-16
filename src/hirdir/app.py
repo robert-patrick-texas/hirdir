@@ -11,7 +11,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
-from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -30,6 +30,7 @@ from hirdir.api import (
     labels,
     problems,
     purchases,
+    references,
     reports,
     routes,
     systems,
@@ -38,8 +39,10 @@ from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
+from hirdir.domain import file_kinds
 from hirdir.ids import new_hid
 from hirdir.io import background, fields, tables
+from hirdir.io.store import Store
 from hirdir.schedule import Scheduler
 
 API_PREFIX = "/api/v1"
@@ -62,6 +65,8 @@ ROUTERS = (
     *files.ROUTERS,
     # Circuits, their carriers, cost lines and devices, and circuit groups (P-145 to P-154).
     *circuits.ROUTERS,
+    # References: files kept by hirdir and links to files kept elsewhere (P-158 to P-162).
+    *references.ROUTERS,
 )
 STATIC = Path(__file__).parent / "static"
 BASE_TAG = '<base href="/" />'
@@ -70,8 +75,26 @@ REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 log = logging.getLogger("hirdir")
 KEEP_FOR_GOOD = "public, max-age=31536000, immutable"
 SMALLEST_COMPRESSED = 1024
+# A picture of a reference is shown from a blob: address the page made of what it
+# fetched itself, which runs nothing (P-159).
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    "default-src 'self'; img-src 'self' blob:; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+# The routes whose body is a reference file, which may be larger than an import.
+UPLOADS = re.compile(r"/api/v1/reference-files(/[0-9a-f-]{36}/content)?")
+# A download is not compressed again: what is not text is compressed already, or gains
+# too little for the time it takes.
+NOT_COMPRESSED = (
+    *DEFAULT_EXCLUDED_CONTENT_TYPES,
+    *sorted(
+        {
+            known.media_type
+            for known in file_kinds.KNOWN.values()
+            if not known.media_type.startswith("text/")
+        }
+    ),
+    file_kinds.OCTET_STREAM,
 )
 
 
@@ -85,9 +108,16 @@ class Gateway:
     that it carries the same headers as every other response.
     """
 
-    def __init__(self, app: ASGIApp, trusted_proxies: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        trusted_proxies: tuple[str, ...],
+        limits: Callable[[], tuple[int, int]] | None = None,
+    ) -> None:
         self.app = app
         self.trusted = frozenset(trusted_proxies)
+        # The largest body of a request, and of an upload of a reference file.
+        self.limits = limits
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -103,6 +133,7 @@ class Gateway:
         root = scope.get("root_path", "")
         is_api = scope["path"].startswith(root + "/api/")
         is_asset = scope["path"].startswith(root + "/assets/")
+        refused = self._too_large(scope, headers, root)
 
         started = False
 
@@ -112,7 +143,9 @@ class Gateway:
                 started = True
                 out = MutableHeaders(scope=message)
                 out["X-Request-Id"] = request_id
-                out["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+                # A download says of itself what it may do, which is nothing (P-159).
+                if "content-security-policy" not in out:
+                    out["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
                 out["X-Content-Type-Options"] = "nosniff"
                 out["Referrer-Policy"] = "no-referrer"
                 if is_api:
@@ -124,6 +157,15 @@ class Gateway:
                 del out["Set-Cookie"]
             await send(message)
 
+        if refused is not None:
+            # The rest of the body is read and thrown away before the answer, so that a
+            # proxy that is still sending it is answered rather than cut off.
+            while True:
+                message = await receive()
+                if message["type"] != "http.request" or not message.get("more_body"):
+                    break
+            await refused(scope, receive, send_with_headers)
+            return
         try:
             await self.app(scope, receive, send_with_headers)
         except Exception:
@@ -134,6 +176,27 @@ class Gateway:
                 500, "Server error", f"something went wrong; the request ID is {request_id}"
             )
             await failure(scope, receive, send_with_headers)
+
+    def _too_large(self, scope: Scope, headers: Headers, root: str) -> Response | None:
+        """Return the answer to a body that says it is over the limit of its route, or
+        None. An upload of a reference file takes up to its own limit, and every other
+        request up to that of an import, whatever the proxy lets through (P-162). A body
+        that does not say its length is held to the limit by the route that reads it."""
+        length = headers.get("content-length", "")
+        if self.limits is None or not length.isdigit():
+            return None
+        largest, reference = self.limits()
+        path = scope["path"][len(root) :] if scope["path"].startswith(root) else scope["path"]
+        upload = scope["method"] in ("POST", "PUT") and UPLOADS.fullmatch(path)
+        limit, what = (reference, "a reference file") if upload else (largest, "a request")
+        if int(length) <= limit:
+            return None
+        return problems.problem(
+            413,
+            "Too large",
+            f"{what} is at most {limit // (1024 * 1024)} MB",
+            {"file": "too large"},
+        )
 
     @staticmethod
     def _apply_forwarded(scope: Scope, headers: Headers) -> None:
@@ -184,6 +247,8 @@ def bind(app: FastAPI, config: Config) -> None:
     app.state.sessions = make_sessions(engine)
     app.state.signing_key = tokens.load_or_create_key(config.secret_key_path)
     app.state.throttle = Throttle(config.sign_in_failures_before_delay)
+    # The content of reference files, beside the database (P-161).
+    app.state.store = Store(config.files_dir)
 
 
 # --- what runs beside the requests --------------------------------------------------
@@ -202,6 +267,9 @@ def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         applying = background.running(app.state)
         await run_in_threadpool(applying.__enter__)
+        if scheduled:
+            # What an upload cut short left behind, and content no record names (P-161).
+            await run_in_threadpool(_sweep_store, app)
         scheduler = Scheduler(lambda: app.state.sessions()) if scheduled else None
         try:
             if scheduler is not None:
@@ -213,6 +281,11 @@ def _lifespan(scheduled: bool) -> Callable[[FastAPI], Any]:
             await run_in_threadpool(applying.__exit__, None, None, None)
 
     return lifespan
+
+
+def _sweep_store(app: FastAPI) -> None:
+    with app.state.sessions() as db:
+        app.state.store.sweep(db)
 
 
 # --- the application ------------------------------------------------------------------
@@ -244,6 +317,12 @@ def create_app(config: Config, scheduled: bool = False) -> FastAPI:
     # A page of a list and the web UI's own files are text that shrinks to a tenth.
     # hirdir sets no cookie, so no other site can make a signed-in request and learn
     # anything from the size of a compressed answer.
-    app.add_middleware(GZipMiddleware, minimum_size=SMALLEST_COMPRESSED)
-    app.add_middleware(Gateway, trusted_proxies=config.trusted_proxies)
+    app.add_middleware(
+        GZipMiddleware, minimum_size=SMALLEST_COMPRESSED, exclude_content_types=NOT_COMPRESSED
+    )
+    app.add_middleware(
+        Gateway,
+        trusted_proxies=config.trusted_proxies,
+        limits=lambda: (app.state.config.max_file_bytes, app.state.config.max_reference_bytes),
+    )
     return app

@@ -30,6 +30,8 @@ from hirdir.db.models import (
     ImportRow,
     Item,
     Network,
+    ReferenceAttachment,
+    ReferenceFile,
     RoleGrant,
     User,
     UserGroup,
@@ -285,6 +287,29 @@ CAPACITY_RECORDS = Table(
     },
 )
 
+# --- references (P-162) -------------------------------------------------------------
+
+REFERENCE_FILES = Table(
+    ReferenceFile,
+    {
+        "title": Field("text", ReferenceFile.title),
+        "kind": Field("choice", ReferenceFile.kind),
+        "form": Field("text", case((ReferenceFile.url.is_not(None), "link"), else_="file")),
+        "file_name": Field("text", ReferenceFile.file_name),
+        "size_bytes": Field("integer", ReferenceFile.size_bytes),
+        "attachment_count": Field(
+            "integer",
+            select(func.count())
+            .select_from(ReferenceAttachment)
+            .where(ReferenceAttachment.reference_file_hid == ReferenceFile.hid)
+            .correlate(ReferenceFile)
+            .scalar_subquery(),
+        ),
+        "created_at": Field("timestamp", ReferenceFile.created_at),
+        "updated_at": Field("timestamp", ReferenceFile.updated_at),
+    },
+)
+
 TABLES: tuple[Table, ...] = (
     USERS,
     AUDIT_EVENTS,
@@ -295,6 +320,7 @@ TABLES: tuple[Table, ...] = (
     CHILDREN,
     DUPLICATES,
     CAPACITY_RECORDS,
+    REFERENCE_FILES,
 )
 
 

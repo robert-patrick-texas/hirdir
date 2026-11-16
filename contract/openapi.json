@@ -11092,6 +11092,22 @@
         "title": "CoverageTotals",
         "type": "object"
       },
+      "Detached": {
+        "additionalProperties": false,
+        "description": "What taking a reference off a record did.",
+        "properties": {
+          "erased": {
+            "description": "True where that was the last record it was on: it was erased, and its content with it unless another reference holds the same.",
+            "title": "Erased",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "erased"
+        ],
+        "title": "Detached",
+        "type": "object"
+      },
       "DeviceGroupCreate": {
         "additionalProperties": false,
         "description": "A new device group, with its first members if they are known.",
@@ -16834,6 +16850,242 @@
         "title": "ListQuery",
         "type": "object"
       },
+      "ListedReference": {
+        "additionalProperties": false,
+        "description": "A reference as a record lists it: its own, or one it has from a record it stands\nunder, nearest first.",
+        "properties": {
+          "attachment_count": {
+            "title": "Attachment Count",
+            "type": "integer"
+          },
+          "attachment_hid": {
+            "description": "The attachment it is listed by.",
+            "title": "Attachment Hid",
+            "type": "string"
+          },
+          "attachments": {
+            "description": "The records it is on.",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceRecord"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "content_missing": {
+            "description": "True only after a restore that was told to go on without the content of this file: a download of it is a 404.",
+            "title": "Content Missing",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of whoever added it.",
+            "title": "Created By Name"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name a file was uploaded with.",
+            "title": "File Name"
+          },
+          "form": {
+            "description": "`file`, kept by hirdir, or `link`.",
+            "enum": [
+              "file",
+              "link"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "A value of the `reference_kind` list.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a file is served as, from its extension: `application/pdf`, `image/jpeg`, and `application/octet-stream` for an extension an Admin added.",
+            "title": "Media Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SHA-256 checksum of a file's content.",
+            "title": "Sha256"
+          },
+          "shown_in_page": {
+            "description": "A JPEG, PNG, GIF or WebP picture, which the web UI shows in the page. Every other file is downloaded.",
+            "title": "Shown In Page",
+            "type": "boolean"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "source": {
+            "description": "`own`, attached to this record; `catalog`, to an item's model; `location`, `site` or `region`, to a place it is in or at.",
+            "enum": [
+              "own",
+              "catalog",
+              "location",
+              "site",
+              "region"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "description": "The record it is attached to.",
+            "title": "Source Hid",
+            "type": "string"
+          },
+          "source_label": {
+            "description": "That record's path or name.",
+            "title": "Source Label",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of whoever changed it last.",
+            "title": "Updated By Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The address of a link. Blank on a file.",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "hid",
+          "title",
+          "kind",
+          "form",
+          "notes",
+          "url",
+          "file_name",
+          "media_type",
+          "size_bytes",
+          "sha256",
+          "shown_in_page",
+          "content_missing",
+          "attachments",
+          "attachment_count",
+          "row_version",
+          "created_at",
+          "created_by",
+          "created_by_name",
+          "updated_at",
+          "updated_by",
+          "updated_by_name",
+          "attachment_hid",
+          "source",
+          "source_hid",
+          "source_label"
+        ],
+        "title": "ListedReference",
+        "type": "object"
+      },
       "LocationCreate": {
         "additionalProperties": false,
         "description": "A new location: in a site, or within a location of one.",
@@ -20545,6 +20797,38 @@
         "title": "Page[ItemOut]",
         "type": "object"
       },
+      "Page_ListedReference_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ListedReference"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ListedReference]",
+        "type": "object"
+      },
       "Page_LocationOut_": {
         "additionalProperties": false,
         "properties": {
@@ -20799,6 +21083,38 @@
           "offset"
         ],
         "title": "Page[PurchaseRequestOut]",
+        "type": "object"
+      },
+      "Page_ReferenceFileOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceFileOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ReferenceFileOut]",
         "type": "object"
       },
       "Page_RegionOut_": {
@@ -22527,6 +22843,390 @@
           "items"
         ],
         "title": "ReceivedOut",
+        "type": "object"
+      },
+      "ReferenceAttach": {
+        "additionalProperties": false,
+        "description": "More records to put a reference on.",
+        "properties": {
+          "records": {
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "ReferenceAttach",
+        "type": "object"
+      },
+      "ReferenceFileOut": {
+        "additionalProperties": false,
+        "description": "A reference: a file kept by hirdir, or a link to one kept elsewhere.",
+        "properties": {
+          "attachment_count": {
+            "title": "Attachment Count",
+            "type": "integer"
+          },
+          "attachments": {
+            "description": "The records it is on.",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceRecord"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "content_missing": {
+            "description": "True only after a restore that was told to go on without the content of this file: a download of it is a 404.",
+            "title": "Content Missing",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of whoever added it.",
+            "title": "Created By Name"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The name a file was uploaded with.",
+            "title": "File Name"
+          },
+          "form": {
+            "description": "`file`, kept by hirdir, or `link`.",
+            "enum": [
+              "file",
+              "link"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "A value of the `reference_kind` list.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a file is served as, from its extension: `application/pdf`, `image/jpeg`, and `application/octet-stream` for an extension an Admin added.",
+            "title": "Media Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SHA-256 checksum of a file's content.",
+            "title": "Sha256"
+          },
+          "shown_in_page": {
+            "description": "A JPEG, PNG, GIF or WebP picture, which the web UI shows in the page. Every other file is downloaded.",
+            "title": "Shown In Page",
+            "type": "boolean"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The username of whoever changed it last.",
+            "title": "Updated By Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The address of a link. Blank on a file.",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "hid",
+          "title",
+          "kind",
+          "form",
+          "notes",
+          "url",
+          "file_name",
+          "media_type",
+          "size_bytes",
+          "sha256",
+          "shown_in_page",
+          "content_missing",
+          "attachments",
+          "attachment_count",
+          "row_version",
+          "created_at",
+          "created_by",
+          "created_by_name",
+          "updated_at",
+          "updated_by",
+          "updated_by_name"
+        ],
+        "title": "ReferenceFileOut",
+        "type": "object"
+      },
+      "ReferenceLinkNew": {
+        "additionalProperties": false,
+        "description": "A link to a file kept elsewhere, to put on one record or more.",
+        "properties": {
+          "attach_to": {
+            "description": "The records it goes on: catalog entries, regions, sites, locations, circuits or items.",
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Attach To",
+            "type": "array"
+          },
+          "kind": {
+            "description": "A value of the `reference_kind` list.",
+            "maxLength": 40,
+            "title": "Kind",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "title": {
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "description": "`https://` or `http://`, with no space.",
+            "maxLength": 2000,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "kind",
+          "url",
+          "attach_to"
+        ],
+        "title": "ReferenceLinkNew",
+        "type": "object"
+      },
+      "ReferencePatch": {
+        "additionalProperties": false,
+        "description": "What to change of a reference. A field left out is left alone.",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The address of a link. A file has none.",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "ReferencePatch",
+        "type": "object"
+      },
+      "ReferenceRecord": {
+        "additionalProperties": false,
+        "description": "A record a reference is on.",
+        "properties": {
+          "hid": {
+            "description": "The attachment: what is taken off.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "How the record is named: a place by its path, a model by its vendor and PID, a circuit by its enterprise circuit ID or name, an item by its host name, name, asset tag or serial number.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_hid": {
+            "title": "Record Hid",
+            "type": "string"
+          },
+          "record_type": {
+            "enum": [
+              "catalog_entry",
+              "region",
+              "site",
+              "location",
+              "circuit",
+              "item"
+            ],
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "record_hid",
+          "label"
+        ],
+        "title": "ReferenceRecord",
         "type": "object"
       },
       "RegionCreate": {
@@ -29590,6 +30290,73 @@
         ]
       }
     },
+    "/api/v1/catalog-entries/{hid}/references": {
+      "get": {
+        "description": "List the references a catalog entry has: its own, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_catalog_entry_api_v1_catalog_entries__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Catalog Entry",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
     "/api/v1/catalog-entries/{hid}/retire": {
       "post": {
         "description": "Retire a catalog entry. Items of the model keep it.",
@@ -31751,6 +32518,73 @@
           }
         },
         "summary": "Update Device",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/references": {
+      "get": {
+        "description": "List the references a circuit has: its own, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_circuit_api_v1_circuits__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Circuit",
         "tags": [
           "Circuits"
         ]
@@ -36156,6 +36990,73 @@
         ]
       }
     },
+    "/api/v1/items/{hid}/references": {
+      "get": {
+        "description": "List the references a item has: its own, then those of its model, then those of the location it is at in force and of each place above it, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_item_api_v1_items__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Item",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
     "/api/v1/items/{hid}/replace": {
       "post": {
         "description": "Record that another item took the place of this one, and link the two.\n\nThe other item is one that exists, or is created here. It takes over this item's\nplace in every group it is a current member of. Neither is moved in the lifecycle.",
@@ -36914,6 +37815,73 @@
           }
         },
         "summary": "Location Opening",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/locations/{hid}/references": {
+      "get": {
+        "description": "List the references a location has: its own, then those of the locations above it, of its site and of each region outward, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_location_api_v1_locations__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Location",
         "tags": [
           "Geography"
         ]
@@ -39098,6 +40066,682 @@
         ]
       }
     },
+    "/api/v1/reference-files": {
+      "get": {
+        "description": "List every reference, by title unless a sort says otherwise.",
+        "operationId": "list_references_api_v1_reference_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "form",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "file",
+                    "link"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Form"
+            }
+          },
+          {
+            "description": "What the title holds, without case.",
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the title holds, without case.",
+              "title": "Title"
+            }
+          },
+          {
+            "description": "What to sort by: `title`, `kind`, `form`, `file_name`, `size_bytes`, `attachment_count`, `created_at`, `updated_at`. `-` in front for descending. Repeat or separate by commas.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What to sort by: `title`, `kind`, `form`, `file_name`, `size_bytes`, `attachment_count`, `created_at`, `updated_at`. `-` in front for descending. Repeat or separate by commas.",
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ReferenceFileOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References",
+        "tags": [
+          "References"
+        ]
+      },
+      "post": {
+        "description": "Upload a file and put it on the records it is for.\n\nThe file is the body of the request. Its extension must be one that the setting\n`reference_file_types` takes, and its content what the extension says; a file over\n`max_reference_megabytes` is a `413`. Content that one of the records has already,\nunder any reference, is a `409` that names that reference.",
+        "operationId": "upload_reference_api_v1_reference_files_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "title",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of `reference_kind`.",
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "description": "A value of `reference_kind`.",
+              "maxLength": 40,
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Its name, whose extension says what it is.",
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "description": "Its name, whose extension says what it is.",
+              "maxLength": 255,
+              "title": "File Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The HID of a record it goes on, once for each: a catalog entry, a region, a site, a location, a circuit or an item.",
+            "in": "query",
+            "name": "attach_to",
+            "required": true,
+            "schema": {
+              "description": "The HID of a record it goes on, once for each: a catalog entry, a region, a site, a location, a circuit or an item.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "title": "Attach To",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "notes",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 10000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file itself, as it is: its extension, in `file_name`, says what it is.",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Reference",
+        "tags": [
+          "References"
+        ]
+      }
+    },
+    "/api/v1/reference-files/links": {
+      "post": {
+        "description": "Make a link to a file that is kept elsewhere, and put it on the records it is for.",
+        "operationId": "make_link_api_v1_reference_files_links_post",
+        "parameters": [
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceLinkNew"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Link",
+        "tags": [
+          "References"
+        ]
+      }
+    },
+    "/api/v1/reference-files/{hid}": {
+      "delete": {
+        "description": "Erase a reference from every record it is on, and its content with it unless\nanother reference holds the same. The backups on the server keep a copy until they\nare rotated out. The audit event holds what it was.",
+        "operationId": "erase_reference_api_v1_reference_files__hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Erase Reference",
+        "tags": [
+          "References"
+        ]
+      },
+      "get": {
+        "description": "Return one reference, with the records it is on.",
+        "operationId": "get_reference_api_v1_reference_files__hid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Reference",
+        "tags": [
+          "References"
+        ]
+      },
+      "patch": {
+        "description": "Change the title, the kind or the notes of a reference, or the address of a link.",
+        "operationId": "update_reference_api_v1_reference_files__hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferencePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Reference",
+        "tags": [
+          "References"
+        ]
+      }
+    },
+    "/api/v1/reference-files/{hid}/attachments": {
+      "post": {
+        "description": "Put a reference on more records. A record that has it already is passed over; one\nthat has the same content under another reference is a `409`.",
+        "operationId": "attach_reference_api_v1_reference_files__hid__attachments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceAttach"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Reference",
+        "tags": [
+          "References"
+        ]
+      }
+    },
+    "/api/v1/reference-files/{hid}/attachments/{attachment_hid}": {
+      "delete": {
+        "description": "Take a reference off one record. Taken off the last record it is on, it is erased\nwith its content, and the answer says so.",
+        "operationId": "detach_reference_api_v1_reference_files__hid__attachments__attachment_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_hid",
+            "required": true,
+            "schema": {
+              "title": "Attachment Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detached"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detach Reference",
+        "tags": [
+          "References"
+        ]
+      }
+    },
+    "/api/v1/reference-files/{hid}/content": {
+      "get": {
+        "description": "Download a file, byte for byte. It is an audit event, `download`.\n\nIt comes as an attachment with its file name, with `X-Content-Type-Options: nosniff`\nand a content security policy that lets nothing of it run. A link has no content,\na `422`; content missing after a restore is a `404` that says so.",
+        "operationId": "download_reference_api_v1_reference_files__hid__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The content, byte for byte, as an attachment with its file name."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Reference",
+        "tags": [
+          "References"
+        ]
+      },
+      "put": {
+        "description": "Put a new edition of a file in place of the one it had, on every record it is on.\n\nThe reference keeps its HID, title, kind and records. The content it had is erased,\nunless another reference holds the same. It is checked as an upload is.",
+        "operationId": "replace_content_api_v1_reference_files__hid__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "title": "File Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "row_version",
+            "required": true,
+            "schema": {
+              "title": "Row Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file itself, as it is: its extension, in `file_name`, says what it is.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceFileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Content",
+        "tags": [
+          "References"
+        ]
+      }
+    },
     "/api/v1/regions": {
       "get": {
         "description": "List regions, by name unless a sort says otherwise.",
@@ -39471,6 +41115,73 @@
           }
         },
         "summary": "Region Opening",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/regions/{hid}/references": {
+      "get": {
+        "description": "List the references a region has: its own, then those of each region above it, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_region_api_v1_regions__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Region",
         "tags": [
           "Geography"
         ]
@@ -41607,6 +43318,73 @@
           }
         },
         "summary": "Site Opening",
+        "tags": [
+          "Geography"
+        ]
+      }
+    },
+    "/api/v1/sites/{hid}/references": {
+      "get": {
+        "description": "List the references a site has: its own, then those of its region and of each region above it, nearest first, each once, and by title within a level.",
+        "operationId": "list_references_of_site_api_v1_sites__hid__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ListedReference_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List References Of Site",
         "tags": [
           "Geography"
         ]
