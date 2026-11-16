@@ -55,6 +55,7 @@ import { plural } from "../../lib/format";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
 import { toApiError } from "../../lib/hooks";
+import { useSite } from "../../lib/product";
 import { browserStorage } from "../../lib/session";
 import {
   type Chosen,
@@ -201,6 +202,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const withinText = JSON.stringify(props.within ?? {});
   const within = useMemo(() => JSON.parse(withinText) as GridWithin, [withinText]);
   const { user } = useAuth();
+  const { productName } = useSite();
   const navigate = useNavigate();
   const host = useRef<HTMLDivElement>(null);
   const store = useMemo(() => new GridStore(browserStorage(), user.hid), [user.hid]);
@@ -595,7 +597,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
       // Fetched like everything else, with the bearer token, and saved from memory:
       // there is no cookie for a plain link to the file to be allowed by.
       const file = await api.download("/api/v1/exports", { body });
-      const name = file.fileName ?? exportName(entity, format);
+      const name = file.fileName ?? exportName(entity, format, productName);
       saveFile(file.blob, name);
       setDone(`Exported to ${name}.`);
     } catch (thrown) {

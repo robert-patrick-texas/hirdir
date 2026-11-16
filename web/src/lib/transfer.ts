@@ -8,6 +8,7 @@
 
 import type { Schemas } from "../api/client";
 import type { FilterNode } from "./filter";
+import { namedFile } from "./product";
 
 export type ExportRequest = Schemas["ExportRequest"];
 /** The kinds of record a file can carry. */
@@ -102,9 +103,12 @@ export function exportRequest(
   };
 }
 
-/** A name for an exported file, when the server's answer did not name it. */
-export function exportName(entity: Entity, format: FileFormat): string {
-  return `hirdir-${entity}.${format}`;
+/**
+ * A name for an exported file, when the server's answer did not name it: after the
+ * product, as the server names one (P-168).
+ */
+export function exportName(entity: Entity, format: FileFormat, productName: string): string {
+  return namedFile(productName, `${entity}.${format}`);
 }
 
 /**

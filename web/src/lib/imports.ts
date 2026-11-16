@@ -6,6 +6,7 @@
 
 import type { FileType } from "../api/client";
 import type { Option } from "./patch";
+import { DEFAULT_NAME, fileStem } from "./product";
 import type { Entity } from "./transfer";
 
 /** The kinds of record a file can carry, in the order they are loaded. */
@@ -82,14 +83,35 @@ export function fileType(file: { name: string; type: string }): FileType | null 
   return null;
 }
 
+/** A name in lower case, each run of anything but a letter one `_`. */
+function words(text: string): string {
+  return text.toLowerCase().replace(/[^a-z]+/g, "_");
+}
+
 /**
  * The kind of record a file's name suggests, as `catalog-entries.csv` suggests catalog
  * entries, or blank. A name may hold more than one, as `items-operators-team.csv` does:
  * the one that stands first in the name is meant, and of two that start at the same
  * place the longer. It only fills in the form: the reader may choose otherwise.
+ *
+ * 0.9.2: an export is named after the product (P-168), `Example-Inventory-vendors-….csv`, and the
+ * product's name may hold the name of a kind of record itself, as `Sites Tool` does. So
+ * the name of the product in force, or hirdir, at the start of the file's name is passed
+ * over where a kind of record follows it.
  */
-export function guessEntity(fileName: string): Entity | "" {
-  const name = fileName.toLowerCase().replace(/[^a-z]+/g, "_");
+export function guessEntity(fileName: string, productName: string = DEFAULT_NAME): Entity | "" {
+  const name = words(fileName).replace(/^_+/, "");
+  for (const stem of [fileStem(productName), DEFAULT_NAME]) {
+    const lead = words(stem).replace(/^_+|_+$/g, "");
+    if (lead === "" || !name.startsWith(`${lead}_`)) continue;
+    const after = firstEntity(name.slice(lead.length + 1));
+    if (after !== "") return after;
+  }
+  return firstEntity(name);
+}
+
+/** The kind of record that stands first in a name, and the longer of two at one place. */
+function firstEntity(name: string): Entity | "" {
   let best: { entity: Entity; at: number } | null = null;
   for (const { value } of ENTITIES) {
     const at = name.indexOf(value);

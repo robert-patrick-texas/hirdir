@@ -78,6 +78,15 @@
 // makes circuits with cost lines of its own, filters the report down to them, and runs
 // beside the others.
 
+// 0.9.2, the product name and whom to ask (P-168, P-169): product.spec.ts sets
+// `product_name`, which the title of every page, the heading of the sign-in page that
+// `signIn` looks for and the name of every file that any other file downloads read, and
+// the five settings of whom to ask, which the sign-in page lists. It runs in the project
+// "the name alone" of playwright.config.ts, by itself, after "the weights alone"; it notes
+// each of the six settings as it found them and puts them back however it ends. Every
+// other file finds the product named hirdir, its default. menu-bar.spec.ts (P-167)
+// changes nothing and runs beside the others.
+
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import {
@@ -272,10 +281,15 @@ export async function watch(context: BrowserContext): Promise<Watch> {
   return seen;
 }
 
-/** Sign in on the first page, as the account the spec file has of its own. */
-export async function signIn(page: Page, account: Account): Promise<void> {
+/**
+ * Sign in on the first page, as the account the spec file has of its own. The page names
+ * the product hirdir unless the file has named it otherwise, as product.spec.ts does.
+ */
+export async function signIn(page: Page, account: Account, product = "hirdir"): Promise<void> {
   await page.goto("./");
-  await expect(page.getByRole("heading", { level: 1, name: "Sign in to hirdir" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: `Sign in to ${product}`, exact: true }),
+  ).toBeVisible();
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Access code").fill(account.accessCode);
   await page.getByRole("button", { name: "Sign in" }).click();

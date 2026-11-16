@@ -593,6 +593,20 @@ tr.dim th {
   margin: 0;
 }
 
+/* 0.9.2: whom to ask (P-169). An address may be longer than the narrow sign-in page. */
+.help-list dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sign-in-help {
+  margin-top: 2rem;
+}
+
+.sign-in-help h2 {
+  font-size: 1.05rem;
+}
+
 /* --- records ---------------------------------------------------------------------- */
 
 .badge {

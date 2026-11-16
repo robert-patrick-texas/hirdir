@@ -1,5 +1,6 @@
 // Settings as text, and text as a setting's value. A setting's value is whatever kind
-// its default is: a number, a word or a list. The server checks every value it is sent.
+// its default is: a number, a word, a list, or since 0.9.2 true or false
+// (`help_on_sign_in`, P-169). The server checks every value it is sent.
 //
 // `GET /settings` lists the settings of the inventory, which an Admin changes, and after
 // them the values that are fixed in the code (D-187): each with `fixed` true, what it
@@ -21,6 +22,7 @@ export interface Listed {
 /** A setting's value as people read it. Blank for a kind this build does not know. */
 export function settingText(value: unknown): string {
   if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (Array.isArray(value)) return value.map(String).join(", ");
   // A fixed value may say something of each of several things, as what each condition
@@ -43,10 +45,28 @@ export function splitSettings<T extends Listed>(all: readonly T[]): { settings: 
 
 /**
  * How a new value of a setting is given: ticked from its options where it is a list,
- * chosen from them where it is one value of a list, and typed otherwise. A list of the
- * extensions of files is a list of its own, to which an Admin adds any other.
+ * chosen from them where it is one value of a list, Yes or No where it is true or false,
+ * and typed otherwise, as a setting whose default is blank is. A list of the extensions
+ * of files is a list of its own, to which an Admin adds any other.
  */
-export type SettingInput = "set" | "choice" | "text" | "extensions";
+export type SettingInput = "set" | "choice" | "flag" | "text" | "extensions";
+
+/** The two values of a setting that is true or false, as the form offers them. */
+export const FLAG_OPTIONS: ReadonlyArray<{ value: "true" | "false"; label: string }> = [
+  { value: "true", label: "Yes" },
+  { value: "false", label: "No" },
+];
+
+/** Whether a setting is true or false, by its default or its value. */
+function isFlag(setting: Pick<Listed, "value" | "default">): boolean {
+  return typeof setting.default === "boolean" || typeof setting.value === "boolean";
+}
+
+/** What the form of a setting starts with: its value as it is typed, or as it is chosen. */
+export function settingStart(setting: Listed): string {
+  if (isFlag(setting)) return setting.value === true ? "true" : "false";
+  return settingText(setting.value);
+}
 
 /**
  * 0.9.0: the settings that are a list of the extensions of files, whose options are only
@@ -58,6 +78,7 @@ export function settingInput(setting: Listed): SettingInput {
   if (EXTENSION_LISTS.includes(setting.key)) return "extensions";
   const listed = Array.isArray(setting.value) || Array.isArray(setting.default);
   if (listed) return "set";
+  if (isFlag(setting)) return "flag";
   return setting.options && setting.options.length > 0 ? "choice" : "text";
 }
 
@@ -72,6 +93,11 @@ export type SettingRead = { ok: true; value: unknown } | { ok: false; error: str
  */
 export function settingValue(setting: Setting, typed: string): SettingRead {
   const text = typed.trim();
+  // 0.9.2: true or false is sent as JSON's true or false, and nothing else (P-169).
+  if (typeof setting.default === "boolean") {
+    if (text === "true" || text === "false") return { ok: true, value: text === "true" };
+    return { ok: false, error: "Choose Yes or No." };
+  }
   if (text === "") return { ok: false, error: "Give a value, or return it to its default." };
   if (typeof setting.default === "number") {
     if (/^\d{1,15}$/.test(text)) return { ok: true, value: Number.parseInt(text, 10) };

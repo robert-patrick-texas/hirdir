@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/client";
+import { titleOf, useSite } from "./product";
 
 /** Whatever was thrown, as an ApiError. */
 export function toApiError(error: unknown): ApiError {
@@ -112,9 +113,10 @@ export function useAction(): Action {
   return { busy, error, run, clear };
 }
 
-/** Name the page in the browser's title bar. */
+/** Name the page in the browser's title bar, with the name the site gives the product. */
 export function useTitle(title: string): void {
+  const { productName } = useSite();
   useEffect(() => {
-    document.title = title ? `${title} · hirdir` : "hirdir";
-  }, [title]);
+    document.title = titleOf(title, productName);
+  }, [title, productName]);
 }

@@ -129,8 +129,10 @@ describe("chosenCount and exportName", () => {
     expect(chosenCount({ kind: "all", count: 50000 })).toBe(50000);
   });
 
-  it("name a file after what it holds", () => {
-    expect(exportName("catalog_entries", "json")).toBe("hirdir-catalog_entries.json");
+  it("name a file after the product and what it holds", () => {
+    expect(exportName("catalog_entries", "json", "hirdir")).toBe("hirdir-catalog_entries.json");
+    expect(exportName("items", "csv", "Example Inventory")).toBe("Example-Inventory-items.csv");
+    expect(exportName("vendors", "csv", "Сеть")).toBe("hirdir-vendors.csv");
   });
 });
 

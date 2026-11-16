@@ -208,6 +208,43 @@ describe("guessEntity", () => {
   it("guesses nothing from a name that says nothing", () => {
     expect(guessEntity("refresh-2030.csv")).toBe("");
   });
+
+  it("passes over the name of the product at the start of an exported file's name", () => {
+    const exported = "Sites-Tool-vendors-20261116T091500-0500.csv";
+    // Without the product, its name is read as a kind of record like any other word.
+    expect(guessEntity(exported)).toBe("sites");
+    expect(guessEntity(exported, "Sites Tool")).toBe("vendors");
+    expect(guessEntity("Sites-Tool-catalog_entries.json", "Sites Tool")).toBe("catalog_entries");
+    // Saved twice by the browser, the name is the same at its start.
+    expect(guessEntity("Sites-Tool-vendors-20261116T091500-0500 (1).csv", "Sites Tool")).toBe(
+      "vendors",
+    );
+    expect(
+      guessEntity("Ben-Ada-s-Net-2-items-20261116T091500-0500.csv", "Ben & Ada's: Net/2"),
+    ).toBe("items");
+    expect(
+      guessEntity("Example-Inventory-owner_members-20261116T091500-0500.csv", "Example Inventory"),
+    ).toBe("owner_members");
+    // A name whose letters lost their accents in the file's name.
+    expect(guessEntity("Reseau-Sites-contracts-20261116T091500-0500.csv", "Réseau Sites")).toBe(
+      "contracts",
+    );
+  });
+
+  it("still passes over hirdir, which named every export before, whatever the product", () => {
+    expect(guessEntity("hirdir-vendors-20261113T163125-0500.csv", "Sites Tool")).toBe("vendors");
+    expect(guessEntity("hirdir-sites-20261113T163125-0500.csv", "Sites Tool")).toBe("sites");
+  });
+
+  it("reads a file of the site's own naming as before", () => {
+    expect(guessEntity("sites.csv", "Sites Tool")).toBe("sites");
+    expect(guessEntity("Sites Tool.csv", "Sites Tool")).toBe("sites");
+    // A product named after a kind of record: what follows its name is meant, where it
+    // names one, and otherwise the name as a whole.
+    expect(guessEntity("Items-owners-20261116T091500-0500.csv", "Items")).toBe("owners");
+    expect(guessEntity("items-site2.csv", "Items")).toBe("items");
+    expect(guessEntity("items.csv", "Items")).toBe("items");
+  });
 });
 
 describe("previewQuery", () => {

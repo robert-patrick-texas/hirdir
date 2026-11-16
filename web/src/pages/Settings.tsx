@@ -1,6 +1,6 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { api, type Schemas } from "../api";
-import { CheckGroupField, SelectField, TextField } from "../components/Field";
+import { CheckGroupField, RadioGroupField, SelectField, TextField } from "../components/Field";
 // 0.8.0: the kept reports and their check (P-157).
 import { KeptAnswers } from "../components/KeptAnswers";
 import { Notice, Problem } from "../components/Problem";
@@ -12,10 +12,13 @@ import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { END_OF_LIFE_DATES } from "../lib/lifecycleReports";
 import { CATALOG_KINDS } from "../lib/options";
 import type { Option } from "../lib/patch";
+import { site, siteOfSettings } from "../lib/product";
 import {
+  FLAG_OPTIONS,
   listValue,
   type SettingRead,
   settingInput,
+  settingStart,
   settingText,
   settingValue,
   splitSettings,
@@ -76,6 +79,13 @@ export function Settings() {
   const reset = useAction();
   const { settings: own, fixed } = splitSettings(settings.data ?? []);
   const opened = own.find((setting) => setting.key === open) ?? null;
+
+  // 0.9.2: the name of the product and whom the sign-in page lists, as the settings read
+  // last say: a change shows on this page at once, in the menu bar and the title, and on
+  // the sign-in page when this Admin signs out (P-168, P-169).
+  useEffect(() => {
+    if (settings.data) site.update(siteOfSettings(settings.data));
+  }, [settings.data]);
 
   function changed(text: string) {
     setDone(text);
@@ -346,7 +356,7 @@ interface SettingFormProps {
 function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: SettingFormProps) {
   const input = settingInput(setting);
   const options = optionsOf(setting);
-  const [text, setText] = useState(() => settingText(setting.value));
+  const [text, setText] = useState(() => settingStart(setting));
   const [chosen, setChosen] = useState<string[]>(() =>
     Array.isArray(setting.value) ? setting.value.map(String) : [],
   );
@@ -439,6 +449,19 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
               </option>
             ))}
           </SelectField>
+        )}
+        {/* 0.9.2: the first setting that is true or false (P-169). */}
+        {input === "flag" && (
+          <RadioGroupField
+            label="New value"
+            name={setting.key}
+            options={FLAG_OPTIONS}
+            value={text}
+            onChange={setText}
+            disabled={action.busy}
+            hint={hint}
+            error={found || action.error?.fields.value}
+          />
         )}
         {input === "text" && (
           <TextField

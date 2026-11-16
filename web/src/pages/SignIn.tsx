@@ -2,11 +2,16 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type ApiError, api, sessions } from "../api";
 import { TextField } from "../components/Field";
 import { Problem } from "../components/Problem";
+import { HelpList } from "../components/WhomToAsk";
 import { toApiError, useTitle } from "../lib/hooks";
+import { useSite } from "../lib/product";
 
 /** The only page shown without a session. */
 export function SignIn() {
   useTitle("Sign in");
+  // 0.9.2: the name the site gives the product, and whom to ask where an Admin shows that
+  // here (P-168, P-169), as the page was served with them.
+  const { productName, signInHelp } = useSite();
   const [username, setUsername] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [waitUntil, setWaitUntil] = useState(0);
@@ -56,7 +61,7 @@ export function SignIn() {
 
   return (
     <main className="center">
-      <h1>Sign in to hirdir</h1>
+      <h1>Sign in to {productName}</h1>
       {ended === "ended" && !error && (
         <p className="alert alert-info" role="status">
           Your session has ended. Sign in again to carry on where you were.
@@ -97,6 +102,13 @@ export function SignIn() {
           </button>
         </p>
       </form>
+      {signInHelp && (
+        <section aria-labelledby="sign-in-help" className="sign-in-help">
+          <h2 id="sign-in-help">Whom to ask</h2>
+          <p>If you cannot sign in, ask the team that runs {productName}:</p>
+          <HelpList help={signInHelp} />
+        </section>
+      )}
     </main>
   );
 }
