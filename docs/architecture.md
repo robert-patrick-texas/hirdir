@@ -655,6 +655,24 @@ It is tried, before there is a release after 0.7.0, by upgrading the package of 
 to itself under a later version number, as
 [release-process.md](release-process.md#the-previous-releases-package) says.
 
+A previous release at revision `0010`, which is 0.8.0, is given what that revision
+brought as well, in `witness_circuits`:
+
+- three circuits, one of each shape: both sides at locations from before with a router
+  from before at its A side, a far end in the carrier's network with its note, and one
+  switched to count at its Z side;
+- three carriers, one of them another carrier of a circuit with a number of its own,
+  and cost lines among which a rate that has ended and a credit;
+- an item and a device group connected as devices;
+- the account manager and the support desk of a carrier, named once on it, a contact
+  that a circuit names of its own and a site contact of a side;
+- a circuit group with circuits in it;
+- weights on a region, a site and a location; and
+- the six weights and `circuit_cost_side` set, which are put back at the end.
+
+It is tried, before there is a release after 0.8.0, by upgrading the package of 0.8.0
+to itself under a later version number, as for 0.7.0.
+
 Afterwards every item, group, membership, network, address, owner and choice must be
 as it was, field for field and at the `row_version` it had, every item with its history
 event for event, and no choice may be added. So must every record of what came after
@@ -680,8 +698,10 @@ weight must be counted as the previous release counted them.
 The tables are read from the database file too, the eleven of the inventory where
 there are groups, eighteen with those of the places and the people, twenty-six
 with those of the contracts, the purchases, the external systems and the capacity
-lines, and thirty with the contacts of contracts, the targets of capacity lines, the
-records of the capacity balance and the renewal alerts that were seen. A table that
+lines, thirty with the contacts of contracts, the targets of capacity lines, the
+records of the capacity balance and the renewal alerts that were seen, and thirty-eight
+with the circuits, their carriers, cost lines, devices and contacts, the contacts of
+vendors, and circuit groups and their members. A table that
 has no `hid`, as the targets have none, is read by its primary key. Where there is no
 migration, each must have the columns, the indexes, uniquenesses and foreign keys, and
 the rows it had, the schema must be the same statement for statement, and the audit
@@ -923,18 +943,41 @@ and serve every record as the previous release gave it before, exactly, with tha
 group still there. That is the way back that
 [install.md](install.md#going-back-to-the-release-before) gives for such a release.
 
+`migration-0010.sh` is the one that 0.8.0 brought, and what it looks for is what
+[install.md](install.md#from-070-to-080) tells an operator of that upgrade. The
+migration gives `regions`, `sites` and `locations` a support weight, each made anew by
+SQLite with its indexes, creates the seven tables of circuits, their parts and the
+contacts of vendors, and `circuit_group_members` last, and loads the `circuit_type` and
+`carrier_role` lists beside any value a site has put into either. It changes nothing
+that is held and writes no audit event. With the previous release the file sees the
+places it makes anew in the inventory, with their shipping addresses, operators,
+contacts and links, sees that the previous release refuses a value of either list and
+a file of regions with a `support_weight` column, and puts three values of a site's own
+into the lists in the database. After the upgrade the new tables are empty, the places
+weigh nothing, the seven settings are at their defaults, the capacity report is the
+items' weight alone, the four long reports are kept since the service started, and both
+lists hold their defaults beside the site's values; then a region is weighed by the file
+the previous release refused, a circuit is entered between places and with an item from
+before, a new circuit counts at its Z side once the setting says so while the old one
+stays at A, a circuit group, the report of what circuits cost, a default circuit weight,
+a Try that saves and audits nothing, and the check of kept answers, which finds nothing
+differing, are tried, and all of it is taken out again.
+
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
 `addresses` was for 0.4.0, `owner_members` for 0.5.0, `capacity_lines` for 0.6.0 and
-`capacity_records` is for 0.7.0, so that everything else the migration does is done
+`capacity_records` for 0.7.0 and `circuit_group_members` is for 0.8.0, so that
+everything else the migration does is done
 before it fails: migration `0007`
 has by then created five tables, made `items` and `device_groups` anew and loaded two
 lists, and migration `0008` has created seven tables, made `items` anew, with the
 locations and the operators that its rows refer to, and loaded a list, and migration
 `0009` has made
 `purchase_lines` and `capacity_lines` anew, given columns to six tables and counts to
-the jobs that were applied, and created three tables, and all of that has to be undone.
+the jobs that were applied, and created three tables, and migration `0010` has made
+the three tables of places anew and created seven tables, and all of that has to be
+undone.
 Where it creates none, as 0.4.1 creates none, a trigger is put on
 `alembic_version` that refuses any change to it. Writing the new revision into that
 table is the last thing a migration does, so for migration `0006` the failure comes
@@ -960,7 +1003,7 @@ what the fresh pass asks of this tree's. The failed-upgrade pass does nothing of
 fresh pass and runs whole for such a pair. Neither is the release check.
 
 **Files**, in the fresh pass and so in the upgrade pass too, all through nginx under the
-prefix. The twenty-five files of `examples/` are sent in load order to `POST /imports/preview`
+prefix. The thirty-three files of `examples/` are sent in load order to `POST /imports/preview`
 and applied: every row is created, and the lists of minor items, networks, device
 groups with their members, and addresses hold what the files hold, and so do those of
 regions, sites, locations, contacts, their assignments and the members of owners, and
