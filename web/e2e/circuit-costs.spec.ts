@@ -7,14 +7,16 @@
 //   second carrier. The report of that year by carrier has a row for each carrier, the
 //   second circuit in both, and the totals count each circuit once; by site, a row for each
 //   site; each row with its circuits, the year's cost, the monthly figure on the last day of
-//   the year and twelve times that, and leading to its circuits in the circuit grid.
+//   the year and twelve times that, and leading to the circuits it counted in the circuit
+//   grid, by its filter with the year's window of service. The circuit grid is another
+//   web lane's: this file reads where a row leads, and does not follow it.
 //
 // The year is a past one, so that the figures do not depend on the day the file is run,
 // and the report is filtered down to the circuits of this file by their names (rule 4 of
 // support.ts). The fiscal year is the calendar year: the `fiscal_year_start_month` setting
 // at its default, which no file changes.
 
-import { type APIRequestContext, expect } from "@playwright/test";
+import { type APIRequestContext, expect, type Locator } from "@playwright/test";
 import { type Account, expectClean, mark, signIn, test, watch } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -53,6 +55,25 @@ async function make(
 }
 
 const ids: Record<string, string> = {};
+
+/**
+ * Where a link of the report leads: the circuit grid, with the conditions of its filter,
+ * a tree in the address, those joined at the top by AND one by one, and the switches of
+ * the grid.
+ */
+async function gridLink(link: Locator) {
+  const href = (await link.getAttribute("href")) ?? "";
+  const address = new URL(href, "http://example.invalid/");
+  expect(address.pathname.endsWith("/circuits")).toBe(true);
+  const text = address.searchParams.get("filter") ?? "";
+  expect(text.startsWith("{"), `a filter tree: ${text}`).toBe(true);
+  const tree = JSON.parse(text) as { and?: unknown[] };
+  return {
+    conditions: tree.and ?? [tree],
+    archived: address.searchParams.get("archived"),
+    drafts: address.searchParams.get("drafts"),
+  };
+}
 
 test("what circuits cost in a year, by carrier and by site, each row leading to its circuits", async ({
   page,
@@ -149,13 +170,21 @@ test("what circuits cost in a year, by carrier and by site, each row leading to 
   await expectRow(ids.fiber ?? "", [1, "3,000.00", "250.00", "3,000.00"]);
   // The totals count each circuit once.
   await expectRow("totals", [2, "17,100.00", "1,700.00", "20,400.00"]);
-  // A row leads to its circuits in the circuit grid, with its filter in the address.
-  const link = telecomRow.getByRole("link", { name: carrier, exact: true });
-  const href = (await link.getAttribute("href")) ?? "";
-  expect(href).toContain("/circuits?");
-  const asked = new URL(href, "http://example.invalid/").searchParams;
-  expect(asked.get("filter")).toBe(`${mine} carriers.vendor_hid:eq:${ids.telecom}`);
-  expect(asked.get("archived")).toBe("1");
+  // A row leads to the circuits it counted, in the circuit grid: its filter, the report's
+  // with the year's window of service and the row's own condition, is in the address, with
+  // the retired circuits asked for, as the report says its filters are of.
+  const telecomLink = await gridLink(telecomRow.getByRole("link", { name: carrier, exact: true }));
+  expect(telecomLink.archived).toBe("1");
+  expect(telecomLink.drafts).toBeNull();
+  expect(telecomLink.conditions).toContainEqual({ field: "name", op: "contains", value: suffix });
+  expect(telecomLink.conditions).toContainEqual({
+    field: "billed_by",
+    op: "eq",
+    value: ids.telecom,
+  });
+  expect(JSON.stringify(telecomLink.conditions)).toContain(`${YEAR}-12-31`);
+  const totalsLink = await gridLink(rows.getByTestId("circuit-costs-totals").getByRole("link"));
+  expect(totalsLink.conditions).toContainEqual({ field: "name", op: "contains", value: suffix });
 
   // By site: each circuit at the site of its A side.
   await page.getByRole("combobox", { name: "By", exact: true }).selectOption({ label: "Site" });
@@ -166,10 +195,11 @@ test("what circuits cost in a year, by carrier and by site, each row leading to 
   await expectRow(ids.west ?? "", [1, "8,400.00", "700.00", "8,400.00"]);
   await expectRow("totals", [2, "17,100.00", "1,700.00", "20,400.00"]);
   await expect(eastRow.locator("th")).toContainText(`${regionName} > ${east}`);
-  const siteHref = (await eastRow.getByRole("link").getAttribute("href")) ?? "";
-  expect(new URL(siteHref, "http://example.invalid/").searchParams.get("filter")).toBe(
-    `${mine} cost_site_hid:eq:${ids.east}`,
-  );
+  expect((await gridLink(eastRow.getByRole("link"))).conditions).toContainEqual({
+    field: "cost_site_hid",
+    op: "eq",
+    value: ids.east,
+  });
   // Sorted by its headers: the dearer site first, by the year's cost turned round.
   const costHeader = rows.getByRole("button", { name: /^Cost of the year/ });
   await costHeader.click();

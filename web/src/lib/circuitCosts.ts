@@ -93,20 +93,21 @@ export function circuitCostsQuery(view: CircuitCostsView): {
 
 /**
  * The circuit grid on the circuits of a row, as a path of the app: the row's filter in
- * the address, as the item grid takes one. A circuit that was disconnected and retired
- * during the year counts in it, so the grid is asked for retired circuits too, greyed;
- * and for the drafts where the report counted them. A row whose filter is more than the
- * grammar takes has none, and leads nowhere; the totals of a report of every circuit have
- * none either, and lead to every circuit.
+ * the address, as the item grid takes one, with the switches of the view the report says
+ * its filters are of. The filter holds the year's window of service, so the grid lists
+ * exactly the circuits the row counted: retired ones among them, greyed, since one that
+ * was disconnected during the year ran for part of it, and drafts where the report
+ * counted them. A row whose filter would be more than the grammar takes has none, and
+ * leads nowhere.
  */
 export function circuitsPath(
   row: Pick<CircuitCostRow, "filter">,
-  includeDrafts: boolean,
-  totals = false,
+  view: Pick<CircuitCosts, "include_archived" | "include_drafts">,
 ): string | null {
   const filter = viewFilter(row.filter);
-  if (filter === null && !totals) return null;
-  const query = new URLSearchParams({ filter: filterText(filter), archived: "1" });
-  if (includeDrafts) query.set("drafts", "1");
+  if (filter === null) return null;
+  const query = new URLSearchParams({ filter: filterText(filter) });
+  if (view.include_archived) query.set("archived", "1");
+  if (view.include_drafts) query.set("drafts", "1");
   return `/circuits?${query.toString()}`;
 }

@@ -22,7 +22,7 @@ function row(more: Partial<CircuitCostRow>): CircuitCostRow {
     cost: "8700.00",
     monthly_cost: "1000.00",
     annual_cost: "12000.00",
-    filter: { field: "carriers.vendor_hid", op: "eq", value: CARRIER },
+    filter: { field: "billed_by", op: "eq", value: CARRIER },
     ...more,
   };
 }
@@ -74,9 +74,10 @@ describe("a row of the report", () => {
     expect(circuitCostsRowLabel("group", row({ key: null, label: null }))).toBe("In no group");
   });
 
-  it("leads to its circuits in the circuit grid, retired ones among them", () => {
-    expect(circuitsPath(row({}), false)).toBe(
-      `/circuits?filter=${encodeURIComponent(`carriers.vendor_hid:eq:${CARRIER}`)}&archived=1`,
+  it("leads to the circuits it counted, in the view the report says its filters are of", () => {
+    const view = { include_archived: true, include_drafts: false };
+    expect(circuitsPath(row({}), view)).toBe(
+      `/circuits?filter=${encodeURIComponent(`billed_by:eq:${CARRIER}`)}&archived=1`,
     );
     const both = row({
       filter: {
@@ -87,13 +88,38 @@ describe("a row of the report", () => {
       },
     });
     // A space of the short form is written as the address writes one.
-    expect(circuitsPath(both, true)).toBe(
+    expect(circuitsPath(both, { include_archived: true, include_drafts: true })).toBe(
       `/circuits?filter=name%3Acontains%3Awan+cost_site_hid%3Aeq%3A${SITE}&archived=1&drafts=1`,
+    );
+    expect(circuitsPath(row({}), { include_archived: false, include_drafts: false })).toBe(
+      `/circuits?filter=${encodeURIComponent(`billed_by:eq:${CARRIER}`)}`,
     );
   });
 
-  it("leads nowhere without a filter, and the totals of every circuit lead to every circuit", () => {
-    expect(circuitsPath(row({ filter: null }), false)).toBeNull();
-    expect(circuitsPath(row({ filter: null }), false, true)).toBe("/circuits?filter=&archived=1");
+  it("hands on a filter the short form cannot say as a tree", () => {
+    const window = {
+      and: [
+        { field: "billed_by", op: "eq", value: CARRIER },
+        {
+          or: [
+            { field: "activated_on", op: "empty", value: true },
+            { field: "activated_on", op: "lte", value: "2025-12-31" },
+          ],
+        },
+      ],
+    };
+    const path = circuitsPath(row({ filter: window }), {
+      include_archived: true,
+      include_drafts: false,
+    });
+    const asked = new URLSearchParams(path?.split("?")[1] ?? "");
+    expect(JSON.parse(asked.get("filter") ?? "")).toEqual(window);
+    expect(asked.get("archived")).toBe("1");
+  });
+
+  it("leads nowhere without a filter", () => {
+    expect(
+      circuitsPath(row({ filter: null }), { include_archived: true, include_drafts: false }),
+    ).toBeNull();
   });
 });

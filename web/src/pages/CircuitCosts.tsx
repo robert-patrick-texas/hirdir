@@ -30,11 +30,12 @@ import { useSorting } from "../lib/useSorting";
 // What to say beneath the rows of each grouping, where a circuit may be in more than one.
 const ROWS_SAY: Readonly<Partial<Record<CircuitCosts["by"], string>>> = {
   carrier:
-    "A cost line counts under the carrier that bills it, its own or the circuit's primary carrier, so a circuit is in the row of each carrier that bills any of it; the totals count each circuit once.",
+    "A cost line counts under the carrier that bills it, its own or the circuit's primary carrier, so a circuit is in the row of each carrier that bills any of it in the year, and a circuit with no line billed in the year is in its primary carrier's; the totals count each circuit once.",
   site: "A circuit counts at the site of the side its cost is assigned to, its A side unless it was switched to its Z side.",
   region:
     "A region is named by its path, and its row holds what counts at a site at or beneath it: a circuit is in the row of each region above its site, and the totals count it once.",
-  group: "A circuit in several groups is in the row of each, and the totals count it once.",
+  group:
+    "A circuit in several groups is in the row of each, a retired group among them, and the totals count it once.",
   tag: "A circuit with several tags is in the row of each, and the totals count it once.",
 };
 
@@ -79,7 +80,7 @@ export function CircuitCostsReport() {
           Counting…
         </p>
       )}
-      {data && <CostsTables report={data} includeDrafts={view.includeDrafts} />}
+      {data && <CostsTables report={data} />}
     </>
   );
 }
@@ -193,7 +194,7 @@ function CostsForm({ view, shown, refused, onShow }: CostsFormProps) {
 }
 
 /** The rows of the report, sorted by their headers, and the totals beneath. */
-function CostsTables({ report, includeDrafts }: { report: CircuitCosts; includeDrafts: boolean }) {
+function CostsTables({ report }: { report: CircuitCosts }) {
   const by = report.by;
   const label = (row: CircuitCostRow) => circuitCostsRowLabel(by, row);
   const sorting = useSorting(report.rows, {
@@ -204,7 +205,7 @@ function CostsTables({ report, includeDrafts }: { report: CircuitCosts; includeD
     annual_cost: (row) => decimalValue(row.annual_cost),
   });
   const money = report.currency ? ` (${report.currency})` : "";
-  const totalsPath = circuitsPath(report.totals, includeDrafts, true);
+  const totalsPath = circuitsPath(report.totals, report);
   return (
     <section
       aria-labelledby="circuit-costs-rows"
@@ -251,7 +252,7 @@ function CostsTables({ report, includeDrafts }: { report: CircuitCosts; includeD
                 key={row.key ?? ""}
                 row={row}
                 name={label(row)}
-                path={circuitsPath(row, includeDrafts)}
+                path={circuitsPath(row, report)}
               />
             ))}
             {report.rows.length === 0 && (
@@ -298,9 +299,10 @@ function CostsTables({ report, includeDrafts }: { report: CircuitCosts; includeD
       </div>
       {ROWS_SAY[by] && <p className="hint">{ROWS_SAY[by]}</p>}
       <p className="hint">
-        A row leads to its circuits in the circuit grid, retired ones among them, greyed: a circuit
-        that was disconnected during the year counts for the days it was in service. Every sum is
-        worked out exactly and rounded to two places once.
+        A row leads to the circuits it counted, in the circuit grid: those in service on a day of
+        the year, retired ones among them, greyed, since a circuit that was disconnected during the
+        year counts for the days it was in service. Every sum is worked out exactly and rounded to
+        two places once.
       </p>
     </section>
   );

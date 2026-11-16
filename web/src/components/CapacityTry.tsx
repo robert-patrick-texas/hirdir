@@ -136,26 +136,28 @@ function TryForm({ inForce, staff, maySave, onSaving, onSaved }: TryFormProps) {
   const sentNow = JSON.stringify(request.body);
 
   // The server's message of each input, by the field it names: a figure by its key, a
-  // staff line by its place in the request that was refused.
+  // staff line by its place in the request that was refused. What it says of a line left
+  // out, which has no input of its own, is listed above the form.
   const known = useMemo(() => {
     const names: string[] = [...FIGURE_KEYS];
     for (let place = 0; place < (asked?.changed.length ?? 0); place += 1) {
       names.push(`staff.change.${place}.quantity`, `staff.change.${place}.units_each`);
       names.push(`staff.change.${place}`);
     }
-    for (let place = 0; place < lines.length; place += 1) names.push(`staff.leave_out.${place}`);
     for (let place = 0; place < (asked?.added.length ?? 0); place += 1) {
       names.push(`staff.add.${place}.name`, `staff.add.${place}.quantity`);
       names.push(`staff.add.${place}.units_each`);
     }
     return names;
-  }, [asked, lines.length]);
+  }, [asked]);
   const refused = fieldErrors(trying.error, known).shown;
   const where = asked ? staffFields(asked) : null;
+  // What is said of a changed line as a whole, that it is retired, is said by its quantity.
   const changeError = (hid: string, field: "quantity" | "units_each") => {
     const place = where?.change.get(hid);
     if (place === undefined) return undefined;
-    return refused[`staff.change.${place}.${field}`] ?? refused[`staff.change.${place}`];
+    const whole = field === "quantity" ? refused[`staff.change.${place}`] : undefined;
+    return refused[`staff.change.${place}.${field}`] ?? whole;
   };
   const addError = (id: number, field: "name" | "quantity" | "units_each") => {
     const place = where?.add.get(id);
@@ -223,7 +225,11 @@ function TryForm({ inForce, staff, maySave, onSaving, onSaved }: TryFormProps) {
         <Problem
           error={trying.error}
           shown={Object.keys(refused)}
-          labels={{ staff: "Staff lines" }}
+          labels={{
+            staff: "Staff lines",
+            // A line left out is named by the message itself.
+            ...Object.fromEntries(lines.map((_, place) => [`staff.leave_out.${place}`, ""])),
+          }}
         />
         <fieldset>
           <legend>The figures</legend>
