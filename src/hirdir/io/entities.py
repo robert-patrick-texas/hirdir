@@ -4351,10 +4351,10 @@ class Circuits(Entity):
     )
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
-        """Match a row to a circuit: by its enterprise circuit ID; then by its carrier
-        and the number that carrier gives it, as its primary or as another; then by a
-        name that one circuit alone has among those that are not retired. The first of
-        them that the row gives decides."""
+        """Match a row to a circuit: by its enterprise circuit ID; then by its primary
+        carrier and the number that carrier gives it, the two columns being the primary
+        carrier's; then by a name that one circuit alone has among those that are not
+        retired. The first of them that the row gives decides."""
         db = run.db
         ecid = values.get("enterprise_circuit_id")
         if ecid:
@@ -4364,7 +4364,14 @@ class Circuits(Entity):
             vendor = run.vendor(carrier)
             if vendor is None:
                 return None
-            found = circuit_records.by_carrier_number(db, vendor.hid, number)
+            # The columns are the primary carrier's: a number that carrier gives the
+            # circuit as another of its carriers is no match, and the row, a new circuit,
+            # is refused for the number another circuit has.
+            found = [
+                one
+                for one in circuit_records.by_carrier_number(db, vendor.hid, number)
+                if one.carrier_hid == vendor.hid
+            ]
             if len(found) > 1:
                 raise Invalid(
                     f"more than one circuit has the number {number} of {vendor.name}",
@@ -4468,7 +4475,11 @@ class Circuits(Entity):
             owner = its_owners.get(circuit.owner_hid or "")
             carrier = carriers.get(circuit.carrier_hid or "")
             weight = weights.of_circuit(circuit, figures)
-            monthly = circuit_records.monthly_cost(lines[circuit.hid], day)
+            monthly = (
+                circuit_records.monthly_cost(lines[circuit.hid], day)
+                if circuits.in_service_on(circuit, day, True)
+                else Decimal("0.00")
+            )
             rows.append(
                 {
                     **_kept(circuit),
