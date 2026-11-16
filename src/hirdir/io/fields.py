@@ -1994,6 +1994,11 @@ CIRCUITS = Listing(
             within=_within(_COST_LOCATION.hid, _COST_LOCATION.site_hid, _COST_SITE.region_hid),
         ),
         "cost_site_hid": Field("reference", _COST_LOCATION.site_hid),
+        # The names of the sites of its sides and of the one it counts at, to sort and
+        # find by, as a place's name is (D-132).
+        "cost_site.name": Field("text", _COST_SITE.name),
+        "a_site.name": Field("text", _A_SITE.name),
+        "z_site.name": Field("text", _Z_SITE.name),
         "carrier.name": Field("text", _PRIMARY_CARRIER.name),
         # Any of its carriers, the primary one among them, and the number any gives it.
         "carriers.vendor_hid": Field("reference", _EVERY_CARRIER.c.vendor_hid, among=_ANY_CARRIER),

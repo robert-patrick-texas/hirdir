@@ -4305,6 +4305,8 @@ class Circuits(Entity):
         Column("z_site", limit=LONG, settable=False),
         Column("cost_site", limit=LONG, settable=False),
         Column("owner_exception", "boolean", settable=False),
+        Column("owner_exception_reason", limit=LONG, settable=False),
+        Column("in_service", "boolean", settable=False),
         Column("support_weight_source", limit=20, settable=False),
         *BOOKKEEPING,
     )
@@ -4503,6 +4505,10 @@ class Circuits(Entity):
                     "z_site": site_of(circuit.z_location_hid),
                     "cost_site": site_of(circuits.cost_location_hid(circuit)),
                     "owner_exception": owner is not None and owner.is_external,
+                    "owner_exception_reason": owner.exception_reason
+                    if owner is not None and owner.is_external
+                    else None,
+                    "in_service": circuits.in_service_on(circuit, day, True),
                 }
             )
         return rows

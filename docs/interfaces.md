@@ -202,8 +202,9 @@ number of any current member. On the list of circuits, `carrier.name` is the nam
 its primary carrier, `carriers.vendor_hid` and `carriers.circuit_number` find it by any
 of its carriers, the primary one among them, and by the number any of them gives it, `location` by a side at a
 location, and takes `within` with a region, a site or a location, `a_location.name` and
-`z_location.name` are the names of its two sides, `cost_site_hid` is the site it counts
-at and `cost_location` the location it counts at, which takes `within` as `location`
+`z_location.name` are the names of its two sides, `a_site.name` and `z_site.name` the
+names of their sites, `cost_site_hid` is the site it counts at, `cost_site.name` its
+name, and `cost_location` the location it counts at, which takes `within` as `location`
 does, `groups.name` and `groups.hid` find it by any of its groups, `owner.label` and `owner_exception` go
 by its owner, `effective.support_weight` is its weight in force,
 `effective.down_mbps` and `effective.up_mbps` its rates in force, the port speed where
@@ -415,7 +416,7 @@ contacts of vendors, and the support weight of a place.
 | `purchase_lines` | `request`, `line`, `vendor`, `pid`, `part_number`, `description`, `quantity`, `destination_site`, `expected_on`, `notes` | `tracked`, `received_quantity`, `pending_quantity`, `mismatched_items` |
 | `capacity_lines` | `side`, `category`, `name`, `effect`, `quantity`, `units_each`, `factor`, `share`, `applies_to`, `annual_cost`, `vendor`, `region`, `site`, `starts_on`, `ends_on`, `notes`, `record_status` | `units` |
 | `circuit_groups` | `name`, `description`, `owner`, `notes`, `record_status`, `tags` | `circuits`, `monthly_cost`, `annual_cost` |
-| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `installed_on`, `activated_on`, `disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `support_weight_source` |
+| `circuits` | `name`, `enterprise_circuit_id`, `description`, `circuit_type`, `port_mbps`, `down_mbps`, `up_mbps`, `a_location`, `a_note`, `z_location`, `z_note`, `cost_side`, `carrier`, `carrier_circuit_number`, `billing_account`, `billing_contract`, `installed_on`, `activated_on`, `disconnected_on`, `production`, `support_weight`, `owner`, `groups`, `notes`, `record_status`, `tags` | `speed`, `monthly_cost`, `annual_cost`, `a_site`, `z_site`, `cost_site`, `owner_exception`, `owner_exception_reason`, `in_service`, `support_weight_source` |
 | `circuit_carriers` | `circuit`, `vendor`, `role`, `circuit_number`, `priority`, `notes` | |
 | `circuit_costs` | `circuit`, `description`, `monthly_cost`, `vendor`, `starts_on`, `ends_on`, `notes` | |
 | `circuit_contacts` | `circuit`, `side`, `role`, `contact`, `priority` | |

@@ -255,12 +255,12 @@ export function circuitColumns(choices: readonly Choice[] | undefined): GridColu
       width: 140,
     },
     {
-      // The site its cost and its weight count at, by its path. The list knows the site
-      // by its HID: that is what the column is filtered and sorted by, which keeps the
-      // circuits of one site together.
+      // The site its cost and its weight count at, by its path: filtered by the site's
+      // HID, and sorted by the site's name, as a place is (D-132).
       id: "cost_site_hid",
       header: "Counts at site",
       kind: "reference",
+      sortField: "cost_site.name",
       column: "cost_site",
       value: (circuit) => circuit.cost_site_path,
       linkTo: (circuit) =>

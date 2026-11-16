@@ -247,3 +247,30 @@ def test_totals_whose_filter_would_be_too_deep_have_none(
     found = _report(client, viewer, fiscal_year=2027, filter=json.dumps(asked))
     assert found["totals"]["circuits"] == 1
     assert found["totals"]["filter"] is None
+
+
+# --- what the web lane found ---------------------------------------------------------
+
+
+def test_circuits_sort_by_the_name_of_the_site_they_count_at_and_export_in_service(
+    places: dict[str, Any], db: Session, make: Maker, client: TestClient
+) -> None:
+    _circuit(db, "At the branch", a_location_hid=places["branch_room"]["hid"], z_note="carrier")
+    _circuit(db, "At the hub", a_location_hid=places["hub_room"]["hid"], z_note="carrier")
+    db.commit()
+    by_site = make.get("/circuits", sort="cost_site.name")["items"]
+    assert [one["name"] for one in by_site] == ["At the branch", "At the hub"]
+    assert [one["name"] for one in make.get("/circuits", sort="-cost_site.name")["items"]] == [
+        "At the hub",
+        "At the branch",
+    ]
+    exported = client.post(
+        f"{API}/exports",
+        json={"entity": "circuits", "format": "json", "columns": ["name", "in_service"]},
+        headers=make.headers,
+    )
+    assert exported.status_code == 200, exported.text
+    assert {one["name"]: one["in_service"] for one in exported.json()["records"]} == {
+        "At the branch": True,
+        "At the hub": True,
+    }
