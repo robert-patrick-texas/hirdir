@@ -511,7 +511,7 @@ note each setting as they found it, put it back, and retire the lines and places
 made.
 
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
-but one: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
+but `weights.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run
 by itself with `--no-deps`. Nor does any file hold the one writer for long beside the
 others but one: `cover-many.spec.ts` loads a thousand switches from a file and covers a
