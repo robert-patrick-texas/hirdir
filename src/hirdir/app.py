@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
@@ -232,12 +233,25 @@ def _install_web_ui(app: FastAPI) -> None:
         if not index.is_file():
             return PlainTextResponse("hirdir is running. The web UI has not been built.\n")
         candidate = (STATIC / path).resolve()
-        if path and candidate.is_file() and candidate.is_relative_to(STATIC.resolve()):
+        # The page itself is always served as the page, named, by any path.
+        is_page = candidate == index.resolve()
+        if (
+            path
+            and not is_page
+            and candidate.is_file()
+            and candidate.is_relative_to(STATIC.resolve())
+        ):
             return FileResponse(candidate)
         root = request.scope.get("root_path", "")
         html = index.read_text(encoding="utf-8").replace(BASE_TAG, f'<base href="{root}/" />')
-        with request.app.state.sessions() as db:
-            facts = product.page_facts(db)
+        try:
+            with request.app.state.sessions() as db:
+                facts = product.page_facts(db)
+        except SQLAlchemyError:
+            # It is the sign-in page: served all the same, as hirdir, and signing in says
+            # what is wrong.
+            log.exception("the settings of the page could not be read")
+            facts = product.UNREAD
         return HTMLResponse(_named(html, facts), headers={"Cache-Control": "no-store"})
 
 

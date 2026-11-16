@@ -317,7 +317,7 @@ SPECS: dict[str, Spec] = {
     ),
     "reference_file_types": Spec(
         list(file_kinds.DEFAULT_TYPES),
-        "the extensions of the files a reference may be; one that hirdir does not know "
+        "the extensions of the files a reference may be; one that is not known here "
         "is kept and downloaded as application/octet-stream. A change of it changes no "
         "file that is kept",
         _extensions("reference_file_types"),
@@ -334,7 +334,8 @@ SPECS: dict[str, Spec] = {
         "the name the web page gives the product, and the first part of the name of a "
         "downloaded file; the commands, the package and the API keep the name hirdir",
         Check(
-            f"a name of 1 to {product.MOST_NAME} characters, with neither < nor >",
+            f"a name of 1 to {product.MOST_NAME} characters, with neither < nor > nor a "
+            "control character",
             product.check_name,
         ),
     ),
@@ -342,14 +343,19 @@ SPECS: dict[str, Spec] = {
         None,
         "the group that runs this installation, named on About under Whom to ask",
         Check(
-            f"a name of 1 to {product.MOST_ORGANIZATION} characters, with neither < nor >",
+            f"a name of 1 to {product.MOST_ORGANIZATION} characters, with neither < nor > "
+            "nor a control character",
             product.check_organization,
         ),
     ),
     "help_email": Spec(
         None,
         "the email address to write to for help with this installation",
-        Check("an email address, such as tools@example.net", product.check_email),
+        Check(
+            "a plain email address, such as tools@example.net, with no space and none of "
+            "? & = % / : ; , \" '",
+            product.check_email,
+        ),
     ),
     "help_phone": Spec(
         None,
@@ -443,6 +449,14 @@ def get_setting(db: Session, key: str) -> SettingValue:
 def value(db: Session, key: str) -> Any:
     """Return the value in force of the setting key."""
     return get_setting(db, key).value
+
+
+def values(db: Session, keys: tuple[str, ...]) -> dict[str, Any]:
+    """Return the values in force of several settings, read in one query."""
+    for key in keys:
+        _spec(key)
+    rows = {row.key: row for row in db.scalars(select(Setting).where(Setting.key.in_(keys)))}
+    return {key: _view(key, rows.get(key)).value for key in keys}
 
 
 def time_zone(db: Session) -> str:

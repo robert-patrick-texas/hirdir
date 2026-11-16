@@ -91,12 +91,14 @@ work and nothing is rebuilt to change the prefix.
 
 The page it serves carries the product name in the same way, so that the sign-in page
 shows it before anybody has signed in (P-168): the server writes `product_name` into
-the page's `<title>`, and into `<meta name="hirdir-site" content="...">`, a JSON object
+the page's `<title>` and its `<noscript>` line, and into `<meta name="hirdir-site" content="...">`, a JSON object
 written as an attribute and escaped as one, which the web UI reads when it starts. The
-object holds `help` as well, whom to ask, but only where `help_on_sign_in` is true
-(P-169); otherwise the page that anyone may fetch holds nothing of it, and a person reads
+object holds `help` as well, whom to ask, but only where `help_on_sign_in` is true and
+one of the four is set (P-169); otherwise the page that anyone may fetch holds nothing of it, and a person reads
 it from `GET /about` once signed in. No route is open without signing in beyond the
-health check and the page itself (D-08).
+health check and the page itself (D-08). The page is the same by whatever path it is
+asked for, `/index.html` among them, and where the database cannot be read it is served
+all the same, named hirdir, so that signing in can say what is wrong.
 
 This is the way `texas2step` does it. The alternative used by `sunstone` and `segl`,
 where the application never learns the prefix, is simpler but cannot produce correct

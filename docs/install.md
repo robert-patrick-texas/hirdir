@@ -1320,8 +1320,8 @@ and its restores let `files.before-restore/` grow again.
 ### From 0.9.1 to 0.9.2
 
 The schema stays at revision `0011`: 0.9.2 has no migration. Nothing that is held is
-changed by the upgrade, and it writes no audit event. `/etc/hirdir/config.toml` gains no
-setting, and `/etc/nginx/snippets/hirdir.conf` is the one 0.9.1 left, so the upgrade says
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, and `/etc/nginx/snippets/hirdir.conf` is the one 0.9.1 left, so the upgrade says
 nothing of either and nginx is not reloaded.
 
 What is new is in the web page:
@@ -1329,13 +1329,18 @@ What is new is in the web page:
 - **A page opens with the menu bar in view.** Until 0.9.1 most pages opened scrolled
   down, past the menu bar.
 - **The name of the product.** An Admin gives it the site's own name in Admin ›
-  Settings, `product_name`, such as `inv`: the menu bar, the browser's tab, the sign-in
+  Settings, `product_name`, such as `Example Inventory`: the menu bar, the browser's tab, the sign-in
   page and the names of downloaded files then use it. The commands, the package, the
   service and the paths on the host keep the name hirdir.
 - **Whom to ask.** An Admin names the team that runs the installation in the same
   place, `help_organization`, `help_email`, `help_phone` and `help_url`, and About lists
   them for everybody who signs in. `help_on_sign_in` lists them on the sign-in page too,
   which anyone who reaches the site sees; it is off unless an Admin turns it on.
+
+For a script that reads the API: `GET /about` answers `product_name` and `help` as well;
+`GET /settings` lists the six new settings; and once a product name is set, the file
+`POST /exports` names in `Content-Disposition` begins with it, as
+`Example-Inventory-items-20261116T091500-0500.csv`, not with `hirdir-`.
 
 Going back to 0.9.1 needs no backup, because the schema is the same and 0.9.1 reads
 the database as 0.9.2 leaves it:
@@ -1396,8 +1401,8 @@ it is expected. The second puts the backup in place, and the third finishes the
 installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
-goes through, nothing is restored and nothing is lost. 0.4.2 and 0.6.1 are such
-releases. The section of each release above says what its upgrade changed.
+goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1 and 0.9.2
+are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 

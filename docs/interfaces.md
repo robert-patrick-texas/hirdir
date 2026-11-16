@@ -95,7 +95,7 @@ out, these decide it:
 | `circuit_cost_side` | the `cost_side` a new circuit is given where the request, or the row of a file, names none. A circuit that exists keeps its own |
 | `default_item_weight`, `minimum_item_weight`, `default_site_weight`, `minimum_site_weight`, `default_circuit_weight`, `minimum_circuit_weight` | the support weight in force of a major item, a site and a circuit that gives none, and the least it counts at, wherever the weight is used; `POST /reports/capacity/try` tries others |
 | `reference_file_types` | the extensions a file of `POST /reference-files` and `PUT /reference-files/{hid}/content` may have; any other is a `422` that names the setting. A file that is kept keeps its content when the list changes |
-| `product_name` | `product_name` of `GET /about`, the name the page that is served shows before signing in, and the first part of the name in the `Content-Disposition` of `POST /exports`, `inv-items-20261116T091500-0500.csv`, as P-168 forms it |
+| `product_name` | `product_name` of `GET /about`, the name the page that is served shows before signing in, and the first part of the name in the `Content-Disposition` of `POST /exports`, `Example-Inventory-items-20261116T091500-0500.csv`, as P-168 forms it |
 | `help_organization`, `help_email`, `help_phone`, `help_url` | `help` of `GET /about`, each `null` where it is blank |
 | `help_on_sign_in` | whether the page that is served before signing in carries `help` as well; while it is false the page holds nothing of it |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
@@ -1588,7 +1588,7 @@ Accounts and settings are not touched.
 
 | Page | Content |
 |---|---|
-| Sign in | Username, access code, a Sign in button, under the product name: `Sign in to inv` where `product_name` is `inv`. Where `help_on_sign_in` is true and one of whom to ask is set, it says under the form that someone who cannot sign in should ask them, and lists them as About does |
+| Sign in | Username, access code, a Sign in button, under the product name: `Sign in to Example Inventory` where `product_name` is `Example Inventory`. Where `help_on_sign_in` is true and one of whom to ask is set, it says under the form that someone who cannot sign in should ask them, and lists them as About does |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
 | Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model, and Files and links: its own references, its model's and those of where it is |
 | Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew; and Files and links, the documents of the model |
@@ -1646,10 +1646,11 @@ Cell-range selection and editing in the grid are LATER.
 
 The menu bar is at the top of every page, with the product name at its upper left:
 `product_name`, `hirdir` unless an Admin gives another (P-168). The title of the
-browser's tab is the page and that name, `Items · inv`, and what the pages say of the
-product, as "ask an administrator of inv", says it by that name too. A downloaded file
+browser's tab is the page and that name, `Items · Example Inventory`, and what the pages
+say of the product, as "ask an administrator of Example Inventory", say it by that name
+too. A downloaded file
 is named with it: an export as the server names it, and a file the page makes itself,
-such as the scoreboard's `inv-scoreboard-sites.csv`. An import guesses the kind of
+such as the scoreboard's `Example-Inventory-scoreboard-sites.csv`. An import guesses the kind of
 record of a file so named as it does of one named `hirdir-`.
 
 A page opened from the menu bar, or from a link on another page, begins at its top with
