@@ -138,6 +138,12 @@ def test_a_backup_holds_each_file_once_however_many_backups_name_it(installed: C
     assert held.root.stat().st_mode & 0o777 == 0o750
     for backup in backups:
         assert {one.sha256 for one in admin._named_in(backup)} == files
+    # Reading what a backup names leaves nothing beside it: a backup is a copy of a
+    # database in WAL mode, which a read-only connection would leave a -wal and a -shm of.
+    assert {path.name for path in installed.backup_dir.iterdir()} == {
+        *(backup.name for backup in backups),
+        "files",
+    }
 
 
 def test_a_backup_copies_the_files_where_a_link_is_refused(

@@ -223,8 +223,13 @@ class Named(NamedTuple):
 
 def _named_in(path: Path) -> list[Named]:
     """Return every reference with content that a database file names, read without
-    changing it. A database of 0.8.0 or before has no references, and names none."""
-    uri = f"{path.absolute().as_uri()}?mode=ro"
+    changing it. A database of 0.8.0 or before has no references, and names none.
+
+    A backup is a copy of a database in WAL mode, and a connection that may not write
+    leaves a -wal and a -shm file beside what it read. It is read as immutable instead,
+    which it is once it is written, so that SQLite makes neither.
+    """
+    uri = f"{path.absolute().as_uri()}?mode=ro&immutable=1"
     with contextlib.closing(sqlite3.connect(uri, uri=True)) as connection:
         found = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'reference_files'"
