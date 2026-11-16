@@ -121,12 +121,12 @@ test("an apply is followed, left and come back to, and one that stopped is resum
 
   await signIn(page, account);
 
-  // How far an apply has got: the page shows it, for one read in which the server says
-  // the large file is a third of the way.
-  let shown = false;
+  // How far an apply has got: the page shows it, while the server says the large file is
+  // a third of the way. Every read says so until the page has been looked at: the page
+  // reads the job again as it follows it, and on a busy host the apply itself may have
+  // ended by the second read.
   await page.route(`**/api/v1/imports/${many.hid}`, async (route) => {
-    if (shown || route.request().method() !== "GET") return route.fallback();
-    shown = true;
+    if (route.request().method() !== "GET") return route.fallback();
     const answer = await route.fetch();
     const job = (await answer.json()) as Job;
     await route.fulfill({
