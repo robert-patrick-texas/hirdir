@@ -43,11 +43,19 @@ export function splitSettings<T extends Listed>(all: readonly T[]): { settings: 
 
 /**
  * How a new value of a setting is given: ticked from its options where it is a list,
- * chosen from them where it is one value of a list, and typed otherwise.
+ * chosen from them where it is one value of a list, and typed otherwise. A list of the
+ * extensions of files is a list of its own, to which an Admin adds any other.
  */
-export type SettingInput = "set" | "choice" | "text";
+export type SettingInput = "set" | "choice" | "text" | "extensions";
+
+/**
+ * 0.9.0: the settings that are a list of the extensions of files, whose options are only
+ * those hirdir knows: an Admin may add another (P-159).
+ */
+const EXTENSION_LISTS: readonly string[] = ["reference_file_types"];
 
 export function settingInput(setting: Listed): SettingInput {
+  if (EXTENSION_LISTS.includes(setting.key)) return "extensions";
   const listed = Array.isArray(setting.value) || Array.isArray(setting.default);
   if (listed) return "set";
   return setting.options && setting.options.length > 0 ? "choice" : "text";
@@ -78,6 +86,20 @@ export function settingValue(setting: Setting, typed: string): SettingRead {
  * options, so that the same choice is always sent the same way. One at least: a list
  * setting holds one or more.
  */
+export type ExtensionAdded = { ok: true; list: string[] } | { ok: false; error: string };
+
+/**
+ * A list of extensions with one more, as it was typed: in lower case and without the dot
+ * before it, `.DWG` as `dwg`. What an extension may be is the server's to say, and it
+ * says so when the list is set.
+ */
+export function withExtension(list: readonly string[], typed: string): ExtensionAdded {
+  const extension = typed.trim().toLowerCase().replace(/^\.+/, "");
+  if (extension === "") return { ok: false, error: "Type an extension, as pdf." };
+  if (list.includes(extension)) return { ok: false, error: `${extension} is in the list already.` };
+  return { ok: true, list: [...list, extension] };
+}
+
 export function listValue(chosen: readonly string[], options: readonly string[]): SettingRead {
   if (chosen.length === 0) return { ok: false, error: "Tick one at least." };
   const known = options.filter((option) => chosen.includes(option));

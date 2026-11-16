@@ -11,6 +11,7 @@ export const sessions = new SessionStore(browserStorage());
 export const api = createClient({
   baseURI: () => document.baseURI,
   fetch: (input, init) => window.fetch(input, init),
+  xhr: () => new XMLHttpRequest(),
   sessions,
 });
 

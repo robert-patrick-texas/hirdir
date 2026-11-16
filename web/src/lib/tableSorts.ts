@@ -101,3 +101,14 @@ export const HISTORY_SORT: SortFields = {
   actor_name: "actor_name",
   action: "action",
 };
+
+/** 0.9.0: `GET /reference-files`, the page Admin › Files (P-162). */
+export const REFERENCES_SORT: SortFields = {
+  title: "title",
+  kind: "kind",
+  form: "form",
+  file_name: "file_name",
+  size: "size_bytes",
+  records: "attachment_count",
+  added: "created_at",
+};

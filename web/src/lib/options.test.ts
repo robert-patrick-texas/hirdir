@@ -79,4 +79,8 @@ describe("the lists of choices that are edited", () => {
     expect(CHOICE_LISTS.map((list) => list.value)).toContain("item_condition");
     expect(optionLabel(CHOICE_LISTS, "item_condition")).toBe("Item condition");
   });
+
+  it("has the kinds of reference among them", () => {
+    expect(optionLabel(CHOICE_LISTS, "reference_kind")).toBe("Reference kind");
+  });
 });

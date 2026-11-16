@@ -1779,3 +1779,108 @@ fieldset.link-draft {
 fieldset.link-draft[data-invalid="true"] {
   border-color: var(--danger);
 }
+
+/* === 0.9.0: reference files ========================================================= */
+
+/* --- the section Files and links ---------------------------------------------------- */
+
+.references {
+  margin: 1rem 0;
+  padding: 0.25rem 0;
+  border-radius: 6px;
+}
+
+/* Files dragged over the section, to be dropped on it. */
+.references[data-dragging="true"] {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  background: var(--info-surface);
+}
+
+.references-table th[scope="row"] {
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+
+.reference-notes,
+.reference-file,
+.reference-added {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.reference-file,
+.reference-address {
+  overflow-wrap: anywhere;
+}
+
+.reference-records {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.chosen-files {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+fieldset.chosen-file {
+  max-width: none;
+  margin: 0 0 0.5rem;
+}
+
+fieldset.chosen-file legend {
+  overflow-wrap: anywhere;
+}
+
+[data-state="refused"] > fieldset.chosen-file,
+[data-state="failed"] > fieldset.chosen-file {
+  border-color: var(--danger);
+}
+
+.upload-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upload-bar progress {
+  width: 100%;
+  max-width: 24rem;
+}
+
+/* --- a picture, shown within the page ----------------------------------------------- */
+
+dialog.picture-viewer {
+  max-width: min(64rem, 94vw);
+}
+
+.picture-frame {
+  display: flex;
+  justify-content: center;
+  min-height: 6rem;
+  margin: 0 0 0.75rem;
+}
+
+.picture-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+}
+
+/* --- the extensions of files, a setting --------------------------------------------- */
+
+fieldset.extension-list {
+  max-width: none;
+}
+
+.extensions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}

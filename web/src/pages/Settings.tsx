@@ -19,6 +19,7 @@ import {
   settingText,
   settingValue,
   splitSettings,
+  withExtension,
 } from "../lib/settings";
 import { dateValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
@@ -350,6 +351,10 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
     Array.isArray(setting.value) ? setting.value.map(String) : [],
   );
   const [found, setFound] = useState("");
+  // 0.9.0: a list of the extensions of files, to which another is added (P-159).
+  const [extensions, setExtensions] = useState<string[]>(() =>
+    Array.isArray(setting.value) ? setting.value.map(String) : [],
+  );
   const action = useAction();
   const headingId = `change-${setting.key}`;
   const hint = [
@@ -362,12 +367,14 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
   async function submit(event: FormEvent) {
     event.preventDefault();
     const wanted: SettingRead =
-      input === "set"
-        ? listValue(
-            chosen,
-            options.map((option) => option.value),
-          )
-        : settingValue(setting, text);
+      input === "extensions"
+        ? { ok: true, value: extensions }
+        : input === "set"
+          ? listValue(
+              chosen,
+              options.map((option) => option.value),
+            )
+          : settingValue(setting, text);
     if (!wanted.ok) {
       setFound(wanted.error);
       action.clear();
@@ -394,6 +401,16 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
       <p>{setting.meaning}</p>
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={["value"]} onReload={onReload} />
+        {input === "extensions" && (
+          <ExtensionList
+            name={setting.key}
+            list={extensions}
+            onChange={setExtensions}
+            disabled={action.busy}
+            hint={hint}
+            error={found || action.error?.fields.value}
+          />
+        )}
         {input === "set" && (
           <CheckGroupField
             label="New value"
@@ -448,5 +465,89 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
         </p>
       </form>
     </section>
+  );
+}
+
+interface ExtensionListProps {
+  name: string;
+  list: readonly string[];
+  onChange: (list: string[]) => void;
+  disabled: boolean;
+  hint: string;
+  error: string | undefined;
+}
+
+/**
+ * 0.9.0: the extensions of the files a reference may be, as the list it is: one removed,
+ * another added (P-159). What an extension may be is the server's to say, and the form
+ * shows its refusal as it comes.
+ */
+function ExtensionList({ name, list, onChange, disabled, hint, error }: ExtensionListProps) {
+  const [typed, setTyped] = useState("");
+  const [wrong, setWrong] = useState("");
+
+  function add() {
+    const added = withExtension(list, typed);
+    if (!added.ok) {
+      setWrong(added.error);
+      return;
+    }
+    setWrong("");
+    setTyped("");
+    onChange(added.list);
+  }
+
+  return (
+    <fieldset className="extension-list" aria-describedby={`${name}-hint`}>
+      <legend>New value</legend>
+      <p className="hint" id={`${name}-hint`}>
+        {hint}
+      </p>
+      {list.length === 0 ? (
+        <p className="muted">No extension: no file may be uploaded.</p>
+      ) : (
+        <ul className="extensions" aria-label="The extensions it takes" data-testid="extensions">
+          {list.map((extension) => (
+            <li key={extension}>
+              <span className="mono">{extension}</span>{" "}
+              <button
+                type="button"
+                aria-label={`Remove ${extension}`}
+                disabled={disabled}
+                onClick={() => onChange(list.filter((one) => one !== extension))}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="cell-form">
+        <TextField
+          label="Add an extension"
+          name={`${name}-add`}
+          value={typed}
+          onChange={setTyped}
+          maxLength={20}
+          autoComplete="off"
+          disabled={disabled}
+          error={wrong || undefined}
+          onKeyDown={(event) => {
+            // Enter in the box adds the extension: it does not set the list.
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            add();
+          }}
+        />
+        <button type="button" onClick={add} disabled={disabled}>
+          Add
+        </button>
+      </div>
+      {error && (
+        <p className="field-error" data-testid="extensions-refused">
+          {error}
+        </p>
+      )}
+    </fieldset>
   );
 }

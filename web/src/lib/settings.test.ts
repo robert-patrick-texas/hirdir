@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { listValue, settingInput, settingText, settingValue, splitSettings } from "./settings";
+import {
+  listValue,
+  settingInput,
+  settingText,
+  settingValue,
+  splitSettings,
+  withExtension,
+} from "./settings";
 
 describe("settingText", () => {
   it("writes a number, a word and a list as people read them", () => {
@@ -65,6 +72,35 @@ describe("settingInput", () => {
       "text",
     );
     expect(settingInput({ key: "max_items_per_request", value: 1000, default: 1000 })).toBe("text");
+  });
+
+  it("makes the kinds of file a list of extensions, to which another is added", () => {
+    expect(
+      settingInput({
+        key: "reference_file_types",
+        value: ["pdf", "jpg"],
+        default: ["pdf", "jpg", "png"],
+        options: ["pdf", "jpg", "png"],
+      }),
+    ).toBe("extensions");
+  });
+});
+
+describe("withExtension", () => {
+  it("adds an extension as the server keeps it, in lower case and without its dot", () => {
+    expect(withExtension(["pdf"], " .KMZ ")).toEqual({ ok: true, list: ["pdf", "kmz"] });
+    expect(withExtension([], "dwg")).toEqual({ ok: true, list: ["dwg"] });
+  });
+
+  it("refuses nothing typed, and one the list has already", () => {
+    expect(withExtension(["pdf"], "  ")).toEqual({
+      ok: false,
+      error: "Type an extension, as pdf.",
+    });
+    expect(withExtension(["pdf"], "PDF")).toEqual({
+      ok: false,
+      error: "pdf is in the list already.",
+    });
   });
 });
 
