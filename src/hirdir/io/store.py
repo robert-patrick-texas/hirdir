@@ -40,6 +40,9 @@ PART = ".part"
 # younger, it may be an upload that is still being stored.
 STRAY_AFTER_SECONDS = 24 * 3600
 CHUNK = 1024 * 1024
+# The directories of the store are the service's and its group's alone, whatever the
+# umask of whoever makes them; the content in them is 0640.
+DIRECTORY_MODE = 0o750
 
 
 class OverLimit(Exception):
@@ -120,7 +123,7 @@ class Store:
     def receive(self, limit: int) -> Incoming:
         """Begin an upload of at most limit bytes."""
         incoming = self.root / INCOMING
-        incoming.mkdir(parents=True, exist_ok=True)
+        incoming.mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
         path = incoming / f"{new_hid()}{PART}"
         upload = Incoming(path=path, limit=limit)
         upload._handle = path.open("xb")
@@ -144,7 +147,7 @@ class Store:
         if target.is_file():
             upload.discard()
         else:
-            target.parent.mkdir(parents=True, exist_ok=True)
+            target.parent.mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
             os.replace(upload.path, target)
             os.chmod(target, 0o640)
         upload.kept = True

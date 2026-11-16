@@ -301,10 +301,12 @@ upload, by its extension and by its first bytes.
   server starts, with any content that no record names and that is more than a day
   old. `src/hirdir/io/store.py` keeps them (P-161).
 - **Backup.** `hirdir admin backup` uses SQLite's online backup into
-  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. It then puts into
-  `backups/files/` the content of every reference that its copy names and that is not
-  there yet: a hard link where the two directories are on one file system, which takes
-  no room, and a copy where they are not. Content is never changed, so a link is as
+  `/var/lib/hirdir/backups/`, and a daily timer keeps the last 14. It puts into
+  `backups/files/` the content the store holds that is not there yet, before it copies
+  the database and again after, for what was uploaded meanwhile: a hard link where the
+  two directories are on one file system, which takes no room, and a copy where they
+  are not. Content the copy names that is in neither place, erased in that moment, is
+  named in a warning, and the backup is made all the same. Content is never changed, so a link is as
   good as a copy, and each file is held once among all the backups however many name
   it. The rotation then removes from `backups/files/` what no backup that is kept
   names, so that a file erased in the application leaves the host when the last
