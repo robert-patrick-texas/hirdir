@@ -40239,16 +40239,16 @@
             }
           },
           {
-            "description": "The HID of a record it goes on, once for each: a catalog entry, a region, a site, a location, a circuit or an item.",
+            "description": "The HID of a record it goes on, once for each, up to 100: a catalog entry, a region, a site, a location, a circuit or an item. More are added with `POST /reference-files/{hid}/attachments`.",
             "in": "query",
             "name": "attach_to",
             "required": true,
             "schema": {
-              "description": "The HID of a record it goes on, once for each: a catalog entry, a region, a site, a location, a circuit or an item.",
+              "description": "The HID of a record it goes on, once for each, up to 100: a catalog entry, a region, a site, a location, a circuit or an item. More are added with `POST /reference-files/{hid}/attachments`.",
               "items": {
                 "type": "string"
               },
-              "maxItems": 1000,
+              "maxItems": 100,
               "title": "Attach To",
               "type": "array"
             }

@@ -6,6 +6,7 @@ decided by the server, and these commands print what it answers.
 """
 
 import json
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -38,6 +39,7 @@ Records = Annotated[
 Kind = Annotated[str, typer.Option(help="A value of the reference_kind list, such as floor_plan.")]
 # An upload of a large file over a slow line may take a while.
 UPLOAD_SECONDS = 3600.0
+PIECE = 1024 * 1024
 KINDS = {"location": "location", "site": "site", "region": "region"}
 
 group = typer.Typer(
@@ -108,27 +110,39 @@ def find_record(target: Target, text: str) -> str:
     )
 
 
+ROUTES = {
+    "location": "/locations",
+    "site": "/sites",
+    "region": "/regions",
+    "model": "/catalog-entries",
+    "item": "/items",
+    "circuit": "/circuits",
+}
+
+
 def _records_path(target: Target, text: str) -> str:
     """Return the route of what the record that text names lists."""
     hid = find_record(target, text)
     kind = text.partition(":")[0].strip().lower() if ":" in text else ""
-    by_kind = {
-        "location": "/locations",
-        "site": "/sites",
-        "region": "/regions",
-        "model": "/catalog-entries",
-        "item": "/items",
-        "circuit": "/circuits",
-    }
-    if kind in by_kind:
-        return f"{by_kind[kind]}/{hid}/references"
-    # An HID alone: ask each kind in turn which one has it.
-    for path in by_kind.values():
+    if kind in ROUTES:
+        return f"{ROUTES[kind]}/{hid}/references"
+    # An HID alone: ask each kind in turn, quietly, which one has it.
+    headers = client._headers(target)
+    for path in ROUTES.values():
         try:
-            client.call(target, "GET", f"{path}/{hid}/references", params={"limit": 1})
-        except typer.Exit:
-            continue
-        return f"{path}/{hid}/references"
+            response = httpx2.request(
+                "GET",
+                f"{target.url}/api/v1{path}/{hid}/references",
+                params={"limit": 1},
+                headers=headers,
+                timeout=30,
+            )
+        except httpx2.HTTPError as error:
+            raise client.fail(f"cannot reach {target.url}: {error}", client.EXIT_SERVER) from error
+        if response.is_success:
+            return f"{path}/{hid}/references"
+        if response.status_code != 404:
+            raise client._refusal(response)
     raise client.fail(f"there is no record {hid} that takes references", client.EXIT_INVALID)
 
 
@@ -238,6 +252,13 @@ def show_reference(
 # --- adding --------------------------------------------------------------------------
 
 
+def _pieces(path: Path) -> Iterator[bytes]:
+    """Read a file a piece at a time, so that a large one is never held in memory."""
+    with path.open("rb") as handle:
+        while piece := handle.read(PIECE):
+            yield piece
+
+
 def _upload(target: Target, path: Path, params: dict[str, Any]) -> dict[str, Any]:
     if not path.is_file():
         raise client.fail(f"there is no file {path}", 2)
@@ -246,8 +267,9 @@ def _upload(target: Target, path: Path, params: dict[str, Any]) -> dict[str, Any
         "POST",
         "/reference-files",
         params={**params, "file_name": path.name},
-        content=path.read_bytes(),
+        content=_pieces(path),
         content_type="application/octet-stream",
+        length=path.stat().st_size,
         timeout=UPLOAD_SECONDS,
     )
 
@@ -404,8 +426,9 @@ def replace_file(
         "PUT",
         f"/reference-files/{found['hid']}/content",
         params={"file_name": file.name, "row_version": found["row_version"]},
-        content=file.read_bytes(),
+        content=_pieces(file),
         content_type="application/octet-stream",
+        length=file.stat().st_size,
         timeout=UPLOAD_SECONDS,
     )
     typer.echo(

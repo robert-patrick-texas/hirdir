@@ -1316,7 +1316,9 @@ P-158 to P-162).
 **Uploading.** `POST /reference-files` takes the file itself as the body of the
 request, as an import does (D-80), and in the address `title`, `kind`, `file_name`,
 which gives its extension, `notes`, and `attach_to`, the HID of a record it goes on,
-given once for each record and at least once. A body over `max_reference_megabytes`
+given once for each record, at least once and at most 100: the address of a request
+holds no more, and more records are given the reference afterwards with `POST
+/reference-files/{hid}/attachments`. A body over `max_reference_megabytes`
 is a `413`; an extension that `reference_file_types` does not take, or content that is
 not what the extension says, a `422` with the reason; a record that is not one of the
 six kinds, a `422` naming it; and content that a record has already, under any
@@ -1343,8 +1345,9 @@ told to go on without some content (P-161).
 records it is on. `GET /reference-files/{hid}/content` answers the content, byte for
 byte, as `Content-Type` its `media_type`, with `Content-Disposition: attachment` and
 its file name, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox;
-default-src 'none'` and `Cache-Control: no-store`, uncompressed, and is an audit event,
-`download`. A link has no content, and asking for it is a `422`; content missing
+default-src 'none'` and `Cache-Control: no-store`, and is an audit event, `download`.
+It is not compressed again, but for a text file, which is compressed on the way as any
+answer of more than a kilobyte is, and arrives as it was. A link has no content, and asking for it is a `422`; content missing
 after a restore is a `404` that says so. `GET /reference-files` lists every reference,
 paged with `limit` and `offset`, sorted by `sort` over `title`, `kind`, `form`,
 `file_name`, `size_bytes`, `attachment_count`, `created_at` and `updated_at`, title
@@ -1374,8 +1377,11 @@ erases it from every record at once. Each of these is an audit event of the refe
 `create`, `update`, `replace_content`, `attach`, `detach` or `erase`, and an erasure's
 event holds the title, kind, file name, size, checksum and the records it was on.
 
-The body of any other request stays at the limit of an import, `max_megabytes`: the
-application refuses a larger one itself, whatever nginx lets through.
+The body of any other request stays at the limit of an import, `max_megabytes`: one that
+says a larger length is refused by the application itself, whatever nginx lets through,
+and the rest of it is read and thrown away first. An upload and an import also hold a
+body that does not say its length to their limits as they read it; nginx, which reads a
+body whole before it passes it on, always says it.
 
 ## CLI
 
