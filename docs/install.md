@@ -335,8 +335,24 @@ sudo systemctl start hirdir
 `restore` checks the file first and keeps the database as it was beside the restored
 one, named `hirdir.db.before-restore`. It takes the reference files from the `files/`
 beside the backup and checks, before it changes anything, that it has every one the
-backup names, byte for byte; the files the restored database does not name are set
-aside in `/var/lib/hirdir/files.before-restore/`.
+backup names, byte for byte. It then puts them into `/var/lib/hirdir/files/`, linked
+to those of `backups/files/` as a backup links them, and copied from anywhere else;
+sets aside the files that the restored database does not name in
+`/var/lib/hirdir/files.before-restore/`, beside what earlier restores set aside there;
+and puts the database in place last. A restore that stops on the way leaves every file
+in one of the two. `files.before-restore/` keeps what is set aside until you remove
+it. One backup or restore is at work at a time: a second waits for it, and says so.
+
+To undo a restore, restore the database as it was, from a copy of it, with the files
+that were set aside. A restore writes over `hirdir.db.before-restore` before it reads
+the file it restores, so it refuses that file itself, and says so:
+
+```bash
+sudo systemctl stop hirdir
+sudo cp -p /var/lib/hirdir/hirdir.db.before-restore /var/lib/hirdir/backups/before-restore.db
+sudo hirdir admin restore /var/lib/hirdir/backups/before-restore.db --files /var/lib/hirdir/files.before-restore
+sudo systemctl start hirdir
+```
 
 To restore on another host, install the package there, copy the backup and the
 `files/` beside it into its `/var/lib/hirdir/backups/`, and restore as above:

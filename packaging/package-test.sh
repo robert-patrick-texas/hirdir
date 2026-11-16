@@ -4261,8 +4261,8 @@ reference_files() {
     in_clean chown -R hirdir:hirdir /var/lib/hirdir/backups || true
     clean_restore=0
     in_clean hirdir admin restore "/var/lib/hirdir/backups/${backup##*/}" >"$work/restore-clean.log" 2>&1 || clean_restore=$?
-    expect "S53 with the files/ beside it, hirdir admin restore puts the backup in place and copies the content of the three into the store" \
-        "$clean_restore $(grep -c '^the content of 3 files was copied from /var/lib/hirdir/backups/files$' "$work/restore-clean.log")" "0 1"
+    expect "S53 with the files/ beside it, hirdir admin restore puts the backup in place and the content of the three into the store" \
+        "$clean_restore $(grep -c '^the content of 3 files was taken from /var/lib/hirdir/backups/files$' "$work/restore-clean.log")" "0 1"
     in_clean systemctl start hirdir.service || true
     for _ in $(seq 30); do
         if in_clean /opt/hirdir/python/bin/python3 -I -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8715/api/v1/health/ready", timeout=2)' 2>/dev/null; then break; fi
@@ -4275,8 +4275,8 @@ $survey $(sha "$work/site-survey.pdf")"
         "$(clean_downloads "$admin" "$admin_code" "$photo" "$plan" "$survey")" "$wanted"
     expect "S53 and hirdir admin check there counts the three, and exits 0" \
         "$(in_clean hirdir admin check 2>&1 | grep -c '^reference files: 3 with content, kept in 3 files of ') $(in_clean hirdir admin check >/dev/null 2>&1 && echo 0)" "1 0"
-    expect "S53 the store there holds copies, the hirdir user's alone, and no link to the backup" \
-        "$(in_clean bash -c 'find /var/lib/hirdir/files -type f ! -path "*/.incoming/*" -printf "%m:%u:%n\n" | sort | uniq -c | xargs' 2>&1)" "3 640:hirdir:1"
+    expect "S53 the store there holds each file once, linked to the files beside the backup as a backup links them, the hirdir user's alone" \
+        "$(in_clean bash -c 'find /var/lib/hirdir/files -type f ! -path "*/.incoming/*" -printf "%m:%u:%n\n" | sort | uniq -c | xargs' 2>&1)" "3 640:hirdir:2"
     docker rm --force "$clean_container" >/dev/null 2>&1 || true
     clean_container=""
 
