@@ -25,6 +25,11 @@ from hirdir.db.models import (
     Agreement,
     CapacityLine,
     CatalogEntry,
+    Circuit,
+    CircuitCarrier,
+    CircuitCost,
+    CircuitDevice,
+    CircuitGroup,
     Contact,
     ContactAssignment,
     Contract,
@@ -52,6 +57,9 @@ from hirdir.domain import (
     addresses,
     capacity,
     catalog,
+    circuit_groups,
+    circuit_records,
+    circuits,
     contacts,
     contract_contacts,
     contracts,
@@ -3901,6 +3909,549 @@ class Addresses(Entity):
         ]
 
 
+# --- circuits, their parts and circuit groups (P-153) --------------------------------
+
+CIRCUIT = Column("circuit", limit=LONG)
+MBPS = ("port_mbps", "down_mbps", "up_mbps")
+
+
+def _circuit_named(run: Run, values: Mapping[str, Any]) -> Circuit:
+    """Return the circuit a row of a part names: by its HID, its enterprise circuit ID
+    or a name that one circuit alone has."""
+    named = values.get("circuit")
+    if not named:
+        raise Invalid("a part of a circuit names its circuit", {"circuit": "must not be blank"})
+    return circuit_records.the_one(run.db, named, "circuit")
+
+
+def _circuits_called(db: Session, hids: set[str]) -> dict[str, str]:
+    """Return how a file names each of the circuits a part names."""
+    found = list(_by_hid(db, Circuit, set(hids)).values())
+    return circuit_records.reference_texts(db, found)
+
+
+class CircuitGroups(Entity):
+    """Circuit groups."""
+
+    name = "circuit_groups"
+    record_type = circuit_groups.RECORD_TYPE
+    model = CircuitGroup
+    listing = fields.CIRCUIT_GROUPS
+    columns = (
+        HID,
+        Column("name"),
+        Column("description", limit=LONG),
+        Column("owner"),
+        NOTES,
+        STATUS,
+        TAGS,
+        Column("circuits", "integer", settable=False),
+        Column("monthly_cost", "money", settable=False),
+        Column("annual_cost", "money", settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {"owner_hid": "owner", "owner.label": "owner"}
+    renamed: ClassVar[Mapping[str, str]] = {"owner_hid": "owner"}
+    _direct = ("name", "description", "notes", "tags")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        name = values.get("name")
+        if not name:
+            return None
+        return run.db.scalar(select(CircuitGroup).where(CircuitGroup.name_key == records.key(name)))
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        return values.get("name") or (record.name if record is not None else "")
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        if "owner" in values:
+            owner = values["owner"]
+            given["owner_hid"] = run.owner(owner).hid if owner is not None else None
+        if given.get("tags", _MISSING) is None:
+            given["tags"] = []
+        if record is None:
+            return circuit_groups.create_group(run.db, run.context, _new(given))
+        return circuit_groups.update_group(
+            run.db, run.context, record.hid, record.row_version, given
+        )
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        hids = [group.hid for group in found]
+        its_owners = _by_hid(db, Owner, {group.owner_hid for group in found})
+        labels = tags.labels_of(db, self.record_type, hids)
+        summed = circuit_groups.summaries(db, hids, circuit_records.today(db))
+        return [
+            {
+                **_kept(group),
+                "name": group.name,
+                "description": group.description,
+                "owner": items.name_or_hid(its_owners[group.owner_hid].label, group.owner_hid)
+                if group.owner_hid
+                else None,
+                "notes": group.notes,
+                "record_status": group.record_status,
+                "tags": labels[group.hid],
+                "circuits": summed[group.hid].circuits,
+                "monthly_cost": summed[group.hid].monthly_cost,
+                "annual_cost": summed[group.hid].annual_cost,
+            }
+            for group in found
+        ]
+
+
+class Circuits(Entity):
+    """Circuits."""
+
+    name = "circuits"
+    record_type = circuit_records.RECORD_TYPE
+    model = Circuit
+    listing = fields.CIRCUITS
+    columns = (
+        HID,
+        Column("name"),
+        Column("enterprise_circuit_id", limit=100),
+        Column("description", limit=LONG),
+        Column("circuit_type", limit=40),
+        *(Column(name, "number") for name in MBPS),
+        Column("a_location", limit=LONG),
+        Column("a_note"),
+        Column("z_location", limit=LONG),
+        Column("z_note"),
+        Column("cost_side", limit=1),
+        Column("carrier"),
+        Column("carrier_circuit_number", limit=100),
+        Column("billing_account", limit=100),
+        Column("billing_contract"),
+        Column("installed_on", "date"),
+        Column("activated_on", "date"),
+        Column("disconnected_on", "date"),
+        Column("production", "boolean"),
+        Column("support_weight", "number", inherits=True),
+        Column("owner"),
+        # The groups it is in, by name, joined with `;`: the whole list, as tags are.
+        Column("groups", "list"),
+        NOTES,
+        STATUS,
+        TAGS,
+        Column("speed", limit=40, settable=False),
+        Column("monthly_cost", "money", settable=False),
+        Column("annual_cost", "money", settable=False),
+        Column("a_site", limit=LONG, settable=False),
+        Column("z_site", limit=LONG, settable=False),
+        Column("cost_site", limit=LONG, settable=False),
+        Column("owner_exception", "boolean", settable=False),
+        Column("support_weight_source", limit=20, settable=False),
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "carrier_hid": "carrier",
+        "carrier.name": "carrier",
+        "owner_hid": "owner",
+        "owner.label": "owner",
+        "a_location_hid": "a_location",
+        "a_location.name": "a_location",
+        "z_location_hid": "z_location",
+        "z_location.name": "z_location",
+        "groups.name": "groups",
+        "cost_site_hid": "cost_site",
+        "effective.support_weight": "support_weight",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "carrier_hid": "carrier",
+        "owner_hid": "owner",
+        "a_location_hid": "a_location",
+        "z_location_hid": "z_location",
+        # What putting it into a group refuses is said of the row's groups.
+        "circuit_hids": "groups",
+    }
+    _direct = (
+        "name",
+        "enterprise_circuit_id",
+        "description",
+        "circuit_type",
+        *MBPS,
+        "a_note",
+        "z_note",
+        "cost_side",
+        "carrier_circuit_number",
+        "billing_account",
+        "billing_contract",
+        "installed_on",
+        "activated_on",
+        "disconnected_on",
+        "production",
+        "support_weight",
+        "notes",
+        "tags",
+    )
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a circuit: by its enterprise circuit ID; then by its carrier
+        and the number that carrier gives it, as its primary or as another; then by a
+        name that one circuit alone has among those that are not retired. The first of
+        them that the row gives decides."""
+        db = run.db
+        ecid = values.get("enterprise_circuit_id")
+        if ecid:
+            return circuit_records.by_enterprise_id(db, ecid)
+        carrier, number = values.get("carrier"), values.get("carrier_circuit_number")
+        if carrier and number:
+            vendor = run.vendor(carrier)
+            if vendor is None:
+                return None
+            found = circuit_records.by_carrier_number(db, vendor.hid, number)
+            if len(found) > 1:
+                raise Invalid(
+                    f"more than one circuit has the number {number} of {vendor.name}",
+                    {"carrier_circuit_number": "more than one circuit answers; give the HID"},
+                )
+            return found[0] if found else None
+        name = values.get("name")
+        if name:
+            found = circuit_records.by_name(db, name)
+            if len(found) > 1:
+                raise Invalid(
+                    f"more than one circuit is called {name}",
+                    {"name": "more than one circuit has this name; give the HID"},
+                )
+            return found[0] if found else None
+        return None
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = values.get("enterprise_circuit_id") or values.get("name")
+        if named:
+            return named
+        if record is None:
+            return ""
+        return record.enterprise_circuit_id or record.name
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        db = run.db
+        given = {**_plain_fields(values, self._direct), **_status(values, record)}
+        for side in circuit_records.SIDES:
+            column = f"{side}_location"
+            if column in values:
+                named = values[column]
+                given[f"{side}_location_hid"] = (
+                    run.place(named, column, geography.LOCATION).hid if named is not None else None
+                )
+        if "carrier" in values:
+            named = values["carrier"]
+            # A carrier that is no vendor yet is made one, to be reviewed (P-14, P-153).
+            carrier = run.vendor(named, create=True) if named is not None else None
+            given["carrier_hid"] = carrier.hid if carrier is not None else None
+        if "owner" in values:
+            owner = values["owner"]
+            given["owner_hid"] = run.owner(owner).hid if owner is not None else None
+        if given.get("tags", _MISSING) is None:
+            given["tags"] = []
+        if "production" in given and given["production"] is None:
+            # True unless said: a cleared cell says nothing.
+            given["production"] = True
+        # A rate that is the full rate of the port, on a circuit that gives none of its
+        # own, leaves it at the port's: an import makes no override of what it inherits.
+        port = given.get("port_mbps", record.port_mbps if record is not None else None)
+        for rate in circuit_records.RATES:
+            own = getattr(record, rate) if record is not None else None
+            if own is None and given.get(rate) is not None and given[rate] == port:
+                del given[rate]
+        if record is None:
+            record = circuit_records.create_circuit(db, run.context, _new(given))
+        else:
+            circuit_records.update_circuit(db, run.context, record.hid, record.row_version, given)
+        if "groups" in values:
+            wanted = [
+                circuit_groups.the_one(db, named, "groups").hid for named in values["groups"] or []
+            ]
+            circuit_groups.set_groups(db, run.context, record.hid, wanted)
+        return record
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        hids = [circuit.hid for circuit in found]
+        day = circuit_records.today(db)
+        atlas = geography.Atlas(db)
+        atlas.read_locations(
+            {circuit.a_location_hid for circuit in found}
+            | {circuit.z_location_hid for circuit in found}
+        )
+        carriers = _by_hid(db, Vendor, {circuit.carrier_hid for circuit in found})
+        its_owners = _by_hid(db, Owner, {circuit.owner_hid for circuit in found})
+        labels = tags.labels_of(db, self.record_type, hids)
+        its_groups = circuit_groups.groups_of(db, hids)
+        lines = circuit_records.lines_of(db, hids)
+
+        def site_of(location_hid: str | None) -> str | None:
+            location = atlas.location(location_hid) if location_hid else None
+            return (atlas.site_path(location.site_hid) or None) if location is not None else None
+
+        rows = []
+        for circuit in found:
+            owner = its_owners.get(circuit.owner_hid or "")
+            carrier = carriers.get(circuit.carrier_hid or "")
+            weight = circuit_records.support_weight_in_force(circuit)
+            monthly = circuit_records.monthly_cost(lines[circuit.hid], day)
+            rows.append(
+                {
+                    **_kept(circuit),
+                    **{name: getattr(circuit, name) for name in self._direct if name != "tags"},
+                    "a_location": atlas.location_path(circuit.a_location_hid) or None,
+                    "z_location": atlas.location_path(circuit.z_location_hid) or None,
+                    "carrier": items.name_or_hid(carrier.name, carrier.hid) if carrier else None,
+                    "support_weight": circuit.support_weight if own else weight.value,
+                    "support_weight_source": weight.source,
+                    "owner": items.name_or_hid(owner.label, owner.hid) if owner else None,
+                    "groups": [
+                        items.name_or_hid(group.name, group.hid)
+                        for group in its_groups[circuit.hid]
+                    ],
+                    "record_status": circuit.record_status,
+                    "tags": labels[circuit.hid],
+                    "speed": circuit_records.speed(circuit),
+                    "monthly_cost": monthly,
+                    "annual_cost": monthly * circuit_records.MONTHS,
+                    "a_site": site_of(circuit.a_location_hid),
+                    "z_site": site_of(circuit.z_location_hid),
+                    "cost_site": site_of(circuits.cost_location_hid(circuit)),
+                    "owner_exception": owner is not None and owner.is_external,
+                }
+            )
+        return rows
+
+
+class CircuitCarriers(Entity):
+    """The carriers of circuits beside their primary ones."""
+
+    name = "circuit_carriers"
+    record_type = circuit_records.CARRIER_TYPE
+    model = CircuitCarrier
+    listing = fields.CIRCUIT_CARRIERS
+    columns = (
+        HID,
+        CIRCUIT,
+        Column("vendor"),
+        Column("role", limit=40),
+        Column("circuit_number", limit=100),
+        Column("priority", "integer"),
+        NOTES,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "circuit_hid": "circuit",
+        "circuit.name": "circuit",
+        "vendor_hid": "vendor",
+        "vendor.name": "vendor",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"circuit_hid": "circuit", "vendor_hid": "vendor"}
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a carrier by its circuit and its vendor."""
+        if not values.get("circuit") or not values.get("vendor"):
+            return None
+        circuit = _circuit_named(run, values)
+        vendor = run.vendor(values["vendor"])
+        if vendor is None:
+            return None
+        return run.db.scalar(
+            select(CircuitCarrier).where(
+                CircuitCarrier.circuit_hid == circuit.hid, CircuitCarrier.vendor_hid == vendor.hid
+            )
+        )
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("circuit", "vendor")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("role", "circuit_number", "priority", "notes"))
+        if record is not None:
+            return circuit_records.update_carrier(
+                run.db, run.context, record.circuit_hid, record.hid, record.row_version, given
+            )
+        circuit = _circuit_named(run, values)
+        if not values.get("vendor"):
+            raise Invalid("a carrier is a vendor", {"vendor": "must not be blank"})
+        vendor = run.vendor(values["vendor"], create=True)
+        if vendor is None:
+            raise Invalid("a carrier is a vendor", {"vendor": "must not be blank"})
+        given["vendor_hid"] = vendor.hid
+        return circuit_records.add_carrier(run.db, run.context, circuit.hid, _new(given))
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        called = _circuits_called(db, {link.circuit_hid for link in found})
+        vendors = _by_hid(db, Vendor, {link.vendor_hid for link in found})
+        return [
+            {
+                **_kept(link),
+                "circuit": called[link.circuit_hid],
+                "vendor": items.name_or_hid(vendors[link.vendor_hid].name, link.vendor_hid),
+                "role": link.role,
+                "circuit_number": link.circuit_number,
+                "priority": link.priority,
+                "notes": link.notes,
+            }
+            for link in found
+        ]
+
+
+class CircuitCosts(Entity):
+    """The cost lines of circuits."""
+
+    name = "circuit_costs"
+    record_type = circuit_records.COST_TYPE
+    model = CircuitCost
+    listing = fields.CIRCUIT_COSTS
+    columns = (
+        HID,
+        CIRCUIT,
+        Column("description"),
+        Column("monthly_cost", "money"),
+        Column("vendor"),
+        Column("starts_on", "date"),
+        Column("ends_on", "date"),
+        NOTES,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "circuit_hid": "circuit",
+        "circuit.name": "circuit",
+        "vendor_hid": "vendor",
+        "vendor.name": "vendor",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {"circuit_hid": "circuit", "vendor_hid": "vendor"}
+    _direct = ("description", "monthly_cost", "starts_on", "ends_on", "notes")
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a cost line by its circuit and its description."""
+        if not values.get("circuit") or not values.get("description"):
+            return None
+        circuit = _circuit_named(run, values)
+        return circuit_records.find_cost(run.db, circuit.hid, values["description"])
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("circuit", "description")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, self._direct)
+        if "vendor" in values:
+            named = values["vendor"]
+            # The carrier that bills the line is one of the circuit's: none is made here.
+            vendor = run.vendor(named) if named is not None else None
+            if named is not None and vendor is None:
+                raise Invalid("there is no such vendor", {"vendor": f"there is no vendor {named}"})
+            given["vendor_hid"] = vendor.hid if vendor is not None else None
+        if record is not None:
+            return circuit_records.update_cost(
+                run.db, run.context, record.circuit_hid, record.hid, record.row_version, given
+            )
+        circuit = _circuit_named(run, values)
+        return circuit_records.add_cost(run.db, run.context, circuit.hid, _new(given))
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        called = _circuits_called(db, {line.circuit_hid for line in found})
+        vendors = _by_hid(db, Vendor, {line.vendor_hid for line in found})
+        return [
+            {
+                **_kept(line),
+                "circuit": called[line.circuit_hid],
+                **{name: getattr(line, name) for name in self._direct},
+                "vendor": items.name_or_hid(vendors[line.vendor_hid].name, line.vendor_hid)
+                if line.vendor_hid
+                else None,
+            }
+            for line in found
+        ]
+
+
+class CircuitDevices(Entity):
+    """The devices circuits connect."""
+
+    name = "circuit_devices"
+    record_type = circuit_records.DEVICE_TYPE
+    model = CircuitDevice
+    listing = fields.CIRCUIT_DEVICES
+    columns = (
+        HID,
+        CIRCUIT,
+        Column("side", limit=1),
+        Column("item"),
+        Column("group"),
+        NOTES,
+        *BOOKKEEPING,
+    )
+    aliases: ClassVar[Mapping[str, str]] = {
+        "circuit_hid": "circuit",
+        "circuit.name": "circuit",
+        "item_hid": "item",
+        "group_hid": "group",
+    }
+    renamed: ClassVar[Mapping[str, str]] = {
+        "circuit_hid": "circuit",
+        "item_hid": "item",
+        "group_hid": "group",
+    }
+
+    def _device(self, run: Run, values: Mapping[str, Any]) -> tuple[str, str]:
+        """Return the item or the group a row names, as the field that holds it."""
+        named = [name for name in ("item", "group") if values.get(name)]
+        if len(named) != 1:
+            raise Invalid(
+                "a device is one item or one device group",
+                dict.fromkeys(named or ("item", "group"), "exactly one of item and group"),
+            )
+        if named[0] == "item":
+            return "item_hid", run.item(values["item"], "item").hid
+        return "group_hid", run.group(values["group"]).hid
+
+    def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
+        """Match a row to a device of a circuit by its circuit and its item or group."""
+        if not values.get("circuit") or not (values.get("item") or values.get("group")):
+            return None
+        circuit = _circuit_named(run, values)
+        field, hid = self._device(run, values)
+        return circuit_records.find_device(run.db, circuit.hid, field, hid)
+
+    def key(self, values: Mapping[str, Any], record: Any | None) -> str:
+        named = [values.get(name) for name in ("circuit", "item", "group")]
+        return " ".join(str(part) for part in named if part)
+
+    def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
+        given = _plain_fields(values, ("side", "notes"))
+        if record is not None:
+            if values.get("item") or values.get("group"):
+                field, hid = self._device(run, values)
+                given[field] = hid
+            return circuit_records.update_device(
+                run.db, run.context, record.circuit_hid, record.hid, record.row_version, given
+            )
+        circuit = _circuit_named(run, values)
+        field, hid = self._device(run, values)
+        made = circuit_records.add_devices(
+            run.db, run.context, circuit.hid, [{**_new(given), field: hid}]
+        )
+        return made[0]
+
+    def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
+        called = _circuits_called(db, {link.circuit_hid for link in found})
+        its_items = _by_hid(db, Item, {link.item_hid for link in found})
+        named = items.reference_texts(db, list(its_items.values()))
+        its_groups = _by_hid(db, DeviceGroup, {link.group_hid for link in found})
+        return [
+            {
+                **_kept(link),
+                "circuit": called[link.circuit_hid],
+                "side": link.side,
+                "item": named[link.item_hid] if link.item_hid else None,
+                "group": items.name_or_hid(its_groups[link.group_hid].name, link.group_hid)
+                if link.group_hid
+                else None,
+                "notes": link.notes,
+            }
+            for link in found
+        ]
+
+
 ENTITIES: Mapping[str, Entity] = {
     entity.name: entity
     for entity in (
@@ -3930,6 +4481,12 @@ ENTITIES: Mapping[str, Entity] = {
         Coverage(),
         Registrations(),
         CapacityLines(),
+        # Circuits, their parts and circuit groups (P-153).
+        CircuitGroups(),
+        Circuits(),
+        CircuitCarriers(),
+        CircuitCosts(),
+        CircuitDevices(),
     )
 }
 # The order in which files are loaded into an empty database: a record after the ones it
@@ -3961,6 +4518,13 @@ LOAD_ORDER = (
     "contract_coverage",
     "registrations",
     "capacity_lines",
+    # The circuits come last: their groups first, and their devices after the items and
+    # the device groups they name (P-153).
+    "circuit_groups",
+    "circuits",
+    "circuit_carriers",
+    "circuit_costs",
+    "circuit_devices",
 )
 
 

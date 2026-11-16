@@ -1,0 +1,7 @@
+hid,circuit,description,monthly_cost,vendor,starts_on,ends_on,notes
+,Site-1 to Site-2,Local loop,120.00,Example Local Exchange,,,
+,Site-1 to Site-2,Port,400.00,,,,
+,EC-0101,Access,150.00,,,,
+,EC-0101,Port,850.00,,,,
+,EC-0101,Promotional credit,'-50.00,,,2025-12-31,
+,EC-0103,Fiber lease,300.00,,2026-01-01,,

@@ -47,6 +47,11 @@ LOAD_ORDER = (
     "contract_coverage",
     "registrations",
     "capacity_lines",
+    "circuit_groups",
+    "circuits",
+    "circuit_carriers",
+    "circuit_costs",
+    "circuit_devices",
 )
 ROUTES = {
     "tags": "/tags",
@@ -72,6 +77,14 @@ ROUTES = {
     "contract_coverage": "/contract-coverage",
     "registrations": "/registrations",
     "capacity_lines": "/capacity-lines",
+    "circuit_groups": "/circuit-groups",
+    "circuits": "/circuits",
+}
+# The parts of circuits, each listed a circuit at a time.
+CIRCUIT_PARTS = {
+    "circuit_carriers": "carriers",
+    "circuit_costs": "costs",
+    "circuit_devices": "devices",
 }
 IVY = ("ivy", "acceptance-inventory")
 IAN = ("ian", "acceptance-second")
@@ -156,6 +169,12 @@ class Desk:
                 len(record["contacts"])
                 for path in ("/agreements", "/contracts")
                 for record in self.get(path, include_archived=True, include_drafts=True)["items"]
+            )
+        if entity in CIRCUIT_PARTS:
+            circuits = self.get("/circuits", include_archived=True, include_drafts=True)
+            return sum(
+                self.get(f"/circuits/{circuit['hid']}/{CIRCUIT_PARTS[entity]}")["total"]
+                for circuit in circuits["items"]
             )
         if entity == "device_group_members":
             # Memberships are listed a group at a time, the ones that have ended too.

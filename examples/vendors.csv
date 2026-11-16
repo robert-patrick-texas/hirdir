@@ -2,8 +2,11 @@ hid,name,aliases,notes,review_status
 ,Canonical,,Ubuntu support,reviewed
 ,Cisco,Cisco Systems,,reviewed
 ,Example Cloud,,A fictional provider of hosted services,reviewed
+,Example Local Exchange,,A fictional local exchange carrier,reviewed
 ,Example Reseller,,A fictional reseller of hardware and support,reviewed
 ,Example Software,,A fictional maker of network management software,reviewed
+,Example Telecom,,A fictional carrier,reviewed
 ,Fluke Networks,,,reviewed
 ,Juniper,Juniper Networks,,reviewed
+,Northwind Fiber,,A fictional business partner that lends its dark fiber,reviewed
 ,Palo Alto Networks,PAN,,reviewed

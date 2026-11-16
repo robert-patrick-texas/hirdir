@@ -19,6 +19,7 @@ import hirdir
 from hirdir.api import (
     addresses,
     catalog,
+    circuits,
     contract_contacts,
     contracts,
     files,
@@ -56,6 +57,8 @@ ROUTERS = (
     *reports.ROUTERS,
     *labels.ROUTERS,
     *files.ROUTERS,
+    # Circuits, their carriers, cost lines and devices, and circuit groups (P-145 to P-154).
+    *circuits.ROUTERS,
 )
 STATIC = Path(__file__).parent / "static"
 BASE_TAG = '<base href="/" />'

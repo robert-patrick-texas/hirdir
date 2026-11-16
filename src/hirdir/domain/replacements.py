@@ -2,7 +2,8 @@
 
 The item that left and the item that took its place both remain. The new item takes
 over the place of the old one in every group it was a current member of, so that a
-stack is the same stack, with the same HID, through the replacement of its master.
+stack is the same stack, with the same HID, through the replacement of its master, and
+in every circuit it was connected to.
 """
 
 from datetime import date
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.db import dialect
 from hirdir.db.models import Item, ItemReplacement
-from hirdir.domain import audit, choices, groups, items, records
+from hirdir.domain import audit, choices, circuit_records, groups, items, records
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound, StaleVersion
 
@@ -168,6 +169,8 @@ def replace(
     )
     records.created(db, context, RECORD_TYPE, replacement, FIELDS)
     _take_over(db, context, old, new, day)
+    # And the circuits it was connected to, on the same sides (P-147).
+    circuit_records.hand_over(db, context, old.hid, new.hid)
     # Both items say so in their own history, and a copy of either read before this is
     # stale from here on.
     for item, field, other in ((old, "replaced_by", new), (new, "replaces", old)):

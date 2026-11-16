@@ -33,6 +33,8 @@ from hirdir.domain import (
     audit,
     capacity,
     catalog,
+    circuit_groups,
+    circuit_records,
     contacts,
     contract_contacts,
     contracts,
@@ -66,10 +68,13 @@ VENDORS = (
     ("Canonical", [], "Ubuntu support"),
     ("Cisco", ["Cisco Systems"], None),
     ("Example Cloud", [], "A fictional provider of hosted services"),
+    ("Example Local Exchange", [], "A fictional local exchange carrier"),
     ("Example Reseller", [], "A fictional reseller of hardware and support"),
     ("Example Software", [], "A fictional maker of network management software"),
+    ("Example Telecom", [], "A fictional carrier"),
     ("Fluke Networks", [], None),
     ("Juniper", ["Juniper Networks"], None),
+    ("Northwind Fiber", [], "A fictional business partner that lends its dark fiber"),
     ("Palo Alto Networks", ["PAN"], None),
 )
 
@@ -866,6 +871,93 @@ CAPACITY: tuple[tuple[Any, ...], ...] = (
 # The switch that left its stack, and the spare that stands in for it.
 REPLACED = ("site2-sw-floor-03", "site2-sw-access-07", "refresh", "CHG0031877", "2026-06-30")
 
+ROOM_102 = "Americas > Central > Site-2 > Building 1 > Floor 1 > Room 102"
+COMMS_ROOM = "Americas > East > Site-1 > Comms Room"
+# The circuits (P-145 to P-153): name and fields, its other carriers (vendor, part,
+# number), its cost lines (description, monthly cost, and the rest), and its devices
+# (an item's hostname or a group's name, and the side).
+CIRCUITS: tuple[tuple[Any, ...], ...] = (
+    (
+        # Its far end is in the carrier's network, and has no location.
+        "Site-2 internet",
+        {
+            "enterprise_circuit_id": "EC-0101",
+            "circuit_type": "internet",
+            "port_mbps": "1000",
+            "down_mbps": "500",
+            "up_mbps": "500",
+            "a_location": ROOM_102,
+            "z_note": "carrier network",
+            "carrier": "Example Telecom",
+            "carrier_circuit_number": "EXT/10001/000/EXTL",
+            "billing_account": "BA-100200",
+            "billing_contract": "MSA-2025-07",
+            "installed_on": "2025-03-03",
+            "activated_on": "2025-03-10",
+            "owner": "Network Engineering",
+            "tags": ["critical"],
+        },
+        (),
+        (
+            ("Port", "850.00", {}),
+            ("Access", "150.00", {}),
+            # A credit for the first months, which has ended.
+            ("Promotional credit", "-50.00", {"ends_on": "2025-12-31"}),
+        ),
+        (("site2-fw-edge", "a"),),
+    ),
+    (
+        # Between two buildings, with the local exchange carrier's part and number.
+        "Site-1 to Site-2",
+        {
+            "circuit_type": "point_to_point",
+            "port_mbps": "100",
+            "a_location": COMMS_ROOM,
+            "z_location": ROOM_102,
+            "carrier": "Example Telecom",
+            "carrier_circuit_number": "EXT/10002/000/EXTL",
+            "billing_account": "BA-100200",
+            "activated_on": "2024-11-01",
+            "owner": "Network Engineering",
+        },
+        (("Example Local Exchange", "local_exchange", "LEC-778-0001"),),
+        (
+            ("Port", "400.00", {}),
+            ("Local loop", "120.00", {"vendor": "Example Local Exchange"}),
+        ),
+        (("site2-rtr-wan-01", "z"),),
+    ),
+    (
+        # Lent by a business partner: an enterprise circuit ID, and no carrier's number.
+        # Counted at its far end, where the partner bills it.
+        "Site-2 to Site-1 dark fiber",
+        {
+            "enterprise_circuit_id": "EC-0103",
+            "circuit_type": "dark_fiber",
+            "port_mbps": "10000",
+            "a_location": "Americas > Central > Site-2 > Building 1",
+            "a_note": "demarc in the basement",
+            "z_location": COMMS_ROOM,
+            "cost_side": "z",
+            "carrier": "Northwind Fiber",
+            "production": False,
+            "owner": "Network Engineering",
+            "notes": "Lit for failover tests only",
+        },
+        (),
+        (("Fiber lease", "300.00", {"starts_on": "2026-01-01"}),),
+        (("site2-rtr-wan-02", "a"),),
+    ),
+)
+# The groups of circuits: name, description, and the circuits in it.
+CIRCUIT_GROUPS = (
+    (
+        "Inter-site links",
+        "The circuits between the sites",
+        ("Site-1 to Site-2", "Site-2 to Site-1 dark fiber"),
+    ),
+)
+
 
 def _placed(item: dict[str, Any]) -> str | None:
     """Return the path of the location an example item is at, or None for nowhere."""
@@ -1452,6 +1544,61 @@ def build(db: Session) -> None:
         if "annual_cost" in fields:
             fields["annual_cost"] = Decimal(fields["annual_cost"])
         capacity.create_line(db, SEED, fields)
+    its_circuits = {}
+    for name, given, carriers, lines, devices in CIRCUITS:
+        fields = dict(given)
+        for day in ("installed_on", "activated_on", "disconnected_on"):
+            if day in fields:
+                fields[day] = date.fromisoformat(fields[day])
+        for side in ("a", "z"):
+            if f"{side}_location" in fields:
+                fields[f"{side}_location_hid"] = places[fields.pop(f"{side}_location")].hid
+        for speed in ("port_mbps", "down_mbps", "up_mbps"):
+            if speed in fields:
+                fields[speed] = Decimal(fields[speed])
+        fields["carrier_hid"] = vendors[fields.pop("carrier")].hid
+        fields["owner_hid"] = its_owners[fields.pop("owner")].hid
+        circuit = circuit_records.create_circuit(db, SEED, {"name": name, **fields})
+        its_circuits[name] = circuit
+        for vendor, role, number in carriers:
+            circuit_records.add_carrier(
+                db,
+                SEED,
+                circuit.hid,
+                {"vendor_hid": vendors[vendor].hid, "role": role, "circuit_number": number},
+            )
+        for description, cost, more in lines:
+            line = _dated(more)
+            if "vendor" in line:
+                line["vendor_hid"] = vendors[line.pop("vendor")].hid
+            circuit_records.add_cost(
+                db,
+                SEED,
+                circuit.hid,
+                {"description": description, "monthly_cost": Decimal(cost), **line},
+            )
+        circuit_records.add_devices(
+            db,
+            SEED,
+            circuit.hid,
+            [
+                {"group_hid": made[holder].hid, "side": side}
+                if holder in made
+                else {"item_hid": item(holder).hid, "side": side}
+                for holder, side in devices
+            ],
+        )
+    for name, description, members in CIRCUIT_GROUPS:
+        group = circuit_groups.create_group(
+            db,
+            SEED,
+            {
+                "name": name,
+                "description": description,
+                "owner_hid": its_owners["Network Engineering"].hid,
+            },
+        )
+        circuit_groups.add_members(db, SEED, group.hid, [its_circuits[one].hid for one in members])
     db.flush()
 
 

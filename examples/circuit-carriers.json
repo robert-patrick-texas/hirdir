@@ -1,0 +1,3 @@
+{"schema": "hirdir/1", "entity": "circuit_carriers", "mode": "upsert", "records": [
+  {"circuit": "Site-1 to Site-2", "vendor": "Example Local Exchange", "role": "local_exchange", "circuit_number": "LEC-778-0001", "priority": 1, "notes": null}
+]}

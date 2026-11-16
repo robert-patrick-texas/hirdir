@@ -18,6 +18,8 @@ const FROM: Readonly<Record<Source, string>> = {
   site: "the site",
   region: "the region",
   agreement: "the agreement it is in",
+  vendor: "the carrier",
+  port: "the port",
   setting: "the global setting",
   none: "",
 };
