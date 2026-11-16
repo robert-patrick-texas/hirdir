@@ -80,12 +80,17 @@ observations, networks, addresses, and choices of the site's own; from 0.5.0 reg
 sites, locations, contacts, their assignments, operators and the people of an owner,
 with items and a stack placed among them; from 0.6.0 agreements, contracts,
 coverage, purchase requests and lines, external systems, registrations and capacity
-lines; and from 0.7.0 the contacts of agreements and contracts, the flag not to renew
+lines; from 0.7.0 the contacts of agreements and contracts, the flag not to renew
 on a model and on an item, an agreement renewed early with a member whose new number
 waits and one that ends with its term, a purchase line that is not tracked and one
 with a part number, a line of capacity that multiplies, the record of a week's
 capacity balance, corrected, links on the four kinds of record that take them, and a
-renewal alert that was seen. After the upgrade
+renewal alert that was seen; and from 0.8.0 a circuit of each shape, between two
+locations, with its far end in the carrier's network and switched to count at its Z
+side, with carriers beside the primary one and their numbers, cost lines with dates and
+a credit, devices on each side, the contacts of a carrier and of a circuit, a circuit
+group, the weights of a region, a site and a location, and the six weights and the side
+a new circuit counts at, set by the Admin. After the upgrade
 each item, group, membership, address and choice must be as it was, field for field,
 at the `row_version` it had, each item with its history, and so must every record of
 the kinds that came later; what is worked out of them, a tree, a report, the earlier
@@ -105,7 +110,8 @@ what the release is:
   upgrade. From 0.7.0 the service records the capacity balance of the week by itself
   when it starts in a week that has none, which is an event of the system's own; the
   check of the audit trail allows for that one by name, at most once, and for no other,
-  in every upgrade.
+  in every upgrade. From 0.8.0 it also works out the long reports when it starts, the
+  capacity report among them, which writes nothing.
 - **A release with a migration adds one file**,
   `packaging/package-test.d/migration-<revision>.sh`, and changes nothing else. The
   file makes, with the previous release, what the migration could harm or is meant to
@@ -135,7 +141,19 @@ what the release is:
   holds the upgrade to what [install.md](install.md#from-061-to-070) says of it, and
   then applies the waiting job in the background, renews the agreement from before
   with its member, flags a switch not to be renewed, records the balance by hand with
-  a line that multiplies, and puts links on a model and a room. Where a migration
+  a line that multiplies, and puts links on a model and a room. For 0.8.0 it is
+  `migration-0010.sh`. The migration makes `regions`, `sites` and `locations` anew
+  with a weight, which the inventory fills already from `0007`, creates eight tables,
+  `circuit_group_members` last, and loads two lists that the previous release refuses
+  a choice in. So the file sees that the places are there, adds a location of every
+  kind of value and retires it, writes a site's own values into the two lists, names
+  the three columns and says that choices may be added, holds the upgrade to what
+  [install.md](install.md#from-070-to-080) says of it, the capacity report in its parts
+  and kept, the seven settings at their defaults, and then gives the region from
+  before a weight by the file the previous release refused, enters circuits between
+  the places from before with the item from before at one end, their carriers, cost
+  lines and contacts, a group, the report of what they cost, a default weight and a
+  Try, and checks what is kept. Where a migration
   provides for something the previous release could not store, the file shows that it
   could not, writes it into the database, and says so: 0.4.0 refuses a choice in the
   list of conditions, which migration `0006` is written to leave alone when it finds
@@ -156,8 +174,8 @@ what the release is:
   that brought it. That is for the upgrades to come, which then carry it: the upgrade
   to the release itself starts from a release that could not store it. The kinds of
   0.5.0 and of 0.6.0 are made by `witness_places` and `witness_money` there, which are
-  the ones to read first, and those of 0.7.0 by `witness_renewals`. Such a function
-  makes the records, and names three things:
+  the ones to read first, those of 0.7.0 by `witness_renewals` and those of 0.8.0 by
+  `witness_circuits`. Such a function makes the records, and names three things:
   each list to be kept and compared record for record, each answer that is worked out
   of the records, a tree or a report, with the expression that says what must stay,
   and each record in the order in which the upgrade pass takes it out again. The
@@ -165,16 +183,17 @@ what the release is:
   cannot be tried against the release that brings it, which has no earlier package
   that could store it; `--upgrade-alone` with the package of that release named as
   both `PREVIOUS_DEB` and, under a later version number, `DEB` runs it, and is how the
-  inventory of 0.6.0 was tried before there was a 0.7.0, and that of 0.7.0 before there
-  was a later release. The package under the later number is the same package with two
-  things changed, the version in its control file and hirdir's own `__version__`, with
+  inventory of 0.6.0 was tried before there was a 0.7.0, that of 0.7.0 before there was
+  a 0.8.0, and that of 0.8.0 before there was a later release. The package under the
+  later number is the same package with two things changed, the version in its control
+  file and hirdir's own `__version__`, with
   that file's checksum in `md5sums`, built again with `dpkg-deb --root-owner-group`
   outside `dist/`, so that it is never taken for a release.
   `scripts/relabel_deb.sh` makes it:
 
   ```bash
-  scripts/relabel_deb.sh dist/hirdir_0.7.0_amd64.deb 0.7.1 /tmp/later
-  PREVIOUS_DEB=dist/hirdir_0.7.0_amd64.deb DEB=/tmp/later/hirdir_0.7.1_amd64.deb \
+  scripts/relabel_deb.sh dist/hirdir_0.8.0_amd64.deb 0.8.1 /tmp/later
+  PREVIOUS_DEB=dist/hirdir_0.8.0_amd64.deb DEB=/tmp/later/hirdir_0.8.1_amd64.deb \
       packaging/package-test.sh --upgrade-alone
   ```
 
@@ -182,9 +201,9 @@ The test also makes the new version's migration fail, to see that the upgrade st
 names its backup, leaves the inventory as it was and can be undone. It does that in
 the database, so that the package tested is the one that was built, and reads from the
 package how. Where the new version creates a table, the table it creates last is put
-in its way, as `owner_members` is for 0.5.0, `capacity_lines` for 0.6.0 and
-`capacity_records` for 0.7.0. Where it creates none, as 0.4.1 creates
-none, a trigger refuses the new
+in its way, as `owner_members` is for 0.5.0, `capacity_lines` for 0.6.0,
+`capacity_records` for 0.7.0 and `circuit_group_members` for 0.8.0. Where it creates
+none, as 0.4.1 creates none, a trigger refuses the new
 revision when the migration comes to write it down, which is the last thing a
 migration does, so everything else it does has been done and must be undone. Only a
 release with no migration at all has nothing that could fail: nothing writes a

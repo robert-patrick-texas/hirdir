@@ -25,7 +25,10 @@
 #                      registrations and capacity lines; from 0.7.0 the contacts of
 #                      contracts, the flag not to renew, renewals with their members,
 #                      lines that are not tracked, a line that multiplies, the record
-#                      of the capacity balance, links and the renewal alert seen
+#                      of the capacity balance, links and the renewal alert seen; from
+#                      0.8.0 circuits of each shape with their carriers, cost lines,
+#                      devices and contacts, the contacts of a carrier, a circuit
+#                      group, the weights of places and the six weights set
 #   --failed-upgrade   install the previous release, with the same inventory, and make
 #                      the migration of the new one fail, in the database: by a table in
 #                      the way of one it creates, or, where it creates none, by a
@@ -824,8 +827,9 @@ table_rows() {
 # how many events there are since that the started service did not write by itself,
 # and how many it did. From 0.7.0 the service records the capacity balance of the
 # week when it starts in a week that has no record (D-188): one event, which the system
-# makes and nobody, of the action create on a capacity_record. No upgrade writes an
-# event, and a check that one wrote none allows for that event by name, and for no
+# makes and nobody, of the action create on a capacity_record. From 0.8.0 it also works
+# out the long reports when it starts (P-157), which writes nothing. No upgrade writes
+# an event, and a check that one wrote none allows for that event by name, and for no
 # other.
 events_beside() {
     inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
@@ -1540,10 +1544,12 @@ witness_site=""
 witness_room=""
 witness_contracts=""
 witness_renewed=""
-# What came after the groups, which witness_places, witness_money and witness_renewals
-# make where the previous release has it. Each list is kept and compared record for record, as
-# "NAME PATH", and each answer that is worked out of the records, a tree or a report,
-# by what one expression makes of it, as "NAME|PATH|EXPRESSION|what it is, in words".
+witness_circuited=""
+# What came after the groups, which witness_places, witness_money, witness_renewals and
+# witness_circuits make where the previous release has it. Each list is kept and
+# compared record for record, as "NAME PATH", and each answer that is worked out of the
+# records, a tree or a report, by what one expression makes of it, as
+# "NAME|PATH|EXPRESSION|what it is, in words".
 # The records are noted in the order in which the upgrade pass takes them out again,
 # as "what/HID".
 witness_lists=()
@@ -1990,10 +1996,11 @@ witness_structure() {
             "$(counted_now '?filter=group.name:eq:upgrade-cluster')" '[2, 2, 1, 1.0, "0.00", "1800.00"]'
     fi
 
-    # What came with revisions 0007, 0008 and 0009, where the previous release has it.
+    # What came with revisions 0007 to 0010, where the previous release has it.
     if previous_at 0007; then witness_places; fi
     if previous_at 0008; then witness_money; fi
     if previous_at 0009; then witness_renewals; fi
+    if previous_at 0010; then witness_circuits; fi
 }
 
 # day_from_today DAYS: the day that many days after today, or before it. The days that
@@ -2472,6 +2479,182 @@ witness_renewals() {
         'not-renewed|/reports/coverage|sorted([m["pid"], m["count"]] for m in d["sections"]["not_renewed"]["by_model"])|GET /reports/coverage counts by model, as it did, the items in service that no contract covers and that are not to be renewed')
 }
 
+# The six weights of the settings, a default and a minimum of each kind, and beside them
+# the side a new circuit counts at.
+weight_settings="default_item_weight minimum_item_weight default_site_weight minimum_site_weight default_circuit_weight minimum_circuit_weight circuit_cost_side"
+
+# put_setting KEY VALUE: give a setting a value as the Admin, VALUE being JSON, null
+# returning it to its default. Prints the status and the value in force.
+put_setting() {
+    api GET /settings
+    api PUT "/settings/$1" "{\"row_version\": $(json '[s["row_version"] for s in d if s["key"] == "'"$1"'"][0]'), \"value\": $2}"
+    echo "$status $(json_field value)"
+}
+
+# witness_circuits: what came with revision 0010, made through the API of the previous
+# release for an upgrade to carry: a circuit of each shape, three carriers, which are
+# vendors, contacts of a carrier and of circuits, a circuit group, the weights of
+# places, and the settings that weigh what has none and say where a new circuit counts.
+# The first circuit is between the room and the hall of the draft site, from before,
+# with the item with every value on its A side and the cluster on its Z side; the local
+# exchange is its second carrier, with a number of its own; it has four cost lines with
+# dates, a rate that ended and a credit that ends, and a site contact of its own for its
+# Z side. The second has its far end in the carrier's network, with a note and two
+# rates below its port's, and names an account manager of its own in place of the
+# carrier's. The third is a dark fiber that a business partner lends, switched to count
+# at its Z side. The carrier names an account manager and a support desk. Two of the
+# circuits are in a group. The region, the site and the room from before are given
+# weights, and once the circuits are made the Admin sets the six weights and makes z
+# the side that a new circuit counts at, which changes none of them.
+#
+# witness_structure runs this where previous_at says that the previous release is at
+# revision 0010, after witness_renewals, so the places, the people and the cluster are
+# there. No release before 0.8.0 can store any of it: the upgrade to 0.8.0 starts from a
+# release that could not, and this is for the upgrades after it. Every name is
+# invented, and every address is of a domain reserved for examples.
+witness_circuits() {
+    local land building hall pat sam telecom exchange partner morgan desk link internet dark group
+    local made wanted entry key value
+    local undo=() settings=()
+
+    witness_circuited=yes
+    api GET '/regions?limit=1000'
+    land=$(json '[r["hid"] for r in d["items"] if r["name"] == "Upgrade Land"][0]')
+    api GET '/locations?include_drafts=true&limit=1000'
+    building=$(json '[l["hid"] for l in d["items"] if l["name"] == "Building 7"][0]')
+    hall=$(json '[l["hid"] for l in d["items"] if l["name"] == "Hall"][0]')
+    api GET '/contacts?limit=1000'
+    pat=$(json '[c["hid"] for c in d["items"] if c["email"] == "upgrade.pat@example.net"][0]')
+    sam=$(json '[c["hid"] for c in d["items"] if c["email"] == "upgrade.sam@example.net"][0]')
+
+    # The carriers, and the account manager and the support desk of the first, each a
+    # contact record, named once on the carrier.
+    api POST /vendors '{"name": "Upgrade Witness Telecom", "notes": "A fictional carrier"}'
+    made=$status
+    telecom=$(json_field hid)
+    api POST /vendors '{"name": "Upgrade Witness Exchange", "notes": "A fictional local exchange carrier"}'
+    made="$made $status"
+    exchange=$(json_field hid)
+    api POST /vendors '{"name": "Upgrade Witness Fiber", "notes": "A fictional business partner that lends its dark fiber"}'
+    made="$made $status"
+    partner=$(json_field hid)
+    api POST /contacts '{"name": "Upgrade Morgan", "email": "upgrade.morgan@example.org", "phone": "+1 555 0184", "organization": "Upgrade Witness Telecom"}'
+    made="$made $status"
+    morgan=$(json_field hid)
+    api POST /contacts '{"name": "Upgrade Witness Repair Desk", "email": "upgrade.repair@example.org", "phone": "+1 555 0185", "organization": "Upgrade Witness Telecom"}'
+    made="$made $status"
+    desk=$(json_field hid)
+    api POST "/vendors/$telecom/contacts" "{\"contact_hid\": \"$morgan\", \"role\": \"account_manager\"}"
+    made="$made $status"
+    undo+=("vendors/$telecom/contacts/$(json_field hid)")
+    api POST "/vendors/$telecom/contacts" "{\"contact_hid\": \"$desk\", \"role\": \"support_contact\"}"
+    made="$made $status"
+    undo+=("vendors/$telecom/contacts/$(json_field hid)")
+    api GET "/vendors/$telecom"
+    expect "pkg $previous_version holds three carriers, which are vendors: a carrier, a local exchange carrier and a business partner that lends its dark fiber; the carrier names its account manager and its support desk, each a contact record" \
+        "$made $(json '[[c["role"], c["priority"], c["contact"]["name"]] for c in d["contacts"]]')" \
+        '201 201 201 201 201 201 201 [["account_manager", 1, "Upgrade Morgan"], ["support_contact", 1, "Upgrade Witness Repair Desk"]]'
+
+    # Between two locations from before, with a second carrier, cost lines with dates,
+    # a rate that ended and a credit that ends, a device on each side, and a site
+    # contact of its own for the Z side.
+    api POST /circuits "{\"name\": \"Upgrade Witness Link\", \"enterprise_circuit_id\": \"UW-EC-0001\", \"description\": \"Between the room and the hall\", \"circuit_type\": \"point_to_point\", \"port_mbps\": \"1000\", \"a_location_hid\": \"$witness_room\", \"a_note\": \"demarc in the basement\", \"z_location_hid\": \"$hall\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0001/000/UWTL\", \"billing_account\": \"UW-BA-0001\", \"billing_contract\": \"UW-MSA-0001\", \"installed_on\": \"$(day_from_today -400)\", \"activated_on\": \"$(day_from_today -390)\", \"support_weight\": \"0.75\", \"owner_hid\": \"$witness_owner\", \"notes\": \"Made with the release before\", \"tags\": [\"upgrade-witness\"]}"
+    made=$status
+    link=$(json_field hid)
+    api POST "/circuits/$link/carriers" "{\"vendor_hid\": \"$exchange\", \"role\": \"local_exchange\", \"circuit_number\": \"UWX-0001\", \"notes\": \"Hands it over at the hall\"}"
+    made="$made $status"
+    for entry in "\"description\": \"Port, first rate\", \"monthly_cost\": \"900.00\", \"starts_on\": \"$(day_from_today -390)\", \"ends_on\": \"$(day_from_today -191)\"" \
+        "\"description\": \"Port\", \"monthly_cost\": \"800.00\", \"starts_on\": \"$(day_from_today -190)\"" \
+        "\"description\": \"Local loop\", \"monthly_cost\": \"150.00\", \"vendor_hid\": \"$exchange\"" \
+        "\"description\": \"Promotional credit\", \"monthly_cost\": \"-50.00\", \"ends_on\": \"$(day_from_today 100)\", \"notes\": \"For the first year\""; do
+        api POST "/circuits/$link/costs" "{$entry}"
+        made="$made $status"
+    done
+    api POST "/circuits/$link/devices" "{\"devices\": [{\"item_hid\": \"$witness_full\", \"side\": \"a\"}, {\"group_hid\": \"$witness_cluster\", \"side\": \"z\", \"notes\": \"The pair that shares it\"}]}"
+    made="$made $status"
+    api POST "/circuits/$link/contacts" "{\"contact_hid\": \"$sam\", \"side\": \"z\", \"role\": \"technical\"}"
+    made="$made $status"
+    undo+=("circuits/$link/contacts/$(json_field hid)")
+    api GET "/circuits/$link"
+    expect "pkg a circuit between the room and the hall of the draft site, from before, counted at its A side, the site of the room: the local exchange is its second carrier, with a number of its own; of its four cost lines the first rate has ended and the credit has not, so it costs 900.00 a month and 10800.00 a year; the item with every value is on its A side and the cluster on its Z side; it has the carrier's account manager and support desk, and for its Z side a technical contact of its own in place of the region's" \
+        "$made $(json '[d["cost_side"], d["cost_site_path"], d["speed"], [[c["vendor"], c["role"], c["circuit_number"]] for c in d["carriers"]], [[c["description"], c["in_date"]] for c in d["costs"]], d["monthly_cost"], d["annual_cost"], sorted(x["side"] for x in d["devices"]), [d["effective"][k]["source"] for k in ("account_managers", "support_contacts")], [[e["role"], e["source"], [c["contact"]["name"] for c in e["value"]]] for e in d["effective"]["site_contacts"]["z"]]]')" \
+        '201 201 201 201 201 201 201 201 ["a", "Upgrade Land > North > Upgrade Site", "1G", [["Upgrade Witness Exchange", "local_exchange", "UWX-0001"]], [["Local loop", true], ["Port", true], ["Port, first rate", false], ["Promotional credit", true]], "900.00", "10800.00", ["a", "z"], ["vendor", "vendor"], [["technical", "own", ["Upgrade Sam"]]]]'
+
+    # Its far end in the carrier's network, with a note, and rates below its port's; it
+    # names an account manager of its own in place of the carrier's.
+    api POST /circuits "{\"name\": \"Upgrade Witness Internet\", \"enterprise_circuit_id\": \"UW-EC-0002\", \"circuit_type\": \"internet\", \"port_mbps\": \"1000\", \"down_mbps\": \"500\", \"up_mbps\": \"50\", \"a_location_hid\": \"$building\", \"z_note\": \"carrier network\", \"carrier_hid\": \"$telecom\", \"carrier_circuit_number\": \"UWT/0002/000/UWTL\", \"activated_on\": \"$(day_from_today -100)\"}"
+    made=$status
+    internet=$(json_field hid)
+    api POST "/circuits/$internet/costs" '{"description": "Port", "monthly_cost": "500.00"}'
+    made="$made $status"
+    api POST "/circuits/$internet/contacts" "{\"contact_hid\": \"$sam\", \"role\": \"account_manager\"}"
+    made="$made $status"
+    undo+=("circuits/$internet/contacts/$(json_field hid)")
+    api GET "/circuits/$internet"
+    expect "pkg a circuit whose far end is in the carrier's network, with no location and a note of where it ends, and two rates below the speed of its port; it names an account manager of its own in place of the carrier's, and has the carrier's support desk" \
+        "$made $(json '[d["z_side"], d["z_note"], d["speed"], [d["effective"][k]["value"] for k in ("down_mbps", "up_mbps")], [[d["effective"][k]["source"], [c["contact"]["name"] for c in d["effective"][k]["value"]]] for k in ("account_managers", "support_contacts")], d["monthly_cost"]]')" \
+        '201 201 201 [null, "carrier network", "1G / 500M / 50M", ["500.00", "50.00"], [["own", ["Upgrade Sam"]], ["vendor", ["Upgrade Witness Repair Desk"]]], "500.00"]'
+
+    # A dark fiber that a business partner lends, with no number of the carrier's,
+    # switched to count at its Z side, the draft site of the hall.
+    api POST /circuits "{\"name\": \"Upgrade Witness Dark Fiber\", \"enterprise_circuit_id\": \"UW-EC-0003\", \"circuit_type\": \"dark_fiber\", \"port_mbps\": \"10000\", \"a_location_hid\": \"$building\", \"z_location_hid\": \"$hall\", \"carrier_hid\": \"$partner\", \"production\": false, \"notes\": \"Lit for failover tests only\"}"
+    made="$status $(json_field cost_side)"
+    dark=$(json_field hid)
+    api POST "/circuits/$dark/costs" "{\"description\": \"Fiber lease\", \"monthly_cost\": \"300.00\", \"starts_on\": \"$(day_from_today -30)\"}"
+    made="$made $status $(said_of "$dark" circuits '"cost_side": "z"')"
+    api GET "/circuits/$dark"
+    made="$made $(json '[d["cost_side"], d["cost_site_path"], d["speed"], d["production"], d["carrier_circuit_number"]]')"
+
+    # A group of two of them.
+    api POST /circuit-groups "{\"name\": \"Upgrade Witness Links\", \"description\": \"The circuits between the places\", \"owner_hid\": \"$witness_owner\", \"tags\": [\"upgrade-witness\"]}"
+    made="$made $status"
+    group=$(json_field hid)
+    api POST "/circuit-groups/$group/members" "{\"circuit_hids\": [\"$link\", \"$dark\"]}"
+    made="$made $status"
+    api GET "/circuit-groups/$group"
+    expect "pkg a dark fiber that a business partner lends, with no number of the carrier's and not for production, switched to count at its Z side, the draft site of the hall; and a circuit group of it and the first, which counts both as in service and costs 1200.00 a month" \
+        "$made $(json '[d["circuits"], d["in_service"], d["monthly_cost"], d["annual_cost"]]')" \
+        '201 a 201 200 ["z", "Upgrade Land > North > Upgrade New Site", "10G", false, null] 201 201 [2, 2, "1200.00", "14400.00"]'
+
+    # The weights of the places from before, and then the settings: the six weights,
+    # and z for the side a new circuit counts at, which changes no circuit there is.
+    made="$(said_of "$land" regions '"support_weight": "1.5"') $(said_of "$witness_site" sites '"support_weight": "2"') $(said_of "$witness_room" locations '"support_weight": "0.25"')"
+    wanted="200 200 200"
+    for entry in default_item_weight=1 minimum_item_weight=0.75 default_site_weight=1 minimum_site_weight=1.5 default_circuit_weight=0.5 minimum_circuit_weight=0.6 'circuit_cost_side="z"'; do
+        key=${entry%%=*}
+        value=${entry#*=}
+        made="$made $(put_setting "$key" "$value")"
+        wanted="$wanted 200 ${value//\"/}"
+        settings+=("settings/$key")
+    done
+    api GET "/circuits/$link"
+    made="$made $(json_field cost_side)"
+    api GET /reports/capacity
+    expect "pkg weights on the region, the site and the room from before, and the six weights and the side a new circuit counts at set by the Admin: the circuit from before still counts at its A side; the capacity report counts 3.75 of places, and 5.25 with the draft site at the default raised to the minimum, and 1.95 of circuits, the two with none of their own at the default raised to the minimum" \
+        "$made $(json '[[d[v]["places_weight"], d[v]["circuits_weight"], d[v]["defaulted"]["sites"], d[v]["defaulted"]["circuits"], d[v]["raised"]["sites"], d[v]["raised"]["circuits"]] for v in ("active", "with_drafts")]')" \
+        "$wanted a [[\"3.75\", \"1.95\", 0, 2, 0, 2], [\"5.25\", \"1.95\", 1, 2, 1, 2]]"
+
+    # Taken out first by the upgrade pass: the contacts named by the circuits and by
+    # the carrier are removed outright, the circuits, their group and the two contacts
+    # of the carrier are retired, and the settings are blank, or a, once more.
+    witness_undo=("${undo[@]}" "circuits/$link" "circuits/$internet" "circuits/$dark" "circuit-groups/$group"
+        "contacts/$morgan" "contacts/$desk" "${settings[@]}" "${witness_undo[@]}")
+    witness_lists+=("circuits /circuits?include_drafts=true&include_archived=true&limit=1000"
+        "circuit-link /circuits/$link"
+        "circuit-internet /circuits/$internet"
+        "circuit-dark /circuits/$dark"
+        "circuit-link-contacts /circuits/$link/contacts?limit=1000"
+        "circuit-internet-contacts /circuits/$internet/contacts?limit=1000"
+        "vendor-contacts /vendors/$telecom/contacts?limit=1000"
+        "circuit-groups /circuit-groups?include_drafts=true&include_archived=true&limit=1000"
+        "circuit-group-members /circuit-groups/$group/members?limit=1000")
+    witness_answers+=('costs-by-carrier|/reports/circuit-costs?by=carrier|[d["fiscal_year"], d["totals"], sorted([r["label"] or "", r["circuits"], r["cost"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])]|GET /reports/circuit-costs counts by the carrier that bills each line what it counted: how many circuits, what the year costs, and what a month and a year cost'
+        'costs-by-site|/reports/circuit-costs?by=site|sorted([r["label"] or "", r["circuits"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])|and by the site that each circuit counts at, its A side or the Z side it was switched to'
+        'costs-by-group|/reports/circuit-costs?by=group|sorted([r["label"] or "", r["circuits"], r["monthly_cost"], r["annual_cost"]] for r in d["rows"])|and by the group of the circuits'
+        'weights|/reports/capacity|[[d[v][k] for k in ("support_weight", "items_weight", "places_weight", "circuits_weight", "defaulted", "raised")] + [sorted([r["path"] or "", r["support_weight"]] for r in d[v]["demand_by_region"])] for v in ("active", "with_drafts")]|GET /reports/capacity counts the support weight in its parts as it did, the items, the places and the circuits, with what counted at a default and what was raised to a minimum, and the demand of each region'
+        "weights-set|/settings|sorted([s[\"key\"], s[\"value\"], s[\"is_default\"]] for s in d if s[\"key\"] in \"$weight_settings\".split())|GET /settings has the six weights and the side a new circuit counts at as the Admin set them")
+}
+
 # counted_now [QUERY]: what a release counts of a view of the items: items, components,
 # managed nodes and the support weight as a number, the estimated value and the annual
 # support cost. The first four are in the summary. The money is in the management
@@ -2564,6 +2747,9 @@ witness_kept() {
     fi
     if [ -n "$witness_renewed" ]; then
         witness_tables="$witness_tables contract_contacts capacity_line_targets capacity_records renewal_alert_views"
+    fi
+    if [ -n "$witness_circuited" ]; then
+        witness_tables="$witness_tables circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members"
     fi
     # And the tables beside the inventory that the file of a migration names.
     witness_tables="$witness_tables${more_tables:+ $more_tables}"
@@ -2863,12 +3049,15 @@ carried_inventory() {
 }
 
 # witness_undone: take out again, with the new version, what witness_places,
-# witness_money and witness_renewals made, so that the rest of the upgrade pass starts
-# from lists, a tree and reports as empty as those of a new installation. The items and
-# the groups are retired by then. Nothing is deleted but what the API removes outright,
-# an assignment, a person of an owner and a contact of a contract: a capacity line, an external system, a contract, an
-# agreement, an operator, a contact and a place are retired, a registration is marked
-# as removed, a coverage is ended with a day, and a purchase request is cancelled.
+# witness_money, witness_renewals and witness_circuits made, so that the rest of the
+# upgrade pass starts from lists, a tree and reports as empty as those of a new
+# installation. The items and the groups are retired by then. Nothing is deleted but
+# what the API removes outright, an assignment, a person of an owner and a contact that
+# a contract, a vendor or a circuit names: a capacity line, an external system, a
+# contract, an agreement, a circuit, a circuit group, an operator, a contact and a place
+# are retired, a registration is marked as removed, a coverage is ended with a day, a
+# purchase request is cancelled, and a setting is returned to its default. A circuit is
+# retired before the places of its sides, which are not retired while it is not.
 witness_undone() {
     local entry made="" wanted="" day
     day=$(day_from_today -30)
@@ -2904,6 +3093,10 @@ witness_undone() {
                 api DELETE "/$entry"
                 wanted="${wanted}204 "
                 ;;
+            settings/*)
+                put_setting "${entry#settings/}" null >/dev/null
+                wanted="${wanted}200 "
+                ;;
             *)
                 api GET "/$entry"
                 api POST "/$entry/retire" "{\"row_version\": $(json_field row_version)}"
@@ -2913,7 +3106,7 @@ witness_undone() {
         made="$made$status "
     done
     api GET /geography/tree
-    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: the assignments, the people of the owner and whatever contacts the agreements and the contracts named are removed, the operators, the contacts and the places are retired, and whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts and agreements is retired, marked as removed, ended or cancelled; the tree of places is empty" \
+    expect "pkg what came after the groups is taken out again with $version, $(echo "$wanted" | wc -w) records: the assignments, the people of the owner and whatever contacts the agreements, the contracts, the vendors and the circuits named are removed, the operators, the contacts and the places are retired, whatever there was of capacity lines, registrations, coverage, purchase requests, external systems, contracts, agreements, circuits and circuit groups is retired, marked as removed, ended or cancelled, and whatever weights were set are blank again; the tree of places is empty" \
         "$made$status $(json 'd["roots"]')" "${wanted}200 []"
 }
 
@@ -3451,7 +3644,7 @@ with open(f"{work}/too-many-rows.csv", "wb") as out:
 }
 
 # The tables that hirdir admin reset clears: the inventory, those of 0.4.0, of 0.5.0, of
-# 0.6.0 and of 0.7.0 among it, and what was stored about it. A test in packaging/tests/
+# 0.6.0, of 0.7.0 and of 0.8.0 among it, and what was stored about it. A test in packaging/tests/
 # fails when a table that a reset clears is not named here.
 inventory_tables="tags vendors owners owner_members catalog_entries regions sites locations contacts operators contact_assignments items item_replacements device_groups device_group_members networks addresses idempotency_keys import_jobs import_rows tag_links agreements contracts contract_coverage purchase_requests purchase_lines external_systems registrations capacity_lines capacity_line_targets capacity_records contract_contacts renewal_alert_views circuits circuit_carriers circuit_costs circuit_devices vendor_contacts circuit_contacts circuit_groups circuit_group_members"
 
@@ -3695,7 +3888,7 @@ files() {
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
-    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0 too" \
+    expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
@@ -6217,8 +6410,11 @@ inventory() {
     local vendor c9300 c9500 owner first second filter long
 
     api GET /choices
-    expect "pkg the migrations loaded the default choices of all eight lists, contact_role, location_kind and capacity_category among them" \
-        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category catalog_function catalog_type contact_role item_condition location_kind replacement_reason state_reason"
+    expect "pkg the migrations loaded the default choices of all ten lists, contact_role, location_kind, capacity_category, circuit_type and carrier_role among them" \
+        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category carrier_role catalog_function catalog_type circuit_type contact_role item_condition location_kind replacement_reason state_reason"
+    expect "pkg the circuit_type list offers at least its seven defaults, and the carrier_role list its four" \
+        "$(json '[sorted(set(w.split()) - {c["value"] for c in d if c["list"] == k}) for k, w in (("circuit_type", "internet mpls point_to_point dark_fiber wavelength voice other"), ("carrier_role", "local_exchange cross_connect last_mile other"))]')" \
+        '[[], []]'
     expect "pkg the replacement_reason list offers at least its five defaults" \
         "$(json 'sorted({"rma", "refresh", "project", "upgrade", "other"} - {c["value"] for c in d if c["list"] == "replacement_reason"})')" "[]"
     expect "pkg and the item_condition list at least its six, from untested to dead" \
