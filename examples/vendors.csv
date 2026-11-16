@@ -4,6 +4,7 @@ hid,name,aliases,notes,review_status
 ,Example Cloud,,A fictional provider of hosted services,reviewed
 ,Example Reseller,,A fictional reseller of hardware and support,reviewed
 ,Example Software,,A fictional maker of network management software,reviewed
+,Example Telecom,,A fictional carrier of circuits,reviewed
 ,Fluke Networks,,,reviewed
 ,Juniper,Juniper Networks,,reviewed
 ,Palo Alto Networks,PAN,,reviewed

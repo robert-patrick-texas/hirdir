@@ -130,6 +130,12 @@ class VendorOut(Model):
     aliases: list[str]
     notes: str | None
     review_status: str
+    # The contacts of a carrier (P-149): defined below, with the contacts of circuits.
+    contacts: list[VendorContactOut] = Field(
+        description="The account team and the support desk it names, by role and then by "
+        "priority. Each circuit of the carrier that names nobody of its own in a role has "
+        "these."
+    )
     row_version: int
     created_at: datetime
     updated_at: datetime
@@ -2341,6 +2347,167 @@ class CoveragePatch(Model):
     )
 
 
+# --- the contacts of carriers and of circuits (P-149) --------------------------------
+
+CarrierContactRole = Literal["account_manager", "support_contact"]
+CircuitSide = Literal["a", "z"]
+
+
+class VendorContactOut(Model):
+    """A contact record named for a vendor: its account team or its support desk."""
+
+    hid: str = Field(description="The naming: what is changed and removed.")
+    vendor_hid: str
+    role: CarrierContactRole
+    priority: int = Field(description="The order in which they are listed, from 1.")
+    contact_hid: str
+    contact: ContactRef = Field(
+        description="The contact as its record is now: the number and the address of a "
+        "support desk are its telephone and its email. A retired one is still listed, so "
+        "marked."
+    )
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+# Defined above, before the contacts it lists.
+VendorOut.model_rebuild()
+
+
+class VendorContactAdd(Model):
+    """A contact record to name for a vendor, in a role."""
+
+    contact_hid: Hid
+    role: CarrierContactRole
+    priority: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Left out, one more than the highest there is for the vendor and the role.",
+    )
+
+
+class VendorContactPatch(Model):
+    """Fields of a naming of a vendor to change, and the version they were read at. It
+    stays with its vendor."""
+
+    row_version: int
+    contact_hid: Hid | None = None
+    role: CarrierContactRole | None = None
+    priority: int | None = Field(default=None, ge=1, le=1000)
+
+
+class CircuitContactOut(Model):
+    """A contact a circuit names of its own: one of the carrier's, with no side, or a
+    site contact of a side."""
+
+    hid: str = Field(description="The naming: what is changed and removed.")
+    circuit_hid: str
+    side: CircuitSide | None = Field(
+        description="Blank for one of the carrier's; `a` or `z` for a site contact of that side."
+    )
+    role: str = Field(
+        description="With no side, `account_manager` or `support_contact`; with a side, a "
+        "value of the `contact_role` list."
+    )
+    priority: int = Field(description="The order in which they are listed, from 1.")
+    contact_hid: str
+    contact: ContactRef = Field(
+        description="The contact as its record is now. A retired one is still listed, so marked."
+    )
+    row_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CircuitContactAdd(Model):
+    """A contact record to name for a circuit: one of the carrier's, or a site contact of
+    a side."""
+
+    contact_hid: Hid
+    side: CircuitSide | None = Field(
+        default=None,
+        description="Left out, one of the carrier's, in the role `account_manager` or "
+        "`support_contact`; `a` or `z`, a site contact of that side, in a role of the "
+        "`contact_role` list.",
+    )
+    role: str = Field(max_length=40)
+    priority: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description="Left out, one more than the highest there is for the circuit, the side "
+        "and the role.",
+    )
+
+
+class CircuitContactPatch(Model):
+    """Fields of a naming of a circuit to change, and the version they were read at. It
+    stays with its circuit, and its role is one its side takes."""
+
+    row_version: int
+    contact_hid: Hid | None = None
+    side: CircuitSide | None = Field(
+        default=None, description="Sent as null, the naming is one of the carrier's."
+    )
+    role: str | None = Field(default=None, max_length=40)
+    priority: int | None = Field(default=None, ge=1, le=1000)
+
+
+class NamedContact(Model):
+    """A contact in force for a circuit, with what names it: a contact of the circuit
+    or of its carrier, or, among the site contacts, an assignment of a place."""
+
+    hid: str = Field(description="The naming, or the assignment, it comes by.")
+    role: str
+    priority: int = Field(description="The order in which they are listed, from 1.")
+    contact_hid: str
+    contact: ContactRef = Field(
+        description="The contact as its record is when it is read. A retired one is marked so."
+    )
+
+
+class CarrierContacts(Model):
+    """The carrier's contacts of a circuit in force for one role: its own where it names
+    any, else those of its primary carrier, else none."""
+
+    value: list[NamedContact]
+    source: Literal["own", "vendor", "none"]
+    source_hid: str | None = Field(
+        description="The circuit for its own, the vendor for the carrier's."
+    )
+
+
+class SiteRoleContacts(Model):
+    """The site contacts of one side of a circuit in force for one role, and the level
+    they came from: the circuit's own, or as the location of the side resolves them."""
+
+    role: str
+    value: list[NamedContact]
+    source: Literal["own", "location", "site", "region"] = Field(
+        description="`own` for those the circuit names; `location` for the location of the "
+        "side or one above it, `site` or `region` for the level they came from."
+    )
+    source_hid: str = Field(description="The circuit, or the place, they came from.")
+
+
+class SiteContacts(Model):
+    """The site contacts in force of each side of a circuit: one entry for each role
+    that has any, in the order of the `contact_role` list."""
+
+    a: list[SiteRoleContacts]
+    z: list[SiteRoleContacts]
+
+
+class CircuitContactsEffective(Model):
+    """The contacts a circuit has in force, for its `effective` block."""
+
+    account_managers: CarrierContacts
+    support_contacts: CarrierContacts
+    site_contacts: SiteContacts
+
+
 # --- purchases -----------------------------------------------------------------------
 
 PurchaseStatus = Literal["draft", "pending", "ordered", "received", "cancelled"]
@@ -3510,6 +3677,7 @@ EntityName = Literal[
     "vendors",
     "catalog_entries",
     "contacts",
+    "vendor_contacts",
     "operators",
     "regions",
     "sites",
@@ -3532,6 +3700,9 @@ EntityName = Literal[
     "contract_coverage",
     "registrations",
     "capacity_lines",
+    # The contacts of circuits, which come after the circuits' cost lines once the
+    # circuits themselves are files.
+    "circuit_contacts",
 ]
 Outcome = Literal["create", "update", "unchanged", "rejected"]
 # What an apply in the background did with a row (D-185).

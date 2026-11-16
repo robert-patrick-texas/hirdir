@@ -1881,9 +1881,11 @@ def _find_contact(target: Target, text: str) -> dict[str, Any]:
     return _one_named(target, "/contacts", "email", text, "contact", also="name")
 
 
-def _naming(group: typer.Typer, what: str, known_by: str, find: Any, called: str) -> None:
-    """Add to a group the commands that name a contact for an agreement or a contract,
-    and that remove one."""
+def _naming(
+    group: typer.Typer, what: str, known_by: str, find: Any, called: str, note: str = ""
+) -> None:
+    """Add to a group the commands that name a contact for an agreement, a contract or
+    a vendor, and that remove one. `note` says who else has the contact named."""
     path = f"/{what}s"
 
     def add(
@@ -1937,9 +1939,13 @@ def _naming(group: typer.Typer, what: str, known_by: str, find: Any, called: str
     add.__doc__ = (
         f"Name a contact record for a {what} as an account manager or a support contact. "
         + (
-            "Once a contract names anybody in a role, it has its own in place of its agreement's."
-            if what == "contract"
-            else "Each contract in it that names nobody of its own in the role has it."
+            note
+            or (
+                "Once a contract names anybody in a role, it has its own in place of its "
+                "agreement's."
+                if what == "contract"
+                else "Each contract in it that names nobody of its own in the role has it."
+            )
         )
     )
     remove.__doc__ = (
@@ -1956,6 +1962,144 @@ def _find_agreement(target: Target, text: str) -> dict[str, Any]:
 
 _naming(agreements, "agreement", "a name or an HID", _find_agreement, "name")
 _naming(contracts, "contract", "a number or an HID", find_contract, "number")
+
+
+# --- the contacts of carriers and of circuits (P-149) --------------------------------
+
+
+def _find_vendor(target: Target, text: str) -> dict[str, Any]:
+    return _one_named(target, "/vendors", "name", text, "vendor")
+
+
+_naming(
+    vendors,
+    "vendor",
+    "a name or an HID",
+    _find_vendor,
+    "name",
+    note="Each circuit of the carrier that names nobody of its own in the role has it.",
+)
+
+# The group of the circuits' commands. The circuits' own commands make it where they
+# are: `add-contact` and `remove-contact` are added to that one.
+circuits = typer.Typer(no_args_is_help=True, help="Circuits.")
+GROUPS["circuits"] = circuits
+
+CircuitRole = Annotated[
+    str,
+    typer.Option(
+        "--role",
+        help="account_manager or support_contact; with --side, a role of the contact_role list.",
+    ),
+]
+Side = Annotated[
+    str | None,
+    typer.Option(help="a or z, for a site contact of that side. Left out, one of the carrier's."),
+]
+
+
+def find_circuit(target: Target, text: str) -> dict[str, Any]:
+    """Return the circuit a command names: by its HID, its enterprise circuit ID or a
+    name that one circuit alone has. Where the circuits' own commands find one, this
+    gives way to theirs."""
+    if _is_hid(text):
+        return client.call(target, "GET", f"/circuits/{text}")
+    for field in ("enterprise_circuit_id", "name"):
+        found = client.call(
+            target,
+            "GET",
+            "/circuits",
+            params={
+                "filter": json.dumps({"field": field, "op": "eq", "value": text}),
+                "include_archived": True,
+                "include_drafts": True,
+                "limit": 20,
+            },
+        )["items"]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            for one in found:
+                typer.echo(f"  {one['hid']}  {one['name']}", err=True)
+            raise client.fail(
+                f"more than one circuit answers to {text}: name the one meant by its HID",
+                client.EXIT_INVALID,
+            )
+    raise client.fail(f"there is no circuit {text}", client.EXIT_INVALID)
+
+
+def _on_side(side: str | None) -> str:
+    return f" on the {side.upper()} side" if side else ""
+
+
+@circuits.command("add-contact")
+def add_circuit_contact(
+    circuit: Annotated[
+        str, typer.Argument(help="The circuit: its enterprise ID, a name or an HID.")
+    ],
+    contact: Annotated[
+        str, typer.Argument(help="The contact: an email address, a name or an HID.")
+    ],
+    role: CircuitRole,
+    side: Side = None,
+    priority: Annotated[
+        int | None, typer.Option(help="Its place in the list, from 1. Left out, the last.")
+    ] = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Name a contact record for a circuit. With no --side, as an account manager or a
+    support contact, in place of its carrier's in that role; with --side a or z, as a
+    site contact of that side, in place of what its location gives in that role."""
+    target = client.load_target(url, token)
+    found = find_circuit(target, circuit)
+    person = _find_contact(target, contact)
+    body: dict[str, Any] = {"contact_hid": person["hid"], "role": role}
+    if side is not None:
+        body["side"] = side
+    if priority is not None:
+        body["priority"] = priority
+    named = client.call(target, "POST", f"/circuits/{found['hid']}/contacts", body)
+    typer.echo(
+        f"{found['name']} names {named['contact']['name']} as {named['role']}"
+        f"{_on_side(named['side'])}, number {named['priority']} of the list"
+    )
+
+
+@circuits.command("remove-contact")
+def remove_circuit_contact(
+    circuit: Annotated[
+        str, typer.Argument(help="The circuit: its enterprise ID, a name or an HID.")
+    ],
+    contact: Annotated[
+        str, typer.Argument(help="The contact: an email address, a name or an HID.")
+    ],
+    role: CircuitRole,
+    side: Side = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Remove a contact that was named for a circuit by mistake. The audit trail keeps
+    what it was. A circuit that names nobody left in a role has its carrier's, or its
+    location's, again."""
+    target = client.load_target(url, token)
+    found = find_circuit(target, circuit)
+    person = _find_contact(target, contact)
+    listed = client.call(
+        target, "GET", f"/circuits/{found['hid']}/contacts", params={"limit": 1000}
+    )["items"]
+    named = [
+        one
+        for one in listed
+        if one["contact_hid"] == person["hid"] and one["role"] == role and one["side"] == side
+    ]
+    if not named:
+        raise client.fail(
+            f"{found['name']} does not name {person['name']} as {role}{_on_side(side)}",
+            client.EXIT_INVALID,
+        )
+    client.call(target, "DELETE", f"/circuits/{found['hid']}/contacts/{named[0]['hid']}")
+    typer.echo(f"{found['name']} no longer names {person['name']} as {role}{_on_side(side)}")
 
 
 @contracts.command("cover")

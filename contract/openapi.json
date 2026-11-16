@@ -4780,6 +4780,203 @@
         "title": "ChoicePatch",
         "type": "object"
       },
+      "CircuitContactAdd": {
+        "additionalProperties": false,
+        "description": "A contact record to name for a circuit: one of the carrier's, or a site contact of\na side.",
+        "properties": {
+          "contact_hid": {
+            "maxLength": 36,
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, one more than the highest there is for the circuit, the side and the role.",
+            "title": "Priority"
+          },
+          "role": {
+            "maxLength": 40,
+            "title": "Role",
+            "type": "string"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, one of the carrier's, in the role `account_manager` or `support_contact`; `a` or `z`, a site contact of that side, in a role of the `contact_role` list.",
+            "title": "Side"
+          }
+        },
+        "required": [
+          "contact_hid",
+          "role"
+        ],
+        "title": "CircuitContactAdd",
+        "type": "object"
+      },
+      "CircuitContactOut": {
+        "additionalProperties": false,
+        "description": "A contact a circuit names of its own: one of the carrier's, with no side, or a\nsite contact of a side.",
+        "properties": {
+          "circuit_hid": {
+            "title": "Circuit Hid",
+            "type": "string"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef",
+            "description": "The contact as its record is now. A retired one is still listed, so marked."
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "description": "The naming: what is changed and removed.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "priority": {
+            "description": "The order in which they are listed, from 1.",
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "description": "With no side, `account_manager` or `support_contact`; with a side, a value of the `contact_role` list.",
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for one of the carrier's; `a` or `z` for a site contact of that side.",
+            "title": "Side"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "circuit_hid",
+          "side",
+          "role",
+          "priority",
+          "contact_hid",
+          "contact",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CircuitContactOut",
+        "type": "object"
+      },
+      "CircuitContactPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a naming of a circuit to change, and the version they were read at. It\nstays with its circuit, and its role is one its side takes.",
+        "properties": {
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a",
+                  "z"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sent as null, the naming is one of the carrier's.",
+            "title": "Side"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "CircuitContactPatch",
+        "type": "object"
+      },
       "ContactCreate": {
         "additionalProperties": false,
         "description": "A new contact.",
@@ -9532,6 +9729,7 @@
               "vendors",
               "catalog_entries",
               "contacts",
+              "vendor_contacts",
               "operators",
               "regions",
               "sites",
@@ -9553,7 +9751,8 @@
               "addresses",
               "contract_coverage",
               "registrations",
-              "capacity_lines"
+              "capacity_lines",
+              "circuit_contacts"
             ],
             "title": "Entity",
             "type": "string"
@@ -16324,6 +16523,38 @@
         "title": "Page[CatalogEntryOut]",
         "type": "object"
       },
+      "Page_CircuitContactOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitContactOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[CircuitContactOut]",
+        "type": "object"
+      },
       "Page_ContactOut_": {
         "additionalProperties": false,
         "properties": {
@@ -17026,6 +17257,38 @@
           "offset"
         ],
         "title": "Page[UserOut]",
+        "type": "object"
+      },
+      "Page_VendorContactOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VendorContactOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[VendorContactOut]",
         "type": "object"
       },
       "Page_VendorOut_": {
@@ -22540,6 +22803,163 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VendorContactAdd": {
+        "additionalProperties": false,
+        "description": "A contact record to name for a vendor, in a role.",
+        "properties": {
+          "contact_hid": {
+            "maxLength": 36,
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, one more than the highest there is for the vendor and the role.",
+            "title": "Priority"
+          },
+          "role": {
+            "enum": [
+              "account_manager",
+              "support_contact"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact_hid",
+          "role"
+        ],
+        "title": "VendorContactAdd",
+        "type": "object"
+      },
+      "VendorContactOut": {
+        "additionalProperties": false,
+        "description": "A contact record named for a vendor: its account team or its support desk.",
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/ContactRef",
+            "description": "The contact as its record is now: the number and the address of a support desk are its telephone and its email. A retired one is still listed, so marked."
+          },
+          "contact_hid": {
+            "title": "Contact Hid",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hid": {
+            "description": "The naming: what is changed and removed.",
+            "title": "Hid",
+            "type": "string"
+          },
+          "priority": {
+            "description": "The order in which they are listed, from 1.",
+            "title": "Priority",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "account_manager",
+              "support_contact"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vendor_hid": {
+            "title": "Vendor Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "vendor_hid",
+          "role",
+          "priority",
+          "contact_hid",
+          "contact",
+          "row_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VendorContactOut",
+        "type": "object"
+      },
+      "VendorContactPatch": {
+        "additionalProperties": false,
+        "description": "Fields of a naming of a vendor to change, and the version they were read at. It\nstays with its vendor.",
+        "properties": {
+          "contact_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Hid"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "account_manager",
+                  "support_contact"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version"
+        ],
+        "title": "VendorContactPatch",
+        "type": "object"
+      },
       "VendorCreate": {
         "additionalProperties": false,
         "description": "A new vendor.",
@@ -22596,6 +23016,14 @@
             "title": "Aliases",
             "type": "array"
           },
+          "contacts": {
+            "description": "The account team and the support desk it names, by role and then by priority. Each circuit of the carrier that names nobody of its own in a role has these.",
+            "items": {
+              "$ref": "#/components/schemas/VendorContactOut"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -22640,6 +23068,7 @@
           "aliases",
           "notes",
           "review_status",
+          "contacts",
           "row_version",
           "created_at",
           "updated_at"
@@ -25317,6 +25746,248 @@
         "summary": "Update Choice",
         "tags": [
           "Labels and lists"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/contacts": {
+      "get": {
+        "description": "List the contact records a circuit names of its own: the carrier's first, then\nthe site contacts of the A side and of the Z side, each by role, then by priority.\nThose in force, its own, its carrier's and its locations', are in `effective` on\nthe circuit.",
+        "operationId": "list_circuit_contacts_api_v1_circuits__hid__contacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CircuitContactOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Circuit Contacts",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "post": {
+        "description": "Name a contact record for a circuit: with no side, one of the carrier's, which\nwith the others of its role stands in place of the carrier's; with a side, a site\ncontact of that side, which stands in place of what the location gives in its\nrole. A contact is named once for one circuit, side and role.",
+        "operationId": "add_circuit_contact_api_v1_circuits__hid__contacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitContactAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Circuit Contact",
+        "tags": [
+          "Circuits"
+        ]
+      }
+    },
+    "/api/v1/circuits/{hid}/contacts/{link_hid}": {
+      "delete": {
+        "description": "Remove a naming of a circuit that was a mistake. The audit event of the removal\nholds what it was. A circuit that names nobody left in a role has its carrier's, or\nits location's, again.",
+        "operationId": "remove_circuit_contact_api_v1_circuits__hid__contacts__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Circuit Contact",
+        "tags": [
+          "Circuits"
+        ]
+      },
+      "patch": {
+        "description": "Change the side, the role, the priority or the contact of a naming of a circuit.",
+        "operationId": "update_circuit_contact_api_v1_circuits__hid__contacts__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircuitContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Circuit Contact",
+        "tags": [
+          "Circuits"
         ]
       }
     },
@@ -28511,6 +29182,7 @@
                     "vendors",
                     "catalog_entries",
                     "contacts",
+                    "vendor_contacts",
                     "operators",
                     "regions",
                     "sites",
@@ -28532,7 +29204,8 @@
                     "addresses",
                     "contract_coverage",
                     "registrations",
-                    "capacity_lines"
+                    "capacity_lines",
+                    "circuit_contacts"
                   ],
                   "type": "string"
                 },
@@ -28616,6 +29289,7 @@
                       "vendors",
                       "catalog_entries",
                       "contacts",
+                      "vendor_contacts",
                       "operators",
                       "regions",
                       "sites",
@@ -28637,7 +29311,8 @@
                       "addresses",
                       "contract_coverage",
                       "registrations",
-                      "capacity_lines"
+                      "capacity_lines",
+                      "circuit_contacts"
                     ],
                     "title": "Entity",
                     "type": "string"
@@ -35840,7 +36515,7 @@
     },
     "/api/v1/vendors": {
       "get": {
-        "description": "List vendors, by name unless a sort says otherwise.",
+        "description": "List vendors, by name unless a sort says otherwise, each with the contacts it\nnames.",
         "operationId": "list_vendors_api_v1_vendors_get",
         "parameters": [
           {
@@ -36038,7 +36713,7 @@
     },
     "/api/v1/vendors/{hid}": {
       "get": {
-        "description": "Return one vendor.",
+        "description": "Return one vendor, with the account team and the support desk it names.",
         "operationId": "get_vendor_api_v1_vendors__hid__get",
         "parameters": [
           {
@@ -36125,6 +36800,248 @@
           }
         },
         "summary": "Update Vendor",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/vendors/{hid}/contacts": {
+      "get": {
+        "description": "List the contact records a vendor names, its account team and its support desk:\nby role, then by priority. Each circuit of the carrier that names nobody of its own\nin a role has these.",
+        "operationId": "list_vendor_contacts_api_v1_vendors__hid__contacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_VendorContactOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vendor Contacts",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "post": {
+        "description": "Name a contact record for a vendor, as an account manager or a support contact.\nA contact is named once for one vendor and one role.",
+        "operationId": "add_vendor_contact_api_v1_vendors__hid__contacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VendorContactAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Vendor Contact",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/api/v1/vendors/{hid}/contacts/{link_hid}": {
+      "delete": {
+        "description": "Remove a naming of a vendor that was a mistake. The audit event of the removal\nholds what it was.",
+        "operationId": "remove_vendor_contact_api_v1_vendors__hid__contacts__link_hid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Vendor Contact",
+        "tags": [
+          "Catalog"
+        ]
+      },
+      "patch": {
+        "description": "Change the role, the priority or the contact of a naming of a vendor.",
+        "operationId": "update_vendor_contact_api_v1_vendors__hid__contacts__link_hid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "link_hid",
+            "required": true,
+            "schema": {
+              "title": "Link Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VendorContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorContactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Vendor Contact",
         "tags": [
           "Catalog"
         ]

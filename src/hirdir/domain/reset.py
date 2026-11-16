@@ -157,6 +157,9 @@ RECORD_TYPES = (
     "capacity_line",
     "capacity_record",
     "contract_contact",
+    # The contacts of carriers and of circuits (P-149).
+    "vendor_contact",
+    "circuit_contact",
 )
 
 

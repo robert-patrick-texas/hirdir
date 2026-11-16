@@ -37,8 +37,10 @@ LISTS = (
 VALUE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 FIELDS = ("list_name", "value", "label", "sort", "active")
 
-# Where the values of each list are stored, so that one in use is never removed.
-USES = {
+# Where the values of each list are stored, so that one in use is never removed: the
+# column, and, where the column holds values that are of no list as well, the rows of
+# it that hold this list's.
+USES: dict[str, tuple[tuple[Any, ...], ...]] = {
     "catalog_type": ((CatalogEntry, CatalogEntry.type),),
     "catalog_function": ((CatalogEntry, CatalogEntry.function),),
     "state_reason": ((Item, Item.state_reason),),
@@ -46,7 +48,9 @@ USES = {
     "replacement_reason": ((ItemReplacement, ItemReplacement.reason),),
     "contact_role": (
         (ContactAssignment, ContactAssignment.role),
-        (CircuitContact, CircuitContact.role),
+        # A site contact of a side of a circuit. A contact with no side is one of the
+        # carrier's, as `account_manager` or `support_contact`, which are of no list.
+        (CircuitContact, CircuitContact.role, CircuitContact.side.is_not(None)),
     ),
     "circuit_type": ((Circuit, Circuit.circuit_type),),
     "carrier_role": ((CircuitCarrier, CircuitCarrier.role),),
@@ -94,10 +98,9 @@ def checked(db: Session, list_name: str, value: str, field: str) -> str:
 def uses(db: Session, choice: Choice) -> int:
     """Return how many records hold this choice."""
     total = 0
-    for model, column in USES.get(choice.list_name, ()):
-        total += (
-            db.scalar(select(func.count()).select_from(model).where(column == choice.value)) or 0
-        )
+    for model, column, *which in USES.get(choice.list_name, ()):
+        held = select(func.count()).select_from(model).where(column == choice.value, *which)
+        total += db.scalar(held) or 0
     return total
 
 

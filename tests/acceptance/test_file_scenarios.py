@@ -25,6 +25,7 @@ LOAD_ORDER = (
     "vendors",
     "catalog_entries",
     "contacts",
+    "vendor_contacts",
     "operators",
     "regions",
     "sites",
@@ -156,6 +157,11 @@ class Desk:
                 len(record["contacts"])
                 for path in ("/agreements", "/contracts")
                 for record in self.get(path, include_archived=True, include_drafts=True)["items"]
+            )
+        if entity == "vendor_contacts":
+            # The contacts of each vendor are on its record.
+            return sum(
+                len(vendor["contacts"]) for vendor in self.get("/vendors", limit=1000)["items"]
             )
         if entity == "device_group_members":
             # Memberships are listed a group at a time, the ones that have ended too.

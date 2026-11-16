@@ -183,6 +183,7 @@ hirdir import examples/tags.csv --entity tags --apply
 hirdir import examples/vendors.csv --entity vendors --apply
 hirdir import examples/catalog-entries.csv --entity catalog_entries --apply
 hirdir import examples/contacts.csv --entity contacts --apply
+hirdir import examples/vendor-contacts.csv --entity vendor_contacts --apply
 hirdir import examples/operators.csv --entity operators --apply
 hirdir import examples/regions.csv --entity regions --apply
 hirdir import examples/sites.csv --entity sites --apply
@@ -246,6 +247,10 @@ of a spare power supply as procurement wrote it, and a third line,
 of hook-and-loop tape, has no model: it is not tracked, takes no item and waits for
 nothing. The capacity lines have the columns of a line that multiplies, though none of
 them does.
+
+The contacts of vendors are new in 0.8.0: Example Telecom, a fictional carrier, names
+its account manager and its repair desk once, and every circuit of that carrier has them
+unless it names its own.
 
 A script sends a file straight to the API, with a token whose service account holds
 Inventory. The file is the body of the request:

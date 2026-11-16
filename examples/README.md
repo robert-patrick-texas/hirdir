@@ -16,28 +16,29 @@ Load the files in this order, because a record names the ones it refers to:
 2. `vendors.csv`
 3. `catalog-entries.csv`
 4. `contacts.csv`
-5. `operators.csv`
-6. `regions.csv`
-7. `sites.csv`
-8. `locations.csv`
-9. `contact-assignments.csv`
-10. `owners.csv`
-11. `owner-members.csv`
-12. `networks.csv`
-13. `external-systems.csv`
-14. `agreements.csv`
-15. `contracts.csv`
-16. `contract-contacts.csv`
-17. `purchase-requests.csv`
-18. `purchase-lines.csv`
-19. `items.csv`
-20. `device-groups.csv`
-21. `device-group-members.csv`
-22. `item-replacements.csv`
-23. `addresses.csv`
-24. `contract-coverage.csv`
-25. `registrations.csv`
-26. `capacity-lines.csv`
+5. `vendor-contacts.csv`
+6. `operators.csv`
+7. `regions.csv`
+8. `sites.csv`
+9. `locations.csv`
+10. `contact-assignments.csv`
+11. `owners.csv`
+12. `owner-members.csv`
+13. `networks.csv`
+14. `external-systems.csv`
+15. `agreements.csv`
+16. `contracts.csv`
+17. `contract-contacts.csv`
+18. `purchase-requests.csv`
+19. `purchase-lines.csv`
+20. `items.csv`
+21. `device-groups.csv`
+22. `device-group-members.csv`
+23. `item-replacements.csv`
+24. `addresses.csv`
+25. `contract-coverage.csv`
+26. `registrations.csv`
+27. `capacity-lines.csv`
 
 Each command shows a preview and changes nothing. Add `--apply` to load the file.
 
@@ -46,6 +47,7 @@ hirdir import examples/tags.csv --entity tags
 hirdir import examples/vendors.csv --entity vendors
 hirdir import examples/catalog-entries.csv --entity catalog_entries
 hirdir import examples/contacts.csv --entity contacts
+hirdir import examples/vendor-contacts.csv --entity vendor_contacts
 hirdir import examples/operators.csv --entity operators
 hirdir import examples/regions.csv --entity regions
 hirdir import examples/sites.csv --entity sites

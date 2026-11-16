@@ -32,6 +32,7 @@ from hirdir.domain import (
     addresses,
     audit,
     capacity,
+    carrier_contacts,
     catalog,
     contacts,
     contract_contacts,
@@ -68,6 +69,7 @@ VENDORS = (
     ("Example Cloud", [], "A fictional provider of hosted services"),
     ("Example Reseller", [], "A fictional reseller of hardware and support"),
     ("Example Software", [], "A fictional maker of network management software"),
+    ("Example Telecom", [], "A fictional carrier of circuits"),
     ("Fluke Networks", [], None),
     ("Juniper", ["Juniper Networks"], None),
     ("Palo Alto Networks", ["PAN"], None),
@@ -604,6 +606,15 @@ CONTACTS = (
     # The account team of a vendor, at an address of their own.
     ("Jordan Reyes", "Cisco", "jordan.reyes@example.com", "+1 555 0142"),
     ("Casey Lund", "Cisco", "casey.lund@example.com", "+1 555 0144"),
+    # The account manager and the repair desk of a carrier.
+    ("Morgan Ellis", "Example Telecom", "morgan.ellis@example.org", "+1 555 0160"),
+    ("Example Telecom Repair Desk", "Example Telecom", "repair@example.org", "+1 555 0161"),
+)
+# The account team and the support desk of a carrier, named once on the carrier: each
+# of its circuits has them unless it names its own (P-149).
+VENDOR_CONTACTS: tuple[tuple[str, str, str], ...] = (
+    ("Example Telecom", "account_manager", "Morgan Ellis"),
+    ("Example Telecom", "support_contact", "Example Telecom Repair Desk"),
 )
 # Who answers for a place, in which role: the path of the place, the role and the
 # contact, in the order of their priority. A contact of None says: none here, and do
@@ -1212,6 +1223,10 @@ def build(db: Session) -> None:
                 "email": mailbox if "@" in mailbox else f"{mailbox}@{DOMAIN}",
                 "phone": phone,
             },
+        )
+    for carrier, role, person in VENDOR_CONTACTS:
+        carrier_contacts.add_vendor_contact(
+            db, SEED, vendors[carrier].hid, {"role": role, "contact_hid": people[person].hid}
         )
     for label, description, colour, person in OPERATORS:
         marks[label] = operators.create_operator(

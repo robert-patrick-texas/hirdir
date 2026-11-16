@@ -18,6 +18,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 import hirdir
 from hirdir.api import (
     addresses,
+    carrier_contacts,
     catalog,
     contract_contacts,
     contracts,
@@ -51,6 +52,8 @@ ROUTERS = (
     *contracts.ROUTERS,
     # The contacts of agreements and contracts (D-183).
     *contract_contacts.ROUTERS,
+    # The contacts of carriers and of circuits (P-149).
+    *carrier_contacts.ROUTERS,
     *purchases.ROUTERS,
     *systems.ROUTERS,
     *reports.ROUTERS,

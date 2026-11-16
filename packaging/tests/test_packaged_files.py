@@ -21,6 +21,7 @@ LOAD_ORDER = [
     "vendors",
     "catalog-entries",
     "contacts",
+    "vendor-contacts",
     "operators",
     "regions",
     "sites",
