@@ -155,7 +155,10 @@ export function supplyCategories(
 export type MeasureKind = "units" | "weight" | "percent" | "money";
 
 export interface Measure {
-  key: Exclude<keyof CapacityView, "by_category" | "multiplying_lines" | "demand_by_region">;
+  key: Exclude<
+    keyof CapacityView,
+    "by_category" | "multiplying_lines" | "demand_by_region" | "defaulted" | "raised"
+  >;
   label: string;
   kind: MeasureKind;
   /** What the measure is, for whoever has not met it. */
@@ -166,9 +169,27 @@ export interface Measure {
 export const MEASURES: readonly Measure[] = [
   {
     key: "support_weight",
-    label: "Support weight of the inventory",
+    label: "Support weight",
     kind: "weight",
-    about: "Of the items in the states that carry weight.",
+    about: "Of the items in the states that carry weight, the places and the circuits.",
+  },
+  {
+    key: "items_weight",
+    label: "Of the items",
+    kind: "weight",
+    about: "The items in the states that carry weight, at a default where they give none.",
+  },
+  {
+    key: "places_weight",
+    label: "Of the places",
+    kind: "weight",
+    about: "The weights of regions, sites and locations of their own, and a site's default.",
+  },
+  {
+    key: "circuits_weight",
+    label: "Of the circuits",
+    kind: "weight",
+    about: "The circuits not disconnected, at a default where they give none.",
   },
   {
     key: "infrastructure_demand",

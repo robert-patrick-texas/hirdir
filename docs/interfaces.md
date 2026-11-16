@@ -211,7 +211,9 @@ it gives none, `monthly_cost` and `annual_cost` what it costs today, and `in_ser
 is true where it is in service today. The list of circuit groups has `owner.label` and
 `circuits`, how many it has, and `in_service`, `monthly_cost` and `annual_cost` as its
 record has them. The lists of regions, sites and locations have
-`support_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
+`support_weight`, the place's own, and the list of sites `effective.support_weight`, the
+weight a site counts at: its own or `default_site_weight`, raised to
+`minimum_site_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
 A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
@@ -453,7 +455,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
 | Clearing | The literal `!clear` in a cell, or `null` in JSON, clears the value so that it inherits again. In JSON an empty list clears a list |
-| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it |
+| Inherited values | An import does not turn an inherited value into an override. Where a field inherits and the record has no value of its own, a cell that holds the very value it inherits leaves it inheriting. That is so for an item and its model, for a catalog entry and the global stack discount, for a row that gives an item another model while still holding the values of the old one, and for a minor item and the owner, the location and the standing of the item above it. It is so too for a major item and `default_item_weight` and for a site and `default_site_weight`, and a row that holds the weight a major item or a site is raised to, by `minimum_item_weight` or `minimum_site_weight`, changes nothing of it, so that an export of weights in force comes back unchanged (P-155) |
 | Lifecycle | A row with a different `lifecycle_state` moves the item by a transition, under the rules of moves and never by force, with the row's `state_reason` as the why and its `disposition` and `expected_online` as named. A `state_reason` is taken with a move only. `!clear` in `lifecycle_state` returns a minor item to the standing of the item above it, and is refused for a major item |
 | Retiring | An import does not retire. A row that would change `record_status` to `retired` is rejected; a row may bring a retired record back with `active` or `draft` |
 | Unknown columns | Reject the file, naming the column. A column that an export writes and nobody can set is not unknown: it is passed over, so any export can be imported back |
@@ -789,7 +791,11 @@ installation as of today, twice:
 
 ```json
 { "as_of": "2026-11-14", "weight_per_resource_unit": "300",
-  "active": { "support_weight": "2400", "infrastructure_demand": "8", "other_demand": "2",
+  "active": { "support_weight": "2400", "items_weight": "2385", "places_weight": "9",
+              "circuits_weight": "6",
+              "defaulted": { "items": 12, "sites": 2, "circuits": 0 },
+              "raised": { "items": 3, "sites": 0, "circuits": 1 },
+              "infrastructure_demand": "8", "other_demand": "2",
               "demand": "10", "supply": "9.6", "balance": "-0.4", "coverage_pct": "96",
               "own_units": "6", "own_share_pct": "62.5", "outside_units": "3.6",
               "annual_cost": "0.00",
@@ -852,7 +858,10 @@ their own; a circuit counts its own or `default_circuit_weight`, raised to
 disconnected before today. A row of `demand_by_region` holds, beside the items at or
 beneath the region, the weights of the places at or beneath it and of the circuits that
 count at a site beneath it, at their `cost_side` (P-150, P-155), so that the regions at
-the top and the row of what is nowhere still add up to the whole.
+the top and the row of what is nowhere still add up to the whole. A region in which a
+place or a circuit has a weight in force has a row as a region that holds an item does,
+and one where nothing weighs has none. A place counts by its own status: an active
+location in a draft site counts in `active`.
 
 **Try**, `POST /reports/capacity/try`, is a what-if of the balance, and saves nothing:
 
@@ -866,24 +875,50 @@ the top and the row of what is nowhere still add up to the whole.
 
 It takes any of the six weights of the settings, `weight_per_resource_unit`,
 `stack_discount_pct` and `staff`: a key left out is as it is in force, and `null` tries a
-weight blank. A staff line in `add` has a `name`, a `quantity` and `units_each`, one in
+setting at its default, as `PUT /settings/{key}` returns it to it, which for a weight is
+blank. A staff line in `add` has a `name`, a `quantity` and `units_each`, one in
 `change` names a staff line that adds by its HID with another `quantity` or
 `units_each`, and `leave_out` names staff lines by their HIDs, counted as if they were
 not there. A staff line tried is active and in date in both views. A line that
 multiplies works on a changed line as it is tried, on none that is left out, and on no
 added line, since it names the lines it works on. The answer is `in_force`, the report
 as `GET /reports/capacity` answers it, `tried`, the same report as the values tried
-give it, and `parameters`, what was tried. A model's own stack discount still overrides
-the global one tried. Nothing is saved, nothing is written to the audit trail, and the
-answer is never kept; any role may Try. A value a setting would refuse, or a line that
-is no staff line, is a `422` that names it.
+give it, and `parameters`, what was tried:
+
+```json
+{ "in_force": { "as_of": "2026-11-14", "...": "..." },
+  "tried": { "as_of": "2026-11-14", "weight_per_resource_unit": "250", "...": "..." },
+  "parameters": {
+    "default_item_weight": "1", "minimum_item_weight": null, "default_site_weight": "5",
+    "minimum_site_weight": null, "default_circuit_weight": null, "minimum_circuit_weight": null,
+    "weight_per_resource_unit": "250", "stack_discount_pct": "40",
+    "staff": { "add": [ { "hid": null, "name": "Network engineer, new", "quantity": "2",
+                          "units_each": "1", "units": "2" } ],
+               "change": [ { "hid": "0193a1f4-...", "name": "Network engineer",
+                             "quantity": "4", "units_each": "1", "units": "4" } ],
+               "leave_out": [ { "hid": "0193a1f4-...", "name": "Junior network engineer" } ] },
+    "changed": [ "default_item_weight", "default_site_weight", "weight_per_resource_unit",
+                 "stack_discount_pct" ] } }
+```
+
+`parameters` holds each of the eight figures as the balance tried was worked out with
+it, those left out at their value in force, the staff lines tried by name, and
+`changed`, the settings whose value tried is not the one in force: an Admin who agrees
+the estimate saves each of them by `PUT /settings/{key}`, one audited change each, with
+the `row_version` that `GET /settings` gives, and a staff line is saved by entering it.
+A model's own stack discount still overrides the global one tried. Nothing is saved,
+nothing is written to the audit trail, and the answer is never kept; any role may Try.
+A value a setting would refuse, or a line that is no staff line that adds, is retired,
+or is named twice, is a `422` that names it.
 
 **The records of the balance**, `GET /capacity-records`, keep the balance week by week,
 to show the trend. Each record is of one week, `week_of`, the Monday that begins it in
 the application's time zone, with `recorded_at`, `weight_per_resource_unit`, and for
 `active` and `with_drafts` the figures as the report answered them: `support_weight`,
+`items_weight`, `places_weight`, `circuits_weight`, `defaulted`, `raised`,
 `infrastructure_demand`, `other_demand`, `demand`, `supply`, `own_units`,
-`outside_units` and `by_category`. `balance` and `coverage_pct` are worked out from
+`outside_units` and `by_category`. A week recorded before 0.8.0 kept no parts of the
+support weight, and answers them blank. `balance` and `coverage_pct` are worked out from
 the record's own demand and supply when it is read. The list is paged with `limit` and
 `offset`, the oldest week first, and takes `sort` (see [Sorting](#sorting)); any role
 reads it.
@@ -1092,6 +1127,22 @@ and what would be in force without it. `operator` is the operator of what is at 
 place and has none from elsewhere, with its level and what it overrides in the same
 way: `value` is the label with who is behind it. A page shows what is inherited in a lighter
 style with the level it came from, and marks a value that overrides one from above.
+
+**The support weight of a place** is `support_weight` on the record of a region, a site
+and a location, its own, set by `POST` and `PATCH` and audited as any field. The record
+of a site also answers the weight it counts at, which a place beneath does not take:
+
+```json
+{ "support_weight": "0.5",
+  "effective": { "support_weight": { "value": "1", "source": "own", "source_hid": "0193a1f4-...",
+                                     "raised_from": "0.5" } } }
+```
+
+`source` is `own`, `setting` where the site gives none and `default_site_weight` is
+set, or `none`; `raised_from` is the weight before `minimum_site_weight` raised it, and
+blank where it was not raised. A region and a location count their own alone. An item
+answers `effective.support_weight` in the same form, with `catalog` for its model's
+weight and `setting` for `default_item_weight`, and so does a circuit (P-155).
 
 ## Contacts of agreements and contracts
 
@@ -1330,9 +1381,9 @@ hirdir report circuit-costs --year 2027 --by site
 | An apply | `hirdir import --apply` and `hirdir items set` wait for the server to apply the change in the background, and say how far it has got, unless `--no-wait` is given. Stopping the command does not stop the apply. The rows the apply left out as stale are listed with why, and the command exits `5`; rows the rules refused at the apply exit `4`; a job that stopped exits `6` and says how to resume it. `hirdir imports show HID` prints a stored preview of an import or a bulk edit and how far its apply has got, and with `--wait` waits for its end as an apply does. `hirdir imports apply HID` applies a stored preview, or resumes one that stopped, and waits likewise |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
-| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, and its links, each as its text and its address. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
+| A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
-| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
 | The balance over time | `hirdir capacity record` records the balance as it is now, in place of this week's record, with `--note` to say why. `hirdir capacity records` lists the records, one week to a row, the oldest first, each with the demand, the supply, the balance and the coverage of both views, whether it was corrected, and its note; `--format csv` and `json` write all of them |
 | A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. It sends them as many at a time as the setting `max_items_per_request` says. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, with `--member CONTRACT=same`, `CONTRACT=new:NUMBER` or `CONTRACT=ends` for each contract that shares its period and is to do other than keep its number, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
 | Contacts of a contract | `hirdir contracts show` and `hirdir agreements show` print the account managers and the support contacts in force, each with how to reach them, a retired one marked so, and on a contract those it has from its agreement marked `(agreement)`. `hirdir contracts add-contact CONTRACT CONTACT --role ROLE` names a contact, with `--priority` for its place in the list, and `hirdir contracts remove-contact CONTRACT CONTACT --role ROLE` removes one; `hirdir agreements add-contact` and `remove-contact` do the same for an agreement. A contact is named by its email address, a name that one contact alone has, or its HID |
@@ -1342,7 +1393,7 @@ hirdir report circuit-costs --year 2027 --by site
 | A circuit | `hirdir circuits show` takes the HID, the enterprise circuit ID or a name that one circuit alone has, and prints the circuit with its sides and their site contacts, each with the level it came from, its carriers and their numbers, the account team and the support desk in force, marked `(vendor)` where they are the carrier's, its devices, its cost lines with the monthly and annual totals, and its groups. `hirdir circuits set` changes its fields as `items set` does, and `hirdir circuits retire` retires it. `hirdir circuits add-contact CIRCUIT CONTACT --role ROLE`, with `--side a` or `--side z` for a site contact, names a contact, and `remove-contact` removes one; `hirdir vendors add-contact` and `remove-contact` do the same for a carrier. Carriers, cost lines and devices are given by a file or on the circuit's page |
 | Circuit groups | `hirdir circuit-groups list` and `show GROUP`, by HID or name, the group with its circuits and their cost; `hirdir circuit-groups add GROUP CIRCUIT...` and `remove GROUP CIRCUIT...` |
 | Circuit costs | `hirdir report circuit-costs` prints the totals and one row for each value of `--by`, for `--year`, the present fiscal year unless given |
-| Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried. Nothing is saved |
+| Try | `hirdir report capacity --try KEY=VALUE`, as often as needed, for the six weights, `weight_per_resource_unit` and `stack_discount_pct`, `KEY=` to try a weight blank, and `--try-staff-add NAME=QUANTITYxUNITS`, `--try-staff-change LINE=QUANTITYxUNITS` and `--try-staff-leave-out LINE`, a line by its name or HID, prints the balance in force beside the one tried, a column for each view in force and tried. A part of `QUANTITYxUNITS` left blank in a change is as it is, `LINE=4x` changing the quantity alone, and a line added with no quantity has 1. Nothing is saved |
 | Secrets | Never echoed, never in logs |
 
 **`hirdir admin`** runs on the server as root or the service user and works on the

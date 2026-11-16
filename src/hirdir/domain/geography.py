@@ -58,6 +58,7 @@ REGION_FIELDS = (
     "parent_region_hid",
     *SHIPPING,
     "operator_hid",
+    "support_weight",
     "links",
     "notes",
     "record_status",
@@ -73,6 +74,7 @@ SITE_FIELDS = (
     "operator_hid",
     "latitude",
     "longitude",
+    "support_weight",
     "links",
     "notes",
     "record_status",
@@ -89,6 +91,7 @@ LOCATION_FIELDS = (
     "operator_hid",
     "latitude",
     "longitude",
+    "support_weight",
     "links",
     "notes",
     "record_status",
@@ -97,6 +100,8 @@ LOCATION_FIELDS = (
 # any more (D-103).
 OUT_OF_HANDS = ("Released", "Archived")
 DEGREES = {"latitude": Decimal(90), "longitude": Decimal(180)}
+# A support weight has two places (P-155).
+HUNDREDTH = Decimal("0.01")
 
 
 @dataclass(frozen=True)
@@ -609,6 +614,26 @@ def _links(fields: dict[str, Any], values: dict[str, Any]) -> None:
         values[records.LINKS] = records.checked_links(fields[records.LINKS])
 
 
+# --- the support weight of a place (P-139, P-155) ---
+
+
+def _support_weight(fields: dict[str, Any], values: dict[str, Any]) -> None:
+    """Take the support weight of a place: its own, a number of two places that is not
+    below zero, or blank. It is not passed down to the places beneath, and what a site
+    with none counts at is worked out when it is read (`hirdir.domain.weights`)."""
+    if "support_weight" in fields:
+        weight = records.checked_amount("support_weight", fields["support_weight"])
+        if weight is not None and weight != weight.quantize(HUNDREDTH):
+            raise Invalid(
+                "support_weight is not acceptable",
+                {"support_weight": "a number that is not negative, with at most two places"},
+            )
+        values["support_weight"] = weight
+
+
+# --- end of the support weight of a place ---
+
+
 def _brought_back(
     db: Session, record: Any | None, values: dict[str, Any], within: Sequence[tuple[Any, str]]
 ) -> None:
@@ -640,6 +665,7 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
     _operator(db, fields, values, region)
     _status(fields, values)
     _links(fields, values)
+    _support_weight(fields, values)
     if "parent_region_hid" in fields:
         parent_hid = fields["parent_region_hid"] or None
         if parent_hid is not None:
@@ -683,6 +709,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     _coordinates(fields, values, site)
     _status(fields, values)
     _links(fields, values)
+    _support_weight(fields, values)
     if "region_hid" in fields:
         _linked(db, Region, "region_hid", fields["region_hid"], site, "region")
         values["region_hid"] = fields["region_hid"]
@@ -732,6 +759,7 @@ def _checked_location(
     _coordinates(fields, values, location)
     _status(fields, values)
     _links(fields, values)
+    _support_weight(fields, values)
     if "kind" in fields:
         kind = records.clean(fields["kind"])
         values["kind"] = choices.checked(db, KIND_LIST, kind, "kind") if kind else None

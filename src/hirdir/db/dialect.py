@@ -26,6 +26,7 @@ from typing import Any
 
 import regex
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     ColumnElement,
     Date,
@@ -411,6 +412,53 @@ def _setting_number_postgresql(element: setting_number, compiler: Any, **kw: Any
         lambda value: func.json_typeof(value) == "number",
     )
     return compiler.process(found, **kw)
+
+
+class setting_hundredths(FunctionElement):
+    """The value of a setting that is a number of two places, in hundredths, as the
+    statement reads it from the settings: blank where the setting has none. A support
+    weight is kept in hundredths, so a weight in force that a default or a minimum
+    decides is worked out by a list with nothing handed to it (P-155)."""
+
+    type = BigInteger()
+    name = "setting_hundredths"
+    inherit_cache = True
+
+
+def _hundredths(element: setting_hundredths, number: Any, is_number: Any) -> Any:
+    (key,) = list(element.clauses)
+    return (
+        select(cast(func.round(number(Setting.value) * 100), BigInteger))
+        .where(Setting.key == key, is_number(Setting.value))
+        .scalar_subquery()
+    )
+
+
+@compiles(setting_hundredths, "sqlite")
+def _setting_hundredths_sqlite(element: setting_hundredths, compiler: Any, **kw: Any) -> str:
+    found = _hundredths(
+        element,
+        lambda value: cast(value, Float),
+        lambda value: func.json_type(value).in_(("integer", "real")),
+    )
+    return compiler.process(found, **kw)
+
+
+@compiles(setting_hundredths)
+@compiles(setting_hundredths, "postgresql")
+def _setting_hundredths_postgresql(element: setting_hundredths, compiler: Any, **kw: Any) -> str:
+    found = _hundredths(
+        element,
+        lambda value: cast(value.op("#>>")(literal("{}")), Numeric),
+        lambda value: func.json_typeof(value) == "number",
+    )
+    return compiler.process(found, **kw)
+
+
+def setting_in_hundredths(key: str) -> ColumnElement[Any]:
+    """Return a setting that is a number of two places, in hundredths, as the statement
+    reads it: blank where it has none."""
+    return setting_hundredths(literal(key))
 
 
 class list_values(FunctionElement):

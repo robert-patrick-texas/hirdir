@@ -6080,6 +6080,42 @@ export interface paths {
       };
     };
   };
+  "/api/v1/reports/capacity/try": {
+    /**
+     * Return the capacity balance in force beside the balance that other figures and
+     * staff lines would give: any of the six weights of the settings,
+     * `weight_per_resource_unit` and `stack_discount_pct`, a key left out being as it is
+     * and null trying the setting at its default, and staff lines added, changed and
+     * left out. Nothing is saved, nothing is audited, and the answer is never kept. Any
+     * role may Try; an Admin saves the settings tried by `PUT /settings/{key}`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path?: never;
+        header?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CapacityTry"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CapacityTryOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/reports/circuit-costs": {
     /**
      * Say what circuits cost in one fiscal year: `cost`, what the year costs, with a
@@ -8086,13 +8122,20 @@ export interface components {
       /** Supply less demand, worked out when it is read. */
       balance: string;
       by_category: components["schemas"]["CapacityCategory"][];
+      circuits_weight: string | null;
       /** Supply over demand, worked out when it is read. Blank with no demand. */
       coverage_pct: string | null;
+      /** As the report answered them: blank in a week recorded before 0.8.0. */
+      defaulted: components["schemas"]["WeightCounts"] | null;
       demand: string;
       infrastructure_demand: string;
+      /** The parts of the support weight: blank in a week recorded before 0.8.0. */
+      items_weight: string | null;
       other_demand: string;
       outside_units: string;
       own_units: string;
+      places_weight: string | null;
+      raised: components["schemas"]["WeightCounts"] | null;
       supply: string;
       support_weight: string;
     };
@@ -8105,6 +8148,47 @@ export interface components {
       /** Its units in this view, nothing when it is not counted. */
       units: string;
     };
+    /**
+     * What was tried: each figure as the balance tried was worked out with it, and the
+     * staff lines.
+     */
+    CapacityTried: {
+      /** The settings whose value tried is not the one in force: those an Admin who agrees the estimate saves, each by `PUT /settings/{key}`. */
+      changed: string[];
+      default_circuit_weight: string | null;
+      default_item_weight: string | null;
+      default_site_weight: string | null;
+      minimum_circuit_weight: string | null;
+      minimum_item_weight: string | null;
+      minimum_site_weight: string | null;
+      stack_discount_pct: string;
+      staff: components["schemas"]["StaffTried"];
+      weight_per_resource_unit: string;
+    };
+    /**
+     * What a Try of the capacity report tries. A key left out is as it is in force, and
+     * null tries a setting at its default, which for a weight is blank.
+     */
+    CapacityTry: {
+      default_circuit_weight?: string | null;
+      default_item_weight?: string | null;
+      default_site_weight?: string | null;
+      minimum_circuit_weight?: string | null;
+      minimum_item_weight?: string | null;
+      minimum_site_weight?: string | null;
+      /** The global discount: a model that sets its own keeps it. */
+      stack_discount_pct?: string | null;
+      staff?: components["schemas"]["StaffTry"];
+      weight_per_resource_unit?: string | null;
+    };
+    /** The capacity balance in force beside the balance tried. Nothing was saved. */
+    CapacityTryOut: {
+      /** As `GET /reports/capacity` answers it. */
+      in_force: components["schemas"]["CapacityOut"];
+      parameters: components["schemas"]["CapacityTried"];
+      /** As the figures and the staff lines tried give it. */
+      tried: components["schemas"]["CapacityOut"];
+    };
     /** The balance of one view. */
     CapacityView: {
       /** What the supply lines cost a year. */
@@ -8112,12 +8196,18 @@ export interface components {
       /** Supply less demand. */
       balance: string;
       by_category: components["schemas"]["CapacityCategory"][];
+      /** The weights in force of the circuits that carry their weight. */
+      circuits_weight: string;
       /** Supply over demand. Blank with no demand. */
       coverage_pct: string | null;
+      /** How many items, sites and circuits counted at the default of their kind. */
+      defaulted: components["schemas"]["WeightCounts"];
       demand: string;
-      /** Each region that holds an item of the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions. */
+      /** Each region that holds an item, a place or a circuit that weighs in the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions. */
       demand_by_region: components["schemas"]["RegionDemand"][];
       infrastructure_demand: string;
+      /** The support weight of the major items. */
+      items_weight: string;
       /** The lines that multiply and count in this view, by name. */
       multiplying_lines: components["schemas"]["MultiplyingLine"][];
       other_demand: string;
@@ -8125,7 +8215,12 @@ export interface components {
       own_share_pct: string | null;
       /** The supply that is the team's own positions. */
       own_units: string;
+      /** The weights in force of the regions, sites and locations that count. */
+      places_weight: string;
+      /** How many items, sites and circuits were raised to the minimum of their kind. */
+      raised: components["schemas"]["WeightCounts"];
       supply: string;
+      /** That of the items, the places and the circuits together. */
       support_weight: string;
     };
     /**
@@ -8494,8 +8589,8 @@ export interface components {
       site_contacts?: components["schemas"]["SiteContacts"] | null;
       /** The carrier's support desk in force (P-149), as `account_managers`. */
       support_contacts?: components["schemas"]["CarrierContacts"] | null;
-      /** Its own, or none. The default of the settings comes with 0.8.0. */
-      support_weight: components["schemas"]["EffectiveValue"];
+      /** Its own, or `default_circuit_weight` with the source `setting`, raised to `minimum_circuit_weight` where it is below it, with `raised_from` (P-155). */
+      support_weight: components["schemas"]["EffectiveWeight"];
       /** The rate in force up: its own, or the full rate of the port, `port`. */
       up_mbps: components["schemas"]["EffectiveValue"];
     };
@@ -9397,6 +9492,19 @@ export interface components {
       source_hid: string | null;
       value: string | boolean | null;
     };
+    /**
+     * A support weight in force, where it came from, and what it was before it was
+     * raised to the minimum of its kind (P-155).
+     */
+    EffectiveWeight: {
+      /** The weight before it was raised to the minimum of its kind. Blank where it was not raised. */
+      raised_from: string | null;
+      /** `setting` where it is the default of its kind. */
+      source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
+      source_hid: string | null;
+      /** The weight in force, as text. Blank: none. */
+      value: string | null;
+    };
     /** The items of a view that are past, or near, an end-of-life date. */
     EndOfLifeReport: {
       as_of: string;
@@ -9749,7 +9857,8 @@ export interface components {
       owner_hid: components["schemas"]["EffectiveReference"];
       /** Where it is going, by its own plan or by that of what it is in. */
       planned_location_hid: components["schemas"]["EffectiveLocation"];
-      support_weight: components["schemas"]["EffectiveValue"];
+      /** Its own, or its model's; for a major item then the setting `default_item_weight`, raised to `minimum_item_weight` where it is below it. */
+      support_weight: components["schemas"]["EffectiveWeight"];
     };
     /**
      * One tracked thing. A field that inherits holds the item's own value, and
@@ -10047,6 +10156,8 @@ export interface components {
       /** Its site. May be left out when the parent is named. */
       site_hid?: string | null;
       state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[];
     };
     /** A place within a site: a building, a floor, a room, a rack. */
@@ -10096,6 +10207,8 @@ export interface components {
       site: components["schemas"]["PlaceRef"];
       site_hid: string;
       state: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight: string | null;
       tags: string[];
       updated_at: string;
     };
@@ -10128,6 +10241,8 @@ export interface components {
       ship_same_as_address?: boolean | null;
       ship_state?: string | null;
       state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[] | null;
     };
     /** A location, as named on the item or the group that is there, with its site. */
@@ -10971,6 +11086,8 @@ export interface components {
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
       ship_state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[];
     };
     /**
@@ -11016,6 +11133,8 @@ export interface components {
       ship_state: string | null;
       /** How many sites are directly in it, retired ones aside. */
       sites: number;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight: string | null;
       tags: string[];
       updated_at: string;
     };
@@ -11038,6 +11157,8 @@ export interface components {
       ship_instructions?: string | null;
       ship_postal_code?: string | null;
       ship_state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[] | null;
     };
     /** A new registration: of one item, or of one device group. */
@@ -11383,7 +11504,14 @@ export interface components {
       ship_same_as_address?: boolean;
       ship_state?: string | null;
       state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[];
+    };
+    /** What a site has in force of what it takes from the settings. */
+    SiteEffective: {
+      /** Its own, or else the setting `default_site_weight`, raised to `minimum_site_weight` where it is below it. */
+      support_weight: components["schemas"]["EffectiveWeight"];
     };
     /** A place the team works at. */
     SiteOut: {
@@ -11393,6 +11521,7 @@ export interface components {
       code: string | null;
       country: string | null;
       created_at: string;
+      effective: components["schemas"]["SiteEffective"];
       hid: string;
       latitude: string | null;
       /** Up to 20, in order, changed whole: an empty list has none. */
@@ -11421,6 +11550,8 @@ export interface components {
       ship_same_as_address: boolean;
       ship_state: string | null;
       state: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight: string | null;
       tags: string[];
       updated_at: string;
     };
@@ -11452,6 +11583,8 @@ export interface components {
       ship_same_as_address?: boolean | null;
       ship_state?: string | null;
       state?: string | null;
+      /** The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath. */
+      support_weight?: string | null;
       tags?: string[] | null;
     };
     /**
@@ -11465,6 +11598,51 @@ export interface components {
       /** The circuit, or the place, they came from. */
       source_hid: string;
       value: components["schemas"]["NamedContact"][];
+    };
+    /** A staff line to try that is not there: it adds, and is active and in date. */
+    StaffAdd: {
+      name: string;
+      /** Left out, 1. */
+      quantity?: string;
+      units_each: string;
+    };
+    /**
+     * A staff line that adds and is there, tried with another quantity or units of one,
+     * and active and in date.
+     */
+    StaffChange: {
+      hid: string;
+      /** Left out, as it is. */
+      quantity?: string | null;
+      /** Left out, as it is. */
+      units_each?: string | null;
+    };
+    /** A staff line that was left out. */
+    StaffLineLeftOut: {
+      hid: string;
+      name: string;
+    };
+    /** A staff line as it was tried: added, with no HID, or changed. */
+    StaffLineTried: {
+      /** Blank for a line that is added. */
+      hid: string | null;
+      name: string;
+      quantity: string;
+      units: string;
+      units_each: string;
+    };
+    /** The staff lines as they were tried. */
+    StaffTried: {
+      add: components["schemas"]["StaffLineTried"][];
+      change: components["schemas"]["StaffLineTried"][];
+      leave_out: components["schemas"]["StaffLineLeftOut"][];
+    };
+    /** The staff lines to try: added, changed, and left out. */
+    StaffTry: {
+      add?: components["schemas"]["StaffAdd"][];
+      change?: components["schemas"]["StaffChange"][];
+      /** Staff lines that are there, by HID. */
+      leave_out?: string[];
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
@@ -11655,6 +11833,12 @@ export interface components {
     VendorRef: {
       hid: string;
       name: string;
+    };
+    /** How many items, sites and circuits of a view (P-155). */
+    WeightCounts: {
+      circuits: number;
+      items: number;
+      sites: number;
     };
   };
 }

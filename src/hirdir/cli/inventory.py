@@ -384,7 +384,10 @@ def show(
     for name, effective in found["effective"].items():
         shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
-            lines.append((name, f"{effective['value']} ({effective['source']})"))
+            # A weight raised to the minimum says what it was (P-155).
+            raised = effective.get("raised_from")
+            came = effective["source"] + (f", raised from {raised}" if raised else "")
+            lines.append((name, f"{effective['value']} ({came})"))
     # The links of its model.
     lines += [("link", _link(link)) for link in (model["links"] if model else [])]
     for name in ("state_changed_at", "created_at", "updated_at"):
@@ -1195,6 +1198,7 @@ def _show_place(level: str) -> Any:
         street = [record.get(name) for name in ("address1", "address2", "city", "state")]
         street += [record.get(name) for name in ("postal_code", "country")]
         lines.append(("address", ", ".join(part for part in street if part) or None))
+        lines.append(("support_weight", _weight_shown(record)))
         for role in in_force["contacts"]:
             where = _from(role)
             if role["stopped"]:
@@ -1222,6 +1226,23 @@ def _show_place(level: str) -> Any:
         "each with the level it came from."
     )
     return show
+
+
+def _weight_shown(record: dict[str, Any]) -> str | None:
+    """Return the support weight of a place as a person reads it (P-155): a site's in
+    force, with the setting it came from or the minimum it was raised to; a region's and
+    a location's own."""
+    found = (record.get("effective") or {}).get("support_weight")
+    if found is None:
+        return record.get("support_weight")
+    if found["value"] is None:
+        return None
+    said = found["value"]
+    if found["source"] == "setting":
+        said += " (default_site_weight)"
+    if found["raised_from"] is not None:
+        said += f" (raised from {found['raised_from']} to minimum_site_weight)"
+    return said
 
 
 def _link(link: dict[str, Any]) -> str:
@@ -2735,6 +2756,9 @@ def replacements_report(
 
 BALANCE = (
     "support_weight",
+    "items_weight",
+    "places_weight",
+    "circuits_weight",
     "infrastructure_demand",
     "other_demand",
     "demand",
@@ -2752,34 +2776,175 @@ BALANCE = (
 def capacity_report(
     format_: Annotated[str, typer.Option("--format", help="table, csv or json")] = "table",
     output: Output = None,
+    try_: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--try",
+            help="KEY=VALUE: try a default or a minimum weight, weight_per_resource_unit or "
+            "stack_discount_pct; KEY= tries a weight blank. As often as needed.",
+        ),
+    ] = None,
+    try_staff_add: Annotated[
+        list[str] | None,
+        typer.Option(help="NAME=QUANTITYxUNITS: try a staff line that is not there."),
+    ] = None,
+    try_staff_change: Annotated[
+        list[str] | None,
+        typer.Option(help="LINE=QUANTITYxUNITS: try a staff line, by name or HID, so."),
+    ] = None,
+    try_staff_leave_out: Annotated[
+        list[str] | None,
+        typer.Option(help="LINE: try the balance without a staff line, by name or HID."),
+    ] = None,
     url: Url = None,
     token: Token = None,
 ) -> None:
     """Show demand beside supply by category, the balance and the coverage, without the
-    drafts and with them."""
+    drafts and with them. With --try, the balance in force beside the one tried: nothing
+    is saved."""
     _checked_format(format_)
     target = client.load_target(url, token)
+    if try_ or try_staff_add or try_staff_change or try_staff_leave_out:
+        body = _tried_body(
+            target, try_ or [], try_staff_add or [], try_staff_change or [], try_staff_leave_out
+        )
+        answer = client.call(target, "POST", "/reports/capacity/try", body)
+        if format_ == "json":
+            typer.echo(json.dumps(answer, indent=2))
+            return
+        _rows(format_, output, _tried_rows(answer))
+        return
     found = client.call(target, "GET", "/reports/capacity")
     if format_ == "json":
         typer.echo(json.dumps(found, indent=2))
         return
-    views = (found["active"], found["with_drafts"])
+    _rows(format_, output, _capacity_rows((found["active"], found["with_drafts"])))
 
-    def shown(value: Any) -> str:
-        return "" if value is None else str(value)
 
-    rows = [["measure", "active", "with_drafts"]]
-    rows += [[name, *(shown(view[name]) for view in views)] for name in BALANCE]
-    for place, category in enumerate(found["active"]["by_category"]):
-        rows.append(
-            [
-                f"supply: {category['label']}",
-                shown(category["units"]),
-                shown(found["with_drafts"]["by_category"][place]["units"]),
-            ]
+def _shown(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+def _capacity_rows(views: tuple[dict[str, Any], ...], head: list[str] | None = None) -> list:
+    """Return the rows of the capacity report: a column for each view."""
+    rows = [head or ["measure", "active", "with_drafts"]]
+    rows += [[name, *(_shown(view[name]) for view in views)] for name in BALANCE]
+    for counted in ("defaulted", "raised"):
+        for kind in ("items", "sites", "circuits"):
+            rows.append([f"{counted}: {kind}", *(_shown(view[counted][kind]) for view in views)])
+    for category in views[0]["by_category"]:
+        units = [
+            next(
+                (
+                    one["units"]
+                    for one in view["by_category"]
+                    if one["category"] == category["category"]
+                ),
+                None,
+            )
+            for view in views
+        ]
+        rows.append([f"supply: {category['label']}", *(_shown(one) for one in units)])
+    rows += _capacity_parts(views, _shown)
+    return rows
+
+
+# --- Try, the what-if of the capacity report (P-156) ---
+
+TRIED_KEYS = (
+    "default_item_weight",
+    "minimum_item_weight",
+    "default_site_weight",
+    "minimum_site_weight",
+    "default_circuit_weight",
+    "minimum_circuit_weight",
+    "weight_per_resource_unit",
+    "stack_discount_pct",
+)
+
+
+def _quantity_by_units(text: str, option: str) -> tuple[str, str | None, str | None]:
+    """Read NAME=QUANTITYxUNITS: the name, the quantity and the units of one. A blank
+    part is left as it is."""
+    name, mark, amounts = text.rpartition("=")
+    quantity, times, units = amounts.lower().partition("x")
+    if not mark or not times or not name.strip():
+        raise client.fail(f"{option} takes NAME=QUANTITYxUNITS, such as 'Engineer=2x1'", 2)
+    return name.strip(), quantity.strip() or None, units.strip() or None
+
+
+def _staff_lines(target: Target) -> list[dict[str, Any]]:
+    """Return the staff lines there are, retired ones among them, for naming them."""
+    return client.call(
+        target,
+        "GET",
+        "/capacity-lines",
+        params={
+            "filter": "category:eq:staff side:eq:supply",
+            "include_drafts": True,
+            "include_archived": True,
+            "limit": 1000,
+        },
+    )["items"]
+
+
+def _staff_line(lines: list[dict[str, Any]], named: str) -> str:
+    """Return the HID of the staff line known by a name or an HID."""
+    wanted = named.strip().casefold()
+    for line in lines:
+        if wanted in (line["hid"], line["name"].strip().casefold()):
+            return line["hid"]
+    raise client.fail(f"there is no staff line {named}", client.EXIT_INVALID)
+
+
+def _tried_body(
+    target: Target,
+    tries: list[str],
+    added: list[str],
+    changed: list[str],
+    left_out: list[str] | None,
+) -> dict[str, Any]:
+    """Return what a Try sends: the figures tried, and the staff lines tried."""
+    body: dict[str, Any] = {}
+    for one in tries:
+        key, mark, value = one.partition("=")
+        key = key.strip()
+        if not mark or key not in TRIED_KEYS:
+            raise client.fail(f"--try takes KEY=VALUE, KEY one of {', '.join(TRIED_KEYS)}", 2)
+        body[key] = value.strip() or None
+    lines = _staff_lines(target) if changed or left_out else []
+    staff: dict[str, list[Any]] = {"add": [], "change": [], "leave_out": []}
+    for one in added:
+        name, quantity, units = _quantity_by_units(one, "--try-staff-add")
+        if units is None:
+            raise client.fail("--try-staff-add gives the units of one: NAME=QUANTITYxUNITS", 2)
+        staff["add"].append({"name": name, "quantity": quantity or "1", "units_each": units})
+    for one in changed:
+        name, quantity, units = _quantity_by_units(one, "--try-staff-change")
+        staff["change"].append(
+            {"hid": _staff_line(lines, name), "quantity": quantity, "units_each": units}
         )
-    rows += _capacity_parts(views, shown)
-    _rows(format_, output, rows)
+    staff["leave_out"] = [_staff_line(lines, one) for one in left_out or []]
+    body["staff"] = staff
+    return body
+
+
+def _tried_rows(answer: dict[str, Any]) -> list[list[str]]:
+    """Return the rows of a Try: the balance in force beside the one tried, each view."""
+    views = (
+        answer["in_force"]["active"],
+        answer["tried"]["active"],
+        answer["in_force"]["with_drafts"],
+        answer["tried"]["with_drafts"],
+    )
+    head = ["measure", "active", "active_tried", "with_drafts", "with_drafts_tried"]
+    rows = _capacity_rows(views, head)
+    per_unit = [answer[side]["weight_per_resource_unit"] for side in ("in_force", "tried")]
+    rows.append(["weight_per_resource_unit", per_unit[0], per_unit[1], per_unit[0], per_unit[1]])
+    return rows
+
+
+# --- end of Try ---
 
 
 def _capacity_parts(views: tuple[dict[str, Any], ...], shown: Any) -> list[list[str]]:

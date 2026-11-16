@@ -13,7 +13,17 @@ from hirdir.api.deps import Admin, Audit, Db, Viewer
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset, sort_of
 from hirdir.api.schemas import Model, Page
 from hirdir.domain import settings
-from hirdir.io import alerts, balance, circuit_costs, filters, kept, planning, reports, tables
+from hirdir.io import (
+    alerts,
+    balance,
+    circuit_costs,
+    filters,
+    kept,
+    planning,
+    reports,
+    tables,
+    tried,
+)
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 renewals_ = APIRouter(prefix="/renewals", tags=["Reports"])
@@ -585,6 +595,23 @@ def check_kept_answers(_: Admin, context: Audit, db: Db) -> KeptCheck:
             for d in found.differed
         ],
     )
+
+
+# --- Try, the what-if of the capacity report (P-156) ---
+
+
+@router.post("/capacity/try")
+def capacity_try(body: r.CapacityTry, _: Viewer, db: Db) -> r.CapacityTryOut:
+    """Return the capacity balance in force beside the balance that other figures and
+    staff lines would give: any of the six weights of the settings,
+    `weight_per_resource_unit` and `stack_discount_pct`, a key left out being as it is
+    and null trying the setting at its default, and staff lines added, changed and
+    left out. Nothing is saved, nothing is audited, and the answer is never kept. Any
+    role may Try; an Admin saves the settings tried by `PUT /settings/{key}`."""
+    return shapes.capacity_try_out(tried.capacity_tried(db, body.model_dump(exclude_unset=True)))
+
+
+# --- end of Try ---
 
 
 ROUTERS = (router, renewals_, kept_)

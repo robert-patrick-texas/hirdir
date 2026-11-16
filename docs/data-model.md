@@ -1051,7 +1051,7 @@ The balance as it was in a week, kept to show the trend (R14.7, D-188).
 | `week_of` | date, unique | the Monday that begins the week, in the application's time zone |
 | `recorded_at` | timestamp | when the figures were worked out |
 | `weight_per_resource_unit` | decimal | the setting as it was then |
-| `active`, `with_drafts` | JSON | the balance as the capacity report answered it, each with `support_weight`, `infrastructure_demand`, `other_demand`, `demand`, `supply`, `own_units`, `outside_units` and `by_category` |
+| `active`, `with_drafts` | JSON | the balance as the capacity report answered it, each with `support_weight`, its parts `items_weight`, `places_weight` and `circuits_weight`, `defaulted` and `raised`, `infrastructure_demand`, `other_demand`, `demand`, `supply`, `own_units`, `outside_units` and `by_category`. A week recorded before 0.8.0 kept no parts of the support weight, and reads them blank |
 | `adjusted` | boolean | a person has corrected the figures |
 | `note` | text | why; required once the figures are corrected |
 

@@ -15,6 +15,7 @@ from hirdir.api.records import (
     CarrierContacts,
     CircuitContactOut,
     EffectiveValue,
+    EffectiveWeight,
     Hid,
     LongText,
     Name,
@@ -212,8 +213,9 @@ class CircuitGroupRef(Model):
 class CircuitEffective(Model):
     """The values a circuit has in force, each with where it came from."""
 
-    support_weight: EffectiveValue = Field(
-        description="Its own, or none. The default of the settings comes with 0.8.0."
+    support_weight: EffectiveWeight = Field(
+        description="Its own, or `default_circuit_weight` with the source `setting`, raised "
+        "to `minimum_circuit_weight` where it is below it, with `raised_from` (P-155)."
     )
     down_mbps: EffectiveValue = Field(
         description="The rate in force down: its own, or the full rate of the port, `port`."

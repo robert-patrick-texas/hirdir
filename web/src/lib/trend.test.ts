@@ -17,6 +17,11 @@ function view(demand: string, supply: string, staff: string, tools: string) {
   const balance = (Number(supply) - Number(demand)).toFixed(2);
   return {
     support_weight: "2400",
+    items_weight: "2400",
+    places_weight: "0",
+    circuits_weight: "0",
+    defaulted: { items: 0, sites: 0, circuits: 0 },
+    raised: { items: 0, sites: 0, circuits: 0 },
     infrastructure_demand: "8",
     other_demand: (Number(demand) - 8).toFixed(2),
     demand,

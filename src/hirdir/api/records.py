@@ -112,6 +112,19 @@ class EffectiveReference(Model):
     source_hid: str | None
 
 
+class EffectiveWeight(Model):
+    """A support weight in force, where it came from, and what it was before it was
+    raised to the minimum of its kind (P-155)."""
+
+    value: str | None = Field(description="The weight in force, as text. Blank: none.")
+    source: Source = Field(description="`setting` where it is the default of its kind.")
+    source_hid: str | None
+    raised_from: str | None = Field(
+        description="The weight before it was raised to the minimum of its kind. Blank where "
+        "it was not raised."
+    )
+
+
 # --- vendors -------------------------------------------------------------------------
 
 
@@ -350,6 +363,26 @@ class LocationRef(PlaceRef):
     region: str = Field(description="The name of the region its site is in.")
 
 
+# --- the support weight of a place (P-139, P-155) ---
+
+PLACE_WEIGHT = (
+    "The work that supporting the network there adds by itself, beside what its devices "
+    "weigh: its own, blank unless given. It is not passed down to the places beneath."
+)
+
+
+class SiteEffective(Model):
+    """What a site has in force of what it takes from the settings."""
+
+    support_weight: EffectiveWeight = Field(
+        description="Its own, or else the setting `default_site_weight`, raised to "
+        "`minimum_site_weight` where it is below it."
+    )
+
+
+# --- end of the support weight of a place ---
+
+
 class RegionOut(Model):
     """A part of the world that sites are in."""
 
@@ -368,6 +401,7 @@ class RegionOut(Model):
     ship_instructions: str | None
     operator_hid: str | None
     operator: OperatorRef | None = Field(description="Its own operator.")
+    support_weight: Weight | None = Field(description=PLACE_WEIGHT)
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
@@ -395,6 +429,7 @@ class RegionCreate(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     operator_hid: Hid | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
@@ -418,6 +453,7 @@ class RegionPatch(Model):
     ship_country: Name | None = None
     ship_instructions: LongText | None = None
     operator_hid: Hid | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
@@ -453,6 +489,8 @@ class SiteOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    support_weight: Weight | None = Field(description=PLACE_WEIGHT)
+    effective: SiteEffective
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
@@ -486,6 +524,7 @@ class SiteCreate(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
@@ -516,6 +555,7 @@ class SitePatch(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
@@ -555,6 +595,7 @@ class LocationOut(Model):
     operator: OperatorRef | None = Field(description="Its own operator.")
     latitude: Latitude | None
     longitude: Longitude | None
+    support_weight: Weight | None = Field(description=PLACE_WEIGHT)
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     notes: str | None
     record_status: RecordStatus
@@ -597,6 +638,7 @@ class LocationCreate(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] = Field(default=[], max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
@@ -630,6 +672,7 @@ class LocationPatch(Model):
     operator_hid: Hid | None = None
     latitude: Latitude | None = None
     longitude: Longitude | None = None
+    support_weight: Weight | None = Field(default=None, description=PLACE_WEIGHT)
     links: list[LinkIn] | None = Field(default=None, max_length=20, description=LINKS_DESCRIPTION)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
@@ -1240,7 +1283,10 @@ class ItemEffective(Model):
     disposition: EffectiveValue
     expected_online: EffectiveValue
     est_value: EffectiveValue
-    support_weight: EffectiveValue
+    support_weight: EffectiveWeight = Field(
+        description="Its own, or its model's; for a major item then the setting "
+        "`default_item_weight`, raised to `minimum_item_weight` where it is below it."
+    )
     annual_support_cost: EffectiveValue
     end_of_sale: EffectiveValue
     end_of_sw_support: EffectiveValue
@@ -2978,10 +3024,33 @@ class RegionDemand(Model):
     )
 
 
+class WeightCounts(Model):
+    """How many items, sites and circuits of a view (P-155)."""
+
+    items: int
+    sites: int
+    circuits: int
+
+
 class CapacityView(Model):
     """The balance of one view."""
 
-    support_weight: WeightSum
+    support_weight: WeightSum = Field(
+        description="That of the items, the places and the circuits together."
+    )
+    items_weight: WeightSum = Field(description="The support weight of the major items.")
+    places_weight: WeightSum = Field(
+        description="The weights in force of the regions, sites and locations that count."
+    )
+    circuits_weight: WeightSum = Field(
+        description="The weights in force of the circuits that carry their weight."
+    )
+    defaulted: WeightCounts = Field(
+        description="How many items, sites and circuits counted at the default of their kind."
+    )
+    raised: WeightCounts = Field(
+        description="How many items, sites and circuits were raised to the minimum of their kind."
+    )
     infrastructure_demand: Units
     other_demand: Units
     demand: Units
@@ -2998,8 +3067,9 @@ class CapacityView(Model):
     )
     demand_by_region: list[RegionDemand] = Field(
         description=(
-            "Each region that holds an item of the view, by path, with what is beneath it, "
-            "and last the items that are nowhere. No supply is divided among regions."
+            "Each region that holds an item, a place or a circuit that weighs in the view, "
+            "by path, with what is beneath it, and last the items that are nowhere. No "
+            "supply is divided among regions."
         )
     )
 
@@ -3017,6 +3087,15 @@ class CapacityRecordView(Model):
     """The balance of one view as a record of a week keeps it."""
 
     support_weight: WeightSum
+    items_weight: WeightSum | None = Field(
+        description="The parts of the support weight: blank in a week recorded before 0.8.0."
+    )
+    places_weight: WeightSum | None
+    circuits_weight: WeightSum | None
+    defaulted: WeightCounts | None = Field(
+        description="As the report answered them: blank in a week recorded before 0.8.0."
+    )
+    raised: WeightCounts | None
     infrastructure_demand: Units
     other_demand: Units
     demand: Units
@@ -3066,6 +3145,116 @@ class CapacityRecordPatch(Model):
     note: LongText = Field(min_length=1, description="Why the figures are corrected.")
     active: CapacityFigures | None = None
     with_drafts: CapacityFigures | None = None
+
+
+# --- Try, the what-if of the capacity report (P-156) ---
+
+# A figure to try, which the setting of the same name checks as it would check a change.
+Tried = Annotated[
+    Decimal,
+    WithJsonSchema({"type": "string", "pattern": r"^-?\d+(\.\d+)?$", "examples": ["1.5"]}),
+]
+
+
+class StaffAdd(Model):
+    """A staff line to try that is not there: it adds, and is active and in date."""
+
+    name: Name = Field(min_length=1)
+    quantity: Weight = Field(default=Decimal(1), description="Left out, 1.")
+    units_each: Weight
+
+
+class StaffChange(Model):
+    """A staff line that adds and is there, tried with another quantity or units of one,
+    and active and in date."""
+
+    hid: Hid
+    quantity: Weight | None = Field(default=None, description="Left out, as it is.")
+    units_each: Weight | None = Field(default=None, description="Left out, as it is.")
+
+
+class StaffTry(Model):
+    """The staff lines to try: added, changed, and left out."""
+
+    add: list[StaffAdd] = Field(default=[], max_length=1000)
+    change: list[StaffChange] = Field(default=[], max_length=1000)
+    leave_out: list[Hid] = Field(
+        default=[], max_length=1000, description="Staff lines that are there, by HID."
+    )
+
+
+class CapacityTry(Model):
+    """What a Try of the capacity report tries. A key left out is as it is in force, and
+    null tries a setting at its default, which for a weight is blank."""
+
+    default_item_weight: Tried | None = None
+    minimum_item_weight: Tried | None = None
+    default_site_weight: Tried | None = None
+    minimum_site_weight: Tried | None = None
+    default_circuit_weight: Tried | None = None
+    minimum_circuit_weight: Tried | None = None
+    weight_per_resource_unit: Tried | None = None
+    stack_discount_pct: Tried | None = Field(
+        default=None, description="The global discount: a model that sets its own keeps it."
+    )
+    staff: StaffTry = Field(default_factory=StaffTry)
+
+
+class StaffLineTried(Model):
+    """A staff line as it was tried: added, with no HID, or changed."""
+
+    hid: str | None = Field(description="Blank for a line that is added.")
+    name: str
+    quantity: Weight
+    units_each: Weight
+    units: Units
+
+
+class StaffLineLeftOut(Model):
+    """A staff line that was left out."""
+
+    hid: str
+    name: str
+
+
+class StaffTried(Model):
+    """The staff lines as they were tried."""
+
+    add: list[StaffLineTried]
+    change: list[StaffLineTried]
+    leave_out: list[StaffLineLeftOut]
+
+
+class CapacityTried(Model):
+    """What was tried: each figure as the balance tried was worked out with it, and the
+    staff lines."""
+
+    default_item_weight: Weight | None
+    minimum_item_weight: Weight | None
+    default_site_weight: Weight | None
+    minimum_site_weight: Weight | None
+    default_circuit_weight: Weight | None
+    minimum_circuit_weight: Weight | None
+    weight_per_resource_unit: Units
+    stack_discount_pct: Percent
+    staff: StaffTried
+    changed: list[str] = Field(
+        description=(
+            "The settings whose value tried is not the one in force: those an Admin who "
+            "agrees the estimate saves, each by `PUT /settings/{key}`."
+        )
+    )
+
+
+class CapacityTryOut(Model):
+    """The capacity balance in force beside the balance tried. Nothing was saved."""
+
+    in_force: CapacityOut = Field(description="As `GET /reports/capacity` answers it.")
+    tried: CapacityOut = Field(description="As the figures and the staff lines tried give it.")
+    parameters: CapacityTried
+
+
+# --- end of Try ---
 
 
 # --- the reports that look ahead -----------------------------------------------------

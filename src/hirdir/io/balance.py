@@ -11,23 +11,32 @@ staff lines it applies to that are counted in the same view on the same day.
 Multipliers each work on the base units of the staff lines and do not compound, so
 their order does not matter.
 
+The support weight that is the demand is that of the items, and beside them that of the
+places and the circuits, each at its weight in force (P-155): a site at its own or the
+default of its kind, raised to the minimum, a region and a location at their own, and a
+circuit at its own or the default, raised, while it carries its weight.
+
 The balance is of the whole operations team. Beside it, the demand of each region says
 where the work is, and no supply is divided among regions. The balance is also kept
 week by week, in the records of `hirdir.domain.capacity`, to show the trend.
+
+A Try works the same balance out with other figures and other staff lines, and keeps
+nothing: see `hirdir.io.tried`.
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, select, union_all
+from sqlalchemy.orm import Session, aliased
 
 from hirdir import clock
-from hirdir.db.models import CapacityLine, CapacityRecord
-from hirdir.domain import capacity, choices, geography, records, settings
+from hirdir.db.models import CapacityLine, CapacityRecord, Circuit, Location, Region, Site
+from hirdir.domain import capacity, choices, circuits, geography, records, settings, weights
 from hirdir.domain.audit import AuditContext
 from hirdir.io import reports
 
@@ -91,10 +100,26 @@ class RegionDemand:
 
 
 @dataclass(frozen=True)
+class Counted:
+    """How many items, sites and circuits: of those that count, the ones at a default of
+    their kind, or the ones raised to a minimum (P-155)."""
+
+    items: int = 0
+    sites: int = 0
+    circuits: int = 0
+
+
+@dataclass(frozen=True)
 class View:
     """The balance of one view: the active lines and items, or those with the drafts."""
 
     support_weight: Decimal
+    # The parts of the support weight, which add up to it (P-155).
+    items_weight: Decimal
+    places_weight: Decimal
+    circuits_weight: Decimal
+    defaulted: Counted
+    raised: Counted
     infrastructure_demand: Decimal
     other_demand: Decimal
     demand: Decimal
@@ -118,6 +143,137 @@ class Balance:
     weight_per_resource_unit: Decimal
     active: View
     with_drafts: View
+
+
+@dataclass(frozen=True)
+class StaffTried:
+    """Staff lines as a Try has them (P-156): lines added, lines that are there with
+    another quantity or units of one, and lines that are there left out. Each line tried
+    is active and in date in both views. None of them is saved."""
+
+    added: tuple[CapacityLine, ...] = ()
+    changed: Mapping[str, CapacityLine] = field(default_factory=dict)
+    left_out: frozenset[str] = frozenset()
+
+    def applied(self, lines: list[CapacityLine]) -> list[CapacityLine]:
+        """Return the lines of the balance as they are tried."""
+        kept = [self.changed.get(line.hid, line) for line in lines if line.hid not in self.left_out]
+        return [*kept, *self.added]
+
+
+def line_tried(
+    hid: str, name: str, quantity: Decimal, units_each: Decimal, annual_cost: Decimal | None = None
+) -> CapacityLine:
+    """Return a staff line that adds, as a Try has it: active and in date, and held by no
+    session, so that nothing of it is ever stored."""
+    return CapacityLine(
+        hid=hid,
+        side=capacity.SUPPLY,
+        category=capacity.STAFF,
+        name=name,
+        effect=capacity.ADD,
+        quantity=quantity,
+        units_each=units_each,
+        factor=None,
+        share=None,
+        annual_cost=annual_cost,
+        starts_on=None,
+        ends_on=None,
+        record_status="active",
+    )
+
+
+# --- the places and the circuits beside the items (P-155) ---
+
+# A place's and a circuit's weight are kept in hundredths, and the items' are summed in
+# the finer steps of `reports.WEIGHT_STEPS`: this many of those to one hundredth.
+TO_ITEM_STEPS = int(reports.WEIGHT_STEPS) // weights.STEPS
+
+
+@dataclass(frozen=True)
+class _Beside:
+    """The support weight of the places and of the circuits of one view, in the steps
+    the items are summed in, and at or beneath each region; and how many sites and
+    circuits counted at a default, and were raised to a minimum."""
+
+    places: int
+    circuits: int
+    by_region: dict[str, int]
+    defaulted: tuple[int, int]
+    raised: tuple[int, int]
+
+
+def _beside(db: Session, include_drafts: bool, figures: weights.Figures, today: date) -> _Beside:
+    """Return the support weight of the places and the circuits of one view.
+
+    A region, a site and a location count while it is active, or a draft with the
+    drafts, at its weight in force, in the region it is, or is in; a circuit while it
+    carries its weight, in the region of the site it counts at (P-150). Each is then in
+    the row of every region above that one, as an item is.
+    """
+    # A place counts by its own status, as an item does.
+    statuses = ("active", "draft") if include_drafts else ("active",)
+    region_weight = weights.place_in_force(Region.support_weight)
+    site_weight = weights.site_in_force(figures)
+    location_weight = weights.place_in_force(Location.support_weight)
+    circuit_weight = weights.circuit_in_force(figures)
+    carries = circuits.carries_weight_column(today, include_drafts)
+    placed = union_all(
+        select(Region.hid.label("region_hid"), region_weight.value.label("steps")).where(
+            Region.record_status.in_(statuses)
+        ),
+        select(Site.region_hid.label("region_hid"), site_weight.value.label("steps")).where(
+            Site.record_status.in_(statuses)
+        ),
+        select(Site.region_hid.label("region_hid"), location_weight.value.label("steps"))
+        .select_from(Location)
+        .join(Site, Site.hid == Location.site_hid)
+        .where(Location.record_status.in_(statuses)),
+    ).subquery("placed")
+    cost_location: Any = aliased(Location, name="cost_location")
+    cost_site: Any = aliased(Site, name="cost_site")
+    carried = (
+        select(cost_site.region_hid.label("region_hid"), circuit_weight.value.label("steps"))
+        .select_from(Circuit)
+        .join(cost_location, cost_location.hid == circuits.cost_location_column())
+        .join(cost_site, cost_site.hid == cost_location.site_hid)
+        .where(carries)
+        .subquery("carried")
+    )
+    by_region: dict[str, int] = {}
+    whole = []
+    for found in (placed, carried):
+        whole.append(int(db.scalar(select(func.sum(found.c.steps))) or 0) * TO_ITEM_STEPS)
+        above = geography.region_ancestry()
+        for hid, steps in db.execute(
+            select(above.c.above, func.sum(found.c.steps))
+            .join(above, above.c.hid == found.c.region_hid)
+            .where(found.c.steps.is_not(None))
+            .group_by(above.c.above)
+        ):
+            by_region[hid] = by_region.get(hid, 0) + int(steps or 0) * TO_ITEM_STEPS
+    sites = db.execute(
+        select(
+            func.count(case((site_weight.defaulted, Site.hid))),
+            func.count(case((site_weight.raised, Site.hid))),
+        ).where(Site.record_status.in_(statuses))
+    ).one()
+    carrying = db.execute(
+        select(
+            func.count(case((circuit_weight.defaulted, Circuit.hid))),
+            func.count(case((circuit_weight.raised, Circuit.hid))),
+        ).where(carries)
+    ).one()
+    return _Beside(
+        places=whole[0],
+        circuits=whole[1],
+        by_region=by_region,
+        defaulted=(int(sites[0]), int(carrying[0])),
+        raised=(int(sites[1]), int(carrying[1])),
+    )
+
+
+# --- end of the places and the circuits ---
 
 
 def _gains(
@@ -202,24 +358,33 @@ def _by_region(
 def _view(
     db: Session,
     include_drafts: bool,
-    per_unit: Decimal,
+    figures: weights.Figures,
+    today: date,
     lines: list[CapacityLine],
     categories: list[tuple[str, str]],
     targets: dict[str, list[str]],
     names: dict[str, str],
 ) -> View:
+    per_unit = figures.weight_per_resource_unit
     with localcontext() as context:
         context.prec = PRECISION
         # An item is in the row of each region above it, and so in the row of one top
         # region, or else in the row of none: the whole is the sum of those rows, and
         # needs no pass over the items of its own.
-        by_region = reports.weight_steps_by_region(db, include_drafts)
+        by_region = reports.weight_steps_by_region(db, include_drafts, figures)
         regions = geography.Atlas(db).regions
-        weight_steps = sum(
+        items_steps = sum(
             steps
             for hid, steps in by_region.items()
             if hid is None or regions[hid].parent_region_hid is None
         )
+        # The places and the circuits beside them, each in the row of every region
+        # above it, so that the top rows and what is nowhere still add up to the whole.
+        beside = _beside(db, include_drafts, figures, today)
+        for hid, steps in beside.by_region.items():
+            by_region[hid] = by_region.get(hid, 0) + steps
+        weight_steps = items_steps + beside.places + beside.circuits
+        items_defaulted, items_raised = reports.weight_counts(db, include_drafts, figures)
         weight = Decimal(weight_steps) / reports.WEIGHT_STEPS
         infrastructure = weight / per_unit
         other = sum(
@@ -249,6 +414,11 @@ def _view(
             )
         return View(
             support_weight=_rounded(weight),
+            items_weight=_rounded(Decimal(items_steps) / reports.WEIGHT_STEPS),
+            places_weight=_rounded(Decimal(beside.places) / reports.WEIGHT_STEPS),
+            circuits_weight=_rounded(Decimal(beside.circuits) / reports.WEIGHT_STEPS),
+            defaulted=Counted(items_defaulted, *beside.defaulted),
+            raised=Counted(items_raised, *beside.raised),
             infrastructure_demand=_rounded(infrastructure),
             other_demand=_rounded(other),
             demand=_rounded(demand),
@@ -265,24 +435,34 @@ def _view(
         )
 
 
-def balance(db: Session, day: date | None = None) -> Balance:
+def balance(
+    db: Session,
+    day: date | None = None,
+    figures: weights.Figures | None = None,
+    staff: StaffTried | None = None,
+) -> Balance:
     """Return the capacity balance of the whole installation, as of a day: today unless
-    said."""
+    said.
+
+    `figures` are the defaults and minimums of support weight, the global stack discount
+    and the weight one resource unit carries: the settings in force unless a Try gives
+    others. `staff` is the staff lines a Try adds, changes and leaves out.
+    """
     today = day or clock.today(settings.time_zone(db))
-    per_unit = Decimal(str(settings.value(db, "weight_per_resource_unit")))
+    figures = figures or weights.in_force(db)
+    per_unit = figures.weight_per_resource_unit
     # Every category that supplies, in the order of its list, also one with no line.
     categories = [
         (choice.value, choice.label)
         for choice in choices.list_choices(db, capacity.CATEGORY_LIST)
         if choice.active and choice.value != capacity.OTHER_WORK
     ]
-    lines = [
-        line
-        for line in db.scalars(
-            select(CapacityLine).where(CapacityLine.record_status.in_(("active", "draft")))
-        )
-        if capacity.in_date(line, today)
-    ]
+    held = list(
+        db.scalars(select(CapacityLine).where(CapacityLine.record_status.in_(("active", "draft"))))
+    )
+    if staff is not None:
+        held = staff.applied(held)
+    lines = [line for line in held if capacity.in_date(line, today)]
     multiplying = [line.hid for line in lines if capacity.multiplies(line)]
     targets = capacity.targets_of(db, multiplying)
     # The names of the lines a multiplier applies to, those that do not count among them.
@@ -294,7 +474,8 @@ def balance(db: Session, day: date | None = None) -> Balance:
         return _view(
             db,
             include_drafts,
-            per_unit,
+            figures,
+            today,
             [line for line in lines if line.record_status in statuses],
             categories,
             targets,
@@ -308,9 +489,15 @@ def balance(db: Session, day: date | None = None) -> Balance:
 
 
 def _kept(found: View) -> dict[str, Any]:
-    """Return what a record keeps of one view: the figures, as text."""
+    """Return what a record keeps of one view: the figures, as text, with the parts of
+    the support weight and how many counted at a default and were raised (P-155)."""
     return {
         **{name: capacity.figure_text(getattr(found, name)) for name in capacity.KEPT},
+        **{name: capacity.figure_text(getattr(found, name)) for name in capacity.WEIGHT_PARTS},
+        **{
+            name: {kind: getattr(getattr(found, name), kind) for kind in capacity.COUNTED_KINDS}
+            for name in capacity.WEIGHT_COUNTS
+        },
         "by_category": [
             {
                 "category": one.category,

@@ -26,7 +26,14 @@ from hirdir.db.models import (
     Owner,
     Vendor,
 )
-from hirdir.domain import circuit_groups, circuit_records, circuits, geography, records, tags
+from hirdir.domain import (
+    circuit_groups,
+    circuit_records,
+    circuits,
+    geography,
+    tags,
+    weights,
+)
 from hirdir.domain.inheritance import Effective
 
 # The parts of a circuit that a list leaves out unless `fields` names them.
@@ -181,6 +188,7 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
     carriers = circuit_records.carriers_of(db, wanted)
     devices = circuit_records.devices_of(db, wanted)
     its_groups = circuit_groups.groups_of(db, wanted)
+    figures = weights.in_force(db)
     # The contacts named and in force (P-149), read together for the page.
     named = shapes.circuits_contacts(db, list(found)) if parts else {}
     carried = {
@@ -202,7 +210,7 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
         place = atlas.location(counted_at) if counted_at else None
         monthly = circuit_records.monthly_cost(lines[circuit.hid], day)
         rates = circuit_records.rates_in_force(circuit)
-        weight = circuit_records.support_weight_in_force(circuit)
+        weight = weights.of_circuit(circuit, figures)
         carrier = vendors.get(circuit.carrier_hid or "")
         out.append(
             c.CircuitOut(
@@ -235,12 +243,7 @@ def circuits_out(db: Session, found: Sequence[Circuit], parts: bool = True) -> l
                 if parts
                 else None,
                 effective=c.CircuitEffective(
-                    support_weight=_effective(
-                        weight,
-                        None
-                        if weight.value is None
-                        else records.decimal_text("support_weight", weight.value),
-                    ),
+                    support_weight=r.EffectiveWeight(**weights.effective_entry(weight)),
                     down_mbps=_effective(rates["down_mbps"], _mbps(rates["down_mbps"].value)),
                     up_mbps=_effective(rates["up_mbps"], _mbps(rates["up_mbps"].value)),
                     account_managers=named[circuit.hid][1].account_managers if parts else None,

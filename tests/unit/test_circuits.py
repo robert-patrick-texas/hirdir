@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from hirdir.db.models import Circuit, CircuitCost
-from hirdir.domain import circuit_records, circuits
+from hirdir.domain import circuit_records, circuits, weights
 
 
 def _circuit(**fields: object) -> Circuit:
@@ -81,6 +81,7 @@ def test_a_circuit_counts_at_the_side_it_names_or_at_the_other_where_that_has_no
 
 
 def test_a_weight_of_its_own_is_in_force_and_none_is_none() -> None:
-    weighed = circuit_records.support_weight_in_force(_circuit(support_weight=Decimal("1.5")))
+    figures = weights.Figures()
+    weighed = weights.of_circuit(_circuit(support_weight=Decimal("1.5")), figures)
     assert (weighed.value, weighed.source) == (Decimal("1.5"), "own")
-    assert circuit_records.support_weight_in_force(_circuit()).source == "none"
+    assert weights.of_circuit(_circuit(), figures).source == "none"

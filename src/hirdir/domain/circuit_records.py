@@ -260,17 +260,6 @@ def rates_in_force(circuit: Circuit) -> dict[str, Effective]:
     return found
 
 
-def support_weight_in_force(circuit: Circuit) -> Effective:
-    """Return the support weight a circuit has in force: its own, or none.
-
-    The default and the minimum of the settings (P-141, P-155) are added to this at the
-    merge of 0.8.0; until then a circuit with no weight of its own carries none.
-    """
-    if circuit.support_weight is not None:
-        return Effective(circuit.support_weight, "own", None)
-    return NOTHING
-
-
 def in_date(line: CircuitCost, day: date) -> bool:
     """Say whether a cost line is billed on a day: not before it starts, not after it ends."""
     return (line.starts_on is None or line.starts_on <= day) and (

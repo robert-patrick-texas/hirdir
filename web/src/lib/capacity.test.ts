@@ -45,6 +45,11 @@ const CHOICES = [
 /** The worked example of the data model page: demand 10, supply 9. */
 const example: CapacityView = {
   support_weight: "2400",
+  items_weight: "2400",
+  places_weight: "0",
+  circuits_weight: "0",
+  defaulted: { items: 0, sites: 0, circuits: 0 },
+  raised: { items: 0, sites: 0, circuits: 0 },
   infrastructure_demand: "8",
   other_demand: "2",
   demand: "10",
@@ -85,7 +90,12 @@ describe("the measures of a view of the balance", () => {
   it("are every number the server answers for a view, each once", () => {
     const keys = MEASURES.map((measure) => measure.key).sort();
     const answered = Object.keys(example)
-      .filter((key) => !["by_category", "multiplying_lines", "demand_by_region"].includes(key))
+      .filter(
+        (key) =>
+          !["by_category", "multiplying_lines", "demand_by_region", "defaulted", "raised"].includes(
+            key,
+          ),
+      )
       .sort();
     expect(keys).toEqual(answered);
   });
