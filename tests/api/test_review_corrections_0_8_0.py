@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from hirdir.db.models import Circuit, CircuitCarrier, CircuitCost, CircuitGroup, CircuitGroupMember
 from tests.api.inventory import API, Maker
-from tests.api.test_circuit_costs import _circuit, _line, places  # noqa: F401
+from tests.api.test_circuit_costs import _circuit, _line, places
 
 _ = places
 
