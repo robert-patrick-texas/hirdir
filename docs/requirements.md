@@ -475,7 +475,9 @@ itself where a closed network has no way out to the internet.
 | Ease | Nothing a person does waits on the application where that can be avoided. The first page is small, and pages open without a visible load. |
 | Times | Shown in the application's time zone with the zone named, the same for everybody. America/New_York unless an Admin sets another. |
 | Audit | Every change is kept. Nothing expires before a retention feature exists. |
-| Browser | Current Firefox, Chrome and Edge. Keyboard reachable, visible focus, labelled inputs. |
+| Browser | Current Firefox, Chrome and Edge. Keyboard reachable, visible focus, labelled inputs. A page opens at its top, with the menu bar in view (P-167). |
+| Name | The web page, and the files it downloads, carry the name an Admin gives the product, `hirdir` unless changed (P-168). |
+| Whom to ask | About names the team that runs the installation and how to reach it, as an Admin sets it, and the sign-in page does too where the Admin chooses (P-169). |
 
 ## Security posture
 

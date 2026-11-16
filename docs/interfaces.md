@@ -52,6 +52,7 @@ and CLI's types are generated from it.
 | Kept answers (Admin) | `GET /kept-answers`, `POST /kept-answers/check` |
 | Renewals | `GET /renewals/alert`, `POST /renewals/alert/seen` |
 | Audit | `GET /audit-events` |
+| About | `GET /about`: the version and what it runs on, the product name and whom to ask (P-168, P-169) |
 | Health | `GET /health/live`, `GET /health/ready` (no sign-in needed) |
 
 ### Roles
@@ -94,6 +95,9 @@ out, these decide it:
 | `circuit_cost_side` | the `cost_side` a new circuit is given where the request, or the row of a file, names none. A circuit that exists keeps its own |
 | `default_item_weight`, `minimum_item_weight`, `default_site_weight`, `minimum_site_weight`, `default_circuit_weight`, `minimum_circuit_weight` | the support weight in force of a major item, a site and a circuit that gives none, and the least it counts at, wherever the weight is used; `POST /reports/capacity/try` tries others |
 | `reference_file_types` | the extensions a file of `POST /reference-files` and `PUT /reference-files/{hid}/content` may have; any other is a `422` that names the setting. A file that is kept keeps its content when the list changes |
+| `product_name` | `product_name` of `GET /about`, the name the page that is served shows before signing in, and the first part of the name in the `Content-Disposition` of `POST /exports`, `inv-items-20261116T091500-0500.csv`, as P-168 forms it |
+| `help_organization`, `help_email`, `help_phone`, `help_url` | `help` of `GET /about`, each `null` where it is blank |
+| `help_on_sign_in` | whether the page that is served before signing in carries `help` as well; while it is false the page holds nothing of it |
 | `max_items_per_request` | how many items one `POST /contracts/{hid}/coverage` covers, how many members one `POST /device-groups/{hid}/members` or a new group adds, and how many items and `quantity` together one receipt takes. More is a `422` that names the setting. The API takes 5,000 at most whatever it says, and the command line and the web UI read it and send their pieces by it |
 
 The fixed values are these. What was decided:
@@ -1584,7 +1588,7 @@ Accounts and settings are not touched.
 
 | Page | Content |
 |---|---|
-| Sign in | Username, access code, a Sign in button |
+| Sign in | Username, access code, a Sign in button, under the product name: `Sign in to inv` where `product_name` is `inv`. Where `help_on_sign_in` is true and one of whom to ask is set, it says under the form that someone who cannot sign in should ask them, and lists them as About does |
 | Home | The headline of the summary: component count beside managed-node count, support weight, and the components by health. No money. The number of components that nobody is assigned to as operator, and of those under a label with nobody behind it, each as a link to its list. The items in service that no contract covers, those whose cover runs out within ninety days, and those past and approaching their last day of support, each as a link to its list |
 | Items | The main grid, with a health mark on each row, and minor items left out until "Include minor items" is turned on. Location, Site, Region and Operator are in the column chooser: Location shows the name of the location in force, with its path on hover and in an export. An item whose owner in force is outside the team is marked, with the reason that owner has. It shows no money until a column of it is asked for: Estimated value, Annual support cost and Support weight are in the column chooser. Still counted under, the contracts that still count an item out of service, and Of another model than its line, an item on a purchase line of another model, are in the column chooser too, each filtered, sorted and exported by the server. Detail page: identity, catalog and effective values with sources, parent and minor items, groups, addresses, coverage, with the contracts that still count it while it is out of service, registrations, the purchase line it arrived on, history, and the circuits it is connected to, each with its side. Naming its purchase line shows its model beside the line, and a line of another model is refused under that model; a change of its model while it is on a line is refused under the model in its form. An item on a line of another model, which 0.6.0 let in, is marked there, with how to put it right. An item's page shows the links of its model, and Files and links: its own references, its model's and those of where it is |
 | Catalog | Entries by vendor; the items of each entry; an entry's links, each opening in a new tab, edited as a list; its flag not to renew; and Files and links, the documents of the model |
@@ -1604,7 +1608,7 @@ Accounts and settings are not touched.
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on |
 | Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. The Settings page has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
-| About | Version, the versions table, release notes |
+| About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on; the versions table and the release notes. Whom to ask: the organization, the email address to write to, the number to call and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin |
 
 ### The grid
 
@@ -1637,6 +1641,22 @@ One grid component is used on every list page.
 - Column layout and the last filter are remembered per user in `localStorage`.
 
 Cell-range selection and editing in the grid are LATER.
+
+### The frame of every page
+
+The menu bar is at the top of every page, with the product name at its upper left:
+`product_name`, `hirdir` unless an Admin gives another (P-168). The title of the
+browser's tab is the page and that name, `Items · inv`, and what the pages say of the
+product, as "ask an administrator of inv", says it by that name too. A downloaded file
+is named with it: an export as the server names it, and a file the page makes itself,
+such as the scoreboard's `inv-scoreboard-sites.csv`. An import guesses the kind of
+record of a file so named as it does of one named `hirdir-`.
+
+A page opened from the menu bar, or from a link on another page, begins at its top with
+the menu bar in view, and focus moves to its content without scrolling it, so that a
+keyboard or a screen reader starts there (P-167). Back and Forward leave the window
+where the browser puts it, and a change that keeps the page's address, such as a
+filter, does not move it.
 
 ### Times
 

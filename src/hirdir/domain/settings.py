@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from hirdir import clock
 from hirdir.db.models import Setting
-from hirdir.domain import file_kinds, lifecycle, records
+from hirdir.domain import file_kinds, lifecycle, product, records
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Invalid, NotFound
 
@@ -327,6 +327,49 @@ SPECS: dict[str, Spec] = {
         "the side, a or z, whose site a new circuit's cost and support weight count at; "
         "a change of it changes no circuit that exists",
         _one_of("circuit_cost_side", _sides),
+    ),
+    # 0.9.2: the name a site gives the product, and whom to ask (P-168, P-169).
+    "product_name": Spec(
+        product.DEFAULT_NAME,
+        "the name the web page gives the product, and the first part of the name of a "
+        "downloaded file; the commands, the package and the API keep the name hirdir",
+        Check(
+            f"a name of 1 to {product.MOST_NAME} characters, with neither < nor >",
+            product.check_name,
+        ),
+    ),
+    "help_organization": Spec(
+        None,
+        "the group that runs this installation, named on About under Whom to ask",
+        Check(
+            f"a name of 1 to {product.MOST_ORGANIZATION} characters, with neither < nor >",
+            product.check_organization,
+        ),
+    ),
+    "help_email": Spec(
+        None,
+        "the email address to write to for help with this installation",
+        Check("an email address, such as tools@example.net", product.check_email),
+    ),
+    "help_phone": Spec(
+        None,
+        "the number to call for help with this installation, shown as it is typed",
+        Check(
+            f"a number of at most {product.MOST_PHONE} characters: digits, spaces, letters "
+            "and + - ( ) . , # *",
+            product.check_phone,
+        ),
+    ),
+    "help_url": Spec(
+        None,
+        "an address on the web for help with this installation, such as the team's page",
+        Check("an address that begins with https:// or http://", product.check_url),
+    ),
+    "help_on_sign_in": Spec(
+        False,
+        "whether the sign-in page lists whom to ask as well, where anyone who reaches the "
+        "site sees it",
+        Check("true or false", product.check_flag("help_on_sign_in")),
     ),
 }
 

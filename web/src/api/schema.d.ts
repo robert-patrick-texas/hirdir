@@ -4,7 +4,7 @@
 /** Every route: its parameters, its request body and its answers. */
 export interface paths {
   "/api/v1/about": {
-    /** Say what is running. */
+    /** Say what is running, by the name the site gives it, and whom to ask. */
     get: {
       parameters: {
         query?: never;
@@ -8127,13 +8127,24 @@ export interface paths {
 /** Every record the routes take and return. */
 export interface components {
   schemas: {
-    /** What is running. */
+    /** What is running, by the name the site gives it, and whom to ask. */
     About: {
+      help: components["schemas"]["AboutHelp"];
+      /** the software, which is hirdir whatever the site calls it */
       name: string;
+      /** the name the site gives the product (P-168) */
+      product_name: string;
       python: string;
       schema_revision: string | null;
       sqlite: string;
       version: string;
+    };
+    /** Whom to ask: the team that runs this installation, each blank one null (P-169). */
+    AboutHelp: {
+      email: string | null;
+      organization: string | null;
+      phone: string | null;
+      url: string | null;
     };
     /** The access code just set, shown this once. */
     AccessCodeOut: {

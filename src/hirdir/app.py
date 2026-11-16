@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +40,7 @@ from hirdir.auth import tokens
 from hirdir.auth.throttle import Throttle
 from hirdir.config import Config
 from hirdir.db.engine import make_engine, make_sessions
-from hirdir.domain import file_kinds
+from hirdir.domain import file_kinds, product
 from hirdir.ids import new_hid
 from hirdir.io import background, fields, tables
 from hirdir.io.store import Store
@@ -70,6 +71,9 @@ ROUTERS = (
 )
 STATIC = Path(__file__).parent / "static"
 BASE_TAG = '<base href="/" />'
+# What the built page says of the product, which the server names as the site calls it.
+TITLE_TAG = "<title>hirdir</title>"
+NO_SCRIPT = "<noscript>hirdir needs JavaScript to run.</noscript>"
 PREFIX = re.compile(r"(/[A-Za-z0-9._~-]+)+")
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 log = logging.getLogger("hirdir")
@@ -232,7 +236,20 @@ def _install_web_ui(app: FastAPI) -> None:
             return FileResponse(candidate)
         root = request.scope.get("root_path", "")
         html = index.read_text(encoding="utf-8").replace(BASE_TAG, f'<base href="{root}/" />')
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+        with request.app.state.sessions() as db:
+            facts = product.page_facts(db)
+        return HTMLResponse(_named(html, facts), headers={"Cache-Control": "no-store"})
+
+
+def _named(html: str, facts: dict[str, Any]) -> str:
+    """Write the product name into the page, and what else it carries before signing in
+    (P-168, P-169): the tab's title, the note for a browser without scripts, and the
+    facts the web UI reads when it starts, as an attribute escaped as one is."""
+    name = escape(facts["product_name"], quote=True)
+    html = html.replace(TITLE_TAG, f"<title>{name}</title>")
+    html = html.replace(NO_SCRIPT, f"<noscript>{name} needs JavaScript to run.</noscript>")
+    meta = f'<meta name="hirdir-site" content="{product.page_attribute(facts)}" />'
+    return html.replace("</head>", f"    {meta}\n  </head>", 1)
 
 
 def bind(app: FastAPI, config: Config) -> None:

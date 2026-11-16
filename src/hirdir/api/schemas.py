@@ -212,14 +212,25 @@ class AuditEventOut(Model):
     changes: list[dict[str, Any]]
 
 
-class About(Model):
-    """What is running."""
+class AboutHelp(Model):
+    """Whom to ask: the team that runs this installation, each blank one null (P-169)."""
 
-    name: str
+    organization: str | None
+    email: str | None
+    phone: str | None
+    url: str | None
+
+
+class About(Model):
+    """What is running, by the name the site gives it, and whom to ask."""
+
+    name: str = Field(description="the software, which is hirdir whatever the site calls it")
     version: str
     python: str
     sqlite: str
     schema_revision: str | None
+    product_name: str = Field(description="the name the site gives the product (P-168)")
+    help: AboutHelp
 
 
 class Health(Model):

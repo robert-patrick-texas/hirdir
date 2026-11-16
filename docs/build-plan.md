@@ -61,7 +61,11 @@ application's time zone, where it is entered and where it is filtered by (D-109,
 D-110). 0.9.1 follows 0.9.0 with what the owner asked when it was published: what a
 restore keeps set aside is what undoing the last restore takes, and no more (P-165),
 and one command, `hirdir admin load-examples`, that loads the examples into an empty
-inventory for a reset to take again (P-166); S12 is worked by it too.
+inventory for a reset to take again (P-166); S12 is worked by it too. 0.9.2 follows
+0.9.1 with what the owner asked after it was published: a page opens with the menu bar
+in view (P-167), the product named as the site calls it, in the web page and in the
+names of downloaded files (P-168), and whom to ask, the team that runs the
+installation, on About and, where an Admin chooses, on the sign-in page (P-169).
 
 ## From 0.6.1 to 0.9.0
 

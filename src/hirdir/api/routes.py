@@ -2,6 +2,7 @@
 
 import platform
 import sqlite3
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -15,7 +16,7 @@ from hirdir.api.lists import DEFAULT_LIMIT, Limit, Offset
 from hirdir.api.problems import problem
 from hirdir.db import migrate
 from hirdir.db.models import AuditEvent, ServiceToken
-from hirdir.domain import accounts
+from hirdir.domain import accounts, product
 from hirdir.io import tables
 
 health = APIRouter(prefix="/health", tags=["Health"])
@@ -309,14 +310,16 @@ def list_audit_events(
 
 
 @meta.get("/about")
-def about(_: SignedIn, request: Request) -> schemas.About:
-    """Say what is running."""
+def about(_: SignedIn, request: Request, db: Db) -> schemas.About:
+    """Say what is running, by the name the site gives it, and whom to ask."""
     return schemas.About(
         name="hirdir",
         version=hirdir.__version__,
         python=platform.python_version(),
         sqlite=sqlite3.sqlite_version,
         schema_revision=migrate.current(request.app.state.engine),
+        product_name=product.name(db),
+        help=schemas.AboutHelp(**asdict(product.help_of(db))),
     )
 
 

@@ -89,6 +89,15 @@ from it, and writes `<base href="/hirdir/">` into the page it serves. The web UI
 its base from `document.baseURI` and uses relative URLs for everything, so deep links
 work and nothing is rebuilt to change the prefix.
 
+The page it serves carries the product name in the same way, so that the sign-in page
+shows it before anybody has signed in (P-168): the server writes `product_name` into
+the page's `<title>`, and into `<meta name="hirdir-site" content="...">`, a JSON object
+written as an attribute and escaped as one, which the web UI reads when it starts. The
+object holds `help` as well, whom to ask, but only where `help_on_sign_in` is true
+(P-169); otherwise the page that anyone may fetch holds nothing of it, and a person reads
+it from `GET /about` once signed in. No route is open without signing in beyond the
+health check and the page itself (D-08).
+
 This is the way `texas2step` does it. The alternative used by `sunstone` and `segl`,
 where the application never learns the prefix, is simpler but cannot produce correct
 absolute links in the API documentation, in exports that carry URLs, or in a routed
@@ -569,10 +578,15 @@ The browser scenarios of the weights, `weights.spec.ts`, run in a project of the
 "the weights alone", after the alert's and with one worker: they change the six weights
 of the settings and the staff lines that the capacity page of every other file reads,
 note each setting as they found it, put it back, and retire the lines and places they
-made.
+made. The browser scenarios of the product name and of whom to ask, `product.spec.ts`,
+run in a project of their own, "the name alone", after the weights' and with one
+worker: they change `product_name`, which the title of every page, the heading of the
+sign-in page and the name of every download of every other file read, and the five
+settings of whom to ask (P-168, P-169); they note each setting as they found it and put
+it back.
 
 No file changes what the others read, a setting, a list of choices or a lifecycle rule,
-but `weights.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
+but `weights.spec.ts` and `product.spec.ts`, above, and one more: `stale-term.spec.ts` changes `time_zone` so that a day comes, and so runs in a
 Playwright project of its own after all the others, puts the setting back, and is run
 by itself with `--no-deps`. Nor does any file hold the one writer for long beside the
 others but one: `cover-many.spec.ts` loads a thousand switches from a file and covers a

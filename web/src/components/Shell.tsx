@@ -1,5 +1,12 @@
 import { Suspense, useEffect, useRef } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import {
+  Link,
+  NavigationType,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigationType,
+} from "react-router";
 import { useAuth } from "../auth";
 import { allows, roleLabel } from "../lib/roles";
 import { RenewalAlert } from "./RenewalAlert";
@@ -8,15 +15,20 @@ import { RenewalAlert } from "./RenewalAlert";
 export function Shell() {
   const { user, signOut } = useAuth();
   const { pathname } = useLocation();
+  const how = useNavigationType();
   const main = useRef<HTMLElement>(null);
   const shown = useRef(pathname);
 
-  // After moving to another page, start reading at its content.
+  // After moving to another page, start reading at its content, with the page at its
+  // top and the menu bar in view (P-167). Focus alone would scroll the content to the
+  // top of the window, past the menu bar, on every page taller than the window. Back
+  // and Forward leave the window where the browser puts it.
   useEffect(() => {
     if (shown.current === pathname) return;
     shown.current = pathname;
-    main.current?.focus();
-  }, [pathname]);
+    if (how !== NavigationType.Pop) window.scrollTo(0, 0);
+    main.current?.focus({ preventScroll: true });
+  }, [pathname, how]);
 
   return (
     <>

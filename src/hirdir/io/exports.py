@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hirdir import clock
 from hirdir.db import dialect
-from hirdir.domain import settings
+from hirdir.domain import product, settings
 from hirdir.domain.errors import Invalid
 from hirdir.io import columns as cells
 from hirdir.io import files, filters
@@ -117,9 +117,11 @@ def plan(
 
 
 def file_name(db: Session, export: Export) -> str:
-    """Return a name for the file, with the application's time in it."""
+    """Return a name for the file, with the product's name and the application's time in
+    it (P-168)."""
     zone = str(settings.value(db, "time_zone"))
-    return f"hirdir-{export.entity.name}-{clock.stamp(clock.now(), zone)}.{export.format}"
+    stem = product.file_stem(product.name(db))
+    return f"{stem}-{export.entity.name}-{clock.stamp(clock.now(), zone)}.{export.format}"
 
 
 def chosen(db: Session, listing: Listing, where: Sequence[Any], order: Sequence[Any]) -> list[str]:

@@ -3,10 +3,19 @@
     "schemas": {
       "About": {
         "additionalProperties": false,
-        "description": "What is running.",
+        "description": "What is running, by the name the site gives it, and whom to ask.",
         "properties": {
+          "help": {
+            "$ref": "#/components/schemas/AboutHelp"
+          },
           "name": {
+            "description": "the software, which is hirdir whatever the site calls it",
             "title": "Name",
+            "type": "string"
+          },
+          "product_name": {
+            "description": "the name the site gives the product (P-168)",
+            "title": "Product Name",
             "type": "string"
           },
           "python": {
@@ -38,9 +47,69 @@
           "version",
           "python",
           "sqlite",
-          "schema_revision"
+          "schema_revision",
+          "product_name",
+          "help"
         ],
         "title": "About",
+        "type": "object"
+      },
+      "AboutHelp": {
+        "additionalProperties": false,
+        "description": "Whom to ask: the team that runs this installation, each blank one null (P-169).",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "organization",
+          "email",
+          "phone",
+          "url"
+        ],
+        "title": "AboutHelp",
         "type": "object"
       },
       "AccessCodeOut": {
@@ -27977,13 +28046,13 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.9.1"
+    "version": "0.9.2"
   },
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/about": {
       "get": {
-        "description": "Say what is running.",
+        "description": "Say what is running, by the name the site gives it, and whom to ask.",
         "operationId": "about_api_v1_about_get",
         "responses": {
           "200": {

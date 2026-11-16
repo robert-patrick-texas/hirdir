@@ -1344,7 +1344,8 @@ is what people read. A value in use cannot be removed, only made inactive, and a
 inactive value is no longer offered while the records that hold it keep it.
 
 A setting has a default, written in the code, which for the six weights of P-155 is
-blank: nothing is counted until an Admin sets one. The database has no row for a setting
+blank: nothing is counted until an Admin sets one; the four of whom to ask (P-169) are
+blank too. The database has no row for a setting
 that has never been changed. Setting it to nothing returns it to the default; the row
 then stays, empty, and keeps its `row_version`. A number has at most two decimal places
 and is refused, not rounded, when it has more.
@@ -1373,6 +1374,12 @@ and is refused, not rounded, when it has more.
 | `minimum_circuit_weight` | blank | a circuit's weight in force below it is raised to it. From 0 to 1,000,000 |
 | `circuit_cost_side` | `a` | the side, `a` or `z`, whose site a new circuit's cost and support weight count at. A change of it changes no circuit that exists |
 | `reference_file_types` | jpg, jpeg, png, gif, webp, heic, heif, tif, tiff, pdf, doc, docx, xls, xlsx, ppt, pptx, vsd, vsdx, dwg, dxf, txt, csv, log, zip | the extensions of the files a reference may be. An Admin may add another of letters and digits, up to ten, kept as `application/octet-stream`, and never one of `refused_file_types`. A change of it changes no file that is kept |
+| `product_name` | hirdir | the name the web page gives the product, at the upper left of the menu bar, in the tab's title, on the sign-in page and in what the pages say, and the first part of the name of a downloaded file. 1 to 40 characters, with neither `<`, `>` nor a control character. The commands, the package, the API and the documentation keep the name hirdir (P-168) |
+| `help_organization` | blank | the group that runs this installation, as About names it under Whom to ask. At most 200 characters (P-169) |
+| `help_email` | blank | the email address to write to, for help with this installation. At most 254 characters, one `@` and a domain with a dot |
+| `help_phone` | blank | the number to call, shown as it is typed. At most 40 characters of digits, spaces, letters and `+ - ( ) . , # *`, a digit among them |
+| `help_url` | blank | an address on the web for help, such as the team's page, opened in a new tab. `https://` or `http://`, as a link is |
+| `help_on_sign_in` | false | true lists whom to ask on the sign-in page too, which anyone who reaches the site sees; false keeps it to About |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
 its value, what it limits and why it is fixed: what was decided, such as the states
