@@ -72,6 +72,7 @@ from hirdir.domain import (
     settings,
     systems,
     tags,
+    weights,
 )
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import DomainError, Invalid
@@ -111,6 +112,16 @@ PATH = Column("path", limit=LONG, settable=False)
 OPERATOR = Column("operator", limit=40)
 # Each link `text <url>`, joined with `;`; the rules hold what each may be.
 LINKS = Column(records.LINKS, "links", limit=LONG)
+
+
+# --- the support weight of a place (P-139, P-155) ---
+
+# A region and a location count their own alone; a site has the default of the setting
+# where it gives none, and an export writes the weight in force with its source.
+PLACE_WEIGHT = Column("support_weight", "number")
+SITE_WEIGHT = Column("support_weight", "number", inherits=True)
+
+# --- end of the support weight of a place ---
 
 
 def _sources(columns: tuple[Column, ...]) -> tuple[Column, ...]:
@@ -847,6 +858,7 @@ class Regions(_Places):
         CODE,
         *SHIPPING,
         OPERATOR,
+        PLACE_WEIGHT,
         LINKS,
         NOTES,
         STATUS,
@@ -859,7 +871,7 @@ class Regions(_Places):
         "parent_region_hid": "parent",
     }
     renamed: ClassVar[Mapping[str, str]] = {"parent_region_hid": "parent"}
-    _fields = ("name", "code", *geography.SHIPPING, records.LINKS, "notes")
+    _fields = ("name", "code", *geography.SHIPPING, "support_weight", records.LINKS, "notes")
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         name, parent = values.get("name"), values.get("parent")
@@ -920,14 +932,20 @@ class Sites(_Places):
         SAME_AS_ADDRESS,
         OPERATOR,
         *COORDINATES,
+        SITE_WEIGHT,
         LINKS,
         NOTES,
         STATUS,
         TAGS,
         PATH,
+        *_sources((SITE_WEIGHT,)),
         *BOOKKEEPING,
     )
-    aliases: ClassVar[Mapping[str, str]] = {"region.name": "region", "region_hid": "region"}
+    aliases: ClassVar[Mapping[str, str]] = {
+        "region.name": "region",
+        "region_hid": "region",
+        "effective.support_weight": "support_weight",
+    }
     renamed: ClassVar[Mapping[str, str]] = {"region_hid": "region"}
     _fields = (
         "name",
@@ -957,21 +975,46 @@ class Sites(_Places):
         elif "region" in values:
             raise Invalid("a site is in a region", {"region": "is not cleared"})
         self._operator(run, values, given)
+        if "support_weight" in values and not self._in_force(run, record, values):
+            given["support_weight"] = values["support_weight"]
         return self._store(run, record, given)
+
+    @staticmethod
+    def _in_force(run: Run, record: Any | None, values: Mapping[str, Any]) -> bool:
+        """Say whether a row holds the very support weight the site has in force, and so
+        says nothing new of it (D-65): the default, where it gives none of its own, or
+        the minimum its weight is raised to."""
+        weight = values["support_weight"]
+        if weight is None:
+            return False
+        figures = weights.in_force(run.db)
+        if record is None:
+            in_force = weights.resolved(inheritance.NOTHING, "site", figures)
+        else:
+            in_force = weights.of_site(record, figures)
+        own = record.support_weight if record is not None else None
+        return weight == in_force.value and (own is None or in_force.raised)
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         atlas = geography.Atlas(db)
         atlas.take(found)
         labels = tags.labels_of(db, self.record_type, [site.hid for site in found])
         marks = self._labels(db, found)
-        return [
-            {
-                **self._row(site, labels, atlas.site_path(site.hid)),
-                "operator": marks.get(site.operator_hid or ""),
-                "region": _region_named(atlas, site.region_hid),
-            }
-            for site in found
-        ]
+        figures = weights.in_force(db)
+        rows = []
+        for site in found:
+            weight = weights.of_site(site, figures)
+            rows.append(
+                {
+                    **self._row(site, labels, atlas.site_path(site.hid)),
+                    "operator": marks.get(site.operator_hid or ""),
+                    "region": _region_named(atlas, site.region_hid),
+                    # Its own, or with values in force the one it counts at (P-155).
+                    "support_weight": site.support_weight if own else weight.value,
+                    "support_weight_source": weight.source,
+                }
+            )
+        return rows
 
 
 class Locations(_Places):
@@ -994,6 +1037,7 @@ class Locations(_Places):
         SAME_AS_ADDRESS,
         OPERATOR,
         *COORDINATES,
+        PLACE_WEIGHT,
         LINKS,
         NOTES,
         STATUS,
@@ -1020,6 +1064,7 @@ class Locations(_Places):
         geography.SAME,
         "latitude",
         "longitude",
+        "support_weight",
         records.LINKS,
         "notes",
     )
@@ -1588,6 +1633,28 @@ class CatalogEntries(Entity):
         return rows
 
 
+def _weight_in_force(
+    db: Session, record: Any | None, entry: CatalogEntry | None, major: bool, value: Any
+) -> bool:
+    """Say whether a row holds the very support weight a major item has in force, and
+    so says nothing new of it (D-65, P-155): the default, where neither it nor its model
+    gives one, or the minimum its weight is raised to."""
+    if value is None or not major:
+        return False
+    figures = weights.in_force(db)
+    own = record.support_weight if record is not None else None
+    model = entry.support_weight if entry is not None else None
+    found = (
+        inheritance.Effective(own, "own", None)
+        if own is not None
+        else inheritance.Effective(model, "catalog", None)
+        if model is not None
+        else inheritance.NOTHING
+    )
+    in_force = weights.resolved(found, "item", figures)
+    return value == in_force.value and (in_force.defaulted or in_force.raised)
+
+
 class Items(Entity):
     """Items."""
 
@@ -1895,10 +1962,12 @@ class Items(Entity):
 
     @staticmethod
     def _overrides(
+        db: Session,
         record: Any | None,
         before: CatalogEntry | None,
         entry: CatalogEntry | None,
         values: Mapping[str, Any],
+        major: bool,
     ) -> dict[str, Any]:
         """Return the values of the fields that inherit, as the row sets them.
 
@@ -1917,6 +1986,8 @@ class Items(Entity):
             own = getattr(record, name) if record is not None else None
             inherited = {getattr(model, name) for model in (before, entry) if model is not None}
             if value is not None and own is None and value in inherited:
+                continue
+            if name == "support_weight" and _weight_in_force(db, record, entry, major, value):
                 continue
             given[name] = value
         return given
@@ -2104,7 +2175,8 @@ class Items(Entity):
             own = record.planned_location_hid if record is not None else None
             if planned_hid is None or own is not None or planned_hid != inherited:
                 given["planned_location_hid"] = planned_hid
-        given.update(self._overrides(record, before, entry, values))
+        major = given.get("parent_item_hid", record.parent_item_hid if record else None) is None
+        given.update(self._overrides(db, record, before, entry, values, major))
         if given.get("tags", _MISSING) is None:
             given["tags"] = []
         standing = self._standing(record, above, _plain_fields(values, items.STANDING))
@@ -2194,6 +2266,7 @@ class Items(Entity):
                 db, PurchaseLine, {item.purchase_line_hid for item in found}
             ).values()
         }
+        figures = weights.in_force(db)
         rows = []
         for item in found:
             entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
@@ -2210,6 +2283,10 @@ class Items(Entity):
             }
             covering = list(covering_.values())
             in_force = inheritance.of_item(item, entry, line)
+            # For a major item, the default weight and the minimum (P-155).
+            in_force["support_weight"] = weights.of_item(
+                item, entry, figures, in_force["support_weight"]
+            )
             in_force["location_hid"] = placed[item.hid]
             in_force["owner_hid"] = owned[item.hid]
             where = atlas.location(in_force["location_hid"].value or "")

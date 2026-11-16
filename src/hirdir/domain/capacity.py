@@ -390,6 +390,12 @@ KEPT = (
     "outside_units",
 )
 CORRECTED = ("demand", "supply")
+# The parts of the support weight, and how many items, sites and circuits counted at a
+# default and were raised to a minimum: kept since 0.8.0 (P-155), and blank in a record
+# of a week before it, which is read as it was kept.
+WEIGHT_PARTS = ("items_weight", "places_weight", "circuits_weight")
+WEIGHT_COUNTS = ("defaulted", "raised")
+COUNTED_KINDS = ("items", "sites", "circuits")
 RECORD_FIELDS = (
     "week_of",
     "recorded_at",
@@ -434,6 +440,15 @@ def figures(kept: Mapping[str, Any]) -> dict[str, Any]:
     """Return the figures of one view of a record, with the balance and the coverage
     worked out from its demand and its supply, as they are when it is read."""
     found: dict[str, Any] = {name: Decimal(str(kept.get(name) or 0)) for name in KEPT}
+    for name in WEIGHT_PARTS:
+        found[name] = None if kept.get(name) is None else Decimal(str(kept[name]))
+    for name in WEIGHT_COUNTS:
+        counted = kept.get(name)
+        found[name] = (
+            {kind: int(counted.get(kind) or 0) for kind in COUNTED_KINDS}
+            if isinstance(counted, Mapping)
+            else None
+        )
     demand, supply = found["demand"], found["supply"]
     found["balance"] = _rounded(supply - demand)
     found["coverage_pct"] = _rounded(supply / demand * 100) if demand else None

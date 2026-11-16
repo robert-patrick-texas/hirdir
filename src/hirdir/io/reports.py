@@ -40,7 +40,16 @@ from hirdir.db.models import (
     TagLink,
     Vendor,
 )
-from hirdir.domain import choices, contracts, geography, groups, health, records, settings
+from hirdir.domain import (
+    choices,
+    contracts,
+    geography,
+    groups,
+    health,
+    records,
+    settings,
+    weights,
+)
 from hirdir.domain.errors import Invalid
 from hirdir.io import fields, filters
 from hirdir.io.fields import ITEMS, default_view
@@ -214,6 +223,10 @@ class _Terms:
     health: tuple[ColumnElement[Any], ...]
     weight: tuple[ColumnElement[Any], ...]
     money: tuple[ColumnElement[Any], ...]
+    # How many items that carry weight count at the default, and how many were raised
+    # to the minimum (P-155).
+    defaulted: ColumnElement[Any]
+    raised: ColumnElement[Any]
 
     def source(self, query: Any) -> Any:
         """Return a statement over the view, with what the measures read joined in."""
@@ -225,7 +238,17 @@ class _Terms:
         )
 
 
-def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bool) -> _Terms:
+def _terms(
+    db: Session,
+    filter_: Any,
+    include_archived: bool,
+    include_drafts: bool,
+    figures: weights.Figures | None = None,
+) -> _Terms:
+    """Return the pieces of the statements of a report over one view. `figures` are the
+    defaults and minimums of support weight and the global stack discount, the settings
+    in force unless a Try gives others."""
+    figures = figures or weights.in_force(db)
     where = (
         filters.to_sql(filters.parse(filter_), ITEMS.fields, settings.time_zone(db), db),
         *default_view(ITEMS, include_archived, include_drafts),
@@ -233,7 +256,7 @@ def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bo
     count_states = list(settings.value(db, "count_states"))
     weight_states = list(settings.value(db, "weight_states"))
     count_kinds = list(settings.value(db, "count_kinds"))
-    discount = int(Decimal(str(settings.value(db, "stack_discount_pct"))) * 100)
+    discount = int(figures.stack_discount_pct * 100)
     # A draft stack is not yet one device on the network. In a view that holds the
     # drafts it is, as a draft item is counted there.
     statuses = ("active", "draft") if include_drafts else ("active",)
@@ -252,6 +275,9 @@ def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bo
     # A cluster that answers as a node of its own, beside its members, is one more.
     its_own = case((and_(component, cluster.c.managed_as == AND_ITS_OWN), cluster.c.group_hid))
     weighed = and_(major, Item.lifecycle_state.in_(weight_states))
+    # The weight of one unit in force: its own, its model's, the default, raised to the
+    # minimum. It is then multiplied by the quantity, and the stack discount applied.
+    unit = weights.item_in_force(figures)
     its_health = fields.HEALTH
     return _Terms(
         where=where,
@@ -271,12 +297,7 @@ def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bo
         # large: here the items that share them are only gathered, and their
         # quantities added.
         weight=(
-            case(
-                (
-                    weighed,
-                    func.coalesce(_whole(Item.support_weight), _whole(CatalogEntry.support_weight)),
-                )
-            ),
+            case((weighed, unit.value)),
             # One switch alone takes the full effort: the discount is for a stack of
             # two or more.
             case(
@@ -293,6 +314,8 @@ def _terms(db: Session, filter_: Any, include_archived: bool, include_drafts: bo
                 _whole(Item.annual_support_cost), _whole(CatalogEntry.annual_support_cost)
             ),
         ),
+        defaulted=func.count(distinct(case((and_(weighed, unit.defaulted), Item.hid)))),
+        raised=func.count(distinct(case((and_(weighed, unit.raised), Item.hid)))),
     )
 
 
@@ -403,21 +426,35 @@ def _checked_by(by: str | None, allowed: tuple[str, ...]) -> None:
         raise Invalid("the grouping is not acceptable", {"by": f"one of {', '.join(allowed)}"})
 
 
-def weight_steps(db: Session, include_drafts: bool = False) -> int:
+def weight_steps(
+    db: Session, include_drafts: bool = False, figures: weights.Figures | None = None
+) -> int:
     """Return the support weight of the whole inventory, exactly, in the steps it is
     summed in: `WEIGHT_STEPS` of them to one."""
-    terms = _terms(db, None, False, include_drafts)
+    terms = _terms(db, None, False, include_drafts, figures)
     return _sums(db, terms, terms.weight).get(None, [0, 0])[0]
 
 
-def weight_steps_by_region(db: Session, include_drafts: bool = False) -> dict[str | None, int]:
+def weight_steps_by_region(
+    db: Session, include_drafts: bool = False, figures: weights.Figures | None = None
+) -> dict[str | None, int]:
     """Return the support weight of the items at or beneath each region, by the
     location in force, in the steps `weight_steps` sums in, as the summary by `region`
     counts it: an item is in the row of each region above it. The items that are
     nowhere are under None. Only a region that holds an item of the view is named."""
-    terms = _terms(db, None, False, include_drafts)
+    terms = _terms(db, None, False, include_drafts, figures)
     key, _, join = _grouping("region")
     return {region: sums[0] for region, sums in _sums(db, terms, terms.weight, key, join).items()}
+
+
+def weight_counts(
+    db: Session, include_drafts: bool = False, figures: weights.Figures | None = None
+) -> tuple[int, int]:
+    """Return how many items of the whole inventory that carry support weight count at
+    the default of `default_item_weight`, and how many were raised to the minimum."""
+    terms = _terms(db, None, False, include_drafts, figures)
+    defaulted, raised = _run(db, terms.source(select(terms.defaulted, terms.raised)))[0]
+    return int(defaulted or 0), int(raised or 0)
 
 
 def _sums(

@@ -3473,6 +3473,21 @@
             "title": "By Category",
             "type": "array"
           },
+          "circuits_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "2.8"
+                ],
+                "pattern": "^\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuits Weight"
+          },
           "coverage_pct": {
             "anyOf": [
               {
@@ -3489,6 +3504,17 @@
             "description": "Supply over demand, worked out when it is read. Blank with no demand.",
             "title": "Coverage Pct"
           },
+          "defaulted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightCounts"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As the report answered them: blank in a week recorded before 0.8.0."
+          },
           "demand": {
             "examples": [
               "1.5"
@@ -3504,6 +3530,22 @@
             "pattern": "^-?\\d+(\\.\\d{1,4})?$",
             "title": "Infrastructure Demand",
             "type": "string"
+          },
+          "items_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "2.8"
+                ],
+                "pattern": "^\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The parts of the support weight: blank in a week recorded before 0.8.0.",
+            "title": "Items Weight"
           },
           "other_demand": {
             "examples": [
@@ -3529,6 +3571,31 @@
             "title": "Own Units",
             "type": "string"
           },
+          "places_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "2.8"
+                ],
+                "pattern": "^\\d+(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Places Weight"
+          },
+          "raised": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "supply": {
             "examples": [
               "1.5"
@@ -3548,6 +3615,11 @@
         },
         "required": [
           "support_weight",
+          "items_weight",
+          "places_weight",
+          "circuits_weight",
+          "defaulted",
+          "raised",
           "infrastructure_demand",
           "other_demand",
           "demand",
@@ -3597,6 +3669,299 @@
         "title": "CapacityTarget",
         "type": "object"
       },
+      "CapacityTried": {
+        "additionalProperties": false,
+        "description": "What was tried: each figure as the balance tried was worked out with it, and the\nstaff lines.",
+        "properties": {
+          "changed": {
+            "description": "The settings whose value tried is not the one in force: those an Admin who agrees the estimate saves, each by `PUT /settings/{key}`.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "default_circuit_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Circuit Weight"
+          },
+          "default_item_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Item Weight"
+          },
+          "default_site_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Site Weight"
+          },
+          "minimum_circuit_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Circuit Weight"
+          },
+          "minimum_item_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Item Weight"
+          },
+          "minimum_site_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Site Weight"
+          },
+          "stack_discount_pct": {
+            "examples": [
+              "30"
+            ],
+            "pattern": "^\\d{1,3}(\\.\\d{1,2})?$",
+            "title": "Stack Discount Pct",
+            "type": "string"
+          },
+          "staff": {
+            "$ref": "#/components/schemas/StaffTried"
+          },
+          "weight_per_resource_unit": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Weight Per Resource Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "default_item_weight",
+          "minimum_item_weight",
+          "default_site_weight",
+          "minimum_site_weight",
+          "default_circuit_weight",
+          "minimum_circuit_weight",
+          "weight_per_resource_unit",
+          "stack_discount_pct",
+          "staff",
+          "changed"
+        ],
+        "title": "CapacityTried",
+        "type": "object"
+      },
+      "CapacityTry": {
+        "additionalProperties": false,
+        "description": "What a Try of the capacity report tries. A key left out is as it is in force, and\nnull tries a setting at its default, which for a weight is blank.",
+        "properties": {
+          "default_circuit_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Circuit Weight"
+          },
+          "default_item_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Item Weight"
+          },
+          "default_site_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Site Weight"
+          },
+          "minimum_circuit_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Circuit Weight"
+          },
+          "minimum_item_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Item Weight"
+          },
+          "minimum_site_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Site Weight"
+          },
+          "stack_discount_pct": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The global discount: a model that sets its own keeps it.",
+            "title": "Stack Discount Pct"
+          },
+          "staff": {
+            "$ref": "#/components/schemas/StaffTry"
+          },
+          "weight_per_resource_unit": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Per Resource Unit"
+          }
+        },
+        "title": "CapacityTry",
+        "type": "object"
+      },
+      "CapacityTryOut": {
+        "additionalProperties": false,
+        "description": "The capacity balance in force beside the balance tried. Nothing was saved.",
+        "properties": {
+          "in_force": {
+            "$ref": "#/components/schemas/CapacityOut",
+            "description": "As `GET /reports/capacity` answers it."
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/CapacityTried"
+          },
+          "tried": {
+            "$ref": "#/components/schemas/CapacityOut",
+            "description": "As the figures and the staff lines tried give it."
+          }
+        },
+        "required": [
+          "in_force",
+          "tried",
+          "parameters"
+        ],
+        "title": "CapacityTryOut",
+        "type": "object"
+      },
       "CapacityView": {
         "additionalProperties": false,
         "description": "The balance of one view.",
@@ -3626,6 +3991,15 @@
             "title": "By Category",
             "type": "array"
           },
+          "circuits_weight": {
+            "description": "The weights in force of the circuits that carry their weight.",
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Circuits Weight",
+            "type": "string"
+          },
           "coverage_pct": {
             "anyOf": [
               {
@@ -3642,6 +4016,10 @@
             "description": "Supply over demand. Blank with no demand.",
             "title": "Coverage Pct"
           },
+          "defaulted": {
+            "$ref": "#/components/schemas/WeightCounts",
+            "description": "How many items, sites and circuits counted at the default of their kind."
+          },
           "demand": {
             "examples": [
               "1.5"
@@ -3651,7 +4029,7 @@
             "type": "string"
           },
           "demand_by_region": {
-            "description": "Each region that holds an item of the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions.",
+            "description": "Each region that holds an item, a place or a circuit that weighs in the view, by path, with what is beneath it, and last the items that are nowhere. No supply is divided among regions.",
             "items": {
               "$ref": "#/components/schemas/RegionDemand"
             },
@@ -3664,6 +4042,15 @@
             ],
             "pattern": "^-?\\d+(\\.\\d{1,4})?$",
             "title": "Infrastructure Demand",
+            "type": "string"
+          },
+          "items_weight": {
+            "description": "The support weight of the major items.",
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Items Weight",
             "type": "string"
           },
           "multiplying_lines": {
@@ -3714,6 +4101,19 @@
             "title": "Own Units",
             "type": "string"
           },
+          "places_weight": {
+            "description": "The weights in force of the regions, sites and locations that count.",
+            "examples": [
+              "2.8"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Places Weight",
+            "type": "string"
+          },
+          "raised": {
+            "$ref": "#/components/schemas/WeightCounts",
+            "description": "How many items, sites and circuits were raised to the minimum of their kind."
+          },
           "supply": {
             "examples": [
               "1.5"
@@ -3723,6 +4123,7 @@
             "type": "string"
           },
           "support_weight": {
+            "description": "That of the items, the places and the circuits together.",
             "examples": [
               "2.8"
             ],
@@ -3733,6 +4134,11 @@
         },
         "required": [
           "support_weight",
+          "items_weight",
+          "places_weight",
+          "circuits_weight",
+          "defaulted",
+          "raised",
           "infrastructure_demand",
           "other_demand",
           "demand",
@@ -9410,6 +9816,72 @@
         "title": "EffectiveValue",
         "type": "object"
       },
+      "EffectiveWeight": {
+        "additionalProperties": false,
+        "description": "A support weight in force, where it came from, and what it was before it was\nraised to the minimum of its kind (P-155).",
+        "properties": {
+          "raised_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The weight before it was raised to the minimum of its kind. Blank where it was not raised.",
+            "title": "Raised From"
+          },
+          "source": {
+            "description": "`setting` where it is the default of its kind.",
+            "enum": [
+              "own",
+              "catalog",
+              "parent_item",
+              "device_group",
+              "location",
+              "site",
+              "region",
+              "agreement",
+              "setting",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The weight in force, as text. Blank: none.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "source_hid",
+          "raised_from"
+        ],
+        "title": "EffectiveWeight",
+        "type": "object"
+      },
       "EndOfLifeReport": {
         "additionalProperties": false,
         "description": "The items of a view that are past, or near, an end-of-life date.",
@@ -11487,7 +11959,8 @@
             "description": "Where it is going, by its own plan or by that of what it is in."
           },
           "support_weight": {
-            "$ref": "#/components/schemas/EffectiveValue"
+            "$ref": "#/components/schemas/EffectiveWeight",
+            "description": "Its own, or its model's; for a major item then the setting `default_item_weight`, raised to `minimum_item_weight` where it is below it."
           }
         },
         "required": [
@@ -13537,6 +14010,22 @@
             ],
             "title": "State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "default": [],
             "items": {
@@ -13882,6 +14371,22 @@
             ],
             "title": "State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -13924,6 +14429,7 @@
           "operator",
           "latitude",
           "longitude",
+          "support_weight",
           "links",
           "notes",
           "record_status",
@@ -14247,6 +14753,22 @@
               }
             ],
             "title": "State"
+          },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
           },
           "tags": {
             "anyOf": [
@@ -18758,6 +19280,22 @@
             ],
             "title": "Ship State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "default": [],
             "items": {
@@ -19052,6 +19590,22 @@
             "title": "Sites",
             "type": "integer"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -19081,6 +19635,7 @@
           "ship_instructions",
           "operator_hid",
           "operator",
+          "support_weight",
           "links",
           "notes",
           "record_status",
@@ -19277,6 +19832,22 @@
               }
             ],
             "title": "Ship State"
+          },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
           },
           "tags": {
             "anyOf": [
@@ -21167,6 +21738,22 @@
             ],
             "title": "State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "default": [],
             "items": {
@@ -21183,6 +21770,21 @@
           "region_hid"
         ],
         "title": "SiteCreate",
+        "type": "object"
+      },
+      "SiteEffective": {
+        "additionalProperties": false,
+        "description": "What a site has in force of what it takes from the settings.",
+        "properties": {
+          "support_weight": {
+            "$ref": "#/components/schemas/EffectiveWeight",
+            "description": "Its own, or else the setting `default_site_weight`, raised to `minimum_site_weight` where it is below it."
+          }
+        },
+        "required": [
+          "support_weight"
+        ],
+        "title": "SiteEffective",
         "type": "object"
       },
       "SiteOut": {
@@ -21248,6 +21850,9 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/SiteEffective"
           },
           "hid": {
             "title": "Hid",
@@ -21461,6 +22066,22 @@
             ],
             "title": "State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -21499,6 +22120,8 @@
           "operator",
           "latitude",
           "longitude",
+          "support_weight",
+          "effective",
           "links",
           "notes",
           "record_status",
@@ -21808,6 +22431,22 @@
             ],
             "title": "State"
           },
+          "support_weight": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The work that supporting the network there adds by itself, beside what its devices weigh: its own, blank unless given. It is not passed down to the places beneath.",
+            "title": "Support Weight"
+          },
           "tags": {
             "anyOf": [
               {
@@ -21829,6 +22468,236 @@
           "row_version"
         ],
         "title": "SitePatch",
+        "type": "object"
+      },
+      "StaffAdd": {
+        "additionalProperties": false,
+        "description": "A staff line to try that is not there: it adds, and is active and in date.",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "default": "1",
+            "description": "Left out, 1.",
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Quantity",
+            "type": "string"
+          },
+          "units_each": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Units Each",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "units_each"
+        ],
+        "title": "StaffAdd",
+        "type": "object"
+      },
+      "StaffChange": {
+        "additionalProperties": false,
+        "description": "A staff line that adds and is there, tried with another quantity or units of one,\nand active and in date.",
+        "properties": {
+          "hid": {
+            "maxLength": 36,
+            "title": "Hid",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, as it is.",
+            "title": "Quantity"
+          },
+          "units_each": {
+            "anyOf": [
+              {
+                "examples": [
+                  "1.5"
+                ],
+                "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out, as it is.",
+            "title": "Units Each"
+          }
+        },
+        "required": [
+          "hid"
+        ],
+        "title": "StaffChange",
+        "type": "object"
+      },
+      "StaffLineLeftOut": {
+        "additionalProperties": false,
+        "description": "A staff line that was left out.",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name"
+        ],
+        "title": "StaffLineLeftOut",
+        "type": "object"
+      },
+      "StaffLineTried": {
+        "additionalProperties": false,
+        "description": "A staff line as it was tried: added, with no HID, or changed.",
+        "properties": {
+          "hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Blank for a line that is added.",
+            "title": "Hid"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Quantity",
+            "type": "string"
+          },
+          "units": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^-?\\d+(\\.\\d{1,4})?$",
+            "title": "Units",
+            "type": "string"
+          },
+          "units_each": {
+            "examples": [
+              "1.5"
+            ],
+            "pattern": "^\\d{1,13}(\\.\\d{1,2})?$",
+            "title": "Units Each",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "quantity",
+          "units_each",
+          "units"
+        ],
+        "title": "StaffLineTried",
+        "type": "object"
+      },
+      "StaffTried": {
+        "additionalProperties": false,
+        "description": "The staff lines as they were tried.",
+        "properties": {
+          "add": {
+            "items": {
+              "$ref": "#/components/schemas/StaffLineTried"
+            },
+            "title": "Add",
+            "type": "array"
+          },
+          "change": {
+            "items": {
+              "$ref": "#/components/schemas/StaffLineTried"
+            },
+            "title": "Change",
+            "type": "array"
+          },
+          "leave_out": {
+            "items": {
+              "$ref": "#/components/schemas/StaffLineLeftOut"
+            },
+            "title": "Leave Out",
+            "type": "array"
+          }
+        },
+        "required": [
+          "add",
+          "change",
+          "leave_out"
+        ],
+        "title": "StaffTried",
+        "type": "object"
+      },
+      "StaffTry": {
+        "additionalProperties": false,
+        "description": "The staff lines to try: added, changed, and left out.",
+        "properties": {
+          "add": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StaffAdd"
+            },
+            "maxItems": 1000,
+            "title": "Add",
+            "type": "array"
+          },
+          "change": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StaffChange"
+            },
+            "maxItems": 1000,
+            "title": "Change",
+            "type": "array"
+          },
+          "leave_out": {
+            "default": [],
+            "description": "Staff lines that are there, by HID.",
+            "items": {
+              "maxLength": 36,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Leave Out",
+            "type": "array"
+          }
+        },
+        "title": "StaffTry",
         "type": "object"
       },
       "SummaryOut": {
@@ -22732,6 +23601,31 @@
           "name"
         ],
         "title": "VendorRef",
+        "type": "object"
+      },
+      "WeightCounts": {
+        "additionalProperties": false,
+        "description": "How many items, sites and circuits of a view (P-155).",
+        "properties": {
+          "circuits": {
+            "title": "Circuits",
+            "type": "integer"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "sites": {
+            "title": "Sites",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "sites",
+          "circuits"
+        ],
+        "title": "WeightCounts",
         "type": "object"
       }
     }
@@ -33385,6 +34279,48 @@
           }
         },
         "summary": "Capacity",
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/capacity/try": {
+      "post": {
+        "description": "Return the capacity balance in force beside the balance that other figures and\nstaff lines would give: any of the six weights of the settings,\n`weight_per_resource_unit` and `stack_discount_pct`, a key left out being as it is\nand null trying the setting at its default, and staff lines added, changed and\nleft out. Nothing is saved, nothing is audited, and the answer is never kept. Any\nrole may Try; an Admin saves the settings tried by `PUT /settings/{key}`.",
+        "operationId": "capacity_try_api_v1_reports_capacity_try_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityTry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapacityTryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capacity Try",
         "tags": [
           "Reports"
         ]

@@ -64,12 +64,13 @@ from hirdir.domain import (
     settings,
     systems,
     tags,
+    weights,
 )
 from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-from hirdir.io import alerts, balance, fields, imports, planning
+from hirdir.io import alerts, balance, fields, imports, planning, tried
 
 FIRST_ROWS = 100
 
@@ -104,6 +105,11 @@ def _effective(name: str, effective: Effective) -> shapes.EffectiveValue:
         source=effective.source,
         source_hid=effective.source_hid,
     )
+
+
+def weight_out(found: weights.Weighed) -> shapes.EffectiveWeight:
+    """Return a support weight in force, with what it was raised from (P-155)."""
+    return shapes.EffectiveWeight.model_validate(weights.effective_entry(found))
 
 
 def _health(found: health.Health) -> shapes.HealthOut:
@@ -452,9 +458,17 @@ def sites_out(db: Session, found: list[Site]) -> list[shapes.SiteOut]:
     labels = tags.labels_of(db, geography.SITE, hids)
     locations = _live_counts(db, Location, Location.site_hid, hids)
     marks = _Labels(db, {site.operator_hid for site in found})
+    figures = weights.in_force(db)
     return [
         shapes.SiteOut(
-            **_own(site, shapes.SiteOut, ("region", "path", "tags", "locations", "operator")),
+            **_own(
+                site,
+                shapes.SiteOut,
+                ("region", "path", "tags", "locations", "operator", "effective"),
+            ),
+            effective=shapes.SiteEffective(
+                support_weight=weight_out(weights.of_site(site, figures))
+            ),
             operator=marks.ref(site.operator_hid),
             region=shapes.PlaceRef(
                 hid=site.region_hid,
@@ -866,12 +880,15 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     registered = _registration_refs(db, "item_hid", hids)
     through_groups = _group_registration_refs(db, hids)
     arrived_on = _line_refs(db, {item.purchase_line_hid for item in items})
+    figures = weights.in_force(db)
     out = []
     for item in items:
         entry = entries.get(item.catalog_entry_hid) if item.catalog_entry_hid else None
         owner = owners.get(item.owner_hid) if item.owner_hid else None
         line = lines[item.hid]
         effective = inheritance.of_item(item, entry, line)
+        # The weight of one unit in force: for a major item, the default and the minimum.
+        weight = weights.of_item(item, entry, figures, effective.pop("support_weight"))
         # Where it is, and where it is going: its own, or from the item or group above.
         effective["location_hid"] = where[item.hid]
         effective["owner_hid"] = owned[item.hid]
@@ -962,6 +979,7 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
                     ),
                     location_hid=_place_in_force(where[item.hid], places, holders),
                     planned_location_hid=_place_in_force(going[item.hid], places, holders),
+                    support_weight=weight_out(weight),
                     **{
                         name: _effective(name, value)
                         for name, value in effective.items()
@@ -1772,6 +1790,11 @@ def capacity_lines_out(db: Session, found: list[CapacityLine]) -> list[shapes.Ca
 def capacity_out(found: balance.Balance) -> shapes.CapacityOut:
     """Return the capacity balance."""
     return shapes.CapacityOut.model_validate(found)
+
+
+def capacity_try_out(found: tried.Answer) -> shapes.CapacityTryOut:
+    """Return the capacity balance in force beside the one tried, and what was tried."""
+    return shapes.CapacityTryOut.model_validate(found)
 
 
 def capacity_records_out(found: list[CapacityRecord]) -> list[shapes.CapacityRecordOut]:

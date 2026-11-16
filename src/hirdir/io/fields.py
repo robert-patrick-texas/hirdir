@@ -73,6 +73,7 @@ from hirdir.domain import (
     purchases,
     records,
     systems,
+    weights,
 )
 from hirdir.domain.addresses import comparable
 from hirdir.domain.items import MAX_DEPTH, mac_digits
@@ -145,6 +146,9 @@ def _bookkeeping(model: Any) -> dict[str, Field]:
 
 def _effective(name: str) -> Field:
     own = getattr(Item, name)
+    if name == "support_weight":
+        # A major item's weight in force takes the default and the minimum (P-155).
+        return Field("number", weights.item_weight_column())
     if name == not_renewed.FIELD:
         # Its own, or its model's; blank for an item with no model and no word of its own.
         return Field("boolean", not_renewed.value_of(Item, CatalogEntry))
@@ -1155,6 +1159,8 @@ REGIONS = Listing(
         "region": Field("place", Region.hid, within=_within(region=Region.hid)),
         "operator_hid": Field("reference", Region.operator_hid),
         **_columns(Region, "text", "name", "code", "notes", *_SHIPPING),
+        # Its own support weight, which is the one it counts at (P-155).
+        "support_weight": Field("number", Region.support_weight),
         "record_status": Field("choice", Region.record_status),
         "tags": _tags("region", Region),
     },
@@ -1176,6 +1182,9 @@ SITES = Listing(
         "operator_hid": Field("reference", Site.operator_hid),
         **_columns(Site, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
         **_columns(Site, "number", "latitude", "longitude"),
+        # Its own support weight, and the one in force: the default, raised (P-155).
+        "support_weight": Field("number", Site.support_weight),
+        "effective.support_weight": Field("number", weights.site_weight_column()),
         "ship_same_as_address": Field("boolean", Site.ship_same_as_address),
         "record_status": Field("choice", Site.record_status),
         "tags": _tags("site", Site),
@@ -1206,6 +1215,8 @@ LOCATIONS = Listing(
         **_columns(Location, "text", "name", "code", "notes", *ADDRESS_FIELDS, *_SHIPPING),
         "kind": Field("choice", Location.kind),
         **_columns(Location, "number", "latitude", "longitude"),
+        # Its own support weight, which is the one it counts at (P-155).
+        "support_weight": Field("number", Location.support_weight),
         "ship_same_as_address": Field("boolean", Location.ship_same_as_address),
         "record_status": Field("choice", Location.record_status),
         "tags": _tags("location", Location),
