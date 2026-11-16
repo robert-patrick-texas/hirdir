@@ -9,9 +9,10 @@ are there to leave out; each line tried adds, and is active and in date in both 
 A line that multiplies works on a changed line as it is tried, on none that is left
 out, and on no line that is added, since it names the lines it works on.
 
-Both balances are worked out here, by the work of the capacity report itself and not
-through its route, so neither is the kept answer of the report. Nothing is saved,
-nothing is written to the audit trail, and the answer is never kept.
+The balance in force is the capacity report's own, kept as the report is (P-157), since
+it answers the same; the balance tried is worked out here, by the work of the report
+itself, each time. Nothing is saved, nothing is written to the audit trail, and the
+answer is never kept.
 """
 
 from collections.abc import Mapping, Sequence
@@ -219,7 +220,7 @@ def capacity_tried(db: Session, asked: Mapping[str, Any]) -> Answer:
     base = weights.in_force(db)
     figures = checked_figures(base, asked)
     staff, said = checked_staff(db, asked.get("staff") or {})
-    in_force = balance.balance(db, figures=base)
+    in_force = balance.kept_balance(db)
     tried = balance.balance(db, in_force.as_of, figures=figures, staff=staff)
     changed = [
         key

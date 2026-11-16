@@ -235,7 +235,10 @@ def circuit_costs(
     as_of = min(max(today, first), last)
 
     asked = filters.to_tree(filters.parse(filter_))
-    query = select(Circuit)
+    # The places, the carrier and the owner a filter may name are joined as the
+    # circuit list joins them: without them each named one would be a cross join, which
+    # neither narrows the circuits nor counts each once.
+    query = fields.CIRCUITS.joined(select(Circuit))
     if asked is not None:
         query = query.where(*listing.where_of(db, fields.CIRCUITS, asked, True, include_drafts, ()))
     held = list(db.scalars(query))

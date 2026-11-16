@@ -443,9 +443,7 @@ def capacity(_: Viewer, db: Db) -> r.CapacityOut:
 
 def capacity_answer(db: Db) -> r.CapacityOut:
     """Return the capacity balance, kept until a change or the day makes it stale (P-157)."""
-    return kept.answer(
-        db, "capacity", kept.asked(), lambda session: shapes.capacity_out(balance.balance(session))
-    )
+    return shapes.capacity_out(balance.kept_balance(db))
 
 
 def work_out_ahead(db: Db) -> None:

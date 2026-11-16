@@ -202,6 +202,24 @@ def test_a_year_counts_the_days_in_service_and_the_figure_of_its_day(
     assert (july.starts_on, july.ends_on) == (date(2027, 7, 1), date(2028, 6, 30))
 
 
+def test_a_filter_by_a_place_counts_the_circuits_there_and_each_once(
+    places: dict[str, Any], db: Session
+) -> None:
+    # The places a filter names are joined as the circuit list joins them: a filter by
+    # a region keeps the circuits there and counts each of them once.
+    hub = _circuit(db, "Hub internet", a_location_hid=places["hub_room"]["hid"])
+    _line(db, hub, "Access", "500")
+    branch = _circuit(db, "Branch internet", a_location_hid=places["branch_room"]["hid"])
+    _line(db, branch, "Access", "300")
+    db.commit()
+    central = f"location:within:{places['central']['hid']}"
+    for by in ("carrier", "site", "region"):
+        found = circuit_costs(db, fiscal_year=2027, by=by, filter_=central)
+        assert (found.totals.circuits, str(found.totals.cost)) == (1, "6000.00"), by
+    whole = circuit_costs(db, fiscal_year=2027, by="site")
+    assert (whole.totals.circuits, str(whole.totals.cost)) == (2, "9600.00")
+
+
 def test_a_grouping_the_report_does_not_know_is_refused(db: Session) -> None:
     from hirdir.domain.errors import Invalid
 

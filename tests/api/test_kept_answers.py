@@ -1,5 +1,6 @@
 """The long reports kept and worked out ahead, and an Admin's check of them (P-142, P-157)."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -98,9 +99,8 @@ def test_a_check_names_a_kept_answer_that_had_fallen_out_of_step(
     make.get("/reports/capacity")
     # What is kept is made wrong behind the server's back, as a defect would make it.
     (key,) = [one for one in kept._kept if one[0] == "capacity"]
-    wrong = kept._kept[key].answer.model_copy(deep=True)
-    wrong.active.supply = Decimal("99")
-    kept._kept[key].answer = wrong
+    held = kept._kept[key].answer
+    kept._kept[key].answer = replace(held, active=replace(held.active, supply=Decimal("99")))
     found = _as_admin(client, admin, "/kept-answers/check", "post")
     assert [(one["report"], one["request"]) for one in found["differed"]] == [("capacity", "[]")]
     # The check keeps the answer worked out anew.

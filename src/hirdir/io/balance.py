@@ -38,7 +38,7 @@ from hirdir import clock
 from hirdir.db.models import CapacityLine, CapacityRecord, Circuit, Location, Region, Site
 from hirdir.domain import capacity, choices, circuits, geography, records, settings, weights
 from hirdir.domain.audit import AuditContext
-from hirdir.io import reports
+from hirdir.io import kept, reports
 
 HUNDREDTH = Decimal("0.01")
 PRECISION = 60
@@ -483,6 +483,12 @@ def balance(
         )
 
     return Balance(today, per_unit, view(("active",), False), view(("active", "draft"), True))
+
+
+def kept_balance(db: Session) -> Balance:
+    """Return the capacity balance in force as of today, kept until a change or the day
+    makes it stale, as the coverage report is (P-157): the report's, and that of a Try."""
+    return kept.answer(db, "capacity", kept.asked(), balance)
 
 
 # --- the balance kept week by week ---------------------------------------------------
