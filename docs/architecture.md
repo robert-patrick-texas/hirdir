@@ -48,7 +48,7 @@ src/hirdir/
   domain/            the rules: inheritance, lifecycle, matching, counting, geography
   api/               routers under /api/v1, one module per record type
   auth/              providers (local now; RADIUS and SAML later), tokens, roles
-  io/                filter grammar, CSV and JSON import and export, the store of reference files
+  io/                filter grammar, CSV and JSON import and export, the store of reference files, the examples
   cli/               the hirdir command: client commands and `hirdir admin`
   static/            the built web UI (generated, not committed)
 web/                 TypeScript source of the web UI
@@ -327,7 +327,16 @@ upload, by its extension and by its first bytes.
   reference and its content after the backup it takes. It is a
   command on the server, with no route behind it, and runs only while the service is
   stopped, after a backup. Every table is named in `domain/reset.py` as one that a
-  reset clears or one that it keeps, and a test fails when a new table is in neither.
+  reset clears or one that it keeps, and a test fails when a new table is in neither. Of
+  those it clears, it names the bookkeeping too: what was asked of the inventory and
+  what the server keeps of it, which an empty inventory may hold.
+- **The examples.** `hirdir admin load-examples` (`io/examples.py`) imports each CSV file
+  of the examples in the load order into an empty inventory, with the service stopped,
+  so that a reset takes them again (P-166). It previews and applies each as any import
+  is, applying in its own process the jobs it made, with the Inventory role that it
+  gives `io/imports.py`, since no account asked for them. The wheel carries `examples/`
+  inside the package, as `hirdir/examples/`, and a development checkout has them at
+  its top.
 
 ### Answers that are kept
 
@@ -359,7 +368,7 @@ changes no record. `src/hirdir/io/kept.py` keeps them.
 | Path | Content |
 |---|---|
 | `/opt/hirdir/python/` | CPython, a standalone build installed with `uv python install` |
-| `/opt/hirdir/venv/` | the locked dependencies and `hirdir` itself, with the web UI inside |
+| `/opt/hirdir/venv/` | the locked dependencies and `hirdir` itself, with the web UI and a copy of `examples/` inside |
 | `/usr/bin/hirdir` | the command |
 | `/usr/sbin/hirdir-setup` | adds `hirdir` to an nginx site, brings the snippet and the settings file up to date, and checks GitHub for a newer release, fetches it and installs it |
 | `/var/cache/hirdir/` | the packages `hirdir-setup --upgrade` fetched, the newest two (made when first needed, never shipped) |
@@ -373,7 +382,7 @@ changes no record. `src/hirdir/io/kept.py` keeps them.
 | `/usr/lib/systemd/system/hirdir-upgrade.{service,timer}` | the nightly upgrade from GitHub. Shipped, and not enabled: a site turns it on |
 | `/var/lib/hirdir/` | database, signing key, the content of reference files in `files/`, backups with the files they name in `backups/files/` (created at install, never shipped) |
 | `/usr/share/doc/hirdir/` | this documentation as HTML, and the release notes |
-| `/usr/share/doc/hirdir/examples/` | the CSV and JSON files of `examples/`, to try an import with and to start a file from |
+| `/usr/share/doc/hirdir/examples/` | the CSV and JSON files of `examples/`, to try an import with and to start a file from. `hirdir admin load-examples` loads the copy in `/opt/hirdir/venv/`, which a host that leaves out `/usr/share/doc` has too (P-166) |
 
 The package carries Python and every Python dependency. It depends on `libc6`,
 `adduser`, `ca-certificates` and `tzdata`, and recommends `nginx`; apt supplies those.

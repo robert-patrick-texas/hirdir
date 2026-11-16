@@ -42,6 +42,11 @@ path = "src/hirdir/__init__.py"
 packages = ["src/hirdir"]
 artifacts = ["src/hirdir/static/**"]
 
+# The examples go inside the application, where `hirdir admin load-examples` finds them
+# (P-166): a host whose dpkg leaves out /usr/share/doc still has them.
+[tool.hatch.build.targets.wheel.force-include]
+"examples" = "hirdir/examples"
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests", "scripts"]

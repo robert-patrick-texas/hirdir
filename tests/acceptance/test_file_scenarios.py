@@ -16,7 +16,7 @@ from typing import Any
 import httpx2
 import pytest
 
-from tests.acceptance.conftest import ADMIN, HIRDIR, Server
+from tests.acceptance.conftest import ADMIN, HIRDIR, Server, configured, started
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
@@ -235,6 +235,36 @@ def test_s12_the_examples_load_into_an_empty_database_in_load_order(desk: Desk) 
     # Nothing had to be made up for a reference: the catalog came from its own file.
     assert desk.get("/catalog-entries", filter="review_status:eq:unreviewed")["total"] == 0
     assert desk.get("/vendors", filter="review_status:eq:unreviewed")["total"] == 0
+
+
+def test_s12_by_hirdir_admin_load_examples_and_a_reset_takes_them_again(tmp_path: Path) -> None:
+    """S12 worked by the one command of P-166, as an operator works it on the server:
+    with the service stopped, into an empty inventory, and cleared again by a reset."""
+    with started(tmp_path):
+        pass
+    stopped = configured(tmp_path)
+    said = stopped.admin("load-examples")
+    seed = seed_counts()
+    assert f"loaded {sum(seed.values()):,} records of the examples" in said
+    with started(tmp_path, first_admin=False) as running:
+        desk = Desk(running.sign_in(*ADMIN))
+        for entity in LOAD_ORDER:
+            assert desk.total(entity) == seed[entity], entity
+        jobs = desk.get("/imports", limit=100)["items"]
+        assert sorted(job["file_name"] for job in jobs) == sorted(
+            example(entity, "csv").name for entity in LOAD_ORDER
+        )
+        assert {job["status"] for job in jobs} == {"applied"}
+    again = subprocess.run(  # noqa: S603 - our own command with fixed arguments
+        [*HIRDIR, "admin", "load-examples"], env=stopped.env, capture_output=True, text=True
+    )
+    assert again.returncode == 1
+    assert "the inventory is not empty" in again.stderr
+    assert "backup" in stopped.admin("reset", "--yes")
+    with started(tmp_path, first_admin=False) as running:
+        desk = Desk(running.sign_in(*ADMIN))
+        assert {entity: desk.total(entity) for entity in LOAD_ORDER} == dict.fromkeys(LOAD_ORDER, 0)
+        assert desk.get("/imports", limit=1)["total"] == 0
 
 
 def test_s13_importing_the_same_files_again_changes_nothing(desk: Desk) -> None:

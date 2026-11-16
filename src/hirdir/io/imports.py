@@ -640,7 +640,7 @@ def _apply_batch(
             # The role of whoever asked is asked of once the batch holds the writer's
             # place, so that no change of it can come between the asking and the batch: a
             # role that is lost stops the job, and one that changed is the one used.
-            now = _role(db, run.context)
+            now = run.given_role or _role(db, run.context)
             if now is None or not now.allows(Role.INVENTORY):
                 raise RoleLost
             run.role = now
@@ -823,7 +823,13 @@ def _take(db: Session, hid: str) -> ImportJob | None:
     return job
 
 
-def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
+def work_job(
+    db: Session,
+    hid: str,
+    stop: threading.Event | None = None,
+    *,
+    as_role: Role | None = None,
+) -> str:
     """Apply a job a batch at a time, until every row is worked or it stops.
 
     This is the worker's part, beside the requests. Between two batches the one
@@ -831,6 +837,10 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
     When `stop` is set, the job stops after the batch it is in, to be resumed. An error
     nobody foresaw undoes the batch it happened in, keeps the batches before it, and
     stops the job. Return the status the job ends in, or "" when it was not to apply.
+
+    `as_role` is given by a command of the server that applies a job of its own, which
+    no account asked for, and is the role every batch is worked with. The worker of the
+    server gives none, and works each batch with the role that whoever asked holds then.
     """
     stop = stop or threading.Event()
     job = _take(db, hid)
@@ -838,7 +848,7 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
         return ""
     try:
         context = _context(db, hid)
-        role = _role(db, context)
+        role = as_role or _role(db, context)
         if role is None or not role.allows(Role.INVENTORY):
             _stop(
                 db,
@@ -851,6 +861,7 @@ def work_job(db: Session, hid: str, stop: threading.Event | None = None) -> str:
         which = entity(job.entity)
         working = replace(context, via="import") if job.source == "file" else context
         run = Run(db, working, role, job.mode)
+        run.given_role = as_role
         # A job that is resumed knows again what its earlier batches made only for a
         # reference, so that a row that describes one of them is worked as previewed.
         run.stubs |= _stubs_made(db, hid)

@@ -3989,6 +3989,10 @@ files() {
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset refuses while the service is running, and says to stop it" \
         "$code $(grep -c 'stop it first' "$work/reset.out")" "1 1"
+    code=0
+    inside hirdir admin load-examples >"$work/load-examples.out" 2>&1 || code=$?
+    expect "pkg hirdir admin load-examples refuses while the service is running too, and says to stop it" \
+        "$code $(grep -c 'stop it first' "$work/load-examples.out")" "1 1"
     check "pkg systemctl stop hirdir, to put the inventory back as it was" inside systemctl stop hirdir.service
     code=0
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
@@ -4003,6 +4007,27 @@ files() {
         "1 0 held"
     expect "pkg it took a backup first and says how to put it back" \
         "$(grep -c '^backup: /var/lib/hirdir/backups/hirdir-' "$work/reset.out") $(grep -c 'hirdir admin restore /var/lib/hirdir/backups/hirdir-' "$work/reset.out")" "1 1"
+
+    # hirdir admin load-examples loads the examples into the empty inventory that the
+    # reset left, from the copy inside the application, which a host whose dpkg leaves
+    # out /usr/share/doc has too, and a reset takes them again (P-166).
+    local example_files
+    example_files=$(inside bash -c 'ls /usr/share/doc/hirdir/examples/*.csv | wc -l')
+    code=0
+    inside hirdir admin load-examples >"$work/load-examples.out" 2>&1 || code=$?
+    expect "pkg hirdir admin load-examples loads each of the $example_files files of the examples, from inside the application, into the inventory that the reset emptied" \
+        "$code $(grep -c '^loading the examples from /opt/hirdir/.*/hirdir/examples:$' "$work/load-examples.out") $(grep -cE '^ +[0-9,]+  [a-z-]+[.]csv$' "$work/load-examples.out") $(grep -c '^loaded [0-9,]* records of the examples$' "$work/load-examples.out")" \
+        "0 1 $example_files 1"
+    expect "pkg the examples inside the application are those in /usr/share/doc/hirdir/examples" \
+        "$(inside bash -c 'cd /usr/share/doc/hirdir/examples && for f in *.csv; do cmp -s "$f" /opt/hirdir/venv/lib/python*/site-packages/hirdir/examples/"$f" || echo "$f"; done; echo same')" same
+    code=0
+    inside hirdir admin load-examples >"$work/load-examples.out" 2>&1 || code=$?
+    expect "pkg a second hirdir admin load-examples refuses, since the inventory holds the examples, and changes nothing" \
+        "$code $(grep -c '^hirdir: the inventory is not empty' "$work/load-examples.out")" "1 1"
+    code=0
+    inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
+    expect "pkg hirdir admin reset takes the examples again, every one of the tables of the inventory, and keeps the accounts" \
+        "$code $(inventory_left)" "0 users"
     check "pkg hirdir admin restore of the backup taken before the examples were imported" \
         inside hirdir admin restore "${before:-/nonexistent}"
     check "pkg systemctl start hirdir" inside systemctl start hirdir.service

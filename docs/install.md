@@ -174,8 +174,24 @@ clears the whole inventory, the examples and anything else in it: see
 [Start over](#start-over). Where real records are already in, do not load the examples
 beside them.
 
-Sign in as a user who holds Inventory or Admin, then load the files in this order,
-because a record names the ones it refers to:
+On the server, one command loads them all into an inventory that holds nothing yet:
+
+```bash
+sudo systemctl stop hirdir
+sudo hirdir admin load-examples            # says how many records each file made
+sudo systemctl start hirdir
+```
+
+It refuses while the service is running, and refuses an inventory that holds any
+record, so that the examples are never mixed with your own: a reset afterwards takes
+the examples, and whatever was added beside them, and nothing else. Accounts and
+settings are not touched. Each file is loaded as an import, and the imports page lists
+it. A file that the site's set-up rejects a row of, a choice that was removed, say,
+stops it there and names the row; `sudo hirdir admin reset` clears what came before.
+
+To see what an import does, load the files one at a time instead.
+Sign in as a user who holds Inventory or Admin, then load them in this order, because a
+record names the ones it refers to:
 
 ```bash
 cd /usr/share/doc/hirdir
@@ -375,8 +391,8 @@ lists them, and each says so when it is downloaded.
 
 ## Start over
 
-A site that has loaded the examples, or test data of its own, clears the inventory and
-begins again. This is done on the server and cannot be done from the web UI or the
+A site that has loaded the examples, with `hirdir admin load-examples` or by hand, or
+test data of its own, clears the inventory and begins again. This is done on the server and cannot be done from the web UI or the
 API, whatever role a person holds.
 
 ```bash

@@ -51,6 +51,7 @@ from hirdir.domain import (
 )
 from hirdir.io import exports, files
 from hirdir.io.entities import ENTITIES, LOAD_ORDER
+from hirdir.io.examples import file_name
 
 TARGET = Path(__file__).resolve().parent.parent / "examples"
 # The moment at which the examples were last looked at: fixed, so the files do not change.
@@ -1653,11 +1654,6 @@ def counts() -> dict[str, int]:
         }
 
 
-def file_name(entity: str, format_: str) -> str:
-    """Return the name of the example file of an entity."""
-    return f"{entity.replace('_', '-')}.{format_}"
-
-
 def _without_hids(text: str, format_: str) -> str:
     """Return an exported file with no HIDs in it.
 
@@ -1690,7 +1686,17 @@ its own and exports it. They are not edited by hand.
 
 ## Loading them
 
-Load the files in this order, because a record names the ones it refers to:
+On the server, into an inventory that holds nothing yet, one command loads them all, and
+`hirdir admin reset` clears them again, with whatever was added beside them:
+
+```bash
+sudo systemctl stop hirdir
+sudo hirdir admin load-examples
+sudo systemctl start hirdir
+```
+
+To see what an import does, load them one at a time instead, in this order, because a
+record names the ones it refers to:
 
 {order}
 

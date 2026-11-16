@@ -59,7 +59,9 @@ health that follows for an item and for a stack (D-92). 0.4.2 follows 0.4.1 with
 answers to what its review found unsaid: a time that names no zone is in the
 application's time zone, where it is entered and where it is filtered by (D-109,
 D-110). 0.9.1 follows 0.9.0 with what the owner asked when it was published: what a
-restore keeps set aside is what undoing the last restore takes, and no more (P-165).
+restore keeps set aside is what undoing the last restore takes, and no more (P-165),
+and one command, `hirdir admin load-examples`, that loads the examples into an empty
+inventory for a reset to take again (P-166); S12 is worked by it too.
 
 ## From 0.6.1 to 0.9.0
 

@@ -90,9 +90,13 @@ install_venv() {
     uv pip install --quiet --python "$VENV_PY" --no-deps --no-index --no-cache \
         --find-links /build/wheel "hirdir==$HIRDIR_VERSION"
     local site=$OPT/venv/lib/python$PYMINOR/site-packages
-    # The installed package must be exactly what is in src/ now, web UI included.
-    diff -rq --exclude=__pycache__ src/hirdir "$site/hirdir" ||
+    # The installed package must be exactly what is in src/ now, web UI included, and
+    # the examples inside it exactly those of examples/, which hirdir admin
+    # load-examples loads from there (P-166).
+    diff -rq --exclude=__pycache__ --exclude=examples src/hirdir "$site/hirdir" ||
         die "the packaged hirdir differs from src/hirdir"
+    diff -rq examples "$site/hirdir/examples" ||
+        die "the examples inside the packaged hirdir differ from examples/"
     # What only uv or a development checkout uses: the lock, the ignore file, the
     # activation scripts, and uv's own record of each install.
     rm -f "$OPT/venv/.lock" "$OPT/venv/.gitignore" "$OPT/venv/CACHEDIR.TAG" \

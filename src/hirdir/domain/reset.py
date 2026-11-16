@@ -177,12 +177,39 @@ RECORD_TYPES = (
 )
 
 
+# What a reset clears that is no record of the inventory: what was asked of it, and
+# what the server keeps of it for itself. An inventory that holds only these is empty,
+# as `hirdir admin load-examples` asks it to be (P-166): a preview that was never
+# applied, a sign-in that saw the renewal alert, or the week's record of a capacity
+# balance of nothing mixes nothing with the examples.
+BOOKKEEPING: tuple[Any, ...] = (
+    ImportRow,
+    ImportJob,
+    IdempotencyKey,
+    RenewalAlertView,
+    CapacityRecord,
+)
+
+
 def counts(db: Session) -> dict[str, int]:
     """Return how many rows each table that a reset clears holds."""
     return {
         model.__tablename__: db.scalar(select(func.count()).select_from(model)) or 0
         for model in CLEARED
     }
+
+
+def held(db: Session) -> dict[str, int]:
+    """Return how many records of the inventory each table holds, of those that hold any:
+    every table that a reset clears, but for its bookkeeping. Nothing, when it is empty."""
+    found = {}
+    for model in CLEARED:
+        if model in BOOKKEEPING:
+            continue
+        count = db.scalar(select(func.count()).select_from(model)) or 0
+        if count:
+            found[model.__tablename__] = count
+    return found
 
 
 def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str, int]:

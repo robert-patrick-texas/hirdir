@@ -196,6 +196,10 @@ class Run:
         # What the rows of the batch being applied have taught, to be forgotten again
         # if the batch is undone. None outside an apply.
         self._batch: list[Callable[[], None]] | None = None
+        # The role that a command of the server applies a job of its own with, which no
+        # account asked for (`hirdir admin load-examples`). None, as the worker of the
+        # server has it, asks for the role of whoever asked, batch by batch.
+        self.given_role: Role | None = None
 
     def start_row(self, number: int = 0) -> None:
         """Begin a row: nothing noted yet, nothing to forget."""

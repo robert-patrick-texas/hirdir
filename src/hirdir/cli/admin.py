@@ -32,6 +32,7 @@ from hirdir.db.models import ReferenceFile
 from hirdir.domain import accounts, audit, settings
 from hirdir.domain import reset as reset_rules
 from hirdir.domain.errors import DomainError
+from hirdir.io import examples
 from hirdir.io import store as file_store
 from hirdir.io.store import Store
 
@@ -759,6 +760,52 @@ def reset(
     else:
         typer.echo("the inventory is empty. Accounts and settings are as they were.")
     typer.echo(f"to put back what was there: hirdir admin restore {kept}")
+
+
+@admin.command("load-examples")
+def load_examples() -> None:
+    """Load the fictional inventory of the examples, to try hirdir. Stop the service first.
+
+    Every file of the examples is imported, in the load order, into an inventory that
+    holds nothing yet, so that `hirdir admin reset` takes them again and nothing else.
+    It refuses an inventory that holds any record. Accounts and settings are not touched.
+    """
+    config = _load()
+    path = config.database_path
+    if path is not None and not path.is_file():
+        raise _fail(f"there is no database at {path}")
+    if _is_serving(config):
+        raise _fail(
+            f"the service is running on {config.listen}: stop it first, with "
+            "`sudo systemctl stop hirdir`, so that nobody is at work while the examples load"
+        )
+    loaded: list[examples.Loaded] = []
+
+    def told(done: examples.Loaded) -> None:
+        loaded.append(done)
+        typer.echo(f"  {done.created:>6,}  {done.file_name}")
+
+    engine = make_engine(config.database_url)
+    try:
+        source = examples.folder()
+        with make_sessions(engine)() as db:
+            examples.check(db)
+            typer.echo(f"loading the examples from {source}:")
+            examples.load(db, source, told)
+    except DomainError as error:
+        typer.echo(f"hirdir: {error}", err=True)
+        for name, why in getattr(error, "fields", {}).items():
+            typer.echo(f"  {name}: {why}", err=True)
+        if loaded:
+            typer.echo(
+                f"the {len(loaded)} files before it stay loaded; to clear them: hirdir admin reset",
+                err=True,
+            )
+        raise typer.Exit(1) from error
+    finally:
+        engine.dispose()
+    typer.echo(f"loaded {sum(done.created for done in loaded):,} records of the examples")
+    typer.echo("to clear them, with the service stopped: hirdir admin reset")
 
 
 def _check_files(config: Config, engine: Engine) -> bool:

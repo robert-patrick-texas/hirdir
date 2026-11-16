@@ -1530,6 +1530,7 @@ hirdir admin migrate
 hirdir admin backup
 hirdir admin restore FILE
 hirdir admin reset                               # clear the inventory; --everything for all
+hirdir admin load-examples                       # the examples, into an empty inventory
 hirdir admin check                               # schema version, integrity, settings
 hirdir admin config                              # a complete configuration file, every key at its default
 hirdir admin config --current --output config.toml.new   # with what the present file sets, set
@@ -1563,6 +1564,19 @@ and the audit events of those records, and writes one audit event that says so a
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
 lifecycle rules stay. `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
+
+`hirdir admin load-examples` loads the fictional inventory of `examples/`, which the
+application carries inside itself, so that a site can try `hirdir` and clear it again
+with `hirdir admin reset` (P-166). It is on the server and nowhere else, and refuses
+while the service is running, where the inventory holds any record that a reset clears,
+and where an import is queued or being applied: what a reset clears afterwards is then
+the examples, with whatever was added beside them, and nothing of the site's own. A
+stored preview, a renewal alert that was seen and the weekly record of the capacity
+balance do not count. Each CSV file is imported in the load order, a preview and an
+apply as any import is, kept as a stored import named for its file and audited as
+`system`. A file with a rejected row stops it there and names the rows; what the files
+before it made stays, for a reset to clear. It prints how many records each file made.
+Accounts and settings are not touched.
 
 ## Web UI
 

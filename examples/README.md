@@ -10,7 +10,17 @@ its own and exports it. They are not edited by hand.
 
 ## Loading them
 
-Load the files in this order, because a record names the ones it refers to:
+On the server, into an inventory that holds nothing yet, one command loads them all, and
+`hirdir admin reset` clears them again, with whatever was added beside them:
+
+```bash
+sudo systemctl stop hirdir
+sudo hirdir admin load-examples
+sudo systemctl start hirdir
+```
+
+To see what an import does, load them one at a time instead, in this order, because a
+record names the ones it refers to:
 
 1. `tags.csv`
 2. `vendors.csv`
