@@ -426,23 +426,45 @@ def test_a_restore_takes_the_files_from_the_directory_it_is_told(
     assert live.path_of(sha256).stat().st_nlink == 1
 
 
-def test_a_second_restore_keeps_what_the_first_set_aside(installed: Config) -> None:
-    """Restoring one backup twice, with files uploaded between: what each restore set
-    aside is kept, beside the one copy of the database as it was."""
+def test_what_is_set_aside_is_what_undoing_the_last_restore_needs(installed: Config) -> None:
+    """Restoring one backup twice, with files uploaded between: what is kept set aside is
+    what the copy of the database as it was names and the restored one does not, so that
+    the last restore can be undone and nothing else is held (P-165)."""
     backup = _backup()
     _, first = _put(installed, _pdf("first"), "first.pdf")
     _run("restore", str(backup))
-    _, second = _put(installed, _pdf("second"), "second.pdf")
-    _run("restore", str(backup))
     aside = Store(installed.state_dir / "files.before-restore")
-    assert set(aside.contents()) == {first, second}
-    assert aside.path_of(first).read_bytes() == _pdf("first")
+    assert set(aside.contents()) == {first}
+    _, second = _put(installed, _pdf("second"), "second.pdf")
+    said = _run("restore", str(backup)).stdout
+    # The first was named by a copy of the database that is gone since: it is let go.
+    assert set(aside.contents()) == {second}
+    assert "the content of 1 files that an earlier restore set aside" in said
     assert set(Store(installed.files_dir).contents()) == set()
-    # Content set aside once already is the same, and is let go from the store.
-    _put(installed, _pdf("first"), "first-again.pdf")
-    _run("restore", str(backup))
-    assert set(aside.contents()) == {first, second}
-    assert not Store(installed.files_dir).has(first)
+    # And the last restore is undone from what is kept.
+    kept = installed.backup_dir / "before-restore.db"
+    shutil.copy2(installed.state_dir / "hirdir.db.before-restore", kept)
+    _run("restore", str(kept), "--files", str(aside.root))
+    assert set(Store(installed.files_dir).contents()) == {second}
+    assert _named(installed) == {second}
+
+
+def test_content_set_aside_that_the_restored_database_names_is_let_go(
+    installed: Config,
+) -> None:
+    """A content set aside by one restore that the backup the next one restores names is
+    in the store again, and is not held twice."""
+    hid, plan = _put(installed, _pdf("plan"), "plan.pdf")
+    with_plan = _backup()
+    _erase(installed, hid)
+    without = _backup()
+    _run("restore", str(with_plan))
+    aside = Store(installed.state_dir / "files.before-restore")
+    _run("restore", str(without))
+    assert aside.has(plan)
+    _run("restore", str(with_plan))
+    assert Store(installed.files_dir).has(plan)
+    assert not aside.has(plan)
 
 
 def test_a_restore_that_stops_as_it_puts_the_database_in_place_leaves_every_file(

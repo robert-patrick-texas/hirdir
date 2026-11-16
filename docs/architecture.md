@@ -319,7 +319,8 @@ upload, by its extension and by its first bytes.
   backup, or from `--files DIR`, and checks, before it changes anything, that it has
   the content of every reference the backup names, each with its checksum. The
   content that the restored database does not name is set aside in
-  `files.before-restore/`, as the database is in `hirdir.db.before-restore`. Copying
+  `files.before-restore/`, as the database is in `hirdir.db.before-restore`, and only
+  what undoing that restore takes is kept there (P-165). Copying
   backups off the host, the `files/` beside them with them, is the host's job.
 - **Reset.** `hirdir admin reset` is the one place where records are deleted, beside
   the erasure of a reference, which the owner asked for (P-160); it erases every

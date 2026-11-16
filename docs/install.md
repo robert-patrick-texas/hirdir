@@ -338,10 +338,14 @@ beside the backup and checks, before it changes anything, that it has every one 
 backup names, byte for byte. It then puts them into `/var/lib/hirdir/files/`, linked
 to those of `backups/files/` as a backup links them, and copied from anywhere else;
 sets aside the files that the restored database does not name in
-`/var/lib/hirdir/files.before-restore/`, beside what earlier restores set aside there;
-and puts the database in place last. A restore that stops on the way leaves every file
-in one of the two. `files.before-restore/` keeps what is set aside until you remove
-it. One backup or restore is at work at a time: a second waits for it, and says so.
+`/var/lib/hirdir/files.before-restore/`; and puts the database in place last. A restore
+that stops on the way leaves every file in one of the two. `files.before-restore/`
+holds what undoing the last restore takes, the files that `hirdir.db.before-restore`
+names and the restored database does not, and each restore lets go of what an earlier
+one set aside for a copy of the database that is gone since: to keep what a restore set
+aside beyond the next one, copy `hirdir.db.before-restore` and `files.before-restore/`
+elsewhere first. One backup or restore is at work at a time: a second waits for it, and
+says so.
 
 To undo a restore, restore the database as it was, from a copy of it, with the files
 that were set aside. A restore writes over `hirdir.db.before-restore` before it reads

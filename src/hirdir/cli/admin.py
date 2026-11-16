@@ -558,6 +558,29 @@ def _set_aside(live: Store, aside: Path, named: set[str]) -> int:
     return len(unnamed)
 
 
+def _tidy_aside(aside: Path, keep: set[str]) -> int:
+    """Let go of each content set aside that keep does not hold, with any part a move cut
+    short left there, and return how many contents were let go (P-165).
+
+    What is set aside is what undoing the last restore needs: the content that the copy
+    of the database as it was names and the restored database does not. What an earlier
+    restore set aside for a copy that is gone since is named by no database that remains.
+    """
+    held = Store(aside)
+    let_go = [sha256 for sha256 in held.contents() if sha256 not in keep]
+    for sha256 in let_go:
+        held.path_of(sha256).unlink(missing_ok=True)
+    if aside.is_dir():
+        for directory in aside.iterdir():
+            if not directory.is_dir():
+                continue
+            for part in directory.glob(f"*{file_store.PART}"):
+                part.unlink(missing_ok=True)
+            if not any(directory.iterdir()):
+                directory.rmdir()
+    return len(let_go)
+
+
 def _restore(
     config: Config,
     target: Path,
@@ -610,6 +633,9 @@ def _restore(
                 _copy_into(live, source.path_of(sha256), sha256)
         aside_files = live.root.with_name(f"{live.root.name}.before-restore")
         moved = _set_aside(live, aside_files, named)
+        # Kept there is only what undoing this restore takes (P-165).
+        undo = {one.sha256 for one in _named_in(aside)} if aside.is_file() else set()
+        tidied = _tidy_aside(aside_files, undo - named)
     finally:
         os.umask(umask)
     if needed:
@@ -618,6 +644,11 @@ def _restore(
         typer.echo(
             f"the content of {moved} files that the restored database does not name "
             f"is kept at {aside_files}"
+        )
+    if tidied:
+        typer.echo(
+            f"the content of {tidied} files that an earlier restore set aside, and that "
+            f"undoing this one does not need, was let go from {aside_files}"
         )
     # Written beside it under another name and then put in its place in one step, so
     # that a copy that stops leaves the database as it was rather than none.
