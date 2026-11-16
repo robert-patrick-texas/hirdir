@@ -544,9 +544,9 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(region(page, "Retire").locator('.alert-error[data-status="409"]')).toBeVisible();
   await expect(page.getByTestId("place")).toHaveAttribute("data-level", "location");
 
-  // The six kinds of record that 0.5.0 brought, the nine that 0.6.0 brought and the
-  // contacts of agreements and contracts of 0.7.0 are among what a file may hold, in the
-  // order they are loaded.
+  // The six kinds of record that 0.5.0 brought, the nine that 0.6.0 brought, the
+  // contacts of agreements and contracts of 0.7.0 and the seven of circuits of 0.8.0 are
+  // among what a file may hold, in the order they are loaded.
   await page.goto("./import");
   await expect(page.getByLabel("Records").locator("option")).toHaveText([
     "As the file says",
@@ -554,6 +554,7 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Vendors",
     "Catalog entries",
     "Contacts",
+    "Contacts of vendors",
     "Operators",
     "Regions",
     "Sites",
@@ -576,6 +577,12 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Coverage of items under contracts",
     "Registrations with external systems",
     "Capacity lines",
+    "Circuit groups",
+    "Circuits",
+    "Carriers of circuits",
+    "Cost lines of circuits",
+    "Contacts of circuits",
+    "Devices of circuits",
   ]);
 
   await expectClean(page, seen, ["409 POST"]);
