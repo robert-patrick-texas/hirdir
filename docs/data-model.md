@@ -1295,13 +1295,17 @@ rotated out.
 
 **Kinds and limits.** A file's extension is one that the setting `reference_file_types`
 takes, and never one of `refused_file_types`, a web page, a script or a program. Where
-`hirdir` knows the extension the content is what it says: a PDF begins `%PDF-`, a JPEG,
-PNG, GIF, WebP, TIFF or HEIC picture as its format does, a file of Office or Visio of
-today and a ZIP as a ZIP archive, a file of the Office of before 2007, `doc`, `xls`,
-`ppt` and `vsd`, as such a file does, a DWG drawing `AC10`, and a text file, `txt`,
-`csv`, `log` and `dxf`, holds no zero byte. Whatever its name, a file whose content
-begins as a program does, `MZ` or the mark of an ELF file, or as a web page does, an
-HTML document or an SVG drawing, is refused. A file is at most `max_reference_megabytes`,
+`hirdir` knows the extension the start of the content, its first 512 bytes, is what it
+says: a PDF begins `%PDF-`, a JPEG, PNG, GIF, WebP, TIFF or HEIC picture as its format
+does, a file of Office or Visio of today and a ZIP as a ZIP archive, a file of the Office
+of before 2007, `doc`, `xls`, `ppt` and `vsd`, as such a file does, a DWG drawing
+`AC10`, and a text file, `txt`, `csv`, `log` and `dxf`, holds no zero byte there.
+Whatever its name, a file is refused whose content begins as a program does, `MZ`, the
+mark of an ELF or a Mach-O file, or `#!` of a script, or as a web page does, with the
+tag of an HTML document or of an SVG drawing after any white space. The check is a guard
+against the plain mistake and the plain trick, and no more: what is downloaded never
+runs within `hirdir` whatever it holds, and an XML file that is no page, such as the
+configuration a router writes out, is taken as text. A file is at most `max_reference_megabytes`,
 100 unless the configuration file says otherwise, and holds at least one byte.
 
 ### Links

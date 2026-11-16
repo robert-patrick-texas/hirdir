@@ -181,7 +181,9 @@ class Gateway:
         """Return the answer to a body that says it is over the limit of its route, or
         None. An upload of a reference file takes up to its own limit, and every other
         request up to that of an import, whatever the proxy lets through (P-162). A body
-        that does not say its length is held to the limit by the route that reads it."""
+        that does not say its length is not seen here: an upload and an import hold it to
+        their limits as they read it, and nginx, which reads a body whole before it
+        passes it on, always says the length."""
         length = headers.get("content-length", "")
         if self.limits is None or not length.isdigit():
             return None
