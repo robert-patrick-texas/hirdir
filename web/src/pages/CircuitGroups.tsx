@@ -442,7 +442,11 @@ function AddCircuits({
         )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || pending.length === 0}>
-            {pending.length === 1 ? "Put 1 circuit in" : `Put ${pending.length} circuits in`}
+            {pending.length === 0
+              ? "Put the circuits in"
+              : pending.length === 1
+                ? "Put 1 circuit in"
+                : `Put ${pending.length} circuits in`}
           </button>
         </p>
       </form>

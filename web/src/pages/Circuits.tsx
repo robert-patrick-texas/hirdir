@@ -69,11 +69,18 @@ function useCircuitLists() {
   const vendors = useVendorOptions();
   const owners = useOwnerOptions();
   const tags = useTags();
+  // The same object while what was read stays the same, so that the fields are made once.
+  const lists = useMemo(
+    () => ({
+      choices: choices.data,
+      vendors: vendors.data,
+      owners: owners.data,
+      tags: (tags.data ?? []).map((tag) => tag.label),
+    }),
+    [choices.data, vendors.data, owners.data, tags.data],
+  );
   return {
-    choices: choices.data,
-    vendors: vendors.data,
-    owners: owners.data,
-    tags: (tags.data ?? []).map((tag) => tag.label),
+    lists,
     error: choices.error ?? vendors.error ?? owners.error ?? tags.error,
     ready: !choices.loading && !vendors.loading && !owners.loading && !tags.loading,
   };
@@ -280,13 +287,13 @@ function NewCircuit({
   onCancel: () => void;
   onCreated: (circuit: Circuit) => void;
 }) {
-  const lists = useCircuitLists();
+  const { lists, error, ready } = useCircuitLists();
   const settings = useSettings();
   const settingSide = String(
     settings.data?.find((setting) => setting.key === "circuit_cost_side")?.value ?? "a",
   );
   const specs = useMemo(() => circuitSpecs(lists, null, settingSide), [lists, settingSide]);
-  if (!lists.ready || settings.loading) {
+  if (!ready || settings.loading) {
     return (
       <p role="status" className="muted loading-late">
         Loading…
@@ -295,7 +302,7 @@ function NewCircuit({
   }
   return (
     <>
-      <Problem error={lists.error ?? settings.error} />
+      <Problem error={error ?? settings.error} />
       <CreateForm<NewCircuitBody, Circuit>
         title="New circuit"
         specs={specs}
@@ -482,7 +489,7 @@ interface CircuitDetailsProps {
 
 /** The form for everything about a circuit but the side it counts at. Only what was changed is sent. */
 function CircuitDetails({ circuit, onSaved, onReload }: CircuitDetailsProps) {
-  const lists = useCircuitLists();
+  const { lists, error, ready } = useCircuitLists();
   const specs = useMemo(() => circuitSpecs(lists, circuit, circuit.cost_side), [lists, circuit]);
   const port = circuit.port_mbps ? `${mbpsText(circuit.port_mbps)} Mbps` : "";
   const hints = port
@@ -498,9 +505,9 @@ function CircuitDetails({ circuit, onSaved, onReload }: CircuitDetailsProps) {
   return (
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
-      <Problem error={lists.error} />
-      {!lists.ready && <p role="status">Loading…</p>}
-      {lists.ready && (
+      <Problem error={error} />
+      {!ready && <p role="status">Loading…</p>}
+      {ready && (
         <EditForm<Circuit, Schemas["CircuitPatch"]>
           specs={specs}
           record={circuit}

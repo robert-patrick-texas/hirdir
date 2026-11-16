@@ -697,7 +697,7 @@ export function CircuitCosts({ circuit, mayEdit, onChanged }: ChangeProps) {
         given an end; one entered by mistake is removed.
       </p>
       {!circuit.in_service && (
-        <p className="alert" data-testid="not-in-service">
+        <p className="alert alert-info" data-testid="not-in-service">
           {notInServiceText(circuit, today())}
         </p>
       )}
@@ -1324,7 +1324,11 @@ function ConnectDevices({
         )}
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || pending.length === 0}>
-            {pending.length === 1 ? "Connect 1 device" : `Connect ${pending.length} devices`}
+            {pending.length === 0
+              ? "Connect the devices"
+              : pending.length === 1
+                ? "Connect 1 device"
+                : `Connect ${pending.length} devices`}
           </button>
         </p>
       </form>
