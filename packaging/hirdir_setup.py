@@ -11,8 +11,10 @@ nginx is reloaded, and when it fails every file is put back as it was.
 
 Running it again with the same options changes nothing.
 
-The snippet itself is written by `--renew`, from the one the package ships and with the
-prefix it already has. The package runs that when it is installed and at each upgrade.
+The snippet itself is written by `--renew`, from the one the package ships, with the
+prefix it already has and the limit of a body that /etc/hirdir/config.toml gives: the
+larger of the limit of an import and that of a reference file. The package runs that
+when it is installed and at each upgrade.
 
 `--settings` brings /etc/hirdir/config.toml up to date with this version: a setting the
 file does not have yet is put in, commented out at its default, and nothing that is in
@@ -107,14 +109,23 @@ REDIRECT_LINE = re.compile(
 INCLUDE_ONLY_LINE = re.compile(
     r"^\s*include\s+[\"']?(?:/etc/nginx/)?snippets/hirdir\.conf[\"']?\s*;\s*(#.*)?$"
 )
+# The line of the snippet that holds the limit of a body, which --renew writes from the
+# configuration file (P-162).
+LIMIT_LINE = re.compile(r"^(\s*client_max_body_size\s+)(\S+?)(\s*;.*)$")
+# The two limits of [files] in the configuration file, in megabytes, as hirdir reads them:
+# the defaults where the file sets neither, and the bounds the application keeps them in.
+# A test holds them to hirdir.config.
+LIMITS = {"max_megabytes": (20, 1, None), "max_reference_megabytes": (100, 1, 2048)}
 
 # The snippets that earlier versions shipped, each as the SHA-256 of its text without the
-# three lines that hold the prefix (see `body`). A snippet on a host that is one of
-# these, or the one this version ships, was changed by this tool alone, and --renew
-# replaces it. When packaging/nginx/snippet.conf changes, the hash it had is added
-# here and its text is kept in packaging/tests/snippets/. A test fails until then.
+# three lines that hold the prefix and the line of the limit (see `body`). A snippet on a
+# host that is one of these, or the one this version ships, was changed by this tool
+# alone, and --renew replaces it. When packaging/nginx/snippet.conf changes, the hash it
+# had is added here and its text is kept in packaging/tests/snippets/. A test fails
+# until then.
 SHIPPED_BEFORE = {
     "f0423e2580520437726031bcab33d473cf25b6c97fe590c3fd40d035590ffae6": "0.1.0 to 0.2.1",
+    "f05f8af6118684fff5eb7f1cba33b4891784577dc77a9796e37cc4964d5e04e2": "0.3.0 to 0.8.0",
 }
 
 
@@ -391,19 +402,77 @@ def with_prefix(text: str, prefix: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def body(text: str) -> str:
-    """Return a snippet without the three lines that hold the prefix.
+def with_limit(text: str, megabytes: int) -> str:
+    """Return the snippet with its limit of a body set to megabytes.
 
-    These are the lines `with_prefix` rewrites or leaves out, so two snippets with the
-    same body differ in their prefix and in nothing else.
+    The first `client_max_body_size` line is the one, and it alone is changed: its
+    indent and its comment stay. A snippet without one is returned as it is.
+    """
+    lines = text.splitlines()
+    for number, line in enumerate(lines):
+        if match := LIMIT_LINE.match(line):
+            lines[number] = f"{match.group(1)}{megabytes}m{match.group(3)}"
+            return "\n".join(lines) + "\n"
+    return text
+
+
+def limit_megabytes(settings: str | None) -> int:
+    """Return the limit nginx is given: the larger of the two limits of [files] in the
+    text of a configuration file, each read as hirdir reads it, or their defaults where
+    there is no file. A file that is not well-formed TOML is refused, as hirdir refuses
+    it."""
+    files: object = {}
+    if settings is not None:
+        try:
+            files = tomllib.loads(settings).get("files", {})
+        except tomllib.TOMLDecodeError as error:
+            raise SetupError(
+                f"{SETTINGS} is not well-formed TOML ({error}), so the limit of a body "
+                "cannot be read from it"
+            ) from None
+    if not isinstance(files, dict):
+        files = {}
+    found = []
+    for name, (default, least, most) in LIMITS.items():
+        value = files.get(name, default)
+        try:
+            megabytes = max(least, int(value))
+        except TypeError, ValueError:
+            raise SetupError(
+                f"{SETTINGS} sets {name} under [files] to {value!r}, which is not a whole "
+                "number of megabytes"
+            ) from None
+        found.append(megabytes if most is None else min(most, megabytes))
+    return max(found)
+
+
+def configured_megabytes() -> int:
+    """Return the limit of a body that the configuration file gives nginx."""
+    try:
+        settings = SETTINGS.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        settings = None
+    return limit_megabytes(settings)
+
+
+def body(text: str) -> str:
+    """Return a snippet without the three lines that hold the prefix and the line that
+    holds the limit of a body.
+
+    These are the lines `with_prefix` and `with_limit` rewrite or leave out, so two
+    snippets with the same body differ in their prefix and their limit and in nothing
+    else.
     """
     kept: list[str] = []
-    seen_location = False
+    seen_location = seen_limit = False
     for line in text.splitlines():
         if REDIRECT_LINE.match(line) or HEADER_LINE.match(line):
             continue
         if not seen_location and LOCATION_LINE.match(line):
             seen_location = True
+            continue
+        if not seen_limit and LIMIT_LINE.match(line):
+            seen_limit = True
             continue
         kept.append(line)
     while kept and not kept[-1].strip():
@@ -422,21 +491,25 @@ def shipped(text: str, template: str) -> bool:
     return found == body_hash(template) or found in SHIPPED_BEFORE
 
 
-def renewed(before: str | None, template: str, prefix: str | None = None) -> str:
-    """Return the snippet as this version ships it, under the prefix it has or is given.
+def renewed(
+    before: str | None, template: str, prefix: str | None = None, megabytes: int | None = None
+) -> str:
+    """Return the snippet as this version ships it, under the prefix it has or is given,
+    and with the limit of a body given, or the template's where none is.
 
     `before` is the snippet on the host, or None when there is none. One that was edited
     by hand is not replaced: the error says so, and where the shipped one is.
     """
     if before is not None and not shipped(before, template):
         raise SetupError(
-            f"{SNIPPET} differs from what hirdir ships in more than its prefix, so it is "
-            f"left as it is. This version ships {TEMPLATE}: bring over by hand what is "
-            "new there, then run: sudo nginx -t && sudo systemctl reload nginx"
+            f"{SNIPPET} differs from what hirdir ships in more than its prefix and its "
+            f"limit, so it is left as it is. This version ships {TEMPLATE}: bring over by "
+            "hand what is new there, then run: sudo nginx -t && sudo systemctl reload nginx"
         )
     if prefix is None:
         prefix = snippet_prefix(template if before is None else before)
-    return with_prefix(template, normalise_prefix(prefix))
+    text = with_prefix(template, normalise_prefix(prefix))
+    return text if megabytes is None else with_limit(text, megabytes)
 
 
 # --- the settings file -----------------------------------------------------------------
@@ -874,7 +947,8 @@ def _remove(args: argparse.Namespace) -> int:
 
 
 def _renew(args: argparse.Namespace) -> int:
-    """Write the snippet as this version of the package ships it, keeping its prefix.
+    """Write the snippet as this version of the package ships it, keeping its prefix,
+    with the limit of a body that the configuration file gives.
 
     nginx is asked whether it accepts the result, and is reloaded when a site includes
     the snippet. Where nginx is not installed the file is written all the same, for the
@@ -884,7 +958,7 @@ def _renew(args: argparse.Namespace) -> int:
         raise SetupError(f"{TEMPLATE} does not exist. Is the hirdir package installed?")
     template = TEMPLATE.read_text(encoding="utf-8")
     before = SNIPPET.read_text(encoding="utf-8") if SNIPPET.is_file() else None
-    after = renewed(before, template, args.prefix)
+    after = renewed(before, template, args.prefix, configured_megabytes())
     prefix = snippet_prefix(after)
     where = "/" if prefix == "/" else f"{prefix}/"
     if after == before:
@@ -1303,7 +1377,8 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "--renew",
         action="store_true",
         help=f"write {SNIPPET} again as this version of hirdir ships it, keeping its "
-        "prefix; the package does this itself when it is installed and at each upgrade",
+        f"prefix, with the limit of a body that {SETTINGS} gives; the package does this "
+        "itself when it is installed and at each upgrade",
     )
     parser.add_argument(
         "--settings",

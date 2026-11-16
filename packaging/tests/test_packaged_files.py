@@ -72,22 +72,27 @@ def test_the_snippet_holds_the_location_block_of_the_architecture_page() -> None
     location = next(d for d in packaged if d.args == ["^~", "/hirdir/"])
     assert shape(location)[:2] == shape(wanted)[:2]
     assert set(shape(wanted)[2]) <= set(shape(location)[2])
-    upload_limit = ("client_max_body_size", ("20m",), ())
+    upload_limit = ("client_max_body_size", ("100m",), ())
     assert upload_limit in shape(location)[2]
     assert set(shape(location)[2]) - set(shape(wanted)[2]) <= {upload_limit}
-    assert "`client_max_body_size 20m;`" in ARCHITECTURE
+    assert "`client_max_body_size 100m;`" in ARCHITECTURE
 
 
-def test_nginx_takes_a_body_as_large_as_an_import_may_be_and_no_larger() -> None:
-    """The limit of the snippet is the limit of the application, which is where the rule is."""
+def test_nginx_takes_a_body_as_large_as_a_reference_file_may_be_and_no_larger() -> None:
+    """The limit of the snippet is the larger of the application's two, an import and a
+    reference file (P-162), which is where the rule is."""
     packaged = setup.parse((PACKAGING / "nginx" / "snippet.conf").read_text(encoding="utf-8"))
     location = next(d for d in packaged if d.args == ["^~", "/hirdir/"])
     assert location.block is not None
     (limit,) = [d.args for d in location.block if d.name == "client_max_body_size"]
     assert files.MAX_BYTES % MB == 0
-    assert limit == [f"{files.MAX_BYTES // MB}m"]
-    # The install page tells an operator the same number.
+    larger = max(
+        config.default("files", "max_megabytes"), config.default("files", "max_reference_megabytes")
+    )
+    assert limit == [f"{larger}m"]
+    # The install page tells an operator the same numbers.
     assert f"{files.MAX_BYTES // MB} MB" in INSTALL
+    assert f"{larger} MB" in INSTALL
 
 
 def test_the_snippet_is_shipped_as_a_template_that_postinst_writes_out() -> None:
@@ -270,7 +275,9 @@ def test_the_install_page_shows_what_an_upgrade_says_of_the_nginx_snippet() -> N
     assert said in " ".join(INSTALL.split())
 
     # A snippet edited by hand: what hirdir-setup says, then what postinst adds.
-    edited = shipped.replace("client_max_body_size 20m;", "client_max_body_size 5m;")
+    edited = shipped.replace(
+        "    proxy_set_header Host", "    proxy_read_timeout 300s;\n    proxy_set_header Host"
+    )
     try:
         setup.renewed(edited, shipped)
     except setup.SetupError as error:
