@@ -1603,8 +1603,8 @@ asks for, and the total counted.
 | by site | 301 / 701 | 120 rows |
 | by region | 324 / 693 | 15 rows |
 | by group | 267 / 666 | 38 rows |
-| any of the four, `location:within:Americas` | not answered | |
-| `POST /reports/capacity/try`, a default, a minimum and two staff lines | 5036 / 5366 | |
+| any of the four, `location:within:Americas`, with the joins | 105 to 124 / 352 to 394 | 675 circuits |
+| `POST /reports/capacity/try`, a default, a minimum and two staff lines, the balance in force kept | 2480 / 2961 | |
 | `POST /kept-answers/check`, the four long reports kept | 4299 / 4599 | 4, none differed |
 
 The weight in force, with `default_item_weight` and `minimum_item_weight` set against
@@ -1619,36 +1619,37 @@ minimum.
 Every page of the circuit grid meets the target, and the record of a circuit and of a
 group, and the list of groups. The report of what circuits cost, whole, does not: over
 300 ms at the median by site and by region, and over 600 ms at the 95th percentile by
-each of the four. Narrowed by a filter that names a place, it is not answered:
-`circuit_costs` reads the filter without the joins of the circuit list, so each place
-the filter names is a cross join, which neither narrows the circuits nor counts each
-once. On the fixture the process grew past 6 GB before the kernel stopped it; under the
-3 GiB the timing now allows it fails after 13 to 14 s; on a small database it answers,
-with each circuit counted several times over. That is a defect and not a matter of
-speed. Read with the joins, as the list of circuits reads it, the four take 105 to 124
-ms at the median and 352 to 394 ms at the 95th percentile, and count the 675 circuits
-of the region.
+each of the four. Narrowed by a filter that names a place, it was not answered when the
+timing began: `circuit_costs` read the filter without the joins of the circuit list, so
+each place the filter named was a cross join, which neither narrowed the circuits nor
+counted each once. On the fixture the process grew past 6 GB before the kernel stopped
+it; on a small database it answered, with each circuit counted several times over. That
+was a defect and not a matter of speed, and it is put right in 0.8.0: read with the
+joins, as the list of circuits reads it, the four take 105 to 124 ms at the median and
+352 to 394 ms at the 95th percentile, and count the 675 circuits of the region.
 
-The capacity report anew is slower than at 0.7.0, 2.4 s against 1.3 s. Each of its two
-views reads the items twice, for the sums by region, 0.6 s, and, since 0.8.0, for the
-items at a default or raised to the minimum (P-155), 0.5 s. It is kept now (P-157),
-and given in 10 ms to every request after the first. A Try works out the balance in
-force and the balance tried, eight passes over the items, 5.0 s; the balance in force is
-what the report answers, and taken from the kept answer a Try takes 2480 / 2961. The
-check of what is kept works out the four long reports anew one after another, 4.3 s.
+The capacity report anew was slower than at 0.7.0 when the timing began, 2.4 s against
+1.3 s: each of its two views read the items twice, for the sums by region, 0.6 s, and,
+since 0.8.0, for the items at a default or raised to the minimum (P-155), 0.5 s. It
+reads them once again, as at 0.7.0, where no default or minimum of an item's weight is
+set, since none can then be either; that was not timed again. With one set it reads
+them twice. It is kept now (P-157), and given in 10 ms to every request after the
+first. A Try worked out the balance in force and the balance tried, eight passes over
+the items, 5.0 s; the balance in force is what the report answers, and taken from the
+kept answer, as 0.8.0 now takes it, a Try takes 2480 / 2961. The check of what is kept
+works out the four long reports anew one after another, 4.3 s.
 
 **Left for the timing of 1.0.0**, with what each costs now:
 
 - The coverage report anew, 1.4 s whole and 1.9 s narrowed to a region, counted
   section by section. Under a second needs what D-184 says of the terms of each
   contract, worked out once for a request and read by every item.
-- The capacity report anew, 2.4 s, and 2.5 s with the six weights set: four passes
+- The capacity report anew with an item's default or minimum set, 2.5 s: four passes
   over the items, two of them to count what is at a default or raised, which the pass
   of the sums could count. Kept, it is 10 ms, and it is worked out at midnight and at
   start.
-- A Try, 5.0 s, or 2.5 s with the balance in force taken from the kept report: the
-  balance tried is worked out each time and never kept, so it costs what the report
-  does anew.
+- A Try, 2.5 s with the balance in force taken from the kept report: the balance tried
+  is worked out each time and never kept, so it costs what the report does anew.
 - The check of what is kept, 4.3 s with the four long reports kept: the sum of them
   anew.
 - The summary, 2.5 s whole and 4.0 s by region: four passes over the items, each 0.5 to
