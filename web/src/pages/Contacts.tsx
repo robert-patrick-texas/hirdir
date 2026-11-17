@@ -197,6 +197,7 @@ export function Contacts() {
         rowLink={(contact) => `/contacts/${encodeURIComponent(contact.hid)}`}
         dimmed={(contact) => contact.record_status !== "active"}
         shortFilter="organization:contains:Operations tags:has:on-call"
+        quickFields={["name", "email"]}
         startFilter={startFilter}
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >
@@ -371,6 +372,10 @@ function Assigned({ contact }: { contact: Contact }) {
   const assignments = places.data?.items ?? [];
   const among = owners.data?.items ?? [];
   const loaded = places.data !== undefined && owners.data !== undefined;
+  // 0.9.5: the uses of the contact that this page does not list: where it is named for an
+  // agreement, a contract, a vendor or a circuit, which the server counts (P-197).
+  const listed = (places.data?.total ?? 0) + (owners.data?.total ?? 0) + (behind.data?.total ?? 0);
+  const elsewhere = Math.max(0, contact.uses - listed);
   // Each list is read whole, and is sorted here only when it is.
   const placeSorting = useSorting(
     assignments,
@@ -405,9 +410,17 @@ function Assigned({ contact }: { contact: Contact }) {
       )}
       {loaded &&
         behind.data &&
+        contact.uses === 0 &&
         assignments.length === 0 &&
         among.length === 0 &&
         labels.length === 0 && <p className="muted">This contact is assigned nowhere.</p>}
+      {loaded && behind.data && elsewhere > 0 && (
+        <p data-testid="contact-elsewhere" data-count={elsewhere}>
+          This contact is named{" "}
+          {listed > 0 ? plural(elsewhere, "more time") : plural(elsewhere, "time")}, in agreements,
+          contracts, vendors or circuits, which this page does not list yet.
+        </p>
+      )}
       {labels.length > 0 && (
         <p data-testid="contact-operators">
           Behind {plural(labels.length, "operator")}:{" "}

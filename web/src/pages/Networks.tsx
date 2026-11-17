@@ -158,6 +158,7 @@ export function AllAddresses() {
         rowId={(address) => address.hid}
         rowLink={(address) => holderPath(address) ?? "/addresses"}
         shortFilter="network.label:eq:Red address:prefix:192.0.2."
+        quickFields={["address", "item.name", "group.name"]}
         startFilter={startFilter}
       />
     </>

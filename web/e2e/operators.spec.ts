@@ -652,6 +652,9 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(site).toHaveAttribute("data-path", sitePath);
   await expect(site.locator('[data-measure="components"]')).toHaveText("4");
   await expect(site.locator('[data-measure="weight"]')).toHaveText(/^6(\.00?)?$/);
+  // 0.9.5: the operators involved are a number, with the list behind it (P-196).
+  await expect(site.getByTestId("involved-count")).toHaveText("2 operators");
+  await site.getByTestId("involved-count").click();
   const there = site.getByTestId("involved").locator("li");
   await expect(there).toHaveCount(2);
   await expect(markIn(there.nth(0), edge)).toBeVisible();

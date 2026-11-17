@@ -5,13 +5,18 @@ import {
   type FilterNode,
   filterText,
   formatShort,
+  ITEM_WORDS,
+  isWords,
+  itemsAndCondition,
   itemsPath,
   itemsViewPath,
   KINDS,
   OPERATORS,
   parseFilter,
   parseShort,
+  sentFilter,
   viewFilter,
+  wordsFilter,
 } from "./filter";
 
 function parsed(text: string) {
@@ -316,5 +321,101 @@ describe("KINDS", () => {
     expect([...KINDS.address]).toEqual([...KINDS.mac]);
     expect(KINDS.address).toContain("prefix");
     expect(KINDS.address).not.toContain("glob");
+  });
+});
+
+describe("plain words in a filter box (P-187)", () => {
+  const CONTACTS = { fields: ["name", "email"], example: "tags:has:on-call" };
+
+  it("are each held by one of the fields a list is known by", () => {
+    expect(wordsFilter("  sw-01274 ", ITEM_WORDS.fields)).toEqual({
+      or: [
+        { field: "name", op: "contains", value: "sw-01274" },
+        { field: "hostname", op: "contains", value: "sw-01274" },
+        { field: "serial_number", op: "contains", value: "sw-01274" },
+        { field: "asset_tag", op: "contains", value: "sw-01274" },
+        { field: "address", op: "contains", value: "sw-01274" },
+      ],
+    });
+    expect(parseFilter("rowan example.org", CONTACTS)).toEqual({
+      ok: true,
+      filter: {
+        and: [
+          {
+            or: [
+              { field: "name", op: "contains", value: "rowan" },
+              { field: "email", op: "contains", value: "rowan" },
+            ],
+          },
+          {
+            or: [
+              { field: "name", op: "contains", value: "example.org" },
+              { field: "email", op: "contains", value: "example.org" },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("leave a condition of the short form and a tree as they always were", () => {
+    expect(parseFilter("hostname:prefix:site2-", ITEM_WORDS)).toEqual(
+      parseFilter("hostname:prefix:site2-"),
+    );
+    const tree = '{"field":"tags","op":"has","value":"core"}';
+    expect(parseFilter(tree, ITEM_WORDS)).toEqual(parseFilter(tree));
+    expect(parseFilter("   ", ITEM_WORDS)).toEqual({ ok: true, filter: null });
+  });
+
+  it("are refused where a list is known by nothing, as before", () => {
+    const result = parseFilter("sw-01274");
+    expect(result.ok).toBe(false);
+  });
+
+  it("with a condition after them are neither, and the help is the list's own", () => {
+    const result = parseFilter("rowan tags:has:on-call", CONTACTS);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("name or email");
+      expect(result.error).toContain("as in tags:has:on-call");
+      expect(result.error).not.toContain("lifecycle_state");
+    }
+    const mistyped = parseFilter("name:contans:rowan", CONTACTS);
+    expect(mistyped.ok).toBe(false);
+    if (!mistyped.ok) expect(mistyped.error).toContain("as in tags:has:on-call");
+  });
+
+  it("are at most eight", () => {
+    expect(parseFilter("a b c d e f g h", CONTACTS).ok).toBe(true);
+    expect(parseFilter("a b c d e f g h i", CONTACTS).ok).toBe(false);
+  });
+
+  it("tell words from conditions", () => {
+    expect(isWords("sw-01274 192.0.2.1")).toBe(true);
+    expect(isWords("2001:db8::1")).toBe(true);
+    expect(isWords("hostname:prefix:sw")).toBe(false);
+    expect(isWords('{"field":"name"}')).toBe(false);
+    expect(isWords("")).toBe(false);
+  });
+
+  it("go to the server of a view as the tree of them, and a condition as typed", () => {
+    expect(JSON.parse(sentFilter("sw-01274"))).toEqual(wordsFilter("sw-01274", ITEM_WORDS.fields));
+    expect(sentFilter(" tags:has:core ")).toBe("tags:has:core");
+    expect(sentFilter("")).toBe("");
+  });
+
+  it("are added to with a row's condition, as the tree of both", () => {
+    const path = itemsAndCondition("sw-01274", "location:empty:true");
+    const filter = new URLSearchParams((path ?? "").split("?")[1]).get("filter") ?? "";
+    expect(JSON.parse(filter)).toEqual({
+      and: [
+        wordsFilter("sw-01274", ITEM_WORDS.fields),
+        { field: "location", op: "empty", value: "true" },
+      ],
+    });
+    expect(itemsAndCondition("tags:has:core", "location:empty:true")).toBe(
+      itemsPath("tags:has:core location:empty:true"),
+    );
+    expect(itemsAndCondition('{"field":"tags","op":"has","value":"x"}', "a:eq:b")).toBeNull();
   });
 });

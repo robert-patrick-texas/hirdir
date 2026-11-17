@@ -7,6 +7,7 @@
 // Nothing is counted or summed here.
 
 import type { Schemas } from "../api/client";
+import { all, any, type FilterNode, type ItemsView, itemsViewPath, sentFilter } from "./filter";
 import { plural } from "./format";
 import { groupTypeLabel } from "./groups";
 import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
@@ -197,12 +198,65 @@ export function summaryQuery<B extends string = By>(
   include_archived?: boolean;
   include_drafts?: boolean;
 } {
-  const filter = view.filter.trim();
+  // Words are sent as the tree of them (P-187).
+  const filter = sentFilter(view.filter);
   return {
     ...(filter === "" ? {} : { filter }),
     ...(view.by === "" ? {} : { by: view.by }),
     ...(view.includeArchived ? { include_archived: true } : {}),
     ...(view.includeDrafts ? { include_drafts: true } : {}),
+  };
+}
+
+/**
+ * 0.9.5: the items that a total of health counts, as a view of the item list (P-195):
+ * the components of that health, as the server counts them, within the view the total
+ * is of. A component is a major item whose state is blank or one of `count_states` and
+ * whose kind is one of `count_kinds`, an item with no kind counting as hardware. Null
+ * where the settings are not known, since the list would not then hold the number.
+ */
+export function healthItemsView(
+  view: { filter: FilterNode | null; include_archived?: boolean; include_drafts?: boolean },
+  health: string,
+  countStates: readonly string[] | null,
+  countKinds: readonly string[] | null,
+): ItemsView | null {
+  if (countStates === null || countKinds === null || countKinds.length === 0) return null;
+  const filter = all(
+    view.filter,
+    { field: "is_major", op: "eq", value: true },
+    any(
+      { field: "lifecycle_state", op: "empty", value: true },
+      countStates.length > 0
+        ? { field: "lifecycle_state", op: "in", value: [...countStates] }
+        : null,
+    ),
+    any(
+      { field: "catalog.kind", op: "in", value: [...countKinds] },
+      countKinds.includes("hardware") ? { field: "catalog.kind", op: "empty", value: true } : null,
+    ),
+    { field: "health", op: "eq", value: health },
+  );
+  return {
+    filter,
+    ...(view.include_archived ? { include_archived: true } : {}),
+    ...(view.include_drafts ? { include_drafts: true } : {}),
+  };
+}
+
+/**
+ * Where a total of health of a view leads, for the settings as they were read: the item
+ * list of what it counts, or null where that list cannot be made exactly.
+ */
+export function healthHrefOf(
+  view: { filter: FilterNode | null; include_archived?: boolean; include_drafts?: boolean },
+  settings: ReadonlyArray<{ key: string; value: unknown }> | null | undefined,
+): (health: string) => string | null {
+  const states = settingList(settings, "count_states");
+  const kinds = settingList(settings, "count_kinds");
+  return (health) => {
+    const items = healthItemsView(view, health, states, kinds);
+    return items === null ? null : itemsViewPath(items);
   };
 }
 

@@ -295,6 +295,7 @@ export function Agreements() {
         rowLink={(agreement) => agreementPath(agreement.hid)}
         dimmed={(agreement) => agreement.record_status !== "active"}
         shortFilter="vendor:eq:Cisco status:eq:active"
+        quickFields={["name", "number"]}
         startFilter={startFilter}
         switches={{ archived: "Include archived", drafts: "Include drafts" }}
       >

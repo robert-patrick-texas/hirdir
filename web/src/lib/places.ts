@@ -3,7 +3,7 @@
 // force; nothing of that is worked out again here. This only lays the answers out.
 
 import type { Schemas } from "../api/client";
-import { all, any, type FilterNode, itemsPath } from "./filter";
+import { all, any, type FilterNode, itemsPath, sentFilter } from "./filter";
 import type { Option } from "./patch";
 
 export type Region = Schemas["RegionOut"];
@@ -80,6 +80,18 @@ function searchWords(typed: string): string[] {
 }
 
 /**
+ * 0.9.5: the filter of Find a place (P-188), for the sites and for the locations alike:
+ * each word is in the name of the place or in its code. Blank text is no search.
+ */
+export function placeFind(typed: string): FilterNode | null {
+  return all(
+    ...searchWords(typed).map((value) =>
+      any({ field: "name", op: "contains", value }, { field: "code", op: "contains", value }),
+    ),
+  );
+}
+
+/**
  * The filter that finds sites by the words a location was searched for with, where no
  * location matched (P-184): each word is in the name of the site, in its code, or in the
  * name of its region, as the search for a location has it. Blank text is no search.
@@ -145,7 +157,8 @@ export function treeQuery(
   include_archived?: boolean;
   include_drafts?: boolean;
 } {
-  const filter = view.filter.trim();
+  // Words are sent as the tree of them (P-187).
+  const filter = sentFilter(view.filter);
   return {
     ...(filter === "" ? {} : { filter }),
     ...(part.root === undefined ? {} : { root: part.root }),

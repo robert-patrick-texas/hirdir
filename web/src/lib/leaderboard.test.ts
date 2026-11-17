@@ -115,7 +115,8 @@ describe("how the items of an operator have it", () => {
     );
     expect(splitPath(view, OP, "places_given")).toBeNull();
     expect(splitPath(view, null, "own")).toBeNull();
-    expect(splitPath({ ...view, filter: "not a filter" }, OP, "own")).toBeNull();
+    // Words before a condition are neither words nor the short form (P-187).
+    expect(splitPath({ ...view, filter: "not a tags:has:filter" }, OP, "own")).toBeNull();
   });
 
   it("are a file of their own, one line for each operator and none for nobody", () => {

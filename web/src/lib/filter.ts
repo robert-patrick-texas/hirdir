@@ -99,11 +99,61 @@ const SHORT = new RegExp(`(?:^|\\s+)([A-Za-z_][A-Za-z0-9_.]*):(${OPERATORS.join(
 // What looks like the start of a condition, whatever stands where the operator should.
 const LIKE_A_CONDITION = /(?:^|\s)([A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_]+):/;
 
-export const SHORT_FORM_HELP =
-  "The short form is field:op:value, with a space between conditions, as in " +
-  "lifecycle_state:in:Test,Prod hostname:prefix:site2-";
+// The example of the short form where a list gives none of its own: the items'.
+const ITEMS_EXAMPLE = "lifecycle_state:in:Test,Prod hostname:prefix:site2-";
+
+/** How the short form reads, with an example of it: a list's own, or the items'. */
+export function shortFormHelp(example: string = ITEMS_EXAMPLE): string {
+  return `The short form is field:op:value, with a space between conditions, as in ${example}`;
+}
 
 export type ShortResult = { ok: true; filter: FilterNode | null } | { ok: false; error: string };
+
+/**
+ * 0.9.5: what a list is known by, for plain words in its filter box (P-187): the fields
+ * a word is looked for in, and the list's own example of the short form, for the help.
+ */
+export interface QuickFields {
+  fields: readonly string[];
+  example: string;
+}
+
+/** The fields an item is known by: what words typed above the items are looked for in. */
+export const ITEM_QUICK_FIELDS: readonly string[] = [
+  "name",
+  "hostname",
+  "serial_number",
+  "asset_tag",
+  "address",
+];
+
+/** The items' quick fields, with their example of the short form. */
+export const ITEM_WORDS: QuickFields = { fields: ITEM_QUICK_FIELDS, example: ITEMS_EXAMPLE };
+
+// The most words a filter takes: with a list's fields, the server takes 100 conditions.
+export const MOST_WORDS = 8;
+
+/** Whether text holds anything shaped like a condition of the short form: then it is no words. */
+function hasCondition(text: string): boolean {
+  return new RegExp(SHORT.source, "i").test(text) || LIKE_A_CONDITION.test(text);
+}
+
+/** The words of plain text: what stands between spaces. */
+export function wordsOf(text: string): string[] {
+  return text.split(/\s+/).filter((word) => word !== "");
+}
+
+/**
+ * Plain words as a filter: each word held by one of the fields, as an AND of an OR of
+ * `contains`, which every list takes. Blank text is no filter.
+ */
+export function wordsFilter(text: string, fields: readonly string[]): FilterNode | null {
+  return all(
+    ...wordsOf(text).map((value) =>
+      any(...fields.map((field) => ({ field, op: "contains" as const, value }))),
+    ),
+  );
+}
 
 /**
  * Read the short form: `field:op:value` conditions joined by AND.
@@ -113,12 +163,12 @@ export type ShortResult = { ok: true; filter: FilterNode | null } | { ok: false;
  * like a condition is refused, as the server refuses it: it is far more likely a
  * mistyped operator than a value. Blank text is no filter.
  */
-export function parseShort(text: string): ShortResult {
+export function parseShort(text: string, example?: string): ShortResult {
   const trimmed = text.trim();
   if (trimmed === "") return { ok: true, filter: null };
   const starts = [...trimmed.matchAll(SHORT)];
   const [first] = starts;
-  if (first?.index !== 0) return { ok: false, error: SHORT_FORM_HELP };
+  if (first?.index !== 0) return { ok: false, error: shortFormHelp(example) };
   const conditions: Condition[] = [];
   for (const [place, match] of starts.entries()) {
     const next = starts[place + 1];
@@ -148,6 +198,22 @@ export function parseShort(text: string): ShortResult {
  */
 export function itemsPath(short: string): string {
   return `/items?filter=${encodeURIComponent(short)}&minor=1`;
+}
+
+/**
+ * The grid of items of a view with one condition of the short form added to it, as a
+ * path of the app: the view's filter as typed, the short form or words (P-187). Only
+ * those can be added to: for a view asked for with a filter tree, or with text that
+ * cannot be read, there is no such link, and null is answered.
+ */
+export function itemsAndCondition(viewText: string, condition: string): string | null {
+  const filter = viewText.trim();
+  if (filter.startsWith("{")) return null;
+  if (!isWords(filter)) return itemsPath(`${filter} ${condition}`.trim());
+  const words = parseFilter(filter, ITEM_WORDS);
+  const added = parseShort(condition);
+  if (!words.ok || !added.ok) return null;
+  return itemsPath(filterText(all(words.filter, added.filter)));
 }
 
 function shortValue(value: Condition["value"]): string {
@@ -198,10 +264,28 @@ export function viewFilter(filter: unknown): FilterNode | null {
  * Read a filter as a link or the filter box holds it: the short form, or a filter tree
  * written as JSON, which is how a report hands on a filter that the short form cannot
  * say, one with an OR in it. The server remains the judge of the fields and the values.
+ *
+ * 0.9.5: with the fields a list is known by, text that holds no condition is taken as
+ * words, each to be held by one of those fields (P-187). Text that is neither words nor
+ * conditions is answered with how the short form reads, with that list's own example.
  */
-export function parseFilter(text: string): ShortResult {
+export function parseFilter(text: string, quick?: QuickFields): ShortResult {
   const trimmed = text.trim();
-  if (!trimmed.startsWith("{")) return parseShort(trimmed);
+  if (quick && isWords(trimmed)) {
+    if (wordsOf(trimmed).length > MOST_WORDS) {
+      return { ok: false, error: `At most ${MOST_WORDS} words are looked for at once.` };
+    }
+    return { ok: true, filter: wordsFilter(trimmed, quick.fields) };
+  }
+  if (!trimmed.startsWith("{")) {
+    const short = parseShort(trimmed, quick?.example);
+    if (short.ok || !quick || short.error !== shortFormHelp(quick.example)) return short;
+    // Words before a condition are neither: say how each reads.
+    return {
+      ok: false,
+      error: `Words alone find a record by its ${fieldsText(quick.fields)}. ${shortFormHelp(quick.example)}`,
+    };
+  }
   let value: unknown;
   try {
     value = JSON.parse(trimmed);
@@ -216,6 +300,31 @@ export function parseFilter(text: string): ShortResult {
     };
   }
   return { ok: true, filter: value };
+}
+
+/** Whether text is plain words: something, neither a filter tree nor any condition. */
+export function isWords(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed !== "" && !trimmed.startsWith("{") && !hasCondition(trimmed);
+}
+
+/** Fields as a reader is told of them: "name, hostname or address". */
+export function fieldsText(fields: readonly string[]): string {
+  if (fields.length <= 1) return fields.join("");
+  return `${fields.slice(0, -1).join(", ")} or ${fields.at(-1)}`;
+}
+
+/**
+ * A filter as the box of a view of the items holds it, as the server takes it in a
+ * query: words as the tree of them, in JSON, and the short form or a tree as it was
+ * typed (P-187). Words that cannot be read are sent as they are, for the server to say
+ * why.
+ */
+export function sentFilter(text: string, quick: QuickFields = ITEM_WORDS): string {
+  const trimmed = text.trim();
+  if (!isWords(trimmed)) return trimmed;
+  const read = parseFilter(trimmed, quick);
+  return read.ok && read.filter !== null ? JSON.stringify(read.filter) : trimmed;
 }
 
 /** A tree of ANDs within ANDs as one AND: what the short form can then write. */

@@ -13,7 +13,14 @@ import { ItemsGrid } from "../components/ItemsGrid";
 import { Problem } from "../components/Problem";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
-import { filterText, itemsViewPath, parseFilter, viewFilter } from "../lib/filter";
+import {
+  filterText,
+  ITEM_WORDS,
+  itemsViewPath,
+  parseFilter,
+  sentFilter,
+  viewFilter,
+} from "../lib/filter";
 import { formatTime, itemName, plural } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
 import {
@@ -92,7 +99,8 @@ function ViewForm(props: ViewFormProps) {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const parsed = parseFilter(draft);
+    // Words find items by what an item is known by (P-187).
+    const parsed = parseFilter(draft, ITEM_WORDS);
     setFilterError(parsed.ok ? "" : parsed.error);
     const typed = days.trim();
     const wrong = typed !== "" && daysOf(typed) === null;
@@ -111,7 +119,7 @@ function ViewForm(props: ViewFormProps) {
           value={draft}
           onChange={setDraft}
           autoComplete="off"
-          hint="The filter of the item list: field:op:value, as in site:eq:Site-2"
+          hint="Words, as in a host name, or the filter of the item list: field:op:value, as in site:eq:Site-2"
           error={filterError || filterRefused}
         />
         <TextField
@@ -227,7 +235,7 @@ export function CoverageReport() {
   const shown: CoverageSection | null = isCoverageSection(asked) ? asked : null;
   const days = daysOf(view.days);
   const query = {
-    ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
+    ...(view.filter.trim() ? { filter: sentFilter(view.filter) } : {}),
     ...(days === null ? {} : { within_days: days }),
     ...(view.includeDrafts ? { include_drafts: true } : {}),
   };
@@ -522,7 +530,7 @@ export function EndOfLifeReport() {
   const days = daysOf(view.days);
   const query = {
     date,
-    ...(view.filter.trim() ? { filter: view.filter.trim() } : {}),
+    ...(view.filter.trim() ? { filter: sentFilter(view.filter) } : {}),
     ...(days === null ? {} : { within_days: days }),
     ...(view.includeArchived ? { include_archived: true } : {}),
     ...(view.includeDrafts ? { include_drafts: true } : {}),
@@ -957,6 +965,7 @@ export function Replacements() {
           }}
           rowId={(row) => row.hid}
           shortFilter="reason:eq:rma replaced_on:gte:2026-01-01"
+          quickFields={["old.name", "old.serial_number", "new.name", "new.serial_number"]}
           startFilter={startFilter}
         />
       )}

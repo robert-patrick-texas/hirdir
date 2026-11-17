@@ -8,6 +8,7 @@ import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
 import { madeLink, NewItem } from "../components/NewItem";
 import { Notice, Problem } from "../components/Problem";
+import { ITEM_QUICK_FIELDS } from "../lib/filter";
 import { queryBody } from "../lib/gridQuery";
 import { useTitle } from "../lib/hooks";
 import { stateNames } from "../lib/lifecycle";
@@ -134,6 +135,7 @@ export function Items() {
           rowLink={(item) => `/items/${encodeURIComponent(item.hid)}`}
           dimmed={itemIsDimmed}
           shortFilter="lifecycle_state:in:Test,Prod hostname:prefix:site2-"
+          quickFields={ITEM_QUICK_FIELDS}
           startFilter={startFilter}
           startSwitches={
             withArchived || withDrafts

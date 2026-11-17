@@ -172,6 +172,12 @@ describe("plural", () => {
     expect(plural(30, "second")).toBe("30 seconds");
     expect(plural(0, "membership")).toBe("0 memberships");
   });
+
+  it("writes the count with the separator of thousands, as the tables do (P-195)", () => {
+    expect(plural(34778, "item")).toBe("34,778 items");
+    expect(plural(1000, "item")).toBe("1,000 items");
+    expect(plural(999, "item")).toBe("999 items");
+  });
 });
 
 describe("formatMac", () => {

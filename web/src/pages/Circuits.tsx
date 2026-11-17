@@ -356,6 +356,7 @@ export function Circuits() {
         key={`${startFilter ?? ""} ${withArchived} ${withDrafts}`}
         id="circuits"
         shortFilter="circuit_type:eq:internet effective.down_mbps:lt:100"
+        quickFields={["name", "enterprise_circuit_id", "carrier_circuit_number"]}
         startFilter={startFilter}
         startSwitches={
           withArchived || withDrafts

@@ -1,10 +1,13 @@
 import { type FormEvent, useState } from "react";
-import { parseShort } from "../lib/filter";
+import { ITEM_WORDS, parseFilter } from "../lib/filter";
 import { CheckField, TextField } from "./Field";
 
 /** A view of the items, as the item list has it: a filter and the two switches. */
 export interface ItemView {
-  /** The item filter, in the short form. Blank is every item. */
+  /**
+   * The item filter as it was typed: the short form, a tree as JSON, or words, which are
+   * sent as their tree (`sentFilter`). Blank is every item.
+   */
   filter: string;
   includeArchived: boolean;
   includeDrafts: boolean;
@@ -52,7 +55,8 @@ export function ItemViewForm(props: ItemViewFormProps) {
   function submit(event: FormEvent) {
     event.preventDefault();
     const typed = draft.trim();
-    const parsed = typed.startsWith("{") ? null : parseShort(typed);
+    // Words find items by what an item is known by (P-187).
+    const parsed = typed.startsWith("{") ? null : parseFilter(typed, ITEM_WORDS);
     if (parsed && !parsed.ok) {
       setFilterError(parsed.error);
       return;

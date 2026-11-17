@@ -2,10 +2,11 @@ import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { FindPlace } from "../components/FindPlace";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
 import { ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
-import { itemsPath } from "../lib/filter";
+import { itemsAndCondition } from "../lib/filter";
 import { useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { useChoices } from "../lib/lists";
 import { choiceLabel, optionLabel, RECORD_STATUSES } from "../lib/options";
@@ -75,7 +76,7 @@ export function Geography() {
         view={view}
         onShow={(next) => setParams(paramsOfView(next))}
         label="Count the items that match"
-        hint="A filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
+        hint="Words, as in a host name, or a filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
         archivedHint="Retired places, and retired and archived items"
         draftsHint="Draft places and draft items"
       />
@@ -93,6 +94,8 @@ export function Geography() {
       <div className="geography-columns">
         <section aria-labelledby="tree" className="geography-tree">
           <h2 id="tree">Regions, sites and locations</h2>
+          {/* 0.9.5: a site or a location by its name or its code, above the tree (P-188). */}
+          <FindPlace search={search} />
           {mayEdit && !adding && (
             <p className="actions">
               <button type="button" className="primary" onClick={() => setAdding(true)}>
@@ -157,9 +160,9 @@ function PlaceTree({ view, turn, search, chosen, opened, onOpen }: PlaceTreeProp
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const data = tree.data;
   const rows = data ? treeRows(data.roots, closed) : [];
-  const short = view.filter.trim();
-  // The items that are nowhere, in the grid: only a filter in the short form can be added to.
-  const nowhere = short.startsWith("{") ? null : itemsPath(`${short} location:empty:true`.trim());
+  // The items that are nowhere, in the grid: only a filter in the short form, or words,
+  // can be added to.
+  const nowhere = itemsAndCondition(view.filter, "location:empty:true");
 
   function toggleRegion(hid: string) {
     setClosed((was) => {

@@ -133,6 +133,7 @@ export function CircuitGroups() {
         rowLink={(group) => circuitGroupPath(group.hid)}
         dimmed={circuitIsDimmed}
         shortFilter="name:contains:Internet annual_cost:gt:10000"
+        quickFields={["name"]}
         startFilter={startFilter}
         switches={{ archived: "Include archived", drafts: "Include drafts" }}
       >

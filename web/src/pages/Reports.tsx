@@ -12,7 +12,7 @@ import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { contractPath } from "../lib/contracts";
-import { itemsPath, parseShort } from "../lib/filter";
+import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -26,6 +26,7 @@ import { decimalValue, type SortColumns } from "../lib/sort";
 import {
   type By,
   byLabel,
+  healthHrefOf,
   isBy,
   isByPlace,
   isManagementBy,
@@ -204,7 +205,7 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
     const typed = draft.trim();
     // The short form is read here as the server reads it. A filter tree as JSON is the
     // server's to judge.
-    const parsed = typed.startsWith("{") ? null : parseShort(typed);
+    const parsed = typed.startsWith("{") ? null : parseFilter(typed, ITEM_WORDS);
     if (parsed && !parsed.ok) {
       setFilterError(parsed.error);
       return;
@@ -223,7 +224,7 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
           value={draft}
           onChange={setDraft}
           autoComplete="off"
-          hint="The filter of the item list: field:op:value, as in tags:has:refresh-2030"
+          hint="Words, as in a host name, or the filter of the item list: field:op:value, as in tags:has:refresh-2030"
           error={filterError || filterRefused}
         />
         <SelectField
@@ -298,6 +299,20 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
+  // Each total of health leads to the items it counts, within this view (P-195), once
+  // the answer on show is the one of this view.
+  const read = parseFilter(view.filter, ITEM_WORDS);
+  const healthHref =
+    read.ok && !summary.loading
+      ? healthHrefOf(
+          {
+            filter: read.filter,
+            include_archived: view.includeArchived,
+            include_drafts: view.includeDrafts,
+          },
+          settings.data,
+        )
+      : undefined;
   const sorting = useSorting(
     data?.rows,
     {
@@ -349,6 +364,7 @@ export function Summary() {
               totals={data.totals}
               countKinds={settingList(settings.data, "count_kinds")}
               ranked
+              {...(healthHref ? { healthHref } : {})}
             />
             <ConditionTotals conditions={data.totals.by_condition} choices={choices.data} />
             <p className="hint">

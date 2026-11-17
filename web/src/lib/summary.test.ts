@@ -4,6 +4,8 @@ import {
   byLabel,
   conditionLabel,
   countText,
+  healthHrefOf,
+  healthItemsView,
   isBy,
   isByPlace,
   isManagementBy,
@@ -265,5 +267,68 @@ describe("numbers on the page", () => {
     expect(amountText("n/a")).toBe("n/a");
     expect(amountText(null)).toBe("");
     expect(amountText("")).toBe("");
+  });
+});
+
+describe("a total of health as the items it counts (P-195)", () => {
+  const STATES = ["Prod", "Test"];
+  const KINDS = ["hardware", "virtual"];
+
+  it("is the components of that health, as the server counts them, within the view", () => {
+    const view = healthItemsView(
+      { filter: { field: "tags", op: "has", value: "edge" }, include_archived: true },
+      "failed",
+      STATES,
+      KINDS,
+    );
+    expect(view).toEqual({
+      filter: {
+        and: [
+          { field: "tags", op: "has", value: "edge" },
+          { field: "is_major", op: "eq", value: true },
+          {
+            or: [
+              { field: "lifecycle_state", op: "empty", value: true },
+              { field: "lifecycle_state", op: "in", value: STATES },
+            ],
+          },
+          {
+            or: [
+              { field: "catalog.kind", op: "in", value: KINDS },
+              { field: "catalog.kind", op: "empty", value: true },
+            ],
+          },
+          { field: "health", op: "eq", value: "failed" },
+        ],
+      },
+      include_archived: true,
+    });
+  });
+
+  it("counts an item with no kind only where hardware is counted", () => {
+    const view = healthItemsView({ filter: null }, "good", [], ["software"]);
+    expect(view?.filter).toEqual({
+      and: [
+        { field: "is_major", op: "eq", value: true },
+        { field: "lifecycle_state", op: "empty", value: true },
+        { field: "catalog.kind", op: "in", value: ["software"] },
+        { field: "health", op: "eq", value: "good" },
+      ],
+    });
+  });
+
+  it("is no link where the settings are not known", () => {
+    expect(healthItemsView({ filter: null }, "good", null, KINDS)).toBeNull();
+    expect(healthItemsView({ filter: null }, "good", STATES, null)).toBeNull();
+    const href = healthHrefOf({ filter: null }, undefined);
+    expect(href("good")).toBeNull();
+  });
+
+  it("leads to the item list, with the minor items asked for", () => {
+    const href = healthHrefOf({ filter: null }, [
+      { key: "count_states", value: STATES },
+      { key: "count_kinds", value: ["hardware"] },
+    ]);
+    expect(href("degraded")).toMatch(/^\/items\?filter=%7B.*&minor=1$/);
   });
 });

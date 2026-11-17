@@ -235,6 +235,7 @@ export function Operators() {
         rowLink={(operator) => operatorPath(operator.hid)}
         dimmed={(operator) => operator.record_status !== "active"}
         shortFilter="is_open:eq:true label:prefix:Op"
+        quickFields={["label"]}
         startFilter={startFilter}
         switches={{ archived: "Include archived", drafts: "Include drafts" }}
       >

@@ -20,6 +20,7 @@ import {
   openingText,
   overriddenLevel,
   ownRoles,
+  placeFind,
   placePath,
   plannedGroupsWithin,
   plannedText,
@@ -130,6 +131,28 @@ describe("locationSearch", () => {
   it("sends no more words than a filter may hold conditions for", () => {
     const found = locationSearch("a b c d e f g h i j k l");
     expect(found && "and" in found ? found.and : []).toHaveLength(8);
+  });
+});
+
+describe("Find a place (P-188)", () => {
+  it("looks for each word in the name or the code of a place", () => {
+    expect(placeFind("  ")).toBeNull();
+    expect(placeFind("rack B1")).toEqual({
+      and: [
+        {
+          or: [
+            { field: "name", op: "contains", value: "rack" },
+            { field: "code", op: "contains", value: "rack" },
+          ],
+        },
+        {
+          or: [
+            { field: "name", op: "contains", value: "B1" },
+            { field: "code", op: "contains", value: "B1" },
+          ],
+        },
+      ],
+    });
   });
 });
 
