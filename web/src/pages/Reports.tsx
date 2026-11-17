@@ -103,6 +103,16 @@ function rowName(
 // The blank row of a report, as `rowLabel` names it.
 const NO_ROW = { key: null, label: null } as const;
 
+/**
+ * The order of the rows of both reports at first: the most items first, as the scoreboard
+ * opens by its weight, and the blank row last in every order (P-181). The answer of the
+ * server, which the command line prints and a file holds, keeps its own order.
+ */
+const MOST_FIRST = {
+  initial: { column: "items", descending: true },
+  last: (row: { key: string | null }) => row.key === null,
+} as const;
+
 // The four columns of health of the summary: each is sorted by the count it shows.
 const BY_HEALTH: SortColumns<SummaryRow> = Object.fromEntries(
   HEALTHS.map((health) => [
@@ -257,14 +267,18 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
-  const sorting = useSorting(data?.rows, {
-    name: (row) => rowName(by, row, choices.data, operators.data),
-    items: (row) => row.items,
-    component_count: (row) => row.component_count,
-    managed_node_count: (row) => row.managed_node_count,
-    support_weight: (row) => decimalValue(row.support_weight),
-    ...BY_HEALTH,
-  });
+  const sorting = useSorting(
+    data?.rows,
+    {
+      name: (row) => rowName(by, row, choices.data, operators.data),
+      items: (row) => row.items,
+      component_count: (row) => row.component_count,
+      managed_node_count: (row) => row.managed_node_count,
+      support_weight: (row) => decimalValue(row.support_weight),
+      ...BY_HEALTH,
+    },
+    MOST_FIRST,
+  );
   // The rank follows the count the table is sorted by, and is by items at first (P-180).
   const ranked = ranking(sorting.rows, sorting.state, SUMMARY_COUNTS, {
     fallback: "items",
@@ -430,13 +444,17 @@ export function ManagementReport() {
   const data = report.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
-  const sorting = useSorting(data?.rows, {
-    name: (row) => rowName(by, row, choices.data, operators.data),
-    items: (row) => row.items,
-    component_count: (row) => row.component_count,
-    est_value: (row) => decimalValue(row.est_value),
-    annual_support_cost: (row) => decimalValue(row.annual_support_cost),
-  });
+  const sorting = useSorting(
+    data?.rows,
+    {
+      name: (row) => rowName(by, row, choices.data, operators.data),
+      items: (row) => row.items,
+      component_count: (row) => row.component_count,
+      est_value: (row) => decimalValue(row.est_value),
+      annual_support_cost: (row) => decimalValue(row.annual_support_cost),
+    },
+    MOST_FIRST,
+  );
   // The rank follows the count the table is sorted by, and is by items at first (P-180).
   const ranked = ranking(sorting.rows, sorting.state, MANAGEMENT_COUNTS, {
     fallback: "items",

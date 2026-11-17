@@ -18,7 +18,7 @@ export interface Sorting<T> extends SortControl {
   reset: () => void;
 }
 
-interface Options {
+interface Options<T> {
   /** The order at first: left out, the rows are in the order they came in. */
   initial?: SortState;
   /**
@@ -26,6 +26,11 @@ interface Options {
    * sorted in the browser: that would sort the page on show alone.
    */
   enabled?: boolean;
+  /**
+   * The rows kept last in every order, as the blank row of the summary and of the
+   * management report is (P-181). Left out, every row sorts with the others.
+   */
+  last?: (row: T) => boolean;
 }
 
 /**
@@ -36,12 +41,13 @@ interface Options {
 export function useSorting<T>(
   rows: readonly T[] | null | undefined,
   columns: SortColumns<T>,
-  { initial, enabled = true }: Options = {},
+  { initial, enabled = true, last }: Options<T> = {},
 ): Sorting<T> {
   const [state, setState] = useState<SortState | null>(initial ?? null);
   const all = rows ?? [];
+  const sorted = enabled ? sortRows(all, columns, state) : [...all];
   return {
-    rows: enabled ? sortRows(all, columns, state) : [...all],
+    rows: last ? [...sorted.filter((row) => !last(row)), ...sorted.filter(last)] : sorted,
     state: enabled ? state : null,
     by: (column) => setState((was) => nextSort(was, column)),
     reset: () => setState(initial ?? null),
