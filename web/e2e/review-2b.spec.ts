@@ -347,3 +347,79 @@ test("P-188: Find a place lists the sites and the locations by name and code, ea
   await expect(page.getByRole("heading", { name: "Regions, sites and locations" })).toBeVisible();
   await expectClean(page, seen);
 });
+
+test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one, and keeps the rest for Show all", async ({
+  page,
+  account,
+  request,
+}, testInfo) => {
+  test.setTimeout(240_000);
+  const headers = await places(request, account);
+  // Twenty-two groups of the file's own items: the first with three, the others with one.
+  const groupNames: string[] = [];
+  for (let n = 1; n <= 22; n++) {
+    const members = [];
+    for (let m = 1; m <= (n === 1 ? 3 : 1); m++) {
+      const host = `grp-${n}-${m}-${id}`;
+      const item = await make(request, headers, "/items", { hostname: host });
+      members.push({ item_hid: item.hid });
+    }
+    const name = label(`Ring ${String(n).padStart(2, "0")}`);
+    await make(request, headers, "/device-groups", { type: "custom", name, members });
+    groupNames.push(name);
+  }
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  // Words as the view: the items of the file's groups.
+  await page.goto(`./reports/scoreboard?${new URLSearchParams({ filter: `grp ${id}` })}`);
+
+  const tables = page.getByRole("navigation", { name: "The tables of the scoreboard" });
+  await expect(tables.getByRole("link")).toHaveText([
+    "Operators",
+    "How each operator has its items",
+    "Groups",
+    "Sites",
+  ]);
+  const groups = page.getByTestId("score-groups");
+  const rows = groups.locator("tbody tr");
+  await expect(rows).toHaveCount(20, { timeout: 30_000 });
+  // The link brings the table into the window, and the keyboard to it.
+  await tables.getByRole("link", { name: "Groups" }).click();
+  await expect(page.getByRole("heading", { name: "Groups", exact: true })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Groups", exact: true })).toBeInViewport();
+
+  // The first, with the most weight, is first; the rank is of all the rows.
+  await expect(rows.first()).toHaveAttribute("data-label", label("Ring 01"));
+  await expect(rows.first().locator('[data-measure="rank"]')).toHaveText("1");
+  // The operators involved are a number, with the list behind it.
+  await expect(rows.first().getByTestId("involved-count")).toHaveText("Nobody is assigned");
+  await expect(rows.first().getByTestId("involved")).toBeHidden();
+  await rows.first().getByTestId("involved-count").click();
+  await expect(rows.first().getByTestId("involved")).toBeVisible();
+
+  // A sort is of all the rows: the fewest items first puts Ring 01 last, out of the twenty.
+  const itemsHeader = groups.getByRole("columnheader", { name: "Items", exact: true });
+  await groups.getByRole("button", { name: "Items", exact: true }).click();
+  if ((await itemsHeader.getAttribute("aria-sort")) !== "ascending") {
+    await groups.getByRole("button", { name: "Items", exact: true }).click();
+  }
+  await expect(itemsHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(rows).toHaveCount(20);
+  await expect(groups.locator(`tbody tr[data-label="${label("Ring 01")}"]`)).toHaveCount(0);
+
+  // A file saved holds all the rows.
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV of the groups" }).click();
+  const file = await download;
+  const path = testInfo.outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const { readFile } = await import("node:fs/promises");
+  const text = await readFile(path, "utf8");
+  for (const name of groupNames) expect(text).toContain(name);
+
+  // Show all: the twenty-two, Ring 01 last.
+  await page.getByRole("button", { name: "Show all 22 groups" }).click();
+  await expect(rows).toHaveCount(22);
+  await expect(rows.last()).toHaveAttribute("data-label", label("Ring 01"));
+  await expectClean(page, seen);
+});

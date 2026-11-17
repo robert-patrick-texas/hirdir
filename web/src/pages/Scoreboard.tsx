@@ -1,4 +1,5 @@
-import { Link, useSearchParams } from "react-router";
+import { type MouseEvent, type ReactNode, useState } from "react";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { saveFile } from "../components/grid/save";
 import { HealthSplit } from "../components/HealthSplit";
@@ -39,7 +40,7 @@ import {
   underOpenLabels,
 } from "../lib/scoreboard";
 import type { SortState } from "../lib/sort";
-import { amountText } from "../lib/summary";
+import { amountText, countText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
 // The health of a row sorts by what failed, then what is degraded: the worst first at once.
@@ -51,6 +52,71 @@ const MOST_GIVEN = { column: "own", descending: true } as const;
 // What is said of the column of health, beneath each table that has one.
 const HEALTH_HINT =
   "Health is the components of a row that are good, degraded, failed and unknown, in that order: a bar in four parts, each as long as its share of the row's components, with the four numbers beneath it. It sorts by what failed, then what is degraded, the worst first; the file that is saved has the four as columns of their own.";
+
+// 0.9.5: a table of more rows than this shows this many, as it is sorted, and a button
+// that shows them all (P-196).
+const FIRST_ROWS = 20;
+
+/**
+ * The rows a table shows: the first twenty as it is sorted, until Show all is pressed.
+ * The sort, the rank, the bars and a file saved are of all the rows (P-196).
+ */
+function useFirstRows<T>(rows: readonly T[], what: string): { shown: T[]; more: ReactNode } {
+  const [all, setAll] = useState(false);
+  const many = rows.length > FIRST_ROWS && !all;
+  return {
+    shown: many ? rows.slice(0, FIRST_ROWS) : [...rows],
+    more: many ? (
+      <p className="actions">
+        <button type="button" onClick={() => setAll(true)}>
+          Show all {countText(rows.length)}
+          <span className="visually-hidden"> {what}</span>
+        </button>
+        <span className="muted"> The first {FIRST_ROWS} are shown, as the table is sorted.</span>
+      </p>
+    ) : null,
+  };
+}
+
+// The tables of the page, as its links name them.
+const TABLES = [
+  { id: "score-operators", name: "Operators" },
+  { id: "score-split", name: "How each operator has its items" },
+  { id: "score-groups", name: "Groups" },
+  { id: "score-sites", name: "Sites" },
+] as const;
+
+/**
+ * Links to the tables of the page (P-196). The address keeps the view and names the
+ * table; the window is brought to it, and the keyboard with it.
+ */
+function TablesNav() {
+  const { pathname, search } = useLocation();
+  function goTo(event: MouseEvent, id: string) {
+    const heading = document.getElementById(id);
+    if (!heading) return;
+    event.preventDefault();
+    window.history.replaceState(window.history.state, "", `${pathname}${search}#${id}`);
+    heading.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }
+  return (
+    <nav aria-label="The tables of the scoreboard" className="page-tables">
+      <ul>
+        {TABLES.map((table) => (
+          <li key={table.id}>
+            <Link
+              to={{ pathname, search, hash: table.id }}
+              onClick={(event) => goTo(event, table.id)}
+            >
+              {table.name}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
 
 // What the blank row of each table is called: it is a row like the others.
 const NOBODY = "Nobody is assigned";
@@ -149,6 +215,7 @@ export function Scoreboard() {
     <>
       <ReportsNav />
       <h1>Scoreboard</h1>
+      <TablesNav />
       <p>
         Who looks after how much, and where: the operators in force for the items in view, each with
         its components, managed nodes and support weight, the most support weight first, and how its
@@ -189,10 +256,13 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
   const ranked = rankBoard(sorting, whole);
   const open = underOpenLabels(rows.filter((row) => row.key !== null));
   const openItems = rowItemsPath(view.filter, "operator.is_open:eq:true");
+  const first = useFirstRows(rows, "operators");
 
   return (
     <section aria-labelledby="score-operators">
-      <h2 id="score-operators">Operators</h2>
+      <h2 id="score-operators" tabIndex={-1}>
+        Operators
+      </h2>
       <Problem error={summary.error} />
       {summary.loading && !data && (
         <p role="status" className="muted loading-late">
@@ -236,7 +306,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {first.shown.map((row) => {
                   const mark = operatorOfRow(row);
                   return (
                     <tr
@@ -274,6 +344,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
               </tbody>
             </table>
           </div>
+          {first.more}
           <RankNote ranking={ranked} fallback="support weight" blank={NOBODY} />
           <p data-testid="score-open" data-labels={open.labels}>
             {open.labels > 0 ? (
@@ -337,9 +408,12 @@ function SplitBoard({ view, rows, whole }: { view: ItemView; rows: ScoreRow[]; w
     fallback: "own",
     blank: (row) => row.key === null,
   });
+  const first = useFirstRows(sorting.rows, "operators");
   return (
     <>
-      <h3 id="score-split">How each operator has its items</h3>
+      <h3 id="score-split" tabIndex={-1}>
+        How each operator has its items
+      </h3>
       <div className="scroll">
         <table data-testid="score-split">
           <caption className="visually-hidden">
@@ -361,7 +435,7 @@ function SplitBoard({ view, rows, whole }: { view: ItemView; rows: ScoreRow[]; w
             </tr>
           </thead>
           <tbody>
-            {sorting.rows.map((row) => {
+            {first.shown.map((row) => {
               const mark = operatorOfRow(row);
               return (
                 <tr
@@ -396,6 +470,7 @@ function SplitBoard({ view, rows, whole }: { view: ItemView; rows: ScoreRow[]; w
           </tbody>
         </table>
       </div>
+      {first.more}
       <RankNote ranking={ranked} fallback="items given it" />
       <p className="actions">
         <button
@@ -454,10 +529,13 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   });
   const rows = sorting.rows;
   const ranked = rankBoard(sorting, data?.totals.support_weight ?? "0");
+  const first = useFirstRows(rows, "groups");
 
   return (
     <section aria-labelledby="score-groups">
-      <h2 id="score-groups">Groups</h2>
+      <h2 id="score-groups" tabIndex={-1}>
+        Groups
+      </h2>
       <Problem error={summary.error} />
       {summary.loading && !data && (
         <p role="status" className="muted loading-late">
@@ -507,7 +585,7 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {first.shown.map((row) => {
                   const detail = row.type ? groupTypeLabel(row.type) : null;
                   return (
                     <tr
@@ -564,6 +642,7 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
               </tbody>
             </table>
           </div>
+          {first.more}
           <RankNote ranking={ranked} fallback="support weight" blank={NO_GROUP} />
           <p className="actions">
             <button
@@ -589,8 +668,30 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   );
 }
 
-/** The operators involved in a row, the one with the most support weight first. */
+/**
+ * The operators involved in a row, the one with the most support weight first: how many,
+ * with the list behind it, each operator still a link (P-196).
+ */
 function Involved({ row }: { row: ScoreRow }) {
+  const operators = row.operators ?? [];
+  if (operators.length === 0) return <span className="muted">—</span>;
+  // What nobody is assigned to is in the list, and is no operator.
+  const named = operators.filter((operator) => markOf(operator) !== null).length;
+  const nobody = named < operators.length;
+  const count =
+    named === 0
+      ? "Nobody is assigned"
+      : `${plural(named, "operator")}${nobody ? ", and nobody for some" : ""}`;
+  return (
+    <details className="involved-of">
+      <summary data-testid="involved-count">{count}</summary>
+      <InvolvedList row={row} />
+    </details>
+  );
+}
+
+/** The list of the operators involved in a row. */
+function InvolvedList({ row }: { row: ScoreRow }) {
   return (
     <ul className="plain-list involved" data-testid="involved">
       {(row.operators ?? []).map((operator) => {
@@ -610,7 +711,6 @@ function Involved({ row }: { row: ScoreRow }) {
           </li>
         );
       })}
-      {(row.operators ?? []).length === 0 && <li className="muted">—</li>}
     </ul>
   );
 }
@@ -623,10 +723,13 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const sorting = useSorting(board(data?.rows), scoreColumns(NOWHERE), { initial: BY_WEIGHT });
   const rows = sorting.rows;
   const ranked = rankBoard(sorting, data?.totals.support_weight ?? "0");
+  const first = useFirstRows(rows, "sites");
 
   return (
     <section aria-labelledby="score-sites">
-      <h2 id="score-sites">Sites</h2>
+      <h2 id="score-sites" tabIndex={-1}>
+        Sites
+      </h2>
       <Problem error={summary.error} />
       {summary.loading && !data && (
         <p role="status" className="muted loading-late">
@@ -667,7 +770,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {first.shown.map((row) => (
                   <tr
                     key={row.key ?? ""}
                     data-site={row.key ?? ""}
@@ -701,6 +804,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
               </tbody>
             </table>
           </div>
+          {first.more}
           <RankNote ranking={ranked} fallback="support weight" blank={NOWHERE} />
           <p className="actions">
             <button
