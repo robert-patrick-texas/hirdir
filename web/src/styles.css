@@ -2481,3 +2481,19 @@ fieldset.extension-list {
   width: 16rem;
   max-width: 60vw;
 }
+
+/* --- 0.9.5, lane B: Find a place, above the tree of Geography (P-188) -------------------- */
+
+.find-place {
+  display: block;
+  margin: 0 0 1rem;
+}
+
+.find-place-heading {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1rem;
+}
+
+.find-place .plain-list li {
+  overflow-wrap: anywhere;
+}

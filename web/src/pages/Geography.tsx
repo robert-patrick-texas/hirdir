@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { FindPlace } from "../components/FindPlace";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
 import { ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
@@ -93,6 +94,8 @@ export function Geography() {
       <div className="geography-columns">
         <section aria-labelledby="tree" className="geography-tree">
           <h2 id="tree">Regions, sites and locations</h2>
+          {/* 0.9.5: a site or a location by its name or its code, above the tree (P-188). */}
+          <FindPlace search={search} />
           {mayEdit && !adding && (
             <p className="actions">
               <button type="button" className="primary" onClick={() => setAdding(true)}>

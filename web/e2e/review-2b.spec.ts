@@ -205,7 +205,12 @@ test("P-187: plain words in the filter box find items, and Export CSV holds the 
   const { readFile } = await import("node:fs/promises");
   const lines = (await readFile(path, "utf8")).replace(/\n$/, "").split("\n");
   expect(lines, "a header row and the two rows shown").toHaveLength(3);
-  expect(lines.slice(1).map((line) => line.split(",")[0]).sort()).toEqual([...words.core].sort());
+  expect(
+    lines
+      .slice(1)
+      .map((line) => line.split(",")[0])
+      .sort(),
+  ).toEqual([...words.core].sort());
 
   // Text that is neither words nor conditions is answered with the list's own example.
   await page.goto("./contacts");
@@ -279,5 +284,66 @@ test("P-187: Find an item, in the menu bar of every page, opens the items with t
   // The page begins at its top, with the keyboard in its content (P-167).
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.locator("main")).toBeFocused();
+  await expectClean(page, seen);
+});
+
+test("P-188: Find a place lists the sites and the locations by name and code, each a link, with how many more", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await places(request, account);
+  await make(request, headers, "/locations", {
+    name: label("Draft bay"),
+    site_hid: made.site,
+    record_status: "draft",
+  });
+  const gone = await make(request, headers, "/locations", {
+    name: label("Old bay"),
+    site_hid: made.site,
+  });
+  const retired = await request.post(`./api/v1/locations/${gone.hid}/retire`, {
+    headers,
+    data: { row_version: 1 },
+  });
+  expect(retired.status(), await retired.text()).toBe(200);
+  for (let n = 1; n <= 11; n++) {
+    await make(request, headers, "/locations", { name: `Shelf ${n} ${id}`, site_hid: made.site });
+  }
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./geography");
+  const find = page.getByRole("search", { name: "Find a place" });
+  const box = find.getByRole("searchbox", { name: "Find a place" });
+  const sites = find.getByRole("list", { name: "Sites that match" });
+  const locations = find.getByRole("list", { name: "Locations that match" });
+
+  // By its code: the location, by its path; no site has that code.
+  await box.fill(`C4-${id}`);
+  await expect(locations.getByRole("link")).toHaveText([
+    `${label("Eastmarch")} > ${label("Quarry Point")} > ${label("Cage 4")}`,
+  ]);
+  await expect(sites).toContainText("No site matches.");
+
+  // By its name: the site, a draft marked as one, and no retired place.
+  await box.fill(`bay ${id}`);
+  await expect(locations.getByRole("listitem")).toHaveCount(1);
+  await expect(locations.getByRole("listitem")).toContainText(label("Draft bay"));
+  await expect(locations.getByRole("listitem")).toContainText("Draft");
+  await expect(locations).not.toContainText(label("Old bay"));
+
+  // Ten of each, and how many more match.
+  await box.fill(`Shelf ${id}`);
+  await expect(locations.getByRole("link")).toHaveCount(10);
+  await expect(locations).toContainText("1 more location matches.");
+
+  // A site by its name, Enter as well as a pause, and the link opens its page.
+  await box.fill(`Quarry ${id}`);
+  await box.press("Enter");
+  await sites.getByRole("link", { name: new RegExp(label("Quarry Point")) }).click();
+  await expect(page).toHaveURL(new RegExp(`/geography/site/${made.site}`));
+  // The tree beneath is as it was.
+  await expect(page.getByRole("heading", { name: "Regions, sites and locations" })).toBeVisible();
   await expectClean(page, seen);
 });

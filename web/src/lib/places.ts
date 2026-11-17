@@ -80,6 +80,18 @@ function searchWords(typed: string): string[] {
 }
 
 /**
+ * 0.9.5: the filter of Find a place (P-188), for the sites and for the locations alike:
+ * each word is in the name of the place or in its code. Blank text is no search.
+ */
+export function placeFind(typed: string): FilterNode | null {
+  return all(
+    ...searchWords(typed).map((value) =>
+      any({ field: "name", op: "contains", value }, { field: "code", op: "contains", value }),
+    ),
+  );
+}
+
+/**
  * The filter that finds sites by the words a location was searched for with, where no
  * location matched (P-184): each word is in the name of the site, in its code, or in the
  * name of its region, as the search for a location has it. Blank text is no search.
