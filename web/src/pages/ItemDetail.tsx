@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -68,7 +68,7 @@ import {
 } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
-import { placePath } from "../lib/places";
+import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
@@ -174,6 +174,8 @@ export function ItemDetail() {
           <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
         )}
       </h1>
+      {/* 0.9.5: links to the sections of the page that are on it (P-189). */}
+      {record && <SectionLinks version={`${record.hid} ${record.row_version}`} />}
       <Problem error={item.error} />
       <Problem error={choices.error ?? rules.error} />
       <Notice text={done} />
@@ -293,20 +295,82 @@ function Fact({
   label,
   children,
   change,
+  within,
+  more,
 }: {
   label: string;
   children: ReactNode;
   /** The name of the field of the form of details that changes it, for a link to it. */
   change?: string | false;
+  /** The form that field is in, where it is not the form of details. */
+  within?: string;
+  /** What stands after the value, as a link to the items there. */
+  more?: ReactNode;
 }) {
   return (
     <>
       <dt>{label}</dt>
       <dd>
         {children || <Dash />}
-        {change && <ChangeLink field={change} label={label} />}
+        {more}
+        {change && <ChangeLink field={change} label={label} {...(within ? { within } : {})} />}
       </dd>
     </>
+  );
+}
+
+/**
+ * Beside a place among the first facts, a link to the list of items at it and within it
+ * (P-189). Its name says which place.
+ */
+function ItemsHere({ hid, name, testId }: { hid: string; name: string; testId: string }) {
+  return (
+    <Link className="here-link" to={itemsWithin(hid)} data-testid={testId}>
+      items here<span className="visually-hidden"> at {name}</span>
+    </Link>
+  );
+}
+
+/**
+ * Under the name of an item, a row of links to the sections of its page (P-189). Only
+ * the sections that are on the page, for this item and this person, are named: they are
+ * read from the page as it stands, since each part decides for itself whether it shows.
+ * Each is a link to the section's heading, within the page.
+ */
+function SectionLinks({ version }: { version: string }) {
+  const nav = useRef<HTMLElement>(null);
+  const [sections, setSections] = useState<{ id: string; text: string }[]>([]);
+  useEffect(() => {
+    const page = nav.current?.parentElement;
+    if (!page || version === "") return;
+    function read() {
+      if (!page) return;
+      const found = [...page.querySelectorAll<HTMLElement>(":scope > section > h2[id]")].map(
+        (heading) => ({ id: heading.id, text: heading.textContent?.trim() ?? "" }),
+      );
+      setSections((was) =>
+        was.length === found.length &&
+        was.every((one, place) => one.id === found[place]?.id && one.text === found[place]?.text)
+          ? was
+          : found,
+      );
+    }
+    read();
+    const watcher = new MutationObserver(read);
+    watcher.observe(page, { childList: true, subtree: true, characterData: true });
+    return () => watcher.disconnect();
+  }, [version]);
+  const here = `${window.location.pathname}${window.location.search}`;
+  return (
+    <nav aria-label="Sections of the page" className="section-links" ref={nav}>
+      <ul>
+        {sections.map((section) => (
+          <li key={section.id}>
+            <a href={`${here}#${encodeURIComponent(section.id)}`}>{section.text}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 
@@ -321,14 +385,23 @@ const CHANGE_WAIT = 10_000;
  * follows when the field is there. It is a
  * button that reads as a link: it moves within the page and leaves its address as it is.
  */
-function ChangeLink({ field, label }: { field: string; label: string }) {
+function ChangeLink({
+  field,
+  label,
+  within = 'section[aria-labelledby="details"]',
+}: {
+  field: string;
+  label: string;
+  /** The form the field is in: the form of details, or that of a move (P-189). */
+  within?: string;
+}) {
   function go() {
     const until = performance.now() + CHANGE_WAIT;
     let moved = false;
     // The form waits for the lists it offers, which may come after its facts do: the
     // window moves to the form at once, and the keyboard to the field when it is there.
     function seek() {
-      const form = document.querySelector<HTMLElement>('section[aria-labelledby="details"]');
+      const form = document.querySelector<HTMLElement>(within);
       const input = form?.querySelector<HTMLElement>(`[name="${field}"]`) ?? null;
       if (input) {
         input.scrollIntoView({ block: "center" });
@@ -372,6 +445,7 @@ function Facts({ item, choices, mayChange }: FactsProps) {
   const location = item.effective.location_hid;
   const locationInherited = isFromAbove(location);
   const planned = item.effective.planned_location_hid;
+  const standing = standingOf(item);
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -451,7 +525,19 @@ function Facts({ item, choices, mayChange }: FactsProps) {
         <Fact label="Operator" change={mayChange && "operator_hid"}>
           <Operator effective={item.effective.operator_hid} testId="operator" />
         </Fact>
-        <Fact label="Location" change={mayChange && "location_hid"}>
+        <Fact
+          label="Location"
+          change={mayChange && "location_hid"}
+          more={
+            typeof location.value === "string" && (
+              <ItemsHere
+                hid={location.value}
+                name={effectiveLabel(location)}
+                testId="items-at-location"
+              />
+            )
+          }
+        >
           {typeof location.value === "string" && (
             <span data-testid="location" data-source={location.source}>
               <Link
@@ -464,7 +550,15 @@ function Facts({ item, choices, mayChange }: FactsProps) {
             </span>
           )}
         </Fact>
-        <Fact label="Site">
+        <Fact
+          label="Site"
+          more={
+            location.site &&
+            location.site_hid && (
+              <ItemsHere hid={location.site_hid} name={location.site} testId="items-at-site" />
+            )
+          }
+        >
           {location.site && location.site_hid && (
             <Link to={placePath("site", location.site_hid)} data-testid="site">
               {location.site}
@@ -493,13 +587,32 @@ function Facts({ item, choices, mayChange }: FactsProps) {
             <FromAbove effective={planned} />
           </Fact>
         )}
+        {/* 0.9.5: the standing among the first facts, with Change to a move (P-189). */}
+        <Fact
+          label="Lifecycle state"
+          change={mayChange && "to"}
+          within='section[aria-labelledby="move"]'
+        >
+          {standing.state && (
+            <span
+              data-testid="standing-fact"
+              className={standing.inherited ? "inherited" : undefined}
+            >
+              {[standing.state, standing.disposition, onlineText(standing.online)]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </Fact>
         <Fact label="Management address">
           <ManagementAddresses addresses={item.addresses} />
         </Fact>
         <Fact label="Quantity">{String(item.quantity)}</Fact>
         <Fact label="Tags">{item.tags.join(", ")}</Fact>
         <Fact label="Description">{item.description}</Fact>
-        <Fact label="Comments">{item.comments}</Fact>
+        <Fact label="Comments" change={mayChange && "comments"}>
+          {item.comments}
+        </Fact>
         <Fact label="Procured">{item.procured_on}</Fact>
         <Fact label="Delivered">{item.delivered_on}</Fact>
         <Fact label="In service">{item.in_service_on}</Fact>

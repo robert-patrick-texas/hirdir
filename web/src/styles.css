@@ -594,6 +594,23 @@ tr.dim th {
   cursor: pointer;
 }
 
+/* 0.9.5: beside a place among an item's first facts, the items there (P-189). */
+.here-link {
+  margin-left: 0.6rem;
+  font-size: 0.9rem;
+}
+
+/* 0.9.5: under an item's name, links to the sections of its page (P-189). Not sticky. */
+.section-links ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
 .hid {
   display: block;
   color: var(--muted);
