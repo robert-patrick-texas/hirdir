@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { api, type Schemas } from "../api";
 import { CheckGroupField, RadioGroupField, SelectField, TextField } from "../components/Field";
 // 0.8.0: the kept reports and their check (P-157).
@@ -76,9 +76,13 @@ export function Settings() {
   );
   const [done, setDone] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  // 0.9.3: the setting whose Change button takes the focus back once its form has closed,
+  // or once it was returned to its default from its row; after a change, once the
+  // settings have been read again, so that a row that the sort moves is in its place
+  // (P-171).
+  const [back, setBack] = useState<{ key: string; reading: boolean } | null>(null);
   const reset = useAction();
   const { settings: own, fixed } = splitSettings(settings.data ?? []);
-  const opened = own.find((setting) => setting.key === open) ?? null;
 
   // 0.9.2: the name of the product and whom the sign-in page lists, as the settings read
   // last say: a change shows on this page at once, in the menu bar and the title, and on
@@ -87,9 +91,22 @@ export function Settings() {
     if (settings.data) site.update(siteOfSettings(settings.data));
   }, [settings.data]);
 
-  function changed(text: string) {
-    setDone(text);
+  // The settings were read again, or could not be, and those read last are on show: the
+  // focus may go back.
+  useEffect(() => {
+    if (settings.loading || settings.data === undefined) return;
+    setBack((was) => (was?.reading ? { ...was, reading: false } : was));
+  }, [settings.loading, settings.data]);
+
+  /** Close the form that is open, if any, and give the focus back to the setting's Change. */
+  function close(key: string, reading = false) {
     setOpen(null);
+    setBack({ key, reading });
+  }
+
+  function changed(key: string, text: string) {
+    setDone(text);
+    close(key, true);
     settings.reload();
   }
 
@@ -104,7 +121,10 @@ export function Settings() {
     if (!result.ok) return;
     // The times on every page follow this setting from now on.
     if (setting.key === "time_zone") setZone(setting.default);
-    changed(`${setting.key} is at its default again: ${shownValue(setting, setting.default)}.`);
+    changed(
+      setting.key,
+      `${setting.key} is at its default again: ${shownValue(setting, setting.default)}.`,
+    );
   }
 
   return (
@@ -131,23 +151,27 @@ export function Settings() {
               settings={own}
               busy={reset.busy}
               open={open}
+              // Once the Change buttons may be pressed again.
+              back={back && !back.reading && !reset.busy ? back.key : null}
               onOpen={(key) => {
                 setDone("");
+                setBack(null);
                 setOpen(key);
               }}
+              onBack={() => setBack(null)}
               onDefault={toDefault}
+              form={(setting) => (
+                <SettingForm
+                  key={`${setting.key} ${setting.row_version}`}
+                  setting={setting}
+                  onChanged={(text) => changed(setting.key, text)}
+                  onDefault={() => toDefault(setting)}
+                  onClose={() => close(setting.key)}
+                  onReload={settings.reload}
+                />
+              )}
             />
           </section>
-          {opened && (
-            <SettingForm
-              key={`${opened.key} ${opened.row_version}`}
-              setting={opened}
-              onChanged={changed}
-              onDefault={() => toDefault(opened)}
-              onClose={() => setOpen(null)}
-              onReload={settings.reload}
-            />
-          )}
           <section aria-labelledby="fixed-values">
             <h2 id="fixed-values">Fixed in the code</h2>
             <p className="hint">
@@ -165,17 +189,34 @@ export function Settings() {
   );
 }
 
+/** The columns of the table of settings, which the row of an open form spans. */
+const SETTING_COLUMNS = 8;
+
 interface SettingsTableProps {
   settings: readonly Setting[];
   busy: boolean;
-  /** The setting whose form is open beneath the table, if any. */
+  /** The setting whose form is open beneath its row, if any. */
   open: string | null;
+  /** The setting whose Change button takes the focus now, if any. */
+  back: string | null;
   onOpen: (key: string) => void;
+  /** The focus was given back. */
+  onBack: () => void;
   onDefault: (setting: Setting) => void;
+  /** The form of a setting, shown beneath its row while it is open. */
+  form: (setting: Setting) => ReactNode;
 }
 
-/** The settings, sorted by their headers: the table holds all of them. */
-function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTableProps) {
+/**
+ * The settings, sorted by their headers: the table holds all of them. 0.9.3: the form of
+ * the setting that is open is a row of its own beneath the setting's row, one cell across
+ * every column, so that the setting, its value and what it is for stay in view above it
+ * and the page stays where it was; and when the form closes, the focus is on that
+ * setting's Change button again (P-171).
+ */
+function SettingsTable(props: SettingsTableProps) {
+  const { settings, busy, open, back, onOpen, onBack, onDefault, form } = props;
+  const changeButtons = useRef(new Map<string, HTMLButtonElement>());
   const sorting = useSorting(settings, {
     key: (setting) => setting.key,
     // A blank value is sorted last, as every blank is.
@@ -186,6 +227,13 @@ function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTabl
     accepts: (setting) => setting.accepts,
     changed: (setting) => dateValue(setting.updated_at),
   });
+
+  useEffect(() => {
+    if (back === null || open !== null) return;
+    changeButtons.current.get(back)?.focus();
+    onBack();
+  }, [back, open, onBack]);
+
   return (
     <div className="scroll">
       <table data-testid="settings">
@@ -222,61 +270,74 @@ function SettingsTable({ settings, busy, open, onOpen, onDefault }: SettingsTabl
         </thead>
         <tbody>
           {sorting.rows.map((setting) => (
-            <tr
-              key={setting.key}
-              data-setting={setting.key}
-              data-default={setting.is_default ? "true" : "false"}
-            >
-              <th scope="row" className="mono">
-                {setting.key}
-              </th>
-              <td data-testid={`value-${setting.key}`}>
-                <Shown setting={setting} value={setting.value} />
-              </td>
-              <td data-testid={`default-${setting.key}`}>
-                <Shown setting={setting} value={setting.default} />
-              </td>
-              <td data-testid={`standing-${setting.key}`}>
-                {setting.is_default ? (
-                  "At its default"
-                ) : (
-                  <span className="badge badge-plain">Set here</span>
-                )}
-              </td>
-              <td>{setting.meaning}</td>
-              <td>{setting.accepts || <span className="muted">—</span>}</td>
-              <td className="nowrap">
-                {setting.updated_at ? (
-                  <Time at={setting.updated_at} />
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
-              <td className="row-actions">
-                <button
-                  type="button"
-                  aria-label={`Change ${setting.key}`}
-                  aria-pressed={open === setting.key}
-                  disabled={busy}
-                  onClick={() => onOpen(setting.key)}
-                >
-                  Change
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Return ${setting.key} to its default`}
-                  disabled={busy || setting.is_default}
-                  onClick={() => onDefault(setting)}
-                >
-                  Return to its default
-                </button>
-              </td>
-            </tr>
+            <Fragment key={setting.key}>
+              <tr data-setting={setting.key} data-default={setting.is_default ? "true" : "false"}>
+                <th scope="row" className="mono">
+                  {setting.key}
+                </th>
+                <td data-testid={`value-${setting.key}`}>
+                  <Shown setting={setting} value={setting.value} />
+                </td>
+                <td data-testid={`default-${setting.key}`}>
+                  <Shown setting={setting} value={setting.default} />
+                </td>
+                <td data-testid={`standing-${setting.key}`}>
+                  {setting.is_default ? (
+                    "At its default"
+                  ) : (
+                    <span className="badge badge-plain">Set here</span>
+                  )}
+                </td>
+                <td>{setting.meaning}</td>
+                <td>{setting.accepts || <span className="muted">—</span>}</td>
+                <td className="nowrap">
+                  {setting.updated_at ? (
+                    <Time at={setting.updated_at} />
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="row-actions">
+                  <button
+                    type="button"
+                    ref={(button) => {
+                      if (button) changeButtons.current.set(setting.key, button);
+                      else changeButtons.current.delete(setting.key);
+                    }}
+                    aria-label={`Change ${setting.key}`}
+                    aria-expanded={open === setting.key}
+                    aria-controls={open === setting.key ? formId(setting.key) : undefined}
+                    disabled={busy}
+                    onClick={() => onOpen(setting.key)}
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Return ${setting.key} to its default`}
+                    disabled={busy || setting.is_default}
+                    onClick={() => onDefault(setting)}
+                  >
+                    Return to its default
+                  </button>
+                </td>
+              </tr>
+              {open === setting.key && (
+                <tr className="row-form" data-form-of={setting.key}>
+                  <td colSpan={SETTING_COLUMNS}>{form(setting)}</td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+/** The id of the form of a setting, which its Change button controls. */
+function formId(key: string): string {
+  return `change-${key}`;
 }
 
 /** A value in the table: a blank one is said to be blank, lighter. */
@@ -366,13 +427,20 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
     Array.isArray(setting.value) ? setting.value.map(String) : [],
   );
   const action = useAction();
-  const headingId = `change-${setting.key}`;
+  const sectionId = formId(setting.key);
+  const headingId = `${sectionId}-heading`;
+  const section = useRef<HTMLElement>(null);
   const hint = [
     setting.accepts ? `It takes ${setting.accepts}.` : "",
     `The default is ${shownValue(setting, setting.default)}.`,
   ]
     .filter(Boolean)
     .join(" ");
+
+  // 0.9.3: the focus moves into the form as it opens (P-171).
+  useEffect(() => {
+    if (section.current) firstField(section.current)?.focus();
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -404,10 +472,16 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
   }
 
   return (
-    <section className="panel" aria-labelledby={headingId} data-testid="setting-form">
-      <h2 id={headingId}>
+    <section
+      ref={section}
+      id={sectionId}
+      className="panel"
+      aria-labelledby={headingId}
+      data-testid="setting-form"
+    >
+      <h3 id={headingId}>
         Change <span className="mono">{setting.key}</span>
-      </h2>
+      </h3>
       <p>{setting.meaning}</p>
       <form onSubmit={submit} className="stack" noValidate>
         <Problem error={action.error} shown={["value"]} onReload={onReload} />
@@ -489,6 +563,19 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
       </form>
     </section>
   );
+}
+
+/**
+ * The field a form opens on: the first that takes a value, and in a choice of Yes or No
+ * the one that is chosen, where the Tab key would reach it.
+ */
+function firstField(form: HTMLElement): HTMLElement | null {
+  const first = form.querySelector<HTMLElement>("input, select, textarea");
+  if (!(first instanceof HTMLInputElement) || first.type !== "radio") return first;
+  const chosen = [...form.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+    (radio) => radio.name === first.name && radio.checked,
+  );
+  return chosen ?? first;
 }
 
 interface ExtensionListProps {
