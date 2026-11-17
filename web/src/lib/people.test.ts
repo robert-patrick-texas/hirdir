@@ -148,6 +148,15 @@ describe("the contacts a search offers", () => {
     expect(personLabel({ name: "Lee Marchetti", email: "lee.marchetti@example.net" })).toBe(
       "Lee Marchetti (lee.marchetti@example.net)",
     );
+    // P-174: the username is told to an Admin alone; any other role reads that it is one.
+    expect(
+      personLabel({
+        name: "Lee Marchetti",
+        email: "lee.marchetti@example.net",
+        is_user: true,
+        user: null,
+      }),
+    ).toBe("Lee Marchetti (lee.marchetti@example.net), a user");
     expect(personLabel({ name: "Facilities Help Desk", email: null, user: null })).toBe(
       "Facilities Help Desk",
     );

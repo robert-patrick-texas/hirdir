@@ -133,16 +133,18 @@ export function contactFinder(typed: string, users?: boolean): FilterNode | null
 }
 
 /**
- * A contact as a search offers it: its name and email address, and the user it is, where
- * it is one.
+ * A contact as a search offers it: its name and email address, and that it is a user,
+ * by its username to an Admin, who alone is told it (P-174).
  */
 export function personLabel(contact: {
   name: string;
   email?: string | null;
+  is_user?: boolean;
   user?: { username: string } | null;
 }): string {
   const named = contact.email ? `${contact.name} (${contact.email})` : contact.name;
-  return contact.user ? `${named}, user ${contact.user.username}` : named;
+  if (contact.user) return `${named}, user ${contact.user.username}`;
+  return contact.is_user ? `${named}, a user` : named;
 }
 
 /** The two numbers of a person, as one line: the first, then the second. */

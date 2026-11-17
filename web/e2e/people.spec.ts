@@ -11,6 +11,8 @@
 //   P-173  An Admin renames a user, who signs in under the new name from then on, and
 //          not under the old; a name the rule does not take, or another user's, is
 //          refused on the field.
+//   P-174  The username of the user a contact is, is told to an Admin alone: another
+//          role reads that the contact is a user, and that a label is internal.
 //
 // They keep to the rules of support.ts: an account of their own, and users, contacts
 // and labels of their own with the file's mark in their names, found in every list by
@@ -42,7 +44,7 @@ const internal = `IN-${suffix}`;
 const external = `EX-${suffix}`;
 
 // What the scenarios hand on: the user made, its access code and its page.
-const made = { hid: "", accessCode: "", page: "" };
+const made = { hid: "", accessCode: "", page: "", internal: "", dee: "" };
 
 /** The row of a user on the Users list, found by searching for its username. */
 async function userRow(page: Page, name: string): Promise<Locator> {
@@ -265,6 +267,12 @@ test("P-172: an operator is internal or external, with its person's email and nu
   await expect(page.getByTestId("operator-email")).toHaveText(dee.email);
   await expect(page.getByTestId("operator-numbers")).toHaveText("+1 555 0151 · +1 555 0152");
   await expect(page.getByTestId("operator-user")).toContainText(deeUser.username);
+  made.internal = new URL(page.url()).pathname;
+  made.dee =
+    (await page
+      .getByTestId("operator-person")
+      .getByRole("link", { name: dee.name })
+      .getAttribute("href")) ?? "";
 
   // Behind another, a new person, who is made a contact: external.
   await page.goto("./operators");
@@ -337,4 +345,42 @@ test("P-172: an operator is internal or external, with its person's email and nu
     });
     expect(answer.status()).toBe(200);
   }
+});
+
+test("P-174: an account that is no Admin reads that a contact is a user, and not which", async ({
+  account,
+  browser,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await session(request, account);
+  const clerk = await createAccount(request, `e2e-${suffix}-ivy`, "inventory");
+  const { context, page, seen } = await signInElsewhere(browser, clerk.username, clerk.accessCode);
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible({ timeout: 20_000 });
+
+  // The contact is marked as a user, by no username; the label it stands behind is
+  // internal, and names no user.
+  await page.goto(`.${made.dee.replace(/^.*?\/contacts\//, "/contacts/")}`);
+  await expect(page.getByRole("heading", { level: 1, name: dee.name })).toBeVisible();
+  await expect(page.getByTestId("contact-user")).toHaveText(
+    "A user: this person signs in to hirdir",
+  );
+  await page.goto(`.${made.internal.replace(/^.*?\/operators\//, "/operators/")}`);
+  await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "internal");
+  await expect(page.getByTestId("operator-user")).toHaveCount(0);
+  const filter = `is_user:eq:true name:contains:${suffix}`;
+  await page.goto(`./contacts?filter=${encodeURIComponent(filter)}`);
+  const grid = page.getByTestId("grid-contacts");
+  await expect(grid.locator("[row-id]")).toHaveCount(1);
+  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("A user");
+  await expectClean(page, seen);
+  await context.close();
+
+  const read = await request.get(`./api/v1/users/${clerk.hid}`, { headers });
+  const { row_version } = (await read.json()) as { row_version: number };
+  const answer = await request.patch(`./api/v1/users/${clerk.hid}`, {
+    headers,
+    data: { row_version, disabled: true },
+  });
+  expect(answer.status()).toBe(200);
 });

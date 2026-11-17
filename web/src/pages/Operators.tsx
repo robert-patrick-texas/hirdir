@@ -309,7 +309,12 @@ export function OperatorDetail() {
                   <span className="muted"> · {scopeHint(record.scope)}</span>
                 </>
               ) : (
-                <span className="muted">Neither: nobody is behind it</span>
+                // Nobody is behind the label, or only a person who is retired: it is open.
+                <span className="muted">
+                  {record.contact
+                    ? "Neither: the person behind it is retired, and the label is open"
+                    : "Neither: nobody is behind it"}
+                </span>
               )}
             </dd>
             {record.contact && (
