@@ -1396,8 +1396,8 @@ For a script that reads the API: a user answers `contact`, and `display_name` an
 `email` from it, which `PATCH /users/{hid}` no longer takes; it takes `username` and
 `contact_hid`, and `POST /users` takes `contact_hid` or `contact`. A contact answers
 `is_user`, `user` and `phone2`; an operator answers `scope` and its contact's numbers; and
-`external_systems.kind` is any value of the `system_kind` list, which
-`GET /choices?list=system_kind` gives. `hirdir admin create-user` takes `--name`,
+`external_systems.kind` is any value of the `system_kind` list, up to 40 characters,
+which `GET /choices?list=system_kind` gives. `hirdir admin create-user` takes `--name`,
 `--email`, `--phone` and `--phone2`.
 
 Going back to 0.9.2 is by the backup the upgrade took, as under
