@@ -178,7 +178,11 @@ export function ItemDetail() {
       {item.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
-          <Facts item={record} choices={choices.data} />
+          <Facts
+            item={record}
+            choices={choices.data}
+            mayChange={mayEdit && record.record_status !== "retired"}
+          />
           <Doing
             key={`doing ${record.hid} ${record.row_version}`}
             item={record}
@@ -283,12 +287,47 @@ export function ItemDetail() {
   );
 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+function Fact({
+  label,
+  children,
+  change,
+}: {
+  label: string;
+  children: ReactNode;
+  /** The name of the field of the form of details that changes it, for a link to it. */
+  change?: string | false;
+}) {
   return (
     <>
       <dt>{label}</dt>
-      <dd>{children || <Dash />}</dd>
+      <dd>
+        {children || <Dash />}
+        {change && <ChangeLink field={change} label={label} />}
+      </dd>
     </>
+  );
+}
+
+/**
+ * From a fact to the field of the form of details that changes it (P-185): the window
+ * moves to the field and the keyboard is put in it, a list to choose from or a box to
+ * search in alike. Nothing is changed here; the form, its checks and its audit stay the
+ * one way. Where the form is still being made ready, the window moves to it. It is a
+ * button that reads as a link: it moves within the page and leaves its address as it is.
+ */
+function ChangeLink({ field, label }: { field: string; label: string }) {
+  function go() {
+    const form = document.querySelector<HTMLElement>('section[aria-labelledby="details"]');
+    const input = form?.querySelector<HTMLElement>(`[name="${field}"]`) ?? null;
+    const target = input ?? form;
+    if (!target) return;
+    target.scrollIntoView({ block: "center" });
+    input?.focus({ preventScroll: true });
+  }
+  return (
+    <button type="button" className="change-link" data-change={field} onClick={go}>
+      Change<span className="visually-hidden"> the {label.toLowerCase()}</span>
+    </button>
   );
 }
 
@@ -296,7 +335,14 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 const PLAN_HINT =
   "Where it is going, when that place is not in use yet. It stays where it is until the place is made active, and is then moved there by that change.";
 
-function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | undefined }) {
+interface FactsProps {
+  item: Item;
+  choices: readonly Choice[] | undefined;
+  /** Whether the person may change the item, and the form of details is on the page. */
+  mayChange: boolean;
+}
+
+function Facts({ item, choices, mayChange }: FactsProps) {
   const { catalog } = item;
   // The owner in force: an item with none of its own has the owner of the item it is
   // in, or of its group.
@@ -321,7 +367,7 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
         <Fact label="MAC address">
           {item.mac_address && <span className="mono">{formatMac(item.mac_address)}</span>}
         </Fact>
-        <Fact label="Catalog entry">
+        <Fact label="Catalog entry" change={mayChange && "catalog_entry_hid"}>
           {catalog && (
             <>
               <Link to={`/catalog/${encodeURIComponent(catalog.hid)}`}>
@@ -355,7 +401,7 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
               .filter(Boolean)
               .join(" · ")}
         </Fact>
-        <Fact label="Owner">
+        <Fact label="Owner" change={mayChange && "owner_hid"}>
           {typeof owner.value === "string" && (
             <span data-testid="owner" data-source={owner.source}>
               <Link
@@ -383,10 +429,10 @@ function Facts({ item, choices }: { item: Item; choices: readonly Choice[] | und
             </span>
           </Fact>
         )}
-        <Fact label="Operator">
+        <Fact label="Operator" change={mayChange && "operator_hid"}>
           <Operator effective={item.effective.operator_hid} testId="operator" />
         </Fact>
-        <Fact label="Location">
+        <Fact label="Location" change={mayChange && "location_hid"}>
           {typeof location.value === "string" && (
             <span data-testid="location" data-source={location.source}>
               <Link

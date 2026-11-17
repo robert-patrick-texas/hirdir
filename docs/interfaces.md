@@ -1755,8 +1755,9 @@ with a link to its page, where a location is made (P-184). An item is put at a l
 never at a site, and the page of a site with no location says so.
 
 On the page of an item, the catalog entry, the owner, the operator and the location
-among its first facts each have a link, Change, for a person who may change the item:
-it moves to that field of the form of details and puts the keyboard there (P-185).
+among its first facts each have Change beside them, for a person who may change the
+item: a button that reads as a link, it moves to that field of the form of details and
+puts the keyboard there, and leaves the page's address as it is (P-185).
 
 A table wider than the page scrolls sideways within its own box and the page does not;
 a form opened under a row of a table is brought wholly into the window when it fits; and

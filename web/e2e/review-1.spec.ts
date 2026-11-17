@@ -149,6 +149,34 @@ test("after Save at the foot of an item's page, what the page answers is in the 
   await expectClean(page, seen);
 });
 
+test("Change beside the location of an item puts the keyboard in its field", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await places(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openTheItem(page);
+
+  const identity = page.getByRole("region", { name: "Identity" });
+  // By keyboard: Change is reached and pressed with Enter.
+  await identity.getByRole("button", { name: "Change the location" }).focus();
+  await page.keyboard.press("Enter");
+  const location = details(page).getByLabel("Location", { exact: true });
+  await expect(location).toBeFocused();
+  await expect(location).toBeInViewport();
+  // A list to choose from as well as a box to search in.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await identity.getByRole("button", { name: "Change the owner" }).click();
+  const owner = details(page).getByLabel("Owner", { exact: true });
+  await expect(owner).toBeFocused();
+  await expect(owner).toBeInViewport();
+
+  await expectClean(page, seen);
+});
+
 test("the Capacity page is no wider than the window", async ({ page, account }) => {
   const seen = await watch(page.context());
   await signIn(page, account);

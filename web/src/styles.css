@@ -575,6 +575,19 @@ tr.dim th {
   color: var(--muted);
 }
 
+/* Change, beside a fact of an item, to the field of its form that changes it (P-185). */
+.change-link {
+  margin-left: 0.6rem;
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .hid {
   display: block;
   color: var(--muted);
