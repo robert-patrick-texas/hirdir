@@ -242,6 +242,12 @@ class CatalogEntryOut(Model):
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     record_status: RecordStatus
     tags: list[str]
+    items: int = Field(
+        description=(
+            "How many items are of the model, as the item list counts them (P-180): major "
+            "and minor, drafts, retired items and items in Archived left out."
+        )
+    )
     effective: CatalogEffective
     row_version: int
     created_at: datetime
@@ -3690,6 +3696,8 @@ SummaryBy = Literal[
     "site",
     "region",
     "contract",
+    "group",
+    "model",
     "lifecycle_state",
     "disposition",
     "condition",
@@ -3697,7 +3705,18 @@ SummaryBy = Literal[
     "tag",
 ]
 ManagementBy = Literal[
-    "vendor", "kind", "type", "function", "owner", "operator", "site", "region", "contract", "tag"
+    "vendor",
+    "kind",
+    "type",
+    "function",
+    "owner",
+    "operator",
+    "site",
+    "region",
+    "contract",
+    "group",
+    "model",
+    "tag",
 ]
 
 
@@ -3754,7 +3773,42 @@ class RowOperator(Model):
     support_weight: WeightSum
 
 
-class SummaryRow(Measures):
+class RowRecord(Model):
+    """What a row of a report by group, by model or by operator says of the record it is
+    of (P-178, P-180). Every field is null on the rows of anything else, and on the blank
+    row."""
+
+    type: str | None = Field(
+        default=None,
+        description="By group, the type of the group; by model, the type of the model.",
+    )
+    member_count: int | None = Field(default=None, description="By group: its current members.")
+    nested_groups: int | None = Field(
+        default=None, description="By group: how many groups are nested in it, at any depth."
+    )
+    vendor: str | None = Field(default=None, description="By model: the name of its vendor.")
+    pid: str | None = Field(default=None, description="By model: its PID.")
+    model_name: str | None = Field(default=None, description="By model: its name.")
+    kind: str | None = Field(default=None, description="By model: its kind.")
+    own: int | None = Field(default=None, description="By operator: items given it as their own.")
+    from_item: int | None = Field(
+        default=None, description="By operator: minor items that have it from the item they are in."
+    )
+    from_group: int | None = Field(
+        default=None, description="By operator: items that have it from a group."
+    )
+    from_place: int | None = Field(
+        default=None, description="By operator: items that have it from a place."
+    )
+    groups_given: int | None = Field(
+        default=None, description="By operator: the groups given it as their own."
+    )
+    places_given: int | None = Field(
+        default=None, description="By operator: the regions, sites and locations given it."
+    )
+
+
+class SummaryRow(Measures, RowRecord):
     """The measures of the items that share one value of what the summary is by."""
 
     key: str | None = Field(description="The value, or the HID of the record. Null for none.")
@@ -3784,7 +3838,7 @@ class ManagementMeasures(Model):
     annual_support_cost: MoneySum
 
 
-class ManagementRow(ManagementMeasures):
+class ManagementRow(ManagementMeasures, RowRecord):
     """The value and the cost of the items that share one value."""
 
     key: str | None
@@ -4135,3 +4189,74 @@ class BulkUpdate(Model):
     )
     add_tags: list[ShortText] = Field(default=[], max_length=100)
     remove_tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+# --- what an operator is on (P-177) ---------------------------------------------------
+
+
+class ItemCount(Model):
+    """How many items of the view, and the filter of the item list that lists them."""
+
+    count: int
+    filter: dict[str, Any]
+
+
+class PlaceBeneath(Model):
+    hid: str
+    level: Level
+    path: str
+
+
+class GroupBeneath(Model):
+    hid: str
+    name: str
+    type: GroupType
+
+
+class PlacesBeneath(Model):
+    """The places beneath a place that have the operator from it, at most 20 named."""
+
+    count: int
+    more: int = Field(description="How many more there are than are named.")
+    shown: list[PlaceBeneath]
+
+
+class GroupsBeneath(Model):
+    """The groups nested in a group that have the operator from it, at most 20 named."""
+
+    count: int
+    more: int
+    shown: list[GroupBeneath]
+
+
+class OperatorPlace(Model):
+    """A place given the operator as its own."""
+
+    hid: str
+    level: Level
+    path: str
+    items: ItemCount = Field(description="The items that have the operator from this place.")
+    places_beneath: PlacesBeneath
+    exceptions: ItemCount = Field(description="The items beneath it that have another.")
+
+
+class OperatorGroup(Model):
+    """A device group given the operator as its own."""
+
+    hid: str
+    name: str
+    type: GroupType
+    items: ItemCount = Field(description="The items that have the operator from this group.")
+    groups_beneath: GroupsBeneath
+    exceptions: ItemCount = Field(description="Its members that have another.")
+
+
+class OperatorAssignments(Model):
+    """What an operator is on, and how: what the page of an operator draws."""
+
+    operator_hid: str
+    places: list[OperatorPlace]
+    groups: list[OperatorGroup]
+    own: ItemCount = Field(description="The items given it as their own.")
+    from_item: ItemCount = Field(description="The minor items that have it from the item above.")
+    totals: ItemCount = Field(description="Every item it is in force for.")

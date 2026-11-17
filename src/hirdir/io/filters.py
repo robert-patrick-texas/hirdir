@@ -84,6 +84,8 @@ class Field:
     ordered_by: Any = None
     among: Callable[[ColumnElement[bool]], ColumnElement[bool]] | None = None
     within: Callable[[Any, str], ColumnElement[bool]] | None = None
+    # What `within` takes, where it is not a place.
+    within_takes: str = "the HID or the path of a region, site or location"
 
 
 @dataclass(frozen=True)
@@ -348,7 +350,7 @@ def _condition(
         if field.within is None or db is None:
             raise refuse(f"{name} cannot be filtered here")
         if not isinstance(value, str) or not value.strip():
-            raise refuse(f"{name} within takes the HID or the path of a region, site or location")
+            raise refuse(f"{name} within takes {field.within_takes}")
         return field.within(db, _text(name, value))
 
     if field.among is None:

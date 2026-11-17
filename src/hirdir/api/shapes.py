@@ -76,7 +76,7 @@ from hirdir.domain import items as item_rules
 from hirdir.domain import owners as owner_rules
 from hirdir.domain.inheritance import Effective
 from hirdir.domain.settings import SettingValue
-from hirdir.io import alerts, balance, fields, imports, planning, tried
+from hirdir.io import alerts, balance, fields, imports, operated, planning, tried
 
 FIRST_ROWS = 100
 
@@ -321,7 +321,13 @@ def summary_out(db: Session, found: Any) -> shapes.SummaryOut:
                     )
                 )
         measures = shapes.Measures.model_validate(row).model_dump()
-        rows.append(shapes.SummaryRow(**measures, key=row.key, label=row.label, operators=involved))
+        # By group or by model, what the group or the model says of itself.
+        record = shapes.RowRecord.model_validate(row).model_dump()
+        rows.append(
+            shapes.SummaryRow(
+                **measures, **record, key=row.key, label=row.label, operators=involved
+            )
+        )
     return shapes.SummaryOut(
         by=found.by, totals=shapes.SummaryTotals.model_validate(found.totals), rows=rows
     )
@@ -681,9 +687,11 @@ def effective_out(db: Session, found: geography.InForce) -> shapes.PlaceEffectiv
 
 
 def entries_out(db: Session, entries: list[CatalogEntry]) -> list[shapes.CatalogEntryOut]:
-    """Return catalog entries with their vendors, tags and the stack discount in force."""
+    """Return catalog entries with their vendors, tags, the stack discount in force and
+    how many items are of each."""
     vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries})
     labels = tags.labels_of(db, "catalog_entry", [entry.hid for entry in entries])
+    counted = fields.model_items(db, [entry.hid for entry in entries])
     discount = Decimal(str(settings.value(db, "stack_discount_pct")))
     out = []
     for entry in entries:
@@ -693,10 +701,11 @@ def entries_out(db: Session, entries: list[CatalogEntry]) -> list[shapes.Catalog
                 **{
                     name: getattr(entry, name)
                     for name in shapes.CatalogEntryOut.model_fields
-                    if name not in ("vendor", "tags", "effective")
+                    if name not in ("vendor", "tags", "items", "effective")
                 },
                 vendor=shapes.VendorRef(hid=entry.vendor_hid, name=vendors[entry.vendor_hid].name),
                 tags=labels[entry.hid],
+                items=counted[entry.hid],
                 effective=shapes.CatalogEffective(
                     stack_discount_pct=_effective(
                         "stack_discount_pct", effective["stack_discount_pct"]
@@ -2159,4 +2168,52 @@ def resolution_out(hid: str, walks: list[resolution.Walk]) -> shapes.Resolution:
             )
             for walk in walks
         ],
+    )
+
+
+def _count(found: operated.Count) -> shapes.ItemCount:
+    return shapes.ItemCount(count=found.count, filter=found.filter)
+
+
+def operated_out(found: operated.Operated) -> shapes.OperatorAssignments:
+    """Return what an operator is on, and how (P-177)."""
+    return shapes.OperatorAssignments(
+        operator_hid=found.operator_hid,
+        places=[
+            shapes.OperatorPlace.model_validate(
+                {
+                    "hid": box.hid,
+                    "level": box.level,
+                    "path": box.path,
+                    "items": _count(box.items),
+                    "places_beneath": {
+                        "count": box.beneath.count,
+                        "more": box.beneath.more,
+                        "shown": box.beneath.shown,
+                    },
+                    "exceptions": _count(box.exceptions),
+                }
+            )
+            for box in found.places
+        ],
+        groups=[
+            shapes.OperatorGroup.model_validate(
+                {
+                    "hid": box.hid,
+                    "name": box.name,
+                    "type": box.type,
+                    "items": _count(box.items),
+                    "groups_beneath": {
+                        "count": box.beneath.count,
+                        "more": box.beneath.more,
+                        "shown": box.beneath.shown,
+                    },
+                    "exceptions": _count(box.exceptions),
+                }
+            )
+            for box in found.groups
+        ],
+        own=_count(found.own),
+        from_item=_count(found.from_item),
+        totals=_count(found.totals),
     )

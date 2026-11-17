@@ -384,6 +384,18 @@ def test_the_list_and_the_record_agree_on_who_looks_after_every_item(make: Maker
         )
         listed = {row["hid"] for row in make.get("/items", filter=condition, limit=1000)["items"]}
         assert listed == hids, operator
+    # How each has it, and from which record, filter as the record says (P-177).
+    by_source: dict[tuple[str, str | None], set[str]] = {}
+    for item in everything:
+        found = item["effective"]["operator_hid"]
+        by_source.setdefault((found["source"], found["source_hid"]), set()).add(item["hid"])
+    assert {source for source, _ in by_source} >= {"own", "device_group", "region", "none"}
+    for (source, holder), hids in by_source.items():
+        condition = f"effective.operator_hid.source:eq:{source}"
+        if holder is not None:
+            condition += f" effective.operator_hid.source_hid:eq:{holder}"
+        listed = {row["hid"] for row in make.get("/items", filter=condition, limit=1000)["items"]}
+        assert listed == hids, (source, holder)
     # Of two groups of one type, the first by name decides; a released label does not.
     assert _in_force(make, switches[3])[0] == "RA"
     assert _in_force(make, switches[7])[:2] == ("DW", "region")

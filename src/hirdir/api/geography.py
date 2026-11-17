@@ -12,7 +12,7 @@ from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
 from hirdir.domain import contacts, geography, moves, operators
-from hirdir.io import fields, filters, places
+from hirdir.io import fields, filters, operated, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
 sites = APIRouter(prefix="/sites", tags=["Geography"], route_class=IdempotentRoute)
@@ -345,6 +345,27 @@ def create_operator(body: r.OperatorCreate, _: Inventory, context: Audit, db: Db
     """Create an operator: a short label, with somebody behind it or open."""
     made = operators.create_operator(db, context, body.model_dump())
     return shapes.operators_out(db, [made])[0]
+
+
+@operator_routes.get("/{hid}/assignments")
+def operator_assignments(
+    hid: str,
+    _: Viewer,
+    db: Db,
+    include_drafts: bool = False,
+    include_archived: bool = False,
+) -> r.OperatorAssignments:
+    """What an operator is on, and how: each place and group given it, the items that
+    have it from each, what beneath each has it too and what is another's, and the items
+    that have it as their own or from the item they are in. Every count comes with the
+    filter of the item list that lists it (P-177)."""
+    found = operated.operated(
+        db,
+        operators.get_operator(db, hid),
+        include_drafts=include_drafts,
+        include_archived=include_archived,
+    )
+    return shapes.operated_out(found)
 
 
 @operator_routes.get("/{hid}")

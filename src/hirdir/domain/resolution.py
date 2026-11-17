@@ -272,6 +272,9 @@ def of_group(db: Session, group: DeviceGroup) -> list[Walk]:
             break
         seen.add(above.hid)
         chain.append(above)
+        # A group that is retired passes nothing down: it is the last step, and retired.
+        if above.record_status == descent.RETIRED:
+            break
     walks = []
     for name in GROUP_FIELDS:
         steps = []
@@ -285,7 +288,8 @@ def of_group(db: Session, group: DeviceGroup) -> list[Walk]:
                     value=value,
                     label=names.of(name, value),
                     type=one.type,
-                    retired=name == "operator_hid" and value in gone,
+                    retired=(name == "operator_hid" and value in gone)
+                    or (one is not group and one.record_status == descent.RETIRED),
                 )
             )
         walks.append(_decided(name, steps))

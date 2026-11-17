@@ -127,7 +127,8 @@ changes what every member that has none shows, and writes to none of them. Being
 over is no fault, and is not reported, but for the owner: a group lists in
 `members_disagree` each current member whose owner in force is another. An operator that
 is retired is passed over at every level as if it were not there, and a group that is
-retired, or a membership that has ended, counts for nothing. The whole walk, with what
+retired, or a membership that has ended, counts for nothing: a retired group passes
+nothing down to the groups nested in it (P-181). The whole walk, with what
 each step holds and which decided, is answered by `GET /items/{hid}/resolution` and
 shown on the page of an item (P-176).
 

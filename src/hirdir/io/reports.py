@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     ColumnElement,
+    String,
     and_,
     case,
     distinct,
@@ -34,8 +35,11 @@ from hirdir.db.models import (
     DeviceGroup,
     DeviceGroupMember,
     Item,
+    Location,
     Network,
     Owner,
+    Region,
+    Site,
     Tag,
     TagLink,
     Vendor,
@@ -73,11 +77,16 @@ SHARED = (
     "site",
     "region",
     "contract",
+    "group",
+    "model",
 )
 SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
 MANAGEMENT_BY = (*SHARED, "tag")
 ONE_NODE = groups.MANAGED_AS[0]
 AND_ITS_OWN = groups.MANAGED_AS[2]
+# What a row of a model is called: its vendor and its PID, `Cisco C9300-48P`. The space
+# is written into the statement, so that the label is grouped by as it is selected.
+MODEL_LABEL: Any = Vendor.name + literal_column("' '", String) + CatalogEntry.pid
 
 
 @dataclass(frozen=True)
@@ -130,7 +139,30 @@ class Involved:
 
 
 @dataclass(frozen=True)
-class Row(Measures):
+class Described:
+    """What a row of a report by group or by model says of the record it is of (P-178,
+    P-180). The rows of anything else, and the blank row, say none of it."""
+
+    # A group's type, or a model's.
+    type: str | None = None
+    member_count: int | None = None
+    nested_groups: int | None = None
+    vendor: str | None = None
+    pid: str | None = None
+    model_name: str | None = None
+    kind: str | None = None
+    # By operator: how its items have it, which add up to its items, and how many groups
+    # and places are given it as their own (P-178).
+    own: int | None = None
+    from_item: int | None = None
+    from_group: int | None = None
+    from_place: int | None = None
+    groups_given: int | None = None
+    places_given: int | None = None
+
+
+@dataclass(frozen=True)
+class Row(Measures, Described):
     """The measures of the items that share one value."""
 
     key: str | None = None
@@ -159,7 +191,7 @@ class Money:
 
 
 @dataclass(frozen=True)
-class MoneyRow(Money):
+class MoneyRow(Money, Described):
     """The value and the cost of the items that share one value."""
 
     key: str | None = None
@@ -370,6 +402,21 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
             return query.outerjoin(covering, covering.c.item_hid == Item.hid)
 
         return covering.c.contract_hid, covering.c.label, covered
+    if by == "group":
+        # Every group an item is under, and the blank row the items under none.
+        under = fields.under_groups()
+        named: Any = aliased(DeviceGroup, name="report_group")
+
+        def grouped(query: Any) -> Any:
+            return query.outerjoin(under, under.c.item_hid == Item.hid).outerjoin(
+                named, named.hid == under.c.group_hid
+            )
+
+        return under.c.group_hid, named.name, grouped
+    if by == "model":
+        # A model is a vendor's product, whatever its type; the blank row is what has
+        # no catalog entry (P-180).
+        return CatalogEntry.hid, MODEL_LABEL, None
     if by in ("lifecycle_state", "disposition"):
         column = fields.standing(by)
         return column, column, None
@@ -404,6 +451,101 @@ def _labels(db: Session, by: str, keys: Sequence[Any] = ()) -> dict[str, str]:
     if by not in LABELLED:
         return {}
     return {choice.value: choice.label for choice in choices.list_choices(db, LABELLED[by])}
+
+
+# How an item has its operator, as the columns of a row by operator count it (P-178).
+SOURCE_COLUMNS = {
+    "own": "own",
+    "parent_item": "from_item",
+    "device_group": "from_group",
+    "location": "from_place",
+    "site": "from_place",
+    "region": "from_place",
+}
+
+
+def _by_operator(db: Session, terms: _Terms, hids: list[str]) -> dict[str, dict[str, Any]]:
+    """Return, for each operator of a report by operator, how the items of its row have
+    it, and how many groups and places are given it as their own (P-178)."""
+    told: dict[str, dict[str, Any]] = {
+        hid: {
+            "own": 0,
+            "from_item": 0,
+            "from_group": 0,
+            "from_place": 0,
+            "groups_given": 0,
+            "places_given": 0,
+        }
+        for hid in hids
+    }
+    counting = terms.source(
+        select(fields.OPERATOR_IN_FORCE, fields.OPERATOR_SOURCE, func.count(Item.hid))
+    ).group_by(fields.OPERATOR_IN_FORCE, fields.OPERATOR_SOURCE)
+    for hid, source, count in _run(db, counting):
+        column = SOURCE_COLUMNS.get(source)
+        if hid in told and column is not None:
+            told[hid][column] += count
+    given = (
+        (DeviceGroup, "groups_given"),
+        (Region, "places_given"),
+        (Site, "places_given"),
+        (Location, "places_given"),
+    )
+    for model, column in given:
+        counted = db.execute(
+            select(model.operator_hid, func.count())
+            .where(model.operator_hid.in_(hids), model.record_status != "retired")
+            .group_by(model.operator_hid)
+        )
+        for hid, count in counted:
+            if hid in told:
+                told[hid][column] += count
+    return told
+
+
+def _described(
+    db: Session, by: str, keys: Sequence[Any], terms: _Terms | None = None
+) -> dict[str, dict[str, Any]]:
+    """Return what the record of each row says of itself, by group, by model or by
+    operator: a group's type, its current members and how many groups are nested in it;
+    a model's vendor, PID, name, kind and type; how the items of an operator have it.
+    A report by anything else describes nothing."""
+    hids = sorted({key for key in keys if key})
+    if not hids or by not in ("group", "model", "operator"):
+        return {}
+    if by == "operator":
+        return {} if terms is None else _by_operator(db, terms, hids)
+    if by == "model":
+        found = db.execute(
+            select(CatalogEntry, Vendor.name)
+            .join(Vendor, Vendor.hid == CatalogEntry.vendor_hid)
+            .where(CatalogEntry.hid.in_(hids))
+        )
+        return {
+            entry.hid: {
+                "vendor": vendor,
+                "pid": entry.pid,
+                "model_name": entry.model_name,
+                "kind": entry.kind,
+                "type": entry.type,
+            }
+            for entry, vendor in found
+        }
+    nested = fields.nested_groups()
+    beneath = dict(
+        db.execute(
+            select(nested.c.top_hid, func.count())
+            .where(nested.c.top_hid.in_(hids), nested.c.group_hid != nested.c.top_hid)
+            .group_by(nested.c.top_hid)
+        ).all()
+    )
+    members = groups.member_counts(db, hids)
+    return {
+        hid: {"type": kind, "member_count": members[hid], "nested_groups": beneath.get(hid, 0)}
+        for hid, kind in db.execute(
+            select(DeviceGroup.hid, DeviceGroup.type).where(DeviceGroup.hid.in_(hids))
+        )
+    }
 
 
 def _run(db: Session, statement: Any) -> list[Any]:
@@ -590,11 +732,13 @@ def summary(
     sums = _sums(db, terms, terms.weight, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found], terms)
     involved = _involved(db, terms, key, join) if operators else None
     rows = [
         Row(
             key=row[0],
             label=called.get(row[1], row[1]),
+            **told.get(row[0], {}),
             **_measures(row[2:], sums.get(row[0], [0, 0])),
             operators=None if involved is None else tuple(involved.get(row[0], ())),
         )
@@ -671,10 +815,12 @@ def management(
     sums = _sums(db, terms, terms.money, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found])
     rows = [
         MoneyRow(
             key=row[0],
             label=called.get(row[1], row[1]),
+            **told.get(row[0], {}),
             **_money(row[2:], sums.get(row[0], [0, 0])),
         )
         for row in found

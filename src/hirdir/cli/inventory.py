@@ -591,7 +591,8 @@ def summary(
         str | None,
         typer.Option(
             help="One row for each: vendor, kind, type, function, owner, operator, site, "
-            "region, lifecycle_state, disposition, condition, health or tag."
+            "region, contract, group, model, lifecycle_state, disposition, condition, health "
+            "or tag."
         ),
     ] = None,
     operators_: Annotated[
@@ -668,8 +669,8 @@ def management(
     by: Annotated[
         str | None,
         typer.Option(
-            help="One row for each: vendor, kind, type, function, owner, site, region or "
-            "tag. Left out, site."
+            help="One row for each: vendor, kind, type, function, owner, operator, site, "
+            "region, contract, group, model or tag. Left out, site."
         ),
     ] = None,
     include_archived: Archived = False,

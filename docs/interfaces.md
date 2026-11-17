@@ -162,7 +162,8 @@ without its own where it has its own, and `steps` in the order of the walk. A st
 `site` and `region`; the record it looks at, `hid` and `name`, and for a group its
 `type`, its `rank` among the item's groups from 1, and `via`, the group it is nested in
 that holds the value where the group holds none of its own; `value`, what that record
-holds, with its label; and `outcome`, `decides`, `passed_over`, `nothing` or `retired`.
+holds, with its label; and `outcome`, `decides`, `passed_over`, `nothing` or `retired`, an operator or a group
+that is retired.
 `GET /device-groups/{hid}/resolution` answers the same for a group, its own and then
 each group it is nested in. Both are read by every role, and work out what they say by
 the same walk as the value in force.
@@ -231,7 +232,9 @@ names of its site and of the region the site is in, `site.code` the site's code,
 `location.name` and `location.kind` those of the location; `operator.label` is the label of the operator in force and `operator.contact` the
 name of the person behind it, `effective.operator_hid.source` is how the item has it, `own`,
 `parent_item`, `device_group`, `location`, `site` or `region`, and
-`effective.operator_hid.source_hid` the record it has it from (P-177),
+`effective.operator_hid.source_hid` the record it has it from (P-177), `group`, which takes
+`within`, the HID or the name of a device group, for the items under it at any depth of
+nesting with their minor items, and `empty` for the items under no group (P-181),
 `operator.is_open` is true where nobody is, `operator.scope` is `internal` or
 `external` as the operator in force is (P-172),
 `effective.operator_hid` is that operator, blank for an item that nobody is assigned
@@ -345,6 +348,7 @@ what is worked out, the field is sorted by and not filtered by:
 | Device groups | Members | `member_count` | the number of current members |
 | Contacts | Assigned | `uses` | how many places, owners and operators name it, as the record counts them |
 | Operators | Given to | `uses` | how many items, groups and places are given it |
+| Catalog | Items | `items` | how many items are of that model, as the item list counts them (P-180) |
 | Vendors | Also known as | `aliases` | the first alias without regard to case |
 | Owners | Primary contact | `primary.name` | the name of that contact |
 | Every list with tags | Tags | `tags` | the first label |
@@ -646,7 +650,9 @@ row holds the items in no group. An item in several groups is in the row of each
 the totals count it once (P-178). By `model` a row is a catalog entry, keyed by its HID
 and labelled with its vendor and PID, `Cisco C9300-48P`, beside `vendor`, `pid`,
 `model_name`, `kind` and `type`, and the blank row holds the items with no catalog entry
-(P-180). A row of `type` or
+(P-180). By `operator` a row also answers `own`, `from_item`, `from_group` and
+`from_place`, how its items have the operator, which add up to its items, and
+`groups_given` and `places_given` (P-178, P-181). A row of `type` or
 `function` is labelled as its list of choices labels the value. A minor item is in the
 row of the owner, state and disposition in force for it. An item with several tags is
 in the row of each, and the totals count it once. A stack whose members fall in two

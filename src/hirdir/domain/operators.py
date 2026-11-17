@@ -12,7 +12,7 @@ together.
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import ColumnElement, case, func, select
+from sqlalchemy import ColumnElement, case, func, literal, select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
@@ -260,26 +260,48 @@ def group_reach() -> Any:
 def location_reach() -> Any:
     """Return, as a table, each location with the operator that what is there has from
     its place: the location's own, or that of a location above it, of its site, or of
-    a region outward."""
+    a region outward; with `holder_hid` and `holder_level`, the place that holds it."""
+
+    def held(own: Any, hid: Any, level: str, then_hid: Any, then_level: Any) -> tuple[Any, Any]:
+        mine = own.is_not(None)
+        return case((mine, hid), else_=then_hid), case((mine, literal(level)), else_=then_level)
+
     child_region: Any = aliased(Region)
+    top_live = live(Region.operator_hid)
     regions = (
-        select(Region.hid.label("region_hid"), live(Region.operator_hid).label("operator_hid"))
+        select(
+            Region.hid.label("region_hid"),
+            top_live.label("operator_hid"),
+            case((top_live.is_not(None), Region.hid)).label("holder_hid"),
+            case((top_live.is_not(None), literal("region"))).label("holder_level"),
+        )
         .where(Region.parent_region_hid.is_(None))
         .cte(recursive=True)
     )
+    child_live = live(child_region.operator_hid)
     regions = regions.union_all(
         select(
             child_region.hid,
-            func.coalesce(live(child_region.operator_hid), regions.c.operator_hid),
+            func.coalesce(child_live, regions.c.operator_hid),
+            *held(
+                child_live, child_region.hid, "region", regions.c.holder_hid, regions.c.holder_level
+            ),
         ).where(child_region.parent_region_hid == regions.c.region_hid)
     )
+    site_live = live(Site.operator_hid)
+    site_hid, site_level = held(
+        site_live, Site.hid, "site", regions.c.holder_hid, regions.c.holder_level
+    )
+    location_live = live(Location.operator_hid)
     child: Any = aliased(Location)
     locations = (
         select(
             Location.hid.label("location_hid"),
-            func.coalesce(
-                live(Location.operator_hid), live(Site.operator_hid), regions.c.operator_hid
-            ).label("operator_hid"),
+            func.coalesce(location_live, site_live, regions.c.operator_hid).label("operator_hid"),
+            case((location_live.is_not(None), Location.hid), else_=site_hid).label("holder_hid"),
+            case((location_live.is_not(None), literal("location")), else_=site_level).label(
+                "holder_level"
+            ),
         )
         .select_from(Location)
         .join(Site, Site.hid == Location.site_hid)
@@ -287,8 +309,13 @@ def location_reach() -> Any:
         .where(Location.parent_location_hid.is_(None))
         .cte(recursive=True)
     )
+    inner_live = live(child.operator_hid)
     return locations.union_all(
-        select(child.hid, func.coalesce(live(child.operator_hid), locations.c.operator_hid)).where(
-            child.parent_location_hid == locations.c.location_hid
-        )
+        select(
+            child.hid,
+            func.coalesce(inner_live, locations.c.operator_hid),
+            *held(
+                inner_live, child.hid, "location", locations.c.holder_hid, locations.c.holder_level
+            ),
+        ).where(child.parent_location_hid == locations.c.location_hid)
     )

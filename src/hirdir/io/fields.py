@@ -19,6 +19,7 @@ from sqlalchemy import (
     case,
     false,
     func,
+    literal,
     or_,
     select,
     type_coerce,
@@ -181,18 +182,20 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 
-def _from_groups(field: str, level: int, live: Any = None) -> ColumnElement[Any]:
+def _from_groups(
+    field: str, level: int, live: Any = None, column: str = "value"
+) -> ColumnElement[Any]:
     """Return what the record at `level` of an item's line, 0 the item itself, has in a
     field from the groups it is a current member of, as `hirdir.domain.descent` works it
     out: that of the first group, a stack before a cluster before a controller domain
     before any other and then by name, that has one in force, its own or from the group
-    it is nested in."""
+    it is nested in. With `column` of `holder_hid`, the group that holds that value."""
     one = _LINE[level]
     reach = descent.group_reach(field, live)
-    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_member")
-    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_group")
+    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_{column}_member")
+    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_{column}_group")
     return (
-        select(reach.c.value)
+        select(getattr(reach.c, column))
         .select_from(member)
         .join(group, group.hid == member.group_hid)
         .join(reach, reach.c.group_hid == group.hid)
@@ -249,6 +252,42 @@ def _operator_in_force() -> ColumnElement[Any]:
 
 
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
+
+
+def _operator_source(hid: bool) -> ColumnElement[Any]:
+    """Return how an item has its operator in force, `own`, `parent_item`,
+    `device_group`, `location`, `site`, `region` or `none`, or with `hid` the record it
+    has it from: the step of its walk that decides (P-177)."""
+    places = operators.location_reach()
+
+    def of_place(column: Any) -> ColumnElement[Any]:
+        return (
+            select(column)
+            .where(places.c.location_hid == LOCATION_IN_FORCE)
+            .correlate(*_LINE)
+            .scalar_subquery()
+        )
+
+    whens: list[tuple[Any, Any]] = []
+    for level, one in enumerate(_LINE):
+        own = operators.live(one.operator_hid)
+        whens.append(
+            (own.is_not(None), one.hid if hid else literal("own" if level == 0 else "parent_item"))
+        )
+        grouped = _from_groups("operator_hid", level, operators.live)
+        holder = _from_groups("operator_hid", level, operators.live, "holder_hid")
+        whens.append((grouped.is_not(None), holder if hid else literal("device_group")))
+    whens.append(
+        (
+            of_place(places.c.operator_hid).is_not(None),
+            of_place(places.c.holder_hid) if hid else of_place(places.c.holder_level),
+        )
+    )
+    return case(*whens, else_=None if hid else literal("none"))
+
+
+OPERATOR_SOURCE: ColumnElement[Any] = _operator_source(hid=False)
+OPERATOR_SOURCE_HID: ColumnElement[Any] = _operator_source(hid=True)
 ITEM_OPERATOR: Any = aliased(Operator, name="item_operator")
 ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
 
@@ -300,6 +339,68 @@ def _within(
     return test
 
 
+def nested_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with itself and
+    with every group nested in it at any depth. A retired group counts for nothing, so
+    what is nested in it is not reached through it, as nothing is passed down through it
+    (`hirdir.domain.descent`), and as the controllers of a domain are
+    not (`hirdir.domain.groups.controllers`)."""
+    inner: Any = aliased(DeviceGroup, name="nested_group")
+    start = (
+        select(DeviceGroup.hid.label("top_hid"), DeviceGroup.hid.label("group_hid"))
+        .where(DeviceGroup.record_status != "retired")
+        .cte("report_nested_groups", recursive=True)
+    )
+    # Each pair once: what is nested is never within itself, and were it so, the walk
+    # would still end.
+    return start.union(
+        select(start.c.top_hid, inner.hid)
+        .select_from(start)
+        .join(inner, inner.parent_group_hid == start.c.group_hid)
+        .where(inner.record_status != "retired")
+    )
+
+
+def under_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with every item
+    under it, each pair once (P-178): its current members, the current members of every
+    group nested in it at any depth, and the minor items of all of them. An item is so
+    in the row of each group it is under, as an item with several tags is in the row of
+    each."""
+    nested = nested_groups()
+    member: Any = aliased(DeviceGroupMember, name="under_member")
+    minor: Any = aliased(Item, name="under_minor")
+    start = (
+        select(nested.c.top_hid.label("group_hid"), member.item_hid.label("item_hid"))
+        .select_from(nested)
+        .join(member, member.group_hid == nested.c.group_hid)
+        .where(member.left_on.is_(None))
+        .cte("report_under_groups", recursive=True)
+    )
+    return start.union(
+        select(start.c.group_hid, minor.hid)
+        .select_from(start)
+        .join(minor, minor.parent_item_hid == start.c.item_hid)
+    )
+
+
+def _under_group() -> tuple[ColumnElement[Any], Callable[[Session, str], ColumnElement[bool]]]:
+    """Return the field of the groups an item is under, as a row of a report by group
+    holds it (P-178): an expression that is blank where it is under none, and the test that
+    it is under the group a filter names, by its HID or its name."""
+    under = under_groups()
+    some = select(func.min(under.c.group_hid)).where(under.c.item_hid == Item.hid).correlate(Item)
+
+    def test(db: Session, text: str) -> ColumnElement[bool]:
+        found = db.get(DeviceGroup, text.strip()) or groups.find_group(db, text)
+        if found is None:
+            raise refuse(f"there is no device group {text}")
+        return Item.hid.in_(select(under.c.item_hid).where(under.c.group_hid == found.hid))
+
+    return some.scalar_subquery(), test
+
+
+_UNDER_GROUP = _under_group()
 DEPTH: ColumnElement[Any] = case(
     *(
         (one.parent_item_hid.is_(None), level)
@@ -663,6 +764,9 @@ ITEMS = Listing(
         "operator_hid": Field("reference", Item.operator_hid),
         # The operator in force: who looks after the item, by its own word or from above.
         "effective.operator_hid": Field("reference", OPERATOR_IN_FORCE),
+        # How it has it, and from which record (P-177).
+        "effective.operator_hid.source": Field("choice", OPERATOR_SOURCE),
+        "effective.operator_hid.source_hid": Field("reference", OPERATOR_SOURCE_HID),
         "operator.label": Field("text", ITEM_OPERATOR.label),
         "operator.contact": Field("text", ITEM_OPERATOR_CONTACT.name),
         # Internal where the person behind the operator in force is a user, external not.
@@ -720,6 +824,14 @@ ITEMS = Listing(
         # The owner in force: a minor item has the owner of the item it is in.
         "owner.label": Field("text", Owner.label),
         "tags": _tags("item", Item),
+        # The groups it is under, at any depth of nesting and from the item it is in: what a
+        # row of a report by group holds (P-178). `group:within:<group>` and `group:empty`.
+        "group": Field(
+            "place",
+            _UNDER_GROUP[0],
+            within=_UNDER_GROUP[1],
+            within_takes="the HID or the name of a device group",
+        ),
         "group.hid": Field("reference", DeviceGroup.hid, among=_ITEM_GROUPS),
         # Sorted by the first of them, as the record lists its groups: by name.
         "group.name": Field(
@@ -1089,6 +1201,28 @@ ADDRESSES = Listing(
     has_status=False,
 )
 
+# How many items are of a model, counted as the item list counts them (D-152, P-180):
+# major and minor, and drafts, retired items and items in Archived left out, so the
+# number leads to as many rows of the grid.
+MODEL_ITEMS: ColumnElement[Any] = (
+    _with_items_above(select(func.count(func.distinct(Item.hid))).select_from(Item))
+    .where(Item.catalog_entry_hid == CatalogEntry.hid, *_ITEM_IN_VIEW)
+    .correlate(CatalogEntry)
+    .scalar_subquery()
+)
+
+
+def model_items(db: Session, entry_hids: list[str]) -> dict[str, int]:
+    """Return how many items are of each catalog entry."""
+    counts = dict.fromkeys(entry_hids, 0)
+    if entry_hids:
+        found = db.execute(
+            select(CatalogEntry.hid, MODEL_ITEMS).where(CatalogEntry.hid.in_(entry_hids))
+        )
+        counts.update({hid: count or 0 for hid, count in found})
+    return counts
+
+
 CATALOG_ENTRIES = Listing(
     model=CatalogEntry,
     fields={
@@ -1103,6 +1237,8 @@ CATALOG_ENTRIES = Listing(
         **_columns(CatalogEntry, "number", *_INHERITED_AMOUNTS, "stack_discount_pct"),
         not_renewed.FIELD: Field("boolean", CatalogEntry.do_not_renew),
         "tags": _tags("catalog_entry", CatalogEntry),
+        # How many items are of it: sorted by, and not filtered by.
+        "items": Field("integer", ordered_by=MODEL_ITEMS),
     },
     joined=lambda query: query.join(Vendor, Vendor.hid == CatalogEntry.vendor_hid),
     default_sort=("vendor", "pid"),

@@ -22,6 +22,7 @@ from hirdir.domain.inheritance import NOTHING, Effective
 # Which of an item's groups decides, the first that has a value: the stack before the
 # cluster before the controller domain before any other group.
 GROUP_ORDER = ("stack", "cluster", "controller_domain", "custom")
+RETIRED = "retired"
 SOURCE_GROUP = "device_group"
 NONE: frozenset[str] = frozenset()
 
@@ -36,7 +37,8 @@ def of_groups(
     db: Session, found: Sequence[DeviceGroup], field: str, skip: Collection[str] = NONE
 ) -> dict[str, Effective]:
     """Return what each group has in force in a field: its own, or that of the nearest
-    group it is nested in that has one."""
+    group it is nested in that has one. A group that is retired passes nothing down: the
+    walk up stops at it."""
     held: dict[str, DeviceGroup] = {group.hid: group for group in found}
     wanted = {group.parent_group_hid for group in found}
     for _ in range(groups.MAX_NESTING + 1):
@@ -58,6 +60,8 @@ def of_groups(
                 result = Effective(value, "own" if at is group else SOURCE_GROUP, at.hid)
                 break
             at = held.get(at.parent_group_hid or "")
+            if at is not None and at.record_status == RETIRED:
+                break
         in_force[group.hid] = result
     return in_force
 
@@ -127,7 +131,9 @@ def of_items(
 
 def group_reach(field: str, live: Any = None) -> Any:
     """Return, as a table, each group that has a value in force in a field with that
-    value: its own, or that of the nearest group it is nested in.
+    value: its own, or that of the nearest group it is nested in; and `holder_hid`, the
+    group that holds it. A group that is retired passes nothing down to the groups nested
+    in it, as `of_groups` has it.
 
     `live` turns a column into the value it stands for, or nothing: an operator that
     is retired stands for nothing.
@@ -139,12 +145,17 @@ def group_reach(field: str, live: Any = None) -> Any:
 
     inner: Any = aliased(DeviceGroup)
     start = (
-        select(DeviceGroup.hid.label("group_hid"), value(DeviceGroup).label("value"))
+        select(
+            DeviceGroup.hid.label("group_hid"),
+            value(DeviceGroup).label("value"),
+            DeviceGroup.hid.label("holder_hid"),
+            (DeviceGroup.record_status != RETIRED).label("passes"),
+        )
         .where(value(DeviceGroup).is_not(None))
         .cte(recursive=True)
     )
     return start.union_all(
-        select(inner.hid, start.c.value).where(
-            inner.parent_group_hid == start.c.group_hid, value(inner).is_(None)
+        select(inner.hid, start.c.value, start.c.holder_hid, inner.record_status != RETIRED).where(
+            inner.parent_group_hid == start.c.group_hid, value(inner).is_(None), start.c.passes
         )
     )
