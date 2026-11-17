@@ -158,6 +158,12 @@ test("Change beside the location of an item puts the keyboard in its field", asy
   await places(request, account);
   const seen = await watch(page.context());
   await signIn(page, account);
+  // The lists the form of details waits for come late, as on a busy server: Change is
+  // there before the field is, and still puts the keyboard in it.
+  await page.route("**/api/v1/owners*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
   await openTheItem(page);
 
   const identity = page.getByRole("region", { name: "Identity" });

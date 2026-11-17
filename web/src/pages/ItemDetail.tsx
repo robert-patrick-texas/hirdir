@@ -308,21 +308,38 @@ function Fact({
   );
 }
 
+// How long Change waits for a field of the form of details to be there, in milliseconds.
+const CHANGE_WAIT = 10_000;
+
 /**
  * From a fact to the field of the form of details that changes it (P-185): the window
  * moves to the field and the keyboard is put in it, a list to choose from or a box to
  * search in alike. Nothing is changed here; the form, its checks and its audit stay the
- * one way. Where the form is still being made ready, the window moves to it. It is a
+ * one way. Where the form is still being made ready, the window moves to it and the keyboard
+ * follows when the field is there. It is a
  * button that reads as a link: it moves within the page and leaves its address as it is.
  */
 function ChangeLink({ field, label }: { field: string; label: string }) {
   function go() {
-    const form = document.querySelector<HTMLElement>('section[aria-labelledby="details"]');
-    const input = form?.querySelector<HTMLElement>(`[name="${field}"]`) ?? null;
-    const target = input ?? form;
-    if (!target) return;
-    target.scrollIntoView({ block: "center" });
-    input?.focus({ preventScroll: true });
+    const until = performance.now() + CHANGE_WAIT;
+    let moved = false;
+    // The form waits for the lists it offers, which may come after its facts do: the
+    // window moves to the form at once, and the keyboard to the field when it is there.
+    function seek() {
+      const form = document.querySelector<HTMLElement>('section[aria-labelledby="details"]');
+      const input = form?.querySelector<HTMLElement>(`[name="${field}"]`) ?? null;
+      if (input) {
+        input.scrollIntoView({ block: "center" });
+        input.focus({ preventScroll: true });
+        return;
+      }
+      if (form && !moved) {
+        form.scrollIntoView({ block: "start" });
+        moved = true;
+      }
+      if (performance.now() < until) window.setTimeout(seek, 100);
+    }
+    seek();
   }
   return (
     <button type="button" className="change-link" data-change={field} onClick={go}>
