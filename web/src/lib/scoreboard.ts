@@ -297,8 +297,6 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
       row.by_health.degraded,
       row.by_health.failed,
       row.by_health.unknown,
-      // 0.9.4: how its items have it, and what is given it (P-178).
-      ...SPLIT.map(({ value }) => value(row) ?? ""),
     ];
   };
   return toCsv([
@@ -316,7 +314,6 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
       "degraded",
       "failed",
       "unknown",
-      ...SPLIT.map(({ column }) => column),
     ],
     ...rows.map(line),
   ]);
@@ -365,6 +362,22 @@ export function splitPath(view: BoardView, hid: string | null, column: string): 
     ...(view.includeArchived ? { include_archived: true } : {}),
     ...(view.includeDrafts ? { include_drafts: true } : {}),
   });
+}
+
+/**
+ * How each operator has its items, as a file: one line for each operator, in the order
+ * they are given, with how many of its items have it each way and what is given it. The
+ * row of what nobody is assigned to has none of these, and is not in it.
+ */
+export function splitCsv(rows: readonly ScoreRow[]) {
+  const line = (row: ScoreRow): Array<string | number> => {
+    const mark = operatorOfRow(row);
+    return [row.key ?? "", mark?.label ?? "", ...SPLIT.map(({ value }) => value(row) ?? "")];
+  };
+  return toCsv([
+    ["operator_hid", "operator", ...SPLIT.map(({ column }) => column)],
+    ...rows.filter((row) => row.key !== null).map(line),
+  ]);
 }
 
 /** The condition that keeps the items under one group at any depth, or those under none. */

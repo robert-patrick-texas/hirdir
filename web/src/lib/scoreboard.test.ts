@@ -280,12 +280,10 @@ describe("the tables as files", () => {
     const lines = text.trimEnd().split("\r\n");
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain("operator_hid,operator,person,open,components");
-    // 0.9.4: how its items have it and what is given it follow, blank where not sent.
-    expect(lines[0]).toContain(
-      ",unknown,own,from_item,from_group,from_place,groups_given,places_given",
-    );
-    expect(lines[1]).toBe(`${OP2},NE2,,true,3,3,4,10.50,25%,3,0,0,0,,,,,,`);
-    expect(lines[2]).toBe(",,,,2,2,3,31.50,75%,2,0,0,0,,,,,,");
+    // How each operator has its items is a table and a file of its own (P-178).
+    expect(lines[0]).not.toContain("from_item");
+    expect(lines[1]).toBe(`${OP2},NE2,,true,3,3,4,10.50,25%,3,0,0,0`);
+    expect(lines[2]).toBe(",,,,2,2,3,31.50,75%,2,0,0,0");
   });
 
   it("writes the sites with the operators involved in one cell", () => {

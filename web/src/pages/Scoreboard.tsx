@@ -35,12 +35,16 @@ import {
   shareText,
   siteCondition,
   sitesCsv,
+  splitCsv,
   splitPath,
   underOpenLabels,
 } from "../lib/scoreboard";
 import type { SortState } from "../lib/sort";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
+
+// How each operator has its items opens with the most given it first.
+const MOST_GIVEN = { column: "own", descending: true } as const;
 
 // What the blank row of each table is called: it is a row like the others.
 const NOBODY = "Nobody is assigned";
@@ -215,16 +219,6 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                   <SortTh sort={sorting} column="share">
                     Share of the weight
                   </SortTh>
-                  {SPLIT.map((part) => (
-                    <SortTh
-                      sort={sorting}
-                      column={part.column}
-                      className="number"
-                      key={part.column}
-                    >
-                      {part.header}
-                    </SortTh>
-                  ))}
                   {HEALTHS.map((health) => (
                     <SortTh
                       sort={sorting}
@@ -258,16 +252,6 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                         whole={whole}
                         figure={ranked.figure("share")}
                       />
-                      {SPLIT.map((part) => (
-                        <td className="number" key={part.column} data-measure={part.column}>
-                          <Counted
-                            ranking={ranked}
-                            column={part.column}
-                            row={row}
-                            href={splitPath(view, row.key, part.column)}
-                          />
-                        </td>
-                      ))}
                       {HEALTHS.map((health) => (
                         <td className="number" key={health.value} data-health={health.value}>
                           <Counted ranking={ranked} column={health.value} row={row} />
@@ -281,7 +265,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={12 + SPLIT.length} className="muted">
+                    <td colSpan={12} className="muted">
                       No item is in view.
                     </td>
                   </tr>
@@ -325,16 +309,115 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
           </p>
           <p className="hint">
             An operator is in force for an item that is given it, or that has it from the item it is
-            in, from its group or from where it is: Own, From item, From group and From place say
-            how many of its items have it each way, and add up to its items. Groups given and Places
-            given are the groups and the places given it as their own. The first four lead to their
-            items, and Groups given to the groups; the places given are no one list. The share is of
-            the support weight of all items in view, {amountText(whole)}. A stack whose members have
-            two operators is a managed node of both.
+            in, from its group or from where it is. The share is of the support weight of all items
+            in view, {amountText(whole)}. A stack whose members have two operators is a managed node
+            of both.
           </p>
+          <SplitBoard view={view} rows={data.rows} whole={whole} />
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * How each operator has its items (P-178): beneath the leaderboard, a row for each
+ * operator, with how many of its items it is given, has from the item they are in, from a
+ * group and from a place, which add up to its items, and how many groups and places are
+ * given it. Ranked and sorted as every table of the scoreboard is, the most given it
+ * first; each count of items leads to exactly those items, and the groups to the list of
+ * them. The places given it are no one list.
+ */
+function SplitBoard({ view, rows, whole }: { view: ItemView; rows: ScoreRow[]; whole: string }) {
+  const { productName } = useSite();
+  const operators = rows.filter((row) => row.key !== null);
+  const sorting = useSorting(board(operators), scoreColumns(NOBODY), { initial: MOST_GIVEN });
+  const ranked = ranking(sorting.rows, sorting.state, scoreCounts(whole), {
+    fallback: "own",
+    blank: (row) => row.key === null,
+  });
+  return (
+    <>
+      <h3 id="score-split">How each operator has its items</h3>
+      <div className="scroll">
+        <table data-testid="score-split">
+          <caption className="visually-hidden">
+            How each operator in force for the items in view has them: given it, from the item they
+            are in, from a group and from a place, and the groups and places given it; the most
+            given it first, and sorted by any column by its header
+          </caption>
+          <thead>
+            <tr>
+              <RankHead ranking={ranked} />
+              <SortTh sort={sorting} column="name">
+                Operator
+              </SortTh>
+              {SPLIT.map((part) => (
+                <SortTh sort={sorting} column={part.column} className="number" key={part.column}>
+                  {part.header}
+                </SortTh>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorting.rows.map((row) => {
+              const mark = operatorOfRow(row);
+              return (
+                <tr
+                  key={row.key ?? ""}
+                  data-operator={row.key ?? ""}
+                  data-label={mark?.label ?? ""}
+                >
+                  <RankCell ranking={ranked} row={row} />
+                  <th scope="row">
+                    {mark ? <OperatorMark mark={mark} withPerson /> : rowName(row, NOBODY)}
+                  </th>
+                  {SPLIT.map((part) => (
+                    <td className="number" key={part.column} data-measure={part.column}>
+                      <Counted
+                        ranking={ranked}
+                        column={part.column}
+                        row={row}
+                        href={splitPath(view, row.key, part.column)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+            {sorting.rows.length === 0 && (
+              <tr>
+                <td colSpan={2 + SPLIT.length} className="muted">
+                  No operator is in force for an item in view.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <RankNote ranking={ranked} fallback="items given it" />
+      <p className="actions">
+        <button
+          type="button"
+          disabled={sorting.rows.length === 0}
+          onClick={() =>
+            saveCsv(
+              splitCsv(sorting.rows),
+              namedFile(productName, "scoreboard-operators-split.csv"),
+            )
+          }
+        >
+          Export CSV
+          <span className="visually-hidden"> of how each operator has its items</span>
+        </button>
+      </p>
+      <p className="hint">
+        Own, From item, From group and From place say how many of an operator&apos;s items have it
+        each way, and add up to its items; each leads to those items. Groups given and Places given
+        are the groups and the places given it as their own: Groups given leads to the groups, and
+        the places are no one list. What nobody is assigned to has none of these.
+      </p>
+    </>
   );
 }
 

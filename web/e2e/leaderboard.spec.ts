@@ -212,13 +212,24 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   await page.goto(`./reports/scoreboard?${new URLSearchParams({ filter: mine }).toString()}`);
   await expect(page.getByRole("heading", { level: 1, name: "Scoreboard" })).toBeVisible();
 
-  // OPA: its own item, the optic from that item, two from its group and two from its site,
-  // which add up to its six; one group and one place given it.
+  // The leaderboard: OPA with its six items, and none of the split, which is a table of its
+  // own beneath it.
   const operators = page.getByTestId("score-operators");
-  const opa = operators.locator(`tbody tr[data-operator="${ids.opa}"]`);
   const measure = (row: Locator, which: string) => row.locator(`[data-measure="${which}"]`);
+  const leader = operators.locator(`tbody tr[data-operator="${ids.opa}"]`);
   // Three tables are counted at once: on a busy host longer than the 5 seconds of a wait.
-  await expect(measure(opa, "items")).toHaveText("6", { timeout: 20_000 });
+  await expect(measure(leader, "items")).toHaveText("6", { timeout: 20_000 });
+  await expect(measure(leader, "own")).toHaveCount(0);
+  await expect(operators.getByRole("columnheader", { name: "Own", exact: true })).toHaveCount(0);
+
+  // How each operator has its items: OPA its own item, the optic from that item, two from
+  // its group and two from its site, which add up to its six; one group and one place given
+  // it. It opens with the most given it first: OPB with two, then OPA with one.
+  const split = page.getByTestId("score-split");
+  await expect(
+    page.getByRole("heading", { level: 3, name: "How each operator has its items" }),
+  ).toBeVisible();
+  const opa = split.locator(`tbody tr[data-operator="${ids.opa}"]`);
   await expect(measure(opa, "own")).toHaveText("1");
   await expect(measure(opa, "from_item")).toHaveText("1");
   await expect(measure(opa, "from_group")).toHaveText("2");
@@ -226,13 +237,27 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   await expect(measure(opa, "groups_given")).toHaveText("1");
   await expect(measure(opa, "places_given")).toHaveText("1");
   await expect(measure(opa, "own").locator(".bar")).toHaveAttribute("aria-hidden", "true");
-  // Sorted by its own items, OPB with two is ranked first and OPA with one second.
-  await operators.getByRole("button", { name: "Own", exact: true }).click();
-  await expect(operators.getByRole("columnheader", { name: "Rank" })).toHaveAttribute(
+  await expect(split.getByRole("columnheader", { name: "Own", exact: true })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+  await expect(split.getByRole("columnheader", { name: "Rank" })).toHaveAttribute(
     "data-rank-by",
     "own",
   );
   await expect(measure(opa, "rank")).toHaveText("2");
+  await expect(split.locator("tbody tr").nth(1)).toHaveAttribute("data-operator", ids.opa ?? "");
+  // Sorted by what is had from a group, OPA with two is ranked first.
+  await split.getByRole("button", { name: "From group", exact: true }).click();
+  await expect(split.getByRole("columnheader", { name: "Rank" })).toHaveAttribute(
+    "data-rank-by",
+    "from_group",
+  );
+  await expect(measure(opa, "rank")).toHaveText("1");
+  // It is saved as a file of its own, one line for each operator.
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV of how each operator has its items" }).click();
+  expect((await saved).suggestedFilename()).toBe("hirdir-scoreboard-operators-split.csv");
 
   // The groups: G, with its two members, G2 nested in it and three items under it; G2 with
   // one; and the items under no group, a row with no rank.
@@ -277,9 +302,7 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   // How OPA's items have it leads to exactly those items: the two from its group, the
   // member of the nested group among them; and the groups given it to the list of groups.
   await page.goBack();
-  const opaAgain = page
-    .getByTestId("score-operators")
-    .locator(`tbody tr[data-operator="${ids.opa}"]`);
+  const opaAgain = page.getByTestId("score-split").locator(`tbody tr[data-operator="${ids.opa}"]`);
   await leadsTo(page, measure(opaAgain, "from_group").getByRole("link"), 2);
   await expect(page.getByTestId("grid-items")).toContainText(`sw5-${suffix}`);
   await page.goBack();
