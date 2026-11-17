@@ -1365,8 +1365,8 @@ which a release before 1.0.0 may do:
   its own: it is the contact it names, and shows that contact's name, email and two
   numbers. The upgrade gives each user that is no service account and has a display
   name or an email a contact: the contact that already has that email, which is left as
-  it is; for a user with no such email, the one contact of its display name, as a file
-  finds a contact by name; or a new contact with the user's display name, or its
+  it is; for a user with no email, or one not of the form name@host, the one contact
+  of its display name, as a file finds a contact by name; or a new contact with the user's display name, or its
   username where it had none, and its email where it is of the form name@host. The users that may sign in go
   before those that are disabled, so of two users of one email the one still in use is
   given the contact and the other none. Then `display_name` and `email` are dropped
