@@ -129,12 +129,14 @@ const location: ResolutionField = {
 };
 
 // The support weight of a major item: its model's is below the minimum, which raises it.
+// The value is found on the catalog entry, which decides, and the minimum raises it: the
+// source stays where the value was found.
 const weight: ResolutionField = {
   field: "support_weight",
   value: "1.00",
   label: null,
-  source: "setting",
-  source_hid: null,
+  source: "catalog",
+  source_hid: "c-1",
   overrides: null,
   overrides_label: null,
   steps: [
@@ -142,12 +144,12 @@ const weight: ResolutionField = {
     step({
       level: "catalog",
       hid: "c-1",
-      name: "Cisco C9300-48P",
+      name: "Example Networks EN-4800",
       value: "0.50",
-      outcome: "passed_over",
+      outcome: "decides",
     }),
     step({ level: "setting", name: "default_item_weight", value: "1.00", outcome: "passed_over" }),
-    step({ level: "setting", name: "minimum_item_weight", value: "1.00", outcome: "decides" }),
+    step({ level: "setting", name: "minimum_item_weight", value: "1.00", outcome: "raises" }),
   ],
 };
 
@@ -164,7 +166,7 @@ const renewal: ResolutionField = {
     step({
       level: "catalog",
       hid: "c-1",
-      name: "Cisco C9300-48P",
+      name: "Example Networks EN-4800",
       value: false,
       outcome: "decides",
     }),
@@ -236,12 +238,18 @@ describe("the walk of a value, as boxes", () => {
 
   it("names a setting of weight in words", () => {
     expect(stepTitle(weight.steps[2] as ResolutionStep)).toBe("Default weight of a major item");
+    expect(stepTitle(weight.steps[3] as ResolutionStep)).toBe("Minimum weight of a major item");
+  });
+
+  it("draws the minimum that raises a weight after the step that decides, which keeps the source", () => {
     expect(walkBoxes(weight).map((box) => box.state)).toEqual([
       "nothing",
-      "passed_over",
-      "passed_over",
       "decides",
+      "passed_over",
+      "raises",
     ]);
+    expect(deciding(weight)?.level).toBe("catalog");
+    expect(walkBoxes(weight)[3]?.value).toBe("1.00");
   });
 
   it("names the group a group's value is had from", () => {
