@@ -106,6 +106,49 @@ test("Enter in a location field asks again for the same text, and finds a locati
   await expectClean(page, seen);
 });
 
+test("after Save at the foot of an item's page, what the page answers is in the window", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await places(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openTheItem(page);
+
+  const form = details(page);
+  const saved = page.getByRole("status").filter({ hasText: "The item was saved." });
+  await form.getByLabel("FQDN").fill(`${label("edge-sw").replace(/ /g, "-")}.example.net`);
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(saved).toBeVisible();
+  // The page was scrolled to the form, far below the message's place; the message is
+  // in the window all the same, at its top.
+  expect(await page.evaluate(() => window.scrollY), "the window is down the page").toBeGreaterThan(
+    800,
+  );
+  await expect(saved).toBeInViewport();
+
+  // The next change sent takes the message away, and once it is done the same words are
+  // shown again. The answer is held back a moment, to see the page while it is sent.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/api/v1/items/${made.item}`, async (route) => {
+    if (route.request().method() === "PATCH") await held;
+    await route.continue();
+  });
+  await form.getByLabel("FQDN").fill(`${label("edge-sw-2").replace(/ /g, "-")}.example.net`);
+  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(saved).toHaveCount(0);
+  release();
+  await expect(saved).toBeInViewport();
+  await page.unroute(`**/api/v1/items/${made.item}`);
+
+  await expectClean(page, seen);
+});
+
 test("the Capacity page is no wider than the window", async ({ page, account }) => {
   const seen = await watch(page.context());
   await signIn(page, account);

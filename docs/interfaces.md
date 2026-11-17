@@ -1739,7 +1739,9 @@ What a page answers to a change, that it was done or why it was refused, stays i
 (P-182): it is shown at its place near the top of the page, and while the window is
 scrolled past that place it stays at the top of the window, over the page. It is part
 of the page and does not go away by itself; a message that something was done is taken
-away when the next change on that page is sent.
+away when the next change on that page is sent, stays away if that change is refused,
+and once it is done the page says what it says of it, the same words again after a
+second save of the same record.
 
 A field that finds a record by what is typed searches again when Enter is pressed, when
 the same text is typed again, and when the person comes back to the tab with a search

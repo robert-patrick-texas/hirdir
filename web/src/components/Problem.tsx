@@ -1,5 +1,6 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 import type { ApiError } from "../api/client";
+import { hearChanges } from "../lib/hooks";
 import { fieldErrors, fieldLine, sentence } from "../lib/problems";
 
 /**
@@ -72,11 +73,26 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
   );
 }
 
-/** A quiet message that something was done. Always in the page, as Problem is. */
+/**
+ * A quiet message that something was done. Always in the page, as Problem is.
+ *
+ * It is taken away when the next change is sent from the page (P-182), so that the page
+ * never says done and refused at once, and comes back when that change is done: with
+ * what the page says of it, which may be the very words it said before, as after a
+ * second save of the same record.
+ */
 export function Notice({ text }: { text: string }) {
+  // The words taken away, while they are what the page would say.
+  const [away, setAway] = useState<string | null>(null);
+  const heard = useEffectEvent((what: "sent" | "done" | "refused") => {
+    if (what === "sent") setAway(text);
+    else if (what === "done") setAway(null);
+  });
+  useEffect(() => hearChanges(heard), []);
+  const shown = away !== null && away === text ? "" : text;
   return (
     <div className="live" role="status" aria-live="polite">
-      {text && <p className="alert alert-ok">{text}</p>}
+      {shown && <p className="alert alert-ok">{shown}</p>}
     </div>
   );
 }

@@ -182,6 +182,28 @@ export function useAsked(typed: string, pause = 300): Asked {
   };
 }
 
+/** What is heard of a change sent to the server through `useAction`. */
+export type Heard = "sent" | "done" | "refused";
+
+const hearers = new Set<(heard: Heard) => void>();
+
+/**
+ * Hear of every change sent from the page on show (P-182): that it was sent, and that it
+ * was done or refused. "done" is told once the code that sent the change has had its
+ * answer and said what it says of it, so that a hearer then finds that said. Returns
+ * the means to stop hearing.
+ */
+export function hearChanges(hearer: (heard: Heard) => void): () => void {
+  hearers.add(hearer);
+  return () => {
+    hearers.delete(hearer);
+  };
+}
+
+function tell(heard: Heard): void {
+  for (const hearer of [...hearers]) hearer(heard);
+}
+
 export interface Action {
   busy: boolean;
   error: ApiError | null;
@@ -197,10 +219,15 @@ export function useAction(): Action {
   const run = useCallback<Action["run"]>(async (change) => {
     setBusy(true);
     setError(null);
+    tell("sent");
     try {
-      return { ok: true, value: await change() };
+      const value = await change();
+      // After the sender has gone on from its answer, and set what the page says of it.
+      window.setTimeout(() => tell("done"), 0);
+      return { ok: true, value };
     } catch (thrown) {
       setError(toApiError(thrown));
+      tell("refused");
       return { ok: false };
     } finally {
       setBusy(false);

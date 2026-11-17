@@ -421,6 +421,24 @@ legend {
 
 /* --- messages --------------------------------------------------------------------- */
 
+/* What a page answers to a change, done or refused, is shown at its place and, while the
+   window is scrolled past it, stays at the top of the window over the page (P-182). An
+   empty one has no height, so it takes no room and catches no click; one that holds a
+   message is opaque. It stays within what holds it: a form's refusal with the form. */
+.live {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.live:empty {
+  pointer-events: none;
+}
+
+.live:not(:empty) {
+  background: var(--bg);
+}
+
 .alert {
   margin: 0 0 0.75rem;
   padding: 0.55rem 0.8rem;
