@@ -3275,7 +3275,14 @@ previous_release() {
         "$status $(session_hours)" "200 11.0"
     old_session=$token
 
-    api POST /users '{"username": "upgrade-engineer", "display_name": "An engineer of the upgrade test"}'
+    # From 0.9.3 a person is a contact, made with the user, and a user takes no display
+    # name of its own (P-172); a release before it took one.
+    if dpkg --compare-versions "$previous_version" ge 0.9.3; then
+        person='"contact": {"name": "An engineer of the upgrade test"}'
+    else
+        person='"display_name": "An engineer of the upgrade test"'
+    fi
+    api POST /users "{\"username\": \"upgrade-engineer\", $person}"
     expect "pkg a second user is created" "$status" 201
     engineer_hid=$(json 'd["user"]["hid"]')
     engineer_code=$(json 'd["access_code"]')
