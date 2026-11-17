@@ -204,13 +204,32 @@ interface CreateFormProps<B, R> {
   labels?: Readonly<Record<string, string>>;
   /** Something to read above a field, by its name: what applies before anything is typed. */
   notes?: Readonly<Record<string, ReactNode>>;
+  /** A second button, which makes the record and keeps the form open for the next. */
+  another?: Another<R>;
   children?: ReactNode;
+}
+
+/**
+ * Make another like it (P-192): the record is made, and the form stays open with what the
+ * next one shares, the rest blank and the keyboard in the field named first.
+ */
+export interface Another<R> {
+  label: string;
+  /** The fields the next record shares, which keep what was typed. */
+  keep: readonly string[];
+  /** The field that takes the keyboard for the next one. */
+  focus: string;
+  /** The record was made, and the form is open for the next. */
+  onCreated: (record: R) => void;
 }
 
 /** A form that makes a new record. A field left blank is not sent. */
 export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   const { title, specs, start, create, onCreated, onCancel, submitLabel, labels, children } = props;
+  const { another } = props;
   const [values, setValues] = useState<FormValues>(() => ({ ...formOf(specs), ...start }));
+  // How many were made by the second button: each puts the keyboard in its field.
+  const [again, setAgain] = useState(0);
   const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
   const names = specs.map((spec) => spec.name);
@@ -224,6 +243,11 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
     if (section.current && openedByPress(section.current)) bringIntoView(section.current);
   }, []);
 
+  const focus = another?.focus;
+  useEffect(() => {
+    if (again > 0 && focus) form.current?.querySelector<HTMLElement>(`[name="${focus}"]`)?.focus();
+  }, [again, focus, form]);
+
   function change(name: string, value: FormValue) {
     setValues((was) => ({ ...was, [name]: value }));
     setFound((was) => {
@@ -234,6 +258,9 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Which button sent it: Enter in a field is the first, which makes the record alone.
+    const sender = (event.nativeEvent as SubmitEvent).submitter;
+    const next = another && sender?.hasAttribute("data-another") ? another : null;
     const built = buildCreate<B>(specs, values);
     setFound(built.errors);
     if (Object.keys(built.errors).length > 0) {
@@ -242,8 +269,17 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
       return;
     }
     const result = await action.run(() => create(built.body));
-    if (result.ok) onCreated(result.value);
-    else refusedNow();
+    if (!result.ok) refusedNow();
+    else if (!next) onCreated(result.value);
+    else {
+      // What the next one shares is kept; what is each one's own starts again.
+      const kept = Object.fromEntries(
+        next.keep.filter((name) => name in values).map((name) => [name, values[name]]),
+      ) as FormValues;
+      setValues({ ...formOf(specs), ...start, ...kept });
+      setAgain((count) => count + 1);
+      next.onCreated(result.value);
+    }
   }
 
   return (
@@ -264,6 +300,11 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
           <button type="submit" className="primary" disabled={action.busy}>
             {submitLabel}
           </button>
+          {another && (
+            <button type="submit" data-another="" disabled={action.busy}>
+              {another.label}
+            </button>
+          )}
           <button type="button" onClick={onCancel} disabled={action.busy}>
             Cancel
           </button>

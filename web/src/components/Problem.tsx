@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
+import { Link } from "react-router";
 import type { ApiError } from "../api/client";
 import { hearChanges } from "../lib/hooks";
 import { fieldErrors, fieldLine, sentence } from "../lib/problems";
@@ -81,7 +82,7 @@ export function Problem({ error, shown = [], onReload, labels = {} }: ProblemPro
  * what the page says of it, which may be the very words it said before, as after a
  * second save of the same record.
  */
-export function Notice({ text }: { text: string }) {
+export function Notice({ text, link }: { text: string; link?: { to: string; text: string } }) {
   // The words taken away, while they are what the page would say.
   const [away, setAway] = useState<string | null>(null);
   const heard = useEffectEvent((what: "sent" | "done" | "refused") => {
@@ -92,7 +93,18 @@ export function Notice({ text }: { text: string }) {
   const shown = away !== null && away === text ? "" : text;
   return (
     <div className="live" role="status" aria-live="polite">
-      {shown && <p className="alert alert-ok">{shown}</p>}
+      {shown && (
+        <p className="alert alert-ok">
+          {shown}
+          {/* 0.9.5: what was made, as a link to it (P-192). */}
+          {link && (
+            <>
+              {" "}
+              <Link to={link.to}>{link.text}</Link>
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 }

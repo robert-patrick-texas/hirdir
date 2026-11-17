@@ -391,3 +391,94 @@ test("Save stays in reach, the field with the keyboard is not under it, and New 
 
   await expectClean(page, seen);
 });
+
+test("Create and add another like it makes the item and keeps what the next one shares (P-192)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  const headers = await places(request, account);
+  const owner = label("Plant team");
+  await make(request, headers, "/owners", { label: owner });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  await page.getByRole("button", { name: "New item" }).click();
+  const form = region(page, "New item");
+  const serial = form.getByLabel("Serial number");
+  const hostname = form.getByLabel("Hostname");
+  const another = form.getByRole("button", { name: "Create and add another like it" });
+
+  // The first of a batch, as the form is filled for it.
+  await form.getByLabel("Catalog entry").selectOption({ label: made.pid ?? "" });
+  await form.getByLabel("Owner").selectOption({ label: owner });
+  await form.getByLabel("Location", { exact: true }).fill(label("Room 5"));
+  await form
+    .getByRole("list", { name: "Locations that match" })
+    .getByRole("button", { name: new RegExp(label("Room 5")) })
+    .click();
+  await form.getByLabel("Lifecycle state").selectOption("Assigned");
+  await serial.fill(`SN-${id}-A`);
+  await form.getByLabel("Asset tag").fill(`AT-${id}-A`);
+  await form.getByLabel("Name", { exact: true }).fill(label("Batch A"));
+  await hostname.fill(host("batch-a"));
+  await form.getByLabel("MAC address").fill("00-00-5E-00-53-0A");
+
+  const notice = page.getByRole("status").filter({ hasText: "Created" });
+  const made2: string[] = [];
+  for (const [step, next] of [
+    ["A", "B"],
+    ["B", "C"],
+  ] as const) {
+    await another.click();
+    // The page says so, with a link to it, in the window.
+    const link = notice.getByRole("link", { name: label(`Batch ${step}`) });
+    await expect(link).toBeVisible();
+    await expect(notice).toBeInViewport();
+    made2.push(((await link.getAttribute("href")) ?? "").split("/").pop() ?? "");
+    // The form stays open: what is each one's own is blank, the keyboard in the serial.
+    await expect(serial).toBeFocused();
+    for (const own of ["Serial number", "Asset tag", "Name", "Hostname", "MAC address"]) {
+      await expect(form.getByLabel(own, { exact: true })).toHaveValue("");
+    }
+    await expect(form.getByLabel("Catalog entry")).not.toHaveValue("");
+    await expect(form.getByLabel("Owner")).not.toHaveValue("");
+    await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Room 5"));
+    await expect(form.getByLabel("Lifecycle state")).toHaveValue("Assigned");
+    await serial.fill(`SN-${id}-${next}`);
+    await form.getByLabel("Name", { exact: true }).fill(label(`Batch ${next}`));
+    await hostname.fill(host(`batch-${next.toLowerCase()}`));
+  }
+
+  // A serial number that is there already is refused, and what was typed is kept.
+  await serial.fill(`SN-${id}-A`);
+  await another.click();
+  await expect(form.getByText(/There is already an item of this vendor and PID/)).toBeVisible();
+  await expect(serial).toHaveAttribute("aria-invalid", "true");
+  await expect(serial).toHaveValue(`SN-${id}-A`);
+  await expect(hostname).toHaveValue(host("batch-c"));
+
+  // Create alone opens the new item, as it did.
+  await serial.fill(`SN-${id}-C`);
+  await form.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: label("Batch C") })).toBeVisible();
+
+  // The two made by the second button: the second has what the first shared.
+  const read = async (hid: string) =>
+    (await (await request.get(`./api/v1/items/${hid}`, { headers })).json()) as Record<
+      string,
+      unknown
+    >;
+  const [first, second] = [await read(made2[0] ?? ""), await read(made2[1] ?? "")];
+  for (const field of ["catalog_entry_hid", "owner_hid", "location_hid", "lifecycle_state"]) {
+    expect(second[field], field).toBe(first[field]);
+    expect(second[field], field).toBeTruthy();
+  }
+  expect(first.serial_number).toBe(`SN-${id}-A`);
+  expect(second.serial_number).toBe(`SN-${id}-B`);
+  expect(second.asset_tag ?? null).toBeNull();
+  expect(second.mac_address ?? null).toBeNull();
+
+  await expectClean(page, seen, ["409 POST"]);
+});

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { api, type Schemas } from "../api";
+import { itemName } from "../lib/format";
 import { useEntryOptions, useOwnerOptions, useTags } from "../lib/lists";
 import type { FieldSpec } from "../lib/patch";
 import { Problem } from "./Problem";
@@ -13,6 +14,28 @@ interface NewItemProps {
   within?: { hid: string; name: string };
   onCancel: () => void;
   onCreated: (item: Item) => void;
+  /** Given, the form has Create and add another like it, which calls this (P-192). */
+  onAnother?: (item: Item) => void;
+}
+
+/**
+ * What a new item shares with the one made before it by Create and add another like it:
+ * its model, who owns it and looks after it, where it is and is going, its state and its
+ * tags. Its serial number, asset tag, name, host name and MAC address are its own.
+ */
+export const SHARED_WITH_THE_NEXT = [
+  "catalog_entry_hid",
+  "owner_hid",
+  "operator_hid",
+  "location_hid",
+  "planned_location_hid",
+  "lifecycle_state",
+  "tags",
+] as const;
+
+/** The item just made, as the notice of the page names it: a link to it. */
+export function madeLink(item: Item): { to: string; text: string } {
+  return { to: `/items/${encodeURIComponent(item.hid)}`, text: itemName(item) };
 }
 
 /**
@@ -20,7 +43,7 @@ interface NewItemProps {
  * position there, which has the owner and the standing of the item it is in until it is
  * given its own.
  */
-export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
+export function NewItem({ states, within, onCancel, onCreated, onAnother }: NewItemProps) {
   const entries = useEntryOptions();
   const owners = useOwnerOptions();
   const tags = useTags();
@@ -120,6 +143,16 @@ export function NewItem({ states, within, onCancel, onCreated }: NewItemProps) {
       onCreated={onCreated}
       onCancel={onCancel}
       submitLabel={minor ? "Create minor item" : "Create item"}
+      {...(onAnother
+        ? {
+            another: {
+              label: "Create and add another like it",
+              keep: SHARED_WITH_THE_NEXT,
+              focus: "serial_number",
+              onCreated: onAnother,
+            },
+          }
+        : {})}
     >
       <Problem error={entries.error ?? owners.error ?? tags.error} />
       {within ? (
