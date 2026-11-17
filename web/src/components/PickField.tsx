@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useId, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { plural } from "../lib/format";
 import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import type { Option } from "../lib/patch";
@@ -32,6 +32,11 @@ interface SearchProps extends PickFieldProps {
   how: string;
   /** Ask the server for what matches. Blank text is no search, and answers null. */
   find: (typed: string, signal: AbortSignal) => Promise<Found | null>;
+  /**
+   * What else to say when nothing matches, beneath "No … matches.": the text that was
+   * asked for, and how many times it was asked for again (P-184).
+   */
+  none?: (asked: string, again: number) => ReactNode;
 }
 
 /**
@@ -44,7 +49,7 @@ interface SearchProps extends PickFieldProps {
  */
 export function PickField(props: SearchProps) {
   const { label, name, value, onChange, known = [], blank = "None", hint, error, disabled } = props;
-  const { noun, how, find } = props;
+  const { noun, how, find, none } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
   const { asked, again, askNow, forget } = useAsked(typed);
@@ -125,7 +130,10 @@ export function PickField(props: SearchProps) {
       <Problem error={found.error} />
       <div role="status" aria-live="polite">
         {searching && found.data && options.length === 0 && (
-          <p className="muted">No {noun[0]} matches.</p>
+          <>
+            <p className="muted">No {noun[0]} matches.</p>
+            {none?.(asked, again)}
+          </>
         )}
         {searching && found.loading && !found.data && (
           <p className="muted loading-late">Searching…</p>

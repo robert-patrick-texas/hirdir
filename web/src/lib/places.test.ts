@@ -27,6 +27,7 @@ import {
   planSearch,
   regionsToMoveTo,
   shippingNoteField,
+  siteSearch,
   standingOf,
   type TreeNode,
   treeQuery,
@@ -541,5 +542,25 @@ describe("a planned location", () => {
     expect(
       openedText("Room 1", opening({ moves_now: false, waits_for: SITE_ABOVE, items: 2 })),
     ).toBe("Room 1 is active.");
+  });
+});
+
+describe("siteSearch", () => {
+  const fields = ["name", "code", "region.name"];
+
+  it("asks for nothing when nothing is typed", () => {
+    expect(siteSearch("")).toBeNull();
+    expect(siteSearch(" > ")).toBeNull();
+  });
+
+  it("looks for each word in the name and code of a site and the name of its region", () => {
+    expect(siteSearch("harbour")).toEqual({
+      or: fields.map((field) => ({ field, op: "contains", value: "harbour" })),
+    });
+    expect(siteSearch("north > harbour")).toEqual({
+      and: ["north", "harbour"].map((value) => ({
+        or: fields.map((field) => ({ field, op: "contains", value })),
+      })),
+    });
   });
 });

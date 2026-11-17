@@ -177,6 +177,40 @@ test("Change beside the location of an item puts the keyboard in its field", asy
   await expectClean(page, seen);
 });
 
+test("a new site with no location is named under the Location field, with a link to it", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await places(request, account);
+  const quay = label("Quayside");
+  const site = await make(request, headers, "/sites", {
+    name: quay,
+    code: `QS-${id}`,
+    region_hid: made.region,
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openTheItem(page);
+
+  await details(page).getByLabel("Location", { exact: true }).fill(quay);
+  await expect(details(page).getByText("No location matches.")).toBeVisible();
+  const sites = details(page).getByRole("list", { name: "Sites that match" });
+  await expect(sites.getByRole("listitem")).toHaveCount(1);
+  await expect(sites.getByRole("listitem")).toContainText(`${quay} has no location that matches.`);
+  const link = sites.getByRole("link", { name: quay, exact: true });
+  await expect(link).toHaveAttribute("href", new RegExp(`/geography/site/${site.hid}$`));
+  // The site's page says where an item is put.
+  await link.click();
+  await expect(page.getByTestId("place-path")).toContainText(quay);
+  await expect(page.getByTestId("site-no-location")).toContainText(
+    "Items are put at a location in a site",
+  );
+
+  await expectClean(page, seen);
+});
+
 test("the Capacity page is no wider than the window", async ({ page, account }) => {
   const seen = await watch(page.context());
   await signIn(page, account);

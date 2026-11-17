@@ -3,6 +3,7 @@ import { queryBody } from "../lib/gridQuery";
 import { PICK_LIMIT } from "../lib/pick";
 import { planSearch } from "../lib/places";
 import { type Found, PickField, type PickFieldProps } from "./PickField";
+import { SitesThatMatch } from "./SitesThatMatch";
 
 async function find(typed: string, signal: AbortSignal): Promise<Found | null> {
   const filter = planSearch(typed);
@@ -42,6 +43,7 @@ export function PlannedLocationField(props: PickFieldProps) {
       noun={["location", "locations"]}
       how="Only a place that is not in use yet is offered: a draft, or one within a draft site or region. To choose one, type a part of its name or code, or of the name of its site."
       find={find}
+      none={(asked, again) => <SitesThatMatch asked={asked} again={again} />}
     />
   );
 }

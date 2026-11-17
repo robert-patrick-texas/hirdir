@@ -70,6 +70,32 @@ export function nameOf(path: string | null | undefined): string {
 const LONGEST = 200;
 const MOST_WORDS = 8;
 
+/** The words of a search for a place, as they are sent: a `>` separates them as a space does. */
+function searchWords(typed: string): string[] {
+  return typed
+    .split(/[\s>]+/)
+    .map((word) => word.slice(0, LONGEST))
+    .filter((word) => word !== "")
+    .slice(0, MOST_WORDS);
+}
+
+/**
+ * The filter that finds sites by the words a location was searched for with, where no
+ * location matched (P-184): each word is in the name of the site, in its code, or in the
+ * name of its region, as the search for a location has it. Blank text is no search.
+ */
+export function siteSearch(typed: string): FilterNode | null {
+  return all(
+    ...searchWords(typed).map((value) =>
+      any(
+        { field: "name", op: "contains", value },
+        { field: "code", op: "contains", value },
+        { field: "region.name", op: "contains", value },
+      ),
+    ),
+  );
+}
+
 /**
  * The filter that finds locations by what was typed. The list of locations is filtered
  * by the name of a location, of the location it is in, of its site and of the region
@@ -81,11 +107,7 @@ const MOST_WORDS = 8;
  * search.
  */
 export function locationSearch(typed: string): FilterNode | null {
-  const words = typed
-    .split(/[\s>]+/)
-    .map((word) => word.slice(0, LONGEST))
-    .filter((word) => word !== "")
-    .slice(0, MOST_WORDS);
+  const words = searchWords(typed);
   return all(
     ...words.map((value) =>
       any(

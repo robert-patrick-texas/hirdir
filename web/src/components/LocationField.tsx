@@ -3,6 +3,7 @@ import { queryBody } from "../lib/gridQuery";
 import { PICK_LIMIT } from "../lib/pick";
 import { locationSearch } from "../lib/places";
 import { type Found, PickField, type PickFieldProps } from "./PickField";
+import { SitesThatMatch } from "./SitesThatMatch";
 
 /** The first few locations that match what was typed, each by its path. */
 async function findLocations(typed: string, signal: AbortSignal): Promise<Found | null> {
@@ -42,6 +43,7 @@ export function LocationField(props: PickFieldProps) {
       noun={["location", "locations"]}
       how="To choose one, type a part of its name or code, or of the name of its site, of the region of that site or of the location it is in."
       find={findLocations}
+      none={(asked, again) => <SitesThatMatch asked={asked} again={again} />}
     />
   );
 }

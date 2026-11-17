@@ -667,6 +667,14 @@ function PlaceFacts(props: { place: Place; choices: readonly Choice[] | undefine
           {isRegion(place) &&
             `${plural(place.regions, "region")} and ${plural(place.sites, "site")} directly in it`}
           {isSite(place) && plural(place.locations, "location")}
+          {/* P-184: an item is put at a location, never at a site. */}
+          {isSite(place) && place.locations === 0 && (
+            <span className="muted" data-testid="site-no-location">
+              {" "}
+              · Items are put at a location in a site, not at the site: make one with New location
+              in it.
+            </span>
+          )}
           {isLocation(place) &&
             `${plural(place.locations, "location")} directly in it, and ${plural(place.items, "item")} placed here itself`}
         </span>
