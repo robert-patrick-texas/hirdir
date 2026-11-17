@@ -47,7 +47,15 @@ outward change feed and host lists for monitoring tools; planning views for draf
 editing in the grid; PostgreSQL; a container image; a colour theme for the web page that
 each person chooses, kept in the browser's local storage and never in a cookie, from the
 themes of the owner's Texas2Step project, with a reminder to the owner to make them easy
-to reuse there first if they cannot be taken as they stand (P-144).
+to reuse there first if they cannot be taken as they stand (P-144). Then views of the data,
+each another way of looking at a list and drawn by hirdir in the colours of the theme,
+with its numbers as a table beside it and every mark a link to what it counts (P-179):
+a pivot of the summary by any two dimensions; treemaps of the geography and of the
+vendors and models; heatmaps of operators by sites, of sites by the month their
+contracts end, and of vendors by the year of end of life; bar charts of the end of life,
+of capacity, of the cost of circuits and of the coverage report; a bubble chart of the
+sites; flows of the lifecycle, of purchases and of renewals; and drawings of a controller
+domain, a stack and a circuit.
 
 A release whose last number is not zero carries corrections to the one before it and
 adds no scenario. One that is planned ahead has a row, as 0.6.1 has; the others came
@@ -74,6 +82,11 @@ operator are each a part, an operator internal where its person is a user and
 external where not, and two numbers for each person (P-172); and a username that an
 Admin changes (P-173). Its upgrade moves the name and the email of each user to a
 contact, and going back from it is by the backup.
+0.9.4 follows 0.9.3 with what the owner asked after it was published: a minor item's
+own groups before the item it is in, and the rules of which group decides written in
+one place (P-175); the walk of each value an item or a group has from elsewhere, shown
+as a row of boxes (P-176); what an operator is on, drawn as a tree of boxes (P-177); and
+a leaderboard of operators and of groups, with the summary by group (P-178).
 
 ## From 0.6.1 to 0.9.0
 

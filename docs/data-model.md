@@ -37,8 +37,8 @@ where it came from.**
 | Circuit: the contacts of each role, `account_manager` and `support_contact`, all of one role together | its primary carrier, the vendor |
 | Circuit: the site contacts of each side, per role | the location of that side, resolved as for the location |
 | Catalog entry: `stack_discount_pct` | the global setting |
-| Minor item: `location_hid`, `owner_hid` | its parent item, and that item's parent |
-| Item: `operator_hid` | the item above it, for a minor item; then a group the item at the top is a member of, and the group that group is nested in; then the location it is at, the locations above that, the site, and each region outward |
+| Item: `location_hid`, `planned_location_hid`, `owner_hid`, `operator_hid` | its own groups; for a minor item, then the item it is in and that item's groups, up to the top; a group answers with its own or that of the group it is nested in. See "Groups, and which of them decides" below |
+| Item: `operator_hid`, where none of those has one | the location it is at, the locations above that, the site, and each region outward |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Contract: `reseller_hid`, `starts_on`, `ends_on`, `support_level`, `account_manager`, `support_contact`, `support_url`, each by itself | the support agreement it is grouped into |
 | Contract: the contacts of each role, `account_manager` and `support_contact`, all of one role together | the support agreement it is grouped into |
@@ -68,6 +68,68 @@ For `device_group` it is the group that holds it, which may be one that the item
 group is nested in. A location in force, `effective.location_hid` and
 `effective.planned_location_hid`, also has `source_label`, the name of that item or
 group, so that a page says "from site2-sw-stack1" without another request.
+
+### Groups, and which of them decides
+
+A record has one parent of each kind, but for one: an item may be in several device
+groups at once. So the rules below say which of them an item has a value from. They are
+the rules of D-128, D-129, D-134 and P-175, said in one place, for whoever runs
+`hirdir` or builds on it.
+
+**What may be in more than one group**
+
+| Record | In more than one? | What it has from them |
+|---|---|---|
+| An item, in device groups | yes: at most one stack and one cluster at a time, and any number of controller domains and custom groups | its location, its planned location, its operator and its owner, where it has none of its own |
+| A device group, nested | no: one group it is in | the same four, from that group and the groups above it |
+| A location, a site, a region | no: one parent location, one site, one region | contacts by role, the shipping address and instructions, the operator, each up that one line |
+| A contract | no: one support agreement | the dates, the support and the contacts that it does not override |
+| A circuit, in circuit groups | yes, any number | nothing: a circuit group is a way of looking at circuits and costing them |
+| A user, in user groups | yes | its role, the highest of what it and every group of its is granted, so no two can tie |
+| A contact | named by any number of places, owners, operators and users | nothing: what is true of a person is kept on the contact, and the others read it |
+
+**How an item finds a value it does not have.** It walks up from itself, one record at
+a time, and takes the first value it finds:
+
+1. its own value;
+2. its own groups, the current memberships in groups that are not retired, ranked as
+   below;
+3. for a minor item, the item it is in, and then that item's own groups; then the item
+   that one is in, and its groups, and so on to the top (P-175);
+4. for the operator alone, where nothing above has one: the location the item is at in
+   force, the locations above it, its site, and each region outward.
+
+A group answers with its own value, or else the value of the group it is nested in, or
+of the one above that, at most eight deep. So a stack with no operator of its own, nested
+in a controller domain that has one, answers with the domain's.
+
+**How an item's groups are ranked.** A stack comes before a cluster, a cluster before a
+controller domain, and a controller domain before a custom group. The first of them
+that answers with a value decides, whether the value is its own or from a group it is
+nested in. A stack cannot tie with another stack, nor a cluster with a cluster, as an
+item is in one of each at most. Two groups of one type are taken by name, without regard
+to case, and two of one name by their HID, which is never reused.
+
+**When two groups both have a value**, the one that ranks first decides and the other
+is passed over. An access point in the controller domain `east-wlc`, whose operator is
+`LM`, and in the custom group `lobby-aps`, whose operator is `Op2`, has `LM`: a domain
+ranks before a custom group. In two custom groups `Alpha`, `Op2`, and `beta`, `Op3`, it
+has `Op2`, as `Alpha` comes first by name. An optic in switch `sw-01`, whose own operator
+is `LM`, that is also in the custom group `Optics pool`, operator `Op2`, has `Op2`: its
+own group is nearer to it than the item it is in. A value of the item's own always
+decides: the access points of a domain are each where they hang.
+
+**What the answer says.** Every value in force comes with its source, `own`,
+`parent_item` or `device_group`, then `location`, `site` or `region` for the operator,
+and with the HID of the record that holds it, which for a group may be the one that the
+item's group is nested in. Nothing is copied down: putting an operator on the group
+changes what every member that has none shows, and writes to none of them. Being passed
+over is no fault, and is not reported, but for the owner: a group lists in
+`members_disagree` each current member whose owner in force is another. An operator that
+is retired is passed over at every level as if it were not there, and a group that is
+retired, or a membership that has ended, counts for nothing. The whole walk, with what
+each step holds and which decided, is answered by `GET /items/{hid}/resolution` and
+shown on the page of an item (P-176).
 
 ## Records
 
@@ -157,9 +219,9 @@ number, catalog entry, name and addresses. A current member of a stack or a clus
 a major item, so it is not given a parent, and a minor item is not made a member of
 one.
 
-A minor item whose own `owner_hid` is blank has the owner of the nearest item above it
-that has one, and one whose own `location_hid` is blank is where the nearest item above
-it is that has a location: a power supply is in Room 102 because its switch is. Its standing is taken as a whole: with a `lifecycle_state` of its own it
+A minor item whose own `owner_hid` is blank, and whose own groups have none, has the
+owner of the nearest item above it that has one, and one whose own `location_hid` is
+blank is where the nearest item above it is that has a location: a power supply is in Room 102 because its switch is. Its standing is taken as a whole: with a `lifecycle_state` of its own it
 has its own disposition and intent, and with none it has all three of the nearest item
 above it that has a state. A power supply is in production because its switch is, and
 the one that failed is moved to Pending-Removal by itself. It is returned to inheriting
@@ -168,18 +230,18 @@ its minor items show, and writes to none of them.
 
 **From its group.** What is set once on the record above is had by the records
 beneath it that say nothing of their own, down every hierarchy, with an override at
-every level. So an item with no location of its own, and none from an item above it,
-is where a device group is that it is a current member of, and one with no planned
-location is planned for where its group is planned for, as it has its group's
-operator. An operator puts devices into a group and moves the group, and does not go
+every level. So an item with no location of its own is where a device group is that it
+is a current member of, and one with no planned location is planned for where its group
+is planned for, as it has its group's operator. A minor item's own groups come before
+the item it is in (P-175). An operator puts devices into a group and moves the group, and does not go
 back to each device. Where an item is in several groups, the first that has a value
 decides: a stack before a cluster before a controller domain before any other group,
-and then by name. A group that has none has that of the nearest group it is nested
-in. A member with a location of its own keeps it, as an override: the access points
+and then by name; "Groups, and which of them decides" under Inheritance says it whole.
+A group that has none has that of the nearest group it is nested in. A member with a location of its own keeps it, as an override: the access points
 of a controller domain are each where they hang. Every answer says where the value
 came from, `own`, `parent_item` or `device_group`, and from which record. The owner
-is had in the same way: an item with no owner of its own, and none from an item above
-it, has the owner of its group, and is an exception when that owner is outside the
+is had in the same way: an item with no owner of its own has the owner of its group, or
+of the item it is in, and is an exception when that owner is outside the
 team. A group still lists in `members_disagree` a member that has another owner, its
 own or from the item it is in.
 
@@ -316,7 +378,7 @@ a row that names another new item for it is rejected.
 | `name` | text, unique | required |
 | `hostname`, `fqdn` | text | for stacks and clusters |
 | `parent_group_hid` | reference | nesting; cycles refused, and at most eight deep |
-| `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place; its members each have their own |
+| `location_hid`, `owner_hid` | reference | optional. Where the group is, when it is in one place, and who answers for it. A member with none of its own has the group's (D-129), and one with its own keeps it |
 | `planned_location_hid` | reference | optional. Where the group is going, in a place not in use yet, as on an item. Its members that have no plan of their own are going there too |
 | `operator_hid` | reference | optional. An operator, for the group and for each member that has none of its own |
 | `managed_as` | choice | a cluster only: `one`, `members` or `members_and_cluster`. Left out, `one`. See "Counting and weight" |
