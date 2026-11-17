@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Schemas } from "../../api/client";
 import { exportColumns } from "../../lib/transfer";
 import { cellHint, columnDefaults, queryColumns } from "./columns";
-import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "./itemColumns";
+import { FIRST_IN_VIEW, itemColumns, itemIsDimmed, MAJOR_ITEMS } from "./itemColumns";
 
 type Item = Schemas["ItemOut"];
 type InForce = Schemas["EffectiveValue"];
@@ -636,6 +636,15 @@ describe("the location, the site and the region in the item grid", () => {
       expect(hidden, id).not.toContain(id);
     }
   });
+
+  it("puts what an item is, how it is and where it is first, within 1,250 pixels (P-193)", () => {
+    const shown = columnDefaults(COLUMNS).filter((one) => !one.hide);
+    expect(shown.map((one) => one.id).slice(0, FIRST_IN_VIEW.length)).toEqual([...FIRST_IN_VIEW]);
+    // The grid of a window 1280 pixels wide is 1,250 wide: the first seven fit in it.
+    const width = shown.slice(0, 7).reduce((sum, one) => sum + (one.width ?? 200), 0);
+    expect(shown[6]?.id).toBe("location.name");
+    expect(width).toBeLessThanOrEqual(1250);
+  });
 });
 
 describe("the planned location in the item grid", () => {
@@ -906,22 +915,22 @@ describe("coverage, registrations and the purchase line in the item grid", () =>
 });
 
 describe("the columns a reader starts with", () => {
-  it("are the ones of 0.3.0, the health and the operator, which stands after the owner, and where each is, in place of Expected online (P-193)", () => {
+  it("are the ones of 0.3.0, the health, the operator and where each is, in place of Expected online, in the order the owner chose (P-193)", () => {
     const shown = columnDefaults(COLUMNS)
       .filter((one) => !one.hide)
       .map((one) => one.id);
     expect(shown).toEqual([
       "name",
-      "catalog.vendor",
       "catalog.pid",
       "serial_number",
       "lifecycle_state",
-      "disposition",
       "health",
-      "owner.label",
-      "operator.label",
-      "location.name",
       "site",
+      "location.name",
+      "operator.label",
+      "owner.label",
+      "catalog.vendor",
+      "disposition",
       "tags",
       "effective.ldos",
     ]);

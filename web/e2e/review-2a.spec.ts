@@ -120,11 +120,10 @@ test("the list of items says where each is, and keeps a layout a person has chan
   await expect(choice("Site")).toBeChecked();
   // Expected online is in the column chooser, as any other is.
   await expect(choice("Expected online")).not.toBeChecked();
-  // The grid draws only the columns in view: room is made for the two by hiding four.
-  for (const column of ["Vendor", "PID", "Serial number", "State"]) await choice(column).uncheck();
+  // Both stand within the window from the start, with nothing hidden to make room.
   await page.getByText("Columns", { exact: true }).click();
-  await expect(header("location.name")).toBeInViewport();
-  await expect(header("site")).toBeInViewport();
+  await expect(header("location.name")).toBeInViewport({ ratio: 1 });
+  await expect(header("site")).toBeInViewport({ ratio: 1 });
   await expect(row("kiln-sw-01").locator('[col-id="location.name"]')).toHaveText(label("Room 4"));
   await expect(row("kiln-sw-02").locator('[col-id="location.name"]')).toHaveText(label("Room 5"));
   await expect(row("kiln-sw-01").locator('[col-id="site"]')).toHaveText(label("Kiln Lane"));
@@ -140,7 +139,6 @@ test("the list of items says where each is, and keeps a layout a person has chan
   await expect(header("site")).toHaveCount(0);
   await page.getByText("Columns", { exact: true }).click();
   await expect(choice("Site")).not.toBeChecked();
-  await expect(choice("Vendor")).not.toBeChecked();
   await expect(choice("Location")).toBeChecked();
 
   await expectClean(page, seen);

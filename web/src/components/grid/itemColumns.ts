@@ -81,6 +81,36 @@ function groupTypes(item: Item): string {
 }
 
 /**
+ * The columns shown from the start, in the order they stand in (P-193): what an item is,
+ * how it is and where it is, within a window 1280 pixels wide; then who has it and the
+ * rest, to the right. The owner chose this order on 2026-11-17. Every other column
+ * follows in the order of the list, hidden until it is asked for in the column chooser,
+ * where each person turns any column on and off and the layout is kept.
+ */
+export const FIRST_IN_VIEW: readonly string[] = [
+  "name",
+  "catalog.pid",
+  "serial_number",
+  "lifecycle_state",
+  "health",
+  "site",
+  "location.name",
+  "operator.label",
+  "owner.label",
+  "catalog.vendor",
+  "disposition",
+];
+
+function firstInView(columns: GridColumn<Item>[]): GridColumn<Item>[] {
+  const place = (column: GridColumn<Item>) => {
+    const at = FIRST_IN_VIEW.indexOf(column.id);
+    return at === -1 ? FIRST_IN_VIEW.length : at;
+  };
+  // A stable sort: the columns not named keep the order of the list.
+  return [...columns].sort((one, other) => place(one) - place(other));
+}
+
+/**
  * The columns of the item grid. Most are there to be shown when wanted.
  *
  * The state, the disposition, the intent and the owner are the ones in force: a minor
@@ -109,7 +139,7 @@ export function itemColumns(
 ): GridColumn<Item>[] {
   const named = (list: readonly string[]): Option[] =>
     list.map((value) => ({ value, label: value }));
-  return [
+  const columns: GridColumn<Item>[] = [
     { id: "name", header: "Name", kind: "text", value: itemName, link: true, width: 220 },
     {
       id: "hostname",
@@ -678,6 +708,7 @@ export function itemColumns(
       hide: true,
     },
   ];
+  return firstInView(columns);
 }
 
 /**

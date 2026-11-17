@@ -1692,7 +1692,10 @@ What 0.9.5 adds to these pages, for the work of each day:
   operator, which is asked for apart for the one line that needs it; each total of
   health is a link to the items with that health (P-195).
 - **Items.** Site and Location are shown from the start and Expected online is in the
-  column chooser (P-193). New item has a second button, Create and add another like it:
+  column chooser. The columns shown from the start stand as Name, PID, Serial number,
+  State, Health, Site and Location, which fit a window 1280 pixels wide, then Operator,
+  Owner, Vendor, Disposition, Tags and LDoS. A layout kept before 0.9.5 stays as it
+  was: Reset layout and filters brings the new one (P-193). New item has a second button, Create and add another like it:
   the page says the item was made, with a link to it, and the form stays open with what
   the next one shares, and with the serial number, asset tag, name, host name and MAC
   address blank (P-192). Once an item has been made so, Enter in a box of the form makes
