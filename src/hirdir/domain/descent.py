@@ -1,8 +1,9 @@
 """What a record has from the record above it, down each hierarchy.
 
-A minor item has what the item above it has, and an item what a group it is a member
-of has, and a group what the group it is nested in has: its location, its planned
-location and its operator, wherever it says nothing of its own. Nothing is copied
+An item has what a group it is a member of has, a minor item then what the item above
+it has, and a group what the group it is nested in has: its location, its planned
+location, its operator and its owner, wherever it says nothing of its own. The rules are
+said whole under "Groups, and which of them decides" on the data model page. Nothing is copied
 down. What is in force is worked out when it is read, here for a page of records, and
 in `hirdir.io.fields` for the database to filter, sort and count by. A test holds the
 two together.
@@ -94,24 +95,33 @@ def of_items(
 ) -> dict[str, Effective]:
     """Return what each item has in force in a field, and where it came from.
 
-    `lines` gives the items above each item, the nearest first. The item's own comes
-    first, then that of the nearest item above it, then that of a group the item at
-    the top of the line is a current member of.
+    `lines` gives the items above each item, the nearest first. The walk goes up one
+    record at a time (P-175): the item's own value, then its own groups, then the item
+    it is in and that item's groups, and so on to the top. The groups of one record are
+    ranked as `from_groups` ranks them.
     """
+    walks = {item.hid: [item, *lines[item.hid]] for item in found}
+    # Only the groups of the records that the walk reaches before a value of its own.
+    wanted: set[str] = set()
+    for line in walks.values():
+        for one in line:
+            if _held(one, field, skip) is not None:
+                break
+            wanted.add(one.hid)
+    by_group = from_groups(db, sorted(wanted), field, skip) if wanted else {}
     in_force: dict[str, Effective] = {}
-    tops: dict[str, str] = {}
     for item in found:
-        line = [item, *lines[item.hid]]
-        holder = next((one for one in line if _held(one, field, skip) is not None), None)
-        if holder is not None:
-            source = "own" if holder is item else "parent_item"
-            in_force[item.hid] = Effective(getattr(holder, field), source, holder.hid)
-        else:
-            tops[item.hid] = line[-1].hid
-    if tops:
-        by_group = from_groups(db, sorted(set(tops.values())), field, skip)
-        for hid, top in tops.items():
-            in_force[hid] = by_group[top]
+        result = NOTHING
+        for one in walks[item.hid]:
+            value = _held(one, field, skip)
+            if value is not None:
+                result = Effective(value, "own" if one is item else "parent_item", one.hid)
+                break
+            grouped = by_group[one.hid]
+            if grouped.value is not None:
+                result = grouped
+                break
+        in_force[item.hid] = result
     return in_force
 
 

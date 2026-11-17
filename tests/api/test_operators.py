@@ -33,6 +33,11 @@ def _team(make: Maker) -> dict[str, dict[str, Any]]:
     return marks
 
 
+def _named(make: Maker, name: str) -> str:
+    """Return the HID of the item of that name, a minor item among them."""
+    return make.get("/items", filter=f"name:eq:{name}", minor=1)["items"][0]["hid"]
+
+
 def _patch(make: Maker, path: str, **fields: Any) -> dict[str, Any]:
     now = make.get(path)
     return make.patch(path, {"row_version": now["row_version"], **fields})
@@ -359,6 +364,12 @@ def test_the_list_and_the_record_agree_on_who_looks_after_every_item(make: Maker
     _patch(make, f"/items/{switches[7]['hid']}", location_hid=dock["hid"])
     _patch(make, f"/items/{switches[8]['hid']}", operator_hid=gone["hid"])
     make.post(f"/operators/{gone['hid']}/retire", {"row_version": 1}, 200)
+    # A minor item's own groups come before the item it is in (P-175): the optic in a
+    # member of stack-b has its own group's operator, and the SFP in a group with none
+    # has what is above it.
+    optic = make.item(name="SFP-9", parent_item_hid=switches[0]["hid"])
+    make.group("optics-pool", "custom", [(optic, "member")], operator_hid=marks["RA"]["hid"])
+    make.group("bare-pool", "custom", [({"hid": _named(make, "SFP-1")}, "member")])
 
     everything = make.get("/items", limit=1000)["items"]
     by_record: dict[str | None, set[str]] = {}
@@ -377,6 +388,10 @@ def test_the_list_and_the_record_agree_on_who_looks_after_every_item(make: Maker
     assert _in_force(make, switches[3])[0] == "RA"
     assert _in_force(make, switches[7])[:2] == ("DW", "region")
     assert _in_force(make, switches[8]) == (None, "none", None)
+    pool = make.get("/device-groups", filter="name:eq:optics-pool")["items"][0]
+    assert _in_force(make, optic) == ("RA", "device_group", pool["hid"])
+    # Its switch is in stack-b and in cluster-a: the stack ranks first.
+    assert _in_force(make, {"hid": _named(make, "SFP-1")})[:2] == ("LM", "device_group")
 
 
 def test_what_nobody_looks_after_is_a_row_of_the_report(make: Maker) -> None:
