@@ -8,7 +8,9 @@
 //          table, the first setting's as the last's: the focus moves into it, and back to
 //          that setting's Change button when it closes, set, returned to its default or
 //          cancelled. One form is open at a time, and what was typed in the one that
-//          closes is let go.
+//          closes is let go. The table fits a window 1280 pixels wide with nothing
+//          scrolled, the two buttons of a row one above the other; a narrower window
+//          scrolls it sideways. (row-forms.spec.ts holds the same of the other pages.)
 //
 // They keep to the rules of support.ts: an account of their own. They change a setting
 // that other files read, which rule 5 forbids for any change that could alter what they
@@ -196,5 +198,23 @@ test("P-171: a setting is changed in a form beneath its row, which the focus mov
   await expect(page.getByText(`${key} is at its default again: 1000.`)).toBeVisible();
   await expect(page.getByTestId(`value-${key}`)).toHaveText("1000");
   await closedTo(page, key);
+
+  // The table fits the window of 1280 with nothing scrolled, a setting changed just now
+  // among its rows, and the two buttons of a row stand one above the other. A narrower
+  // window scrolls it sideways.
+  const scroller = page.getByTestId("settings").locator("xpath=..");
+  const widths = () => scroller.evaluate((one) => [one.clientWidth, one.scrollWidth] as const);
+  const [column, table] = await widths();
+  expect(table, "the width of the table of settings, in its column of 1280").toBeLessThanOrEqual(
+    column,
+  );
+  const change = await changeOf(page, key).boundingBox();
+  const back = await rowOf(page, key)
+    .getByRole("button", { name: `Return ${key} to its default` })
+    .boundingBox();
+  expect(change && back && back.y >= change.y + change.height).toBe(true);
+  expect(change && back && Math.abs(back.x - change.x) < 2).toBe(true);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect.poll(async () => (await widths())[1] > (await widths())[0]).toBe(true);
   await expectClean(page, seen, ["422 PUT"]);
 });

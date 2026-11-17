@@ -144,20 +144,31 @@ async function asAdmin<T>(
   return send({ Authorization: `Bearer ${session.token}` });
 }
 
+/** A new person, the contact a new account is made with (P-172). */
+export interface NewPerson {
+  name: string;
+  email?: string;
+  phone?: string;
+  phone2?: string;
+}
+
 /**
  * Make an account through the API, as the Admin of the environment: `role` is admin,
- * inventory or viewer, or null for an account that holds no role.
+ * inventory or viewer, or null for an account that holds no role. 0.9.3: an account is
+ * made with no contact, and is shown by its username, unless a file gives it a person,
+ * a new contact made with it (P-172).
  */
 export async function createAccount(
   api: APIRequestContext,
   username: string,
   role: string | null,
+  person?: NewPerson,
 ): Promise<Account> {
   return asAdmin(api, async (headers) => {
     const created = (await answered(
       await api.post("./api/v1/users", {
         headers,
-        data: { username, email: `${username}@example.org`, ...(role ? { role } : {}) },
+        data: { username, ...(role ? { role } : {}), ...(person ? { contact: person } : {}) },
       }),
       201,
       `the account ${username} was not made`,

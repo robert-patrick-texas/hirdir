@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
+import { FormRow, useOpeners } from "../components/RowForm";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { useTitle } from "../lib/hooks";
@@ -48,7 +49,15 @@ export function LifecycleRules() {
     entry: (rule) => shown(entryText(rule)),
     next_states: (rule) => shown(listed(rule.next_states)),
   });
-  const open = rows.find((rule) => rule.hid === editing) ?? null;
+  // 0.9.3: a rule is edited in a form beneath its row, and the focus goes back to its Edit
+  // button when the form closes (P-171).
+  const openers = useOpeners(rules);
+  const columns = mayEdit ? 8 : 7;
+
+  function close(hid: string, reading = false) {
+    setEditing("");
+    openers.closed(hid, reading);
+  }
 
   return (
     <>
@@ -100,47 +109,54 @@ export function LifecycleRules() {
             </thead>
             <tbody>
               {sorting.rows.map((rule) => (
-                <tr key={rule.hid} data-state={rule.state}>
-                  <th scope="row">{rule.state}</th>
-                  <td>{listed(rule.dispositions)}</td>
-                  <td>{rule.keeps_disposition ? "Yes" : "No"}</td>
-                  <td>{listed(rule.may_be_online)}</td>
-                  <td>{listed(rule.must_be_online)}</td>
-                  <td>{entryText(rule)}</td>
-                  <td>{listed(rule.next_states)}</td>
-                  {mayEdit && (
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDone("");
-                          setEditing(rule.hid);
+                <Fragment key={rule.hid}>
+                  <tr data-state={rule.state}>
+                    <th scope="row">{rule.state}</th>
+                    <td>{listed(rule.dispositions)}</td>
+                    <td>{rule.keeps_disposition ? "Yes" : "No"}</td>
+                    <td>{listed(rule.may_be_online)}</td>
+                    <td>{listed(rule.must_be_online)}</td>
+                    <td>{entryText(rule)}</td>
+                    <td>{listed(rule.next_states)}</td>
+                    {mayEdit && (
+                      <td>
+                        <button
+                          type="button"
+                          ref={openers.opener(rule.hid)}
+                          onClick={() => {
+                            setDone("");
+                            openers.forget();
+                            setEditing(rule.hid);
+                          }}
+                          aria-label={`Edit the rule of ${rule.state}`}
+                          aria-expanded={editing === rule.hid}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                  {mayEdit && editing === rule.hid && (
+                    <FormRow of={rule.state} columns={columns}>
+                      <RuleForm
+                        key={`${rule.hid} ${rule.row_version}`}
+                        rule={rule}
+                        states={stateNames(rows)}
+                        onClose={() => close(rule.hid)}
+                        onSaved={() => {
+                          setDone(`The rule of ${rule.state} was saved.`);
+                          close(rule.hid, true);
+                          rules.reload();
                         }}
-                        aria-label={`Edit the rule of ${rule.state}`}
-                      >
-                        Edit
-                      </button>
-                    </td>
+                        onReload={rules.reload}
+                      />
+                    </FormRow>
                   )}
-                </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-      {mayEdit && open && (
-        <RuleForm
-          key={`${open.hid} ${open.row_version}`}
-          rule={open}
-          states={stateNames(rows)}
-          onClose={() => setEditing("")}
-          onSaved={() => {
-            setDone(`The rule of ${open.state} was saved.`);
-            setEditing("");
-            rules.reload();
-          }}
-          onReload={rules.reload}
-        />
       )}
     </>
   );
@@ -211,7 +227,7 @@ function RuleForm({ rule, states, onClose, onSaved, onReload }: RuleFormProps) {
   }, [states, rule.state]);
 
   return (
-    <section className="panel" aria-labelledby="edit-rule">
+    <section className="panel" aria-labelledby="edit-rule" data-testid="rule-form">
       <h2 id="edit-rule">The rule of {rule.state}</h2>
       <EditForm<Rule, Schemas["LifecycleRulePatch"]>
         specs={specs}

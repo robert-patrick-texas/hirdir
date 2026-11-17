@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Notice, Problem } from "../components/Problem";
 import { CreateForm, EditForm } from "../components/RecordForm";
+import { FormRow, useOpeners } from "../components/RowForm";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { plural } from "../lib/format";
@@ -62,7 +63,14 @@ export function Tags() {
     description: (tag) => tag.description,
     on: (tag) => tag.uses,
   });
-  const open = rows.find((tag) => tag.hid === editing) ?? null;
+  // 0.9.3: a tag is edited in a form beneath its row, and the focus goes back to its Edit
+  // button when the form closes (P-171).
+  const openers = useOpeners(tags);
+
+  function close(hid: string, reading = false) {
+    setEditing("");
+    openers.closed(hid, reading);
+  }
 
   function changed(text: string) {
     setDone(text);
@@ -143,37 +151,55 @@ export function Tags() {
             </thead>
             <tbody>
               {sorting.rows.map((tag) => (
-                <tr key={tag.hid}>
-                  <th scope="row">{tag.label}</th>
-                  <td>
-                    <Swatch colour={tag.colour} />
-                  </td>
-                  <td>{tag.description}</td>
-                  <td className="nowrap">{plural(tag.uses, "record")}</td>
-                  {mayEdit && (
-                    <td className="row-actions">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDone("");
-                          setEditing(tag.hid);
-                        }}
-                        aria-label={`Edit the tag ${tag.label}`}
-                      >
-                        Edit
-                      </button>
-                      <ConfirmButton
-                        label="Remove"
-                        title={`Remove the tag ${tag.label}?`}
-                        confirmLabel="Remove tag"
-                        onConfirm={() => remove(tag)}
-                        disabled={action.busy || tag.uses > 0}
-                      >
-                        <p>The tag is on no record, and will be gone for good.</p>
-                      </ConfirmButton>
+                <Fragment key={tag.hid}>
+                  <tr data-tag={tag.label}>
+                    <th scope="row">{tag.label}</th>
+                    <td>
+                      <Swatch colour={tag.colour} />
                     </td>
+                    <td>{tag.description}</td>
+                    <td className="nowrap">{plural(tag.uses, "record")}</td>
+                    {mayEdit && (
+                      <td className="row-actions">
+                        <button
+                          type="button"
+                          ref={openers.opener(tag.hid)}
+                          onClick={() => {
+                            setDone("");
+                            openers.forget();
+                            setEditing(tag.hid);
+                          }}
+                          aria-label={`Edit the tag ${tag.label}`}
+                          aria-expanded={editing === tag.hid}
+                        >
+                          Edit
+                        </button>
+                        <ConfirmButton
+                          label="Remove"
+                          title={`Remove the tag ${tag.label}?`}
+                          confirmLabel="Remove tag"
+                          onConfirm={() => remove(tag)}
+                          disabled={action.busy || tag.uses > 0}
+                        >
+                          <p>The tag is on no record, and will be gone for good.</p>
+                        </ConfirmButton>
+                      </td>
+                    )}
+                  </tr>
+                  {mayEdit && editing === tag.hid && (
+                    <FormRow of={tag.hid} columns={5}>
+                      <TagForm
+                        tag={tag}
+                        onSaved={() => {
+                          close(tag.hid, true);
+                          changed(`The tag ${tag.label} was saved.`);
+                        }}
+                        onClose={() => close(tag.hid)}
+                        onReload={tags.reload}
+                      />
+                    </FormRow>
                   )}
-                </tr>
+                </Fragment>
               ))}
               {rows.length === 0 && (
                 <tr>
@@ -186,29 +212,37 @@ export function Tags() {
           </table>
         </div>
       )}
-      {mayEdit && open && (
-        <section className="panel" aria-labelledby="edit-tag">
-          <h2 id="edit-tag">The tag {open.label}</h2>
-          <EditForm<Tag, Schemas["TagPatch"]>
-            key={`${open.hid} ${open.row_version}`}
-            specs={SPECS}
-            record={open}
-            save={(body) =>
-              api.request("patch", "/api/v1/tags/{hid}", { path: { hid: open.hid }, body })
-            }
-            onSaved={() => {
-              setEditing("");
-              changed(`The tag ${open.label} was saved.`);
-            }}
-            onReload={tags.reload}
-          />
-          <p className="actions">
-            <button type="button" onClick={() => setEditing("")}>
-              Close
-            </button>
-          </p>
-        </section>
-      )}
     </>
+  );
+}
+
+interface TagFormProps {
+  tag: Tag;
+  onSaved: () => void;
+  onClose: () => void;
+  onReload: () => void;
+}
+
+/** Change a tag: its label, colour and description. */
+function TagForm({ tag, onSaved, onClose, onReload }: TagFormProps) {
+  return (
+    <section className="panel" aria-labelledby="edit-tag" data-testid="tag-form">
+      <h2 id="edit-tag">The tag {tag.label}</h2>
+      <EditForm<Tag, Schemas["TagPatch"]>
+        key={`${tag.hid} ${tag.row_version}`}
+        specs={SPECS}
+        record={tag}
+        save={(body) =>
+          api.request("patch", "/api/v1/tags/{hid}", { path: { hid: tag.hid }, body })
+        }
+        onSaved={onSaved}
+        onReload={onReload}
+      />
+      <p className="actions">
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </p>
+    </section>
   );
 }

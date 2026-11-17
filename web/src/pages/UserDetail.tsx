@@ -4,6 +4,7 @@ import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { CheckField, TextField } from "../components/Field";
+import { ContactChanges, PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
@@ -11,6 +12,8 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { appZone, momentIn } from "../lib/format";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import type { Option } from "../lib/patch";
+import { type PersonChoice, personChoice, personLabel, readPerson } from "../lib/people";
 import { roleLabel } from "../lib/roles";
 import { dateValue } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
@@ -18,7 +21,11 @@ import { useSorting } from "../lib/useSorting";
 type User = Schemas["UserOut"];
 type Token = Schemas["ServiceTokenOut"];
 
-/** Admin → Users → one user: details, access code, sessions and service tokens. */
+/**
+ * Admin → Users → one user: details, the person it is, access code, sessions and service
+ * tokens. 0.9.3: the person is a contact, whose name, email and numbers the user shows
+ * and this page changes on the contact (P-172), and the username is changed here (P-173).
+ */
 export function UserDetail() {
   const { hid = "" } = useParams();
   const user = useLoad(`user ${hid}`, (signal) =>
@@ -43,6 +50,13 @@ export function UserDetail() {
             user={user.data}
             reload={user.reload}
           />
+          {!user.data.is_service_account && (
+            <Person
+              key={`person ${user.data.hid} ${user.data.row_version}`}
+              user={user.data}
+              reload={user.reload}
+            />
+          )}
           {!user.data.is_service_account && <AccessCode user={user.data} reload={user.reload} />}
           <Sessions user={user.data} reload={user.reload} />
           {user.data.is_service_account && <Tokens user={user.data} />}
@@ -54,7 +68,9 @@ export function UserDetail() {
 
 function Facts({ user }: { user: User }) {
   return (
-    <dl className="facts">
+    <dl className="facts" data-testid="user-facts">
+      <dt>Username</dt>
+      <dd className="mono">{user.username}</dd>
       <dt>Kind</dt>
       <dd>{user.is_service_account ? "Service account" : "Person"}</dd>
       <dt>State</dt>
@@ -89,57 +105,50 @@ function Facts({ user }: { user: User }) {
   );
 }
 
+/**
+ * The username and whether the user may sign in. 0.9.3: an Admin gives a user another
+ * username, which the person signs in with from then on; the user is the same record,
+ * with its contact, its groups, its roles, its sessions and its tokens (P-173).
+ */
 function Details({ user, reload }: { user: User; reload: () => void }) {
-  const [displayName, setDisplayName] = useState(user.display_name);
-  const [email, setEmail] = useState(user.email);
+  const auth = useAuth();
+  const [username, setUsername] = useState(user.username);
   const [disabled, setDisabled] = useState(user.disabled);
-  const [saved, setSaved] = useState("");
   const action = useAction();
   const fields = action.error?.fields ?? {};
-  const changed =
-    displayName !== user.display_name || email !== user.email || disabled !== user.disabled;
+  const renamed = username.trim() !== user.username;
+  const changed = renamed || disabled !== user.disabled;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setSaved("");
     // Only what changed is sent, with the version this form was filled from.
     const body: Schemas["UserPatch"] = { row_version: user.row_version };
-    // The name and the email are the contact's (P-172): the web lane of 0.9.3 changes
-    // them on the contact. Until then only whether the user is disabled is sent.
+    if (renamed) body.username = username.trim();
     if (disabled !== user.disabled) body.disabled = disabled;
     const result = await action.run(() =>
       api.request("patch", "/api/v1/users/{hid}", { path: { hid: user.hid }, body }),
     );
-    if (result.ok) reload();
+    if (!result.ok) return;
+    // An Admin who renames themselves keeps signing in: the header says the new name.
+    if (renamed && auth.user.hid === user.hid) auth.refresh();
+    reload();
   }
 
   return (
     <section aria-labelledby="details">
       <h2 id="details">Details</h2>
-      <form onSubmit={submit} className="stack">
-        <Problem
-          error={action.error}
-          shown={["display_name", "email", "disabled"]}
-          onReload={reload}
-        />
-        <Notice text={saved} />
+      <form onSubmit={submit} className="stack" noValidate>
+        <Problem error={action.error} shown={["username", "disabled"]} onReload={reload} />
         <TextField
-          label="Display name"
-          name="display_name"
-          value={displayName}
-          onChange={setDisplayName}
-          maxLength={200}
+          label="Username"
+          name="username"
+          value={username}
+          onChange={setUsername}
+          required
+          maxLength={64}
           autoComplete="off"
-          error={fields.display_name}
-        />
-        <TextField
-          label="Email"
-          name="email"
-          value={email}
-          onChange={setEmail}
-          maxLength={254}
-          autoComplete="off"
-          error={fields.email}
+          hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. Another one keeps the sessions; the old one signs nobody in."
+          error={fields.username}
         />
         <CheckField
           label="Disabled"
@@ -152,6 +161,148 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
         <p className="actions">
           <button type="submit" className="primary" disabled={action.busy || !changed}>
             Save
+          </button>
+        </p>
+      </form>
+    </section>
+  );
+}
+
+/**
+ * The person a user is: its contact, with the name, email and numbers the user shows,
+ * changed here on the contact; and another contact, a new one, or none.
+ */
+function Person({ user, reload }: { user: User; reload: () => void }) {
+  const contact = user.contact;
+  const [done, setDone] = useState("");
+  return (
+    <section aria-labelledby="person">
+      <h2 id="person">The person</h2>
+      <p className="hint">
+        The name, the email and the numbers of a user are those of its contact. Changed here, they
+        are changed on the contact, and so wherever that person is named.
+      </p>
+      <Notice text={done} />
+      {contact ? (
+        <dl className="facts" data-testid="user-person">
+          <dt>Contact</dt>
+          <dd>
+            <Link to={`/contacts/${encodeURIComponent(contact.hid)}`}>{contact.name}</Link>
+            {contact.record_status === "retired" && <span className="badge">Retired</span>}
+            <span className="muted"> · the user shows what follows from the contact</span>
+          </dd>
+          <dt>Email</dt>
+          <dd data-testid="person-email">{contact.email || <span className="muted">—</span>}</dd>
+          <dt>Phone</dt>
+          <dd data-testid="person-phone">{contact.phone || <span className="muted">—</span>}</dd>
+          <dt>Second phone</dt>
+          <dd data-testid="person-phone2">{contact.phone2 || <span className="muted">—</span>}</dd>
+        </dl>
+      ) : (
+        <p className="muted" data-testid="user-person">
+          {user.username} has no contact: it is shown by its username until it is given one.
+        </p>
+      )}
+      {contact && (
+        <section aria-labelledby="person-details">
+          <h3 id="person-details">Change the name, email and numbers</h3>
+          <ContactChanges
+            hid={contact.hid}
+            fields={["name", "email", "phone", "phone2"]}
+            submitLabel="Save on the contact"
+            onSaved={() => {
+              setDone(`The contact ${contact.name} was saved.`);
+              reload();
+            }}
+          />
+        </section>
+      )}
+      <GiveContact user={user} reload={reload} />
+    </section>
+  );
+}
+
+/**
+ * Give a user another contact, one there is that is no other user's or a new one made
+ * from what is typed, or take its contact away. A new contact is made first, and then
+ * given: where the user is not changed, the contact made is kept as the one chosen, so
+ * that it is not made twice.
+ */
+function GiveContact({ user, reload }: { user: User; reload: () => void }) {
+  const [choice, setChoice] = useState<PersonChoice>(() => personChoice("contact"));
+  const [found, setFound] = useState<Record<string, string>>({});
+  // The contact made here, by its name as a search offers it, where the change was not.
+  const [made, setMade] = useState<Option | null>(null);
+  const action = useAction();
+  const fields: Readonly<Record<string, string | undefined>> = {
+    ...action.error?.fields,
+    ...found,
+  };
+  const ready = !(choice.way === "none" && user.contact === null);
+
+  async function give(event: FormEvent) {
+    event.preventDefault();
+    const read = readPerson(choice);
+    if (!read.ok) {
+      action.clear();
+      setFound({ [read.field]: read.error });
+      return;
+    }
+    setFound({});
+    setMade(null);
+    const result = await action.run(async () => {
+      let hid = read.contactHid;
+      if (read.person !== null) {
+        const contact = await api.request("post", "/api/v1/contacts", {
+          body: { ...read.person, record_status: "active" },
+        });
+        hid = contact.hid;
+        // Made: from here on it is the one chosen, whatever becomes of the change.
+        setChoice(personChoice("contact", hid));
+        setMade({ value: contact.hid, label: personLabel(contact) });
+      }
+      return api.request("patch", "/api/v1/users/{hid}", {
+        path: { hid: user.hid },
+        body: { row_version: user.row_version, contact_hid: hid },
+      });
+    });
+    if (result.ok) reload();
+  }
+
+  return (
+    <section aria-labelledby="give-contact">
+      <h3 id="give-contact">{user.contact ? "Another contact, or none" : "Give it a contact"}</h3>
+      <form onSubmit={give} className="stack" noValidate>
+        <Problem
+          error={action.error}
+          shown={["contact_hid", "name", "email", "organization", "phone", "phone2"]}
+          onReload={reload}
+        />
+        {made && action.error && (
+          <p className="hint" data-testid="contact-made">
+            The contact {made.label} was made, and is chosen below: give it again once the problem
+            is put right.
+          </p>
+        )}
+        <PersonChooser
+          legend={`The contact ${user.username} is`}
+          name="give"
+          ways={user.contact ? ["contact", "new", "none"] : ["contact", "new"]}
+          wayLabels={{ contact: "A contact there is", new: "A new contact", none: "None" }}
+          choice={choice}
+          onChange={(next) => {
+            setFound({});
+            setChoice(next);
+          }}
+          errors={fields}
+          organization
+          known={made ? [made] : []}
+          hint="A contact is one user's at most, and a retired one is not given."
+          disabled={action.busy}
+        />
+        <p className="actions">
+          <button type="submit" className="primary" disabled={action.busy || !ready}>
+            {choice.way === "none" ? "Take its contact away" : "Give it this contact"}
           </button>
         </p>
       </form>

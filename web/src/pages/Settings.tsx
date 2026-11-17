@@ -1,9 +1,10 @@
-import { type FormEvent, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useEffect, useState } from "react";
 import { api, type Schemas } from "../api";
 import { CheckGroupField, RadioGroupField, SelectField, TextField } from "../components/Field";
 // 0.8.0: the kept reports and their check (P-157).
 import { KeptAnswers } from "../components/KeptAnswers";
 import { Notice, Problem } from "../components/Problem";
+import { FormRow, type Openers, useOpeners } from "../components/RowForm";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -76,12 +77,11 @@ export function Settings() {
   );
   const [done, setDone] = useState("");
   const [open, setOpen] = useState<string | null>(null);
-  // 0.9.3: the setting whose Change button takes the focus back once its form has closed,
-  // or once it was returned to its default from its row; after a change, once the
-  // settings have been read again, so that a row that the sort moves is in its place
-  // (P-171).
-  const [back, setBack] = useState<{ key: string; reading: boolean } | null>(null);
   const reset = useAction();
+  // 0.9.3: the Change button of a setting takes the focus back once its form has closed,
+  // or once the setting was returned to its default from its row; after a change, once
+  // the settings have been read again (P-171).
+  const openers = useOpeners(settings, reset.busy);
   const { settings: own, fixed } = splitSettings(settings.data ?? []);
 
   // 0.9.2: the name of the product and whom the sign-in page lists, as the settings read
@@ -91,17 +91,10 @@ export function Settings() {
     if (settings.data) site.update(siteOfSettings(settings.data));
   }, [settings.data]);
 
-  // The settings were read again, or could not be, and those read last are on show: the
-  // focus may go back.
-  useEffect(() => {
-    if (settings.loading || settings.data === undefined) return;
-    setBack((was) => (was?.reading ? { ...was, reading: false } : was));
-  }, [settings.loading, settings.data]);
-
   /** Close the form that is open, if any, and give the focus back to the setting's Change. */
   function close(key: string, reading = false) {
     setOpen(null);
-    setBack({ key, reading });
+    openers.closed(key, reading);
   }
 
   function changed(key: string, text: string) {
@@ -151,14 +144,12 @@ export function Settings() {
               settings={own}
               busy={reset.busy}
               open={open}
-              // Once the Change buttons may be pressed again.
-              back={back && !back.reading && !reset.busy ? back.key : null}
+              opener={openers.opener}
               onOpen={(key) => {
                 setDone("");
-                setBack(null);
+                openers.forget();
                 setOpen(key);
               }}
-              onBack={() => setBack(null)}
               onDefault={toDefault}
               form={(setting) => (
                 <SettingForm
@@ -197,11 +188,9 @@ interface SettingsTableProps {
   busy: boolean;
   /** The setting whose form is open beneath its row, if any. */
   open: string | null;
-  /** The setting whose Change button takes the focus now, if any. */
-  back: string | null;
+  /** The ref of the Change button of a setting, which the focus goes back to. */
+  opener: Openers["opener"];
   onOpen: (key: string) => void;
-  /** The focus was given back. */
-  onBack: () => void;
   onDefault: (setting: Setting) => void;
   /** The form of a setting, shown beneath its row while it is open. */
   form: (setting: Setting) => ReactNode;
@@ -212,11 +201,12 @@ interface SettingsTableProps {
  * the setting that is open is a row of its own beneath the setting's row, one cell across
  * every column, so that the setting, its value and what it is for stay in view above it
  * and the page stays where it was; and when the form closes, the focus is on that
- * setting's Change button again (P-171).
+ * setting's Change button again. The table fits a window 1280 pixels wide: a long name
+ * breaks after an underscore, and the two buttons of a row stand one above the other
+ * (P-171).
  */
 function SettingsTable(props: SettingsTableProps) {
-  const { settings, busy, open, back, onOpen, onBack, onDefault, form } = props;
-  const changeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const { settings, busy, open, opener, onOpen, onDefault, form } = props;
   const sorting = useSorting(settings, {
     key: (setting) => setting.key,
     // A blank value is sorted last, as every blank is.
@@ -228,15 +218,9 @@ function SettingsTable(props: SettingsTableProps) {
     changed: (setting) => dateValue(setting.updated_at),
   });
 
-  useEffect(() => {
-    if (back === null || open !== null) return;
-    changeButtons.current.get(back)?.focus();
-    onBack();
-  }, [back, open, onBack]);
-
   return (
     <div className="scroll">
-      <table data-testid="settings">
+      <table data-testid="settings" className="settings-table">
         <caption className="visually-hidden">
           The settings of the inventory, each with its value in force and its default
         </caption>
@@ -273,7 +257,7 @@ function SettingsTable(props: SettingsTableProps) {
             <Fragment key={setting.key}>
               <tr data-setting={setting.key} data-default={setting.is_default ? "true" : "false"}>
                 <th scope="row" className="mono">
-                  {setting.key}
+                  <Breakable name={setting.key} />
                 </th>
                 <td data-testid={`value-${setting.key}`}>
                   <Shown setting={setting} value={setting.value} />
@@ -288,22 +272,19 @@ function SettingsTable(props: SettingsTableProps) {
                     <span className="badge badge-plain">Set here</span>
                   )}
                 </td>
-                <td>{setting.meaning}</td>
-                <td>{setting.accepts || <span className="muted">—</span>}</td>
-                <td className="nowrap">
+                <td className="prose">{setting.meaning}</td>
+                <td className="prose">{setting.accepts || <span className="muted">—</span>}</td>
+                <td>
                   {setting.updated_at ? (
                     <Time at={setting.updated_at} />
                   ) : (
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td className="row-actions">
+                <td className="row-actions stacked">
                   <button
                     type="button"
-                    ref={(button) => {
-                      if (button) changeButtons.current.set(setting.key, button);
-                      else changeButtons.current.delete(setting.key);
-                    }}
+                    ref={opener(setting.key)}
                     aria-label={`Change ${setting.key}`}
                     aria-expanded={open === setting.key}
                     aria-controls={open === setting.key ? formId(setting.key) : undefined}
@@ -323,9 +304,9 @@ function SettingsTable(props: SettingsTableProps) {
                 </td>
               </tr>
               {open === setting.key && (
-                <tr className="row-form" data-form-of={setting.key}>
-                  <td colSpan={SETTING_COLUMNS}>{form(setting)}</td>
-                </tr>
+                <FormRow of={setting.key} columns={SETTING_COLUMNS}>
+                  {form(setting)}
+                </FormRow>
               )}
             </Fragment>
           ))}
@@ -333,6 +314,31 @@ function SettingsTable(props: SettingsTableProps) {
       </table>
     </div>
   );
+}
+
+/**
+ * The name of a setting, which may break after each underscore where its column is
+ * narrow, and nowhere else: it is read and copied whole.
+ */
+function Breakable({ name }: { name: string }) {
+  // Each part is known by where it starts in the name, and each but the last is followed
+  // by its underscore and a place to break.
+  const parts: Array<{ at: number; text: string }> = [];
+  let at = 0;
+  for (const text of name.split("_")) {
+    parts.push({ at, text });
+    at += text.length + 1;
+  }
+  return parts.map((part) => (
+    <Fragment key={part.at}>
+      {part.text}
+      {part.at + part.text.length < name.length && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
 }
 
 /** The id of the form of a setting, which its Change button controls. */
@@ -429,18 +435,12 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
   const action = useAction();
   const sectionId = formId(setting.key);
   const headingId = `${sectionId}-heading`;
-  const section = useRef<HTMLElement>(null);
   const hint = [
     setting.accepts ? `It takes ${setting.accepts}.` : "",
     `The default is ${shownValue(setting, setting.default)}.`,
   ]
     .filter(Boolean)
     .join(" ");
-
-  // 0.9.3: the focus moves into the form as it opens (P-171).
-  useEffect(() => {
-    if (section.current) firstField(section.current)?.focus();
-  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -473,7 +473,6 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
 
   return (
     <section
-      ref={section}
       id={sectionId}
       className="panel"
       aria-labelledby={headingId}
@@ -563,19 +562,6 @@ function SettingForm({ setting, onChanged, onDefault, onClose, onReload }: Setti
       </form>
     </section>
   );
-}
-
-/**
- * The field a form opens on: the first that takes a value, and in a choice of Yes or No
- * the one that is chosen, where the Tab key would reach it.
- */
-function firstField(form: HTMLElement): HTMLElement | null {
-  const first = form.querySelector<HTMLElement>("input, select, textarea");
-  if (!(first instanceof HTMLInputElement) || first.type !== "radio") return first;
-  const chosen = [...form.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
-    (radio) => radio.name === first.name && radio.checked,
-  );
-  return chosen ?? first;
 }
 
 interface ExtensionListProps {

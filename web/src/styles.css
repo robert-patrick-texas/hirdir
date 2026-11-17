@@ -704,6 +704,27 @@ table.narrow {
   margin-right: 0.35rem;
 }
 
+/*
+ * 0.9.3: the table of settings fits a window 1280 pixels wide (P-171): the two buttons of
+ * a row stand one above the other in their cell, and a header may take two lines. A
+ * narrower window scrolls the table sideways, as any.
+ */
+.row-actions:where(.stacked) button {
+  display: block;
+  margin: 0 0 0.3rem;
+}
+
+.settings-table thead th {
+  white-space: normal;
+}
+
+/* What a setting is for and what it takes are sentences: an example in one, an address
+   or a time zone, breaks where the column needs it to rather than widen the table. */
+.settings-table td.prose {
+  min-width: 9rem;
+  overflow-wrap: anywhere;
+}
+
 .cell-form {
   display: flex;
   gap: 0.5rem;

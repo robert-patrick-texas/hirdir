@@ -9,8 +9,8 @@ import { type FormEvent, useState } from "react";
 import { Link } from "react-router";
 import { api } from "../api";
 import { useAction, useLoad } from "../lib/hooks";
-import { EVERY, useSystems } from "../lib/lists";
-import { optionLabel } from "../lib/options";
+import { EVERY, useChoices, useSystems } from "../lib/lists";
+import { choiceLabel, optionLabel } from "../lib/options";
 import { fieldErrors } from "../lib/problems";
 import { dateValue } from "../lib/sort";
 import {
@@ -20,7 +20,7 @@ import {
   REGISTRATION_STATUSES,
   REMOVED,
   type Registration,
-  SYSTEM_KINDS,
+  SYSTEM_KIND_LIST,
   systemPath,
   unregistered,
 } from "../lib/systems";
@@ -58,13 +58,16 @@ export function Registrations(props: RegistrationsProps) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const action = useAction();
+  // 0.9.3: a system's kind by its label in the list, which a site may have changed (P-170).
+  const choices = useChoices();
+  const kindOf = (kind: string) => choiceLabel(choices.data, SYSTEM_KIND_LIST, kind);
   const found = useLoad(`registrations ${filter} ${turn}`, (signal) =>
     api.request("get", "/api/v1/registrations", { query: { filter, limit: EVERY }, signal }),
   );
   const rows = found.data?.items ?? [];
   const sorting = useSorting(rows, {
     system: (row) => row.system.name,
-    kind: (row) => optionLabel(SYSTEM_KINDS, row.system.kind),
+    kind: (row) => kindOf(row.system.kind),
     external_id: (row) => row.external_id,
     status: (row) => optionLabel(REGISTRATION_STATUSES, row.status),
     confirmed: (row) => dateValue(row.confirmed_at),
@@ -149,7 +152,7 @@ export function Registrations(props: RegistrationsProps) {
                     <th scope="row">
                       <Link to={systemPath(row.system_hid)}>{row.system.name}</Link>
                     </th>
-                    <td>{optionLabel(SYSTEM_KINDS, row.system.kind)}</td>
+                    <td>{kindOf(row.system.kind)}</td>
                     <td className="mono">{row.external_id || <span className="muted">—</span>}</td>
                     <td>{optionLabel(REGISTRATION_STATUSES, row.status)}</td>
                     <td className="nowrap">
@@ -260,7 +263,7 @@ export function Registrations(props: RegistrationsProps) {
           onRegistered={(system) => changed(`${whose} is registered with ${system}.`)}
         />
       )}
-      <ThroughGroups registrations={throughGroups} whose={whose} />
+      <ThroughGroups registrations={throughGroups} whose={whose} kindOf={kindOf} />
     </section>
   );
 }
@@ -491,6 +494,8 @@ interface ThroughGroupsProps {
   /** What a stack or a cluster the item is a current member of is registered with. */
   registrations: readonly GroupRegistration[];
   whose: string;
+  /** A kind of system by its label. */
+  kindOf: (kind: string) => string;
 }
 
 /**
@@ -498,11 +503,11 @@ interface ThroughGroupsProps {
  * here, so that nobody takes a member for a device no tool knows, and changed on the
  * page of the group. Nothing is shown for an item that is in no such group.
  */
-export function ThroughGroups({ registrations, whose }: ThroughGroupsProps) {
+export function ThroughGroups({ registrations, whose, kindOf }: ThroughGroupsProps) {
   const sorting = useSorting(registrations, {
     group: (row) => row.group.name,
     system: (row) => row.system.name,
-    kind: (row) => optionLabel(SYSTEM_KINDS, row.system.kind),
+    kind: (row) => kindOf(row.system.kind),
     external_id: (row) => row.external_id,
     status: (row) => optionLabel(REGISTRATION_STATUSES, row.status),
     confirmed: (row) => dateValue(row.confirmed_at),
@@ -557,7 +562,7 @@ export function ThroughGroups({ registrations, whose }: ThroughGroupsProps) {
                 <td>
                   <Link to={systemPath(row.system_hid)}>{row.system.name}</Link>
                 </td>
-                <td>{optionLabel(SYSTEM_KINDS, row.system.kind)}</td>
+                <td>{kindOf(row.system.kind)}</td>
                 <td className="mono">{row.external_id || <span className="muted">—</span>}</td>
                 <td>{optionLabel(REGISTRATION_STATUSES, row.status)}</td>
                 <td className="nowrap">

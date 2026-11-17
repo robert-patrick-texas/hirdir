@@ -42,6 +42,27 @@ const COLUMNS: GridColumn<Contact>[] = [
   },
   { id: "email", header: "Email", kind: "text", value: (contact) => contact.email, width: 260 },
   { id: "phone", header: "Phone", kind: "text", value: (contact) => contact.phone, width: 160 },
+  // 0.9.3: a second number, and the user a contact is, where it is one (P-172).
+  {
+    id: "phone2",
+    header: "Second phone",
+    kind: "text",
+    value: (contact) => contact.phone2,
+    width: 160,
+  },
+  {
+    // The username of the user the contact is: filtered and sorted by whether it is one.
+    id: "is_user",
+    header: "User",
+    kind: "boolean",
+    column: "user",
+    value: (contact) => contact.user?.username,
+    choices: [
+      { value: "true", label: "A user: signs in to hirdir" },
+      { value: "false", label: "No user" },
+    ],
+    width: 160,
+  },
   {
     // How many places and owners it is assigned to: counted by the server, for each row.
     id: "uses",
@@ -107,6 +128,7 @@ function contactSpecs(tags: readonly string[], current: Contact | null = null): 
       hint: "Belongs to one contact only. A file finds a contact by it.",
     },
     { name: "phone", label: "Phone", kind: "text", maxLength: 50 },
+    { name: "phone2", label: "Second phone", kind: "text", maxLength: 50 },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
     { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
     {
@@ -122,7 +144,10 @@ function contactSpecs(tags: readonly string[], current: Contact | null = null): 
   ];
 }
 
-/** Contacts: the people and shared mailboxes that places and owners point at. */
+/**
+ * Contacts: the people and shared mailboxes that places and owners point at. 0.9.3: the
+ * one list of people, of which a user and an operator are each a part (P-172).
+ */
 export function Contacts() {
   useTitle("Contacts");
   const { user } = useAuth();
@@ -136,6 +161,11 @@ export function Contacts() {
   return (
     <>
       <h1>Contacts</h1>
+      <p>
+        The one list of people, and of shared mailboxes: each once, with what is true of them
+        whatever part they play. A user, who signs in, and the person behind an operator are
+        contacts, so that a number changed here shows wherever that person is named.
+      </p>
       {adding && (
         <CreateForm<Schemas["ContactCreate"], Contact>
           title="New contact"
@@ -235,6 +265,25 @@ export function ContactDetail() {
             <dd>{record.email || <Dash />}</dd>
             <dt>Phone</dt>
             <dd>{record.phone || <Dash />}</dd>
+            <dt>Second phone</dt>
+            <dd data-testid="contact-phone2">{record.phone2 || <Dash />}</dd>
+            <dt>User</dt>
+            <dd data-testid="contact-user">
+              {record.user ? (
+                <>
+                  {allows(user.role, "admin") ? (
+                    <Link to={`/admin/users/${encodeURIComponent(record.user.hid)}`}>
+                      {record.user.username}
+                    </Link>
+                  ) : (
+                    <span className="mono">{record.user.username}</span>
+                  )}
+                  <span className="muted"> · this person signs in to hirdir as this user</span>
+                </>
+              ) : (
+                <span className="muted">None: this person does not sign in to hirdir</span>
+              )}
+            </dd>
             <dt>Notes</dt>
             <dd>{record.notes || <Dash />}</dd>
             <dt>Tags</dt>

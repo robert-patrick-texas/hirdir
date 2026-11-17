@@ -10,18 +10,40 @@ import type { Option } from "./patch";
 export type ExternalSystem = Schemas["ExternalSystemOut"];
 export type Registration = Schemas["RegistrationOut"];
 export type RegistrationRef = Schemas["RegistrationRef"];
+type Choice = Schemas["ChoiceOut"];
 
-/** The kinds of external system: a fixed list. */
-export const SYSTEM_KINDS: readonly Option[] = [
-  { value: "monitoring", label: "Monitoring" },
-  { value: "config_backup", label: "Configuration backup" },
-  { value: "access_control", label: "Access control" },
-  { value: "sdn_controller", label: "SDN controller" },
-  { value: "cloud_service", label: "Cloud service" },
-  { value: "dns", label: "DNS" },
-  { value: "discovery", label: "Discovery" },
-  { value: "other", label: "Other" },
-];
+/**
+ * 0.9.3: the kinds of external system are the editable list `system_kind` of Admin ›
+ * Choices, which a site names, renames, adds to and retires (P-170). A form offers its
+ * active values with their labels, and a system that holds a value no longer offered
+ * keeps it and shows its label.
+ */
+export const SYSTEM_KIND_LIST = "system_kind";
+
+/** The kind a system made with none is given, while the list offers it. */
+export const KIND_LEFT_OUT = "other";
+
+/**
+ * What the form of a new system starts with: the kind that a system with none is given,
+ * while the list offers it, and otherwise no kind, which the server refuses, saying so
+ * of the field.
+ */
+export function startingKind(choices: readonly Choice[] | undefined): string {
+  const offered = (choices ?? []).some(
+    (choice) => choice.list === SYSTEM_KIND_LIST && choice.value === KIND_LEFT_OUT && choice.active,
+  );
+  return offered ? KIND_LEFT_OUT : "";
+}
+
+/** What the form of a new system says of a kind left out, by the label of `other`. */
+export function leftOutHint(choices: readonly Choice[] | undefined): string {
+  const other = (choices ?? []).find(
+    (choice) => choice.list === SYSTEM_KIND_LIST && choice.value === KIND_LEFT_OUT,
+  );
+  return other?.active
+    ? `Left out, it is ${other.label}.`
+    : "A kind is needed: the list does not offer other, which a system made with none is given.";
+}
 
 export const REGISTRATION_STATUSES: readonly Option[] = [
   { value: "registered", label: "Registered" },

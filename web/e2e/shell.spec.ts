@@ -68,7 +68,9 @@ test("sign in, create a user, reload a deep link, sign out", async ({ page, base
   await page.getByRole("button", { name: "New user" }).click();
   const form = page.getByRole("region", { name: "New user" });
   await form.getByLabel("Username").fill(newUser);
-  await form.getByLabel("Display name").fill(`Quill Example ${suffix}`);
+  // 0.9.3: the person is a new contact, made with the user (P-172).
+  await expect(form.getByRole("radio", { name: "A new contact" })).toBeChecked();
+  await form.getByLabel("Name (required)", { exact: true }).fill(`Quill Example ${suffix}`);
   await form.getByLabel("Email").fill(`${newUser}@example.org`);
   await form.getByRole("button", { name: "Create user" }).click();
 
