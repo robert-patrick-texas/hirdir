@@ -965,7 +965,7 @@ taken back by lowering its quantity to what was received.
 | Field | Type | Notes |
 |---|---|---|
 | `external_systems.name` | text, unique | required: the installation's own name for it |
-| `external_systems.kind` | choice | `monitoring`, `config_backup`, `access_control`, `sdn_controller`, `cloud_service`, `dns`, `discovery`, `other`. Left out, `other` |
+| `external_systems.kind` | choice | a value of the `system_kind` list: `monitoring`, `config_backup`, `access_control`, `sdn_controller`, `cloud_service`, `dns`, `discovery` or `other` unless a site changes it. Left out, `other` while it is an active value of the list, and otherwise refused (P-170) |
 | `external_systems.url`, `notes` | text | |
 | `external_systems.record_status` | choice | see Conventions |
 | `registrations.system_hid` | reference | not changed afterwards |
@@ -1333,12 +1333,13 @@ record cannot be removed.
 `choices` holds every editable list: `list`, `value`, `label`, `sort`, `active`. The
 lists are `catalog_type`, `catalog_function`, `state_reason`, `item_condition`,
 `contact_role`, `location_kind`, `replacement_reason`, `capacity_category`,
-`circuit_type`, `carrier_role` and `reference_kind`. `contact_role` and `location_kind` are loaded with
-their defaults by release 0.5.0, the first to use them, `capacity_category` by 0.6.0,
-`circuit_type` and `carrier_role` by 0.8.0, and `reference_kind` by 0.9.0, with
-`photograph`, `map`, `sketch`, `floor_plan`, `diagram`, `administration_guide`,
-`installation_guide`, `data_sheet`, `release_notes`, `letter_of_authorization`,
-`test_results` and `other`. A value is lower-case
+`circuit_type`, `carrier_role`, `reference_kind` and `system_kind`. `contact_role` and
+`location_kind` are loaded with their defaults by release 0.5.0, the first to use them,
+`capacity_category` by 0.6.0, `circuit_type` and `carrier_role` by 0.8.0,
+`reference_kind` by 0.9.0, with `photograph`, `map`, `sketch`, `floor_plan`, `diagram`,
+`administration_guide`, `installation_guide`, `data_sheet`, `release_notes`,
+`letter_of_authorization`, `test_results` and `other`, and `system_kind` by 0.9.3, with
+the eight kinds of external system that were fixed until then (P-170). A value is lower-case
 letters, digits, hyphens and underscores, and is what is stored on a record; the label
 is what people read. A value in use cannot be removed, only made inactive, and an
 inactive value is no longer offered while the records that hold it keep it.
