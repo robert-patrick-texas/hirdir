@@ -71,6 +71,9 @@ const NONE: Readonly<Record<By, string>> = {
   region: "Nowhere: no location",
   // What no contract covers today.
   contract: "Under no contract",
+  // The items under no device group, and those with no catalog entry.
+  group: "In no group",
+  model: "No model",
   lifecycle_state: "No state",
   disposition: "No disposition",
   condition: "No condition",

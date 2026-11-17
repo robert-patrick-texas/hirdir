@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     ColumnElement,
+    String,
     and_,
     case,
     distinct,
@@ -73,11 +74,16 @@ SHARED = (
     "site",
     "region",
     "contract",
+    "group",
+    "model",
 )
 SUMMARY_BY = (*SHARED, "lifecycle_state", "disposition", "condition", "health", "tag")
 MANAGEMENT_BY = (*SHARED, "tag")
 ONE_NODE = groups.MANAGED_AS[0]
 AND_ITS_OWN = groups.MANAGED_AS[2]
+# What a row of a model is called: its vendor and its PID, `Cisco C9300-48P`. The space
+# is written into the statement, so that the label is grouped by as it is selected.
+MODEL_LABEL: Any = Vendor.name + literal_column("' '", String) + CatalogEntry.pid
 
 
 @dataclass(frozen=True)
@@ -130,7 +136,22 @@ class Involved:
 
 
 @dataclass(frozen=True)
-class Row(Measures):
+class Described:
+    """What a row of a report by group or by model says of the record it is of (P-178,
+    P-180). The rows of anything else, and the blank row, say none of it."""
+
+    # A group's type, or a model's.
+    type: str | None = None
+    member_count: int | None = None
+    nested_groups: int | None = None
+    vendor: str | None = None
+    pid: str | None = None
+    model_name: str | None = None
+    kind: str | None = None
+
+
+@dataclass(frozen=True)
+class Row(Measures, Described):
     """The measures of the items that share one value."""
 
     key: str | None = None
@@ -159,7 +180,7 @@ class Money:
 
 
 @dataclass(frozen=True)
-class MoneyRow(Money):
+class MoneyRow(Money, Described):
     """The value and the cost of the items that share one value."""
 
     key: str | None = None
@@ -319,6 +340,50 @@ def _terms(
     )
 
 
+def _nested_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with itself and
+    with every group nested in it at any depth. A retired group counts for nothing, so
+    what is nested in it is not reached through it, as the controllers of a domain are
+    not (`hirdir.domain.groups.controllers`)."""
+    inner: Any = aliased(DeviceGroup, name="nested_group")
+    start = (
+        select(DeviceGroup.hid.label("top_hid"), DeviceGroup.hid.label("group_hid"))
+        .where(DeviceGroup.record_status != "retired")
+        .cte("report_nested_groups", recursive=True)
+    )
+    # Each pair once: what is nested is never within itself, and were it so, the walk
+    # would still end.
+    return start.union(
+        select(start.c.top_hid, inner.hid)
+        .select_from(start)
+        .join(inner, inner.parent_group_hid == start.c.group_hid)
+        .where(inner.record_status != "retired")
+    )
+
+
+def _under_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with every item
+    under it, each pair once (P-178): its current members, the current members of every
+    group nested in it at any depth, and the minor items of all of them. An item is so
+    in the row of each group it is under, as an item with several tags is in the row of
+    each."""
+    nested = _nested_groups()
+    member: Any = aliased(DeviceGroupMember, name="under_member")
+    minor: Any = aliased(Item, name="under_minor")
+    start = (
+        select(nested.c.top_hid.label("group_hid"), member.item_hid.label("item_hid"))
+        .select_from(nested)
+        .join(member, member.group_hid == nested.c.group_hid)
+        .where(member.left_on.is_(None))
+        .cte("report_under_groups", recursive=True)
+    )
+    return start.union(
+        select(start.c.group_hid, minor.hid)
+        .select_from(start)
+        .join(minor, minor.parent_item_hid == start.c.item_hid)
+    )
+
+
 def _grouping(by: str) -> tuple[Any, Any, Any]:
     """Return what a report is grouped by: the key, its label, and a join it needs."""
     if by == "vendor":
@@ -370,6 +435,21 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
             return query.outerjoin(covering, covering.c.item_hid == Item.hid)
 
         return covering.c.contract_hid, covering.c.label, covered
+    if by == "group":
+        # Every group an item is under, and the blank row the items under none.
+        under = _under_groups()
+        named: Any = aliased(DeviceGroup, name="report_group")
+
+        def grouped(query: Any) -> Any:
+            return query.outerjoin(under, under.c.item_hid == Item.hid).outerjoin(
+                named, named.hid == under.c.group_hid
+            )
+
+        return under.c.group_hid, named.name, grouped
+    if by == "model":
+        # A model is a vendor's product, whatever its type; the blank row is what has
+        # no catalog entry (P-180).
+        return CatalogEntry.hid, MODEL_LABEL, None
     if by in ("lifecycle_state", "disposition"):
         column = fields.standing(by)
         return column, column, None
@@ -404,6 +484,46 @@ def _labels(db: Session, by: str, keys: Sequence[Any] = ()) -> dict[str, str]:
     if by not in LABELLED:
         return {}
     return {choice.value: choice.label for choice in choices.list_choices(db, LABELLED[by])}
+
+
+def _described(db: Session, by: str, keys: Sequence[Any]) -> dict[str, dict[str, Any]]:
+    """Return what the record of each row says of itself, by group or by model: a
+    group's type, its current members and how many groups are nested in it; a model's
+    vendor, PID, name, kind and type. A report by anything else describes nothing."""
+    hids = sorted({key for key in keys if key})
+    if not hids or by not in ("group", "model"):
+        return {}
+    if by == "model":
+        found = db.execute(
+            select(CatalogEntry, Vendor.name)
+            .join(Vendor, Vendor.hid == CatalogEntry.vendor_hid)
+            .where(CatalogEntry.hid.in_(hids))
+        )
+        return {
+            entry.hid: {
+                "vendor": vendor,
+                "pid": entry.pid,
+                "model_name": entry.model_name,
+                "kind": entry.kind,
+                "type": entry.type,
+            }
+            for entry, vendor in found
+        }
+    nested = _nested_groups()
+    beneath = dict(
+        db.execute(
+            select(nested.c.top_hid, func.count())
+            .where(nested.c.top_hid.in_(hids), nested.c.group_hid != nested.c.top_hid)
+            .group_by(nested.c.top_hid)
+        ).all()
+    )
+    members = groups.member_counts(db, hids)
+    return {
+        hid: {"type": kind, "member_count": members[hid], "nested_groups": beneath.get(hid, 0)}
+        for hid, kind in db.execute(
+            select(DeviceGroup.hid, DeviceGroup.type).where(DeviceGroup.hid.in_(hids))
+        )
+    }
 
 
 def _run(db: Session, statement: Any) -> list[Any]:
@@ -590,11 +710,13 @@ def summary(
     sums = _sums(db, terms, terms.weight, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found])
     involved = _involved(db, terms, key, join) if operators else None
     rows = [
         Row(
             key=row[0],
             label=called.get(row[1], row[1]),
+            **told.get(row[0], {}),
             **_measures(row[2:], sums.get(row[0], [0, 0])),
             operators=None if involved is None else tuple(involved.get(row[0], ())),
         )
@@ -671,10 +793,12 @@ def management(
     sums = _sums(db, terms, terms.money, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found])
     rows = [
         MoneyRow(
             key=row[0],
             label=called.get(row[1], row[1]),
+            **told.get(row[0], {}),
             **_money(row[2:], sums.get(row[0], [0, 0])),
         )
         for row in found

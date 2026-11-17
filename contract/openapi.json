@@ -4627,6 +4627,11 @@
             "title": "Hid",
             "type": "string"
           },
+          "items": {
+            "description": "How many items are of the model, as the item list counts them (P-180): major and minor, drafts, retired items and items in Archived left out.",
+            "title": "Items",
+            "type": "integer"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -4779,6 +4784,7 @@
           "links",
           "record_status",
           "tags",
+          "items",
           "effective",
           "row_version",
           "created_at",
@@ -18503,6 +18509,8 @@
               "site",
               "region",
               "contract",
+              "group",
+              "model",
               "tag"
             ],
             "title": "By",
@@ -18567,6 +18575,18 @@
             ],
             "title": "Key"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its kind.",
+            "title": "Kind"
+          },
           "label": {
             "anyOf": [
               {
@@ -18577,6 +18597,78 @@
               }
             ],
             "title": "Label"
+          },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group: its current members.",
+            "title": "Member Count"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its name.",
+            "title": "Model Name"
+          },
+          "nested_groups": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group: how many groups are nested in it, at any depth.",
+            "title": "Nested Groups"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its PID.",
+            "title": "Pid"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group, the type of the group; by model, the type of the model.",
+            "title": "Type"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: the name of its vendor.",
+            "title": "Vendor"
           }
         },
         "required": [
@@ -27745,6 +27837,8 @@
                   "site",
                   "region",
                   "contract",
+                  "group",
+                  "model",
                   "lifecycle_state",
                   "disposition",
                   "condition",
@@ -27806,6 +27900,18 @@
             "description": "The value, or the HID of the record. Null for none.",
             "title": "Key"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its kind.",
+            "title": "Kind"
+          },
           "label": {
             "anyOf": [
               {
@@ -27822,6 +27928,42 @@
             "title": "Managed Node Count",
             "type": "integer"
           },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group: its current members.",
+            "title": "Member Count"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its name.",
+            "title": "Model Name"
+          },
+          "nested_groups": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group: how many groups are nested in it, at any depth.",
+            "title": "Nested Groups"
+          },
           "operators": {
             "anyOf": [
               {
@@ -27837,6 +27979,18 @@
             "description": "With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null.",
             "title": "Operators"
           },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: its PID.",
+            "title": "Pid"
+          },
           "support_weight": {
             "examples": [
               "2.8"
@@ -27844,6 +27998,30 @@
             "pattern": "^\\d+(\\.\\d{1,2})?$",
             "title": "Support Weight",
             "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By group, the type of the group; by model, the type of the model.",
+            "title": "Type"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By model: the name of its vendor.",
+            "title": "Vendor"
           }
         },
         "required": [
@@ -43328,6 +43506,8 @@
                     "site",
                     "region",
                     "contract",
+                    "group",
+                    "model",
                     "tag"
                   ],
                   "type": "string"
@@ -43684,6 +43864,8 @@
                     "site",
                     "region",
                     "contract",
+                    "group",
+                    "model",
                     "lifecycle_state",
                     "disposition",
                     "condition",

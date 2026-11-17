@@ -898,7 +898,10 @@ def test_the_management_report_holds_the_money_and_no_health(
         "est_value": "42200.00",
         "annual_support_cost": "3450.00",
     }
-    assert whole == {"by": "site", "totals": money, "rows": [{"key": None, "label": None, **money}]}
+    # A row by site says nothing of a group or of a model (P-178, P-180).
+    described = ("type", "member_count", "nested_groups", "vendor", "pid", "model_name", "kind")
+    row = {"key": None, "label": None, **money, **dict.fromkeys(described)}
+    assert whole == {"by": "site", "totals": money, "rows": [row]}
     assert [
         (row["label"], row["est_value"], row["annual_support_cost"]) for row in by_owner["rows"]
     ] == [

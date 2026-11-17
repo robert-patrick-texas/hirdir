@@ -6875,7 +6875,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "tag" | null;
           /** Count retired records and items in Archived as well. */
           include_archived?: boolean;
           /** Count draft records as well. */
@@ -6998,7 +6998,7 @@ export interface paths {
           /** A filter of the item list, in the short form or as JSON. */
           filter?: string;
           /** One row for each value of this. */
-          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+          by?: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
           /** With `by`: list in each row the operators in force among its items. */
           operators?: boolean;
           /** Count retired records and items in Archived as well. */
@@ -8899,6 +8899,8 @@ export interface components {
       est_value: string | null;
       function: string | null;
       hid: string;
+      /** How many items are of the model, as the item list counts them (P-180): major and minor, drafts, retired items and items in Archived left out. */
+      items: number;
       kind: string;
       ldos: string | null;
       /** Up to 20, in order, changed whole: an empty list has none. */
@@ -10979,7 +10981,7 @@ export interface components {
     /** The value and the cost of a view of the items, for the people who pay for it. */
     ManagementOut: {
       /** What the rows are by: the site, unless asked. */
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "tag";
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "tag";
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -10991,7 +10993,21 @@ export interface components {
       /** Every item of the set, major and minor. */
       items: number;
       key: string | null;
+      /** By model: its kind. */
+      kind?: string | null;
       label: string | null;
+      /** By group: its current members. */
+      member_count?: number | null;
+      /** By model: its name. */
+      model_name?: string | null;
+      /** By group: how many groups are nested in it, at any depth. */
+      nested_groups?: number | null;
+      /** By model: its PID. */
+      pid?: string | null;
+      /** By group, the type of the group; by model, the type of the model. */
+      type?: string | null;
+      /** By model: the name of its vendor. */
+      vendor?: string | null;
     };
     /** An item to make a member of a group. */
     MemberAdd: {
@@ -12541,7 +12557,7 @@ export interface components {
     };
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
-      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };
@@ -12553,12 +12569,26 @@ export interface components {
       items: number;
       /** The value, or the HID of the record. Null for none. */
       key: string | null;
+      /** By model: its kind. */
+      kind?: string | null;
       /** What people call it. */
       label: string | null;
       managed_node_count: number;
+      /** By group: its current members. */
+      member_count?: number | null;
+      /** By model: its name. */
+      model_name?: string | null;
+      /** By group: how many groups are nested in it, at any depth. */
+      nested_groups?: number | null;
       /** With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null. */
       operators: components["schemas"]["RowOperator"][] | null;
+      /** By model: its PID. */
+      pid?: string | null;
       support_weight: string;
+      /** By group, the type of the group; by model, the type of the model. */
+      type?: string | null;
+      /** By model: the name of its vendor. */
+      vendor?: string | null;
     };
     /** The measures of the whole view, and its items by condition and by kind. */
     SummaryTotals: {
