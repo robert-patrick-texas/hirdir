@@ -157,13 +157,13 @@ def test_stale_edit_is_refused(client: TestClient, admin: dict) -> None:
     first = client.patch(
         f"{API}/users/{me['hid']}",
         headers=admin,
-        json={"row_version": me["row_version"], "display_name": "Ada One"},
+        json={"row_version": me["row_version"], "username": "ada-one"},
     )
     assert first.json()["row_version"] == me["row_version"] + 1
     second = client.patch(
         f"{API}/users/{me['hid']}",
         headers=admin,
-        json={"row_version": me["row_version"], "display_name": "Ada Two"},
+        json={"row_version": me["row_version"], "username": "ada-two"},
     )
     assert second.status_code == 409
     assert second.json()["title"] == "Stale version"
@@ -243,8 +243,8 @@ def test_the_users_are_sorted_by_the_columns_of_their_table(
     client: TestClient, admin: dict
 ) -> None:
     make = Maker(client, admin)
-    zed = make.post("/users", {"username": "Zed", "display_name": "alpha Person"})["user"]
-    nia = make.post("/users", {"username": "nia", "display_name": "Beta Person"})["user"]
+    zed = make.post("/users", {"username": "Zed", "contact": {"name": "alpha Person"}})["user"]
+    nia = make.post("/users", {"username": "nia", "contact": {"name": "Beta Person"}})["user"]
     make.post("/users", {"username": "bot", "is_service_account": True})
     readers, auditors = (
         make.post("/user-groups", {"name": name}) for name in ("Readers", "auditors")
@@ -266,7 +266,7 @@ def test_the_users_are_sorted_by_the_columns_of_their_table(
     assert users(sort="role") == ["vic", "Zed", "ivy", "nia", "ada", "bot"]
     assert users(sort="-role") == ["ada", "ivy", "nia", "vic", "Zed", "bot"]
     assert users(sort="role", limit=2, offset=2) == ["ivy", "nia"]
-    # Text without regard to case, and a user with no display name last either way.
+    # The name of its contact, without regard to case, and a user with none last either way.
     assert users(sort="display_name") == ["Zed", "nia", "ada", "bot", "ivy", "vic"]
     assert users(sort="-display_name") == ["nia", "Zed", "ada", "bot", "ivy", "vic"]
     # The first of a user's groups by name: auditors before Readers.

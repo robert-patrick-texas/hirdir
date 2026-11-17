@@ -108,10 +108,14 @@ def list_users(
     offset: Offset = 0,
 ) -> schemas.Page[schemas.UserOut]:
     """List users, by username unless a sort says otherwise. `q` matches part of a
-    username or display name."""
+    username or of the name of its contact."""
     page, total = accounts.list_users(db, q, limit, offset, tables.arrange(tables.USERS, sort))
+    people = accounts.contacts_of(db, page)
     return schemas.Page(
-        items=[views.user_out(db, user) for user in page], total=total, limit=limit, offset=offset
+        items=[views.user_out(db, user, people.get(user.contact_hid or "")) for user in page],
+        total=total,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -122,10 +126,10 @@ def create_user(body: schemas.UserCreate, _: Admin, context: Audit, db: Db) -> s
         db,
         context,
         username=body.username,
-        display_name=body.display_name,
-        email=body.email,
         is_service_account=body.is_service_account,
         access_code=body.access_code,
+        contact_hid=body.contact_hid,
+        contact=body.contact.model_dump(exclude_unset=True) if body.contact else None,
     )
     if body.role:
         accounts.grant_role(db, context, role=body.role, user_hid=user.hid)
@@ -142,7 +146,9 @@ def get_user(hid: str, _: Admin, db: Db) -> schemas.UserOut:
 def update_user(
     hid: str, body: schemas.UserPatch, _: Admin, context: Audit, db: Db
 ) -> schemas.UserOut:
-    """Change a user. Disabling a user ends every session they have."""
+    """Change a user: its username, its contact, or whether it is disabled. Disabling a
+    user ends every session they have; a new username keeps them. The name, email and
+    numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`."""
     fields = body.model_dump(exclude={"row_version"}, exclude_unset=True)
     return views.user_out(db, accounts.update_user(db, context, hid, body.row_version, fields))
 

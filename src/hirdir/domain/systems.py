@@ -15,23 +15,16 @@ from sqlalchemy.orm import Session
 from hirdir import ids
 from hirdir.db import dialect
 from hirdir.db.models import DeviceGroup, DeviceGroupMember, ExternalSystem, Item, Registration
-from hirdir.domain import audit, health, records, settings
+from hirdir.domain import audit, choices, health, records, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 
 RECORD_TYPE = "external_system"
 REGISTRATION_TYPE = "registration"
-KINDS = (
-    "monitoring",
-    "config_backup",
-    "access_control",
-    "sdn_controller",
-    "cloud_service",
-    "dns",
-    "discovery",
-    "other",
-)
-OTHER = KINDS[-1]
+# The kind of a system is a value of an editable list (P-170), loaded with monitoring,
+# config_backup, access_control, sdn_controller, cloud_service, dns, discovery and other.
+KIND_LIST = "system_kind"
+OTHER = "other"
 STATUSES = ("registered", "pending", "removed")
 REGISTERED, REMOVED = STATUSES[0], STATUSES[2]
 FIELDS = ("name", "kind", "url", "notes", "record_status")
@@ -97,8 +90,8 @@ def _checked(db: Session, fields: dict[str, Any], system: ExternalSystem | None)
             )
         values["name"] = name
         values["name_key"] = records.key(name)
-    if "kind" in fields:
-        values["kind"] = records.checked_choice(fields["kind"] or OTHER, KINDS, "kind")
+    if "kind" in fields or system is None:
+        values["kind"] = _checked_kind(db, fields.get("kind"), system)
     if "url" in fields:
         values["url"] = records.checked_url("url", fields["url"])
     if "notes" in fields:
@@ -106,6 +99,24 @@ def _checked(db: Session, fields: dict[str, Any], system: ExternalSystem | None)
     if "record_status" in fields:
         values["record_status"] = records.checked_status(fields["record_status"])
     return values
+
+
+def _checked_kind(db: Session, kind: Any, system: ExternalSystem | None) -> str:
+    """Return the kind a system is given: a value of the list that it offers, or `other`
+    where none is given and `other` is offered. A value a system holds already is kept
+    by a change that gives it again, though it is offered no more (P-170)."""
+    text = kind.strip() if isinstance(kind, str) else ""
+    if system is not None and text and records.key(text) == records.key(system.kind):
+        return system.kind
+    if text:
+        return choices.checked(db, KIND_LIST, text, "kind")
+    if choices.is_offered(db, KIND_LIST, OTHER):
+        return OTHER
+    offered = [one.value for one in choices.list_choices(db, KIND_LIST) if one.active]
+    raise Invalid(
+        "an external system is given a kind",
+        {"kind": f"one of {', '.join(offered)}" if offered else "the list offers none"},
+    )
 
 
 def create_system(db: Session, context: AuditContext, fields: dict[str, Any]) -> ExternalSystem:

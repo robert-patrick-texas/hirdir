@@ -10,19 +10,24 @@ together.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.orm import Session, aliased
 
 from hirdir import ids
-from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site
+from hirdir.db.models import Contact, DeviceGroup, Item, Location, Operator, Region, Site, User
 from hirdir.domain import descent, geography, records, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
 
 RECORD_TYPE = "operator"
+# Internal where the contact behind a label is a user's, external, to hirdir, where it is
+# not; and no scope where nobody is behind it (P-172).
+type Scope = Literal["internal", "external"]
+INTERNAL: Scope = "internal"
+EXTERNAL: Scope = "external"
 FIELDS = ("label", "description", "colour", "contact_hid", "record_status")
 MAX_LABEL = 40
 GROUP_ORDER = descent.GROUP_ORDER
@@ -63,6 +68,17 @@ def the_one(db: Session, text: str, field: str) -> Operator:
 def is_open(operator: Operator, contact: Contact | None) -> bool:
     """Say whether nobody is behind a label: it has no contact, or one that is retired."""
     return contact is None or contact.record_status == "retired"
+
+
+def scope(contact: Contact | None, users: Mapping[str, User]) -> Scope | None:
+    """Say whether the person behind a label is a user, `internal`, or is not, `external`.
+
+    `users` gives the user each contact is, by the contact's HID, as
+    `hirdir.domain.contacts.users_of` returns it. A label with nobody behind it has none.
+    """
+    if contact is None:
+        return None
+    return INTERNAL if contact.hid in users else EXTERNAL
 
 
 def _checked(db: Session, fields: dict[str, Any], operator: Operator | None) -> dict[str, Any]:

@@ -618,6 +618,7 @@ def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
         "LABEL",
         "DESCRIPTION",
         "CONTACT",
+        "SCOPE",
         "IS_OPEN",
         "RECORD_STATUS",
     ]
@@ -641,7 +642,7 @@ def test_who_looks_after_an_item_is_shown_counted_and_handed_over(
 
     # The label is handed over, left open and released, each in one command.
     handed = run("operators", "assign", "LM", "robin.achterberg@example.net").stdout
-    assert handed.strip() == "LM is Robin Achterberg; it is on 1 records of its own"
+    assert handed.strip() == "LM is Robin Achterberg, external; it is on 1 records of its own"
     assert "LM (Robin Achterberg)" in run("items", "show", "site2-sw-2").stdout
     assert "nobody: it is open" in run("operators", "assign", "lm", "--open").stdout
     open_ones = run("items", "list", "--filter", "operator.is_open:eq:true").stdout

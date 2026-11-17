@@ -157,6 +157,7 @@ def test_a_vendor_names_its_account_team_and_support_desk_each_once_in_a_role(
         "organization": "Example Telecom",
         "email": "morgan.ellis@example.net",
         "phone": "+1 555 0160",
+        "phone2": None,
         "record_status": "active",
     }
     assert _name(make, path, repair, "support_contact")["priority"] == 1

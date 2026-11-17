@@ -42,6 +42,7 @@ def test_choices_come_with_defaults_and_can_be_added_to(make: Maker) -> None:
         "circuit_type",
         "carrier_role",
         "reference_kind",
+        "system_kind",
     }
     assert "list" in errors(make.get("/choices", 422, list="colours"))
 

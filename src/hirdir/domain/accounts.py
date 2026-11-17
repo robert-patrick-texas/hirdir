@@ -14,8 +14,15 @@ from hirdir import clock
 from hirdir.auth import codes, tokens
 from hirdir.auth.roles import Role, highest
 from hirdir.auth.throttle import Throttle
-from hirdir.db.models import RoleGrant, ServiceToken, User, UserGroup, UserGroupMember
-from hirdir.domain import audit
+from hirdir.db.models import (
+    Contact,
+    RoleGrant,
+    ServiceToken,
+    User,
+    UserGroup,
+    UserGroupMember,
+)
+from hirdir.domain import audit, contacts
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import (
     Conflict,
@@ -103,12 +110,10 @@ def list_users(
 
     `arrange` sorts them as was asked for, and the username settles what that leaves tied.
     """
-    query = select(User)
+    query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
     if q:
         pattern = f"%{_key(q)}%"
-        query = query.where(
-            or_(User.username_key.like(pattern), func.lower(User.display_name).like(pattern))
-        )
+        query = query.where(or_(User.username_key.like(pattern), Contact.name_key.like(pattern)))
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     if arrange is not None:
         query = arrange(query)
@@ -128,37 +133,99 @@ def groups_of(db: Session, user: User) -> list[UserGroup]:
     )
 
 
-def create_user(
-    db: Session,
-    context: AuditContext,
-    *,
-    username: str,
-    display_name: str = "",
-    email: str = "",
-    is_service_account: bool = False,
-    access_code: str | None = None,
-) -> tuple[User, str | None]:
-    """Create a user. Return it with its access code, which is shown this once.
+def contact_of(db: Session, user: User) -> Contact | None:
+    """Return the contact a user is, or None: a service account, or a user not given one."""
+    return db.get(Contact, user.contact_hid) if user.contact_hid else None
 
-    A person gets the given access code, or a generated one. A service account gets
-    none: it holds tokens instead.
-    """
+
+def contacts_of(db: Session, users: list[User]) -> dict[str, Contact]:
+    """Return the contact of each of the users that has one, by its HID."""
+    hids = {user.contact_hid for user in users if user.contact_hid}
+    if not hids:
+        return {}
+    return {one.hid: one for one in db.scalars(select(Contact).where(Contact.hid.in_(hids)))}
+
+
+def name_of(user: User, contact: Contact | None) -> str:
+    """Return the name a user is shown by: its contact's, or its username."""
+    return contact.name if contact is not None else user.username
+
+
+def _checked_username(db: Session, username: str, user: User | None) -> str:
     username = username.strip()
     if not USERNAME.fullmatch(username):
         raise Invalid(
             "the username is not acceptable",
             {"username": "1 to 64 letters, digits, dots, hyphens or underscores"},
         )
-    if find_user(db, username) is not None:
-        raise Conflict(f"there is already a user named {username}")
+    taken = find_user(db, username)
+    if taken is not None and (user is None or taken.hid != user.hid):
+        raise Conflict(
+            f"there is already a user named {taken.username}",
+            {"username": "another user has this username"},
+        )
+    return username
+
+
+def _checked_contact(db: Session, hid: str, user: User | None, service: bool) -> Contact:
+    """Return the contact a user is to be, or refuse one it cannot be (P-172)."""
+    if service:
+        raise Invalid(
+            "a service account is no person and has no contact",
+            {"contact_hid": "a service account has no contact"},
+        )
+    contact = db.get(Contact, hid)
+    if contact is None:
+        raise Invalid("there is no such contact", {"contact_hid": f"there is no contact {hid}"})
+    if contact.record_status == "retired":
+        raise Invalid("the contact is retired", {"contact_hid": "this contact is retired"})
+    other = db.scalar(select(User).where(User.contact_hid == hid))
+    if other is not None and (user is None or other.hid != user.hid):
+        raise Conflict(
+            f"{contact.name} is already the contact of the user {other.username}",
+            {"contact_hid": "this contact is another user's"},
+        )
+    return contact
+
+
+def create_user(
+    db: Session,
+    context: AuditContext,
+    *,
+    username: str,
+    is_service_account: bool = False,
+    access_code: str | None = None,
+    contact_hid: str | None = None,
+    contact: dict[str, Any] | None = None,
+) -> tuple[User, str | None]:
+    """Create a user. Return it with its access code, which is shown this once.
+
+    A person gets the given access code, or a generated one. A service account gets
+    none: it holds tokens instead. The person is a contact: `contact_hid` names one,
+    `contact` holds the fields of a new one, made in the same change, or neither is
+    given and the user has none until an Admin gives it one (P-172).
+    """
+    username = _checked_username(db, username, None)
+    if contact_hid is not None and contact is not None:
+        raise Invalid(
+            "a user is given one contact",
+            {"contact": "give contact_hid or contact, not both"},
+        )
+    if contact is not None and is_service_account:
+        raise Invalid(
+            "a service account is no person and has no contact",
+            {"contact": "a service account has no contact"},
+        )
+    person = _checked_contact(db, contact_hid, None, is_service_account) if contact_hid else None
     code = None
     if not is_service_account:
         code = _checked_code(access_code) if access_code is not None else codes.generate()
+    if contact is not None:
+        person = contacts.create_contact(db, context, dict(contact))
     user = User(
         username=username,
         username_key=_key(username),
-        display_name=display_name.strip(),
-        email=email.strip(),
+        contact_hid=person.hid if person is not None else None,
         is_service_account=is_service_account,
         access_code_hash=codes.hash_code(code) if code else None,
         created_by=context.actor_hid,
@@ -175,6 +242,7 @@ def create_user(
         [
             change("username", None, user.username),
             change("is_service_account", None, user.is_service_account),
+            *([change("contact_hid", None, user.contact_hid)] if user.contact_hid else []),
         ],
     )
     return user, code
@@ -183,16 +251,27 @@ def create_user(
 def update_user(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> User:
-    """Change display_name, email or disabled on a user."""
+    """Change a user's username (P-173), its contact (P-172), or whether it is disabled.
+
+    The name, the email and the numbers a user shows are its contact's, and are changed
+    on the contact. A new username keeps the user's sessions and tokens: it is the same
+    record, by its HID.
+    """
     user = get_user(db, hid)
     changes = []
-    for name in ("display_name", "email", "disabled"):
-        if name not in fields or fields[name] is None:
-            continue
-        new = fields[name].strip() if isinstance(fields[name], str) else fields[name]
-        old = getattr(user, name)
-        if new != old:
-            changes.append(change(name, old, new))
+    if fields.get("username") is not None:
+        username = _checked_username(db, fields["username"], user)
+        if username != user.username:
+            changes.append(change("username", user.username, username))
+            changes.append(change("username_key", user.username_key, _key(username)))
+    if "contact_hid" in fields:
+        new = fields["contact_hid"] or None
+        if new is not None and new != user.contact_hid:
+            _checked_contact(db, new, user, user.is_service_account)
+        if new != user.contact_hid:
+            changes.append(change("contact_hid", user.contact_hid, new))
+    if fields.get("disabled") is not None and fields["disabled"] != user.disabled:
+        changes.append(change("disabled", user.disabled, fields["disabled"]))
     if not changes:
         if user.row_version != row_version:
             _touch(user, context, row_version)
@@ -203,7 +282,8 @@ def update_user(
             setattr(user, entry["field"], entry["new"])
         if user.disabled:
             _end_sessions(user)
-    audit.record(db, context, "update", "user", user.hid, changes)
+    shown = [entry for entry in changes if entry["field"] != "username_key"]
+    audit.record(db, context, "update", "user", user.hid, shown)
     return user
 
 

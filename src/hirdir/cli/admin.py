@@ -149,7 +149,12 @@ def migrate() -> None:
 def create_user(
     username: str,
     role: Annotated[str | None, typer.Option(help="viewer, inventory or admin")] = None,
-    display_name: Annotated[str, typer.Option(help="The person's name.")] = "",
+    name: Annotated[
+        str, typer.Option(help="The person's name: makes the contact the user is.")
+    ] = "",
+    email: Annotated[str, typer.Option(help="The email of that contact.")] = "",
+    phone: Annotated[str, typer.Option(help="Its number.")] = "",
+    phone2: Annotated[str, typer.Option(help="Its second number.")] = "",
     access_code: Annotated[
         str | None, typer.Option(help="Set this code instead of generating one.")
     ] = None,
@@ -157,9 +162,17 @@ def create_user(
         bool, typer.Option("--service-account", help="An account that holds tokens.")
     ] = False,
 ) -> None:
-    """Create a user and print the access code, which is not shown again."""
+    """Create a user and print the access code, which is not shown again.
+
+    The person is a contact: --name, with --email, --phone and --phone2 where known,
+    makes it with the user. Without them the user has no contact until an Admin gives
+    it one, and is shown by its username.
+    """
     if role is not None and role not in [r.value for r in Role]:
         raise _fail("the role must be viewer, inventory or admin", 2)
+    person = {"name": name, "email": email, "phone": phone, "phone2": phone2}
+    if not name and (email or phone or phone2):
+        raise _fail("--email, --phone and --phone2 are of the contact that --name makes", 2)
     config = _load()
     with make_sessions(make_engine(config.database_url))() as db:
         try:
@@ -167,9 +180,9 @@ def create_user(
                 db,
                 audit.SYSTEM,
                 username=username,
-                display_name=display_name,
                 is_service_account=service_account,
                 access_code=access_code,
+                contact={key: value for key, value in person.items() if value} if name else None,
             )
             if role:
                 accounts.grant_role(db, audit.SYSTEM, role=role, user_hid=user.hid)

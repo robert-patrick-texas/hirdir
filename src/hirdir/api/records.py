@@ -65,6 +65,8 @@ ShortText = Annotated[str, Field(max_length=100)]
 HostName = Annotated[str, Field(max_length=255)]
 LongText = Annotated[str, Field(max_length=10_000)]
 Hid = Annotated[str, Field(max_length=36)]
+# Whether the person behind an operator is a user, internal, or is not, external (P-172).
+Scope = Literal["internal", "external"]
 RecordStatus = Literal["draft", "active", "retired"]
 
 
@@ -342,6 +344,9 @@ class OperatorRef(Model):
     contact_hid: str | None
     contact: str | None = Field(description="The name of the person behind the label.")
     is_open: bool = Field(description="Nobody is behind it: no contact, or one that is retired.")
+    scope: Scope | None = Field(
+        description="internal where its contact is a user's, external where not; none if nobody."
+    )
     record_status: RecordStatus
 
 
@@ -721,20 +726,30 @@ class ContactRef(Model):
     organization: str | None
     email: str | None
     phone: str | None
+    phone2: str | None
     record_status: RecordStatus
 
 
+class UserBrief(Model):
+    """The user a contact is: who it signs in as."""
+
+    hid: str
+    username: str
+
+
 class ContactOut(Model):
-    """A person or a shared mailbox."""
+    """A person or a shared mailbox: one of the people, whatever part they play (P-172)."""
 
     hid: str
     name: str
     organization: str | None
     email: str | None
     phone: str | None
+    phone2: str | None
     notes: str | None
     record_status: RecordStatus
     tags: list[str]
+    user: UserBrief | None = Field(description="The user this contact is, where it is one.")
     uses: int = Field(
         description=(
             "How many places and owners it is assigned to, and operators it stands behind."
@@ -752,6 +767,7 @@ class ContactCreate(Model):
     organization: Name | None = None
     email: str | None = Field(default=None, max_length=254)
     phone: str | None = Field(default=None, max_length=50)
+    phone2: str | None = Field(default=None, max_length=50)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"
     tags: list[ShortText] = Field(default=[], max_length=100)
@@ -765,6 +781,7 @@ class ContactPatch(Model):
     organization: Name | None = None
     email: str | None = Field(default=None, max_length=254)
     phone: str | None = Field(default=None, max_length=50)
+    phone2: str | None = Field(default=None, max_length=50)
     notes: LongText | None = None
     record_status: Literal["draft", "active"] | None = None
     tags: list[ShortText] | None = Field(default=None, max_length=100)
@@ -778,7 +795,13 @@ class OperatorOut(Model):
     description: str | None
     colour: str | None
     contact_hid: str | None
-    contact: ContactRef | None
+    contact: ContactRef | None = Field(
+        description="The person behind it, with the email and numbers it shows (P-172)."
+    )
+    user: UserBrief | None = Field(description="The user its contact is, where it is one.")
+    scope: Scope | None = Field(
+        description="internal where its contact is a user's, external where not; none if nobody."
+    )
     is_open: bool = Field(description="Nobody is behind it: no contact, or one that is retired.")
     record_status: RecordStatus
     uses: int = Field(description="How many items, groups and places are given it as their own.")
@@ -1247,6 +1270,10 @@ class EffectiveOperator(EffectiveReference):
     contact_hid: str | None
     contact: str | None = Field(description="The name of the person behind the label.")
     is_open: bool = Field(description="Nobody is behind the label.")
+    scope: Scope | None = Field(
+        default=None,
+        description="internal where its contact is a user's, external where not; none if nobody.",
+    )
 
 
 # --- the circuits a device is connected to (P-147) -----------------------------------
@@ -2751,15 +2778,12 @@ class Receive(Model):
 
 # --- external systems ----------------------------------------------------------------
 
-SystemKind = Literal[
-    "monitoring",
-    "config_backup",
-    "access_control",
-    "sdn_controller",
-    "cloud_service",
-    "dns",
-    "discovery",
-    "other",
+SystemKind = Annotated[
+    str,
+    Field(
+        max_length=40,
+        description="A value of the system_kind list, which GET /choices?list=system_kind gives.",
+    ),
 ]
 
 
@@ -2784,7 +2808,9 @@ class ExternalSystemCreate(Model):
     """A new external system."""
 
     name: Name = Field(min_length=1)
-    kind: SystemKind = "other"
+    kind: SystemKind | None = Field(
+        default=None, description="Left out, other, where the list offers other."
+    )
     url: Url | None = None
     notes: LongText | None = None
     record_status: Literal["draft", "active"] = "active"

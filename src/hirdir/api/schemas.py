@@ -45,13 +45,28 @@ class GroupRef(Model):
     name: str
 
 
+class PersonRef(Model):
+    """The contact a user is: its name, email and numbers, read when the user is read."""
+
+    hid: str
+    name: str
+    email: str | None
+    phone: str | None
+    phone2: str | None
+    record_status: str
+
+
 class UserOut(Model):
-    """A user."""
+    """A user: the part of a person who signs in, or a service account (P-172)."""
 
     hid: str
     username: str
-    display_name: str
-    email: str
+    contact_hid: str | None
+    contact: PersonRef | None = Field(
+        description="The contact the user is. None for a service account, or a user not given one."
+    )
+    display_name: str = Field(description="The name of its contact; blank where it has none.")
+    email: str = Field(description="The email of its contact; blank where it has none.")
     is_service_account: bool
     disabled: bool
     role: str | None = Field(description="The highest role held directly or through a group.")
@@ -62,12 +77,30 @@ class UserOut(Model):
     updated_at: datetime
 
 
-class UserCreate(Model):
-    """A new user."""
+class NewPerson(Model):
+    """A new contact, made with the user that it is."""
 
-    username: str = Field(min_length=1, max_length=64)
-    display_name: str = Field(default="", max_length=200)
-    email: str = Field(default="", max_length=254)
+    name: str = Field(min_length=1, max_length=200)
+    email: str | None = Field(default=None, max_length=254)
+    organization: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+    phone2: str | None = Field(default=None, max_length=50)
+
+
+class UserCreate(Model):
+    """A new user. The person is a contact: one there is, a new one, or none yet."""
+
+    username: str = Field(
+        min_length=1,
+        max_length=64,
+        description="What the person signs in with. An Admin can change it later.",
+    )
+    contact_hid: str | None = Field(
+        default=None, max_length=36, description="The contact the user is."
+    )
+    contact: NewPerson | None = Field(
+        default=None, description="A new contact, made in the same change."
+    )
     is_service_account: bool = False
     access_code: str | None = Field(
         default=None, max_length=200, description="Left out, a code is generated."
@@ -86,8 +119,14 @@ class UserPatch(Model):
     """Fields of a user to change, and the version they were read at."""
 
     row_version: int
-    display_name: str | None = Field(default=None, max_length=200)
-    email: str | None = Field(default=None, max_length=254)
+    username: str | None = Field(
+        default=None, min_length=1, max_length=64, description="Another username (P-173)."
+    )
+    contact_hid: str | None = Field(
+        default=None,
+        max_length=36,
+        description="Another contact; null for none. A service account has none.",
+    )
     disabled: bool | None = None
 
 

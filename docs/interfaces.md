@@ -426,7 +426,7 @@ contacts of vendors, and the support weight of a place.
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
 | `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `user`, the username of the user the contact is |
-| `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and the `email`, `phone` and `phone2` of its contact |
+| `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and `contact_email`, `contact_phone` and `contact_phone2`, those of its contact |
 | `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
 | `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
