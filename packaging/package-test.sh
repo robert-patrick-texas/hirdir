@@ -825,42 +825,59 @@ table_rows() {
     fi
 }
 
-# events_beside HIDS: the audit trail as it is after an upgrade, beside the events it
-# held before, whose HIDs are named with a comma between them: how many of those there
-# are and one checksum of what they hold, as table_rows prints it of them all; then
-# how many events there are since that the started service did not write by itself,
-# and how many it did. From 0.7.0 the service records the capacity balance of the
-# week when it starts in a week that has no record (D-188): one event, which the system
-# makes and nobody, of the action create on a capacity_record. From 0.8.0 it also works
-# out the long reports when it starts (P-157), which writes nothing. No upgrade writes
-# an event, and a check that one wrote none allows for that event by name, and for no
-# other.
+# events_beside HIDS [REQUEST]: the audit trail as it is after an upgrade, beside the
+# events it held before, whose HIDs are named with a comma between them: how many of
+# those there are and one checksum of what they hold, as table_rows prints it of them
+# all; then how many events there are since that the started service did not write by
+# itself, and how many it did; and with REQUEST, how many of those since carry that
+# request ID, as the events that a migration writes do, apart from the others. From
+# 0.7.0 the service records the capacity balance of the week when it starts in a week
+# that has no record (D-188): one event, which the system makes and nobody, of the
+# action create on a capacity_record. From 0.8.0 it also works out the long reports when
+# it starts (P-157), which writes nothing. An upgrade writes no event but those of a
+# migration whose file names their request ID, and a check that one wrote no other
+# allows for the service's event by name, and for no other.
 events_beside() {
     inside runuser -u hirdir -- /opt/hirdir/python/bin/python3 -I -c '
 import hashlib, sqlite3, sys
 
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
 then = set(sys.argv[1].split(","))
+request = sys.argv[2] if len(sys.argv) > 2 else ""
 names = [column[1] for column in held.execute("PRAGMA table_info(audit_events)")]
 rows = held.execute("SELECT " + ", ".join(f"\"{name}\"" for name in names) + " FROM audit_events ORDER BY hid").fetchall()
 kept = [row for row in rows if row[names.index("hid")] in then]
 since = [dict(zip(names, row)) for row in rows if row[names.index("hid")] not in then]
 own = [e for e in since if (e["via"], e["actor_hid"], e["action"], e["record_type"]) == ("system", None, "create", "capacity_record")]
-print(len(kept), "rows", hashlib.sha256(repr(kept).encode()).hexdigest(), "|", len(since) - len(own), "other,", len(own), "by the service itself")' "$1" 2>&1
+upgraded = [e for e in since if request and e not in own and e["request_id"] == request]
+said = f", {len(upgraded)} of the upgrade, {request}" if request else ""
+print(len(kept), "rows", hashlib.sha256(repr(kept).encode()).hexdigest(), "|", len(since) - len(own) - len(upgraded), "other,", len(own), "by the service itself" + said)' "$@" 2>&1
 }
 
 # no_event_written BEFORE HIDS: the check that an upgrade wrote no audit event, made
 # before anything is asked of the new version, since a sign-in is an event too. BEFORE
 # is what table_rows printed of the audit trail before the upgrade and HIDS the HIDs of
 # its events: each must be as it was, and beside them there may be the one event that
-# the started service writes by itself, and nothing else.
+# the started service writes by itself, and nothing else. Where the file of a migration
+# names the request ID of the events that it writes, $upgrade_events, there may be
+# those as well, which that file looks at by itself.
 no_event_written() {
-    local found own
-    found=$(events_beside "$2")
-    own=$(printf '%s' "$found" | sed -n 's/.*other, \([0-9]*\) by the service itself$/\1/p')
+    local found own written
+    if [ -n "$upgrade_events" ]; then
+        found=$(events_beside "$2" "$upgrade_events")
+    else
+        found=$(events_beside "$2")
+    fi
+    own=$(printf '%s' "$found" | sed -n 's/.*other, \([0-9]*\) by the service itself.*$/\1/p')
     own=${own:-0}
-    expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($1), and beside them nothing but what the started service writes by itself, the record of the capacity balance of a week that had none: $own such event" \
-        "$found" "$1 | 0 other, $((own > 1 ? 1 : own)) by the service itself"
+    if [ -z "$upgrade_events" ]; then
+        expect "pkg the upgrade wrote no audit event: the audit trail holds the events it held, each as it was ($1), and beside them nothing but what the started service writes by itself, the record of the capacity balance of a week that had none: $own such event" \
+            "$found" "$1 | 0 other, $((own > 1 ? 1 : own)) by the service itself"
+        return 0
+    fi
+    written=$(printf '%s' "$found" | sed -n 's/.* by the service itself, \([0-9]*\) of the upgrade, .*$/\1/p')
+    expect "pkg the upgrade wrote no audit event but those of its migration: the audit trail holds the events it held, each as it was ($1), and beside them the ${written:-no} events of the request $upgrade_events, which are looked at by themselves, and nothing else but what the started service writes by itself, the record of the capacity balance of a week that had none: $own such event" \
+        "$found" "$1 | 0 other, $((own > 1 ? 1 : own)) by the service itself, ${written:-0} of the upgrade, $upgrade_events"
 }
 
 # sqlite_text SQL: every value of every row of one query on the database of the
@@ -1065,8 +1082,10 @@ install_previous() {
 #   meant[LIST]          fields of records, each as HID.field, with a space before each,
 #                        or as HID.field.field for one field of a block that the
 #                        record holds. LIST is items, device-groups, members,
-#                        networks, addresses, owners, choices or stack, which is the
-#                        first stack read by itself
+#                        networks, addresses, owners, choices, users, the name of a
+#                        list that came after the groups, or stack, which is the first
+#                        stack read by itself. users is compared in the upgrade pass
+#                        alone, before anything is asked of the inventory
 #   may_add[NAME]        set when the new version may add records to that list, or
 #                        rows to the table of that name: choices is both
 #   rows_apart[TABLE]    the HIDs of the rows of a table that are meant to change, with
@@ -1077,6 +1096,9 @@ install_previous() {
 #                        the columns that it declares otherwise, each in its place, such
 #                        as one that may now be blank, as table_read columns prints them
 #                        afterwards, one on a line
+#   gone_columns[TABLE]  the names of the columns that it drops from a table, with a
+#                        space between them: they must be gone, and the rows are
+#                        compared in the columns that are left
 #   new_keys[TABLE]      the indexes and foreign keys that it adds, as table_read keys
 #                        prints them, one on a line
 #   more_tables          tables that hold what a site made and are no part of the
@@ -1089,6 +1111,10 @@ install_previous() {
 #   writes_no_event=yes  the migration writes no audit event: the audit trail must
 #                        then hold the events it held and no other when the upgrade
 #                        is done, as after an upgrade with no migration
+#   upgrade_events=ID    the migration writes audit events, each with this request
+#                        ID: the audit trail must then hold, when the upgrade is done,
+#                        the events it held and beside them those and no other, which
+#                        the file looks at by itself
 #   fail_by=trigger      make the migration fail by the trigger on alembic_version
 #                        though it creates a table: for a migration that creates its
 #                        tables before it changes those that hold a site's records
@@ -1096,7 +1122,8 @@ install_previous() {
 # The tables that a migration creates are read from the package and are not named. A
 # file may also set, as it is read, what the inventory is to expect of the previous
 # release where that differs from every release since: see $zoneless_moment and
-# $witness_weight.
+# $witness_weight. Its first function adds to $users_made each user that it makes
+# beside the accounts of the pass.
 #
 # A migration that has no file is given what every upgrade is given, and a SKIP line
 # that says so, in both passes. Nobody has then said what it adds, so what was there
@@ -1107,10 +1134,11 @@ particulars_dir=packaging/package-test.d
 particulars=()
 particular_files=()
 unwritten=""
-declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() new_keys=() rest_of=() rest_before=()
+declare -A meant=() may_add=() rows_apart=() new_columns=() altered_columns=() gone_columns=() new_keys=() rest_of=() rest_before=()
 more_tables=""
 counted_view=""
 writes_no_event=""
+upgrade_events=""
 fail_by=""
 # The days, in UTC, that the upgrade which went through began and ended on.
 upgrade_days=""
@@ -1356,7 +1384,7 @@ failed_upgrade() {
         tail -n 30 "$work/apt.log"
     fi
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if [ -n "$writes_no_event" ]; then no_event_written "$events_then" "$events_hids"; fi
+    if [ -n "$writes_no_event$upgrade_events" ]; then no_event_written "$events_then" "$events_hids"; fi
     good_backup=$(sed -n 's/^hirdir: the database as it was before this upgrade is kept at //p' "$work/apt.log")
     expect "pkg dpkg holds hirdir $version as installed" \
         "$(inside dpkg-query -W -f "\${Version} \${Status}" hirdir 2>&1)" "$version install ok installed"
@@ -1587,6 +1615,7 @@ witness_weight_after=1.25
 zoneless_moment=2026-11-03T14:00:00Z
 zoneless_said="09:00 in the application's time zone, New York here, which is 14:00 in UTC"
 users_before=0
+users_made=0
 events_before=0
 conffiles_before=""
 
@@ -2827,11 +2856,12 @@ witness_kept() {
         columns_before[$table]=$(table_read "$table" columns)
         keys_before[$table]=$(table_read "$table" keys)
         rows_before[$table]=$(table_rows "$table" "$(table_columns "$table")")
-        # Where a file says that rows of the table are meant to change, or that rows
-        # may be added to it, the others are kept by themselves as well.
-        if [ -n "${rows_apart[$table]:-}${may_add[$table]:-}$unwritten" ]; then
+        # Where a file says that rows of the table are meant to change, that rows may
+        # be added to it, or that columns are dropped from it, the others are kept by
+        # themselves as well, in the columns that are to be left.
+        if [ -n "${rows_apart[$table]:-}${may_add[$table]:-}${gone_columns[$table]:-}$unwritten" ]; then
             rest_of[$table]=$(table_read "$table" hids "${rows_apart[$table]:-}")
-            rest_before[$table]=$(table_rows "$table" "$(table_columns "$table")" "${rest_of[$table]}")
+            rest_before[$table]=$(table_rows "$table" "$(columns_left "$table")" "${rest_of[$table]}")
         fi
     done
     check "pkg and its items table is read from the database file: $(printf '%s\n' "${columns_before[items]}" | wc -l) columns, $(printf '%s\n' "${keys_before[items]}" | wc -l) indexes and foreign keys, ${rows_before[items]%% *} rows" \
@@ -2995,17 +3025,30 @@ witness_carried() {
 # read it.
 columns_then() { printf '%s\n' "${columns_before[$1]}" | cut -d' ' -f1 | xargs; }
 
+# columns_left TABLE: the names of the columns that the table had when witness_kept read
+# it and that the migrations of the upgrade do not drop, on one line. The rows that are
+# kept are compared in these.
+columns_left() {
+    local name left=""
+    for name in $(columns_then "$1"); do
+        case " ${gone_columns[$1]:-} " in *" $name "*) ;; *) left="$left $name" ;; esac
+    done
+    printf '%s' "${left# }"
+}
+
 # columns_meant TABLE: the columns that a table is to have after the migrations of the
-# upgrade, as table_read columns prints them: those it had, in their places, each as the
-# files say that it is declared now where they say it is declared otherwise, and after
-# them those that the files say are added.
+# upgrade, as table_read columns prints them: those it had and that the files do not
+# say are dropped, in their places, each as the files say that it is declared now where
+# they say it is declared otherwise, and after them those that the files say are added.
 columns_meant() {
     python3 -c '
 import sys
 before, altered, added = (text.splitlines() for text in sys.argv[1:4])
+gone = set(sys.argv[4].split())
 now = {line.split(" ", 1)[0]: line for line in altered if line}
-print("\n".join([now.get(line.split(" ", 1)[0], line) for line in before] + [line for line in added if line]))' \
-        "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}"
+kept = [line for line in before if line.split(" ", 1)[0] not in gone]
+print("\n".join([now.get(line.split(" ", 1)[0], line) for line in kept] + [line for line in added if line]))' \
+        "${columns_before[$1]}" "${altered_columns[$1]:-}" "${new_columns[$1]:-}" "${gone_columns[$1]:-}"
 }
 
 # every_line_in BEFORE NOW: whether every line of the first text is a line of the second.
@@ -3022,10 +3065,11 @@ sys.exit(0 if set(sys.argv[1].splitlines()) <= set(sys.argv[2].splitlines()) els
 # keys, and the rows it had: for an upgrade with no migration, which changes nothing
 # that is held, and where the previous release serves again.
 #
-# With "migrated", each has every column it had, as it was, and after them those that
-# the files of the migrations say are added, and no other; the indexes, uniquenesses and
-# foreign keys likewise; and every row holds what it held in the columns it had, but
-# for the rows that a file says are meant to change. While a migration of the upgrade
+# With "migrated", each has every column it had, as it was, but for those that the files
+# of the migrations say are dropped, and after them those that the files say are added,
+# and no other; the indexes, uniquenesses and foreign keys likewise; and every row holds
+# what it held in the columns it had and keeps, but for the rows that a file says are
+# meant to change. While a migration of the upgrade
 # has no file, nobody has said what is added: what a table had must then still be
 # there, its rows too, and what is there beside it is not looked at.
 tables_carried() {
@@ -3051,10 +3095,13 @@ tables_carried() {
             every_line_in "${keys_before[$table]}" "$keys" || differing="${differing}keys. "
             added=", and whatever migration ${unwritten// /, }, which has no file yet, adds to them"
         else
-            if [ -n "${new_columns[$table]:-}${altered_columns[$table]:-}" ]; then
+            if [ -n "${new_columns[$table]:-}${altered_columns[$table]:-}${gone_columns[$table]:-}" ]; then
                 [ "$columns" = "$(columns_meant "$table")" ] || differing="${differing}columns. "
+                if [ -n "${gone_columns[$table]:-}" ]; then
+                    added=", but for $(echo "${gone_columns[$table]}" | xargs | sed 's/ /, /g'), which the migration drops"
+                fi
                 if [ -n "${altered_columns[$table]:-}" ]; then
-                    added=", but for $(printf '%s\n' "${altered_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g'), which the migration declares as it says"
+                    added="$added, but for $(printf '%s\n' "${altered_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g'), which the migration declares as it says"
                 fi
                 if [ -n "${new_columns[$table]:-}" ]; then
                     added="$added, and after its columns $(printf '%s\n' "${new_columns[$table]}" | cut -d' ' -f1 | xargs | sed 's/ /, /g')"
@@ -3070,7 +3117,7 @@ tables_carried() {
             fi
         fi
         if [ -n "${rest_of[$table]+kept}" ]; then
-            [ "$(table_rows "$table" "$(columns_then "$table")" "${rest_of[$table]}")" = "${rest_before[$table]}" ] || differing="${differing}rows. "
+            [ "$(table_rows "$table" "$(columns_left "$table")" "${rest_of[$table]}")" = "${rest_before[$table]}" ] || differing="${differing}rows. "
             if [ -n "${rows_apart[$table]:-}" ]; then
                 added="$added; the rows that are meant to change are left out, and looked at by themselves"
             fi
@@ -3279,8 +3326,8 @@ previous_release() {
     api GET '/audit-events?limit=1000'
     keep events
     events_before=$(json 'd["total"]')
-    expect "pkg $previous_version now holds the accounts, the group, the grants and the token" \
-        "$held" "3 users, 1 group with 1 member, 3 role grants, 1 service token"
+    expect "pkg $previous_version now holds the accounts, the group, the grants and the token$([ "$users_made" -gt 0 ] && echo ", and the $users_made users that the files of this pair made, with no role")" \
+        "$held" "$((3 + users_made)) users, 1 group with 1 member, 3 role grants, 1 service token"
     check "pkg and an audit event for each thing done ($events_before events)" test "$events_before" -ge 10
     if [ -n "$witness_entry" ]; then
         api GET /vendors
@@ -3317,7 +3364,7 @@ upgrade() {
     fi
     cp "$work/apt.log" "$work/install.log"
     # Read before anything is asked of the new version: a sign-in is an event too.
-    if ! migrating || [ -n "$writes_no_event" ]; then no_event_written "$events_then" "$events_hids_then"; fi
+    if ! migrating || [ -n "$writes_no_event$upgrade_events" ]; then no_event_written "$events_then" "$events_hids_then"; fi
     expect "pkg the installed version is $version" "$(installed_version)" "$version"
 
     backup=$(sed -n 's/^hirdir: the database as it was before this upgrade is kept at //p' "$work/install.log")
@@ -3428,6 +3475,22 @@ upgrade() {
     expect "pkg GET $prefix/api/v1/about says version $version and schema revision $head" \
         "$status $(json_field version) $(json_field schema_revision)" "200 $version $head"
 
+    # The accounts, read before anything is asked of the inventory, which a file of the
+    # pair may try what is new on. What the files say is meant to change of a user, such
+    # as a name that is now its contact's, is passed over here and looked at by them.
+    api GET '/users?limit=1000'
+    expect "pkg every user is as before the upgrade ($users_before)${meant[users]:+, but for what is meant to change, which is looked at by itself}" \
+        "$(unchanged users exact "${meant[users]:-}")" same
+    api GET /user-groups
+    expect "pkg the user group is as before, with its member and its role" "$(unchanged groups)" same
+    api GET /role-grants
+    expect "pkg every role grant is as before" "$(unchanged grants)" same
+    api GET "/users/$robot_hid/service-tokens"
+    expect "pkg the service token is as before" "$(unchanged tokens)" same
+    api GET '/audit-events?limit=1000'
+    expect "pkg every audit event from before is there and unchanged ($events_before)" \
+        "$(unchanged events more)" same
+
     # An import on the upgraded installation, under the prefix from before, where nobody
     # has run hirdir-setup or reloaded nginx since the upgrade: a file larger than the
     # megabyte nginx takes when it is left to itself. It is previewed and not applied,
@@ -3441,7 +3504,9 @@ upgrade() {
     if [ -n "$witness_entry" ]; then
         local row_version hid retired wanted place
         api GET /vendors
-        expect "pkg the vendor from before is as it was" "$status $(unchanged vendors)" "200 same"
+        # A newer version may give the records that a vendor holds, such as the people
+        # it names, more fields: every field that was there must be there as it was.
+        expect "pkg the vendor from before is as it was, field for field, in what it holds too" "$status $(unchanged vendors fields)" "200 same"
         expect "pkg and every vendor there was is marked reviewed" \
             "$(json '[len(d["items"]) > 0, sorted({v.get("review_status") for v in d["items"]})]')" '[true, ["reviewed"]]'
         api GET "/catalog-entries/$witness_entry"
@@ -3499,18 +3564,6 @@ upgrade() {
             if [ "${#witness_undo[@]}" -gt 0 ]; then witness_undone; fi
         fi
     fi
-
-    api GET '/users?limit=1000'
-    expect "pkg every user is as before the upgrade ($users_before)" "$(unchanged users)" same
-    api GET /user-groups
-    expect "pkg the user group is as before, with its member and its role" "$(unchanged groups)" same
-    api GET /role-grants
-    expect "pkg every role grant is as before" "$(unchanged grants)" same
-    api GET "/users/$robot_hid/service-tokens"
-    expect "pkg the service token is as before" "$(unchanged tokens)" same
-    api GET '/audit-events?limit=1000'
-    expect "pkg every audit event from before is there and unchanged ($events_before)" \
-        "$(unchanged events more)" same
 
     token=$service_secret
     api GET /auth/me
@@ -3744,8 +3797,24 @@ inventory_left() {
     inside /opt/hirdir/venv/bin/python -c '
 import sqlite3, sys
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
-count = lambda table: held.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+# From 0.9.3 the contact that each user is is kept with the accounts (P-172, P-174), and
+# is no record of the inventory.
+people = any(column[1] == "contact_hid" for column in held.execute("PRAGMA table_info(users)"))
+inventory = {"contacts": " WHERE hid NOT IN (SELECT contact_hid FROM users WHERE contact_hid IS NOT NULL)"} if people else {}
+count = lambda table: held.execute(f"SELECT count(*) FROM {table}" + inventory.get(table, "")).fetchone()[0]
 print(*(table for table in sys.argv[1].split() + ["users"] if count(table)))' "$inventory_tables" 2>&1
+}
+
+# people_kept: the contacts that users are, which a reset keeps: how many there are, one
+# checksum of what they hold and of what the users hold of them, and how many events
+# of their history the audit trail has.
+people_kept() {
+    inside /opt/hirdir/venv/bin/python -c '
+import hashlib, sqlite3
+held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
+people = held.execute("SELECT u.hid, c.* FROM users u JOIN contacts c ON c.hid = u.contact_hid ORDER BY u.hid").fetchall()
+events = held.execute("SELECT count(*) FROM audit_events WHERE record_type = ? AND record_hid IN (SELECT contact_hid FROM users)", ("contact",)).fetchone()[0]
+print(len(people), "contacts", hashlib.sha256(repr(people).encode()).hexdigest(), events, "events")' 2>&1
 }
 
 # export_request FORMAT FILTER [COLUMN...]: the body of POST /exports for items, sorted
@@ -3998,10 +4067,14 @@ files() {
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
     expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
+    local people
+    people=$(people_kept)
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, and keeps the accounts" \
         "$code $(inventory_left)" "0 users"
+    expect "pkg and keeps the contact that each user is, as it was, with its history: ${people%% contacts*} contacts, and nothing else of the contacts" \
+        "$(people_kept) $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM contacts')" "$people ${people%% contacts*}"
     expect "pkg it erases the content of the file from the store, says so, and its backup holds it beside it" \
         "$(grep -c '^the content of 1 files was erased from /var/lib/hirdir/files; the backup holds it in /var/lib/hirdir/backups/files$' "$work/reset.out") $(inside find /var/lib/hirdir/files -type f ! -path '*/.incoming/*' 2>&1 | wc -l) $(inside test -f "/var/lib/hirdir/backups/files/$(sha "$work/reset-plan.pdf" | cut -c1-2)/$(sha "$work/reset-plan.pdf")" && echo held)" \
         "1 0 held"
@@ -5540,9 +5613,9 @@ client_places() {
     # The operators: the labels of the examples, one handed over and left open again,
     # one of the test's own released, and the summary with the operators of each row.
     cli_run "$work/cli.operators" operators list
-    expect "pkg hirdir operators list is a table of the six labels of the examples, each with the person behind it, and says which is open" \
-        "$code $(head -n 1 "$work/cli.operators" | xargs) | $(tail -n +2 "$work/cli.operators" | awk '{print $2 ":" $(NF - 1)}' | xargs)" \
-        "0 HID LABEL DESCRIPTION CONTACT IS_OPEN RECORD_STATUS | DW:false LM:false OP6:true PR:false RA:false TL:false"
+    expect "pkg hirdir operators list is a table of the six labels of the examples, each with the person behind it and, from 0.9.3, whether that person is a user, its scope, and says which is open" \
+        "$code $(head -n 1 "$work/cli.operators" | xargs) | $(tail -n +2 "$work/cli.operators" | awk '{print $2 ":" $(NF - 1)}' | xargs) | $(grep -cw external "$work/cli.operators")" \
+        "0 HID LABEL DESCRIPTION CONTACT SCOPE IS_OPEN RECORD_STATUS | DW:false LM:false OP6:true PR:false RA:false TL:false | 5"
     cli_run "$work/cli-operators.csv" operators list --format csv
     api POST /exports '{"entity": "operators", "format": "csv"}'
     expect "pkg and as csv it is the file that POST /exports gives for operators" \
@@ -6823,8 +6896,10 @@ inventory() {
     local vendor c9300 c9500 owner first second filter long
 
     api GET /choices
-    expect "pkg the migrations loaded the default choices of all eleven lists, contact_role, location_kind, capacity_category, circuit_type, carrier_role and reference_kind among them" \
-        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category carrier_role catalog_function catalog_type circuit_type contact_role item_condition location_kind reference_kind replacement_reason state_reason"
+    expect "pkg the migrations loaded the default choices of all twelve lists, contact_role, location_kind, capacity_category, circuit_type, carrier_role, reference_kind and system_kind among them" \
+        "$status $(json '" ".join(sorted({c["list"] for c in d}))')" "200 capacity_category carrier_role catalog_function catalog_type circuit_type contact_role item_condition location_kind reference_kind replacement_reason state_reason system_kind"
+    expect "pkg the system_kind list offers at least the eight kinds of external system that were fixed until 0.9.3, from monitoring to other" \
+        "$(json 'sorted({"monitoring", "config_backup", "access_control", "sdn_controller", "cloud_service", "dns", "discovery", "other"} - {c["value"] for c in d if c["list"] == "system_kind" and c["active"]})')" "[]"
     expect "pkg the circuit_type list offers at least its seven defaults, and the carrier_role list its four" \
         "$(json '[sorted(set(w.split()) - {c["value"] for c in d if c["list"] == k}) for k, w in (("circuit_type", "internet mpls point_to_point dark_fiber wavelength voice other"), ("carrier_role", "local_exchange cross_connect last_mile other"))]')" \
         '[[], []]'

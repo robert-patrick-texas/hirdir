@@ -617,7 +617,7 @@ Docker and installs with apt, as an operator does.
 
 | Pass | What it does |
 |---|---|
-| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
+| `--upgrade` | Installs the previous release behind nginx under a prefix of its own, changes the configuration file, and through that release's API makes an Admin, a second user in a group that holds a role, a service account with a token, an inventory as below, and the audit events of all of it. It keeps a session token in hand, upgrades with apt, and checks: the backup was taken before the migration and is named; the schema is at the new revision by `hirdir admin check`, the readiness probe and `/api/v1/about`, and every table the migration creates is there, or, where it creates none, the database has the tables it had, or, where there is no migration, the schema is the same statement for statement; the audit trail holds no event of the upgrade, but for those of a migration whose file names their request ID and for the one that the service of 0.7.0 or later writes by itself when it starts in a week whose capacity balance has no record, which is allowed for by name; every account, group, grant, token and audit event is as it was, and so is the inventory, with every vendor `reviewed`; the session token, the access codes and the service token from before still work; the one conffile is untouched and dpkg asked nothing; the settings file, which the operator edited, holds every line it had, and the new settings after them when the version has any, and from 0.7.0 `hirdir admin config --current` sets in a complete file what the operator set; the nginx snippet is the new version's under the old prefix, and when it changed the upgrade said that it reloaded nginx; a file of more than a megabyte is previewed under the old prefix before anything else has touched nginx. Then it does everything the fresh pass does |
 | `--failed-upgrade` | Installs the previous release, makes the same inventory with it, and makes the new version's migration fail, in the database, so that the package under test is the one that was built. How is under "A migration that fails" below. The upgrade must fail, say what stopped it, name a backup that holds the database as it was, and leave the service stopped, the schema as it was statement for statement, every table of the inventory with the columns, indexes and rows it had, and the nginx snippet untouched. The commands of the message are then run, the previous release must serve again with every item and its history, and every group, membership, network and address, as they were, and with the cause taken out the upgrade must go through and keep them, and leave the settings file, which nobody edited, with every line it had and the new settings after them, for `hirdir-setup --settings` to find nothing to change. Last, it goes back from the good upgrade to the previous release by the steps in [install.md](install.md#going-back-to-the-release-before), where dpkg must ask nothing about the snippet, and the inventory must be as it was once more. Only a release with no migration at all has nothing that could fail: the pass then says so in a `SKIP` line, upgrades, and goes back by installing the previous package alone, as below |
 | `--fresh` | Installs on a system that never had `hirdir`, as a new installation does. `hirdir-setup --self-signed --prefix /hirdir`; the health probe, the first Admin and signing in through nginx; files, as below, and the records of 0.4.0, of 0.4.1, of 0.5.0 and of 0.6.0, and two of 0.7.0; that `hirdir admin config` writes the very file the package ships; the default choices and lifecycle rules; a vendor, catalog entries, an owner and items made through the API, their effective values and sources, filtered and sorted lists with a glob and a regular expression, a pattern that is too long, a lifecycle move and the item's history; the capacity balance of the worked example; the same version installed again, which must add nothing; the lock that the service holds on its state directory, and a second server refused; restart and backup; another prefix, a site of the host's own, the root of the site; that no response set a cookie; and the purge |
 
@@ -810,14 +810,18 @@ what was carried over. What is meant to change is named, never implied: the fiel
 records, each by HID and field, which the comparison passes over; the rows of a table,
 by HID, which the comparison of its rows leaves out; the columns, indexes and foreign
 keys that the migration adds to a table, which must be there and no other; the columns
-that it declares otherwise, each in its place, such as one that may now be blank;
-tables that hold what a site made and are no part of the inventory, which the
+that it declares otherwise, each in its place, such as one that may now be blank; the
+columns that it drops, which must be gone, the rows then being compared in the columns
+that are left; tables that hold what a site made and are no part of the inventory, which the
 migration changes, and which are then kept and compared as the inventory's are; a list or a
 table that may have more records than before; and the view of the items that must be
 counted as before, where some are meant to be counted otherwise. A migration that
 writes no audit event says that too, and the audit trail is then read before anything
-is asked of the new version, as after an upgrade with no migration. Everything that is
-not named is compared as in any upgrade.
+is asked of the new version, as after an upgrade with no migration. One that writes
+events names the request ID that they carry, and the trail is read then all the same:
+beside the events it held it must hold those and no other, and the file looks at what
+they say. A user that the file makes beside the accounts of the pass is counted with
+them. Everything that is not named is compared as in any upgrade.
 
 A migration that has no file is given what every upgrade is given, and both upgrade
 passes print a `SKIP` line that says its own checks are not written. Nobody has then
@@ -1040,6 +1044,97 @@ stays at A, a circuit group, the report of what circuits cost, a default circuit
 a Try that saves and audits nothing, and the check of kept answers, which finds nothing
 differing, are tried, and all of it is taken out again.
 
+`migration-0011.sh` is the one that 0.9.0 brought, and what it looks for is what
+[install.md](install.md#from-080-to-090) tells an operator of that upgrade. The
+migration creates `reference_files` and then `reference_attachments`, which the pass
+whose migration fails puts in its way, and loads the `reference_kind` list beside any
+value a site has put into it. It alters no table that holds a site's records, changes
+nothing that is held and writes no audit event; beside the database, the package makes
+the store of the content, `/var/lib/hirdir/files`, empty, puts
+`max_reference_megabytes` into the settings file, commented out, and writes the nginx
+snippet again with the larger of the two limits. With the previous release the file
+sees that the list is refused and puts two values of a site's own into it in the
+database, one of them a default under a label of the site's, enters that value in
+another list by the API, and sees that the previous release has no reference, no list
+of what a record has and no setting of the kinds of file. After the upgrade the two
+tables are empty, the catalog entry, the item, the room and the site from before have no
+reference of their own or from above, the list holds its twelve defaults beside the
+site's values and the other list is as the site made it, the setting of the kinds of
+file is at its default beside the two that are fixed, and the store, the settings file
+and the snippet are as install.md says. Last, files and a link are put on the records
+from before, one of them on three at once, the retired item among them; each is listed
+where it is attached and from above, nearest first, and comes back byte for byte; and
+all four are erased again, so that the store is empty.
+
+`migration-0012.sh` is the one that 0.9.3 brought, and what it looks for is what
+[install.md](install.md#from-092-to-093) tells an operator of that upgrade, and P-172
+and P-174 of [decisions.md](decisions.md) in full. The migration adds `phone2` to
+`contacts`, makes `users` anew with `contact_hid`, its foreign key and its uniqueness,
+and gives each user that is no service account and has a display name or an email a
+contact, the users that may sign in before the disabled and each by username: the
+contact that has that email already; for a user with no email, or one that is not of
+the form name@host, the contact of its display name, as a file finds a contact by name;
+or else a new one, which takes the email only where it is of that form. It writes
+audit events by `system`, with the request ID
+`upgrade-0012`: a create of each contact it makes, an update of each contact it gives a
+user, which names the user, and an update of each user that had a display name or an
+email, which keeps them as they were and names the contact it was given. Then it makes
+`users` anew again without `display_name` and `email`, makes `external_systems` anew
+with a `kind` of 40 characters, and loads the `system_kind` list beside any value a site
+has put into it. With the previous release the file makes, beside the accounts of the
+pass, users of every kind it acts on: with a display name and an email, with an email
+alone, two of one email, two of another of which the first by username is disabled,
+with neither, a service account with a display name, three with an email that is no
+address, with a space, with no `@` and with a second, one with the email of a
+contact from before in another case and a name of its own, and five with the names of
+contacts that it makes for them: three of a name that one contact has, two with no
+email and one with an address, one with an email that is no address and the name of
+two contacts of which one has none, and one with no email and the name of two
+contacts that have none; and an external system of
+each of the eight kinds, one of them retired and one made with no kind. It sees that
+the previous release refuses a contact on a user, a second number on a contact, a kind
+of the site's own and a value of the list, and puts a value of the site's own and a
+default under a label of the site's into the list in the database. The file names
+`users` as a table beside the inventory, the two columns that the migration drops from
+it and the column, the foreign key and the uniqueness it adds, `phone2`, the `kind`
+that `external_systems` declares otherwise, the rows of the users that are given a
+contact and of the accounts of the pass, which sign in, and, of the users as the API
+gives them, the version of each that is given a contact and the name and the email of
+each that shows another; it says that contacts and choices may be added, and names the
+request ID of the events.
+
+After the upgrade no row refers to a record that is not there and no contact has a
+second number. Each user shows its contact's name and email: a new contact of its
+display name, or of its username where it had none, and its email where it is an
+address; the contact from before, which is otherwise as it was, for the user that had
+its email in another case, and for the first with no email of the name of one contact
+and for the one of the name of two, of which one has no email; a contact of its own
+for the second of that first name, whose match is by then the first's, for the one with
+an address and for the one of whose name no contact answers; and nothing for the
+second of two users of one email, for
+the disabled one of the other two, which come first by username, for the user that had
+neither and for the service account, which has lost its display name. The pass's
+account with a display name is a new contact of that name. The contacts that were made
+are those, each a user's and holding nothing more; of the contacts from before only the
+three are users'; the operator behind which one of them stands is internal and the open one has
+no scope. The audit trail holds the events of the upgrade that the migration is said to
+write, and no other; the list holds the eight kinds in their order and with the labels
+the page has shown, beside the site's values, and every system has the kind it had.
+Last, a contact is given to a user from before, which is audited on the user and on the
+contact, and refused to the service account and to the second user of the one email; a
+display name and an email are refused by `PATCH` and `POST /users`; a user is made with
+a new contact by the API and by `hirdir admin create-user --name`, which refuses
+`--email` alone; a second number entered once shows on the user and on the operator,
+which is internal behind a user's contact, external behind another, and open, with no
+scope, when that contact is retired; a View-only token reads that a contact is a user's
+and which, and that an operator is internal and whose, as the Admin does; a username that an Admin
+changes keeps the user's session; and of the list of kinds a label is changed, a value
+added and removed, the site's own given to a system, a value that a system holds made
+inactive and kept by that system, a system with no kind refused while `other` is not
+offered, and a kind of 27 characters given to a system. What is made is retired or put
+back. Further on in the pass, `hirdir admin reset` must keep the contact that each user
+is, as it was and with its history, and clear the others.
+
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
 version creates a table, the table it creates last is put there beforehand, as
@@ -1055,13 +1150,17 @@ locations and the operators that its rows refer to, and loaded a list, and migra
 the jobs that were applied, and created three tables, and migration `0010` has made
 the three tables of places anew and created seven tables, and all of that has to be
 undone.
-Where it creates none, as 0.4.1 creates none, a trigger is put on
+Where it creates none, as 0.4.1 and 0.9.3 create none, a trigger is put on
 `alembic_version` that refuses any change to it. Writing the new revision into that
 table is the last thing a migration does, so for migration `0006` the failure comes
 when the columns are added, the `device_groups` table is made anew, the clusters are
 marked, the conditions are loaded and the memberships of the items that are Released are
 ended, each with its audit event, and all of that has to be undone: the pass looks for
-the rows of the members as they were, and for an audit trail with no event more. The
+the rows of the members as they were, and for an audit trail with no event more. For
+migration `0012` it comes when `users` has been made anew twice, contacts made and
+users given them, with their audit events, two columns dropped, `external_systems`
+made anew and a list loaded: the pass looks for `users`, `contacts` and
+`external_systems` with the columns and the rows they had. The
 trigger disturbs nothing else: the previous release serves with it in place, and the
 backup that the upgrade takes holds it. The file of a migration may ask for the trigger
 though the migration creates a table, for one that creates its tables before it changes
