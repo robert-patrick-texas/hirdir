@@ -7,12 +7,12 @@
 //          says it is a user, and which. An operator is internal where the person behind
 //          it is a user and external where not, shows that person's email and numbers and
 //          changes them on the contact, and is given a user, another contact or a new
-//          person.
+//          person. Every role reads the username of the user a contact is, on the
+//          contact, on the label it stands behind and in the list of contacts; an Admin
+//          alone opens the user's page from there.
 //   P-173  An Admin renames a user, who signs in under the new name from then on, and
 //          not under the old; a name the rule does not take, or another user's, is
 //          refused on the field.
-//   P-174  The username of the user a contact is, is told to an Admin alone: another
-//          role reads that the contact is a user, and that a label is internal.
 //
 // They keep to the rules of support.ts: an account of their own, and users, contacts
 // and labels of their own with the file's mark in their names, found in every list by
@@ -347,7 +347,7 @@ test("P-172: an operator is internal or external, with its person's email and nu
   }
 });
 
-test("P-174: an account that is no Admin reads that a contact is a user, and not which", async ({
+test("P-172: an account that is no Admin reads which user a contact is, and opens no user", async ({
   account,
   browser,
   request,
@@ -358,21 +358,22 @@ test("P-174: an account that is no Admin reads that a contact is a user, and not
   const { context, page, seen } = await signInElsewhere(browser, clerk.username, clerk.accessCode);
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible({ timeout: 20_000 });
 
-  // The contact is marked as a user, by no username; the label it stands behind is
-  // internal, and names no user.
+  // The contact names the user it is, and so does the label it stands behind, which is
+  // internal; neither leads to the page of the user, which is an Admin's.
   await page.goto(`.${made.dee.replace(/^.*?\/contacts\//, "/contacts/")}`);
   await expect(page.getByRole("heading", { level: 1, name: dee.name })).toBeVisible();
-  await expect(page.getByTestId("contact-user")).toHaveText(
-    "A user: this person signs in to hirdir",
-  );
+  const named = page.getByTestId("contact-user");
+  await expect(named).toContainText(`e2e-${suffix}-dee`);
+  await expect(named.getByRole("link")).toHaveCount(0);
   await page.goto(`.${made.internal.replace(/^.*?\/operators\//, "/operators/")}`);
   await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "internal");
-  await expect(page.getByTestId("operator-user")).toHaveCount(0);
+  await expect(page.getByTestId("operator-user")).toContainText(`e2e-${suffix}-dee`);
+  await expect(page.getByTestId("operator-user").getByRole("link")).toHaveCount(0);
   const filter = `is_user:eq:true name:contains:${suffix}`;
   await page.goto(`./contacts?filter=${encodeURIComponent(filter)}`);
   const grid = page.getByTestId("grid-contacts");
   await expect(grid.locator("[row-id]")).toHaveCount(1);
-  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText("A user");
+  await expect(grid.locator('[row-id] [col-id="is_user"]')).toHaveText(`e2e-${suffix}-dee`);
   await expectClean(page, seen);
   await context.close();
 

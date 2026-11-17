@@ -133,8 +133,8 @@ export function contactFinder(typed: string, users?: boolean): FilterNode | null
 }
 
 /**
- * A contact as a search offers it: its name and email address, and that it is a user,
- * by its username to an Admin, who alone is told it (P-174).
+ * A contact as a search offers it: its name and email address, and the user it is, by
+ * its username, or only that it is one where the username is not given.
  */
 export function personLabel(contact: {
   name: string;

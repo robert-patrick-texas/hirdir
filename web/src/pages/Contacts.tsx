@@ -51,11 +51,12 @@ const COLUMNS: GridColumn<Contact>[] = [
     width: 160,
   },
   {
-    // Whether the contact is a user, filtered and sorted by it; the username to an Admin,
-    // who alone is told it.
+    // The username of the user the contact is, which every role reads, and an export
+    // holds as `user`: filtered and sorted by whether it is one.
     id: "is_user",
     header: "User",
     kind: "boolean",
+    column: "user",
     value: (contact) => (contact.is_user ? (contact.user?.username ?? "A user") : ""),
     choices: [
       { value: "true", label: "A user: signs in to hirdir" },
@@ -271,13 +272,17 @@ export function ContactDetail() {
             <dd data-testid="contact-user">
               {record.user ? (
                 <>
-                  <Link to={`/admin/users/${encodeURIComponent(record.user.hid)}`}>
-                    {record.user.username}
-                  </Link>
+                  {/* Every role reads the username; an Admin opens the user's page. */}
+                  {allows(user.role, "admin") ? (
+                    <Link to={`/admin/users/${encodeURIComponent(record.user.hid)}`}>
+                      {record.user.username}
+                    </Link>
+                  ) : (
+                    <span className="mono">{record.user.username}</span>
+                  )}
                   <span className="muted"> · this person signs in to hirdir as this user</span>
                 </>
               ) : record.is_user ? (
-                // The username is told to an Admin alone (P-174).
                 <>A user: this person signs in to hirdir</>
               ) : (
                 <span className="muted">None: this person does not sign in to hirdir</span>
