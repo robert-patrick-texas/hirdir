@@ -10,7 +10,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import AuditEventOut, Page
-from hirdir.domain import items, replacements
+from hirdir.domain import items, replacements, resolution
 from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports, tables
 
@@ -178,6 +178,14 @@ def replace_item(
         replaced_on=body.replaced_on,
     )
     return shapes.replacement_out(db, replacement)
+
+
+@router.get("/{hid}/resolution")
+def item_resolution(hid: str, _: Viewer, db: Db) -> r.Resolution:
+    """Why the item has each value it may have from elsewhere: for each, the walk that
+    finds it, step by step, which step decides, which are passed over, and what a value
+    of its own replaces (P-176)."""
+    return shapes.resolution_out(hid, resolution.of_item(db, items.get_item(db, hid)))
 
 
 @router.get("/{hid}/history")

@@ -181,26 +181,23 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 
-def _from_groups(field: str, live: Any = None) -> ColumnElement[Any]:
-    """Return what an item has in a field from the groups that the item at the top of
-    its line is a current member of, as `hirdir.domain.descent` works it out: that of
-    the first group, a stack before a cluster before a controller domain before any
-    other and then by name, that has one in force, its own or from the group it is
-    nested in."""
-    top = case(
-        *((one.parent_item_hid.is_(None), one.hid) for one in _LINE[:-1]),
-        else_=_LINE[-1].hid,
-    )
+def _from_groups(field: str, level: int, live: Any = None) -> ColumnElement[Any]:
+    """Return what the record at `level` of an item's line, 0 the item itself, has in a
+    field from the groups it is a current member of, as `hirdir.domain.descent` works it
+    out: that of the first group, a stack before a cluster before a controller domain
+    before any other and then by name, that has one in force, its own or from the group
+    it is nested in."""
+    one = _LINE[level]
     reach = descent.group_reach(field, live)
-    member: Any = aliased(DeviceGroupMember, name=f"{field}_member")
-    group: Any = aliased(DeviceGroup, name=f"{field}_group")
+    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_member")
+    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_group")
     return (
         select(reach.c.value)
         .select_from(member)
         .join(group, group.hid == member.group_hid)
         .join(reach, reach.c.group_hid == group.hid)
         .where(
-            member.item_hid == top,
+            member.item_hid == one.hid,
             member.left_on.is_(None),
             group.record_status != "retired",
         )
@@ -218,26 +215,29 @@ def _from_groups(field: str, live: Any = None) -> ColumnElement[Any]:
     )
 
 
-# Whose an item is: its own owner, that of the nearest item above it that has one, or
-# that of a group the item at the top of the line is a member of.
-OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(
-    *(one.owner_hid for one in _LINE), _from_groups("owner_hid")
-)
-# Where an item is, by the same descent.
-LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(
-    *(one.location_hid for one in _LINE), _from_groups("location_hid")
-)
-# Where it is going, by the same descent.
-PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(
-    *(one.planned_location_hid for one in _LINE), _from_groups("planned_location_hid")
-)
+def _walk(field: str, live: Any = None) -> list[ColumnElement[Any]]:
+    """Return the steps of an item's walk up its line for a field, in order (P-175): at
+    each record, its own value and then its groups'. A record the line does not reach is
+    an outer join that holds nothing."""
+    steps: list[ColumnElement[Any]] = []
+    for level, one in enumerate(_LINE):
+        own = getattr(one, field)
+        steps.append(live(own) if live is not None else own)
+        steps.append(_from_groups(field, level, live))
+    return steps
+
+
+# Whose an item is, where it is and where it is going: the first value of its walk.
+OWNER_IN_FORCE: ColumnElement[Any] = func.coalesce(*_walk("owner_hid"))
+LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*_walk("location_hid"))
+PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(*_walk("planned_location_hid"))
 
 
 def _operator_in_force() -> ColumnElement[Any]:
     """Return the operator in force for an item, as `hirdir.domain.operators` works it
-    out: its own, that of the nearest item above it, that of a group the item at the
-    top of the line is a current member of, or that of the place it is at. An operator
-    that is retired is passed over at every level."""
+    out: the first of its walk, its own and its groups', then each item above it and
+    that item's groups, or else that of the place it is at. An operator that is retired
+    is passed over at every level."""
     places = operators.location_reach()
     from_place = (
         select(places.c.operator_hid)
@@ -245,11 +245,7 @@ def _operator_in_force() -> ColumnElement[Any]:
         .correlate(*_LINE)
         .scalar_subquery()
     )
-    return func.coalesce(
-        *(operators.live(one.operator_hid) for one in _LINE),
-        _from_groups("operator_hid", operators.live),
-        from_place,
-    )
+    return func.coalesce(*_walk("operator_hid", operators.live), from_place)
 
 
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()

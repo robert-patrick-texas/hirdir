@@ -3471,6 +3471,36 @@ export interface paths {
       };
     };
   };
+  "/api/v1/device-groups/{hid}/resolution": {
+    /**
+     * Why the group has each value it may have from a group it is nested in: its own,
+     * then each group above it, which decides and which are passed over (P-176).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Resolution"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/device-groups/{hid}/retire": {
     /** Retire a device group. Its record is kept, and its current memberships end today. */
     post: {
@@ -4346,6 +4376,37 @@ export interface paths {
         201: {
           content: {
             "application/json": components["schemas"]["ReplacementOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
+  "/api/v1/items/{hid}/resolution": {
+    /**
+     * Why the item has each value it may have from elsewhere: for each, the walk that
+     * finds it, step by step, which step decides, which are passed over, and what a value
+     * of its own replaces (P-176).
+     */
+    get: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["Resolution"];
           };
         };
         /** Validation Error */
@@ -12054,6 +12115,42 @@ export interface components {
       /** As it is to be sent with that filter. */
       include_archived: boolean;
       include_drafts: boolean;
+    };
+    /** Why a record has each value it may have from elsewhere. */
+    Resolution: {
+      fields: components["schemas"]["ResolutionField"][];
+      hid: string;
+    };
+    /** The walk of one value: what is in force, where from, and every step. */
+    ResolutionField: {
+      field: string;
+      label: string | null;
+      /** Where the value is the record's own: the value it would have without it. */
+      overrides: string | boolean | null;
+      overrides_label: string | null;
+      source: string;
+      source_hid: string | null;
+      steps: components["schemas"]["ResolutionStep"][];
+      value: string | boolean | null;
+    };
+    /** One record the walk looks at, and what it holds there. */
+    ResolutionStep: {
+      /** The record looked at. None for a setting. */
+      hid: string | null;
+      /** What the value is called: a path, a label. */
+      label: string | null;
+      level: "own" | "device_group" | "parent_item" | "catalog" | "setting" | "location" | "site" | "region";
+      /** Its name, its path for a place, or the setting's key. */
+      name: string | null;
+      outcome: "decides" | "passed_over" | "nothing" | "retired";
+      /** Of a device group: its place among the record's groups. */
+      rank: number | null;
+      /** Of a device group: its type. */
+      type: string | null;
+      value: string | boolean | null;
+      /** The group it is nested in that holds the value, where it holds none itself. */
+      via_hid: string | null;
+      via_name: string | null;
     };
     /** The contacts in force for one role, and the level they came from. */
     RoleContacts: {
