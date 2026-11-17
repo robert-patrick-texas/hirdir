@@ -1416,20 +1416,62 @@ main:has(.geography) {
 
 /* --- the scoreboard ------------------------------------------------------------------ */
 
-/* A share of the view: the number, and a plain bar that says the same. */
+/* A share of the view: the number, and a bar beside it that says the same. */
 .share {
   white-space: nowrap;
 }
 
-.share-text {
-  display: inline-block;
-  min-width: 4.5rem;
+/* --- the rank and the bars of a report (P-178, P-180) -------------------------------- */
+
+/* The Rank column is as narrow as its header, so that a table that fit before still fits. */
+th.rank,
+td.rank {
+  width: 1%;
+  white-space: nowrap;
+  padding-inline: 0.3rem;
+}
+
+/* A count with its bar to the left of it. The bar takes what room the column has and asks
+   for none of its own, so a table is no wider for its bars; every number of a column is
+   given the room of the longest, so that the bars of a column start and end together. */
+.counted {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.bar {
+  display: block;
+  flex: 1 1 4rem;
+  min-inline-size: 0;
+  block-size: 0.55rem;
+}
+
+.bar-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  print-color-adjust: exact;
+}
+
+/* Something is never drawn as nothing. */
+.bar-fill.bar-some {
+  min-inline-size: 1px;
+}
+
+.figure {
+  flex: none;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.share meter {
-  width: 8rem;
-  vertical-align: middle;
+@media (forced-colors: active) {
+  .bar-fill {
+    background: CanvasText;
+    forced-color-adjust: none;
+  }
 }
 
 /* The operators involved at a site, one to a line. */
@@ -1942,4 +1984,321 @@ fieldset.extension-list {
   margin: 0 0 0.75rem;
   padding: 0;
   list-style: none;
+}
+
+/* === 0.9.4: drawings across records, in the colours of the theme alone =============== */
+
+/* --- the walk of a value: a row of boxes joined by arrows (P-176) -------------------- */
+
+.walk {
+  margin: 0 0 0.5rem;
+}
+
+/* A walk longer than the window scrolls by itself; the page does not. */
+.walk-scroll {
+  overflow-x: auto;
+  padding: 0.15rem 0.15rem 0.35rem;
+}
+
+.walk-row {
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.walk-step {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.walk-arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 0.3rem;
+  color: var(--muted);
+}
+
+.walk-arrow svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.walk-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 7rem;
+  max-inline-size: 15rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.walk-kind,
+.walk-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.walk-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.walk-value {
+  overflow-wrap: anywhere;
+}
+
+/* The step that decides: in the accent of the theme. */
+.walk-decides {
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+.walk-decides .walk-state,
+.walk-decides-word {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* A step passed over, by the one before it or as retired: muted, its value struck. */
+.walk-passed_over,
+.walk-retired {
+  color: var(--muted);
+}
+
+.walk-passed_over .walk-title a,
+.walk-retired .walk-title a {
+  color: var(--muted);
+}
+
+/* A step that holds nothing: dashed. */
+.walk-nothing {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.walk-none {
+  font-style: italic;
+}
+
+.walk-overrides {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.walk-overrides-word {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.walk-as-table {
+  margin: 0 0 0.75rem;
+}
+
+.walk-as-table > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* --- what a record is on: a tree of boxes joined by lines (P-177) -------------------- */
+
+.tree {
+  --tree-line: 2px solid var(--border);
+  /* Where the line down a column runs, from the left of the column or of the box above. */
+  --tree-spine: 1rem;
+  /* How far down a box its line comes in. */
+  --tree-tick: 1.3rem;
+  margin: 0 0 1rem;
+}
+
+/* A tree wider than the window scrolls by itself; the page does not. */
+.tree-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.tree-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-inline-size: 22rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.tree-root {
+  display: inline-flex;
+  border: 2px solid var(--accent);
+}
+
+.tree-kind,
+.tree-detail {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tree-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tree-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.8rem;
+  margin: 0.1rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+/* A box with something within it that is someone else's: marked, and said in words. */
+.tree-has-exceptions {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.tree-exceptions {
+  margin: 0.1rem 0 0;
+  font-size: 0.9rem;
+}
+
+.tree-mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The line down from the box at the top to the bar the columns hang from. */
+.tree-trunk {
+  block-size: 1rem;
+  margin-inline-start: var(--tree-spine);
+  border-inline-start: var(--tree-line);
+}
+
+.tree-columns {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-column {
+  position: relative;
+  flex: 1 1 0;
+  min-inline-size: 16rem;
+  padding: 1rem 1rem 0 0;
+}
+
+/* The bar across the tops of the columns, from the line of the first to that of the last. */
+.tree-column::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  border-block-start: var(--tree-line);
+}
+
+.tree-column:first-child::before {
+  inset-inline-start: var(--tree-spine);
+}
+
+.tree-column:last-child::before {
+  inset-inline-end: auto;
+  inline-size: var(--tree-spine);
+}
+
+.tree-column:only-child::before {
+  display: none;
+}
+
+/* The line down from the bar to a column's heading. */
+.tree-column::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: var(--tree-spine);
+  block-size: 1rem;
+  border-inline-start: var(--tree-line);
+}
+
+.tree-head {
+  margin: 0 0 0 var(--tree-spine);
+  padding: 0.15rem 0 0.25rem 0.6rem;
+  border-inline-start: var(--tree-line);
+  font-size: 0.95rem;
+}
+
+.tree-empty {
+  margin: 0 0 0 var(--tree-spine);
+  padding: 0.25rem 0 0 0.6rem;
+  border-inline-start: var(--tree-line);
+}
+
+.tree-boxes {
+  margin: 0 0 0 var(--tree-spine);
+  padding: 0 0 0 1rem;
+  list-style: none;
+}
+
+.tree-item {
+  position: relative;
+  padding-block-start: 0.5rem;
+}
+
+/* The line down the boxes of a list, which stops at the last of them. */
+.tree-item::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -1rem;
+  border-inline-start: var(--tree-line);
+}
+
+.tree-item:last-child::before {
+  inset-block-end: auto;
+  block-size: var(--tree-tick);
+}
+
+/* The line across to a box. */
+.tree-item::after {
+  content: "";
+  position: absolute;
+  inset-block-start: var(--tree-tick);
+  inset-inline-start: -1rem;
+  inline-size: 1rem;
+  border-block-start: var(--tree-line);
+}
+
+.tree-more {
+  padding-inline-start: 0.2rem;
+  font-size: 0.9rem;
+}
+
+@media (forced-colors: active) {
+  .walk-decides,
+  .tree-root {
+    border-color: Highlight;
+  }
 }

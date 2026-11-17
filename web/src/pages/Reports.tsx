@@ -6,6 +6,7 @@ import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
+import { Counted, RankCell, RankHead, RankNote } from "../components/Ranked";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
@@ -19,21 +20,22 @@ import { useChoices, useOperatorMarks, useSettings } from "../lib/lists";
 import { type Mark, operatorPath } from "../lib/operators";
 import type { Option } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
+import { ranking } from "../lib/rank";
 import { settingText } from "../lib/settings";
 import { decimalValue, type SortColumns } from "../lib/sort";
 import {
-  amountText,
   type By,
   byLabel,
-  countText,
   isBy,
   isByPlace,
   isManagementBy,
   MANAGEMENT_BY,
+  MANAGEMENT_COUNTS,
   type ManagementBy,
   type ReportView,
   rowLabel,
   SUMMARY_BY,
+  SUMMARY_COUNTS,
   type SummaryRow,
   settingList,
   summaryQuery,
@@ -97,6 +99,9 @@ function rowName(
   }
   return rowLabel(by, row, choices);
 }
+
+// The blank row of a report, as `rowLabel` names it.
+const NO_ROW = { key: null, label: null } as const;
 
 // The four columns of health of the summary: each is sorted by the count it shows.
 const BY_HEALTH: SortColumns<SummaryRow> = Object.fromEntries(
@@ -260,6 +265,11 @@ export function Summary() {
     support_weight: (row) => decimalValue(row.support_weight),
     ...BY_HEALTH,
   });
+  // The rank follows the count the table is sorted by, and is by items at first (P-180).
+  const ranked = ranking(sorting.rows, sorting.state, SUMMARY_COUNTS, {
+    fallback: "items",
+    blank: (row) => row.key === null,
+  });
 
   return (
     <>
@@ -293,6 +303,7 @@ export function Summary() {
             <HeadlineTotals
               totals={data.totals}
               countKinds={settingList(settings.data, "count_kinds")}
+              ranked
             />
             <ConditionTotals conditions={data.totals.by_condition} choices={choices.data} />
             <p className="hint">
@@ -311,6 +322,7 @@ export function Summary() {
                   </caption>
                   <thead>
                     <tr>
+                      <RankHead ranking={ranked} />
                       <SortTh sort={sorting} column="name">
                         {byLabel(by)}
                       </SortTh>
@@ -341,6 +353,7 @@ export function Summary() {
                   <tbody>
                     {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
+                        <RankCell ranking={ranked} row={row} />
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
                             by={by}
@@ -349,20 +362,28 @@ export function Summary() {
                             operators={operators.data}
                           />
                         </th>
-                        <td className="number">{countText(row.items)}</td>
-                        <td className="number">{countText(row.component_count)}</td>
-                        <td className="number">{countText(row.managed_node_count)}</td>
-                        <td className="number">{amountText(row.support_weight)}</td>
+                        <td className="number" data-measure="items">
+                          <Counted ranking={ranked} column="items" row={row} />
+                        </td>
+                        <td className="number" data-measure="components">
+                          <Counted ranking={ranked} column="component_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="nodes">
+                          <Counted ranking={ranked} column="managed_node_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="weight">
+                          <Counted ranking={ranked} column="support_weight" row={row} />
+                        </td>
                         {HEALTHS.map((health) => (
                           <td className="number" key={health.value} data-health={health.value}>
-                            {countText(row.by_health[health.value])}
+                            <Counted ranking={ranked} column={`health.${health.value}`} row={row} />
                           </td>
                         ))}
                       </tr>
                     ))}
                     {data.rows.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="muted">
+                        <td colSpan={10} className="muted">
                           No item is in view.
                         </td>
                       </tr>
@@ -370,6 +391,7 @@ export function Summary() {
                   </tbody>
                 </table>
               </div>
+              <RankNote ranking={ranked} fallback="items" blank={rowLabel(by, NO_ROW)} />
               <p className="hint">
                 The four columns of health count the components of the row. A minor item is in the
                 row of the owner, state and disposition in force for it.
@@ -415,6 +437,11 @@ export function ManagementReport() {
     est_value: (row) => decimalValue(row.est_value),
     annual_support_cost: (row) => decimalValue(row.annual_support_cost),
   });
+  // The rank follows the count the table is sorted by, and is by items at first (P-180).
+  const ranked = ranking(sorting.rows, sorting.state, MANAGEMENT_COUNTS, {
+    fallback: "items",
+    blank: (row) => row.key === null,
+  });
 
   return (
     <>
@@ -459,6 +486,7 @@ export function ManagementReport() {
                   </caption>
                   <thead>
                     <tr>
+                      <RankHead ranking={ranked} />
                       <SortTh sort={sorting} column="name">
                         {byLabel(by)}
                       </SortTh>
@@ -479,6 +507,7 @@ export function ManagementReport() {
                   <tbody>
                     {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
+                        <RankCell ranking={ranked} row={row} />
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
                             by={by}
@@ -487,15 +516,23 @@ export function ManagementReport() {
                             operators={operators.data}
                           />
                         </th>
-                        <td className="number">{countText(row.items)}</td>
-                        <td className="number">{countText(row.component_count)}</td>
-                        <td className="number">{amountText(row.est_value)}</td>
-                        <td className="number">{amountText(row.annual_support_cost)}</td>
+                        <td className="number" data-measure="items">
+                          <Counted ranking={ranked} column="items" row={row} />
+                        </td>
+                        <td className="number" data-measure="components">
+                          <Counted ranking={ranked} column="component_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="value">
+                          <Counted ranking={ranked} column="est_value" row={row} />
+                        </td>
+                        <td className="number" data-measure="cost">
+                          <Counted ranking={ranked} column="annual_support_cost" row={row} />
+                        </td>
                       </tr>
                     ))}
                     {data.rows.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="muted">
+                        <td colSpan={6} className="muted">
                           No item is in view.
                         </td>
                       </tr>
@@ -503,6 +540,7 @@ export function ManagementReport() {
                   </tbody>
                 </table>
               </div>
+              <RankNote ranking={ranked} fallback="items" blank={rowLabel(by, NO_ROW)} />
               {by === "tag" && (
                 <p className="hint">
                   An item with several tags is in the row of each, and the totals count it once.

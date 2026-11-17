@@ -1,7 +1,9 @@
 import type { Schemas } from "../api";
+import { ranking } from "../lib/rank";
 import type { SortColumns } from "../lib/sort";
 import {
   amountText,
+  COUNTED_COUNTS,
   type Counted,
   conditionLabel,
   countText,
@@ -12,6 +14,7 @@ import {
 } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 import { HealthCounts } from "./Health";
+import { Counted as CountedBar, RankCell, RankHead, RankNote } from "./Ranked";
 import { SortTh } from "./SortTh";
 
 type Choice = Schemas["ChoiceOut"];
@@ -20,6 +23,11 @@ interface HeadlineTotalsProps {
   totals: Totals;
   /** The kinds the headline component count takes: the `count_kinds` setting, when known. */
   countKinds: readonly string[] | null;
+  /**
+   * Rank the kinds and draw a bar beside each count, as every table of a report has them
+   * (P-180). The first page shows the same headline, and is no report.
+   */
+  ranked?: boolean;
 }
 
 /**
@@ -28,7 +36,7 @@ interface HeadlineTotalsProps {
  * the kinds that stand beside the headline count. It holds no money: the estimated value
  * and the annual support cost are in the management report.
  */
-export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
+export function HeadlineTotals({ totals, countKinds, ranked = false }: HeadlineTotalsProps) {
   const kinds = kindsShown(totals.by_kind, countKinds);
   // What the count takes first, as before, until a header is pressed. The entries with
   // no kind are a row like the others, and sort by what the row is called.
@@ -39,6 +47,10 @@ export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
     counted: (kind) => (kinds.counted.includes(kind) ? "Yes" : "No, beside it"),
   };
   const sorting = useSorting([...kinds.counted, ...kinds.beside], columns);
+  const rank = ranking(sorting.rows, sorting.state, COUNTED_COUNTS, {
+    fallback: "items",
+    blank: (kind) => kind.key === null,
+  });
   return (
     <div data-testid="totals">
       <dl className="totals">
@@ -71,6 +83,7 @@ export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
             </caption>
             <thead>
               <tr>
+                {ranked && <RankHead ranking={rank} />}
                 <SortTh sort={sorting} column="kind">
                   Kind
                 </SortTh>
@@ -90,9 +103,22 @@ export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
             <tbody>
               {sorting.rows.map((kind) => (
                 <tr key={kind.key ?? ""} data-kind={kind.key ?? ""}>
+                  {ranked && <RankCell ranking={rank} row={kind} />}
                   <th scope="row">{kindLabel(kind.key)}</th>
-                  <td className="number">{countText(kind.items)}</td>
-                  <td className="number">{countText(kind.component_count)}</td>
+                  <td className="number" data-measure="items">
+                    {ranked ? (
+                      <CountedBar ranking={rank} column="items" row={kind} />
+                    ) : (
+                      countText(kind.items)
+                    )}
+                  </td>
+                  <td className="number" data-measure="components">
+                    {ranked ? (
+                      <CountedBar ranking={rank} column="components" row={kind} />
+                    ) : (
+                      countText(kind.component_count)
+                    )}
+                  </td>
                   {countKinds !== null && (
                     <td>{kinds.counted.includes(kind) ? "Yes" : "No, beside it"}</td>
                   )}
@@ -101,6 +127,9 @@ export function HeadlineTotals({ totals, countKinds }: HeadlineTotalsProps) {
             </tbody>
           </table>
         </div>
+      )}
+      {ranked && totals.by_kind.length > 0 && (
+        <RankNote ranking={rank} fallback="items" blank={kindLabel(null)} />
       )}
     </div>
   );
@@ -121,45 +150,61 @@ export function ConditionTotals({
     items: (condition) => condition.items,
     components: (condition) => condition.component_count,
   });
+  const rank = ranking(sorting.rows, sorting.state, COUNTED_COUNTS, {
+    fallback: "items",
+    blank: (condition) => condition.key === null,
+  });
   return (
-    <div className="scroll">
-      <table className="narrow" data-testid="totals-by-condition">
-        <caption>By condition: the state of the hardware, as people have recorded it</caption>
-        <thead>
-          <tr>
-            <SortTh sort={sorting} column="condition">
-              Condition
-            </SortTh>
-            <SortTh sort={sorting} column="items" className="number">
-              Items
-            </SortTh>
-            <SortTh sort={sorting} column="components" className="number">
-              Components
-            </SortTh>
-          </tr>
-        </thead>
-        <tbody>
-          {sorting.rows.map((condition) => (
-            <tr key={condition.key ?? ""} data-condition={condition.key ?? ""}>
-              <th scope="row" className={condition.key === null ? "muted" : undefined}>
-                {conditionLabel(condition, choices)}
-              </th>
-              <td className="number">{countText(condition.items)}</td>
-              <td className="number">{countText(condition.component_count)}</td>
-            </tr>
-          ))}
-          {conditions.length === 0 && (
+    <>
+      <div className="scroll">
+        <table className="narrow" data-testid="totals-by-condition">
+          <caption>By condition: the state of the hardware, as people have recorded it</caption>
+          <thead>
             <tr>
-              <td colSpan={3} className="muted">
-                No item is in view.
-              </td>
+              <RankHead ranking={rank} />
+              <SortTh sort={sorting} column="condition">
+                Condition
+              </SortTh>
+              <SortTh sort={sorting} column="items" className="number">
+                Items
+              </SortTh>
+              <SortTh sort={sorting} column="components" className="number">
+                Components
+              </SortTh>
             </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {sorting.rows.map((condition) => (
+              <tr key={condition.key ?? ""} data-condition={condition.key ?? ""}>
+                <RankCell ranking={rank} row={condition} />
+                <th scope="row" className={condition.key === null ? "muted" : undefined}>
+                  {conditionLabel(condition, choices)}
+                </th>
+                <td className="number" data-measure="items">
+                  <CountedBar ranking={rank} column="items" row={condition} />
+                </td>
+                <td className="number" data-measure="components">
+                  <CountedBar ranking={rank} column="components" row={condition} />
+                </td>
+              </tr>
+            ))}
+            {conditions.length === 0 && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  No item is in view.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <RankNote ranking={rank} fallback="items" blank={conditionLabel(NO_CONDITION, choices)} />
+    </>
   );
 }
+
+// The components of which nobody has said a condition, as `conditionLabel` names them.
+const NO_CONDITION = { key: null, label: null } as const;
 
 interface ManagementTotalsProps {
   totals: ManagementMeasures;

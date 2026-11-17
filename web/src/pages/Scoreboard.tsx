@@ -4,6 +4,7 @@ import { saveFile } from "../components/grid/save";
 import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
 import { Problem } from "../components/Problem";
+import { Bar, Counted, RankCell, RankHead, RankNote } from "../components/Ranked";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
 import { type ItemView, ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
@@ -13,6 +14,7 @@ import { type Loaded, useLoad, useTitle } from "../lib/hooks";
 import { markOf } from "../lib/operators";
 import { placePath } from "../lib/places";
 import { namedFile, useSite } from "../lib/product";
+import { type Ranking, ranking } from "../lib/rank";
 import {
   BY_WEIGHT,
   board,
@@ -23,13 +25,15 @@ import {
   rowName,
   type ScoreRow,
   scoreColumns,
+  scoreCounts,
   share,
   shareText,
   siteCondition,
   sitesCsv,
   underOpenLabels,
 } from "../lib/scoreboard";
-import { amountText, countText } from "../lib/summary";
+import type { SortState } from "../lib/sort";
+import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
 // What the blank row of each table is called: it is a row like the others.
@@ -53,24 +57,32 @@ function saveCsv(text: string, name: string) {
   saveFile(new Blob([text], { type: "text/csv;charset=utf-8" }), name);
 }
 
-/** The measures every row of the scoreboard has, as cells. */
-function Measures({ row }: { row: ScoreRow }) {
+/** The measures every row of the scoreboard has, as cells, each with its bar. */
+function Measures({ row, ranked }: { row: ScoreRow; ranked: Ranking<ScoreRow> }) {
   return (
     <>
       <td className="number" data-measure="components">
-        {countText(row.component_count)}
+        <Counted ranking={ranked} column="components" row={row} />
       </td>
       <td className="number" data-measure="nodes">
-        {countText(row.managed_node_count)}
+        <Counted ranking={ranked} column="nodes" row={row} />
       </td>
       <td className="number" data-measure="items">
-        {countText(row.items)}
+        <Counted ranking={ranked} column="items" row={row} />
       </td>
       <td className="number" data-measure="weight">
-        {amountText(row.support_weight)}
+        <Counted ranking={ranked} column="weight" row={row} />
       </td>
     </>
   );
+}
+
+/** Rank a scoreboard by the count it is sorted by, and by support weight at first. */
+function rankBoard(sorting: { rows: ScoreRow[]; state: SortState | null }, whole: string) {
+  return ranking(sorting.rows, sorting.state, scoreCounts(whole), {
+    fallback: "weight",
+    blank: (row) => row.key === null,
+  });
 }
 
 /** A link to the items of a row in the grid, or nothing when the view cannot be added to. */
@@ -135,6 +147,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
   const sorting = useSorting(board(data?.rows), scoreColumns(NOBODY), { initial: BY_WEIGHT });
   const rows = sorting.rows;
   const whole = data?.totals.support_weight ?? "0";
+  const ranked = rankBoard(sorting, whole);
   const open = underOpenLabels(rows.filter((row) => row.key !== null));
   const openItems = rowItemsPath(view.filter, "operator.is_open:eq:true");
 
@@ -158,6 +171,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
               </caption>
               <thead>
                 <tr>
+                  <RankHead ranking={ranked} />
                   <SortTh sort={sorting} column="name">
                     Operator
                   </SortTh>
@@ -199,18 +213,19 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                       data-label={mark?.label ?? ""}
                       {...(row.key === null ? { "data-testid": "score-nobody" } : {})}
                     >
+                      <RankCell ranking={ranked} row={row} />
                       <th scope="row">
                         {mark ? <OperatorMark mark={mark} withPerson /> : rowName(row, NOBODY)}
                       </th>
-                      <Measures row={row} />
+                      <Measures row={row} ranked={ranked} />
                       <ShareCell
                         part={row.support_weight}
                         whole={whole}
-                        of={mark?.label ?? rowName(row, NOBODY)}
+                        figure={ranked.figure("share")}
                       />
                       {HEALTHS.map((health) => (
                         <td className="number" key={health.value} data-health={health.value}>
-                          {countText(row.by_health[health.value])}
+                          <Counted ranking={ranked} column={health.value} row={row} />
                         </td>
                       ))}
                       <td>
@@ -221,7 +236,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="muted">
+                    <td colSpan={12} className="muted">
                       No item is in view.
                     </td>
                   </tr>
@@ -229,6 +244,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
               </tbody>
             </table>
           </div>
+          <RankNote ranking={ranked} fallback="support weight" blank={NOBODY} />
           <p data-testid="score-open" data-labels={open.labels}>
             {open.labels > 0 ? (
               <>
@@ -274,17 +290,18 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
   );
 }
 
-/** A share of the view's support weight: the number, and a plain bar that says the same. */
-function ShareCell({ part, whole, of }: { part: string; whole: string; of: string }) {
-  const text = shareText(part, whole);
+/**
+ * A share of the view's support weight: the number, and a bar beside it that says the
+ * same, as long as the share is of the whole. The number is read, and the bar is not.
+ */
+function ShareCell({ part, whole, figure }: { part: string; whole: string; figure: number }) {
   return (
-    <td data-measure="share" className="share">
-      <span className="share-text">{text}</span>{" "}
-      <meter
-        min={0}
-        max={100}
-        value={share(part, whole) / 100}
-        aria-label={`Share of the support weight under ${of}: ${text}`}
+    <td data-measure="share" className="number share">
+      <Bar
+        share={share(part, whole) / 10000}
+        text={shareText(part, whole)}
+        figure={figure}
+        figureClass="share-text"
       />
     </td>
   );
@@ -297,6 +314,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   // Every row, the items that are nowhere among them, by support weight at first.
   const sorting = useSorting(board(data?.rows), scoreColumns(NOWHERE), { initial: BY_WEIGHT });
   const rows = sorting.rows;
+  const ranked = rankBoard(sorting, data?.totals.support_weight ?? "0");
 
   const involved = (row: ScoreRow) => (
     <ul className="plain-list involved" data-testid="involved">
@@ -341,6 +359,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
               </caption>
               <thead>
                 <tr>
+                  <RankHead ranking={ranked} />
                   <SortTh sort={sorting} column="name">
                     Site
                   </SortTh>
@@ -370,6 +389,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                     data-path={row.key === null ? "" : (row.label ?? "")}
                     {...(row.key === null ? { "data-testid": "score-nowhere" } : {})}
                   >
+                    <RankCell ranking={ranked} row={row} />
                     <th scope="row">
                       {row.key ? (
                         <Link to={placePath("site", row.key)}>{row.label ?? row.key}</Link>
@@ -377,7 +397,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                         rowName(row, NOWHERE)
                       )}
                     </th>
-                    <Measures row={row} />
+                    <Measures row={row} ranked={ranked} />
                     <td>{involved(row)}</td>
                     <td>
                       <ItemsLink view={view} condition={siteCondition(row.key)} />
@@ -386,7 +406,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="muted">
+                    <td colSpan={8} className="muted">
                       No item is in view.
                     </td>
                   </tr>
@@ -394,6 +414,7 @@ function SitesBoard({ view, summary }: { view: ItemView; summary: Summary }) {
               </tbody>
             </table>
           </div>
+          <RankNote ranking={ranked} fallback="support weight" blank={NOWHERE} />
           <p className="actions">
             <button
               type="button"

@@ -217,8 +217,8 @@ test("S18: minor items have the owner and the standing of the item they are in",
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(rows).toHaveCount(1);
   await expect(rows.first().locator("th")).toHaveText(campus);
-  await expect(rows.first().locator("td").nth(0)).toHaveText("4");
-  await expect(rows.first().locator("td").nth(1)).toHaveText("1");
+  await expect(rows.first().locator('[data-measure="items"]')).toHaveText("4");
+  await expect(rows.first().locator('[data-measure="components"]')).toHaveText("1");
 
   // The page of a power supply: where it is, and whose standing it has.
   await openItem(page, chassis);
@@ -571,7 +571,7 @@ test("a condition set on the item's page, what is seen of it, and its health in 
   await expect(page.getByTestId("total-health-good")).toHaveText("0");
   const suspect = page.getByTestId("totals-by-condition").locator('tr[data-condition="suspect"]');
   await expect(suspect.locator("th")).toHaveText("Suspect");
-  await expect(suspect.locator("td").nth(1)).toHaveText("1");
+  await expect(suspect.locator('[data-measure="components"]')).toHaveText("1");
   const degraded = page.getByTestId("summary-rows").locator('tr[data-key="degraded"]');
   await expect(degraded.locator("th")).toHaveText("Degraded");
   await expect(degraded.locator('td[data-health="degraded"]')).toHaveText("1");

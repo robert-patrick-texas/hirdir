@@ -203,11 +203,11 @@ test("S22: a controller domain, a cluster of controllers and forty access points
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(rows).toHaveCount(2);
   const points = page.getByTestId("summary-rows").locator('tr[data-key="access-point"]');
-  await expect(points.locator("td").nth(1)).toHaveText("40");
-  await expect(points.locator("td").nth(2)).toHaveText("40");
+  await expect(points.locator('[data-measure="components"]')).toHaveText("40");
+  await expect(points.locator('[data-measure="nodes"]')).toHaveText("40");
   const wlcs = page.getByTestId("summary-rows").locator('tr[data-key="wireless-controller"]');
-  await expect(wlcs.locator("td").nth(1)).toHaveText("2");
-  await expect(wlcs.locator("td").nth(2)).toHaveText("1");
+  await expect(wlcs.locator('[data-measure="components"]')).toHaveText("2");
+  await expect(wlcs.locator('[data-measure="nodes"]')).toHaveText("1");
   // The summary can be come back to: what it is by and its filter are in the address.
   await page.reload();
   await expect(page.getByLabel("By", { exact: true })).toHaveValue("type");

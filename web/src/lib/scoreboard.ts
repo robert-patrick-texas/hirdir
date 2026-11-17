@@ -10,7 +10,9 @@
 import type { Schemas } from "../api/client";
 import { itemsPath } from "./filter";
 import { markOf } from "./operators";
+import type { CountColumns } from "./rank";
 import { decimalValue, type SortColumns, type SortState } from "./sort";
+import { amountText, countText } from "./summary";
 
 export type ScoreRow = Schemas["SummaryRow"];
 export type RowOperator = Schemas["RowOperator"];
@@ -86,6 +88,39 @@ export function scoreColumns(blank: string): SortColumns<ScoreRow> {
 
 /** The order of a scoreboard at first: by support weight, the most first. */
 export const BY_WEIGHT: SortState = { column: "weight", descending: true };
+
+/**
+ * The counts of a scoreboard that it is ranked by and drawn with a bar beside, by the
+ * names its sorting has for them (P-178, P-180). A scoreboard is ranked by support weight
+ * until a header of another count is pressed. The share is a part of the view's support
+ * weight, `whole`: it ranks as the support weight does, and its bar is of the whole.
+ */
+export function scoreCounts(whole: string): CountColumns<ScoreRow> {
+  const count = (label: string, value: (row: ScoreRow) => number) => ({
+    value,
+    text: (row: ScoreRow) => countText(value(row)),
+    label,
+  });
+  return {
+    components: count("components", (row) => row.component_count),
+    nodes: count("managed nodes", (row) => row.managed_node_count),
+    items: count("items", (row) => row.items),
+    weight: {
+      value: (row) => decimalValue(row.support_weight),
+      text: (row) => amountText(row.support_weight),
+      label: "support weight",
+    },
+    share: {
+      value: (row) => decimalValue(row.support_weight),
+      text: (row) => shareText(row.support_weight, whole),
+      label: "share of the support weight",
+    },
+    good: count("components of good health", (row) => row.by_health.good),
+    degraded: count("components of degraded health", (row) => row.by_health.degraded),
+    failed: count("components of failed health", (row) => row.by_health.failed),
+    unknown: count("components of unknown health", (row) => row.by_health.unknown),
+  };
+}
 
 /**
  * A part of the view's support weight, in hundredths of a per cent of the whole, so

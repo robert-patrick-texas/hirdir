@@ -7,9 +7,11 @@
 // Nothing is counted or summed here.
 
 import type { Schemas } from "../api/client";
-import { CONDITION_LIST, healthLabel } from "./health";
+import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
 import { CATALOG_KINDS, choiceLabel, optionLabel } from "./options";
 import type { Option } from "./patch";
+import type { CountColumns } from "./rank";
+import { decimalValue } from "./sort";
 
 export type Summary = Schemas["SummaryOut"];
 export type Totals = Schemas["SummaryTotals"];
@@ -196,6 +198,70 @@ export function kindsShown(
 export function kindLabel(kind: string | null): string {
   return kind === null ? NONE.kind : optionLabel(CATALOG_KINDS, kind);
 }
+
+/**
+ * The counts of a row of the summary that it is ranked by and drawn with a bar beside,
+ * by the names its sorting has for them (P-180). It is ranked by items until a header of
+ * another count is pressed.
+ */
+export const SUMMARY_COUNTS: CountColumns<SummaryRow> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  component_count: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+  managed_node_count: {
+    value: (row) => row.managed_node_count,
+    text: (row) => countText(row.managed_node_count),
+    label: "managed nodes",
+  },
+  support_weight: {
+    value: (row) => decimalValue(row.support_weight),
+    text: (row) => amountText(row.support_weight),
+    label: "support weight",
+  },
+  ...Object.fromEntries(
+    HEALTHS.map((health) => [
+      `health.${health.value}`,
+      {
+        value: (row: SummaryRow) => row.by_health[health.value],
+        text: (row: SummaryRow) => countText(row.by_health[health.value]),
+        label: `components of ${health.label.toLowerCase()} health`,
+      },
+    ]),
+  ),
+};
+
+/** The counts of a row of the management report, as `SUMMARY_COUNTS` has those of the summary. */
+export const MANAGEMENT_COUNTS: CountColumns<ManagementRow> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  component_count: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+  est_value: {
+    value: (row) => decimalValue(row.est_value),
+    text: (row) => amountText(row.est_value),
+    label: "estimated value",
+  },
+  annual_support_cost: {
+    value: (row) => decimalValue(row.annual_support_cost),
+    text: (row) => amountText(row.annual_support_cost),
+    label: "annual support cost",
+  },
+};
+
+/** The counts of the totals by kind and by condition, as `SUMMARY_COUNTS` has those of a row. */
+export const COUNTED_COUNTS: CountColumns<Counted> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  components: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+};
 
 /** A whole number with its thousands marked, for a count on a page. */
 export function countText(count: number): string {

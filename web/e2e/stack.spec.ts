@@ -398,8 +398,8 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   await expect(page.getByTestId("total-health-unknown")).toHaveText("3");
   // The kinds beside the headline count: these are hardware, which the count takes.
   const hardware = page.getByTestId("totals-by-kind").locator('tr[data-kind="hardware"]');
-  await expect(hardware.locator("td").nth(0)).toHaveText("4");
-  await expect(hardware.locator("td").nth(2)).toHaveText("Yes");
+  await expect(hardware.locator('[data-measure="items"]')).toHaveText("4");
+  await expect(hardware.locator("td").last()).toHaveText("Yes");
   // The money is in the management report: the support cost of four switches, with no
   // stack discount, and their value. It has neither condition nor health.
   await page
@@ -444,17 +444,25 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
   await page.getByLabel("By", { exact: true }).selectOption("owner");
   const rows = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(rows).toHaveCount(2);
-  await expect(rows.filter({ hasText: campus }).locator("td").nth(2)).toHaveText("1");
-  await expect(rows.filter({ hasText: engineering }).locator("td").nth(2)).toHaveText("1");
+  await expect(rows.filter({ hasText: campus }).locator('[data-measure="nodes"]')).toHaveText("1");
+  await expect(rows.filter({ hasText: engineering }).locator('[data-measure="nodes"]')).toHaveText(
+    "1",
+  );
   await expect(page.getByTestId("total-nodes")).toHaveText("1");
   // The cost is what it was: the discount never applies to it. By owner, it is in two rows.
   await management(page, filter, "owner");
   await expect(page.getByTestId("total-cost")).toHaveText("4,800.00");
   const paid = page.getByTestId("management-rows").locator("tbody tr");
   await expect(paid).toHaveCount(2);
-  await expect(paid.filter({ hasText: campus }).locator("td").nth(3)).toHaveText("1,200.00");
-  await expect(paid.filter({ hasText: engineering }).locator("td").nth(3)).toHaveText("3,600.00");
-  await expect(paid.filter({ hasText: engineering }).locator("td").nth(2)).toHaveText("54,000.00");
+  await expect(paid.filter({ hasText: campus }).locator('[data-measure="cost"]')).toHaveText(
+    "1,200.00",
+  );
+  await expect(paid.filter({ hasText: engineering }).locator('[data-measure="cost"]')).toHaveText(
+    "3,600.00",
+  );
+  await expect(paid.filter({ hasText: engineering }).locator('[data-measure="value"]')).toHaveText(
+    "54,000.00",
+  );
   // The report can be come back to: what it is by and its filter are in the address.
   await page.reload();
   await expect(page.getByLabel("By", { exact: true })).toHaveValue("owner");
