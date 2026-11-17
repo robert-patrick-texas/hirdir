@@ -8,9 +8,11 @@
 // compared here as a whole number of hundredths, never as a floating-point number.
 
 import type { Schemas } from "../api/client";
-import { itemsPath } from "./filter";
+import { all, type Condition, itemsPath, itemsViewPath, parseFilter } from "./filter";
 import { markOf } from "./operators";
+import type { CountColumns } from "./rank";
 import { decimalValue, type SortColumns, type SortState } from "./sort";
+import { amountText, countText } from "./summary";
 
 export type ScoreRow = Schemas["SummaryRow"];
 export type RowOperator = Schemas["RowOperator"];
@@ -81,11 +83,114 @@ export function scoreColumns(blank: string): SortColumns<ScoreRow> {
     failed: (row) => row.by_health.failed,
     unknown: (row) => row.by_health.unknown,
     involved: (row) => involvedText(row.operators),
+    // 0.9.4: how the items of an operator have it, and what is given it (P-178).
+    ...Object.fromEntries(SPLIT.map(({ column, value }) => [column, value])),
+    // 0.9.4: a group's type, members and the groups nested in it (P-178).
+    type: (row) => row.type ?? null,
+    members: (row) => row.member_count ?? null,
+    nested: (row) => row.nested_groups ?? null,
   };
 }
 
+/** A count of a row that only some rows have: null where the row has none. */
+type Optional = (row: ScoreRow) => number | null;
+
+/**
+ * How the items of an operator have it, which add up to its items, and how many groups
+ * and places are given it as their own (P-178): the columns of the operators table that
+ * follow its share, by the names its sorting has for them. The blank row has none.
+ */
+export const SPLIT: ReadonlyArray<{
+  column: string;
+  header: string;
+  label: string;
+  value: Optional;
+}> = [
+  { column: "own", header: "Own", label: "items given it", value: (row) => row.own ?? null },
+  {
+    column: "from_item",
+    header: "From item",
+    label: "items that have it from the item they are in",
+    value: (row) => row.from_item ?? null,
+  },
+  {
+    column: "from_group",
+    header: "From group",
+    label: "items that have it from a group",
+    value: (row) => row.from_group ?? null,
+  },
+  {
+    column: "from_place",
+    header: "From place",
+    label: "items that have it from where they are",
+    value: (row) => row.from_place ?? null,
+  },
+  {
+    column: "groups_given",
+    header: "Groups given",
+    label: "groups given it",
+    value: (row) => row.groups_given ?? null,
+  },
+  {
+    column: "places_given",
+    header: "Places given",
+    label: "places given it",
+    value: (row) => row.places_given ?? null,
+  },
+];
+
 /** The order of a scoreboard at first: by support weight, the most first. */
 export const BY_WEIGHT: SortState = { column: "weight", descending: true };
+
+/**
+ * The counts of a scoreboard that it is ranked by and drawn with a bar beside, by the
+ * names its sorting has for them (P-178, P-180). A scoreboard is ranked by support weight
+ * until a header of another count is pressed. The share is a part of the view's support
+ * weight, `whole`: it ranks as the support weight does, and its bar is of the whole.
+ */
+export function scoreCounts(whole: string): CountColumns<ScoreRow> {
+  const count = (label: string, value: (row: ScoreRow) => number) => ({
+    value,
+    text: (row: ScoreRow) => countText(value(row)),
+    label,
+  });
+  return {
+    components: count("components", (row) => row.component_count),
+    nodes: count("managed nodes", (row) => row.managed_node_count),
+    items: count("items", (row) => row.items),
+    weight: {
+      value: (row) => decimalValue(row.support_weight),
+      text: (row) => amountText(row.support_weight),
+      label: "support weight",
+    },
+    share: {
+      value: (row) => decimalValue(row.support_weight),
+      text: (row) => shareText(row.support_weight, whole),
+      label: "share of the support weight",
+    },
+    good: count("components of good health", (row) => row.by_health.good),
+    degraded: count("components of degraded health", (row) => row.by_health.degraded),
+    failed: count("components of failed health", (row) => row.by_health.failed),
+    unknown: count("components of unknown health", (row) => row.by_health.unknown),
+    ...Object.fromEntries(
+      SPLIT.map(({ column, label, value }) => [column, optional(label, value)]),
+    ),
+    members: optional("members", (row) => row.member_count ?? null),
+    nested: optional("nested groups", (row) => row.nested_groups ?? null),
+  };
+}
+
+/** A count that only some rows have, written blank where a row has none. */
+function optional(label: string, value: Optional) {
+  return {
+    value,
+    text: (row: ScoreRow) => {
+      const found = value(row);
+      return found === null ? "" : countText(found);
+    },
+    label,
+  };
+}
 
 /**
  * A part of the view's support weight, in hundredths of a per cent of the whole, so
@@ -192,6 +297,8 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
       row.by_health.degraded,
       row.by_health.failed,
       row.by_health.unknown,
+      // 0.9.4: how its items have it, and what is given it (P-178).
+      ...SPLIT.map(({ value }) => value(row) ?? ""),
     ];
   };
   return toCsv([
@@ -209,6 +316,96 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
       "degraded",
       "failed",
       "unknown",
+      ...SPLIT.map(({ column }) => column),
+    ],
+    ...rows.map(line),
+  ]);
+}
+
+/** How an item has its operator, for each count of the split that has a list of its own. */
+const SOURCES: Readonly<Record<string, Condition>> = {
+  own: { field: "effective.operator_hid.source", op: "eq", value: "own" },
+  from_item: { field: "effective.operator_hid.source", op: "eq", value: "parent_item" },
+  from_group: { field: "effective.operator_hid.source", op: "eq", value: "device_group" },
+  from_place: {
+    field: "effective.operator_hid.source",
+    op: "in",
+    value: ["location", "site", "region"],
+  },
+};
+
+/** The view of a scoreboard, as the address of its page holds it. */
+export interface BoardView {
+  filter: string;
+  includeArchived: boolean;
+  includeDrafts: boolean;
+}
+
+/**
+ * Where a count of how an operator's items have it leads (P-178, P-181): the item list of
+ * the view's items that have the operator that way, with the minor items; the groups given
+ * it, whatever the view. The places given it are no one list, and lead nowhere; nor does
+ * the blank row, nor a view whose filter cannot be read.
+ */
+export function splitPath(view: BoardView, hid: string | null, column: string): string | null {
+  if (hid === null) return null;
+  if (column === "groups_given")
+    return `/groups?filter=${encodeURIComponent(`operator_hid:eq:${hid}`)}`;
+  const source = SOURCES[column];
+  if (!source) return null;
+  const read = parseFilter(view.filter);
+  if (!read.ok) return null;
+  const filter = all(
+    read.filter,
+    { field: "effective.operator_hid", op: "eq", value: hid },
+    source,
+  );
+  return itemsViewPath({
+    filter,
+    ...(view.includeArchived ? { include_archived: true } : {}),
+    ...(view.includeDrafts ? { include_drafts: true } : {}),
+  });
+}
+
+/** The condition that keeps the items under one group at any depth, or those under none. */
+export function groupCondition(hid: string | null): string {
+  return hid === null ? "group:empty:true" : `group:within:${hid}`;
+}
+
+/** The groups table as a file: one line for each row, in the order they are given. */
+export function groupsCsv(rows: readonly ScoreRow[]) {
+  const line = (row: ScoreRow): Array<string | number> => [
+    row.key ?? "",
+    row.label ?? "",
+    row.type ?? "",
+    row.member_count ?? "",
+    row.nested_groups ?? "",
+    row.items,
+    row.component_count,
+    row.managed_node_count,
+    row.support_weight,
+    row.by_health.good,
+    row.by_health.degraded,
+    row.by_health.failed,
+    row.by_health.unknown,
+    involvedText(row.operators),
+  ];
+  return toCsv([
+    [
+      "group_hid",
+      "group",
+      "type",
+      "members",
+      "nested_groups",
+      "items",
+      "components",
+      "managed_nodes",
+      "support_weight",
+      "good",
+      "degraded",
+      "failed",
+      "unknown",
+      "operators: components (support weight)",
     ],
     ...rows.map(line),
   ]);

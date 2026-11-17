@@ -469,27 +469,31 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Site",
     "Region",
     "Vendor",
+    "Model",
     "Kind",
     "Type",
     "Function",
     "Owner",
     "Operator",
+    "Group",
     "Contract",
     "Tag",
   ]);
   await expect(page.getByRole("heading", { level: 2, name: "By site" })).toBeVisible();
   const paid = page.getByTestId("management-rows").locator("tbody tr");
   await expect(paid).toHaveCount(2);
-  await expect(paid.filter({ hasText: site }).locator("td").nth(0)).toHaveText("4");
-  await expect(paid.filter({ hasText: site }).locator("td").nth(1)).toHaveText("3");
-  await expect(paid.filter({ hasText: "Nowhere: no location" }).locator("td").nth(0)).toHaveText(
-    "1",
+  await expect(paid.filter({ hasText: site }).locator('[data-measure="items"]')).toHaveText("4");
+  await expect(paid.filter({ hasText: site }).locator('[data-measure="components"]')).toHaveText(
+    "3",
   );
+  await expect(
+    paid.filter({ hasText: "Nowhere: no location" }).locator('[data-measure="items"]'),
+  ).toHaveText("1");
   await expect(page.getByTestId("total-items")).toHaveText("5");
   // By region, an item is in the row of each region above it, and the totals count it once.
   await page.getByLabel("By", { exact: true }).selectOption("region");
   await expect(paid).toHaveCount(3);
-  await expect(paid.filter({ hasText: central }).locator("td").nth(0)).toHaveText("4");
+  await expect(paid.filter({ hasText: central }).locator('[data-measure="items"]')).toHaveText("4");
   await expect(
     paid.filter({ has: page.getByRole("rowheader", { name: americas, exact: true }) }),
   ).toHaveCount(1);
@@ -499,7 +503,9 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
   await expect(page.getByRole("heading", { level: 1, name: "Summary" })).toBeVisible();
   const counted = page.getByTestId("summary-rows").locator("tbody tr");
   await expect(counted).toHaveCount(2);
-  await expect(counted.filter({ hasText: site }).locator("td").nth(1)).toHaveText("3");
+  await expect(counted.filter({ hasText: site }).locator('[data-measure="components"]')).toHaveText(
+    "3",
+  );
   await page.getByLabel("By", { exact: true }).selectOption("region");
   await expect(counted).toHaveCount(3);
 

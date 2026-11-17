@@ -7,9 +7,13 @@
 // Nothing is counted or summed here.
 
 import type { Schemas } from "../api/client";
-import { CONDITION_LIST, healthLabel } from "./health";
+import { plural } from "./format";
+import { groupTypeLabel } from "./groups";
+import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
 import { CATALOG_KINDS, choiceLabel, optionLabel } from "./options";
 import type { Option } from "./patch";
+import type { CountColumns } from "./rank";
+import { decimalValue } from "./sort";
 
 export type Summary = Schemas["SummaryOut"];
 export type Totals = Schemas["SummaryTotals"];
@@ -23,13 +27,16 @@ export type ManagementRow = Schemas["ManagementRow"];
 export type ManagementBy = NonNullable<Management["by"]>;
 type Choice = Schemas["ChoiceOut"];
 
+// 0.9.4: by model beside by vendor, and by group beside by operator (P-178, P-180).
 export const SUMMARY_BY: ReadonlyArray<Option & { value: By }> = [
   { value: "vendor", label: "Vendor" },
+  { value: "model", label: "Model" },
   { value: "kind", label: "Kind" },
   { value: "type", label: "Type" },
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
   { value: "operator", label: "Operator" },
+  { value: "group", label: "Group" },
   { value: "site", label: "Site" },
   { value: "region", label: "Region" },
   { value: "contract", label: "Contract" },
@@ -48,11 +55,13 @@ export const MANAGEMENT_BY: ReadonlyArray<Option & { value: ManagementBy }> = [
   { value: "site", label: "Site" },
   { value: "region", label: "Region" },
   { value: "vendor", label: "Vendor" },
+  { value: "model", label: "Model" },
   { value: "kind", label: "Kind" },
   { value: "type", label: "Type" },
   { value: "function", label: "Function" },
   { value: "owner", label: "Owner" },
   { value: "operator", label: "Operator" },
+  { value: "group", label: "Group" },
   { value: "contract", label: "Contract" },
   { value: "tag", label: "Tag" },
 ];
@@ -117,6 +126,42 @@ export function rowLabel(
   if (by === "condition") return choiceLabel(choices, CONDITION_LIST, text);
   if (by === "health") return healthLabel(text);
   return text;
+}
+
+/** What a row by group or by model holds beside its name (P-178, P-180). */
+type RowFacts = Pick<
+  SummaryRow,
+  "key" | "type" | "member_count" | "nested_groups" | "model_name" | "kind"
+>;
+
+/**
+ * What is said of a row beneath its name: a group's type, its members and the groups
+ * nested in it; a model's name, its kind and its type. Null for any other row, and for
+ * the blank row.
+ */
+export function rowDetail(by: string, row: RowFacts, choices?: readonly Choice[]): string | null {
+  if (row.key === null) return null;
+  const parts: string[] = [];
+  if (by === "group") {
+    if (row.type) parts.push(groupTypeLabel(row.type));
+    if (row.member_count !== null && row.member_count !== undefined) {
+      parts.push(plural(row.member_count, "member"));
+    }
+    if (row.nested_groups) parts.push(plural(row.nested_groups, "nested group"));
+  } else if (by === "model") {
+    if (row.model_name) parts.push(row.model_name);
+    if (row.kind) parts.push(optionLabel(CATALOG_KINDS, row.kind));
+    if (row.type) parts.push(choiceLabel(choices, "catalog_type", row.type));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** The page of the record a row is of, for a row by group or by model. */
+export function rowRecordPath(by: string, key: string | null): string | null {
+  if (key === null) return null;
+  if (by === "group") return `/groups/${encodeURIComponent(key)}`;
+  if (by === "model") return `/catalog/${encodeURIComponent(key)}`;
+  return null;
 }
 
 /** What to call the components of one condition, in the totals. Those with none say so. */
@@ -199,6 +244,70 @@ export function kindsShown(
 export function kindLabel(kind: string | null): string {
   return kind === null ? NONE.kind : optionLabel(CATALOG_KINDS, kind);
 }
+
+/**
+ * The counts of a row of the summary that it is ranked by and drawn with a bar beside,
+ * by the names its sorting has for them (P-180). It is ranked by items until a header of
+ * another count is pressed.
+ */
+export const SUMMARY_COUNTS: CountColumns<SummaryRow> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  component_count: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+  managed_node_count: {
+    value: (row) => row.managed_node_count,
+    text: (row) => countText(row.managed_node_count),
+    label: "managed nodes",
+  },
+  support_weight: {
+    value: (row) => decimalValue(row.support_weight),
+    text: (row) => amountText(row.support_weight),
+    label: "support weight",
+  },
+  ...Object.fromEntries(
+    HEALTHS.map((health) => [
+      `health.${health.value}`,
+      {
+        value: (row: SummaryRow) => row.by_health[health.value],
+        text: (row: SummaryRow) => countText(row.by_health[health.value]),
+        label: `components of ${health.label.toLowerCase()} health`,
+      },
+    ]),
+  ),
+};
+
+/** The counts of a row of the management report, as `SUMMARY_COUNTS` has those of the summary. */
+export const MANAGEMENT_COUNTS: CountColumns<ManagementRow> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  component_count: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+  est_value: {
+    value: (row) => decimalValue(row.est_value),
+    text: (row) => amountText(row.est_value),
+    label: "estimated value",
+  },
+  annual_support_cost: {
+    value: (row) => decimalValue(row.annual_support_cost),
+    text: (row) => amountText(row.annual_support_cost),
+    label: "annual support cost",
+  },
+};
+
+/** The counts of the totals by kind and by condition, as `SUMMARY_COUNTS` has those of a row. */
+export const COUNTED_COUNTS: CountColumns<Counted> = {
+  items: { value: (row) => row.items, text: (row) => countText(row.items), label: "items" },
+  components: {
+    value: (row) => row.component_count,
+    text: (row) => countText(row.component_count),
+    label: "components",
+  },
+};
 
 /** A whole number with its thousands marked, for a count on a page. */
 export function countText(count: number): string {

@@ -6,6 +6,7 @@ import { HealthMark } from "../components/Health";
 import { OperatorMark } from "../components/Operator";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
+import { Counted, RankCell, RankHead, RankNote } from "../components/Ranked";
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
@@ -19,21 +20,24 @@ import { useChoices, useOperatorMarks, useSettings } from "../lib/lists";
 import { type Mark, operatorPath } from "../lib/operators";
 import type { Option } from "../lib/patch";
 import { fieldErrors } from "../lib/problems";
+import { ranking } from "../lib/rank";
 import { settingText } from "../lib/settings";
 import { decimalValue, type SortColumns } from "../lib/sort";
 import {
-  amountText,
   type By,
   byLabel,
-  countText,
   isBy,
   isByPlace,
   isManagementBy,
   MANAGEMENT_BY,
+  MANAGEMENT_COUNTS,
   type ManagementBy,
   type ReportView,
+  rowDetail,
   rowLabel,
+  rowRecordPath,
   SUMMARY_BY,
+  SUMMARY_COUNTS,
   type SummaryRow,
   settingList,
   summaryQuery,
@@ -55,15 +59,30 @@ const PLACE_ROWS = {
 const CONTRACT_ROWS =
   "An item is in the row of each contract that covers it today, and the totals count it once. The items that no contract covers are in a row of their own.";
 
+// 0.9.4: what to say beneath a report by group and by model (P-178, P-180).
+const OTHER_ROWS = {
+  group:
+    "A group's row holds its current members, those of every group nested in it at any depth, and the minor items of all of them. An item in several groups is in the row of each, and the totals count it once. The items in no group are in a row of their own.",
+  model:
+    "A model is a vendor's product, named by its vendor and its PID, so that the models of every vendor are ranked against each other; by type counts what is of one type whatever its vendor. The items with no catalog entry are in a row of their own.",
+} as const;
+
+function otherRows(by: string): string | null {
+  return by === "group" || by === "model" ? OTHER_ROWS[by] : null;
+}
+
+type NamedRow = Parameters<typeof rowDetail>[1] & { label: string | null };
+
 /**
  * What a row of a report is called. A row of an operator is that operator's mark: the
  * label in its colour, as a link to its page, with the person behind it on hover. The
  * report names the operator by its HID and its label; the colour and the person come
- * from the list of operators, and until that is read the label is the link.
+ * from the list of operators, and until that is read the label is the link. A row of a
+ * group or of a model leads to its page, with what it is beneath its name.
  */
 function RowName(props: {
   by: By | ManagementBy;
-  row: { key: string | null; label: string | null };
+  row: NamedRow;
   choices: Parameters<typeof rowLabel>[2];
   operators: ReadonlyMap<string, Mark> | undefined;
 }) {
@@ -76,6 +95,20 @@ function RowName(props: {
   // A row of a contract is that contract, by its number and its vendor: a link to it.
   if (by === "contract" && row.key !== null) {
     return <Link to={contractPath(row.key)}>{row.label ?? row.key}</Link>;
+  }
+  const path = rowRecordPath(by, row.key);
+  if (path) {
+    const detail = rowDetail(by, row, choices);
+    return (
+      <>
+        <Link to={path}>{rowLabel(by, row, choices)}</Link>
+        {detail && (
+          <span className="row-detail" data-testid="row-detail">
+            {detail}
+          </span>
+        )}
+      </>
+    );
   }
   return rowLabel(by, row, choices);
 }
@@ -97,6 +130,19 @@ function rowName(
   }
   return rowLabel(by, row, choices);
 }
+
+// The blank row of a report, as `rowLabel` names it.
+const NO_ROW = { key: null, label: null } as const;
+
+/**
+ * The order of the rows of both reports at first: the most items first, as the scoreboard
+ * opens by its weight, and the blank row last in every order (P-181). The answer of the
+ * server, which the command line prints and a file holds, keeps its own order.
+ */
+const MOST_FIRST = {
+  initial: { column: "items", descending: true },
+  last: (row: { key: string | null }) => row.key === null,
+} as const;
 
 // The four columns of health of the summary: each is sorted by the count it shows.
 const BY_HEALTH: SortColumns<SummaryRow> = Object.fromEntries(
@@ -252,13 +298,22 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
-  const sorting = useSorting(data?.rows, {
-    name: (row) => rowName(by, row, choices.data, operators.data),
-    items: (row) => row.items,
-    component_count: (row) => row.component_count,
-    managed_node_count: (row) => row.managed_node_count,
-    support_weight: (row) => decimalValue(row.support_weight),
-    ...BY_HEALTH,
+  const sorting = useSorting(
+    data?.rows,
+    {
+      name: (row) => rowName(by, row, choices.data, operators.data),
+      items: (row) => row.items,
+      component_count: (row) => row.component_count,
+      managed_node_count: (row) => row.managed_node_count,
+      support_weight: (row) => decimalValue(row.support_weight),
+      ...BY_HEALTH,
+    },
+    MOST_FIRST,
+  );
+  // The rank follows the count the table is sorted by, and is by items at first (P-180).
+  const ranked = ranking(sorting.rows, sorting.state, SUMMARY_COUNTS, {
+    fallback: "items",
+    blank: (row) => row.key === null,
   });
 
   return (
@@ -293,6 +348,7 @@ export function Summary() {
             <HeadlineTotals
               totals={data.totals}
               countKinds={settingList(settings.data, "count_kinds")}
+              ranked
             />
             <ConditionTotals conditions={data.totals.by_condition} choices={choices.data} />
             <p className="hint">
@@ -311,6 +367,7 @@ export function Summary() {
                   </caption>
                   <thead>
                     <tr>
+                      <RankHead ranking={ranked} />
                       <SortTh sort={sorting} column="name">
                         {byLabel(by)}
                       </SortTh>
@@ -341,6 +398,7 @@ export function Summary() {
                   <tbody>
                     {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
+                        <RankCell ranking={ranked} row={row} />
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
                             by={by}
@@ -349,20 +407,28 @@ export function Summary() {
                             operators={operators.data}
                           />
                         </th>
-                        <td className="number">{countText(row.items)}</td>
-                        <td className="number">{countText(row.component_count)}</td>
-                        <td className="number">{countText(row.managed_node_count)}</td>
-                        <td className="number">{amountText(row.support_weight)}</td>
+                        <td className="number" data-measure="items">
+                          <Counted ranking={ranked} column="items" row={row} />
+                        </td>
+                        <td className="number" data-measure="components">
+                          <Counted ranking={ranked} column="component_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="nodes">
+                          <Counted ranking={ranked} column="managed_node_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="weight">
+                          <Counted ranking={ranked} column="support_weight" row={row} />
+                        </td>
                         {HEALTHS.map((health) => (
                           <td className="number" key={health.value} data-health={health.value}>
-                            {countText(row.by_health[health.value])}
+                            <Counted ranking={ranked} column={`health.${health.value}`} row={row} />
                           </td>
                         ))}
                       </tr>
                     ))}
                     {data.rows.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="muted">
+                        <td colSpan={10} className="muted">
                           No item is in view.
                         </td>
                       </tr>
@@ -370,6 +436,7 @@ export function Summary() {
                   </tbody>
                 </table>
               </div>
+              <RankNote ranking={ranked} fallback="items" blank={rowLabel(by, NO_ROW)} />
               <p className="hint">
                 The four columns of health count the components of the row. A minor item is in the
                 row of the owner, state and disposition in force for it.
@@ -378,6 +445,7 @@ export function Summary() {
                 {by === "contract" && ` ${CONTRACT_ROWS}`} A stack whose members fall in two rows is
                 a managed node in both, and one in the totals.
                 {isByPlace(by) && ` ${PLACE_ROWS[by]}`}
+                {otherRows(by) && ` ${otherRows(by)}`}
               </p>
             </section>
           )}
@@ -408,12 +476,21 @@ export function ManagementReport() {
   const data = report.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
-  const sorting = useSorting(data?.rows, {
-    name: (row) => rowName(by, row, choices.data, operators.data),
-    items: (row) => row.items,
-    component_count: (row) => row.component_count,
-    est_value: (row) => decimalValue(row.est_value),
-    annual_support_cost: (row) => decimalValue(row.annual_support_cost),
+  const sorting = useSorting(
+    data?.rows,
+    {
+      name: (row) => rowName(by, row, choices.data, operators.data),
+      items: (row) => row.items,
+      component_count: (row) => row.component_count,
+      est_value: (row) => decimalValue(row.est_value),
+      annual_support_cost: (row) => decimalValue(row.annual_support_cost),
+    },
+    MOST_FIRST,
+  );
+  // The rank follows the count the table is sorted by, and is by items at first (P-180).
+  const ranked = ranking(sorting.rows, sorting.state, MANAGEMENT_COUNTS, {
+    fallback: "items",
+    blank: (row) => row.key === null,
   });
 
   return (
@@ -459,6 +536,7 @@ export function ManagementReport() {
                   </caption>
                   <thead>
                     <tr>
+                      <RankHead ranking={ranked} />
                       <SortTh sort={sorting} column="name">
                         {byLabel(by)}
                       </SortTh>
@@ -479,6 +557,7 @@ export function ManagementReport() {
                   <tbody>
                     {sorting.rows.map((row) => (
                       <tr key={row.key ?? ""} data-key={row.key ?? ""}>
+                        <RankCell ranking={ranked} row={row} />
                         <th scope="row" className={row.key === null ? "muted" : undefined}>
                           <RowName
                             by={by}
@@ -487,15 +566,23 @@ export function ManagementReport() {
                             operators={operators.data}
                           />
                         </th>
-                        <td className="number">{countText(row.items)}</td>
-                        <td className="number">{countText(row.component_count)}</td>
-                        <td className="number">{amountText(row.est_value)}</td>
-                        <td className="number">{amountText(row.annual_support_cost)}</td>
+                        <td className="number" data-measure="items">
+                          <Counted ranking={ranked} column="items" row={row} />
+                        </td>
+                        <td className="number" data-measure="components">
+                          <Counted ranking={ranked} column="component_count" row={row} />
+                        </td>
+                        <td className="number" data-measure="value">
+                          <Counted ranking={ranked} column="est_value" row={row} />
+                        </td>
+                        <td className="number" data-measure="cost">
+                          <Counted ranking={ranked} column="annual_support_cost" row={row} />
+                        </td>
                       </tr>
                     ))}
                     {data.rows.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="muted">
+                        <td colSpan={6} className="muted">
                           No item is in view.
                         </td>
                       </tr>
@@ -503,6 +590,7 @@ export function ManagementReport() {
                   </tbody>
                 </table>
               </div>
+              <RankNote ranking={ranked} fallback="items" blank={rowLabel(by, NO_ROW)} />
               {by === "tag" && (
                 <p className="hint">
                   An item with several tags is in the row of each, and the totals count it once.
@@ -510,6 +598,7 @@ export function ManagementReport() {
               )}
               {by === "contract" && <p className="hint">{CONTRACT_ROWS}</p>}
               {isByPlace(by) && <p className="hint">{PLACE_ROWS[by]}</p>}
+              {otherRows(by) && <p className="hint">{otherRows(by)}</p>}
             </section>
           )}
         </>

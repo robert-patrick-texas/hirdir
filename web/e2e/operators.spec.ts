@@ -452,14 +452,14 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   await expect(rows).toHaveCount(4);
   const row = (label: string) =>
     rows.filter({ has: page.locator(".operator-mark", { hasText: label }) });
-  await expect(row(core).locator("td").nth(1)).toHaveText("2");
+  await expect(row(core).locator('[data-measure="components"]')).toHaveText("2");
   await expect(row(core)).toContainText("open");
-  await expect(row(edge).locator("td").nth(1)).toHaveText("1");
+  await expect(row(edge).locator('[data-measure="components"]')).toHaveText("1");
   await expect(row(edge)).toContainText(ana);
-  await expect(row(local).locator("td").nth(1)).toHaveText("1");
+  await expect(row(local).locator('[data-measure="components"]')).toHaveText("1");
   const nobody = table.locator('tbody tr[data-key=""]');
   await expect(nobody).toContainText("Nobody is assigned");
-  await expect(nobody.locator("td").nth(1)).toHaveText("1");
+  await expect(nobody.locator('[data-measure="components"]')).toHaveText("1");
   // The management report is by operator too.
   await page.goto(
     `./reports/management?${new URLSearchParams({ filter, by: "operator" }).toString()}`,
@@ -499,7 +499,7 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   await summary(page, filter, "operator");
   await expect(rows).toHaveCount(3);
   await expect(nobody).toHaveCount(0);
-  await expect(row(edge).locator("td").nth(1)).toHaveText("2");
+  await expect(row(edge).locator('[data-measure="components"]')).toHaveText("2");
 
   // A contact says which labels it stands behind, as their marks.
   await page.goto(`./contacts?filter=${encodeURIComponent(`email:eq:${anaMail}`)}`);
@@ -512,7 +512,7 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   // The label says what it is on, and is the way to the groups and places given it.
   await openOperator(page, local);
   await expect(
-    page.getByTestId("operator-places").getByRole("link", { name: sitePath, exact: true }),
+    page.getByTestId("operator-tree").getByRole("link", { name: sitePath, exact: true }),
   ).toBeVisible();
   // The Operator column of the groups, hidden until it is asked for.
   await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${stack}`)}`);
@@ -582,7 +582,9 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   // of the 7.50 in view. A weight is written with or without the zero that says nothing.
   const operators = page.getByTestId("score-operators");
   const ranked = operators.locator("tbody tr");
-  await expect(ranked).toHaveCount(3);
+  // 0.9.4: the page counts three tables at once, the groups among them; on a busy host that
+  // takes longer than the 5 seconds an expectation waits by default.
+  await expect(ranked).toHaveCount(3, { timeout: 20_000 });
   await expect(ranked.nth(0)).toHaveAttribute("data-label", edge);
   await expect(ranked.nth(1)).toHaveAttribute("data-label", core);
   await expect(operators.getByRole("columnheader", { name: "Support weight" })).toHaveAttribute(
@@ -597,11 +599,33 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(heavier.locator('[data-measure="items"]')).toHaveText("3");
   await expect(heavier.locator('[data-measure="weight"]')).toHaveText(/^4\.50?$/);
   await expect(heavier.locator('[data-measure="share"] .share-text')).toHaveText("60%");
-  await expect(heavier.getByRole("meter")).toHaveAttribute("value", "60");
+  // The share has a bar of the whole beside it, which a screen reader does not read.
+  const shareBar = heavier.locator('[data-measure="share"] .bar');
+  await expect(shareBar).toHaveAttribute("aria-hidden", "true");
+  await expect(shareBar.locator(".bar-fill")).toHaveAttribute("style", /inline-size: 60%/);
   const lighter = ranked.nth(1);
   await expect(markIn(lighter, core)).toHaveAttribute("data-open", "true");
   await expect(lighter.locator('[data-measure="components"]')).toHaveText("1");
   await expect(lighter.locator('[data-measure="share"] .share-text')).toHaveText("20%");
+  // P-178, P-180: a rank by the column the table is sorted by, 1 for the most, and a bar
+  // beside each count as long as it is to the largest of its column, read by nobody.
+  const rankHead = operators.getByRole("columnheader", { name: "Rank", exact: true });
+  await expect(rankHead).toHaveAttribute("data-rank-by", "weight");
+  await expect(page.getByTestId("rank-note").first()).toContainText(
+    "Ranked by support weight, 1 for the most",
+  );
+  await expect(heavier.locator('[data-measure="rank"]')).toHaveText("1");
+  await expect(lighter.locator('[data-measure="rank"]')).toHaveText("2");
+  const weightBar = (row: Locator) => row.locator('[data-measure="weight"] .bar');
+  await expect(weightBar(heavier)).toHaveAttribute("aria-hidden", "true");
+  await expect(weightBar(heavier).locator(".bar-fill")).toHaveAttribute(
+    "style",
+    /inline-size: 100%/,
+  );
+  await expect(weightBar(lighter).locator(".bar-fill")).toHaveAttribute(
+    "style",
+    /inline-size: 33\.33%/,
+  );
   // What nobody is assigned to is a row like the others, here the last by its weight,
   // and what is under an open label is said.
   const nobody = page.getByTestId("score-nobody");
@@ -609,6 +633,12 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(nobody).toContainText("Nobody is assigned");
   await expect(nobody.locator('[data-measure="components"]')).toHaveText("1");
   await expect(nobody.locator('[data-measure="weight"]')).toHaveText(/^1\.50?$/);
+  // The blank row has no rank, and its count is drawn as any other.
+  await expect(nobody.locator('[data-measure="rank"]')).toHaveText("");
+  await expect(weightBar(nobody).locator(".bar-fill")).toHaveAttribute(
+    "style",
+    /inline-size: 33\.33%/,
+  );
   await expect(page.getByTestId("score-open")).toContainText(
     "Under 1 label that nobody is behind for now: 1 component, 1 item",
   );
@@ -661,6 +691,13 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   await expect(ranked.nth(2)).toHaveAttribute("data-label", edge);
   await expect(ranked.nth(0)).toHaveAttribute("data-label", core);
   await expect(ranked.nth(1)).toHaveAttribute("data-testid", "score-nobody");
+  // The rank follows the column: by components, 1 for the most whichever way the order
+  // runs, and the blank row still has none.
+  await expect(rankHead).toHaveAttribute("data-rank-by", "components");
+  await expect(ranked.nth(2).locator('[data-measure="rank"]')).toHaveText("1");
+  await expect(ranked.nth(0).locator('[data-measure="rank"]')).toHaveText("2");
+  await expect(ranked.nth(1).locator('[data-measure="rank"]')).toHaveText("");
+  await expect(page.getByTestId("rank-note").first()).toHaveAttribute("data-rank-by", "components");
   const savedAgain = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV of the operators" }).click();
   const sortedPath = testInfo.outputPath("sorted-operators.csv");

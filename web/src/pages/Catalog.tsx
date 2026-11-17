@@ -97,6 +97,20 @@ function entryColumns(choices: readonly Choice[] | undefined): GridColumn<Entry>
       value: (entry) => entry.description,
       hide: true,
     },
+    {
+      // 0.9.4: how many items are of the model, counted as the item list counts them, a
+      // link to them; sorted by the server, and not filtered by (P-180).
+      id: "items",
+      header: "Items",
+      kind: "number",
+      field: null,
+      sortField: "items",
+      column: null,
+      value: (entry) => String(entry.items),
+      linkTo: (entry) => itemsPath(`catalog_entry_hid:eq:${entry.hid}`),
+      numeric: true,
+      width: 100,
+    },
     amount("est_value", "Estimated value"),
     amount("support_weight", "Support weight"),
     amount("annual_support_cost", "Annual support cost", true),
