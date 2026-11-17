@@ -718,6 +718,12 @@ table.narrow {
   white-space: normal;
 }
 
+/* 0.9.4: the scoreboard's table of groups fits a window 1280 pixels wide in the same way:
+   a long header, Operators involved or Nested groups, takes two lines. */
+table.wrap-heads thead th {
+  white-space: normal;
+}
+
 /* What a setting is for and what it takes are sentences: an example in one, an address
    or a time zone, breaks where the column needs it to rather than widen the table. */
 .settings-table td.prose {

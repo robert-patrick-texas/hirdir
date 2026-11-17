@@ -466,7 +466,7 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
       {data && (
         <>
           <div className="scroll">
-            <table data-testid="score-groups">
+            <table data-testid="score-groups" className="wrap-heads">
               <caption className="visually-hidden">
                 The device groups of the items in view, and the items in no group, each with its
                 type, members, nested groups, the items, components, managed nodes and support
