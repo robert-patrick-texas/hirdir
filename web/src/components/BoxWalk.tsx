@@ -44,11 +44,10 @@ function RecordLink({ text, href }: { text: string; href?: string | null | undef
   return href ? <Link to={href}>{text}</Link> : text;
 }
 
-/** What a step holds: struck through when it is passed over, and said when it is nothing. */
-function Held({ step }: { step: WalkBox }) {
-  if (step.value === null) return <span className="walk-none">nothing</span>;
-  const passed = step.state === "passed_over" || step.state === "retired";
-  return passed ? <s>{step.value}</s> : step.value;
+/** What a step holds, struck through when it is passed over. */
+function Held({ value, state }: { value: string; state: StepState }) {
+  const passed = state === "passed_over" || state === "retired";
+  return passed ? <s>{value}</s> : value;
 }
 
 /** Where a value held by a group is from, when that group holds none of its own. */
@@ -105,10 +104,13 @@ export function BoxWalk({ label, steps, overrides, testId }: BoxWalkProps) {
                 <span className="walk-title">
                   <RecordLink text={step.title} href={step.href} />
                 </span>
-                <span className="walk-value" data-testid="walk-value">
-                  <Held step={step} />
-                  <Via step={step} />
-                </span>
+                {/* A step that holds nothing says so once, in its state. */}
+                {step.value !== null && (
+                  <span className="walk-value" data-testid="walk-value">
+                    <Held value={step.value} state={step.state} />
+                    <Via step={step} />
+                  </span>
+                )}
                 <span className="walk-state">{STATE_WORDS[step.state]}</span>
               </div>
             </li>

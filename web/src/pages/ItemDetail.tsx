@@ -23,6 +23,7 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 // 0.8.0: a default and a minimum of the support weight of a major item (P-155).
 import { Raised } from "../components/Weight";
+import { WhyEachValue } from "../components/WhyEachValue";
 import { aboveItem, descentHint, isFromAbove, knownAbove, ownerSource } from "../lib/descent";
 import {
   effectiveLabel,
@@ -646,6 +647,17 @@ function ValuesInForce({ item }: { item: Item }) {
           </tbody>
         </table>
       </div>
+      {/* 0.9.4: why it has each value, the walk of each as a row of boxes (P-176). */}
+      <p className="hint" id="walks-intro">
+        Why it has each value: the records it looks at in their order, its own first, then its own
+        groups, the item it is in and that item's groups, and for the operator where it is. The
+        first that holds a value decides, and those after it are passed over.
+      </p>
+      <WhyEachValue
+        of="item"
+        hid={item.hid}
+        version={`${item.row_version} ${JSON.stringify(item.effective)}`}
+      />
     </section>
   );
 }

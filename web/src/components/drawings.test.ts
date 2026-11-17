@@ -82,7 +82,8 @@ describe("the walk of a value as a row of boxes", () => {
 
   it("draws a step that holds nothing dashed, and says so in words", () => {
     expect(boxes[0]).toContain("walk-box walk-nothing");
-    expect(boxes[0]).toContain(">nothing<");
+    // Once: no value line of "nothing" beside the state that says it.
+    expect(boxes[0]).not.toContain("walk-value");
     expect(boxes[0]).toContain(">holds nothing<");
   });
 

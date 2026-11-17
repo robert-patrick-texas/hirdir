@@ -26,6 +26,7 @@ import { EditForm } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
+import { WhyEachValue } from "../components/WhyEachValue";
 import { addressList, managementText, networkLabels } from "../lib/addresses";
 import {
   aboveGroup,
@@ -755,6 +756,20 @@ export function DeviceGroupDetail() {
       {record && (
         <>
           <GroupFacts group={record} />
+          {/* 0.9.4: the walk of each value the group may have from above (P-176). */}
+          <section aria-labelledby="group-values">
+            <h2 id="group-values">Values in force</h2>
+            <p className="hint">
+              Why the group has its location, planned location, operator and owner: its own first,
+              then the group it is nested in and each group above that. The first that holds a value
+              decides, and those after it are passed over.
+            </p>
+            <WhyEachValue
+              of="group"
+              hid={record.hid}
+              version={`${record.row_version} ${JSON.stringify(record.effective)}`}
+            />
+          </section>
           {record.health && (
             <GroupHealth
               key={`health ${record.hid} ${record.row_version}`}

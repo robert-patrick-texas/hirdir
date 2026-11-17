@@ -2087,10 +2087,6 @@ fieldset.extension-list {
   color: var(--muted);
 }
 
-.walk-none {
-  font-style: italic;
-}
-
 .walk-overrides {
   margin: 0 0 0.25rem;
   font-size: 0.9rem;
@@ -2103,6 +2099,38 @@ fieldset.extension-list {
 
 .walk-as-table {
   margin: 0 0 0.75rem;
+}
+
+/* The walks of a record, one under a heading of its own for each value. */
+.walk-heading {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.walk-in-force {
+  font-weight: 400;
+}
+
+/* In a wide window the heading of a value stands beside its walk, so that a page of
+   twelve walks stays short. */
+@media (min-width: 64rem) {
+  .walk-field {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 0 1rem;
+    align-items: start;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .walk-field .walk-heading {
+    margin: 0.35rem 0 0;
+  }
+
+  .walk-field .walk-as-table {
+    margin-bottom: 0;
+  }
 }
 
 .walk-as-table > summary {
