@@ -103,15 +103,20 @@ class Bookkeeping:
 
 
 class User(Bookkeeping, Base):
-    """A person who signs in, or a service account that holds tokens."""
+    """A person who signs in, or a service account that holds tokens.
+
+    A user is a part that a person plays: the person is a contact, whose name, email
+    and numbers the user shows, read when it is read. A service account is no person
+    and has no contact (P-172).
+    """
 
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("contact_hid", name="users_contact"),)
 
     hid: Mapped[str] = _hid()
     username: Mapped[str] = mapped_column(String(64))
     username_key: Mapped[str] = mapped_column(String(64), unique=True)
-    display_name: Mapped[str] = mapped_column(String(200), default="")
-    email: Mapped[str] = mapped_column(String(254), default="")
+    contact_hid: Mapped[str | None] = mapped_column(ForeignKey("contacts.hid"), default=None)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     access_code_hash: Mapped[str | None] = mapped_column(Text, default=None)
     tokens_valid_after: Mapped[int] = mapped_column(BigInteger, default=0)
@@ -284,7 +289,11 @@ class ShippingAddress:
 
 
 class Contact(Bookkeeping, Base):
-    """A person or a shared mailbox, to be assigned to places and to owners."""
+    """A person or a shared mailbox: the one list of people.
+
+    It is assigned to places and to owners, and a user and an operator are each a part
+    that a contact plays, holding only what belongs to that part (P-172).
+    """
 
     __tablename__ = "contacts"
     __table_args__ = (UniqueConstraint("email_key", name="contacts_email"),)
@@ -296,6 +305,7 @@ class Contact(Bookkeeping, Base):
     email: Mapped[str | None] = mapped_column(String(254), default=None)
     email_key: Mapped[str | None] = mapped_column(String(254), default=None)
     phone: Mapped[str | None] = mapped_column(String(50), default=None)
+    phone2: Mapped[str | None] = mapped_column(String(50), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
 

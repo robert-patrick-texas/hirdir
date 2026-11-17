@@ -165,6 +165,7 @@ describe("the carrier's contacts", () => {
       organization: "Example Telecom",
       email: "avery@example.com",
       phone: "555 0101",
+      phone2: null,
       record_status: "active" as const,
     },
   };

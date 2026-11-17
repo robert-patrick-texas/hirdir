@@ -64,6 +64,7 @@ from hirdir.db.models import (
     Site,
     Tag,
     TagLink,
+    User,
     Vendor,
     VendorContact,
 )
@@ -254,6 +255,23 @@ def _operator_in_force() -> ColumnElement[Any]:
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
 ITEM_OPERATOR: Any = aliased(Operator, name="item_operator")
 ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
+
+
+def is_user(contact_hid: Any) -> ColumnElement[bool]:
+    """Say whether the contact a column names is a user's (P-172)."""
+    return contact_hid.in_(select(User.contact_hid).where(User.contact_hid.is_not(None)))
+
+
+def operator_scope(contact: Any) -> ColumnElement[Any]:
+    """Return `internal` where the contact behind a label is a user's, `external` where
+    it is not, and nothing where nobody is behind it (P-172)."""
+    return case(
+        (contact.hid.is_(None), None),
+        (is_user(contact.hid), operators.INTERNAL),
+        else_=operators.EXTERNAL,
+    )
+
+
 PLANNED_LOCATION: Any = aliased(Location, name="planned_location")
 PLANNED_SITE: Any = aliased(Site, name="planned_site")
 ITEM_LOCATION: Any = aliased(Location, name="item_location")
@@ -650,6 +668,8 @@ ITEMS = Listing(
         "effective.operator_hid": Field("reference", OPERATOR_IN_FORCE),
         "operator.label": Field("text", ITEM_OPERATOR.label),
         "operator.contact": Field("text", ITEM_OPERATOR_CONTACT.name),
+        # Internal where the person behind the operator in force is a user, external not.
+        "operator.scope": Field("choice", operator_scope(ITEM_OPERATOR_CONTACT)),
         # Assigned to a label that nobody is behind: no contact, or one that is retired.
         "operator.is_open": Field(
             "boolean",
@@ -1244,8 +1264,10 @@ CONTACTS = Listing(
     model=Contact,
     fields={
         **_bookkeeping(Contact),
-        **_columns(Contact, "text", "name", "organization", "email", "phone", "notes"),
+        **_columns(Contact, "text", "name", "organization", "email", "phone", "phone2", "notes"),
         "record_status": Field("choice", Contact.record_status),
+        # The contact is a user's (P-172).
+        "is_user": Field("boolean", is_user(Contact.hid)),
         "tags": _tags("contact", Contact),
         # How many places, owners and operators name it, as its record counts them.
         "uses": Field("integer", ordered_by=_counted(Contact, *contacts.USED_BY)),
@@ -1264,6 +1286,9 @@ OPERATORS = Listing(
         "contact_hid": Field("reference", Operator.contact_hid),
         "contact.name": Field("text", _OPERATOR_CONTACT.name),
         "contact.email": Field("text", _OPERATOR_CONTACT.email),
+        "contact.phone": Field("text", _OPERATOR_CONTACT.phone),
+        "contact.phone2": Field("text", _OPERATOR_CONTACT.phone2),
+        "scope": Field("choice", operator_scope(_OPERATOR_CONTACT)),
         "is_open": Field(
             "boolean",
             or_(_OPERATOR_CONTACT.hid.is_(None), _OPERATOR_CONTACT.record_status == "retired"),

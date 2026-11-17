@@ -346,6 +346,7 @@ describe("ownRoles", () => {
           organization: null,
           email: null,
           phone: null,
+          phone2: null,
           record_status: "active",
         }
       : null,

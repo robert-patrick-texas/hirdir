@@ -4,18 +4,37 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hirdir.api import schemas
-from hirdir.db.models import AuditEvent, RoleGrant, User, UserGroup
+from hirdir.db.models import AuditEvent, Contact, RoleGrant, User, UserGroup
 from hirdir.domain import accounts
 
 
-def user_out(db: Session, user: User) -> schemas.UserOut:
-    """Return user with the role and groups they hold right now."""
+def person_ref(contact: Contact | None) -> schemas.PersonRef | None:
+    """Return the contact a user is, as the user shows it."""
+    if contact is None:
+        return None
+    return schemas.PersonRef(
+        hid=contact.hid,
+        name=contact.name,
+        email=contact.email,
+        phone=contact.phone,
+        phone2=contact.phone2,
+        record_status=contact.record_status,
+    )
+
+
+def user_out(db: Session, user: User, contact: Contact | None = None) -> schemas.UserOut:
+    """Return user with the role and groups they hold right now, and the contact it is:
+    its name and email are the contact's, read now (P-172)."""
     role = accounts.effective_role(db, user)
+    if contact is None or contact.hid != user.contact_hid:
+        contact = accounts.contact_of(db, user)
     return schemas.UserOut(
         hid=user.hid,
         username=user.username,
-        display_name=user.display_name,
-        email=user.email,
+        contact_hid=user.contact_hid,
+        contact=person_ref(contact),
+        display_name=contact.name if contact is not None else "",
+        email=(contact.email or "") if contact is not None else "",
         is_service_account=user.is_service_account,
         disabled=user.disabled,
         role=role.value if role else None,

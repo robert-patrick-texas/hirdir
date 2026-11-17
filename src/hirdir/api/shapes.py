@@ -235,6 +235,7 @@ class _Labels:
         self.people: dict[str, Contact] = _by_hid(
             db, Contact, {operator.contact_hid for operator in self.found.values()}
         )
+        self.users: dict[str, User] = contacts.users_of(db, list(self.people))
 
     def ref(self, hid: str | None) -> shapes.OperatorRef | None:
         """Return an operator as what it is given to shows it."""
@@ -250,6 +251,7 @@ class _Labels:
                 "contact_hid": operator.contact_hid,
                 "contact": contact.name if contact is not None else None,
                 "is_open": operators.is_open(operator, contact),
+                "scope": operators.scope(contact, self.users),
                 "record_status": operator.record_status,
             }
         )
@@ -270,6 +272,7 @@ class _Labels:
             contact_hid=ref.contact_hid if ref is not None else None,
             contact=ref.contact if ref is not None else None,
             is_open=ref.is_open if ref is not None else False,
+            scope=ref.scope if ref is not None else None,
         )
 
 
@@ -326,19 +329,29 @@ def summary_out(db: Session, found: Any) -> shapes.SummaryOut:
 def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut]:
     """Return operators, each with who is behind it and how much it is given to."""
     people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
+    users = contacts.users_of(db, list(people))
     uses = operators.uses(db, [operator.hid for operator in found])
     out = []
     for operator in found:
         contact = people.get(operator.contact_hid or "")
+        user = users.get(contact.hid) if contact is not None else None
         out.append(
             shapes.OperatorOut(
-                **_own(operator, shapes.OperatorOut, ("contact", "is_open", "uses")),
+                **_own(
+                    operator, shapes.OperatorOut, ("contact", "user", "scope", "is_open", "uses")
+                ),
                 contact=_contact_ref(contact) if contact is not None else None,
+                user=_user_brief(user),
+                scope=operators.scope(contact, users),
                 is_open=operators.is_open(operator, contact),
                 uses=uses[operator.hid],
             )
         )
     return out
+
+
+def _user_brief(user: User | None) -> shapes.UserBrief | None:
+    return shapes.UserBrief(hid=user.hid, username=user.username) if user is not None else None
 
 
 def _contact_ref(contact: Contact) -> shapes.ContactRef:
@@ -574,11 +587,13 @@ def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
     hids = [contact.hid for contact in found]
     labels = tags.labels_of(db, contacts.RECORD_TYPE, hids)
     uses = contacts.uses(db, hids)
+    users = contacts.users_of(db, hids)
     return [
         shapes.ContactOut(
-            **_own(contact, shapes.ContactOut, ("tags", "uses")),
+            **_own(contact, shapes.ContactOut, ("tags", "uses", "user")),
             tags=labels[contact.hid],
             uses=uses[contact.hid],
+            user=_user_brief(users.get(contact.hid)),
         )
         for contact in found
     ]

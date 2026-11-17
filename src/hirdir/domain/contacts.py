@@ -1,8 +1,9 @@
-"""Contacts: the people and shared mailboxes of places, and their assignments.
+"""Contacts: the one list of people and shared mailboxes, and their assignments.
 
 A contact is one record, assigned to a region, a site or a location in a role. What a
 place has in force for a role is resolved in `hirdir.domain.geography`, from the place
-outward: nothing is copied down.
+outward: nothing is copied down. A user and an operator are each a part that a contact
+plays, and read its name, email and numbers when they are read (P-172).
 """
 
 from typing import Any
@@ -19,6 +20,7 @@ from hirdir.db.models import (
     ContractContact,
     Operator,
     OwnerMember,
+    User,
     VendorContact,
 )
 from hirdir.domain import audit, choices, geography, records, tags
@@ -27,7 +29,7 @@ from hirdir.domain.errors import Conflict, Invalid, NotFound
 
 RECORD_TYPE = "contact"
 ASSIGNMENT_TYPE = "contact_assignment"
-FIELDS = ("name", "organization", "email", "phone", "notes", "record_status")
+FIELDS = ("name", "organization", "email", "phone", "phone2", "notes", "record_status")
 ASSIGNMENT_FIELDS = (
     "contact_hid",
     "region_hid",
@@ -132,7 +134,7 @@ def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> di
             raise Invalid("the name is not acceptable", {"name": "must not be blank"})
         values["name"] = name
         values["name_key"] = records.key(name)
-    for name in ("organization", "phone", "notes"):
+    for name in ("organization", "phone", "phone2", "notes"):
         if name in fields:
             values[name] = records.clean(fields[name])
     if "email" in fields:
@@ -210,6 +212,14 @@ def uses(db: Session, hids: list[str]) -> dict[str, int]:
                 if hid is not None:
                     counts[hid] += count
     return counts
+
+
+def users_of(db: Session, hids: list[str]) -> dict[str, User]:
+    """Return the user that each of the contacts is, where it is one (P-172)."""
+    if not hids:
+        return {}
+    found = db.scalars(select(User).where(User.contact_hid.in_(hids)))
+    return {user.contact_hid: user for user in found if user.contact_hid is not None}
 
 
 # --- assignments ---------------------------------------------------------------------

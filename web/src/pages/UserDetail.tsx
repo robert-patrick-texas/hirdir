@@ -104,8 +104,8 @@ function Details({ user, reload }: { user: User; reload: () => void }) {
     setSaved("");
     // Only what changed is sent, with the version this form was filled from.
     const body: Schemas["UserPatch"] = { row_version: user.row_version };
-    if (displayName !== user.display_name) body.display_name = displayName;
-    if (email !== user.email) body.email = email;
+    // The name and the email are the contact's (P-172): the web lane of 0.9.3 changes
+    // them on the contact. Until then only whether the user is disabled is sent.
     if (disabled !== user.disabled) body.disabled = disabled;
     const result = await action.run(() =>
       api.request("patch", "/api/v1/users/{hid}", { path: { hid: user.hid }, body }),

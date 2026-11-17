@@ -24,6 +24,7 @@ from hirdir.db.models import (
     AuditEvent,
     CapacityRecord,
     CatalogEntry,
+    Contact,
     DeviceGroup,
     DeviceGroupMember,
     ImportJob,
@@ -87,11 +88,16 @@ _GROUPS_OF_USER = (
     select(UserGroupMember.group_hid).where(UserGroupMember.user_hid == User.hid).correlate(User)
 )
 
+# The name of a user is that of its contact (P-172): a user with none sorts with the blanks.
+_USER_CONTACT_NAME = (
+    select(Contact.name).where(Contact.hid == User.contact_hid).correlate(User).scalar_subquery()
+)
+
 USERS = Table(
     User,
     {
         "username": Field("text", User.username),
-        "display_name": Field("text", func.nullif(User.display_name, "")),
+        "display_name": Field("text", _USER_CONTACT_NAME),
         # The role in force, the highest that the user or a group of theirs is granted:
         # the lowest first, and a user with none last.
         "role": Field(

@@ -505,3 +505,113 @@ def test_every_list_is_built_before_the_first_request() -> None:
     assert fields.warm() == len(fields.LISTINGS) == 33
     # And those of the tables that are paged and are no list, with every sort they take.
     assert tables.warm() == len(tables.TABLES) == 10
+
+
+def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0011")
+    engine = make_engine(url)
+    users = (
+        # hid, username, display name, email, service account
+        ("u-1", "robin", "Robin Achterberg", "robin.achterberg@example.net", 0),
+        ("u-2", "dana", "Dana R", "Dana.Ruiz@example.org", 0),
+        ("u-3", "dana2", "", "dana.ruiz@example.org", 0),
+        ("u-4", "lee", "", "", 0),
+        ("u-5", "sync", "Monitoring sync", "noc@example.com", 1),
+        ("u-6", "kai", "", "kai@example.com", 0),
+    )
+    with engine.begin() as connection:
+        for hid, username, name, email, service in users:
+            connection.execute(
+                text(
+                    "INSERT INTO users (hid, username, username_key, display_name, email,"
+                    " is_service_account, tokens_valid_after, disabled, created_at, updated_at,"
+                    " row_version) VALUES (:hid, :username, :username, :name, :email, :service,"
+                    " 0, 0, '2026-01-01', '2026-01-01', 3)"
+                ),
+                {
+                    "hid": hid,
+                    "username": username,
+                    "name": name,
+                    "email": email,
+                    "service": service,
+                },
+            )
+        # Dana is a contact already, as a site's technical contact.
+        connection.execute(
+            text(
+                "INSERT INTO contacts (hid, name, name_key, email, email_key, record_status,"
+                " created_at, updated_at, row_version) VALUES ('c-1', 'Dana Ruiz', 'dana ruiz',"
+                " 'dana.ruiz@example.org', 'dana.ruiz@example.org', 'active', '2026-01-01',"
+                " '2026-01-01', 5)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO external_systems (hid, name, name_key, kind, record_status,"
+                " created_at, updated_at, row_version) VALUES ('s-1', 'NetWatch', 'netwatch',"
+                " 'monitoring', 'active', '2026-01-01', '2026-01-01', 1)"
+            )
+        )
+        events = connection.execute(text("SELECT count(*) FROM audit_events")).scalar_one()
+    engine.dispose()
+
+    migrate.upgrade(url)
+
+    engine = make_engine(url)
+    with engine.connect() as connection:
+        linked = dict(
+            connection.execute(
+                text(
+                    "SELECT users.username, contacts.name || ' <' || COALESCE(contacts.email, '')"
+                    " || '>' FROM users LEFT JOIN contacts ON contacts.hid = users.contact_hid"
+                )
+            ).all()
+        )
+        assert linked == {
+            "robin": "Robin Achterberg <robin.achterberg@example.net>",
+            # The contact that had the email is taken as it was, and is one user's alone.
+            "dana": "Dana Ruiz <dana.ruiz@example.org>",
+            "dana2": None,
+            # Nothing to make a contact of, and a service account, which is no person.
+            "lee": None,
+            "sync": None,
+            # With no display name, the contact is named with the username.
+            "kai": "kai <kai@example.com>",
+        }
+        dana = connection.execute(
+            text("SELECT name, row_version FROM contacts WHERE hid = 'c-1'")
+        ).one()
+        assert tuple(dana) == ("Dana Ruiz", 5)
+        assert connection.execute(text("SELECT count(*) FROM contacts")).scalar() == 3
+        made = connection.execute(
+            text(
+                "SELECT record_type, action, via FROM audit_events WHERE request_id ="
+                " 'upgrade-0012' ORDER BY record_type, action"
+            )
+        ).all()
+        assert [tuple(row) for row in made] == [
+            ("contact", "create", "system"),
+            ("contact", "create", "system"),
+            ("user", "update", "system"),
+            ("user", "update", "system"),
+            ("user", "update", "system"),
+        ]
+        assert connection.execute(text("SELECT count(*) FROM audit_events")).scalar() == events + 5
+        robin = connection.execute(text("SELECT row_version FROM users WHERE hid = 'u-1'")).one()
+        assert robin[0] == 4
+        columns = [row[1] for row in connection.execute(text("PRAGMA table_info(users)"))]
+        assert "display_name" not in columns
+        assert "email" not in columns
+        kinds = connection.execute(
+            text("SELECT value FROM choices WHERE list = 'system_kind' ORDER BY sort")
+        ).scalars()
+        assert next(iter(kinds)) == "monitoring"
+        differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+    assert differences == []
+    command.downgrade(migrate.alembic_config(url), "0011")
+    with make_engine(url).connect() as connection:
+        back = dict(connection.execute(text("SELECT username, display_name FROM users")).all())
+        assert (back["robin"], back["lee"]) == ("Robin Achterberg", "")

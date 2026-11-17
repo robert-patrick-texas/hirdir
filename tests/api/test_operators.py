@@ -102,6 +102,7 @@ def test_an_item_has_its_own_operator_or_the_one_from_above(make: Maker) -> None
         "contact_hid": marks["LM"]["contact_hid"],
         "contact": "Lee Marchetti",
         "is_open": False,
+        "scope": "external",
         "record_status": "active",
     }
     assert stack["effective"]["operator_hid"] == {
@@ -114,6 +115,7 @@ def test_an_item_has_its_own_operator_or_the_one_from_above(make: Maker) -> None
         "contact_hid": marks["LM"]["contact_hid"],
         "contact": "Lee Marchetti",
         "is_open": False,
+        "scope": "external",
     }
     for item in (*switches, supply, optic):
         assert _in_force(make, item) == ("LM", "device_group", stack["hid"])

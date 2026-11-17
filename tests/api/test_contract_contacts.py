@@ -51,6 +51,7 @@ def test_an_agreement_and_a_contract_name_contacts_each_once_in_a_role(desk: Des
         "organization": "Cisco",
         "email": "jordan.reyes@example.net",
         "phone": "+1 555 0142",
+        "phone2": None,
         "record_status": "active",
     }
     assert _name(desk, path, jordan, "support_contact")["priority"] == 1

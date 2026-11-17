@@ -7605,7 +7605,7 @@ export interface paths {
   "/api/v1/users": {
     /**
      * List users, by username unless a sort says otherwise. `q` matches part of a
-     * username or display name.
+     * username or of the name of its contact.
      */
     get: {
       parameters: {
@@ -7689,7 +7689,11 @@ export interface paths {
         };
       };
     };
-    /** Change a user. Disabling a user ends every session they have. */
+    /**
+     * Change a user: its username, its contact, or whether it is disabled. Disabling a
+     * user ends every session they have; a new username keeps them. The name, email and
+     * numbers it shows are its contact's, changed by `PATCH /contacts/{hid}`.
+     */
     patch: {
       parameters: {
         query?: never;
@@ -9324,10 +9328,11 @@ export interface components {
       notes?: string | null;
       organization?: string | null;
       phone?: string | null;
+      phone2?: string | null;
       record_status?: "draft" | "active";
       tags?: string[];
     };
-    /** A person or a shared mailbox. */
+    /** A person or a shared mailbox: one of the people, whatever part they play (P-172). */
     ContactOut: {
       created_at: string;
       email: string | null;
@@ -9336,10 +9341,13 @@ export interface components {
       notes: string | null;
       organization: string | null;
       phone: string | null;
+      phone2: string | null;
       record_status: "draft" | "active" | "retired";
       row_version: number;
       tags: string[];
       updated_at: string;
+      /** The user this contact is, where it is one. */
+      user: components["schemas"]["UserBrief"] | null;
       /** How many places and owners it is assigned to, and operators it stands behind. */
       uses: number;
     };
@@ -9350,6 +9358,7 @@ export interface components {
       notes?: string | null;
       organization?: string | null;
       phone?: string | null;
+      phone2?: string | null;
       record_status?: "draft" | "active" | null;
       row_version: number;
       tags?: string[] | null;
@@ -9361,6 +9370,7 @@ export interface components {
       name: string;
       organization: string | null;
       phone: string | null;
+      phone2: string | null;
       record_status: "draft" | "active" | "retired";
     };
     /** A contact record to name for an agreement or a contract, in a role. */
@@ -9929,6 +9939,7 @@ export interface components {
       name: string;
       organization: string | null;
       phone: string | null;
+      phone2: string | null;
       priority: number;
       record_status: "draft" | "active" | "retired";
     };
@@ -9977,6 +9988,8 @@ export interface components {
       is_open: boolean;
       /** What people call the record. */
       label: string | null;
+      /** internal where its contact is a user's, external where not; none if nobody. */
+      scope?: "internal" | "external" | null;
       source: "own" | "catalog" | "parent_item" | "device_group" | "location" | "site" | "region" | "agreement" | "vendor" | "port" | "setting" | "none";
       source_hid: string | null;
       /** The name of the item or group, or the path of the place, it came from. */
@@ -10077,7 +10090,8 @@ export interface components {
     };
     /** A new external system. */
     ExternalSystemCreate: {
-      kind?: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other";
+      /** Left out, other, where the list offers other. */
+      kind?: string | null;
       name: string;
       notes?: string | null;
       record_status?: "draft" | "active";
@@ -10087,7 +10101,8 @@ export interface components {
     ExternalSystemOut: {
       created_at: string;
       hid: string;
-      kind: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other";
+      /** A value of the system_kind list, which GET /choices?list=system_kind gives. */
+      kind: string;
       name: string;
       notes: string | null;
       record_status: "draft" | "active" | "retired";
@@ -10099,7 +10114,7 @@ export interface components {
     };
     /** Fields of an external system to change, and the version they were read at. */
     ExternalSystemPatch: {
-      kind?: "monitoring" | "config_backup" | "access_control" | "sdn_controller" | "cloud_service" | "dns" | "discovery" | "other" | null;
+      kind?: string | null;
       name?: string | null;
       notes?: string | null;
       record_status?: "draft" | "active" | null;
@@ -10988,6 +11003,14 @@ export interface components {
       hid: string;
       label: string;
     };
+    /** A new contact, made with the user that it is. */
+    NewPerson: {
+      email?: string | null;
+      name: string;
+      organization?: string | null;
+      phone?: string | null;
+      phone2?: string | null;
+    };
     /** A term that is still to begin: a renewal that was entered ahead of its period. */
     NextTerm: {
       annual_cost: string | null;
@@ -11047,6 +11070,7 @@ export interface components {
     /** A short label that stands for the member of the team who looks after what it is on. */
     OperatorOut: {
       colour: string | null;
+      /** The person behind it, with the email and numbers it shows (P-172). */
       contact: components["schemas"]["ContactRef"] | null;
       contact_hid: string | null;
       created_at: string;
@@ -11057,7 +11081,11 @@ export interface components {
       label: string;
       record_status: "draft" | "active" | "retired";
       row_version: number;
+      /** internal where its contact is a user's, external where not; none if nobody. */
+      scope: "internal" | "external" | null;
       updated_at: string;
+      /** The user its contact is, where it is one. */
+      user: components["schemas"]["UserBrief"] | null;
       /** How many items, groups and places are given it as their own. */
       uses: number;
     };
@@ -11082,6 +11110,8 @@ export interface components {
       is_open: boolean;
       label: string;
       record_status: "draft" | "active" | "retired";
+      /** internal where its contact is a user's, external where not; none if nobody. */
+      scope: "internal" | "external" | null;
     };
     /** A new owner. */
     OwnerCreate: {
@@ -11393,6 +11423,15 @@ export interface components {
     PastAndApproaching: {
       approaching: components["schemas"]["ItemsCounted"];
       past: components["schemas"]["ItemsCounted"];
+    };
+    /** The contact a user is: its name, email and numbers, read when the user is read. */
+    PersonRef: {
+      email: string | null;
+      hid: string;
+      name: string;
+      phone: string | null;
+      phone2: string | null;
+      record_status: string;
     };
     /** The items and the components of a set of items. */
     PlaceCount: {
@@ -12379,15 +12418,23 @@ export interface components {
       /** The state to move to. Null returns a minor item to the standing of the item it is in. */
       to: string | null;
     };
-    /** A new user. */
+    /** The user a contact is: who it signs in as. */
+    UserBrief: {
+      hid: string;
+      username: string;
+    };
+    /** A new user. The person is a contact: one there is, a new one, or none yet. */
     UserCreate: {
       /** Left out, a code is generated. */
       access_code?: string | null;
-      display_name?: string;
-      email?: string;
+      /** A new contact, made in the same change. */
+      contact?: components["schemas"]["NewPerson"] | null;
+      /** The contact the user is. */
+      contact_hid?: string | null;
       is_service_account?: boolean;
       /** A role to grant at once. */
       role?: string | null;
+      /** What the person signs in with. An Admin can change it later. */
       username: string;
     };
     /** A user just created, with the access code that is shown this once. */
@@ -12395,11 +12442,16 @@ export interface components {
       access_code: string | null;
       user: components["schemas"]["UserOut"];
     };
-    /** A user. */
+    /** A user: the part of a person who signs in, or a service account (P-172). */
     UserOut: {
+      /** The contact the user is. None for a service account, or a user not given one. */
+      contact: components["schemas"]["PersonRef"] | null;
+      contact_hid: string | null;
       created_at: string;
       disabled: boolean;
+      /** The name of its contact; blank where it has none. */
       display_name: string;
+      /** The email of its contact; blank where it has none. */
       email: string;
       groups: components["schemas"]["GroupRef"][];
       hid: string;
@@ -12413,10 +12465,12 @@ export interface components {
     };
     /** Fields of a user to change, and the version they were read at. */
     UserPatch: {
+      /** Another contact; null for none. A service account has none. */
+      contact_hid?: string | null;
       disabled?: boolean | null;
-      display_name?: string | null;
-      email?: string | null;
       row_version: number;
+      /** Another username (P-173). */
+      username?: string | null;
     };
     ValidationError: {
       ctx?: {

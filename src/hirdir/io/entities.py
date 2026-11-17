@@ -1185,12 +1185,15 @@ class Contacts(Entity):
         Column("organization"),
         Column("email", limit=254),
         Column("phone", limit=50),
+        Column("phone2", limit=50),
         NOTES,
         STATUS,
         TAGS,
+        # The username of the user the contact is (P-172): users are not carried by files.
+        Column("user", limit=64, settable=False),
         *BOOKKEEPING,
     )
-    _direct = ("name", "organization", "email", "phone", "notes", "tags")
+    _direct = ("name", "organization", "email", "phone", "phone2", "notes", "tags")
 
     def find(self, run: Run, values: Mapping[str, Any]) -> Any | None:
         """Match a row to a contact: by its email address, and with none by its name."""
@@ -1228,12 +1231,14 @@ class Contacts(Entity):
 
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         labels = tags.labels_of(db, self.record_type, [contact.hid for contact in found])
+        users = contacts.users_of(db, [contact.hid for contact in found])
         return [
             {
                 **_kept(contact),
                 **{name: getattr(contact, name) for name in self._direct if name != "tags"},
                 "record_status": contact.record_status,
                 "tags": labels[contact.hid],
+                "user": users[contact.hid].username if contact.hid in users else None,
             }
             for contact in found
         ]
@@ -1254,6 +1259,12 @@ class Operators(Entity):
         Column("contact", limit=254),
         STATUS,
         Column("is_open", "boolean", settable=False),
+        # Internal where the contact behind it is a user's, external where not (P-172),
+        # and that contact's email and numbers, which are changed on the contact.
+        Column("scope", limit=10, settable=False),
+        Column("contact_email", limit=254, settable=False),
+        Column("contact_phone", limit=50, settable=False),
+        Column("contact_phone2", limit=50, settable=False),
         *BOOKKEEPING,
     )
     aliases: ClassVar[Mapping[str, str]] = {
@@ -1287,18 +1298,26 @@ class Operators(Entity):
     def read(self, db: Session, found: list[Any], own: bool = True) -> list[dict[str, Any]]:
         people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
         named = contacts.reference_texts(db, list(people.values()))
-        return [
-            {
-                **_kept(operator),
-                "label": operator.label,
-                "description": operator.description,
-                "colour": operator.colour,
-                "contact": named[operator.contact_hid] if operator.contact_hid else None,
-                "record_status": operator.record_status,
-                "is_open": operators.is_open(operator, people.get(operator.contact_hid or "")),
-            }
-            for operator in found
-        ]
+        users = contacts.users_of(db, list(people))
+        rows = []
+        for operator in found:
+            person = people.get(operator.contact_hid or "")
+            rows.append(
+                {
+                    **_kept(operator),
+                    "label": operator.label,
+                    "description": operator.description,
+                    "colour": operator.colour,
+                    "contact": named[operator.contact_hid] if operator.contact_hid else None,
+                    "record_status": operator.record_status,
+                    "is_open": operators.is_open(operator, person),
+                    "scope": operators.scope(person, users),
+                    "contact_email": person.email if person else None,
+                    "contact_phone": person.phone if person else None,
+                    "contact_phone2": person.phone2 if person else None,
+                }
+            )
+        return rows
 
 
 class ContactAssignments(Entity):
@@ -2471,8 +2490,8 @@ class ExternalSystems(Entity):
     columns = (
         HID,
         Column("name"),
-        Column("kind", limit=20),
-        Column("url", limit=2000),
+        Column("kind", limit=40),
+        Column("url", limit=4000),
         NOTES,
         STATUS,
         *BOOKKEEPING,

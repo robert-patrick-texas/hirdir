@@ -57,8 +57,8 @@ SHOWN = {
     "regions": "path,code,record_status",
     "sites": "path,code,city,country,record_status",
     "locations": "path,kind,code,record_status",
-    "contacts": "name,organization,email,phone,record_status",
-    "operators": "label,description,contact,is_open,record_status",
+    "contacts": "name,organization,email,phone,phone2,user,record_status",
+    "operators": "label,description,contact,scope,is_open,record_status",
     "tags": "label,colour,description",
     "networks": "label,kind",
     "addresses": "address,network,item,group,role,is_primary",
@@ -1409,6 +1409,8 @@ def assign_operator(
         {"row_version": found["row_version"], "contact_hid": person["hid"] if person else None},
     )
     behind = changed["contact"]["name"] if changed["contact"] else "nobody: it is open"
+    if changed.get("scope"):
+        behind += f", {changed['scope']}"
     typer.echo(f"{changed['label']} is {behind}; it is on {changed['uses']} records of its own")
 
 

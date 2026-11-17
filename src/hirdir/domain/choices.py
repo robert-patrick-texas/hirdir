@@ -14,6 +14,7 @@ from hirdir.db.models import (
     CircuitCarrier,
     CircuitContact,
     ContactAssignment,
+    ExternalSystem,
     Item,
     ItemReplacement,
     Location,
@@ -35,6 +36,7 @@ LISTS = (
     "circuit_type",
     "carrier_role",
     "reference_kind",
+    "system_kind",
 )
 VALUE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 FIELDS = ("list_name", "value", "label", "sort", "active")
@@ -59,6 +61,7 @@ USES: dict[str, tuple[tuple[Any, ...], ...]] = {
     "reference_kind": ((ReferenceFile, ReferenceFile.kind),),
     "location_kind": ((Location, Location.kind),),
     "capacity_category": ((CapacityLine, CapacityLine.category),),
+    "system_kind": ((ExternalSystem, ExternalSystem.kind),),
 }
 
 
@@ -96,6 +99,14 @@ def checked(db: Session, list_name: str, value: str, field: str) -> str:
             f"{value} is not a choice of {list_name}", {field: f"one of {', '.join(offered)}"}
         )
     return choice.value
+
+
+def is_offered(db: Session, list_name: str, value: str) -> bool:
+    """Say whether a list has value and offers it: it is there and active."""
+    choice = db.scalar(
+        select(Choice).where(Choice.list_name == list_name, Choice.value_key == records.key(value))
+    )
+    return choice is not None and choice.active
 
 
 def uses(db: Session, choice: Choice) -> int:

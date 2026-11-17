@@ -221,10 +221,12 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
     event.preventDefault();
     const body: Schemas["UserCreate"] = {
       username: username.trim(),
-      display_name: displayName.trim(),
-      email: email.trim(),
       is_service_account: service,
     };
+    // The person is a contact (P-172): a name makes a new one with the user.
+    if (!service && displayName.trim() !== "") {
+      body.contact = { name: displayName.trim(), email: email.trim() || null };
+    }
     if (role) body.role = role;
     if (!service && accessCode !== "") body.access_code = accessCode;
     const result = await action.run(() => api.request("post", "/api/v1/users", { body }));
