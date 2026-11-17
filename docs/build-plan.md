@@ -86,7 +86,9 @@ contact, and going back from it is by the backup.
 own groups before the item it is in, and the rules of which group decides written in
 one place (P-175); the walk of each value an item or a group has from elsewhere, shown
 as a row of boxes (P-176); what an operator is on, drawn as a tree of boxes (P-177); and
-a leaderboard of operators and of groups, with the summary by group (P-178).
+a leaderboard of operators and of groups, with the summary by group (P-178); and the
+summary and the management report by model, the items of each model on the catalog,
+and a rank and a bar on every table of the reports (P-180).
 
 ## From 0.6.1 to 0.9.0
 
