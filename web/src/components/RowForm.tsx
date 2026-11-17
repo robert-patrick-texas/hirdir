@@ -45,7 +45,10 @@ export function FormRow({ of, columns, children }: FormRowProps) {
     // it fits with the row it changes above it; where they do not both fit, the window
     // moves no further than keeps that row in view, at the top (P-171).
     const row = opened.parentElement?.previousElementSibling ?? opened;
-    const top = row.getBoundingClientRect().top;
+    // The top of the window is where a page's answer stays (P-182): the row stops below it.
+    const room =
+      Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+    const top = row.getBoundingClientRect().top - room;
     const below = opened.getBoundingClientRect().bottom - window.innerHeight;
     const by = Math.min(below, Math.max(0, top));
     if (by > 0) window.scrollBy(0, by);

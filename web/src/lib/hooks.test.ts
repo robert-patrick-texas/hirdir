@@ -9,7 +9,11 @@ describe("askedNext", () => {
 
   it("counts the same text asked again, by Enter or typed again, which is read again", () => {
     expect(askedNext({ asked: "rack", again: 0 }, "rack")).toEqual({ asked: "rack", again: 1 });
-    expect(askedNext({ asked: "rack", again: 1 }, "rack ")).toEqual({ asked: "rack ", again: 2 });
+    expect(askedNext({ asked: "rack", again: 1 }, "rack")).toEqual({ asked: "rack", again: 2 });
+  });
+
+  it("does not count text that differs only by a space, which is the same search", () => {
+    expect(askedNext({ asked: "rack", again: 1 }, "rack ")).toEqual({ asked: "rack ", again: 1 });
   });
 
   it("asks for nothing again when the box is blank", () => {

@@ -2,6 +2,7 @@
 // reads whole when it opens is read again, in the background, when the person comes
 // back to the tab (P-183), so that what was made meanwhile in another tab is offered.
 
+import { useCallback, useRef } from "react";
 import { api } from "../api";
 import { groupTypeLabel } from "./groups";
 import { type Loaded, useLoad, useReloadOnReturn } from "./hooks";
@@ -11,11 +12,22 @@ import type { Option } from "./patch";
 
 // The most rows the server lists at once.
 export const EVERY = 1000;
+// The least time between two reads of a list on coming back to the tab, in milliseconds.
+const RETURN_PAUSE = 5000;
 
 /** A list read whole, and again in the background when the person comes back to the tab. */
 function useList<T>(key: string, load: (signal: AbortSignal) => Promise<T>, active = true) {
   const list = useLoad(key, load);
-  useReloadOnReturn(list.refresh, active);
+  // Going from tab to tab quickly does not read every list each time.
+  const last = useRef(0);
+  const { refresh } = list;
+  const back = useCallback(() => {
+    const now = Date.now();
+    if (now - last.current < RETURN_PAUSE) return;
+    last.current = now;
+    refresh();
+  }, [refresh]);
+  useReloadOnReturn(back, active);
   return list;
 }
 

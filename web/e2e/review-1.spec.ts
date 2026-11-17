@@ -211,6 +211,36 @@ test("a new site with no location is named under the Location field, with a link
   await expectClean(page, seen);
 });
 
+test("a site made meanwhile is named when the person comes back to the tab", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await places(request, account);
+  const wharf = label("Wharfside");
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openTheItem(page);
+
+  // No site of that name yet: nothing is named.
+  await details(page).getByLabel("Location", { exact: true }).fill(wharf);
+  await expect(details(page).getByText("No location matches.")).toBeVisible();
+  const sites = details(page).getByRole("list", { name: "Sites that match" });
+  await expect(sites).toHaveCount(0);
+
+  // It is made elsewhere, as in another tab, and the person comes back to this one.
+  await make(request, headers, "/sites", {
+    name: wharf,
+    code: `WS-${id}`,
+    region_hid: made.region,
+  });
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(sites.getByRole("listitem")).toContainText(`${wharf} has no location that matches.`);
+
+  await expectClean(page, seen);
+});
+
 test("the Capacity page is no wider than the window", async ({ page, account }) => {
   const seen = await watch(page.context());
   await signIn(page, account);

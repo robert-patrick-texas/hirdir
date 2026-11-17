@@ -143,8 +143,11 @@ export function askedNext(
   was: { asked: string; again: number },
   text: string,
 ): { asked: string; again: number } {
-  if (was.asked.trim() !== text.trim()) return { asked: text, again: was.again };
-  return text.trim() === "" ? was : { asked: text, again: was.again + 1 };
+  if (text.trim() === "" && was.asked.trim() === "") return was;
+  // Text that differs, if only by a space at its end, is not the same text asked again:
+  // the key of the search says whether it is another search.
+  if (was.asked !== text) return { asked: text, again: was.again };
+  return { asked: text, again: was.again + 1 };
 }
 
 /**

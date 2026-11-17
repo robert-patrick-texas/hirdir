@@ -1741,18 +1741,23 @@ scrolled past that place it stays at the top of the window, over the page. It is
 of the page and does not go away by itself; a message that something was done is taken
 away when the next change on that page is sent, stays away if that change is refused,
 and once it is done the page says what it says of it, the same words again after a
-second save of the same record.
+second save of the same record. Room is kept for it at the top of the window, so
+that a field the keyboard moves to, or a row a form opens under, does not come to rest
+beneath it.
 
 A field that finds a record by what is typed searches again when Enter is pressed, when
 the same text is typed again, and when the person comes back to the tab with a search
 on show; a list of choices that a page read whole when it opened is read again when the
-person comes back to the tab (P-183). So a record made a moment before in another tab
+person comes back to the tab, though not twice within five seconds (P-183). So a record made a moment before in another tab
 is found without loading the page again.
 
 Where a location is searched for and none matches, the field also looks for sites by
-the same words and names each one found, saying that it has no location that matches,
-with a link to its page, where a location is made (P-184). An item is put at a location,
-never at a site, and the page of a site with no location says so.
+the same words and names up to three of those found, saying of each that it has no
+location that matches, with a link to its page, where a location is made, and says how
+many more match (P-184). An item is put at a location, never at a site, and the page of
+a site with no location says so. Where a planned location is searched for, no site is
+named: only a place not yet in use is offered there, so a site in use with every
+location it has would be named wrongly.
 
 On the page of an item, the catalog entry, the owner, the operator and the location
 among its first facts each have Change beside them, for a person who may change the

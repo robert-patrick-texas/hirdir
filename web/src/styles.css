@@ -431,6 +431,12 @@ legend {
   z-index: 4;
 }
 
+/* Room for that message above a field the keyboard moves to, or a row a form opens
+   under, so that neither comes to rest beneath it. */
+html {
+  scroll-padding-top: 3.5rem;
+}
+
 .live:empty {
   pointer-events: none;
 }

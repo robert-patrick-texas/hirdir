@@ -5,7 +5,8 @@
 
 import { Link } from "react-router";
 import { api } from "../api";
-import { useLoad, useReloadOn } from "../lib/hooks";
+import { plural } from "../lib/format";
+import { useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import { placePath, siteSearch } from "../lib/places";
 
 /** The most sites named beneath the field. */
@@ -28,8 +29,11 @@ export function SitesThatMatch({ asked, again }: { asked: string; again: number 
         }),
   );
   useReloadOn(again, found.reload);
+  // A site made meanwhile in another tab is named when the person comes back (P-183).
+  useReloadOnReturn(found.refresh, filter !== null);
   const sites = found.data?.items ?? [];
   if (sites.length === 0) return null;
+  const more = (found.data?.total ?? 0) - sites.length;
   return (
     <ul className="sites-named" aria-label="Sites that match">
       {sites.map((site) => (
@@ -38,6 +42,12 @@ export function SitesThatMatch({ asked, again }: { asked: string; again: number 
           {site.locations === 0 && " It holds no location yet; one is made on its page."}
         </li>
       ))}
+      {more > 0 && (
+        <li className="muted">
+          {plural(more, "more site", "more sites")} {more === 1 ? "matches" : "match"}. Type more to
+          narrow them down.
+        </li>
+      )}
     </ul>
   );
 }
