@@ -1760,7 +1760,8 @@ item: a button that reads as a link, it moves to that field of the form of detai
 puts the keyboard there, and leaves the page's address as it is (P-185).
 
 A table wider than the page scrolls sideways within its own box and the page does not;
-a form opened under a row of a table is brought wholly into the window when it fits; and
+a form opened under a row of a table is brought wholly into the window when it fits there
+with the row it changes, and otherwise moves no further than keeps that row in view; and
 the audit trail links each change to the page of its record, where it has one (P-186).
 
 ### Times

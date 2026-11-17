@@ -42,8 +42,13 @@ export function FormRow({ of, columns, children }: FormRowProps) {
     if (!opened) return;
     firstField(opened)?.focus();
     // P-186: the whole form, its button to save with it, is brought into the window where
-    // it fits; where it does not, "nearest" leaves its top, and the row above, in view.
-    opened.scrollIntoView?.({ block: "nearest" });
+    // it fits with the row it changes above it; where they do not both fit, the window
+    // moves no further than keeps that row in view, at the top (P-171).
+    const row = opened.parentElement?.previousElementSibling ?? opened;
+    const top = row.getBoundingClientRect().top;
+    const below = opened.getBoundingClientRect().bottom - window.innerHeight;
+    const by = Math.min(below, Math.max(0, top));
+    if (by > 0) window.scrollBy(0, by);
   }, []);
   return (
     <tr className="row-form" data-form-of={of}>
