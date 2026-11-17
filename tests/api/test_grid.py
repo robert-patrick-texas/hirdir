@@ -350,9 +350,10 @@ def test_every_list_is_sorted_by_every_field_it_says_it_is(make: Maker) -> None:
 
     for path, listed in LISTS.items():
         names = [name for name, field in listed.fields.items() if filters.sorted_by(field)]
-        # Only a few are filtered by and not sorted by: a place, and the HID of one of
-        # several records, such as `contract.hid` and `out_of_service_contract.hid`.
-        assert len(names) >= len(listed.fields) - 5, path
+        # Only a few are filtered by and not sorted by: a place or the groups an item is
+        # under, and the HID of one of several records, such as `contract.hid` and
+        # `out_of_service_contract.hid`.
+        assert len(names) >= len(listed.fields) - 6, path
         for way in ("", "-"):
             page = make.get(path, sort=",".join(way + name for name in names))
             assert page["total"] == len(page["items"]) >= 1, path

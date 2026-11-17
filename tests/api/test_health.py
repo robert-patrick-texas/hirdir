@@ -899,7 +899,22 @@ def test_the_management_report_holds_the_money_and_no_health(
         "annual_support_cost": "3450.00",
     }
     # A row by site says nothing of a group or of a model (P-178, P-180).
-    described = ("type", "member_count", "nested_groups", "vendor", "pid", "model_name", "kind")
+    described = (
+        "type",
+        "member_count",
+        "nested_groups",
+        "vendor",
+        "pid",
+        "model_name",
+        "kind",
+        # By operator (P-178).
+        "own",
+        "from_item",
+        "from_group",
+        "from_place",
+        "groups_given",
+        "places_given",
+    )
     row = {"key": None, "label": None, **money, **dict.fromkeys(described)}
     assert whole == {"by": "site", "totals": money, "rows": [row]}
     assert [
