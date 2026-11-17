@@ -1735,6 +1735,31 @@ keyboard or a screen reader starts there (P-167). Back and Forward leave the win
 where the browser puts it, and a change that keeps the page's address, such as a
 filter, does not move it.
 
+What a page answers to a change, that it was done or why it was refused, stays in view
+(P-182): it is shown at its place near the top of the page, and while the window is
+scrolled past that place it stays at the top of the window, over the page. It is part
+of the page and does not go away by itself; a message that something was done is taken
+away when the next change on that page is sent.
+
+A field that finds a record by what is typed searches again when Enter is pressed, when
+the same text is typed again, and when the person comes back to the tab with a search
+on show; a list of choices that a page read whole when it opened is read again when the
+person comes back to the tab (P-183). So a record made a moment before in another tab
+is found without loading the page again.
+
+Where a location is searched for and none matches, the field also looks for sites by
+the same words and names each one found, saying that it has no location that matches,
+with a link to its page, where a location is made (P-184). An item is put at a location,
+never at a site, and the page of a site with no location says so.
+
+On the page of an item, the catalog entry, the owner, the operator and the location
+among its first facts each have a link, Change, for a person who may change the item:
+it moves to that field of the form of details and puts the keyboard there (P-185).
+
+A table wider than the page scrolls sideways within its own box and the page does not;
+a form opened under a row of a table is brought wholly into the window when it fits; and
+the audit trail links each change to the page of its record, where it has one (P-186).
+
 ### Times
 
 Every time on a page is in the application's time zone, the `time_zone` setting, and
