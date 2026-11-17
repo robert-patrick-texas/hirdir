@@ -1438,6 +1438,39 @@ database as 0.9.4 leaves it:
 sudo apt install --allow-downgrades ./hirdir_0.9.3_amd64.deb
 ```
 
+### From 0.9.4 to 0.9.5
+
+The schema stays at revision `0012`: 0.9.5 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+What is new is in the web UI alone, for the work of each day:
+
+- **Finding.** A box in the menu bar, Find an item, on every page; plain words in the
+  filter box of every list; and a box, Find a place, on Geography.
+- **Adding and changing an item.** Create and add another like it, on the form of a new
+  item; Change beside the first facts of an item, which moves to that field; Save in
+  reach at the foot of the window; and what a page answers to a change kept in view.
+- **Places and counts.** A place's contacts above its files, with links to write and to
+  call; Home's totals sooner, and its totals of health as links; the Scoreboard in
+  tables of twenty rows with the rest behind a button.
+
+A layout of the list of items that a person kept before the upgrade, which sorting or
+filtering the list once does, stays as it was. Reset layout and filters, under the list,
+brings the columns of 0.9.5: Site and Location shown from the start, within a window
+1280 pixels wide.
+
+For a script that reads the API: nothing changed. The OpenAPI document differs from
+that of 0.9.4 only in its version.
+
+Going back to 0.9.4 needs no backup, because the schema is the same and 0.9.4 reads the
+database as 0.9.5 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.4_amd64.deb
+```
+
 A minor item then has its values from the item it is in first, as 0.9.3 had it.
 
 ### If the upgrade stops
@@ -1489,8 +1522,8 @@ it is expected. The second puts the backup in place, and the third finishes the
 installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
-goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2
-and 0.9.4 are such releases. The section of each release above says what its upgrade changed.
+goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2,
+0.9.4 and 0.9.5 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 

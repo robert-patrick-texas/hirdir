@@ -89,6 +89,12 @@ as a row of boxes (P-176); what an operator is on, drawn as a tree of boxes (P-1
 a leaderboard of operators and of groups, with the summary by group (P-178); and the
 summary and the management report by model, the items of each model on the catalog,
 and a rank and a bar on every table of the reports (P-180).
+0.9.5 follows 0.9.4 with two reviews of the web UI that the owner asked for, by the work
+a network operations team does with it each day, each change measured in a browser
+before and after and read by a reviewer who had not built it (P-182 to P-197): finding
+an item and a place by plain words, adding another item like the last, changing an item
+from its first facts with the buttons in reach, a place's contacts first, and counts
+that come sooner and open what they count. It changes the web UI alone.
 
 ## From 0.6.1 to 0.9.0
 
