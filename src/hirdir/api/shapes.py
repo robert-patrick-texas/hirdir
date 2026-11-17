@@ -66,6 +66,7 @@ from hirdir.domain import (
     purchases,
     records,
     replacements,
+    resolution,
     settings,
     systems,
     tags,
@@ -2117,3 +2118,45 @@ def contract_refs(db: Session, hids: list[str]) -> list[shapes.ContractRef]:
     found = {one.hid: one for one in db.scalars(select(Contract).where(Contract.hid.in_(hids)))}
     refs = _contract_refs(db, list(found.values()), contracts.today(db))
     return [refs[hid] for hid in hids if hid in refs]
+
+
+def _walk_value(name: str, value: Any) -> Any:
+    return (
+        records.jsonable(value, name)
+        if value is not None and not isinstance(value, bool)
+        else value
+    )
+
+
+def resolution_out(hid: str, walks: list[resolution.Walk]) -> shapes.Resolution:
+    """Return the walk of each value of a record (P-176)."""
+    return shapes.Resolution(
+        hid=hid,
+        fields=[
+            shapes.ResolutionField(
+                field=walk.field,
+                value=_walk_value(walk.field, walk.value),
+                label=walk.label,
+                source=walk.source,
+                source_hid=walk.source_hid,
+                overrides=_walk_value(walk.field, walk.overrides),
+                overrides_label=walk.overrides_label,
+                steps=[
+                    shapes.ResolutionStep(
+                        level=step.level,
+                        hid=step.hid,
+                        name=step.name,
+                        type=step.type,
+                        rank=step.rank,
+                        via_hid=step.via_hid,
+                        via_name=step.via_name,
+                        value=_walk_value(walk.field, step.value),
+                        label=step.label,
+                        outcome=step.outcome,
+                    )
+                    for step in walk.steps
+                ],
+            )
+            for walk in walks
+        ],
+    )

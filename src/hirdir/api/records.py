@@ -1277,6 +1277,55 @@ class EffectiveOperator(EffectiveReference):
     )
 
 
+# --- why a value: the walk that finds it (P-176) --------------------------------------
+
+ResolutionLevel = Literal[
+    "own", "device_group", "parent_item", "catalog", "setting", "location", "site", "region"
+]
+ResolutionOutcome = Literal["decides", "passed_over", "nothing", "retired"]
+# A value of the walk: the HID of a reference, a decimal or a date as text, or a flag.
+WalkValue = str | bool | None
+
+
+class ResolutionStep(Model):
+    """One record the walk looks at, and what it holds there."""
+
+    level: ResolutionLevel
+    hid: str | None = Field(description="The record looked at. None for a setting.")
+    name: str | None = Field(description="Its name, its path for a place, or the setting's key.")
+    type: str | None = Field(description="Of a device group: its type.")
+    rank: int | None = Field(description="Of a device group: its place among the record's groups.")
+    via_hid: str | None = Field(
+        description="The group it is nested in that holds the value, where it holds none itself."
+    )
+    via_name: str | None
+    value: WalkValue
+    label: str | None = Field(description="What the value is called: a path, a label.")
+    outcome: ResolutionOutcome
+
+
+class ResolutionField(Model):
+    """The walk of one value: what is in force, where from, and every step."""
+
+    field: str
+    value: WalkValue
+    label: str | None
+    source: str
+    source_hid: str | None
+    overrides: WalkValue = Field(
+        description="Where the value is the record's own: the value it would have without it."
+    )
+    overrides_label: str | None
+    steps: list[ResolutionStep]
+
+
+class Resolution(Model):
+    """Why a record has each value it may have from elsewhere."""
+
+    hid: str
+    fields: list[ResolutionField]
+
+
 # --- the circuits a device is connected to (P-147) -----------------------------------
 
 

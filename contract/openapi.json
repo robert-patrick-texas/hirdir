@@ -25281,6 +25281,265 @@
         "title": "ReportSection",
         "type": "object"
       },
+      "Resolution": {
+        "additionalProperties": false,
+        "description": "Why a record has each value it may have from elsewhere.",
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "fields"
+        ],
+        "title": "Resolution",
+        "type": "object"
+      },
+      "ResolutionField": {
+        "additionalProperties": false,
+        "description": "The walk of one value: what is in force, where from, and every step.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the value is the record's own: the value it would have without it.",
+            "title": "Overrides"
+          },
+          "overrides_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides Label"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hid"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "value",
+          "label",
+          "source",
+          "source_hid",
+          "overrides",
+          "overrides_label",
+          "steps"
+        ],
+        "title": "ResolutionField",
+        "type": "object"
+      },
+      "ResolutionStep": {
+        "additionalProperties": false,
+        "description": "One record the walk looks at, and what it holds there.",
+        "properties": {
+          "hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record looked at. None for a setting.",
+            "title": "Hid"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the value is called: a path, a label.",
+            "title": "Label"
+          },
+          "level": {
+            "enum": [
+              "own",
+              "device_group",
+              "parent_item",
+              "catalog",
+              "setting",
+              "location",
+              "site",
+              "region"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its name, its path for a place, or the setting's key.",
+            "title": "Name"
+          },
+          "outcome": {
+            "enum": [
+              "decides",
+              "passed_over",
+              "nothing",
+              "retired"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a device group: its place among the record's groups.",
+            "title": "Rank"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of a device group: its type.",
+            "title": "Type"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "via_hid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group it is nested in that holds the value, where it holds none itself.",
+            "title": "Via Hid"
+          },
+          "via_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via Name"
+          }
+        },
+        "required": [
+          "level",
+          "hid",
+          "name",
+          "type",
+          "rank",
+          "via_hid",
+          "via_name",
+          "value",
+          "label",
+          "outcome"
+        ],
+        "title": "ResolutionStep",
+        "type": "object"
+      },
       "RoleContacts": {
         "additionalProperties": false,
         "description": "The contacts in force for one role, and the level they came from.",
@@ -28358,7 +28617,7 @@
   "info": {
     "summary": "Network equipment lifecycle and inventory platform",
     "title": "hirdir",
-    "version": "0.9.3"
+    "version": "0.9.4"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -35490,6 +35749,49 @@
         ]
       }
     },
+    "/api/v1/device-groups/{hid}/resolution": {
+      "get": {
+        "description": "Why the group has each value it may have from a group it is nested in: its own,\nthen each group above it, which decides and which are passed over (P-176).",
+        "operationId": "group_resolution_api_v1_device_groups__hid__resolution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolution"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Group Resolution",
+        "tags": [
+          "Groups"
+        ]
+      }
+    },
     "/api/v1/device-groups/{hid}/retire": {
       "post": {
         "description": "Retire a device group. Its record is kept, and its current memberships end today.",
@@ -37505,6 +37807,49 @@
           }
         },
         "summary": "Replace Item",
+        "tags": [
+          "Items"
+        ]
+      }
+    },
+    "/api/v1/items/{hid}/resolution": {
+      "get": {
+        "description": "Why the item has each value it may have from elsewhere: for each, the walk that\nfinds it, step by step, which step decides, which are passed over, and what a value\nof its own replaces (P-176).",
+        "operationId": "item_resolution_api_v1_items__hid__resolution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolution"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Resolution",
         "tags": [
           "Items"
         ]

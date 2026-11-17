@@ -10,7 +10,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import DEFAULT_LIMIT, Limit, Listed, Offset
 from hirdir.api.schemas import Page
-from hirdir.domain import groups
+from hirdir.domain import groups, resolution
 from hirdir.io import fields, tables
 
 router = APIRouter(prefix="/device-groups", tags=["Groups"], route_class=IdempotentRoute)
@@ -78,6 +78,13 @@ def retire_group(
 ) -> r.DeviceGroupOut:
     """Retire a device group. Its record is kept, and its current memberships end today."""
     return shapes.group_out(db, groups.retire_group(db, context, hid, body.row_version))
+
+
+@router.get("/{hid}/resolution")
+def group_resolution(hid: str, _: Viewer, db: Db) -> r.Resolution:
+    """Why the group has each value it may have from a group it is nested in: its own,
+    then each group above it, which decides and which are passed over (P-176)."""
+    return shapes.resolution_out(hid, resolution.of_group(db, groups.get_group(db, hid)))
 
 
 @router.get("/{hid}/members")
