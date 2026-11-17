@@ -221,6 +221,25 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   await expect(measure(leader, "items")).toHaveText("6", { timeout: 20_000 });
   await expect(measure(leader, "own")).toHaveCount(0);
   await expect(operators.getByRole("columnheader", { name: "Own", exact: true })).toHaveCount(0);
+  // Its health is one column: a bar in four parts that nobody hears, the numbers beside it
+  // for the eye, and the four counts once in words for a screen reader.
+  await expect(operators.getByRole("columnheader", { name: "Good", exact: true })).toHaveCount(0);
+  const health = measure(leader, "health");
+  await expect(health.locator(".health-bar")).toHaveAttribute("aria-hidden", "true");
+  await expect(health.locator(".health-figures")).toHaveAttribute("aria-hidden", "true");
+  await expect(health.locator(".health-figure")).toHaveCount(4);
+  await expect(health.locator(".visually-hidden")).toHaveText(
+    /^\d+ good, \d+ degraded, \d+ failed, \d+ unknown$/,
+  );
+  // It sorts the worst first at the first press of its header.
+  await operators.getByRole("button", { name: "Health", exact: true }).click();
+  await expect(
+    operators.getByRole("columnheader", { name: "Health", exact: true }),
+  ).toHaveAttribute("aria-sort", "descending");
+  await expect(operators.getByRole("columnheader", { name: "Rank" })).toHaveAttribute(
+    "data-rank-by",
+    "health",
+  );
 
   // How each operator has its items: OPA its own item, the optic from that item, two from
   // its group and two from its site, which add up to its six; one group and one place given
@@ -271,6 +290,9 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
   await expect(measure(g, "nested")).toHaveText("1");
   await expect(measure(g, "items")).toHaveText("3");
   await expect(measure(g2, "items")).toHaveText("1");
+  // The groups' health is one column too.
+  await expect(groups.getByRole("columnheader", { name: "Health", exact: true })).toBeVisible();
+  await expect(measure(g, "health").locator(".health-figure")).toHaveCount(4);
   await expect(measure(g, "rank")).toHaveText("1");
   await expect(measure(g2, "rank")).toHaveText("2");
   await expect(measure(none, "rank")).toHaveText("");

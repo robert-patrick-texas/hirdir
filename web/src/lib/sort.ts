@@ -90,11 +90,16 @@ export function sortRows<T>(
 
 /**
  * The state after a click on the header of a column: sorted by it, ascending, and turned
- * round by a click on the column the table is sorted by already.
+ * round by a click on the column the table is sorted by already. A column whose first
+ * order is the most first, as the worst health is (P-178), starts descending.
  */
-export function nextSort(state: SortState | null, column: string): SortState {
+export function nextSort(
+  state: SortState | null,
+  column: string,
+  descendingFirst = false,
+): SortState {
   if (state?.column === column) return { column, descending: !state.descending };
-  return { column, descending: false };
+  return { column, descending: descendingFirst };
 }
 
 /** What the header of a column says of the order: which way, or that it is not by it. */

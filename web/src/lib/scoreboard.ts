@@ -9,6 +9,7 @@
 
 import type { Schemas } from "../api/client";
 import { all, type Condition, itemsPath, itemsViewPath, parseFilter } from "./filter";
+import { HEALTHS } from "./health";
 import { markOf } from "./operators";
 import type { CountColumns } from "./rank";
 import { decimalValue, type SortColumns, type SortState } from "./sort";
@@ -78,10 +79,8 @@ export function scoreColumns(blank: string): SortColumns<ScoreRow> {
     items: (row) => row.items,
     weight: (row) => decimalValue(row.support_weight),
     share: (row) => decimalValue(row.support_weight),
-    good: (row) => row.by_health.good,
-    degraded: (row) => row.by_health.degraded,
-    failed: (row) => row.by_health.failed,
-    unknown: (row) => row.by_health.unknown,
+    // 0.9.4: health is one column, sorted by what failed, then what is degraded (P-178).
+    health: (row) => healthWeight(row.by_health),
     involved: (row) => involvedText(row.operators),
     // 0.9.4: how the items of an operator have it, and what is given it (P-178).
     ...Object.fromEntries(SPLIT.map(({ column, value }) => [column, value])),
@@ -139,6 +138,36 @@ export const SPLIT: ReadonlyArray<{
   },
 ];
 
+/** The components of a row by health, as the server counts them. */
+export type HealthCounts = ScoreRow["by_health"];
+
+/**
+ * What the Health column of a scoreboard sorts and ranks by: the components that failed,
+ * then those that are degraded, so that the worst comes first when the most does. Two rows
+ * of as many failed are told apart by the degraded; good and unknown do not count.
+ */
+export function healthWeight(counts: HealthCounts): number {
+  return counts.failed * 1_000_000 + counts.degraded;
+}
+
+/** The four counts of health in words, as a screen reader hears them once: `12 good, 1 degraded, 0 failed, 2 unknown`. */
+export function healthWords(counts: HealthCounts): string {
+  return HEALTHS.map((health) => `${countText(counts[health.value])} ${health.value}`).join(", ");
+}
+
+/**
+ * How long each part of a row's bar of health is, from 0 to 1 of the row's components:
+ * good, degraded, failed and unknown, in that order. A row with none has no parts.
+ */
+export function healthParts(counts: HealthCounts): Array<{ health: string; share: number }> {
+  const total = HEALTHS.reduce((sum, health) => sum + counts[health.value], 0);
+  if (total <= 0) return [];
+  return HEALTHS.filter((health) => counts[health.value] > 0).map((health) => ({
+    health: health.value,
+    share: counts[health.value] / total,
+  }));
+}
+
 /** The order of a scoreboard at first: by support weight, the most first. */
 export const BY_WEIGHT: SortState = { column: "weight", descending: true };
 
@@ -168,10 +197,11 @@ export function scoreCounts(whole: string): CountColumns<ScoreRow> {
       text: (row) => shareText(row.support_weight, whole),
       label: "share of the support weight",
     },
-    good: count("components of good health", (row) => row.by_health.good),
-    degraded: count("components of degraded health", (row) => row.by_health.degraded),
-    failed: count("components of failed health", (row) => row.by_health.failed),
-    unknown: count("components of unknown health", (row) => row.by_health.unknown),
+    health: {
+      value: (row) => healthWeight(row.by_health),
+      text: (row) => healthWords(row.by_health),
+      label: "failed components, then degraded ones",
+    },
     ...Object.fromEntries(
       SPLIT.map(({ column, label, value }) => [column, optional(label, value)]),
     ),
