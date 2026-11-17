@@ -154,9 +154,12 @@ export function today(zone: string = appZone(), now: Date = new Date()): string 
   return `${part.year}-${part.month}-${part.day}`;
 }
 
-/** "1 second", "2 seconds". */
+/**
+ * "1 second", "2 seconds", "34,778 items": the count with the separator of thousands, as
+ * the numbers of the tables have it (P-195).
+ */
 export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count} ${count === 1 ? one : many}`;
+  return `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 }
 
 /** A MAC address as people write it: twelve stored hex digits as `00:00:5e:00:53:02`. */

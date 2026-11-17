@@ -12,7 +12,7 @@ import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { contractPath } from "../lib/contracts";
-import { itemsPath, parseShort } from "../lib/filter";
+import { itemsPath, parseFilter, parseShort } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -26,6 +26,7 @@ import { decimalValue, type SortColumns } from "../lib/sort";
 import {
   type By,
   byLabel,
+  healthHrefOf,
   isBy,
   isByPlace,
   isManagementBy,
@@ -298,6 +299,20 @@ export function Summary() {
   const data = summary.data;
   const by = data?.by ?? "";
   const operators = useOperatorMarks(by === "operator");
+  // Each total of health leads to the items it counts, within this view (P-195), once
+  // the answer on show is the one of this view.
+  const read = parseFilter(view.filter);
+  const healthHref =
+    read.ok && !summary.loading
+      ? healthHrefOf(
+          {
+            filter: read.filter,
+            include_archived: view.includeArchived,
+            include_drafts: view.includeDrafts,
+          },
+          settings.data,
+        )
+      : undefined;
   const sorting = useSorting(
     data?.rows,
     {
@@ -349,6 +364,7 @@ export function Summary() {
               totals={data.totals}
               countKinds={settingList(settings.data, "count_kinds")}
               ranked
+              {...(healthHref ? { healthHref } : {})}
             />
             <ConditionTotals conditions={data.totals.by_condition} choices={choices.data} />
             <p className="hint">

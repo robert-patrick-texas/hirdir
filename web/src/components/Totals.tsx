@@ -28,6 +28,8 @@ interface HeadlineTotalsProps {
    * (P-180). The first page shows the same headline, and is no report.
    */
   ranked?: boolean;
+  /** Where each total of health leads: the items it counts, or null for no link (P-195). */
+  healthHref?: (health: string) => string | null;
 }
 
 /**
@@ -36,7 +38,12 @@ interface HeadlineTotalsProps {
  * the kinds that stand beside the headline count. It holds no money: the estimated value
  * and the annual support cost are in the management report.
  */
-export function HeadlineTotals({ totals, countKinds, ranked = false }: HeadlineTotalsProps) {
+export function HeadlineTotals({
+  totals,
+  countKinds,
+  ranked = false,
+  healthHref,
+}: HeadlineTotalsProps) {
   const kinds = kindsShown(totals.by_kind, countKinds);
   // What the count takes first, as before, until a header is pressed. The entries with
   // no kind are a row like the others, and sort by what the row is called.
@@ -72,7 +79,7 @@ export function HeadlineTotals({ totals, countKinds, ranked = false }: HeadlineT
         </div>
       </dl>
       <h3>Components by health</h3>
-      <HealthCounts counts={totals.by_health} />
+      <HealthCounts counts={totals.by_health} {...(healthHref ? { href: healthHref } : {})} />
       {totals.by_kind.length > 0 && (
         <div className="scroll">
           <table className="narrow" data-testid="totals-by-kind">

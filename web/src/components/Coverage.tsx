@@ -640,7 +640,7 @@ export function CoverItems({ rows, view, what, onCovered, onClose }: CoverItemsP
       <p className="hint">
         {rows.kind === "all" && `All ${plural(count, "item")} that match the filter. `}
         {several
-          ? `They go ${piece} to a request, one request after another: each request covers all of its items, or none. That is the setting max_items_per_request.`
+          ? `They go ${piece.toLocaleString("en-US")} to a request, one request after another: each request covers all of its items, or none. That is the setting max_items_per_request.`
           : "In one request: all of them, or none."}{" "}
         An item under a contract holds only the link: the number, the period and the support level
         it shows are the contract&apos;s.

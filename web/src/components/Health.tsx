@@ -3,6 +3,7 @@
 // set it, state it again with the present moment, or clear it.
 
 import { useState } from "react";
+import { Link } from "react-router";
 import type { ApiError } from "../api";
 import {
   type Health,
@@ -51,18 +52,42 @@ export function HealthWithReasons({ health, testId }: { health: Health; testId?:
   );
 }
 
-/** The components of each health, each count beside the mark of its health. */
-export function HealthCounts({ counts }: { counts: HealthCount }) {
+/**
+ * The components of each health, each count beside the mark of its health. With `href`,
+ * a count is a link to the items it counts, where there is a list that holds exactly
+ * them (P-195); a count of none is no link.
+ */
+export function HealthCounts({
+  counts,
+  href,
+}: {
+  counts: HealthCount;
+  href?: (health: string) => string | null;
+}) {
   return (
     <dl className="totals health-counts" data-testid="totals-by-health">
-      {healthCounts(counts).map((health) => (
-        <div key={health.value} data-health={health.value}>
-          <dt>
-            <HealthMark value={health.value} />
-          </dt>
-          <dd data-testid={`total-health-${health.value}`}>{countText(health.count)}</dd>
-        </div>
-      ))}
+      {healthCounts(counts).map((health) => {
+        const to = health.count > 0 && href ? href(health.value) : null;
+        return (
+          <div key={health.value} data-health={health.value}>
+            <dt>
+              <HealthMark value={health.value} />
+            </dt>
+            <dd data-testid={`total-health-${health.value}`}>
+              {to === null ? (
+                countText(health.count)
+              ) : (
+                <Link
+                  to={to}
+                  aria-label={`${countText(health.count)} components, ${healthLabel(health.value).toLowerCase()}`}
+                >
+                  {countText(health.count)}
+                </Link>
+              )}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 }

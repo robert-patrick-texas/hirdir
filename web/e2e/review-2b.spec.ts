@@ -112,3 +112,45 @@ test("P-194: a site's contacts stand above its files, and its email and number a
   );
   await expectClean(page, seen);
 });
+
+test("P-195: Home shows its totals before the summary by operator, and a total of health opens what it counts", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const headers = await places(request, account);
+  for (const n of [1, 2, 3]) {
+    await make(request, headers, "/items", { hostname: `hl-${n}-${id}` });
+  }
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  // The summary by operator is held back, as on a busy server: the totals do not wait.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/reports/summary?by=operator*", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("./");
+  await expect(page.getByTestId("total-components")).toBeVisible();
+  await expect(page.getByTestId("unassigned")).toHaveCount(0);
+  // A total of health is a link, where it counts any.
+  const health = page.getByTestId("totals-by-health");
+  await expect(health.getByRole("link").first()).toBeVisible();
+  release();
+  await expect(page.getByTestId("unassigned")).toBeVisible();
+  await page.unroute("**/api/v1/reports/summary?by=operator*");
+
+  // On the summary, within its filter: the link opens the list of what it counted.
+  await page.goto(`./reports?filter=${encodeURIComponent(`hostname:contains:${id}`)}`);
+  const cell = page.getByTestId("total-health-unknown");
+  await expect(cell).toHaveText("3");
+  await cell.getByRole("link").click();
+  await expect(page).toHaveURL(/\/items\?/);
+  await expect(page.getByTestId("grid-total")).toHaveText("3 items");
+  await expectClean(page, seen);
+});

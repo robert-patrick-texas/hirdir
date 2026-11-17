@@ -127,7 +127,7 @@ describe("the size of a file", () => {
   it("is read as people read it", () => {
     expect(sizeText(0)).toBe("0 bytes");
     expect(sizeText(1)).toBe("1 byte");
-    expect(sizeText(1023)).toBe("1023 bytes");
+    expect(sizeText(1023)).toBe("1,023 bytes");
     expect(sizeText(1024)).toBe("1 KB");
     expect(sizeText(1536)).toBe("1.5 KB");
     expect(sizeText(120 * 1024)).toBe("120 KB");

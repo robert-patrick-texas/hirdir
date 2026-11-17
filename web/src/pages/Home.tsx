@@ -11,42 +11,31 @@ import { useSettings } from "../lib/lists";
 import { assignmentPath, OPEN, UNASSIGNED, unassignedComponents } from "../lib/operators";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
-import { settingList } from "../lib/summary";
+import { healthHrefOf, settingList } from "../lib/summary";
 
 /**
- * The headline of the summary, for the inventory as a list shows it by default: the
- * components beside the managed nodes, the support weight, and the components by health.
- * The server counts them. No money is shown here: that is in the management report.
+ * What nobody of the team is assigned to look after, and what is under a label with
+ * nobody behind it: the components of the blank row of the summary by operator, and
+ * those of the view of open labels.
  */
-function Headline() {
-  // By operator, so that the one answer also says what nobody is assigned to: the
-  // components of its blank row.
-  const summary = useLoad("home-summary", (signal) =>
+function Assigned() {
+  const byOperator = useLoad("home-by-operator", (signal) =>
     api.request("get", "/api/v1/reports/summary", { query: { by: "operator" }, signal }),
   );
-  const unassigned = unassignedComponents(summary.data?.rows);
-  // What is assigned to a label with nobody behind it: the components of that view.
+  const unassigned = unassignedComponents(byOperator.data?.rows);
   const open = useLoad("home-open", (signal) =>
     api.request("get", "/api/v1/reports/summary", { query: { filter: OPEN }, signal }),
   );
   const waiting = open.data?.totals.component_count ?? 0;
-  const settings = useSettings();
   return (
-    <section aria-labelledby="headline">
-      <h2 id="headline">The inventory in numbers</h2>
-      <Problem error={summary.error} />
-      {summary.loading && !summary.data && (
+    <>
+      <Problem error={byOperator.error} />
+      {byOperator.loading && !byOperator.data && (
         <p role="status" className="muted loading-late">
-          Counting…
+          Counting what nobody is assigned to…
         </p>
       )}
-      {summary.data && (
-        <HeadlineTotals
-          totals={summary.data.totals}
-          countKinds={settingList(settings.data, "count_kinds")}
-        />
-      )}
-      {summary.data && (
+      {byOperator.data && (
         <p data-testid="unassigned" data-count={unassigned}>
           {unassigned > 0 ? (
             <>
@@ -76,6 +65,40 @@ function Headline() {
         </p>
       )}
       <Problem error={open.error} />
+    </>
+  );
+}
+
+/**
+ * The headline of the summary, for the inventory as a list shows it by default: the
+ * components beside the managed nodes, the support weight, and the components by health.
+ * The server counts them. No money is shown here: that is in the management report.
+ */
+function Headline() {
+  // 0.9.5: the totals from the plain summary, which is asked for first and alone, so
+  // that it shows when its own answer comes (P-195). What nobody is assigned to, from the
+  // summary by operator, is asked for after it, for the one sentence that needs it.
+  const summary = useLoad("home-summary", (signal) =>
+    api.request("get", "/api/v1/reports/summary", { signal }),
+  );
+  const settings = useSettings();
+  return (
+    <section aria-labelledby="headline">
+      <h2 id="headline">The inventory in numbers</h2>
+      <Problem error={summary.error} />
+      {summary.loading && !summary.data && (
+        <p role="status" className="muted loading-late">
+          Counting…
+        </p>
+      )}
+      {summary.data && (
+        <HeadlineTotals
+          totals={summary.data.totals}
+          countKinds={settingList(settings.data, "count_kinds")}
+          healthHref={healthHrefOf({ filter: null }, settings.data)}
+        />
+      )}
+      {!summary.loading && <Assigned />}
       <p>
         <Link to="/reports/scoreboard" data-testid="scoreboard-link">
           The scoreboard

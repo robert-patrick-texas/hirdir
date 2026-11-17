@@ -25,6 +25,8 @@ const year = new Date().getFullYear();
 
 /** As many as one request takes: `MAX_AT_ONCE` of the server. */
 const AT_ONCE = 1000;
+// A count in a sentence, with the separator of thousands (P-195).
+const n = (count: number) => count.toLocaleString("en-US");
 
 const vendor = `Example Networks ${suffix}`;
 const pid = `EN-9200-48P-${suffix}`;
@@ -62,14 +64,14 @@ function sizes(sent: Request[]): number[] {
 /** Select every row of the item grid that a filter keeps, and open the form to cover them. */
 async function coverAll(page: Page, filter: string, count: number) {
   await page.goto(`./items?filter=${encodeURIComponent(filter)}`);
-  await expect(page.getByTestId("grid-total")).toHaveText(`${count} items`);
+  await expect(page.getByTestId("grid-total")).toHaveText(`${n(count)} items`);
   await page.getByRole("button", { name: "Select all that match" }).click();
   await page.getByRole("button", { name: "Cover with a contract" }).click();
   const cover = page.getByTestId("cover-items");
   await expect(
-    cover.getByRole("heading", { name: `Cover ${count} items with a contract` }),
+    cover.getByRole("heading", { name: `Cover ${n(count)} items with a contract` }),
   ).toBeVisible();
-  await expect(cover).toContainText(`All ${count} items that match the filter.`);
+  await expect(cover).toContainText(`All ${n(count)} items that match the filter.`);
   return cover;
 }
 
@@ -134,20 +136,20 @@ test("D-137: a thousand go in one request, and more a thousand to a request", as
   // Past it: a thousand to a request, one after another.
   const pastLimit = await coverAll(page, all, AT_ONCE + 1);
   await expect(pastLimit).toContainText(
-    `They go ${AT_ONCE} to a request, one request after another: each request covers all of its items, or none.`,
+    `They go ${n(AT_ONCE)} to a request, one request after another: each request covers all of its items, or none.`,
   );
   await pickContract(pastLimit, whole);
-  await pastLimit.getByRole("button", { name: `Cover ${AT_ONCE + 1} items` }).click();
+  await pastLimit.getByRole("button", { name: `Cover ${n(AT_ONCE + 1)} items` }).click();
   await expect(
     page.getByText(
-      `${AT_ONCE + 1} items are now under ${whole}. Nothing was written to any of them.`,
+      `${n(AT_ONCE + 1)} items are now under ${whole}. Nothing was written to any of them.`,
     ),
   ).toBeVisible({ timeout: 120_000 });
   expect(sizes(sent)).toEqual([AT_ONCE, 1]);
 
   await openContract(page, whole);
-  await expect(page.getByTestId("covered-items")).toHaveText(`${AT_ONCE + 1} items`);
-  await expect(page.getByTestId("grid-total")).toHaveText(`${AT_ONCE + 1} coverages`);
+  await expect(page.getByTestId("covered-items")).toHaveText(`${n(AT_ONCE + 1)} items`);
+  await expect(page.getByTestId("grid-total")).toHaveText(`${n(AT_ONCE + 1)} coverages`);
   await expectClean(page, seen);
 });
 
@@ -172,15 +174,15 @@ test("D-137: a request refused after the first was taken leaves the first covere
   const sent = coverRequests(page);
   const cover = await coverAll(page, all, AT_ONCE + 1);
   await pickContract(cover, partly);
-  await cover.getByRole("button", { name: `Cover ${AT_ONCE + 1} items` }).click();
+  await cover.getByRole("button", { name: `Cover ${n(AT_ONCE + 1)} items` }).click();
   await expect(cover.locator('.alert-error[data-status="409"]')).toBeVisible({ timeout: 120_000 });
   await expect(cover.locator(".warning")).toHaveText(
-    `${AT_ONCE} items were put under the contract before this was refused, and are covered.`,
+    `${n(AT_ONCE)} items were put under the contract before this was refused, and are covered.`,
   );
   expect(sizes(sent)).toEqual([AT_ONCE, 1]);
 
   await openContract(page, partly);
-  await expect(page.getByTestId("covered-items")).toHaveText(`${AT_ONCE + 1} items`);
+  await expect(page.getByTestId("covered-items")).toHaveText(`${n(AT_ONCE + 1)} items`);
   await openItem(page, many[0] ?? "");
   await expect(page.getByTestId("item-contract-count")).toHaveAttribute("data-count", "2");
   await expectClean(page, seen, ["409 POST"]);
