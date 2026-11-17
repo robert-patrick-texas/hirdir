@@ -142,22 +142,26 @@ test("labels are made; a site, a stack and a switch are given one, and what is b
   );
 
   // A label is made on the Operators page: short, with a colour, and a person behind it
-  // who is chosen by searching contacts.
+  // who is chosen by searching contacts. 0.9.3: the person is a contact that is no user
+  // here, so the label is external (P-172).
   await main(page).getByRole("link", { name: "Operators" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Operators" })).toBeVisible();
   await page.getByRole("button", { name: "New operator" }).click();
   const form = region(page, "New operator");
   await form.getByLabel("Label (required)").fill(core);
   await form.getByLabel("Colour").fill("#1f6feb");
-  await form.getByLabel("Person behind it", { exact: true }).fill(leeMail.split("@")[0] ?? "");
+  await form.getByRole("radio", { name: "Another contact", exact: true }).check();
+  await form.getByLabel("Contact", { exact: true }).fill(leeMail.split("@")[0] ?? "");
   await form
-    .getByRole("list", { name: "Contacts that match" })
+    .getByRole("list", { name: "Other contacts that match" })
     .getByRole("button", { name: offered(lee, leeMail), exact: true })
     .click();
   await form.getByRole("button", { name: "Create operator" }).click();
   await expect(page.getByTestId("operator-heading")).toContainText(core);
   await expect(page.getByTestId("operator-person")).toContainText(lee);
   await expect(page.getByTestId("operator-person")).toHaveAttribute("data-open", "false");
+  await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "external");
+  await expect(page.getByTestId("operator-email")).toHaveText(leeMail);
   pages.set(core, new URL(page.url()).pathname);
   // Two more come by a file: a label names its person by the email address, or nobody.
   await importFile(
@@ -355,9 +359,10 @@ test("a label is handed over, left open, released and brought back, and its item
   // A new hire takes over: another person is put behind the label, in one place, and
   // every item the label is on shows that person at once. Nothing is written to them.
   const hand = region(page, "Hand over, or leave open");
-  await hand.getByLabel("Hand over to", { exact: true }).fill(mioMail.split("@")[0] ?? "");
+  await hand.getByRole("radio", { name: "Another contact", exact: true }).check();
+  await hand.getByLabel("Contact", { exact: true }).fill(mioMail.split("@")[0] ?? "");
   await hand
-    .getByRole("list", { name: "Contacts that match" })
+    .getByRole("list", { name: "Other contacts that match" })
     .getByRole("button", { name: offered(mio, mioMail), exact: true })
     .click();
   await hand.getByRole("button", { name: "Hand over", exact: true }).click();
@@ -376,6 +381,7 @@ test("a label is handed over, left open, released and brought back, and its item
     .click();
   await expect(page.getByText(`${core} is left open`)).toBeVisible();
   await expect(page.getByTestId("operator-person")).toHaveAttribute("data-open", "true");
+  await expect(page.getByTestId("operator-scope")).toHaveAttribute("data-scope", "");
   await expect(page.getByTestId("operator-heading")).toContainText("open");
   await openItem(page, first);
   await expect(markIn(operator(page), core)).toHaveAttribute("data-open", "true");

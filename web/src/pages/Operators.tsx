@@ -1,21 +1,21 @@
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { ContactField } from "../components/ContactField";
+import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { OperatorMark } from "../components/Operator";
+import { ContactChanges, PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
-import { CreateForm, EditForm } from "../components/RecordForm";
+import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
 import { formatTime, plural } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
 import { EVERY } from "../lib/lists";
 import {
-  contactLabel,
   markOf,
   type Operator,
   operatedGroupsPath,
@@ -24,9 +24,25 @@ import {
   safeColour,
 } from "../lib/operators";
 import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
-import type { FieldSpec } from "../lib/patch";
+import {
+  buildCreate,
+  type FieldSpec,
+  type FormValue,
+  type FormValues,
+  formOf,
+  type Option,
+} from "../lib/patch";
+import {
+  numbersText,
+  type PersonChoice,
+  personChoice,
+  personLabel,
+  readPerson,
+  SCOPES,
+  scopeHint,
+  scopeLabel,
+} from "../lib/people";
 import { levelLabel, placePath } from "../lib/places";
-import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 
 const COLUMNS: GridColumn<Operator>[] = [
@@ -49,6 +65,40 @@ const COLUMNS: GridColumn<Operator>[] = [
     column: "contact",
     value: (operator) => operator.contact?.name,
     width: 240,
+  },
+  // 0.9.3: internal where the person behind it is a user, external where not, and the
+  // person's email and numbers, which are the contact's (P-172).
+  {
+    id: "scope",
+    header: "Internal or external",
+    kind: "choice",
+    value: (operator) => scopeLabel(operator.scope),
+    choices: SCOPES,
+    width: 170,
+  },
+  {
+    id: "contact.email",
+    header: "Email",
+    kind: "text",
+    column: "contact_email",
+    value: (operator) => operator.contact?.email,
+    width: 240,
+  },
+  {
+    id: "contact.phone",
+    header: "Phone",
+    kind: "text",
+    column: "contact_phone",
+    value: (operator) => operator.contact?.phone,
+    width: 150,
+  },
+  {
+    id: "contact.phone2",
+    header: "Second phone",
+    kind: "text",
+    column: "contact_phone2",
+    value: (operator) => operator.contact?.phone2,
+    width: 150,
   },
   {
     id: "is_open",
@@ -117,8 +167,11 @@ const COLUMNS: GridColumn<Operator>[] = [
   },
 ];
 
-/** The fields of an operator that a form sets. */
-function operatorSpecs(current: Operator | null = null): FieldSpec[] {
+/**
+ * The fields of an operator that a form sets. 0.9.3: the person behind it is chosen
+ * beside them, a user, another contact or a new person (P-172).
+ */
+function operatorSpecs(): FieldSpec[] {
   return [
     {
       name: "label",
@@ -134,16 +187,6 @@ function operatorSpecs(current: Operator | null = null): FieldSpec[] {
       kind: "text",
       maxLength: 7,
       hint: "In the form #1f6feb. A dot in this colour stands beside the label.",
-    },
-    {
-      name: "contact_hid",
-      label: "Person behind it",
-      kind: "contact",
-      blank: "Nobody: an open assignment",
-      options: current?.contact
-        ? [{ value: current.contact.hid, label: contactLabel(current.contact) }]
-        : [],
-      hint: "The member of the team the label stands for. Another person here hands over everything the label is on, at once.",
     },
     { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
     { name: "description", label: "Description", kind: "longtext", maxLength: 10000 },
@@ -162,7 +205,6 @@ export function Operators() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
-  const specs = useMemo(() => operatorSpecs(), []);
 
   return (
     <>
@@ -174,14 +216,9 @@ export function Operators() {
         nothing: it is shown here when Include archived is on.
       </p>
       {adding && (
-        <CreateForm<Schemas["OperatorCreate"], Operator>
-          title="New operator"
-          specs={specs}
-          start={{ record_status: "active" }}
-          create={(body) => api.request("post", "/api/v1/operators", { body })}
+        <NewOperator
           onCreated={(operator) => navigate(operatorPath(operator.hid))}
           onCancel={() => setAdding(false)}
-          submitLabel="Create operator"
         />
       )}
       <DataGrid<Operator>
@@ -222,7 +259,7 @@ export function OperatorDetail() {
   const record = operator.data;
   const mark = markOf(record);
   useTitle(record ? record.label : "Operator");
-  const specs = useMemo(() => operatorSpecs(record ?? null), [record]);
+  const specs = useMemo(() => operatorSpecs(), []);
 
   function changed(text: string) {
     setDone(text);
@@ -250,7 +287,6 @@ export function OperatorDetail() {
                   <Link to={`/contacts/${encodeURIComponent(record.contact.hid)}`}>
                     {record.contact.name}
                   </Link>
-                  {record.contact.email && <span className="muted"> · {record.contact.email}</span>}
                   {record.contact.record_status === "retired" && (
                     <span className="badge">Retired</span>
                   )}
@@ -265,6 +301,51 @@ export function OperatorDetail() {
                 </span>
               )}
             </dd>
+            <dt>Internal or external</dt>
+            <dd data-testid="operator-scope" data-scope={record.scope ?? ""}>
+              {record.scope ? (
+                <>
+                  {scopeLabel(record.scope)}
+                  <span className="muted"> · {scopeHint(record.scope)}</span>
+                </>
+              ) : (
+                // Nobody is behind the label, or only a person who is retired: it is open.
+                <span className="muted">
+                  {record.contact
+                    ? "Neither: the person behind it is retired, and the label is open"
+                    : "Neither: nobody is behind it"}
+                </span>
+              )}
+            </dd>
+            {record.contact && (
+              <>
+                <dt>Email</dt>
+                <dd data-testid="operator-email">
+                  {record.contact.email || <span className="muted">—</span>}
+                </dd>
+                <dt>Numbers</dt>
+                <dd data-testid="operator-numbers">
+                  {numbersText(record.contact.phone, record.contact.phone2) || (
+                    <span className="muted">—</span>
+                  )}
+                </dd>
+              </>
+            )}
+            {record.user && (
+              <>
+                <dt>User</dt>
+                <dd data-testid="operator-user">
+                  {allows(user.role, "admin") ? (
+                    <Link to={`/admin/users/${encodeURIComponent(record.user.hid)}`}>
+                      {record.user.username}
+                    </Link>
+                  ) : (
+                    <span className="mono">{record.user.username}</span>
+                  )}
+                  <span className="muted"> · the person behind it signs in as this user</span>
+                </dd>
+              </>
+            )}
             <dt>Description</dt>
             <dd>{record.description || <span className="muted">—</span>}</dd>
             <dt>Colour</dt>
@@ -283,6 +364,21 @@ export function OperatorDetail() {
             <dd className="mono">{record.hid}</dd>
           </dl>
           <On operator={record} />
+          {mayEdit && record.record_status !== "retired" && record.contact && (
+            <section aria-labelledby="person-details">
+              <h2 id="person-details">The person&apos;s email and numbers</h2>
+              <p className="hint">
+                Those of {record.contact.name}&apos;s contact: changed here, they are changed on the
+                contact, and so wherever that person is named.
+              </p>
+              <ContactChanges
+                hid={record.contact.hid}
+                fields={["email", "phone", "phone2"]}
+                submitLabel="Save on the contact"
+                onSaved={() => changed(`The contact ${record.contact?.name ?? ""} was saved.`)}
+              />
+            </section>
+          )}
           {mayEdit && record.record_status !== "retired" && (
             <HandOver
               key={`hand ${record.hid} ${record.row_version}`}
@@ -403,28 +499,164 @@ interface ChangeProps {
   onReload: () => void;
 }
 
+/** The fields of a new person, as the server names them in a refusal. */
+const PERSON_FIELDS = ["contact_hid", "name", "email", "phone", "phone2"];
+
+/**
+ * The contact a choice of the person comes to: the one chosen, or a new one made from
+ * what was typed, or none. A contact made is handed to `onMade` before anything else is
+ * sent, so that a form which is refused afterwards holds it, and does not make it twice.
+ */
+async function contactOf(
+  choice: PersonChoice,
+  onMade: (made: Option) => void,
+): Promise<string | null> {
+  const read = readPerson(choice);
+  if (!read.ok) return null;
+  if (read.person === null) return read.contactHid;
+  const contact = await api.request("post", "/api/v1/contacts", {
+    body: { ...read.person, record_status: "active" },
+  });
+  onMade({ value: contact.hid, label: personLabel(contact) });
+  return contact.hid;
+}
+
+interface NewOperatorProps {
+  onCreated: (operator: Operator) => void;
+  onCancel: () => void;
+}
+
+/**
+ * A new operator: its label, colour, status and description, and the person behind it,
+ * a user, another contact, a new person whose name, email and numbers make a new
+ * contact, or nobody for now, an open assignment.
+ */
+function NewOperator({ onCreated, onCancel }: NewOperatorProps) {
+  const specs = useMemo(() => operatorSpecs(), []);
+  const [values, setValues] = useState<FormValues>(() => ({
+    ...formOf(specs),
+    record_status: "active",
+  }));
+  const [person, setPerson] = useState<PersonChoice>(() => personChoice("none"));
+  const [made, setMade] = useState<Option | null>(null);
+  const [found, setFound] = useState<Record<string, string>>({});
+  const action = useAction();
+  const names = [...specs.map((spec) => spec.name), ...PERSON_FIELDS];
+  const errors: Record<string, string> = { ...action.error?.fields, ...found };
+
+  function change(name: string, value: FormValue) {
+    setValues((was) => ({ ...was, [name]: value }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const built = buildCreate<Schemas["OperatorCreate"]>(specs, values);
+    const read = readPerson(person);
+    const wrong = { ...built.errors, ...(read.ok ? {} : { [read.field]: read.error }) };
+    setFound(wrong);
+    if (Object.keys(wrong).length > 0) {
+      action.clear();
+      return;
+    }
+    const result = await action.run(async () => {
+      const contact = await contactOf(person, (one) => {
+        setMade(one);
+        setPerson(personChoice("contact", one.value));
+      });
+      return api.request("post", "/api/v1/operators", {
+        body: { ...built.body, ...(contact ? { contact_hid: contact } : {}) },
+      });
+    });
+    if (result.ok) onCreated(result.value);
+  }
+
+  return (
+    <section className="panel" aria-labelledby="new-operator">
+      <h2 id="new-operator">New operator</h2>
+      <form onSubmit={submit} className="stack" noValidate>
+        <Problem error={action.error} shown={names} />
+        {made && action.error && (
+          <p className="hint" data-testid="contact-made">
+            The contact {made.label} was made, and is chosen below as the person behind it.
+          </p>
+        )}
+        <FormFields
+          specs={specs}
+          values={values}
+          onChange={change}
+          errors={errors}
+          disabled={action.busy}
+        />
+        <PersonChooser
+          legend="Person behind it"
+          name="new-operator"
+          ways={["user", "contact", "new", "none"]}
+          wayLabels={{ none: "Nobody: an open assignment" }}
+          choice={person}
+          onChange={(next) => {
+            setFound({});
+            setPerson(next);
+          }}
+          errors={errors}
+          known={made ? [made] : []}
+          hint="The member of the team the label stands for: internal where that person is a user, external where not."
+          disabled={action.busy}
+        />
+        <p className="actions">
+          <button type="submit" className="primary" disabled={action.busy}>
+            Create operator
+          </button>
+          <button type="button" onClick={onCancel} disabled={action.busy}>
+            Cancel
+          </button>
+        </p>
+      </form>
+    </section>
+  );
+}
+
 /**
  * Hand the label over to another person, or leave it open. Everything the label is on
- * follows at once: nothing is written to any of it.
+ * follows at once: nothing is written to any of it. 0.9.3: the person is a user, another
+ * contact, or a new person, whose name, email and numbers make a new contact (P-172).
  */
 function HandOver({ operator, onChanged, onReload }: ChangeProps) {
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState<PersonChoice>(() => personChoice("user"));
+  const [made, setMade] = useState<Option | null>(null);
+  const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
-  const refused = fieldErrors(action.error, ["contact_hid"]).shown;
+  const errors: Record<string, string> = { ...action.error?.fields, ...found };
 
-  async function send(contact: string | null, done: string) {
-    const result = await action.run(() =>
-      api.request("patch", "/api/v1/operators/{hid}", {
+  async function send(choice: PersonChoice | null, done: string) {
+    if (choice) {
+      const read = readPerson(choice);
+      if (!read.ok) {
+        action.clear();
+        setFound({ [read.field]: read.error });
+        return;
+      }
+    }
+    setFound({});
+    const result = await action.run(async () => {
+      const contact = choice
+        ? await contactOf(choice, (one) => {
+            setMade(one);
+            setTo(personChoice("contact", one.value));
+          })
+        : null;
+      return api.request("patch", "/api/v1/operators/{hid}", {
         path: { hid: operator.hid },
         body: { row_version: operator.row_version, contact_hid: contact },
-      }),
-    );
+      });
+    });
     if (result.ok) {
       const name = result.value.contact?.name;
       onChanged(done.replace("{name}", name ?? "another person"));
     }
   }
 
+  const chosen =
+    to.way === "new" || (to.contactHid !== "" && to.contactHid !== operator.contact_hid);
   return (
     <section aria-labelledby="hand-over">
       <h2 id="hand-over">Hand over, or leave open</h2>
@@ -433,23 +665,30 @@ function HandOver({ operator, onChanged, onReload }: ChangeProps) {
         takes over every item, group and place the label is on, at once. Left open, the label stays
         on all of it, marked as open, until somebody is put behind it.
       </p>
-      <Problem error={action.error} shown={["contact_hid"]} onReload={onReload} />
-      <div className="fields">
-        <ContactField
-          label="Hand over to"
-          name="hand_over_to"
-          value={to}
-          onChange={setTo}
-          blank="Nobody chosen"
-          disabled={action.busy}
-          error={refused.contact_hid}
-        />
-      </div>
+      <Problem error={action.error} shown={PERSON_FIELDS} onReload={onReload} />
+      {made && action.error && (
+        <p className="hint" data-testid="contact-made">
+          The contact {made.label} was made, and is chosen below.
+        </p>
+      )}
+      <PersonChooser
+        legend="Hand over to"
+        name="hand-over"
+        ways={["user", "contact", "new"]}
+        choice={to}
+        onChange={(next) => {
+          setFound({});
+          setTo(next);
+        }}
+        errors={errors}
+        known={made ? [made] : []}
+        disabled={action.busy}
+      />
       <p className="actions">
         <button
           type="button"
           className="primary"
-          disabled={action.busy || to === "" || to === operator.contact_hid}
+          disabled={action.busy || !chosen}
           onClick={() => send(to, `${operator.label} was handed over to {name}.`)}
         >
           Hand over

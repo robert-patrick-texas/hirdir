@@ -44,6 +44,8 @@ export const CHOICE_LISTS: readonly Option[] = [
   { value: "carrier_role", label: "Carrier role" },
   // 0.9.0: the kind of a reference, a file or a link (P-158).
   { value: "reference_kind", label: "Reference kind" },
+  // 0.9.3: the kind of an external system, a fixed list until then (P-170).
+  { value: "system_kind", label: "External system kind" },
 ];
 
 /**

@@ -3,12 +3,20 @@ import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { CheckField, SelectField, TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
+import { PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
 import { SecretBox } from "../components/SecretBox";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
+import {
+  NEW_PERSON_FIELDS,
+  newPersonErrors,
+  type PersonChoice,
+  personChoice,
+  readPerson,
+} from "../lib/people";
 import { ROLES, roleLabel } from "../lib/roles";
 import { USERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
@@ -84,7 +92,7 @@ export function Users() {
             type="search"
             value={search}
             onChange={setSearch}
-            hint="Part of a username or display name"
+            hint="Part of a username or of the name of its contact"
           />
           <button type="submit">Search</button>
         </form>
@@ -117,17 +125,26 @@ export function Users() {
       {users.loading && !users.data && <p role="status">Loading…</p>}
       {users.data && (
         <>
+          <p className="hint">
+            A user is the part of a person who signs in. Its name, its email and its numbers are
+            those of its contact, and are changed on the contact, or on the page of the user.
+          </p>
           <div className="scroll">
-            <table>
-              <caption className="visually-hidden">Users</caption>
+            <table data-testid="users">
+              <caption className="visually-hidden">
+                Users, each with the name, email and numbers of its contact
+              </caption>
               <thead>
                 <tr>
                   <SortTh sort={sort.header("username", holdsAll)} column="username">
                     Username
                   </SortTh>
                   <SortTh sort={sort.header("display_name", holdsAll)} column="display_name">
-                    Display name
+                    Name
                   </SortTh>
+                  <th scope="col">Email</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Second phone</th>
                   <SortTh sort={sort.header("role", holdsAll)} column="role">
                     Role
                   </SortTh>
@@ -147,13 +164,34 @@ export function Users() {
               </thead>
               <tbody>
                 {sort.arrange(users.data.items, holdsAll).map((user) => (
-                  <tr key={user.hid} className={user.disabled ? "dim" : undefined}>
+                  <tr
+                    key={user.hid}
+                    className={user.disabled ? "dim" : undefined}
+                    data-user={user.username}
+                  >
                     <th scope="row">
                       <Link to={`/admin/users/${encodeURIComponent(user.hid)}`}>
                         {user.username}
                       </Link>
                     </th>
-                    <td>{user.display_name}</td>
+                    {/* 0.9.3: the name, email and numbers of its contact (P-172). */}
+                    <td data-testid="user-name">
+                      {user.contact ? (
+                        <>
+                          {user.display_name}
+                          {user.contact.record_status === "retired" && (
+                            <span className="badge">Retired</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="muted">
+                          {user.is_service_account ? "Service account" : "No contact"}
+                        </span>
+                      )}
+                    </td>
+                    <td data-testid="user-email">{user.email}</td>
+                    <td data-testid="user-phone">{user.contact?.phone}</td>
+                    <td data-testid="user-phone2">{user.contact?.phone2}</td>
                     <td>
                       {user.role ? roleLabel(user.role) : <span className="muted">none</span>}
                     </td>
@@ -167,7 +205,7 @@ export function Users() {
                 ))}
                 {users.data.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="muted">
+                    <td colSpan={10} className="muted">
                       {q ? "No user matches the search." : "There are no users."}
                     </td>
                   </tr>
@@ -207,15 +245,37 @@ interface NewUserProps {
   onCreated: (created: Created) => void;
 }
 
+/** What the server may refuse of a new user, each said beside its input. */
+const NEW_USER_FIELDS = [
+  "username",
+  "is_service_account",
+  "contact_hid",
+  ...NEW_PERSON_FIELDS,
+  ...NEW_PERSON_FIELDS.map((field) => `contact.${field}`),
+  "role",
+  "access_code",
+];
+
+/**
+ * A new user. 0.9.3: the person is a contact, a new one made with the user, one there is
+ * that is no other user's, or none for now; a service account, which is no person, has
+ * none (P-172). The username is what the person signs in with, and an Admin can change
+ * it later (P-173).
+ */
 function NewUser({ onCancel, onCreated }: NewUserProps) {
   const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
   const [service, setService] = useState(false);
+  const [person, setPerson] = useState<PersonChoice>(() => personChoice("new"));
   const [role, setRole] = useState("");
   const [accessCode, setAccessCode] = useState("");
+  const [found, setFound] = useState<Record<string, string>>({});
   const action = useAction();
-  const fields = action.error?.fields ?? {};
+  // What the server refused of the new contact is said beside the field of the person.
+  const fields: Readonly<Record<string, string | undefined>> = {
+    ...action.error?.fields,
+    ...newPersonErrors(action.error?.fields ?? {}),
+    ...found,
+  };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -223,10 +283,17 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
       username: username.trim(),
       is_service_account: service,
     };
-    // The person is a contact (P-172): a name makes a new one with the user.
-    if (!service && displayName.trim() !== "") {
-      body.contact = { name: displayName.trim(), email: email.trim() || null };
+    if (!service) {
+      const read = readPerson(person);
+      if (!read.ok) {
+        action.clear();
+        setFound({ [read.field]: read.error });
+        return;
+      }
+      if (read.contactHid !== null) body.contact_hid = read.contactHid;
+      if (read.person !== null) body.contact = read.person;
     }
+    setFound({});
     if (role) body.role = role;
     if (!service && accessCode !== "") body.access_code = accessCode;
     const result = await action.run(() => api.request("post", "/api/v1/users", { body }));
@@ -236,11 +303,8 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
   return (
     <section className="panel" aria-labelledby="new-user">
       <h2 id="new-user">New user</h2>
-      <form onSubmit={submit} className="stack">
-        <Problem
-          error={action.error}
-          shown={["username", "display_name", "email", "is_service_account", "role", "access_code"]}
-        />
+      <form onSubmit={submit} className="stack" noValidate>
+        <Problem error={action.error} shown={NEW_USER_FIELDS} />
         <TextField
           label="Username"
           name="username"
@@ -249,35 +313,38 @@ function NewUser({ onCancel, onCreated }: NewUserProps) {
           required
           maxLength={64}
           autoComplete="off"
-          hint="Letters, digits, dots, hyphens and underscores"
+          hint="What the person signs in with: 1 to 64 letters, digits, dots, hyphens and underscores. An Admin can change it later."
           error={fields.username}
-        />
-        <TextField
-          label="Display name"
-          name="display_name"
-          value={displayName}
-          onChange={setDisplayName}
-          maxLength={200}
-          autoComplete="off"
-          error={fields.display_name}
-        />
-        <TextField
-          label="Email"
-          name="email"
-          value={email}
-          onChange={setEmail}
-          maxLength={254}
-          autoComplete="off"
-          error={fields.email}
         />
         <CheckField
           label="Service account"
           name="is_service_account"
           checked={service}
           onChange={setService}
-          hint="For automation. It cannot sign in with an access code: it holds tokens."
+          hint="For automation. It cannot sign in with an access code: it holds tokens. It is no person, and has no contact."
           error={fields.is_service_account}
         />
+        {!service && (
+          <PersonChooser
+            legend="The person"
+            name="new-user"
+            ways={["new", "contact", "none"]}
+            wayLabels={{
+              new: "A new contact",
+              contact: "A contact there is",
+              none: "None for now",
+            }}
+            choice={person}
+            onChange={(next) => {
+              setFound({});
+              setPerson(next);
+            }}
+            errors={fields}
+            organization
+            hint="The user's name, email and numbers are those of its contact. Left without one, the user is shown by its username until it is given one."
+            disabled={action.busy}
+          />
+        )}
         <SelectField label="Role" name="role" value={role} onChange={setRole} error={fields.role}>
           <option value="">No role</option>
           {ROLES.map((name) => (

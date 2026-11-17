@@ -4,7 +4,7 @@
 // its download. Every role sees the page, as it sees the Admin area; the changes are for
 // the Inventory role, and the server checks the role of each.
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, Fragment, useState } from "react";
 import { useSearchParams } from "react-router";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -12,6 +12,7 @@ import { SelectField, TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
 import { RecordsOf, ReferenceChanges } from "../components/ReferenceChanges";
+import { FormRow, useOpeners } from "../components/RowForm";
 import { downloadReference } from "../components/referenceFiles";
 import { AdminNav } from "../components/Shell";
 import { SortTh } from "../components/SortTh";
@@ -86,7 +87,9 @@ export function Files() {
   );
   const items = list.data?.items ?? [];
   const holdsAll = list.data ? list.data.total === items.length : false;
-  const opened = items.find((one) => one.hid === open);
+  // 0.9.3: a reference is changed in a form beneath its row, and the focus goes back to
+  // its Change button when the form closes (P-171).
+  const openers = useOpeners(list);
   const narrowed = kind !== "" || form !== "" || title !== "";
 
   function show(next: Narrowed) {
@@ -112,7 +115,10 @@ export function Files() {
 
   function changed(text: string, gone = false) {
     setDone(text);
-    if (gone) setOpen(null);
+    if (gone && open !== null) {
+      setOpen(null);
+      openers.closed(open, true);
+    }
     list.reload();
   }
 
@@ -203,67 +209,89 @@ export function Files() {
               </thead>
               <tbody>
                 {sort.arrange(items, holdsAll).map((reference) => (
-                  <tr
-                    key={reference.hid}
-                    data-reference={reference.hid}
-                    data-title={reference.title}
-                  >
-                    <th scope="row">
-                      {reference.form === "link" && reference.url && isWebAddress(reference.url) ? (
-                        <a href={reference.url} target="_blank" rel="noopener noreferrer">
-                          {reference.title}
-                        </a>
-                      ) : (
-                        reference.title
-                      )}
-                      {reference.content_missing && <span className="badge">Content missing</span>}
-                    </th>
-                    <td>{choiceLabel(choices.data, KIND_LIST, reference.kind)}</td>
-                    <td>{reference.form === "file" ? "File" : "Link"}</td>
-                    <td className="mono">
-                      {reference.file_name ?? (
-                        <span className="reference-address">{reference.url}</span>
-                      )}
-                    </td>
-                    <td className="nowrap">{sizeText(reference.size_bytes)}</td>
-                    <td>
-                      <details>
-                        <summary>{plural(reference.attachment_count, "record")}</summary>
-                        <RecordsOf reference={reference} />
-                      </details>
-                    </td>
-                    <td className="nowrap">
-                      {reference.created_by_name ?? <span className="muted">—</span>}
-                      <span className="reference-added">
-                        <Time at={reference.created_at} />
-                      </span>
-                    </td>
-                    <td className="row-actions">
-                      {reference.form === "file" && !reference.content_missing && (
-                        <button
-                          type="button"
-                          aria-label={`Download ${reference.title}`}
-                          disabled={fetching.busy}
-                          onClick={() => download(reference)}
-                        >
-                          Download
-                        </button>
-                      )}
-                      {mayEdit && (
-                        <button
-                          type="button"
-                          aria-label={`Change ${reference.title}`}
-                          aria-expanded={open === reference.hid}
-                          onClick={() => {
-                            setDone("");
-                            setOpen((was) => (was === reference.hid ? null : reference.hid));
+                  <Fragment key={reference.hid}>
+                    <tr data-reference={reference.hid} data-title={reference.title}>
+                      <th scope="row">
+                        {reference.form === "link" &&
+                        reference.url &&
+                        isWebAddress(reference.url) ? (
+                          <a href={reference.url} target="_blank" rel="noopener noreferrer">
+                            {reference.title}
+                          </a>
+                        ) : (
+                          reference.title
+                        )}
+                        {reference.content_missing && (
+                          <span className="badge">Content missing</span>
+                        )}
+                      </th>
+                      <td>{choiceLabel(choices.data, KIND_LIST, reference.kind)}</td>
+                      <td>{reference.form === "file" ? "File" : "Link"}</td>
+                      <td className="mono">
+                        {reference.file_name ?? (
+                          <span className="reference-address">{reference.url}</span>
+                        )}
+                      </td>
+                      <td className="nowrap">{sizeText(reference.size_bytes)}</td>
+                      <td>
+                        <details>
+                          <summary>{plural(reference.attachment_count, "record")}</summary>
+                          <RecordsOf reference={reference} />
+                        </details>
+                      </td>
+                      <td className="nowrap">
+                        {reference.created_by_name ?? <span className="muted">—</span>}
+                        <span className="reference-added">
+                          <Time at={reference.created_at} />
+                        </span>
+                      </td>
+                      <td className="row-actions">
+                        {reference.form === "file" && !reference.content_missing && (
+                          <button
+                            type="button"
+                            aria-label={`Download ${reference.title}`}
+                            disabled={fetching.busy}
+                            onClick={() => download(reference)}
+                          >
+                            Download
+                          </button>
+                        )}
+                        {mayEdit && (
+                          <button
+                            type="button"
+                            ref={openers.opener(reference.hid)}
+                            aria-label={`Change ${reference.title}`}
+                            aria-expanded={open === reference.hid}
+                            onClick={() => {
+                              setDone("");
+                              openers.forget();
+                              setOpen((was) => (was === reference.hid ? null : reference.hid));
+                            }}
+                          >
+                            Change
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {mayEdit && open === reference.hid && (
+                      <FormRow of={reference.hid} columns={8}>
+                        <ReferenceChanges
+                          key={`${reference.hid} ${reference.row_version}`}
+                          reference={reference}
+                          choices={choices.data}
+                          taken={types.data?.taken ?? null}
+                          refused={types.data?.refused ?? []}
+                          level={2}
+                          onChanged={changed}
+                          onClose={() => {
+                            setOpen(null);
+                            openers.closed(reference.hid);
                           }}
-                        >
-                          Change
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                          onReload={list.reload}
+                        />
+                      </FormRow>
+                    )}
+                  </Fragment>
                 ))}
                 {items.length === 0 && (
                   <tr>
@@ -282,19 +310,6 @@ export function Files() {
             noun="references"
             onChange={(next) => show({ kind, form, title, offset: next })}
           />
-          {mayEdit && opened && (
-            <ReferenceChanges
-              key={`${opened.hid} ${opened.row_version}`}
-              reference={opened}
-              choices={choices.data}
-              taken={types.data?.taken ?? null}
-              refused={types.data?.refused ?? []}
-              level={2}
-              onChanged={changed}
-              onClose={() => setOpen(null)}
-              onReload={list.reload}
-            />
-          )}
         </>
       )}
     </>

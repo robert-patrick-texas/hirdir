@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
+import type { Schemas } from "../api/client";
 import { parseFilter } from "./filter";
+import { CHOICE_LISTS, choiceLabel, choiceOptions } from "./options";
 import {
   holderFilter,
+  leftOutHint,
   REGISTRATION_STATUSES,
   type RegistrationRef,
   registeredPath,
   registeredRecord,
   registeredWith,
-  SYSTEM_KINDS,
+  SYSTEM_KIND_LIST,
+  startingKind,
   systemPath,
   unregistered,
 } from "./systems";
@@ -107,17 +111,7 @@ describe("the systems a record can still be registered with", () => {
 });
 
 describe("systems as words and links", () => {
-  it("has the eight kinds of the fixed list, other last", () => {
-    expect(SYSTEM_KINDS.map((kind) => kind.value)).toEqual([
-      "monitoring",
-      "config_backup",
-      "access_control",
-      "sdn_controller",
-      "cloud_service",
-      "dns",
-      "discovery",
-      "other",
-    ]);
+  it("has the statuses of a registration", () => {
     expect(REGISTRATION_STATUSES.map((status) => status.value)).toEqual([
       "registered",
       "pending",
@@ -147,5 +141,56 @@ describe("systems as words and links", () => {
       ok: true,
       filter: { field: "registration.system", op: "eq", value: "NetWatch a:eq:b" },
     });
+  });
+});
+
+type Choice = Schemas["ChoiceOut"];
+
+/** A value of the list of the kinds of external system. */
+const kind = (value: string, label: string, active = true, list = SYSTEM_KIND_LIST): Choice =>
+  ({ hid: `ch-${value}`, list, value, label, active, sort: 0, row_version: 1 }) as Choice;
+
+describe("the kinds of external system, an editable list (P-170)", () => {
+  const kinds = [
+    kind("monitoring", "Monitoring"),
+    kind("ipam", "Address management"),
+    kind("discovery", "Discovery", false),
+    kind("other", "Something else"),
+    kind("other", "Other", true, "location_kind"),
+  ];
+
+  it("is a list of Admin › Choices, named for people", () => {
+    expect(CHOICE_LISTS).toContainEqual({ value: "system_kind", label: "External system kind" });
+  });
+
+  it("offers the active values with their labels, and the one a system holds even if not", () => {
+    expect(choiceOptions(kinds, SYSTEM_KIND_LIST)).toEqual([
+      { value: "monitoring", label: "Monitoring" },
+      { value: "ipam", label: "Address management" },
+      { value: "other", label: "Something else" },
+    ]);
+    expect(choiceOptions(kinds, SYSTEM_KIND_LIST, "discovery")).toContainEqual({
+      value: "discovery",
+      label: "Discovery (inactive)",
+    });
+  });
+
+  it("shows a kind by its label, one no longer offered as well, and an unknown one as it is", () => {
+    expect(choiceLabel(kinds, SYSTEM_KIND_LIST, "ipam")).toBe("Address management");
+    expect(choiceLabel(kinds, SYSTEM_KIND_LIST, "discovery")).toBe("Discovery");
+    expect(choiceLabel(kinds, SYSTEM_KIND_LIST, "sdn_controller")).toBe("sdn_controller");
+  });
+
+  it("starts a new system on other while the list offers it, and on no kind when not", () => {
+    expect(startingKind(kinds)).toBe("other");
+    expect(leftOutHint(kinds)).toBe("Left out, it is Something else.");
+    const otherOff = kinds.map((one) =>
+      one.list === SYSTEM_KIND_LIST && one.value === "other" ? { ...one, active: false } : one,
+    );
+    expect(startingKind(otherOff)).toBe("");
+    expect(leftOutHint(otherOff)).toMatch(/^A kind is needed/);
+    // Other of another list is not the kind of a system.
+    expect(startingKind(kinds.filter((one) => one.list !== SYSTEM_KIND_LIST))).toBe("");
+    expect(startingKind(undefined)).toBe("");
   });
 });

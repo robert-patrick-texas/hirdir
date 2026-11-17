@@ -248,7 +248,8 @@ button {
   cursor: pointer;
 }
 
-td button {
+/* A form opened beneath a row, across the table, is a form as any other: see .row-form. */
+td:where(:not(.row-form > td)) button {
   padding: 0.1rem 0.6rem;
 }
 
@@ -658,6 +659,29 @@ section.panel {
   margin: 1rem 0;
 }
 
+/*
+ * 0.9.3: the form of one row of a table, opened in a row of its own beneath it, one cell
+ * across every column (P-171). None of what a cell does to an input applies in it: its
+ * labels show, and its buttons and lists are of their usual size. A table can be wider
+ * than the window and scrolled sideways, as the settings are: the form keeps to the part
+ * of the table that is in view, however far it is scrolled, so that no field of it and
+ * none of its buttons is out of sight.
+ */
+tbody tr.row-form:hover {
+  background: none;
+}
+
+.scroll:has(> table > tbody > tr.row-form) {
+  container-type: inline-size;
+}
+
+.row-form section.panel {
+  position: sticky;
+  left: 0.6rem;
+  max-width: calc(100cqi - 1.2rem);
+  margin: 0.2rem 0 0.5rem;
+}
+
 table.narrow {
   width: auto;
   min-width: 34rem;
@@ -680,6 +704,27 @@ table.narrow {
   margin-right: 0.35rem;
 }
 
+/*
+ * 0.9.3: the table of settings fits a window 1280 pixels wide (P-171): the two buttons of
+ * a row stand one above the other in their cell, and a header may take two lines. A
+ * narrower window scrolls the table sideways, as any.
+ */
+.row-actions:where(.stacked) button {
+  display: block;
+  margin: 0 0 0.3rem;
+}
+
+.settings-table thead th {
+  white-space: normal;
+}
+
+/* What a setting is for and what it takes are sentences: an example in one, an address
+   or a time zone, breaks where the column needs it to rather than widen the table. */
+.settings-table td.prose {
+  min-width: 9rem;
+  overflow-wrap: anywhere;
+}
+
 .cell-form {
   display: flex;
   gap: 0.5rem;
@@ -691,7 +736,7 @@ table.narrow {
 }
 
 /* In a table, the heading of the column is the visible label of the input. */
-td .field label {
+td:where(:not(.row-form > td)) .field label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -700,7 +745,7 @@ td .field label {
   white-space: nowrap;
 }
 
-td .field-check {
+td:where(:not(.row-form > td)) .field-check {
   display: block;
 }
 
@@ -1097,7 +1142,7 @@ input[type="text"].short {
   width: 6rem;
 }
 
-td select {
+td:where(:not(.row-form > td)) select {
   width: auto;
 }
 

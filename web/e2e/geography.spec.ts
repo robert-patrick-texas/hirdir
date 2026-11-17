@@ -609,7 +609,7 @@ test("S25: a contact on the region and one on the site are both shown on the roo
     await form.getByLabel("Name (required)").fill(name);
     await form.getByLabel("Organization").fill("Example Operations");
     await form.getByLabel("Email").fill(mail);
-    await form.getByLabel("Phone").fill(phone);
+    await form.getByLabel("Phone", { exact: true }).fill(phone);
     await form.getByRole("button", { name: "Create contact" }).click();
     await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
     await expect(page.getByTestId("contact-facts")).toContainText(mail);

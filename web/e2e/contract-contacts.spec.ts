@@ -125,7 +125,7 @@ test("S43: the contacts in force, own or from the agreement, with their source",
   // The telephone number of the agreement's contact is changed on the contact itself:
   // the agreement and the contract that has it from there show it, nothing copied.
   await openContact(page, manager);
-  await region(page, "Details").getByLabel("Phone").fill("555 0109");
+  await region(page, "Details").getByLabel("Phone", { exact: true }).fill("555 0109");
   await region(page, "Details").getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("The contact was saved.")).toBeVisible();
   await openAgreement(page, agreement);

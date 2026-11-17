@@ -12,20 +12,37 @@ import { Time } from "../components/Time";
 import { formatTime, plural } from "../lib/format";
 import { queryParams } from "../lib/gridQuery";
 import { useLoad, useTitle } from "../lib/hooks";
-import { optionLabel, RECORD_STATUSES, SETTABLE_STATUSES } from "../lib/options";
+import { useChoices } from "../lib/lists";
+import {
+  choiceFilterOptions,
+  choiceLabel,
+  choiceOptions,
+  optionLabel,
+  RECORD_STATUSES,
+  SETTABLE_STATUSES,
+} from "../lib/options";
 import type { FieldSpec } from "../lib/patch";
 import { allows } from "../lib/roles";
 import {
   type ExternalSystem,
+  leftOutHint,
   REGISTRATION_STATUSES,
   type Registration,
   registeredPath,
   registeredRecord,
-  SYSTEM_KINDS,
+  SYSTEM_KIND_LIST,
+  startingKind,
   systemPath,
 } from "../lib/systems";
 
-const COLUMNS: GridColumn<ExternalSystem>[] = [
+type Choice = Schemas["ChoiceOut"];
+
+/**
+ * The columns of the list of systems. 0.9.3: a kind is shown by its label in the list
+ * `system_kind`, a value that is no longer offered among them, and filtered by any of its
+ * values (P-170).
+ */
+const systemColumns = (choices: readonly Choice[] | undefined): GridColumn<ExternalSystem>[] => [
   {
     id: "name",
     header: "Name",
@@ -38,8 +55,8 @@ const COLUMNS: GridColumn<ExternalSystem>[] = [
     id: "kind",
     header: "Kind",
     kind: "choice",
-    value: (system) => optionLabel(SYSTEM_KINDS, system.kind),
-    choices: SYSTEM_KINDS,
+    value: (system) => choiceLabel(choices, SYSTEM_KIND_LIST, system.kind),
+    choices: choiceFilterOptions(choices, SYSTEM_KIND_LIST),
     width: 190,
   },
   {
@@ -81,26 +98,51 @@ const COLUMNS: GridColumn<ExternalSystem>[] = [
   },
 ];
 
-const SPECS: FieldSpec[] = [
-  {
-    name: "name",
-    label: "Name",
-    kind: "text",
-    required: true,
-    maxLength: 200,
-    hint: "The installation's own name for it. Records are found by it: registration.system:eq:<name>",
-  },
-  { name: "kind", label: "Kind", kind: "choice", options: SYSTEM_KINDS },
-  {
-    name: "url",
-    label: "URL",
-    kind: "text",
-    maxLength: 2000,
-    hint: "Where the system is reached.",
-  },
-  { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
-  { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
-];
+/**
+ * The fields of a system. The kinds offered are the active values of the list, with
+ * their labels; a system that holds one no longer offered is offered it too, marked as
+ * inactive, so that a change of anything else keeps it. A new system may be given none.
+ */
+function systemSpecs(
+  choices: readonly Choice[] | undefined,
+  record: ExternalSystem | null,
+): FieldSpec[] {
+  const kind: FieldSpec = record
+    ? {
+        name: "kind",
+        label: "Kind",
+        kind: "choice",
+        options: choiceOptions(choices, SYSTEM_KIND_LIST, record.kind),
+      }
+    : {
+        name: "kind",
+        label: "Kind",
+        kind: "choice",
+        blank: "None given",
+        options: choiceOptions(choices, SYSTEM_KIND_LIST),
+        hint: leftOutHint(choices),
+      };
+  return [
+    {
+      name: "name",
+      label: "Name",
+      kind: "text",
+      required: true,
+      maxLength: 200,
+      hint: "The installation's own name for it. Records are found by it: registration.system:eq:<name>",
+    },
+    kind,
+    {
+      name: "url",
+      label: "URL",
+      kind: "text",
+      maxLength: 2000,
+      hint: "Where the system is reached.",
+    },
+    { name: "notes", label: "Notes", kind: "longtext", maxLength: 10000 },
+    { name: "record_status", label: "Record status", kind: "choice", options: SETTABLE_STATUSES },
+  ];
+}
 
 /**
  * External systems: the monitoring tools, SDN controllers, cloud services and the like
@@ -113,6 +155,8 @@ export function Systems() {
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
+  const choices = useChoices();
+  const columns = useMemo(() => systemColumns(choices.data), [choices.data]);
 
   return (
     <>
@@ -122,39 +166,43 @@ export function Systems() {
         service. An item or a device group is registered with a system on its own page, and a stack
         that a system knows as one device is registered as the stack.
       </p>
-      {adding && (
+      <Problem error={choices.error} />
+      {adding && choices.data && (
         <CreateForm<Schemas["ExternalSystemCreate"], ExternalSystem>
           title="New external system"
-          specs={SPECS}
-          start={{ kind: "other", record_status: "active" }}
+          specs={systemSpecs(choices.data, null)}
+          start={{ kind: startingKind(choices.data), record_status: "active" }}
           create={(body) => api.request("post", "/api/v1/external-systems", { body })}
           onCreated={(system) => navigate(systemPath(system.hid))}
           onCancel={() => setAdding(false)}
           submitLabel="Create system"
         />
       )}
-      <DataGrid<ExternalSystem>
-        key={startFilter ?? ""}
-        id="external-systems"
-        noun={["system", "systems"]}
-        entity="external_systems"
-        columns={COLUMNS}
-        load={(request, signal) =>
-          api.request("get", "/api/v1/external-systems", { query: queryParams(request), signal })
-        }
-        rowId={(system) => system.hid}
-        rowLink={(system) => systemPath(system.hid)}
-        dimmed={(system) => system.record_status !== "active"}
-        shortFilter="kind:eq:monitoring"
-        startFilter={startFilter}
-        switches={{ archived: "Include archived", drafts: "Include drafts" }}
-      >
-        {allows(user.role, "inventory") && !adding && (
-          <button type="button" className="primary" onClick={() => setAdding(true)}>
-            New system
-          </button>
-        )}
-      </DataGrid>
+      {choices.loading && <p role="status">Loading…</p>}
+      {!choices.loading && (
+        <DataGrid<ExternalSystem>
+          key={startFilter ?? ""}
+          id="external-systems"
+          noun={["system", "systems"]}
+          entity="external_systems"
+          columns={columns}
+          load={(request, signal) =>
+            api.request("get", "/api/v1/external-systems", { query: queryParams(request), signal })
+          }
+          rowId={(system) => system.hid}
+          rowLink={(system) => systemPath(system.hid)}
+          dimmed={(system) => system.record_status !== "active"}
+          shortFilter="kind:eq:monitoring"
+          startFilter={startFilter}
+          switches={{ archived: "Include archived", drafts: "Include drafts" }}
+        >
+          {allows(user.role, "inventory") && !adding && (
+            <button type="button" className="primary" onClick={() => setAdding(true)}>
+              New system
+            </button>
+          )}
+        </DataGrid>
+      )}
     </>
   );
 }
@@ -238,9 +286,12 @@ export function SystemDetail() {
   const system = useLoad(`system ${hid}`, (signal) =>
     api.request("get", "/api/v1/external-systems/{hid}", { path: { hid }, signal }),
   );
+  const choices = useChoices();
   const [done, setDone] = useState("");
   const record = system.data;
   useTitle(record ? record.name : "External system");
+  // 0.9.3: the kind by its label in the list, which a site may have changed (P-170).
+  const kind = record ? choiceLabel(choices.data, SYSTEM_KIND_LIST, record.kind) : "";
 
   function changed(text: string) {
     setDone(text);
@@ -255,13 +306,15 @@ export function SystemDetail() {
       <h1>
         {record ? record.name : "External system"}
         {record && (
-          <span className="badge badge-plain">{optionLabel(SYSTEM_KINDS, record.kind)}</span>
+          <span className="badge badge-plain" data-testid="system-kind">
+            {kind}
+          </span>
         )}
         {record && record.record_status !== "active" && (
           <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
         )}
       </h1>
-      <Problem error={system.error} />
+      <Problem error={system.error ?? choices.error} />
       <Notice text={done} />
       {system.loading && !record && <p role="status">Loading…</p>}
       {record && (
@@ -270,7 +323,7 @@ export function SystemDetail() {
             <dt>Name</dt>
             <dd>{record.name}</dd>
             <dt>Kind</dt>
-            <dd>{optionLabel(SYSTEM_KINDS, record.kind)}</dd>
+            <dd data-testid="system-kind-fact">{kind}</dd>
             <dt>URL</dt>
             <dd>
               {record.url && /^https?:\/\//i.test(record.url) ? (
@@ -302,12 +355,12 @@ export function SystemDetail() {
             <dd className="mono">{record.hid}</dd>
           </dl>
           <SystemRegistrations system={record} mayEdit={mayEdit} onChanged={changed} />
-          {mayEdit && record.record_status !== "retired" && (
+          {mayEdit && record.record_status !== "retired" && choices.data && (
             <section aria-labelledby="details">
               <h2 id="details">Details</h2>
               <EditForm<ExternalSystem, Schemas["ExternalSystemPatch"]>
                 key={`${record.hid} ${record.row_version}`}
-                specs={SPECS}
+                specs={systemSpecs(choices.data, record)}
                 record={record}
                 save={(body) =>
                   api.request("patch", "/api/v1/external-systems/{hid}", {
