@@ -219,6 +219,8 @@ export function itemColumns(
       field: "effective.expected_online",
       value: (item) => effectiveText(item.effective.expected_online),
       effective: (item) => item.effective.expected_online,
+      // In the column chooser: where each item is says more in a list of them (P-193).
+      hide: true,
       width: 140,
     },
     {
@@ -338,7 +340,7 @@ export function itemColumns(
       value: (item) => nameOf(item.effective.location_hid.label),
       effective: (item) => item.effective.location_hid,
       hint: (item) => locationHint(item.effective.location_hid),
-      hide: true,
+      // Shown from the start, with the site: a list of items says where each is (P-193).
       width: 200,
     },
     {
@@ -366,7 +368,6 @@ export function itemColumns(
       kind: "text",
       value: (item) => item.effective.location_hid.site,
       effective: (item) => item.effective.location_hid,
-      hide: true,
       width: 150,
     },
     {

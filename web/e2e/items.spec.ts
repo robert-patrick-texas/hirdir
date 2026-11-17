@@ -139,13 +139,15 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   expect(await gridNames(page)).toEqual([first, second]);
   const grid = page.getByTestId("grid-items");
-  // Hide three columns, to bring the last ones into view, and ask for the estimated
-  // value, which the grid does not show until it is asked for.
+  // Hide four columns, to bring the last ones into view, and ask for the estimated
+  // value, which the grid does not show until it is asked for. Location and Site are
+  // shown from the start, and Expected online is not (P-193).
   await page.getByText("Columns", { exact: true }).click();
   const shown = page.getByRole("group", { name: "Columns to show" });
   await expect(shown.getByLabel("Estimated value", { exact: true })).not.toBeChecked();
-  for (const column of ["Expected online", "Owner", "Tags"]) {
-    await shown.getByLabel(column).uncheck();
+  await expect(shown.getByLabel("Expected online", { exact: true })).not.toBeChecked();
+  for (const column of ["Owner", "Location", "Site", "Tags"]) {
+    await shown.getByLabel(column, { exact: true }).uncheck();
   }
   await shown.getByLabel("Estimated value", { exact: true }).check();
   await page.getByText("Columns", { exact: true }).click();
