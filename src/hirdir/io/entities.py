@@ -2173,17 +2173,6 @@ class Items(Entity):
                 # Otherwise the row holds the owner the item has from the item above
                 # it or from its group.
                 given["owner_hid"] = owner_hid
-        if "operator" in values:
-            named = values["operator"]
-            operator_hid = run.operator(named).hid if named is not None else None
-            own = record.operator_hid if record is not None else None
-            if (
-                operator_hid is None
-                or own is not None
-                or operator_hid != self._operator_above(run, record, given, above)
-            ):
-                # Otherwise the row names the operator the item has anyway, from above.
-                given["operator_hid"] = operator_hid
         if "location" in values:
             named = values["location"]
             location_hid = (
@@ -2195,6 +2184,19 @@ class Items(Entity):
                 # Otherwise the row says where the item is anyway, with the item above
                 # it or with its group.
                 given["location_hid"] = location_hid
+        # The operator after the location: one that the row's new place gives is had
+        # from there, and a row that names it leaves the item inheriting.
+        if "operator" in values:
+            named = values["operator"]
+            operator_hid = run.operator(named).hid if named is not None else None
+            own = record.operator_hid if record is not None else None
+            if (
+                operator_hid is None
+                or own is not None
+                or operator_hid != self._operator_above(run, record, given, above)
+            ):
+                # Otherwise the row names the operator the item has anyway, from above.
+                given["operator_hid"] = operator_hid
         if "planned_location" in values:
             named = values["planned_location"]
             planned_hid = (

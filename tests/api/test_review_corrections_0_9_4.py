@@ -75,7 +75,8 @@ def test_the_walk_of_a_raised_weight_says_what_the_record_says(
     ]
     _patch(make, f"/items/{switch['hid']}", support_weight="0.25")
     walk = _walk(make, f"/items/{switch['hid']}", "support_weight")
-    assert (walk["value"], walk["source"], walk["overrides"]) == ("1", "own", "0.5")
+    # Without its own it would have the catalog's, raised to the minimum as well.
+    assert (walk["value"], walk["source"], walk["overrides"]) == ("1", "own", "1")
     assert walk["steps"][0]["outcome"] == "decides"
 
 
@@ -122,3 +123,35 @@ def test_the_exceptions_of_a_group_are_everything_under_it_that_is_anothers(
         "/items", filter=json.dumps(group["exceptions"]["filter"]), minor=1, limit=10
     )["total"]
     assert listed == 2
+
+
+def test_a_row_that_names_the_operator_of_its_new_place_leaves_it_inheriting(
+    client: TestClient, inventory: dict, make: Maker
+) -> None:
+    from tests.api.test_files import Files
+
+    marks = _team(make)
+    places = make.layout()
+    _patch(make, f"/locations/{places['building']['hid']}", operator_hid=marks["RA"]["hid"])
+    Files(client, inventory).load(
+        "items",
+        "name,location,operator\nNEW-SW,Americas > Central > Site-2 > Building 1 > Room 102,RA\n",
+    )
+    made = make.get("/items", filter="name:eq:NEW-SW")["items"][0]
+    assert made["operator_hid"] is None
+    assert made["effective"]["operator_hid"]["source"] == "location"
+
+
+def test_a_large_group_says_which_members_disagree_in_one_statement(make: Maker) -> None:
+    network = make.owner("Network Engineering")
+    facilities = make.owner("Facilities", is_external=True, exception_reason="the building's")
+    entry = make.entry(make.vendor())
+    switches = make.switches(entry, "sw", 3)
+    pool = make.group(
+        "pool", "custom", [(one, "member") for one in switches], owner_hid=network["hid"]
+    )
+    assert make.get(f"/device-groups/{pool['hid']}")["members_disagree"] == []
+    _patch(make, f"/items/{switches[2]['hid']}", owner_hid=facilities["hid"])
+    assert make.get(f"/device-groups/{pool['hid']}")["members_disagree"] == ["owner_hid"]
+    listed = make.get("/device-groups", filter="name:eq:pool")["items"][0]
+    assert listed["members_disagree"] == ["owner_hid"]

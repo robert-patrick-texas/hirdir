@@ -277,35 +277,6 @@ def controllers(
     return found
 
 
-def members_disagree(db: Session, found: Sequence[DeviceGroup]) -> dict[str, list[str]]:
-    """Return, for each group, the fields of its own that a current member contradicts.
-
-    For now that is its owner: a member whose owner in force, by the walk of P-175, is
-    another, its own, from the item it is in or from a group that ranks first.
-    """
-    said: dict[str, list[str]] = {group.hid: [] for group in found}
-    owned = {group.hid: group.owner_hid for group in found if group.owner_hid is not None}
-    if not owned:
-        return said
-    rows = db.execute(
-        select(DeviceGroupMember.group_hid, Item)
-        .join(Item, Item.hid == DeviceGroupMember.item_hid)
-        .where(DeviceGroupMember.group_hid.in_(owned), DeviceGroupMember.left_on.is_(None))
-    ).all()
-    members = list({item.hid: item for _, item in rows}.values())
-    if not members:
-        return said
-    # The walk is in `descent`, which reads the groups through this module.
-    from hirdir.domain import descent
-
-    in_force = descent.of_items(db, members, items.lines_above(db, members), "owner_hid")
-    for group_hid, item in rows:
-        owner = in_force[item.hid].value
-        if owner is not None and owner != owned[group_hid]:
-            said[group_hid] = ["owner_hid"]
-    return said
-
-
 # --- the rules of a group ------------------------------------------------------------
 
 

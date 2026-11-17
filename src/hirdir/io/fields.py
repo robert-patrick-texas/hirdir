@@ -5,7 +5,7 @@ record (`catalog.pid`, `owner.label`), and `effective.<field>` is the value in f
 a field that inherits.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -184,7 +184,7 @@ _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 # The first value each item has from its own groups, one table for each field, shared by
 # every level of every walk in a statement, so that it is worked out once (P-175).
-_FIRST: dict[str, Any] = {}
+_FIRST: dict[tuple[str, bool], Any] = {}
 
 
 def _first_from_groups(field: str, live: Any = None) -> Any:
@@ -192,8 +192,9 @@ def _first_from_groups(field: str, live: Any = None) -> Any:
     force in a field, with the value of the first such group, as `hirdir.domain.descent`
     ranks them: a stack before a cluster before a controller domain before any other,
     then by name and by HID; and `holder_hid`, the group that holds that value."""
-    if field in _FIRST:
-        return _FIRST[field]
+    cached = (field, live is not None)
+    if cached in _FIRST:
+        return _FIRST[cached]
     reach = descent.group_reach(field, live)
     member: Any = aliased(DeviceGroupMember, name=f"first_{field}_member")
     group: Any = aliased(DeviceGroup, name=f"first_{field}_group")
@@ -216,12 +217,12 @@ def _first_from_groups(field: str, live: Any = None) -> Any:
         .where(member.left_on.is_(None), group.record_status != "retired")
         .subquery(f"ranked_{field}")
     )
-    first = (
-        select(ranked.c.item_hid, ranked.c.value, ranked.c.holder_hid)
-        .where(ranked.c.place == 1)
-        .cte(f"first_{field}")
+    # Worked out once for the statement, and not again at each level that reads it.
+    first = dialect.materialized(
+        select(ranked.c.item_hid, ranked.c.value, ranked.c.holder_hid).where(ranked.c.place == 1),
+        f"first_{field}",
     )
-    _FIRST[field] = first
+    _FIRST[cached] = first
     return first
 
 
@@ -2437,3 +2438,34 @@ def warm() -> int:
         str(listing.joined(base).add_columns(*columns).compile())
         built += 1
     return built
+
+
+def members_disagree(db: Session, found: Sequence[DeviceGroup]) -> dict[str, list[str]]:
+    """Return, for each group, the fields of its own that a current member contradicts.
+
+    For now that is its owner: a member whose owner in force, by the walk of P-175, is
+    another, its own, from the item it is in or from a group that ranks first. One
+    statement answers for all the groups, worked out by the database as the item list's
+    `effective.owner_hid` is.
+    """
+    said: dict[str, list[str]] = {group.hid: [] for group in found}
+    owned = [group.hid for group in found if group.owner_hid is not None]
+    if not owned:
+        return said
+    group: Any = aliased(DeviceGroup, name="disagreeing_group")
+    member: Any = aliased(DeviceGroupMember, name="disagreeing_member")
+    query = (
+        ITEMS.joined(select(group.hid).select_from(Item))
+        .join(member, member.item_hid == Item.hid)
+        .join(group, group.hid == member.group_hid)
+        .where(
+            group.hid.in_(owned),
+            member.left_on.is_(None),
+            OWNER_IN_FORCE.is_not(None),
+            group.owner_hid != OWNER_IN_FORCE,
+        )
+        .distinct()
+    )
+    for group_hid in db.scalars(query):
+        said[group_hid] = ["owner_hid"]
+    return said

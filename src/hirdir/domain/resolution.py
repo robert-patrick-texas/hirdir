@@ -255,18 +255,29 @@ def _catalog_walks(db: Session, item: Item) -> list[Walk]:
             # The minimum raises what was found, and the value keeps where it came from,
             # as the record has it (P-155).
             minimum = figures.minimum("item")
-            raised = walk.value is not None and minimum is not None and walk.value < minimum
+            found = walk.value is not None
+            raised = found and minimum is not None and walk.value < minimum
+            if raised:
+                outcome: Outcome = "raises"
+            elif minimum is None or not found:
+                outcome = "nothing"
+            else:
+                outcome = "passed_over"
             steps.append(
                 Step(
                     level="setting",
                     hid=None,
                     name=weights.minimum_key("item"),
                     value=minimum,
-                    outcome="raises" if raised else "nothing" if minimum is None else "passed_over",
+                    outcome=outcome,
                 )
             )
             if raised:
                 walk.value = minimum
+            # What it would have without its own is the value beneath, raised as well.
+            below = walk.overrides
+            if below is not None and minimum is not None and below < minimum:
+                walk.overrides = minimum
         walks.append(walk)
     return walks
 

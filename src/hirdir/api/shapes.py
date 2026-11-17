@@ -1123,7 +1123,7 @@ def groups_out(db: Session, found: list[DeviceGroup]) -> list[shapes.DeviceGroup
     healths = groups.health_of(db, found)
     labels = tags.labels_of(db, groups.RECORD_TYPE, hids)
     its_addresses = _address_refs(db, "group_hid", hids)
-    disagree = groups.members_disagree(db, found)
+    disagree = fields.members_disagree(db, found)
     looked_after = operators.of_groups(db, found)
     marks = _Labels(
         db, {group.operator_hid for group in found} | {one.value for one in looked_after.values()}
