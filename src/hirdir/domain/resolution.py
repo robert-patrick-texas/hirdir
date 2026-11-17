@@ -20,7 +20,7 @@ from hirdir.db.models import CatalogEntry, DeviceGroup, Item, Location, Operator
 from hirdir.domain import descent, geography, groups, inheritance, operators, weights
 from hirdir.domain import items as item_rules
 
-Outcome = Literal["decides", "passed_over", "nothing", "retired"]
+Outcome = Literal["decides", "passed_over", "nothing", "retired", "raises"]
 StepLevel = Literal[
     "own", "device_group", "parent_item", "catalog", "setting", "location", "site", "region"
 ]
@@ -66,10 +66,11 @@ def _decided(name: str, steps: list[Step]) -> Walk:
     over as retired, as if it were not there."""
     walk = Walk(field=name, steps=steps)
     for step in steps:
-        if step.value is None:
-            step.outcome = "nothing"
-        elif step.retired:
+        if step.retired:
+            # A retired operator, or a retired group, which passes nothing down.
             step.outcome = "retired"
+        elif step.value is None:
+            step.outcome = "nothing"
         elif walk.source == "none":
             step.outcome = "decides"
             walk.value, walk.label = step.value, step.label
@@ -118,6 +119,22 @@ def _group_steps(
     steps = []
     for rank, group in enumerate(ordered, start=rank_from):
         found = in_force[group.hid]
+        own = getattr(group, name)
+        if found.value is None and own is not None and own in gone:
+            # Its own is a retired operator, and nothing comes from above it.
+            steps.append(
+                Step(
+                    level="device_group",
+                    hid=group.hid,
+                    name=group.name,
+                    value=own,
+                    label=names.of(name, own),
+                    type=group.type,
+                    rank=rank,
+                    retired=True,
+                )
+            )
+            continue
         via = None
         if found.value is not None and found.source_hid != group.hid:
             via = db.get(DeviceGroup, found.source_hid)
@@ -235,6 +252,8 @@ def _catalog_walks(db: Session, item: Item) -> list[Walk]:
             )
         walk = _decided(name, steps)
         if name == "support_weight" and major:
+            # The minimum raises what was found, and the value keeps where it came from,
+            # as the record has it (P-155).
             minimum = figures.minimum("item")
             raised = walk.value is not None and minimum is not None and walk.value < minimum
             steps.append(
@@ -243,18 +262,11 @@ def _catalog_walks(db: Session, item: Item) -> list[Walk]:
                     hid=None,
                     name=weights.minimum_key("item"),
                     value=minimum,
-                    outcome="decides"
-                    if raised
-                    else "nothing"
-                    if minimum is None
-                    else "passed_over",
+                    outcome="raises" if raised else "nothing" if minimum is None else "passed_over",
                 )
             )
             if raised:
-                for step in steps[:-1]:
-                    if step.outcome == "decides":
-                        step.outcome = "passed_over"
-                walk.value, walk.source, walk.source_hid = minimum, "setting", None
+                walk.value = minimum
         walks.append(walk)
     return walks
 

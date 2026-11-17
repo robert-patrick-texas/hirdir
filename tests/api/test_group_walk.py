@@ -117,3 +117,46 @@ def test_a_group_row_and_the_item_list_under_that_group_agree(make: Maker) -> No
     assert len(_listed(make, "group:within:East-WLC")) == 3
     refused = make.get("/items", 422, filter="group:within:nowhere")
     assert "no device group" in refused["detail"] + str(refused["errors"])
+
+
+def test_a_file_round_trip_leaves_a_minor_item_inheriting_from_its_group(
+    client, inventory: dict, make: Maker
+) -> None:
+    """A row that names what a minor item has anyway from its own group leaves it
+    inheriting, and one that names something else gives it that as its own (P-175)."""
+    from tests.api.test_files import Files, table
+
+    files = Files(client, inventory)
+    places = make.layout()
+    lab = make.location("Lab", make.site("Site-3", places["central"]))
+    marks = {}
+    for label in ("LM", "RA"):
+        marks[label] = make.post("/operators", {"label": label})
+    entry = make.entry(make.vendor())
+    switch = make.switches(entry, "sw", 1)[0]
+    _patch(make, f"/items/{switch['hid']}", location_hid=places["room"]["hid"])
+    _patch(make, f"/items/{switch['hid']}", operator_hid=marks["LM"]["hid"])
+    optic = make.item(name="SFP-1", parent_item_hid=switch["hid"])
+    make.group(
+        "optics-pool",
+        "custom",
+        [(optic, "member")],
+        location_hid=lab["hid"],
+        operator_hid=marks["RA"]["hid"],
+    )
+    exported = files.export("items", hids=[optic["hid"]], columns=["name", "location", "operator"])
+    row = table(exported)[0]
+    assert (row["operator"], row["location"]) == ("RA", "Americas > Central > Site-3 > Lab")
+    again = files.preview("items", exported)
+    assert (again["job"]["unchanged"], again["job"]["updated"]) == (1, 0)
+    # Naming the switch's place and operator gives the optic its own.
+    asked = (
+        "hid,location,operator\n"
+        f"{optic['hid']},Americas > Central > Site-2 > Building 1 > Room 102,LM\n"
+    )
+    files.load("items", asked)
+    found = make.get(f"/items/{optic['hid']}")
+    assert (found["location_hid"], found["operator_hid"]) == (
+        places["room"]["hid"],
+        marks["LM"]["hid"],
+    )

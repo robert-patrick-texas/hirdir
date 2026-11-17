@@ -12269,7 +12269,7 @@ export interface components {
       level: "own" | "device_group" | "parent_item" | "catalog" | "setting" | "location" | "site" | "region";
       /** Its name, its path for a place, or the setting's key. */
       name: string | null;
-      outcome: "decides" | "passed_over" | "nothing" | "retired";
+      outcome: "decides" | "passed_over" | "nothing" | "retired" | "raises";
       /** Of a device group: its place among the record's groups. */
       rank: number | null;
       /** Of a device group: its type. */

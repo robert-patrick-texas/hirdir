@@ -404,7 +404,7 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
         return covering.c.contract_hid, covering.c.label, covered
     if by == "group":
         # Every group an item is under, and the blank row the items under none.
-        under = fields.under_groups()
+        under = fields.UNDER_GROUPS
         named: Any = aliased(DeviceGroup, name="report_group")
 
         def grouped(query: Any) -> Any:
@@ -531,7 +531,7 @@ def _described(
             }
             for entry, vendor in found
         }
-    nested = fields.nested_groups()
+    nested = fields.NESTED_GROUPS
     beneath = dict(
         db.execute(
             select(nested.c.top_hid, func.count())
@@ -815,7 +815,7 @@ def management(
     sums = _sums(db, terms, terms.money, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
-    told = _described(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found], terms)
     rows = [
         MoneyRow(
             key=row[0],
