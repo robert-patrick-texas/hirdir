@@ -1,11 +1,8 @@
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { plural } from "../lib/format";
-import { useLoad } from "../lib/hooks";
+import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import type { Option } from "../lib/patch";
 import { Problem } from "./Problem";
-
-// How long after the last key the search is sent, in milliseconds.
-const PAUSE = 300;
 
 /** What a search found: the first few that match, and how many match in all. */
 export interface Found {
@@ -50,30 +47,29 @@ export function PickField(props: SearchProps) {
   const { noun, how, find } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
-  const [asked, setAsked] = useState("");
+  const { asked, again, askNow, forget } = useAsked(typed);
   // What the reader chose here, so that it can be called by its name at once.
   const [picked, setPicked] = useState<Option | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setAsked(typed), PAUSE);
-    return () => window.clearTimeout(timer);
-  }, [typed]);
-
   const searching = asked.trim() !== "";
   const found = useLoad(`pick ${noun[0]} ${asked.trim()}`, (signal) => find(asked, signal));
+  // The same text asked for again is read again, and so is a search on show when the
+  // person comes back to the tab: a record made meanwhile is found (P-183).
+  useReloadOn(again, found.reload);
+  useReloadOnReturn(found.refresh, searching);
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
     // Inside a form, Enter would send the form: it searches instead.
     event.preventDefault();
-    setAsked(typed);
+    askNow();
   }
 
   function choose(option: Option | null) {
     setPicked(option);
     onChange(option?.value ?? "");
     setTyped("");
-    setAsked("");
+    forget();
   }
 
   const chosen =

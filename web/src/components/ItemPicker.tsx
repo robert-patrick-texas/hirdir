@@ -1,16 +1,14 @@
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { api, type Schemas } from "../api";
 import type { FilterNode } from "../lib/filter";
 import { plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
-import { useLoad } from "../lib/hooks";
+import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import { itemSearch, offered, PICK_LIMIT, pickLabel } from "../lib/pick";
 import { Problem } from "./Problem";
 
 type Item = Schemas["ItemOut"];
 
-// How long after the last key the search is sent, in milliseconds.
-const PAUSE = 300;
 // The most items one search asks the server for.
 const MOST_ASKED = 100;
 
@@ -44,12 +42,7 @@ export function ItemPicker({
 }: ItemPickerProps) {
   const id = useId();
   const [typed, setTyped] = useState("");
-  const [asked, setAsked] = useState("");
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setAsked(typed), PAUSE);
-    return () => window.clearTimeout(timer);
-  }, [typed]);
+  const { asked, again, askNow, forget } = useAsked(typed);
 
   const filter = itemSearch(asked, only);
   const found = useLoad(`pick ${JSON.stringify(filter)}`, async (signal) => {
@@ -68,11 +61,15 @@ export function ItemPicker({
     });
   });
 
+  // Asked again, by Enter, the same text or a return to the tab: read again (P-183).
+  useReloadOn(again, found.reload);
+  useReloadOnReturn(found.refresh, filter !== null);
+
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
     // Inside another form, Enter would send that form: it searches instead.
     event.preventDefault();
-    setAsked(typed);
+    askNow();
   }
 
   const items = found.data ? offered(found.data.items, taken).slice(0, PICK_LIMIT) : [];
@@ -118,7 +115,7 @@ export function ItemPicker({
                 onClick={() => {
                   onPick(item);
                   setTyped("");
-                  setAsked("");
+                  forget();
                 }}
               >
                 {pickLabel(item)}

@@ -4,19 +4,17 @@
 // the first few that match are offered as buttons. Each one pressed is handed to the
 // page, which gathers them and sends them all together.
 
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { api } from "../api";
 import { circuitLabel, circuitSearch } from "../lib/circuits";
 import type { FilterNode } from "../lib/filter";
 import { plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { groupTypeLabel } from "../lib/groups";
-import { useLoad } from "../lib/hooks";
+import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import { PICK_LIMIT } from "../lib/pick";
 import { Problem } from "./Problem";
 
-// How long after the last key the search is sent, in milliseconds.
-const PAUSE = 300;
 // The most records one search asks the server for.
 const MOST_ASKED = 100;
 
@@ -54,24 +52,22 @@ export function SearchPicker(props: SearchPickerProps) {
   const { label, hint, noun, find, taken = [], onPick, disabled } = props;
   const id = useId();
   const [typed, setTyped] = useState("");
-  const [asked, setAsked] = useState("");
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setAsked(typed), PAUSE);
-    return () => window.clearTimeout(timer);
-  }, [typed]);
+  const { asked, again, askNow, forget } = useAsked(typed);
 
   const searching = asked.trim() !== "";
   const limit = Math.min(PICK_LIMIT + taken.length, MOST_ASKED);
   const found = useLoad(`pick ${noun[0]} ${limit} ${asked.trim()}`, (signal) =>
     find(asked, limit, signal),
   );
+  // Asked again, by Enter, the same text or a return to the tab: read again (P-183).
+  useReloadOn(again, found.reload);
+  useReloadOnReturn(found.refresh, searching);
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
     // Inside another form, Enter would send that form: it searches instead.
     event.preventDefault();
-    setAsked(typed);
+    askNow();
   }
 
   const offers = found.data
@@ -122,7 +118,7 @@ export function SearchPicker(props: SearchPickerProps) {
                 onClick={() => {
                   onPick(offer);
                   setTyped("");
-                  setAsked("");
+                  forget();
                 }}
               >
                 {offer.label}

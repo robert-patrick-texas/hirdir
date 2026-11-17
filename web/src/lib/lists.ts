@@ -1,8 +1,10 @@
-// The small lists that forms and filters offer, read from the server.
+// The small lists that forms and filters offer, read from the server. A list a page
+// reads whole when it opens is read again, in the background, when the person comes
+// back to the tab (P-183), so that what was made meanwhile in another tab is offered.
 
 import { api } from "../api";
 import { groupTypeLabel } from "./groups";
-import { type Loaded, useLoad } from "./hooks";
+import { type Loaded, useLoad, useReloadOnReturn } from "./hooks";
 import { type Mark, markOf } from "./operators";
 import { ownerOptions } from "./owners";
 import type { Option } from "./patch";
@@ -10,9 +12,16 @@ import type { Option } from "./patch";
 // The most rows the server lists at once.
 export const EVERY = 1000;
 
+/** A list read whole, and again in the background when the person comes back to the tab. */
+function useList<T>(key: string, load: (signal: AbortSignal) => Promise<T>, active = true) {
+  const list = useLoad(key, load);
+  useReloadOnReturn(list.refresh, active);
+  return list;
+}
+
 /** Every value of every editable list. */
 export function useChoices() {
-  return useLoad("choices", (signal) => api.request("get", "/api/v1/choices", { signal }));
+  return useList("choices", (signal) => api.request("get", "/api/v1/choices", { signal }));
 }
 
 /** What each lifecycle state allows, in the order of the lifecycle. */
@@ -23,7 +32,7 @@ export function useRules() {
 }
 
 export function useTags() {
-  return useLoad("tags", (signal) => api.request("get", "/api/v1/tags", { signal }));
+  return useList("tags", (signal) => api.request("get", "/api/v1/tags", { signal }));
 }
 
 /** Every setting with the value in force. Any role that reads the inventory may read them. */
@@ -43,7 +52,7 @@ export function useMoney(): string {
 
 /** The vendors a form may choose from, by name. */
 export function useVendorOptions(): Loaded<Option[]> {
-  return useLoad("vendor-options", async (signal) => {
+  return useList("vendor-options", async (signal) => {
     const page = await api.request("get", "/api/v1/vendors", { query: { limit: EVERY }, signal });
     return page.items.map((vendor) => ({ value: vendor.hid, label: vendor.name }));
   });
@@ -54,7 +63,7 @@ export function useVendorOptions(): Loaded<Option[]> {
  * under a heading of their own, so that it shows which choice is an exception.
  */
 export function useOwnerOptions(): Loaded<Option[]> {
-  return useLoad("owner-options", async (signal) => {
+  return useList("owner-options", async (signal) => {
     const page = await api.request("get", "/api/v1/owners", { query: { limit: EVERY }, signal });
     return ownerOptions(page.items);
   });
@@ -62,7 +71,7 @@ export function useOwnerOptions(): Loaded<Option[]> {
 
 /** The contacts a place or an owner may be given, by name, with the address of each. */
 export function useContactOptions(turn = 0): Loaded<Option[]> {
-  return useLoad(`contact-options ${turn}`, async (signal) => {
+  return useList(`contact-options ${turn}`, async (signal) => {
     const page = await api.request("get", "/api/v1/contacts", {
       query: { limit: EVERY, include_drafts: true },
       signal,
@@ -76,7 +85,7 @@ export function useContactOptions(turn = 0): Loaded<Option[]> {
 
 /** The regions a site or a region may be in, by path, drafts among them. */
 export function useRegions(turn = 0) {
-  return useLoad(`regions ${turn}`, async (signal) => {
+  return useList(`regions ${turn}`, async (signal) => {
     const page = await api.request("get", "/api/v1/regions", {
       query: { limit: EVERY, include_drafts: true },
       signal,
@@ -87,7 +96,7 @@ export function useRegions(turn = 0) {
 
 /** The regions a form may choose from, by path. */
 export function useRegionOptions(): Loaded<Option[]> {
-  return useLoad("region-options", async (signal) => {
+  return useList("region-options", async (signal) => {
     const page = await api.request("get", "/api/v1/regions", {
       query: { limit: EVERY, sort: ["name"] },
       signal,
@@ -100,7 +109,7 @@ export function useRegionOptions(): Loaded<Option[]> {
 
 /** The sites a form may choose from, by path. */
 export function useSiteOptions(): Loaded<Option[]> {
-  return useLoad("site-options", async (signal) => {
+  return useList("site-options", async (signal) => {
     const page = await api.request("get", "/api/v1/sites", {
       query: { limit: EVERY, sort: ["name"] },
       signal,
@@ -116,7 +125,7 @@ export function useSiteOptions(): Loaded<Option[]> {
  * a contract is grouped into an agreement with its own vendor.
  */
 export function useAgreementOptions(turn = 0): Loaded<Array<Option & { vendorHid: string }>> {
-  return useLoad(`agreement-options ${turn}`, async (signal) => {
+  return useList(`agreement-options ${turn}`, async (signal) => {
     const page = await api.request("get", "/api/v1/agreements", {
       query: { limit: EVERY, include_drafts: true },
       signal,
@@ -131,7 +140,7 @@ export function useAgreementOptions(turn = 0): Loaded<Array<Option & { vendorHid
 
 /** The external systems, by name, retired ones among them: a registration may name one. */
 export function useSystems(turn = 0) {
-  return useLoad(`systems ${turn}`, async (signal) => {
+  return useList(`systems ${turn}`, async (signal) => {
     const page = await api.request("get", "/api/v1/external-systems", {
       query: { limit: EVERY, include_drafts: true, include_archived: true },
       signal,
@@ -142,7 +151,7 @@ export function useSystems(turn = 0) {
 
 /** The catalog entries a form may choose from, by vendor and PID. */
 export function useEntryOptions(): Loaded<Option[]> {
-  return useLoad("entry-options", async (signal) => {
+  return useList("entry-options", async (signal) => {
     const page = await api.request("get", "/api/v1/catalog-entries", {
       query: { limit: EVERY },
       signal,
@@ -157,7 +166,7 @@ export function useEntryOptions(): Loaded<Option[]> {
 
 /** The networks an address may be under, by label. */
 export function useNetworkOptions(turn = 0): Loaded<Option[]> {
-  return useLoad(`network-options ${turn}`, async (signal) => {
+  return useList(`network-options ${turn}`, async (signal) => {
     const page = await api.request("get", "/api/v1/networks", { query: { limit: EVERY }, signal });
     return page.items.map((network) => ({ value: network.hid, label: network.label }));
   });
@@ -165,7 +174,7 @@ export function useNetworkOptions(turn = 0): Loaded<Option[]> {
 
 /** The device groups another group may be nested in, by name, with the type of each. */
 export function useGroupOptions(): Loaded<Option[]> {
-  return useLoad("group-options", async (signal) => {
+  return useList("group-options", async (signal) => {
     const page = await api.request("get", "/api/v1/device-groups", {
       query: { limit: EVERY, include_drafts: true },
       signal,
