@@ -39,11 +39,13 @@ import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   DISPOSITIONS,
   dispositionsIn,
+  intentChoices,
   mayBeOnline,
   mayInheritAgain,
   nextStates,
   onlineText,
   type Rule,
+  standingChoices,
   standingOf,
   stateNames,
 } from "../lib/lifecycle";
@@ -741,20 +743,6 @@ function Lifecycle(props: LifecycleProps) {
   const standing = standingOf(item);
   const lighter = standing.inherited ? "inherited" : undefined;
   const allowed = dispositionsIn(rules, item.lifecycle_state, item.disposition);
-  const withinState = useMemo<FieldSpec[]>(
-    () => [
-      {
-        name: "disposition",
-        label: "Disposition",
-        kind: "choice",
-        blank: "None",
-        options: DISPOSITIONS.map((name) => ({ value: name, label: name })),
-      },
-      // An item with a state is expected online or it is not: there is no blank to choose.
-      { name: "expected_online", label: "Expected online", kind: "tristate" },
-    ],
-    [],
-  );
   const hint =
     allowed.length > 0
       ? `An item in ${item.lifecycle_state} is ${allowed.join(" or ")}.`
@@ -817,19 +805,122 @@ function Lifecycle(props: LifecycleProps) {
           <p className="hint">
             Within a state this is an ordinary change. {hint} The state itself is changed by a move.
           </p>
-          <EditForm<Item, Schemas["ItemPatch"]>
-            specs={withinState}
-            record={item}
-            save={(body) =>
-              api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
-            }
-            onSaved={() => props.onChanged("The item's standing was changed.")}
+          <WithinState
+            item={item}
+            rules={rules}
+            onChanged={props.onChanged}
             onReload={props.onReload}
-            submitLabel="Save standing"
           />
         </section>
       )}
     </section>
+  );
+}
+
+/** The value of a yes-or-no select for an intent: blank for none. */
+function intentValue(online: boolean | null | undefined): string {
+  return online === true ? "true" : online === false ? "false" : "";
+}
+
+/**
+ * Change an item's disposition and intent within its state (P-191). Only what the rule of
+ * the state allows is offered, as the server's check has it: the dispositions of the rule,
+ * None only where it asks for none, and for Expected online only Yes where the disposition
+ * chosen must be online and only No where it may not be. What the item has now is offered
+ * all the same, allowed or not. The server judges the change; only what differs is sent.
+ */
+function WithinState({
+  item,
+  rules,
+  onChanged,
+  onReload,
+}: Pick<LifecycleProps, "item" | "rules" | "onChanged" | "onReload">) {
+  const action = useAction();
+  const [disposition, setDisposition] = useState(item.disposition ?? "");
+  const [online, setOnline] = useState(intentValue(item.expected_online));
+  const offered = standingChoices(rules, item.lifecycle_state, item.disposition);
+  const dispositions = DISPOSITIONS.filter(
+    (name) => offered.dispositions.includes(name) || name === item.disposition,
+  );
+  const intents = intentChoices(rules, item.lifecycle_state, disposition || null);
+  const known = ["disposition", "expected_online"];
+  const refused = fieldErrors(action.error, known).shown;
+  const changed =
+    disposition !== (item.disposition ?? "") || online !== intentValue(item.expected_online);
+
+  function chooseDisposition(next: string) {
+    setDisposition(next);
+    // An intent the disposition chosen does not allow gives way to the one it does.
+    const now = intentChoices(rules, item.lifecycle_state, next || null);
+    if (now.length === 1 && online !== intentValue(now[0])) setOnline(intentValue(now[0]));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const body: Schemas["ItemPatch"] = { row_version: item.row_version };
+    if (disposition !== (item.disposition ?? "")) body.disposition = disposition || null;
+    if (online !== intentValue(item.expected_online)) body.expected_online = online === "true";
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body }),
+    );
+    if (result.ok) onChanged("The item's standing was changed.");
+  }
+
+  return (
+    <form onSubmit={submit} className="stack" noValidate>
+      <Problem error={action.error} shown={known} onReload={onReload} />
+      <div className="fields">
+        <SelectField
+          label="Disposition"
+          name="disposition"
+          value={disposition}
+          onChange={chooseDisposition}
+          error={refused.disposition}
+          disabled={action.busy}
+        >
+          {(offered.none || !item.disposition) && <option value="">None</option>}
+          {dispositions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Expected online"
+          name="expected_online"
+          value={online}
+          onChange={setOnline}
+          error={refused.expected_online}
+          disabled={action.busy}
+        >
+          {/* An item with a state is expected online or it is not: no blank to choose. */}
+          {item.expected_online == null && <option value="">—</option>}
+          {[true, false]
+            .filter((value) => intents.includes(value) || value === item.expected_online)
+            .map((value) => (
+              <option key={String(value)} value={intentValue(value)}>
+                {value ? "Yes" : "No"}
+              </option>
+            ))}
+        </SelectField>
+      </div>
+      <p className="actions">
+        <button type="submit" className="primary" disabled={action.busy || !changed}>
+          Save standing
+        </button>
+        <button
+          type="button"
+          disabled={action.busy || !changed}
+          onClick={() => {
+            setDisposition(item.disposition ?? "");
+            setOnline(intentValue(item.expected_online));
+            action.clear();
+          }}
+        >
+          Undo changes
+        </button>
+      </p>
+    </form>
   );
 }
 

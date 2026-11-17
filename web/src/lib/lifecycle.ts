@@ -54,6 +54,48 @@ export function dispositionsIn(
   return DISPOSITIONS.filter((name) => allowed.includes(name));
 }
 
+/**
+ * What the form of an item's standing offers within its state (P-191): the dispositions
+ * and the intents the server's check, `standing_errors`, lets through, for an item whose
+ * disposition is `kept` now. The server judges all the same; this only leaves out what it
+ * would refuse. Before the rules are read, or for a state with no rule, all is offered.
+ */
+export interface StandingChoices {
+  /** The dispositions to offer, in their fixed order. */
+  dispositions: string[];
+  /** Whether no disposition may be chosen. */
+  none: boolean;
+}
+
+export function standingChoices(
+  rules: readonly Rule[],
+  state: string | null | undefined,
+  kept: string | null | undefined,
+): StandingChoices {
+  const rule = ruleOf(rules, state);
+  if (!rule) return { dispositions: [...DISPOSITIONS], none: true };
+  const allowed = dispositionsIn(rules, state, kept);
+  // None, where the rule allows no disposition, or keeps one and the item has none yet.
+  return { dispositions: allowed, none: allowed.length === 0 || (rule.keeps_disposition && !kept) };
+}
+
+/**
+ * The intents to offer, true for Expected online, for an item in a state with the
+ * disposition chosen (null for none): only Yes where the disposition must be online,
+ * only No where it may not be, both where either is allowed.
+ */
+export function intentChoices(
+  rules: readonly Rule[],
+  state: string | null | undefined,
+  disposition: string | null,
+): boolean[] {
+  const rule = ruleOf(rules, state);
+  if (!rule) return [true, false];
+  const online = disposition !== null && rule.may_be_online.includes(disposition);
+  const offline = disposition === null || !rule.must_be_online.includes(disposition);
+  return [...(online ? [true] : []), ...(offline ? [false] : [])];
+}
+
 /** True when an item in the state may be expected online at all. */
 export function mayBeOnline(rules: readonly Rule[], state: string | null | undefined): boolean {
   return (ruleOf(rules, state)?.may_be_online.length ?? 0) > 0;

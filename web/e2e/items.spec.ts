@@ -253,13 +253,16 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await expect(page.getByTestId("disposition")).toHaveText("Spare");
   await expect(page.getByTestId("intent")).toHaveText("Expected offline");
 
-  // Excess and online in Prod: the rules refuse it, the form says why, nothing changes.
-  await standing.getByLabel("Disposition").selectOption("Excess");
-  await standing.getByLabel("Expected online").selectOption({ label: "Yes" });
-  await standing.getByRole("button", { name: "Save standing" }).click();
+  // The form offers only what the rule of Prod allows (P-191): no Excess.
   await expect(
-    standing.getByText(/an item in Prod is one of Production, Spare, not Excess/),
-  ).toBeVisible();
+    standing.getByLabel("Disposition").locator("option", { hasText: "Excess" }),
+  ).toHaveCount(0);
+  // Production and offline in Prod, from the intent the item has, which is still offered:
+  // the rules refuse it, the form says why, nothing changes.
+  await standing.getByLabel("Disposition").selectOption("Production");
+  await standing.getByLabel("Expected online").selectOption({ label: "No" });
+  await standing.getByRole("button", { name: "Save standing" }).click();
+  await expect(standing.getByText(/a Production item in Prod is expected online/)).toBeVisible();
   await expect(page.getByTestId("disposition")).toHaveText("Spare");
   await expect(page.getByTestId("intent")).toHaveText("Expected offline");
 

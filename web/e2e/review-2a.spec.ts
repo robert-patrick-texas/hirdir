@@ -91,9 +91,9 @@ function region(page: Page, name: string): Locator {
   return page.getByRole("region", { name, exact: true });
 }
 
-async function openTheItem(page: Page) {
-  await page.goto(`./items/${made.item}`);
-  await expect(page.getByRole("heading", { level: 1, name: host("kiln-sw-01") })).toBeVisible();
+async function openItem(page: Page, hid: string, name: string) {
+  await page.goto(`./items/${hid}`);
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 }
 
 test("the list of items says where each is, and keeps a layout a person has changed (P-193)", async ({
@@ -142,6 +142,68 @@ test("the list of items says where each is, and keeps a layout a person has chan
   await expect(choice("Site")).not.toBeChecked();
   await expect(choice("Vendor")).not.toBeChecked();
   await expect(choice("Location")).toBeChecked();
+
+  await expectClean(page, seen);
+});
+
+/** The options a select offers, by their words. */
+async function offered(select: Locator): Promise<string[]> {
+  return select.locator("option").allTextContents();
+}
+
+test("the form of standing offers only what the state of the item allows (P-191)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await places(request, account);
+  const prod = await make(request, headers, "/items", {
+    hostname: host("kiln-sw-prod"),
+    lifecycle_state: "Prod",
+    location_hid: made.location,
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  // The rules come late, as on a busy server: the form offers all until they are read.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/v1/lifecycle-rules*", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await openItem(page, prod.hid, host("kiln-sw-prod"));
+  const standing = region(page, "Change the disposition or the intent");
+  const disposition = standing.getByLabel("Disposition");
+  const online = standing.getByLabel("Expected online");
+  await expect(disposition).toHaveValue("Production");
+  await expect
+    .poll(() => offered(disposition))
+    .toEqual(["None", "Staging", "Production", "Spare", "Excess"]);
+  release();
+  // The rule of Prod: Production or Spare, and a Production item is expected online.
+  await expect.poll(() => offered(disposition)).toEqual(["Production", "Spare"]);
+  expect(await offered(online)).toEqual(["Yes"]);
+  await page.unroute("**/api/v1/lifecycle-rules*");
+
+  // A spare may be either.
+  await disposition.selectOption("Spare");
+  await expect.poll(() => offered(online)).toEqual(["Yes", "No"]);
+  await online.selectOption({ label: "No" });
+  await standing.getByRole("button", { name: "Save standing" }).click();
+  await expect(page.getByTestId("disposition")).toHaveText("Spare");
+  await expect(page.getByTestId("intent")).toHaveText("Expected offline");
+
+  // Back to Production: the intent the item has is still shown, and gives way to Yes.
+  await expect(online).toHaveValue("false");
+  await disposition.selectOption("Production");
+  await expect(online).toHaveValue("true");
+  await standing.getByRole("button", { name: "Save standing" }).click();
+  await expect(page.getByTestId("disposition")).toHaveText("Production");
+  await expect(page.getByTestId("intent")).toHaveText("Expected online");
+  expect(await offered(online)).toEqual(["Yes"]);
 
   await expectClean(page, seen);
 });
