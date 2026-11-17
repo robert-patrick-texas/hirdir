@@ -1365,8 +1365,9 @@ which a release before 1.0.0 may do:
   its own: it is the contact it names, and shows that contact's name, email and two
   numbers. The upgrade gives each user that is no service account and has a display
   name or an email a contact: the contact that already has that email, which is left as
-  it is, or a new contact with the user's display name, or its username where it had
-  none, and its email where it is of the form name@host. The users that may sign in go
+  it is; for a user with no such email, the one contact of its display name, as a file
+  finds a contact by name; or a new contact with the user's display name, or its
+  username where it had none, and its email where it is of the form name@host. The users that may sign in go
   before those that are disabled, so of two users of one email the one still in use is
   given the contact and the other none. Then `display_name` and `email` are dropped
   from the users, so a service account is shown by its username and loses the display
@@ -1394,7 +1395,7 @@ What else is new:
 For a script that reads the API: a user answers `contact`, and `display_name` and
 `email` from it, which `PATCH /users/{hid}` no longer takes; it takes `username` and
 `contact_hid`, and `POST /users` takes `contact_hid` or `contact`. A contact answers
-`user` and `phone2`; an operator answers `scope` and its contact's numbers; and
+`is_user`, `user` and `phone2`; an operator answers `scope` and its contact's numbers; and
 `external_systems.kind` is any value of the `system_kind` list, which
 `GET /choices?list=system_kind` gives. `hirdir admin create-user` takes `--name`,
 `--email`, `--phone` and `--phone2`.

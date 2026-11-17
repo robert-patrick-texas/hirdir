@@ -750,9 +750,7 @@ class ContactOut(Model):
     record_status: RecordStatus
     tags: list[str]
     is_user: bool = Field(description="The contact is the person a user is.")
-    user: UserBrief | None = Field(
-        description="The user this contact is, where it is one. Told to an Admin alone."
-    )
+    user: UserBrief | None = Field(description="The user this contact is, where it is one.")
     uses: int = Field(
         description=(
             "How many places and owners it is assigned to, and operators it stands behind."
@@ -801,9 +799,7 @@ class OperatorOut(Model):
     contact: ContactRef | None = Field(
         description="The person behind it, with the email and numbers it shows (P-172)."
     )
-    user: UserBrief | None = Field(
-        description="The user its contact is, where it is one. Told to an Admin alone."
-    )
+    user: UserBrief | None = Field(description="The user its contact is, where it is one.")
     scope: Scope | None = Field(
         description="internal where its contact is a user's, external where not; none if nobody."
     )

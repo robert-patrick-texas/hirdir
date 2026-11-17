@@ -11,9 +11,7 @@ from hirdir.api.deps import Audit, Db, Inventory, Viewer
 from hirdir.api.idempotent import IdempotentRoute
 from hirdir.api.lists import Listed
 from hirdir.api.schemas import Page
-from hirdir.auth.roles import Role
 from hirdir.domain import contacts, geography, moves, operators
-from hirdir.domain.accounts import Principal
 from hirdir.io import fields, filters, places
 
 regions = APIRouter(prefix="/regions", tags=["Geography"], route_class=IdempotentRoute)
@@ -294,94 +292,85 @@ def geography_tree(
 # --- contacts ------------------------------------------------------------------------
 
 
-def _is_admin(who: Principal) -> bool:
-    """Say whether the caller is an Admin, who alone sees which user a contact is (P-172)."""
-    return who.role is not None and who.role.allows(Role.ADMIN)
-
-
 @contact_routes.get("")
-def list_contacts(who: Viewer, db: Db, listed: Listed) -> Page[r.ContactOut]:
+def list_contacts(_: Viewer, db: Db, listed: Listed) -> Page[r.ContactOut]:
     """List contacts, by name unless a sort says otherwise."""
     page, total = lists.read(db, fields.CONTACTS, listed)
-    return _page(shapes.contacts_out(db, page, admin=_is_admin(who)), total, listed, r.ContactOut)
+    return _page(shapes.contacts_out(db, page), total, listed, r.ContactOut)
 
 
 @contact_routes.post("", status_code=201)
-def create_contact(body: r.ContactCreate, who: Inventory, context: Audit, db: Db) -> r.ContactOut:
+def create_contact(body: r.ContactCreate, _: Inventory, context: Audit, db: Db) -> r.ContactOut:
     """Create a contact: a person, or a shared mailbox."""
     made = contacts.create_contact(db, context, body.model_dump())
-    return shapes.contacts_out(db, admin=_is_admin(who), found=[made])[0]
+    return shapes.contacts_out(db, [made])[0]
 
 
 @contact_routes.get("/{hid}")
-def get_contact(hid: str, who: Viewer, db: Db) -> r.ContactOut:
+def get_contact(hid: str, _: Viewer, db: Db) -> r.ContactOut:
     """Return one contact."""
-    return shapes.contacts_out(db, admin=_is_admin(who), found=[contacts.get_contact(db, hid)])[0]
+    return shapes.contacts_out(db, [contacts.get_contact(db, hid)])[0]
 
 
 @contact_routes.patch("/{hid}")
 def update_contact(
-    hid: str, body: r.ContactPatch, who: Inventory, context: Audit, db: Db
+    hid: str, body: r.ContactPatch, _: Inventory, context: Audit, db: Db
 ) -> r.ContactOut:
     """Change a contact. Every place and owner it is assigned to shows the change at once."""
     changed = contacts.update_contact(db, context, hid, body.row_version, _changes(body))
-    return shapes.contacts_out(db, admin=_is_admin(who), found=[changed])[0]
+    return shapes.contacts_out(db, [changed])[0]
 
 
 @contact_routes.post("/{hid}/retire")
 def retire_contact(
-    hid: str, body: r.RowVersion, who: Inventory, context: Audit, db: Db
+    hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
 ) -> r.ContactOut:
     """Retire a contact. Its assignments stay, and show it as retired."""
     retired = contacts.retire_contact(db, context, hid, body.row_version)
-    return shapes.contacts_out(db, admin=_is_admin(who), found=[retired])[0]
+    return shapes.contacts_out(db, [retired])[0]
 
 
 # --- operators -----------------------------------------------------------------------
 
 
 @operator_routes.get("")
-def list_operators(who: Viewer, db: Db, listed: Listed) -> Page[r.OperatorOut]:
+def list_operators(_: Viewer, db: Db, listed: Listed) -> Page[r.OperatorOut]:
     """List operators, by label unless a sort says otherwise."""
     page, total = lists.read(db, fields.OPERATORS, listed)
-    return _page(shapes.operators_out(db, page, admin=_is_admin(who)), total, listed, r.OperatorOut)
+    return _page(shapes.operators_out(db, page), total, listed, r.OperatorOut)
 
 
 @operator_routes.post("", status_code=201)
-def create_operator(
-    body: r.OperatorCreate, who: Inventory, context: Audit, db: Db
-) -> r.OperatorOut:
+def create_operator(body: r.OperatorCreate, _: Inventory, context: Audit, db: Db) -> r.OperatorOut:
     """Create an operator: a short label, with somebody behind it or open."""
     made = operators.create_operator(db, context, body.model_dump())
-    return shapes.operators_out(db, admin=_is_admin(who), found=[made])[0]
+    return shapes.operators_out(db, [made])[0]
 
 
 @operator_routes.get("/{hid}")
-def get_operator(hid: str, who: Viewer, db: Db) -> r.OperatorOut:
+def get_operator(hid: str, _: Viewer, db: Db) -> r.OperatorOut:
     """Return one operator."""
-    return shapes.operators_out(db, admin=_is_admin(who), found=[operators.get_operator(db, hid)])[
-        0
-    ]
+    return shapes.operators_out(db, [operators.get_operator(db, hid)])[0]
 
 
 @operator_routes.patch("/{hid}")
 def update_operator(
-    hid: str, body: r.OperatorPatch, who: Inventory, context: Audit, db: Db
+    hid: str, body: r.OperatorPatch, _: Inventory, context: Audit, db: Db
 ) -> r.OperatorOut:
     """Change an operator. Given another contact, everything the label is on is handed
     over at once; given none, it is an open assignment. Nothing else is written to."""
     changed = operators.update_operator(db, context, hid, body.row_version, _changes(body))
-    return shapes.operators_out(db, admin=_is_admin(who), found=[changed])[0]
+    return shapes.operators_out(db, [changed])[0]
 
 
 @operator_routes.post("/{hid}/retire")
 def retire_operator(
-    hid: str, body: r.RowVersion, who: Inventory, context: Audit, db: Db
+    hid: str, body: r.RowVersion, _: Inventory, context: Audit, db: Db
 ) -> r.OperatorOut:
     """Release what an operator is on: retired, the label stands for nothing, and each
     thing it was on has the operator of the next level up, or none."""
     retired = operators.retire_operator(db, context, hid, body.row_version)
-    return shapes.operators_out(db, admin=_is_admin(who), found=[retired])[0]
+    return shapes.operators_out(db, [retired])[0]
 
 
 # --- contact assignments -------------------------------------------------------------

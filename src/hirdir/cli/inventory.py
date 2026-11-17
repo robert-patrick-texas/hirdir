@@ -57,7 +57,7 @@ SHOWN = {
     "regions": "path,code,record_status",
     "sites": "path,code,city,country,record_status",
     "locations": "path,kind,code,record_status",
-    "contacts": "name,organization,email,phone,phone2,is_user,record_status",
+    "contacts": "name,organization,email,phone,phone2,user,record_status",
     "operators": "label,description,contact,scope,is_open,record_status",
     "tags": "label,colour,description",
     "networks": "label,kind",

@@ -8455,7 +8455,7 @@
                 "type": "null"
               }
             ],
-            "description": "The user this contact is, where it is one. Told to an Admin alone."
+            "description": "The user this contact is, where it is one."
           },
           "uses": {
             "description": "How many places and owners it is assigned to, and operators it stands behind.",
@@ -19666,7 +19666,7 @@
                 "type": "null"
               }
             ],
-            "description": "The user its contact is, where it is one. Told to an Admin alone."
+            "description": "The user its contact is, where it is one."
           },
           "uses": {
             "description": "How many items, groups and places are given it as their own.",
