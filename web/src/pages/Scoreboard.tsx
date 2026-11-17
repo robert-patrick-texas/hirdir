@@ -230,7 +230,7 @@ export function Scoreboard() {
         view={view}
         onShow={(next) => setParams(paramsOfView(next))}
         label="Filter"
-        hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or the filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank is every item."
+        hint="Words, as in a host name, or the filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank is every item."
       />
       <OperatorsBoard view={view} summary={operators} />
       <GroupsBoard view={view} summary={groups} />

@@ -76,7 +76,7 @@ export function Geography() {
         view={view}
         onShow={(next) => setParams(paramsOfView(next))}
         label="Count the items that match"
-        hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or a filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
+        hint="Words, as in a host name, or a filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
         archivedHint="Retired places, and retired and archived items"
         draftsHint="Draft places and draft items"
       />

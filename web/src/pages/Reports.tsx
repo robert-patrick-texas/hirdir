@@ -224,7 +224,7 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
           value={draft}
           onChange={setDraft}
           autoComplete="off"
-          hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or the filter of the item list: field:op:value, as in tags:has:refresh-2030"
+          hint="Words, as in a host name, or the filter of the item list: field:op:value, as in tags:has:refresh-2030"
           error={filterError || filterRefused}
         />
         <SelectField

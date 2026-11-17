@@ -119,7 +119,7 @@ function ViewForm(props: ViewFormProps) {
           value={draft}
           onChange={setDraft}
           autoComplete="off"
-          hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or the filter of the item list: field:op:value, as in site:eq:Site-2"
+          hint="Words, as in a host name, or the filter of the item list: field:op:value, as in site:eq:Site-2"
           error={filterError || filterRefused}
         />
         <TextField
