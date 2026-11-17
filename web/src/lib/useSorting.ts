@@ -31,6 +31,8 @@ interface Options<T> {
    * management report is (P-181). Left out, every row sorts with the others.
    */
   last?: (row: T) => boolean;
+  /** The columns whose first click sorts the most first, as the worst health is. */
+  descendingFirst?: readonly string[];
 }
 
 /**
@@ -41,7 +43,7 @@ interface Options<T> {
 export function useSorting<T>(
   rows: readonly T[] | null | undefined,
   columns: SortColumns<T>,
-  { initial, enabled = true, last }: Options<T> = {},
+  { initial, enabled = true, last, descendingFirst = [] }: Options<T> = {},
 ): Sorting<T> {
   const [state, setState] = useState<SortState | null>(initial ?? null);
   const all = rows ?? [];
@@ -49,7 +51,7 @@ export function useSorting<T>(
   return {
     rows: last ? [...sorted.filter((row) => !last(row)), ...sorted.filter(last)] : sorted,
     state: enabled ? state : null,
-    by: (column) => setState((was) => nextSort(was, column)),
+    by: (column) => setState((was) => nextSort(was, column, descendingFirst.includes(column))),
     reset: () => setState(initial ?? null),
     enabled,
   };

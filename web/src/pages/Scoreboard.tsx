@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { saveFile } from "../components/grid/save";
-import { HealthMark } from "../components/Health";
+import { HealthSplit } from "../components/HealthSplit";
 import { OperatorMark } from "../components/Operator";
 import { Problem } from "../components/Problem";
 import { Bar, Counted, RankCell, RankHead, RankNote } from "../components/Ranked";
@@ -11,7 +11,6 @@ import { type ItemView, ItemViewForm, paramsOfView, viewOfParams } from "../comp
 import { itemsPath } from "../lib/filter";
 import { plural } from "../lib/format";
 import { groupTypeLabel } from "../lib/groups";
-import { HEALTHS } from "../lib/health";
 import { type Loaded, useLoad, useTitle } from "../lib/hooks";
 import { markOf } from "../lib/operators";
 import { placePath } from "../lib/places";
@@ -43,8 +42,15 @@ import type { SortState } from "../lib/sort";
 import { amountText } from "../lib/summary";
 import { useSorting } from "../lib/useSorting";
 
+// The health of a row sorts by what failed, then what is degraded: the worst first at once.
+const WORST_FIRST = ["health"] as const;
+
 // How each operator has its items opens with the most given it first.
 const MOST_GIVEN = { column: "own", descending: true } as const;
+
+// What is said of the column of health, beneath each table that has one.
+const HEALTH_HINT =
+  "Health is the components of a row that are good, degraded, failed and unknown, in that order: a bar in four parts, each as long as its share of the row's components, with the four numbers beneath it. It sorts by what failed, then what is degraded, the worst first; the file that is saved has the four as columns of their own.";
 
 // What the blank row of each table is called: it is a row like the others.
 const NOBODY = "Nobody is assigned";
@@ -173,7 +179,10 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
   const { productName } = useSite();
   // Every row, what nobody is assigned to among them, by support weight at first: the
   // headers sort them by any column, and the file that is saved follows the order on show.
-  const sorting = useSorting(board(data?.rows), scoreColumns(NOBODY), { initial: BY_WEIGHT });
+  const sorting = useSorting(board(data?.rows), scoreColumns(NOBODY), {
+    initial: BY_WEIGHT,
+    descendingFirst: WORST_FIRST,
+  });
   const rows = sorting.rows;
   const whole = data?.totals.support_weight ?? "0";
   const ranked = rankBoard(sorting, whole);
@@ -219,16 +228,9 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                   <SortTh sort={sorting} column="share">
                     Share of the weight
                   </SortTh>
-                  {HEALTHS.map((health) => (
-                    <SortTh
-                      sort={sorting}
-                      column={health.value}
-                      className="number"
-                      key={health.value}
-                    >
-                      <HealthMark value={health.value} />
-                    </SortTh>
-                  ))}
+                  <SortTh sort={sorting} column="health">
+                    Health
+                  </SortTh>
                   <th scope="col">In the grid</th>
                 </tr>
               </thead>
@@ -252,11 +254,9 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                         whole={whole}
                         figure={ranked.figure("share")}
                       />
-                      {HEALTHS.map((health) => (
-                        <td className="number" key={health.value} data-health={health.value}>
-                          <Counted ranking={ranked} column={health.value} row={row} />
-                        </td>
-                      ))}
+                      <td data-measure="health">
+                        <HealthSplit counts={row.by_health} />
+                      </td>
                       <td>
                         <ItemsLink view={view} condition={operatorCondition(row.key)} />
                       </td>
@@ -265,7 +265,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="muted">
+                    <td colSpan={9} className="muted">
                       No item is in view.
                     </td>
                   </tr>
@@ -311,7 +311,7 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
             An operator is in force for an item that is given it, or that has it from the item it is
             in, from its group or from where it is. The share is of the support weight of all items
             in view, {amountText(whole)}. A stack whose members have two operators is a managed node
-            of both.
+            of both. {HEALTH_HINT}
           </p>
           <SplitBoard view={view} rows={data.rows} whole={whole} />
         </>
@@ -447,7 +447,10 @@ function ShareCell({ part, whole, figure }: { part: string; whole: string; figur
 function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
   const data = summary.data;
   const { productName } = useSite();
-  const sorting = useSorting(board(data?.rows), scoreColumns(NO_GROUP), { initial: BY_WEIGHT });
+  const sorting = useSorting(board(data?.rows), scoreColumns(NO_GROUP), {
+    initial: BY_WEIGHT,
+    descendingFirst: WORST_FIRST,
+  });
   const rows = sorting.rows;
   const ranked = rankBoard(sorting, data?.totals.support_weight ?? "0");
 
@@ -494,16 +497,9 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                   <SortTh sort={sorting} column="weight" className="number">
                     Support weight
                   </SortTh>
-                  {HEALTHS.map((health) => (
-                    <SortTh
-                      sort={sorting}
-                      column={health.value}
-                      className="number"
-                      key={health.value}
-                    >
-                      <HealthMark value={health.value} />
-                    </SortTh>
-                  ))}
+                  <SortTh sort={sorting} column="health">
+                    Health
+                  </SortTh>
                   <SortTh sort={sorting} column="involved">
                     Operators involved
                   </SortTh>
@@ -548,11 +544,9 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                         ranked={ranked}
                         items={rowItemsPath(view.filter, groupCondition(row.key))}
                       />
-                      {HEALTHS.map((health) => (
-                        <td className="number" key={health.value} data-health={health.value}>
-                          <Counted ranking={ranked} column={health.value} row={row} />
-                        </td>
-                      ))}
+                      <td data-measure="health">
+                        <HealthSplit counts={row.by_health} />
+                      </td>
                       <td>
                         <Involved row={row} />
                       </td>
@@ -561,7 +555,7 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="muted">
+                    <td colSpan={11} className="muted">
                       No item is in view.
                     </td>
                   </tr>
@@ -586,7 +580,7 @@ function GroupsBoard({ view, summary }: { view: ItemView; summary: Summary }) {
             A group holds its current members, those of every group nested in it at any depth, and
             the minor items of all of them: an item in several groups is counted under each, and the
             totals of the view count it once. The count of items leads to exactly those items, and
-            the members to the group&apos;s own members, whatever the view.
+            the members to the group&apos;s own members, whatever the view. {HEALTH_HINT}
           </p>
         </>
       )}
