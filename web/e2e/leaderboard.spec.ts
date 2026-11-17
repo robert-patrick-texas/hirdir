@@ -274,6 +274,25 @@ test("the scoreboard: how an operator's items have it, and the groups ranked", a
     2,
   );
 
+  // How OPA's items have it leads to exactly those items: the two from its group, the
+  // member of the nested group among them; and the groups given it to the list of groups.
+  await page.goBack();
+  const opaAgain = page
+    .getByTestId("score-operators")
+    .locator(`tbody tr[data-operator="${ids.opa}"]`);
+  await leadsTo(page, measure(opaAgain, "from_group").getByRole("link"), 2);
+  await expect(page.getByTestId("grid-items")).toContainText(`sw5-${suffix}`);
+  await page.goBack();
+  await leadsTo(page, measure(opaAgain, "from_place").getByRole("link"), 2);
+  await expect(page.getByTestId("grid-items")).toContainText(`sfp1-${suffix}`);
+  await page.goBack();
+  await measure(opaAgain, "groups_given").getByRole("link").click();
+  await expect(page.getByTestId("grid-device-groups")).toContainText(name("G"));
+  await expect(page.getByTestId("grid-total")).toHaveText("1 group");
+  // The places given it are no one list, and lead nowhere.
+  await page.goBack();
+  await expect(measure(opaAgain, "places_given").getByRole("link")).toHaveCount(0);
+
   await expectClean(page, seen);
 });
 

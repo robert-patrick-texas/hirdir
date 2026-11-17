@@ -8,7 +8,7 @@
 // compared here as a whole number of hundredths, never as a floating-point number.
 
 import type { Schemas } from "../api/client";
-import { itemsPath } from "./filter";
+import { all, type Condition, itemsPath, itemsViewPath, parseFilter } from "./filter";
 import { markOf } from "./operators";
 import type { CountColumns } from "./rank";
 import { decimalValue, type SortColumns, type SortState } from "./sort";
@@ -320,6 +320,51 @@ export function operatorsCsv(rows: readonly ScoreRow[], whole: string) {
     ],
     ...rows.map(line),
   ]);
+}
+
+/** How an item has its operator, for each count of the split that has a list of its own. */
+const SOURCES: Readonly<Record<string, Condition>> = {
+  own: { field: "effective.operator_hid.source", op: "eq", value: "own" },
+  from_item: { field: "effective.operator_hid.source", op: "eq", value: "parent_item" },
+  from_group: { field: "effective.operator_hid.source", op: "eq", value: "device_group" },
+  from_place: {
+    field: "effective.operator_hid.source",
+    op: "in",
+    value: ["location", "site", "region"],
+  },
+};
+
+/** The view of a scoreboard, as the address of its page holds it. */
+export interface BoardView {
+  filter: string;
+  includeArchived: boolean;
+  includeDrafts: boolean;
+}
+
+/**
+ * Where a count of how an operator's items have it leads (P-178, P-181): the item list of
+ * the view's items that have the operator that way, with the minor items; the groups given
+ * it, whatever the view. The places given it are no one list, and lead nowhere; nor does
+ * the blank row, nor a view whose filter cannot be read.
+ */
+export function splitPath(view: BoardView, hid: string | null, column: string): string | null {
+  if (hid === null) return null;
+  if (column === "groups_given")
+    return `/groups?filter=${encodeURIComponent(`operator_hid:eq:${hid}`)}`;
+  const source = SOURCES[column];
+  if (!source) return null;
+  const read = parseFilter(view.filter);
+  if (!read.ok) return null;
+  const filter = all(
+    read.filter,
+    { field: "effective.operator_hid", op: "eq", value: hid },
+    source,
+  );
+  return itemsViewPath({
+    filter,
+    ...(view.includeArchived ? { include_archived: true } : {}),
+    ...(view.includeDrafts ? { include_drafts: true } : {}),
+  });
 }
 
 /** The condition that keeps the items under one group at any depth, or those under none. */

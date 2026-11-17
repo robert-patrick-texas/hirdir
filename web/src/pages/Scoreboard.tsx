@@ -35,6 +35,7 @@ import {
   shareText,
   siteCondition,
   sitesCsv,
+  splitPath,
   underOpenLabels,
 } from "../lib/scoreboard";
 import type { SortState } from "../lib/sort";
@@ -259,7 +260,12 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
                       />
                       {SPLIT.map((part) => (
                         <td className="number" key={part.column} data-measure={part.column}>
-                          <Counted ranking={ranked} column={part.column} row={row} />
+                          <Counted
+                            ranking={ranked}
+                            column={part.column}
+                            row={row}
+                            href={splitPath(view, row.key, part.column)}
+                          />
                         </td>
                       ))}
                       {HEALTHS.map((health) => (
@@ -321,9 +327,10 @@ function OperatorsBoard({ view, summary }: { view: ItemView; summary: Summary })
             An operator is in force for an item that is given it, or that has it from the item it is
             in, from its group or from where it is: Own, From item, From group and From place say
             how many of its items have it each way, and add up to its items. Groups given and Places
-            given are the groups and the places given it as their own. The share is of the support
-            weight of all items in view, {amountText(whole)}. A stack whose members have two
-            operators is a managed node of both.
+            given are the groups and the places given it as their own. The first four lead to their
+            items, and Groups given to the groups; the places given are no one list. The share is of
+            the support weight of all items in view, {amountText(whole)}. A stack whose members have
+            two operators is a managed node of both.
           </p>
         </>
       )}

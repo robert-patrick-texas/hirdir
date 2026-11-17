@@ -12,6 +12,7 @@ import {
   SPLIT,
   scoreColumns,
   scoreCounts,
+  splitPath,
 } from "./scoreboard";
 import { sortRows } from "./sort";
 import { rowDetail, rowLabel, rowRecordPath } from "./summary";
@@ -87,6 +88,33 @@ describe("how the items of an operator have it", () => {
       descending: true,
     });
     expect(sorted.map((one) => one.key)).toEqual([OP, other.key, null]);
+  });
+
+  it("lead to exactly their items, with the view's filter, and the groups given it to the groups", () => {
+    const view = { filter: "tags:has:refresh-2030", includeArchived: false, includeDrafts: true };
+    const where = (column: string) => {
+      const path = splitPath(view, OP, column);
+      if (path === null) return null;
+      const address = new URL(path, "http://example.invalid/");
+      return { address, filter: address.searchParams.get("filter") ?? "" };
+    };
+    const own = where("own");
+    expect(own?.address.pathname).toBe("/items");
+    expect(own?.address.searchParams.get("minor")).toBe("1");
+    expect(own?.address.searchParams.get("drafts")).toBe("1");
+    expect(own?.filter).toContain("tags");
+    expect(own?.filter).toContain(`effective.operator_hid`);
+    expect(own?.filter).toContain("own");
+    expect(where("from_item")?.filter).toContain("parent_item");
+    expect(where("from_group")?.filter).toContain("device_group");
+    const place = where("from_place")?.filter ?? "";
+    for (const level of ["location", "site", "region"]) expect(place).toContain(level);
+    expect(splitPath(view, OP, "groups_given")).toBe(
+      `/groups?filter=${encodeURIComponent(`operator_hid:eq:${OP}`)}`,
+    );
+    expect(splitPath(view, OP, "places_given")).toBeNull();
+    expect(splitPath(view, null, "own")).toBeNull();
+    expect(splitPath({ ...view, filter: "not a filter" }, OP, "own")).toBeNull();
   });
 
   it("follow the health in the file of the operators", () => {
