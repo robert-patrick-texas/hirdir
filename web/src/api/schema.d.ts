@@ -5138,6 +5138,41 @@ export interface paths {
       };
     };
   };
+  "/api/v1/operators/{hid}/assignments": {
+    /**
+     * What an operator is on, and how: each place and group given it, the items that
+     * have it from each, what beneath each has it too and what is another's, and the items
+     * that have it as their own or from the item they are in. Every count comes with the
+     * filter of the item list that lists it (P-177).
+     */
+    get: {
+      parameters: {
+        query?: {
+          include_drafts?: boolean;
+          include_archived?: boolean;
+        };
+        path: {
+          hid: string;
+        };
+        header?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** Successful Response */
+        200: {
+          content: {
+            "application/json": components["schemas"]["OperatorAssignments"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/operators/{hid}/retire": {
     /**
      * Release what an operator is on: retired, the label stands for nothing, and each
@@ -10237,6 +10272,11 @@ export interface components {
       target_name: string;
       user_hid: string | null;
     };
+    GroupBeneath: {
+      hid: string;
+      name: string;
+      type: "stack" | "cluster" | "controller_domain" | "custom";
+    };
     /** A new user group. */
     GroupCreate: {
       description?: string;
@@ -10293,6 +10333,12 @@ export interface components {
       status: "registered" | "pending" | "removed";
       system: components["schemas"]["SystemRef"];
       system_hid: string;
+    };
+    /** The groups nested in a group that have the operator from it, at most 20 named. */
+    GroupsBeneath: {
+      count: number;
+      more: number;
+      shown: components["schemas"]["GroupBeneath"][];
     };
     HTTPValidationError: {
       detail?: components["schemas"]["ValidationError"][];
@@ -10388,6 +10434,13 @@ export interface components {
       type: string | null;
       vendor: string;
       vendor_hid: string;
+    };
+    /** How many items of the view, and the filter of the item list that lists them. */
+    ItemCount: {
+      count: number;
+      filter: {
+        [key: string]: unknown;
+      };
     };
     /**
      * A new item. Only what identifies it is needed: a serial number with a catalog
@@ -11120,6 +11173,18 @@ export interface components {
       waits_for: components["schemas"]["PlaceRef"] | null;
       waits_for_level: "region" | "site" | "location" | null;
     };
+    /** What an operator is on, and how: what the page of an operator draws. */
+    OperatorAssignments: {
+      /** The minor items that have it from the item above. */
+      from_item: components["schemas"]["ItemCount"];
+      groups: components["schemas"]["OperatorGroup"][];
+      operator_hid: string;
+      /** The items given it as their own. */
+      own: components["schemas"]["ItemCount"];
+      places: components["schemas"]["OperatorPlace"][];
+      /** Every item it is in force for. */
+      totals: components["schemas"]["ItemCount"];
+    };
     /** A new operator: a label, with somebody behind it or open. */
     OperatorCreate: {
       /** In the form #1f6feb. */
@@ -11129,6 +11194,17 @@ export interface components {
       description?: string | null;
       label: string;
       record_status?: "draft" | "active";
+    };
+    /** A device group given the operator as its own. */
+    OperatorGroup: {
+      /** Its members that have another. */
+      exceptions: components["schemas"]["ItemCount"];
+      groups_beneath: components["schemas"]["GroupsBeneath"];
+      hid: string;
+      /** The items that have the operator from this group. */
+      items: components["schemas"]["ItemCount"];
+      name: string;
+      type: "stack" | "cluster" | "controller_domain" | "custom";
     };
     /** A short label that stands for the member of the team who looks after what it is on. */
     OperatorOut: {
@@ -11161,6 +11237,17 @@ export interface components {
       label?: string | null;
       record_status?: "draft" | "active" | null;
       row_version: number;
+    };
+    /** A place given the operator as its own. */
+    OperatorPlace: {
+      /** The items beneath it that have another. */
+      exceptions: components["schemas"]["ItemCount"];
+      hid: string;
+      /** The items that have the operator from this place. */
+      items: components["schemas"]["ItemCount"];
+      level: "region" | "site" | "location";
+      path: string;
+      places_beneath: components["schemas"]["PlacesBeneath"];
     };
     /** An operator, as shown on what it is given to: the label, and who is behind it. */
     OperatorRef: {
@@ -11496,6 +11583,11 @@ export interface components {
       phone2: string | null;
       record_status: string;
     };
+    PlaceBeneath: {
+      hid: string;
+      level: "region" | "site" | "location";
+      path: string;
+    };
     /** The items and the components of a set of items. */
     PlaceCount: {
       component_count: number;
@@ -11518,6 +11610,13 @@ export interface components {
       name: string;
       /** The names from the top region down, joined with ' > '. */
       path: string;
+    };
+    /** The places beneath a place that have the operator from it, at most 20 named. */
+    PlacesBeneath: {
+      count: number;
+      /** How many more there are than are named. */
+      more: number;
+      shown: components["schemas"]["PlaceBeneath"][];
     };
     /** The items of one kind. */
     PortfolioKind: {

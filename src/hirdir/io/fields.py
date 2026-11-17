@@ -19,6 +19,7 @@ from sqlalchemy import (
     case,
     false,
     func,
+    literal,
     or_,
     select,
     type_coerce,
@@ -181,18 +182,20 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 
-def _from_groups(field: str, level: int, live: Any = None) -> ColumnElement[Any]:
+def _from_groups(
+    field: str, level: int, live: Any = None, column: str = "value"
+) -> ColumnElement[Any]:
     """Return what the record at `level` of an item's line, 0 the item itself, has in a
     field from the groups it is a current member of, as `hirdir.domain.descent` works it
     out: that of the first group, a stack before a cluster before a controller domain
     before any other and then by name, that has one in force, its own or from the group
-    it is nested in."""
+    it is nested in. With `column` of `holder_hid`, the group that holds that value."""
     one = _LINE[level]
     reach = descent.group_reach(field, live)
-    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_member")
-    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_group")
+    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_{column}_member")
+    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_{column}_group")
     return (
-        select(reach.c.value)
+        select(getattr(reach.c, column))
         .select_from(member)
         .join(group, group.hid == member.group_hid)
         .join(reach, reach.c.group_hid == group.hid)
@@ -249,6 +252,42 @@ def _operator_in_force() -> ColumnElement[Any]:
 
 
 OPERATOR_IN_FORCE: ColumnElement[Any] = _operator_in_force()
+
+
+def _operator_source(hid: bool) -> ColumnElement[Any]:
+    """Return how an item has its operator in force, `own`, `parent_item`,
+    `device_group`, `location`, `site`, `region` or `none`, or with `hid` the record it
+    has it from: the step of its walk that decides (P-177)."""
+    places = operators.location_reach()
+
+    def of_place(column: Any) -> ColumnElement[Any]:
+        return (
+            select(column)
+            .where(places.c.location_hid == LOCATION_IN_FORCE)
+            .correlate(*_LINE)
+            .scalar_subquery()
+        )
+
+    whens: list[tuple[Any, Any]] = []
+    for level, one in enumerate(_LINE):
+        own = operators.live(one.operator_hid)
+        whens.append(
+            (own.is_not(None), one.hid if hid else literal("own" if level == 0 else "parent_item"))
+        )
+        grouped = _from_groups("operator_hid", level, operators.live)
+        holder = _from_groups("operator_hid", level, operators.live, "holder_hid")
+        whens.append((grouped.is_not(None), holder if hid else literal("device_group")))
+    whens.append(
+        (
+            of_place(places.c.operator_hid).is_not(None),
+            of_place(places.c.holder_hid) if hid else of_place(places.c.holder_level),
+        )
+    )
+    return case(*whens, else_=None if hid else literal("none"))
+
+
+OPERATOR_SOURCE: ColumnElement[Any] = _operator_source(hid=False)
+OPERATOR_SOURCE_HID: ColumnElement[Any] = _operator_source(hid=True)
 ITEM_OPERATOR: Any = aliased(Operator, name="item_operator")
 ITEM_OPERATOR_CONTACT: Any = aliased(Contact, name="item_operator_contact")
 
@@ -663,6 +702,9 @@ ITEMS = Listing(
         "operator_hid": Field("reference", Item.operator_hid),
         # The operator in force: who looks after the item, by its own word or from above.
         "effective.operator_hid": Field("reference", OPERATOR_IN_FORCE),
+        # How it has it, and from which record (P-177).
+        "effective.operator_hid.source": Field("choice", OPERATOR_SOURCE),
+        "effective.operator_hid.source_hid": Field("reference", OPERATOR_SOURCE_HID),
         "operator.label": Field("text", ITEM_OPERATOR.label),
         "operator.contact": Field("text", ITEM_OPERATOR_CONTACT.name),
         # Internal where the person behind the operator in force is a user, external not.

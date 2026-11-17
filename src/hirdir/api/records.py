@@ -4135,3 +4135,74 @@ class BulkUpdate(Model):
     )
     add_tags: list[ShortText] = Field(default=[], max_length=100)
     remove_tags: list[ShortText] = Field(default=[], max_length=100)
+
+
+# --- what an operator is on (P-177) ---------------------------------------------------
+
+
+class ItemCount(Model):
+    """How many items of the view, and the filter of the item list that lists them."""
+
+    count: int
+    filter: dict[str, Any]
+
+
+class PlaceBeneath(Model):
+    hid: str
+    level: Level
+    path: str
+
+
+class GroupBeneath(Model):
+    hid: str
+    name: str
+    type: GroupType
+
+
+class PlacesBeneath(Model):
+    """The places beneath a place that have the operator from it, at most 20 named."""
+
+    count: int
+    more: int = Field(description="How many more there are than are named.")
+    shown: list[PlaceBeneath]
+
+
+class GroupsBeneath(Model):
+    """The groups nested in a group that have the operator from it, at most 20 named."""
+
+    count: int
+    more: int
+    shown: list[GroupBeneath]
+
+
+class OperatorPlace(Model):
+    """A place given the operator as its own."""
+
+    hid: str
+    level: Level
+    path: str
+    items: ItemCount = Field(description="The items that have the operator from this place.")
+    places_beneath: PlacesBeneath
+    exceptions: ItemCount = Field(description="The items beneath it that have another.")
+
+
+class OperatorGroup(Model):
+    """A device group given the operator as its own."""
+
+    hid: str
+    name: str
+    type: GroupType
+    items: ItemCount = Field(description="The items that have the operator from this group.")
+    groups_beneath: GroupsBeneath
+    exceptions: ItemCount = Field(description="Its members that have another.")
+
+
+class OperatorAssignments(Model):
+    """What an operator is on, and how: what the page of an operator draws."""
+
+    operator_hid: str
+    places: list[OperatorPlace]
+    groups: list[OperatorGroup]
+    own: ItemCount = Field(description="The items given it as their own.")
+    from_item: ItemCount = Field(description="The minor items that have it from the item above.")
+    totals: ItemCount = Field(description="Every item it is in force for.")

@@ -127,7 +127,8 @@ def of_items(
 
 def group_reach(field: str, live: Any = None) -> Any:
     """Return, as a table, each group that has a value in force in a field with that
-    value: its own, or that of the nearest group it is nested in.
+    value: its own, or that of the nearest group it is nested in; and `holder_hid`, the
+    group that holds it.
 
     `live` turns a column into the value it stands for, or nothing: an operator that
     is retired stands for nothing.
@@ -139,12 +140,16 @@ def group_reach(field: str, live: Any = None) -> Any:
 
     inner: Any = aliased(DeviceGroup)
     start = (
-        select(DeviceGroup.hid.label("group_hid"), value(DeviceGroup).label("value"))
+        select(
+            DeviceGroup.hid.label("group_hid"),
+            value(DeviceGroup).label("value"),
+            DeviceGroup.hid.label("holder_hid"),
+        )
         .where(value(DeviceGroup).is_not(None))
         .cte(recursive=True)
     )
     return start.union_all(
-        select(inner.hid, start.c.value).where(
+        select(inner.hid, start.c.value, start.c.holder_hid).where(
             inner.parent_group_hid == start.c.group_hid, value(inner).is_(None)
         )
     )

@@ -13803,6 +13803,36 @@
         "title": "GrantOut",
         "type": "object"
       },
+      "GroupBeneath": {
+        "additionalProperties": false,
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "stack",
+              "cluster",
+              "controller_domain",
+              "custom"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "type"
+        ],
+        "title": "GroupBeneath",
+        "type": "object"
+      },
       "GroupCreate": {
         "additionalProperties": false,
         "description": "A new user group.",
@@ -14090,6 +14120,34 @@
           "group"
         ],
         "title": "GroupRegistrationRef",
+        "type": "object"
+      },
+      "GroupsBeneath": {
+        "additionalProperties": false,
+        "description": "The groups nested in a group that have the operator from it, at most 20 named.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "more": {
+            "title": "More",
+            "type": "integer"
+          },
+          "shown": {
+            "items": {
+              "$ref": "#/components/schemas/GroupBeneath"
+            },
+            "title": "Shown",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "more",
+          "shown"
+        ],
+        "title": "GroupsBeneath",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -14604,6 +14662,27 @@
           "links"
         ],
         "title": "ItemCatalog",
+        "type": "object"
+      },
+      "ItemCount": {
+        "additionalProperties": false,
+        "description": "How many items of the view, and the filter of the item list that lists them.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "filter": {
+            "additionalProperties": true,
+            "title": "Filter",
+            "type": "object"
+          }
+        },
+        "required": [
+          "count",
+          "filter"
+        ],
+        "title": "ItemCount",
         "type": "object"
       },
       "ItemCreate": {
@@ -19493,6 +19572,52 @@
         "title": "OpeningOut",
         "type": "object"
       },
+      "OperatorAssignments": {
+        "additionalProperties": false,
+        "description": "What an operator is on, and how: what the page of an operator draws.",
+        "properties": {
+          "from_item": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "The minor items that have it from the item above."
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "operator_hid": {
+            "title": "Operator Hid",
+            "type": "string"
+          },
+          "own": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "The items given it as their own."
+          },
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/OperatorPlace"
+            },
+            "title": "Places",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "Every item it is in force for."
+          }
+        },
+        "required": [
+          "operator_hid",
+          "places",
+          "groups",
+          "own",
+          "from_item",
+          "totals"
+        ],
+        "title": "OperatorAssignments",
+        "type": "object"
+      },
       "OperatorCreate": {
         "additionalProperties": false,
         "description": "A new operator: a label, with somebody behind it or open.",
@@ -19555,6 +19680,51 @@
           "label"
         ],
         "title": "OperatorCreate",
+        "type": "object"
+      },
+      "OperatorGroup": {
+        "additionalProperties": false,
+        "description": "A device group given the operator as its own.",
+        "properties": {
+          "exceptions": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "Its members that have another."
+          },
+          "groups_beneath": {
+            "$ref": "#/components/schemas/GroupsBeneath"
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "The items that have the operator from this group."
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "stack",
+              "cluster",
+              "controller_domain",
+              "custom"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "name",
+          "type",
+          "items",
+          "groups_beneath",
+          "exceptions"
+        ],
+        "title": "OperatorGroup",
         "type": "object"
       },
       "OperatorOut": {
@@ -19770,6 +19940,50 @@
           "row_version"
         ],
         "title": "OperatorPatch",
+        "type": "object"
+      },
+      "OperatorPlace": {
+        "additionalProperties": false,
+        "description": "A place given the operator as its own.",
+        "properties": {
+          "exceptions": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "The items beneath it that have another."
+          },
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/ItemCount",
+            "description": "The items that have the operator from this place."
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "places_beneath": {
+            "$ref": "#/components/schemas/PlacesBeneath"
+          }
+        },
+        "required": [
+          "hid",
+          "level",
+          "path",
+          "items",
+          "places_beneath",
+          "exceptions"
+        ],
+        "title": "OperatorPlace",
         "type": "object"
       },
       "OperatorRef": {
@@ -21646,6 +21860,35 @@
         "title": "PersonRef",
         "type": "object"
       },
+      "PlaceBeneath": {
+        "additionalProperties": false,
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "region",
+              "site",
+              "location"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "level",
+          "path"
+        ],
+        "title": "PlaceBeneath",
+        "type": "object"
+      },
       "PlaceCount": {
         "additionalProperties": false,
         "description": "The items and the components of a set of items.",
@@ -21741,6 +21984,35 @@
           "path"
         ],
         "title": "PlaceRef",
+        "type": "object"
+      },
+      "PlacesBeneath": {
+        "additionalProperties": false,
+        "description": "The places beneath a place that have the operator from it, at most 20 named.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "more": {
+            "description": "How many more there are than are named.",
+            "title": "More",
+            "type": "integer"
+          },
+          "shown": {
+            "items": {
+              "$ref": "#/components/schemas/PlaceBeneath"
+            },
+            "title": "Shown",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "more",
+          "shown"
+        ],
+        "title": "PlacesBeneath",
         "type": "object"
       },
       "PortfolioKind": {
@@ -39298,6 +39570,69 @@
           }
         },
         "summary": "Update Operator",
+        "tags": [
+          "People"
+        ]
+      }
+    },
+    "/api/v1/operators/{hid}/assignments": {
+      "get": {
+        "description": "What an operator is on, and how: each place and group given it, the items that\nhave it from each, what beneath each has it too and what is another's, and the items\nthat have it as their own or from the item they are in. Every count comes with the\nfilter of the item list that lists it (P-177).",
+        "operationId": "operator_assignments_api_v1_operators__hid__assignments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hid",
+            "required": true,
+            "schema": {
+              "title": "Hid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_drafts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Drafts",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorAssignments"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operator Assignments",
         "tags": [
           "People"
         ]
