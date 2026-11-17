@@ -242,6 +242,12 @@ class CatalogEntryOut(Model):
     links: list[Link] = Field(description=LINKS_DESCRIPTION)
     record_status: RecordStatus
     tags: list[str]
+    items: int = Field(
+        description=(
+            "How many items are of the model, as the item list counts them (P-180): major "
+            "and minor, drafts, retired items and items in Archived left out."
+        )
+    )
     effective: CatalogEffective
     row_version: int
     created_at: datetime
@@ -3641,6 +3647,8 @@ SummaryBy = Literal[
     "site",
     "region",
     "contract",
+    "group",
+    "model",
     "lifecycle_state",
     "disposition",
     "condition",
@@ -3648,7 +3656,18 @@ SummaryBy = Literal[
     "tag",
 ]
 ManagementBy = Literal[
-    "vendor", "kind", "type", "function", "owner", "operator", "site", "region", "contract", "tag"
+    "vendor",
+    "kind",
+    "type",
+    "function",
+    "owner",
+    "operator",
+    "site",
+    "region",
+    "contract",
+    "group",
+    "model",
+    "tag",
 ]
 
 
@@ -3705,7 +3724,25 @@ class RowOperator(Model):
     support_weight: WeightSum
 
 
-class SummaryRow(Measures):
+class RowRecord(Model):
+    """What a row of a report by group or by model says of the record it is of (P-178,
+    P-180). Every field is null on the rows of anything else, and on the blank row."""
+
+    type: str | None = Field(
+        default=None,
+        description="By group, the type of the group; by model, the type of the model.",
+    )
+    member_count: int | None = Field(default=None, description="By group: its current members.")
+    nested_groups: int | None = Field(
+        default=None, description="By group: how many groups are nested in it, at any depth."
+    )
+    vendor: str | None = Field(default=None, description="By model: the name of its vendor.")
+    pid: str | None = Field(default=None, description="By model: its PID.")
+    model_name: str | None = Field(default=None, description="By model: its name.")
+    kind: str | None = Field(default=None, description="By model: its kind.")
+
+
+class SummaryRow(Measures, RowRecord):
     """The measures of the items that share one value of what the summary is by."""
 
     key: str | None = Field(description="The value, or the HID of the record. Null for none.")
@@ -3735,7 +3772,7 @@ class ManagementMeasures(Model):
     annual_support_cost: MoneySum
 
 
-class ManagementRow(ManagementMeasures):
+class ManagementRow(ManagementMeasures, RowRecord):
     """The value and the cost of the items that share one value."""
 
     key: str | None

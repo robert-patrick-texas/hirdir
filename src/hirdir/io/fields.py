@@ -1093,6 +1093,28 @@ ADDRESSES = Listing(
     has_status=False,
 )
 
+# How many items are of a model, counted as the item list counts them (D-152, P-180):
+# major and minor, and drafts, retired items and items in Archived left out, so the
+# number leads to as many rows of the grid.
+MODEL_ITEMS: ColumnElement[Any] = (
+    _with_items_above(select(func.count(func.distinct(Item.hid))).select_from(Item))
+    .where(Item.catalog_entry_hid == CatalogEntry.hid, *_ITEM_IN_VIEW)
+    .correlate(CatalogEntry)
+    .scalar_subquery()
+)
+
+
+def model_items(db: Session, entry_hids: list[str]) -> dict[str, int]:
+    """Return how many items are of each catalog entry."""
+    counts = dict.fromkeys(entry_hids, 0)
+    if entry_hids:
+        found = db.execute(
+            select(CatalogEntry.hid, MODEL_ITEMS).where(CatalogEntry.hid.in_(entry_hids))
+        )
+        counts.update({hid: count or 0 for hid, count in found})
+    return counts
+
+
 CATALOG_ENTRIES = Listing(
     model=CatalogEntry,
     fields={
@@ -1107,6 +1129,8 @@ CATALOG_ENTRIES = Listing(
         **_columns(CatalogEntry, "number", *_INHERITED_AMOUNTS, "stack_discount_pct"),
         not_renewed.FIELD: Field("boolean", CatalogEntry.do_not_renew),
         "tags": _tags("catalog_entry", CatalogEntry),
+        # How many items are of it: sorted by, and not filtered by.
+        "items": Field("integer", ordered_by=MODEL_ITEMS),
     },
     joined=lambda query: query.join(Vendor, Vendor.hid == CatalogEntry.vendor_hid),
     default_sort=("vendor", "pid"),

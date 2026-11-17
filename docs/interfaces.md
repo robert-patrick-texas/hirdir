@@ -345,6 +345,7 @@ what is worked out, the field is sorted by and not filtered by:
 | Device groups | Members | `member_count` | the number of current members |
 | Contacts | Assigned | `uses` | how many places, owners and operators name it, as the record counts them |
 | Operators | Given to | `uses` | how many items, groups and places are given it |
+| Catalog | Items | `items` | how many items are of that model, as the item list counts them (P-180) |
 | Vendors | Also known as | `aliases` | the first alias without regard to case |
 | Owners | Primary contact | `primary.name` | the name of that contact |
 | Every list with tags | Tags | `tags` | the first label |
