@@ -33,7 +33,9 @@ import {
   MANAGEMENT_COUNTS,
   type ManagementBy,
   type ReportView,
+  rowDetail,
   rowLabel,
+  rowRecordPath,
   SUMMARY_BY,
   SUMMARY_COUNTS,
   type SummaryRow,
@@ -57,15 +59,30 @@ const PLACE_ROWS = {
 const CONTRACT_ROWS =
   "An item is in the row of each contract that covers it today, and the totals count it once. The items that no contract covers are in a row of their own.";
 
+// 0.9.4: what to say beneath a report by group and by model (P-178, P-180).
+const OTHER_ROWS = {
+  group:
+    "A group's row holds its current members, those of every group nested in it at any depth, and the minor items of all of them. An item in several groups is in the row of each, and the totals count it once. The items in no group are in a row of their own.",
+  model:
+    "A model is a vendor's product, named by its vendor and its PID, so that the models of every vendor are ranked against each other; by type counts what is of one type whatever its vendor. The items with no catalog entry are in a row of their own.",
+} as const;
+
+function otherRows(by: string): string | null {
+  return by === "group" || by === "model" ? OTHER_ROWS[by] : null;
+}
+
+type NamedRow = Parameters<typeof rowDetail>[1] & { label: string | null };
+
 /**
  * What a row of a report is called. A row of an operator is that operator's mark: the
  * label in its colour, as a link to its page, with the person behind it on hover. The
  * report names the operator by its HID and its label; the colour and the person come
- * from the list of operators, and until that is read the label is the link.
+ * from the list of operators, and until that is read the label is the link. A row of a
+ * group or of a model leads to its page, with what it is beneath its name.
  */
 function RowName(props: {
   by: By | ManagementBy;
-  row: { key: string | null; label: string | null };
+  row: NamedRow;
   choices: Parameters<typeof rowLabel>[2];
   operators: ReadonlyMap<string, Mark> | undefined;
 }) {
@@ -78,6 +95,20 @@ function RowName(props: {
   // A row of a contract is that contract, by its number and its vendor: a link to it.
   if (by === "contract" && row.key !== null) {
     return <Link to={contractPath(row.key)}>{row.label ?? row.key}</Link>;
+  }
+  const path = rowRecordPath(by, row.key);
+  if (path) {
+    const detail = rowDetail(by, row, choices);
+    return (
+      <>
+        <Link to={path}>{rowLabel(by, row, choices)}</Link>
+        {detail && (
+          <span className="row-detail" data-testid="row-detail">
+            {detail}
+          </span>
+        )}
+      </>
+    );
   }
   return rowLabel(by, row, choices);
 }
@@ -414,6 +445,7 @@ export function Summary() {
                 {by === "contract" && ` ${CONTRACT_ROWS}`} A stack whose members fall in two rows is
                 a managed node in both, and one in the totals.
                 {isByPlace(by) && ` ${PLACE_ROWS[by]}`}
+                {otherRows(by) && ` ${otherRows(by)}`}
               </p>
             </section>
           )}
@@ -566,6 +598,7 @@ export function ManagementReport() {
               )}
               {by === "contract" && <p className="hint">{CONTRACT_ROWS}</p>}
               {isByPlace(by) && <p className="hint">{PLACE_ROWS[by]}</p>}
+              {otherRows(by) && <p className="hint">{otherRows(by)}</p>}
             </section>
           )}
         </>

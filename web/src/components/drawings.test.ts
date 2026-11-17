@@ -94,6 +94,32 @@ describe("the walk of a value as a row of boxes", () => {
     expect(boxes[0]).not.toContain("<a ");
   });
 
+  it("draws the minimum that raises a weight after the step that decides, in the accent, its value whole", () => {
+    const weight = html(
+      createElement(BoxWalk, {
+        label: "Support weight",
+        steps: [
+          { key: "own", kind: "Its own", title: "sw-01", value: null, state: "nothing" },
+          {
+            key: "c",
+            kind: "Catalog entry",
+            title: "Example EN-48",
+            value: "0.50",
+            state: "decides",
+          },
+          { key: "d", kind: "Setting", title: "Default", value: "1.00", state: "passed_over" },
+          { key: "m", kind: "Setting", title: "Minimum", value: "1.00", state: "raises" },
+        ],
+      }),
+    );
+    const steps = parts(weight, '<li class="walk-step"');
+    expect(steps[1]).toContain("walk-box walk-decides");
+    expect(steps[3]).toContain("walk-box walk-raises");
+    expect(steps[3]).toContain(">raises to the minimum<");
+    expect(steps[3]).toContain(">1.00<");
+    expect(steps[3]).not.toContain("<s>");
+  });
+
   it("joins the boxes by arrows that a screen reader does not read, one fewer than the boxes", () => {
     const arrows = markup.match(/class="walk-arrow" aria-hidden="true"/g) ?? [];
     expect(arrows).toHaveLength(3);

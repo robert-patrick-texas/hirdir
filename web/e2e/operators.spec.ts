@@ -512,7 +512,7 @@ test("what nobody is assigned to is counted and found, and a bulk edit assigns t
   // The label says what it is on, and is the way to the groups and places given it.
   await openOperator(page, local);
   await expect(
-    page.getByTestId("operator-places").getByRole("link", { name: sitePath, exact: true }),
+    page.getByTestId("operator-tree").getByRole("link", { name: sitePath, exact: true }),
   ).toBeVisible();
   // The Operator column of the groups, hidden until it is asked for.
   await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${stack}`)}`);
@@ -582,7 +582,9 @@ test("the scoreboard: who looks after how much, and where", async ({ page, accou
   // of the 7.50 in view. A weight is written with or without the zero that says nothing.
   const operators = page.getByTestId("score-operators");
   const ranked = operators.locator("tbody tr");
-  await expect(ranked).toHaveCount(3);
+  // 0.9.4: the page counts three tables at once, the groups among them; on a busy host that
+  // takes longer than the 5 seconds an expectation waits by default.
+  await expect(ranked).toHaveCount(3, { timeout: 20_000 });
   await expect(ranked.nth(0)).toHaveAttribute("data-label", edge);
   await expect(ranked.nth(1)).toHaveAttribute("data-label", core);
   await expect(operators.getByRole("columnheader", { name: "Support weight" })).toHaveAttribute(

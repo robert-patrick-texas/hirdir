@@ -419,11 +419,13 @@ test("S19, S20: the two masters of a stack, its serial number, its health and it
     "Site",
     "Region",
     "Vendor",
+    "Model",
     "Kind",
     "Type",
     "Function",
     "Owner",
     "Operator",
+    "Group",
     "Contract",
     "Tag",
   ]);

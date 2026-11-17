@@ -6,6 +6,7 @@
 // as it allows an operator's colour; no script is written into the page.
 
 import type { CSSProperties } from "react";
+import { Link } from "react-router";
 import type { Ranking } from "../lib/rank";
 
 /**
@@ -40,10 +41,12 @@ interface BarProps {
   figure: number;
   /** A class for the number, where a page looks for it. */
   figureClass?: string;
+  /** Where the number leads, where it is a link: the list of what it counts. */
+  href?: string | null | undefined;
 }
 
 /** A number with a bar beside it. Nothing of the bar is read: the number says it. */
-export function Bar({ share, text, figure, figureClass }: BarProps) {
+export function Bar({ share, text, figure, figureClass, href }: BarProps) {
   const length = Math.max(0, Math.min(1, share));
   const fill: CSSProperties = { inlineSize: `${(length * 100).toFixed(2)}%` };
   return (
@@ -55,27 +58,30 @@ export function Bar({ share, text, figure, figureClass }: BarProps) {
         className={figureClass ? `figure ${figureClass}` : "figure"}
         style={{ minInlineSize: `${figure}ch` }}
       >
-        {text}
+        {href && text ? <Link to={href}>{text}</Link> : text}
       </span>
     </span>
   );
 }
 
-/** A count of a row in a column of a ranked table, with its bar. */
+/** A count of a row in a column of a ranked table, with its bar, and a link where given. */
 export function Counted<T>({
   ranking,
   column,
   row,
+  href,
 }: {
   ranking: Ranking<T>;
   column: string;
   row: T;
+  href?: string | null | undefined;
 }) {
   return (
     <Bar
       share={ranking.share(column, row)}
       text={ranking.text(column, row)}
       figure={ranking.figure(column)}
+      href={href}
     />
   );
 }

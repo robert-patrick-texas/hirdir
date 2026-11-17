@@ -469,11 +469,13 @@ test("a location is chosen by searching, in a form and in bulk; the reports are 
     "Site",
     "Region",
     "Vendor",
+    "Model",
     "Kind",
     "Type",
     "Function",
     "Owner",
     "Operator",
+    "Group",
     "Contract",
     "Tag",
   ]);

@@ -12,8 +12,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-/** What a step of a walk is: the server's word for it. */
-export type StepState = "decides" | "passed_over" | "nothing" | "retired";
+/**
+ * What a step of a walk is: the server's word for it. `raises` is the minimum of a support
+ * weight that raises the value found, which still decides where it came from.
+ */
+export type StepState = "decides" | "passed_over" | "nothing" | "retired" | "raises";
 
 /** One step of a walk: the record it looks at, what that holds, and what the step is. */
 export interface WalkBox {
@@ -38,6 +41,7 @@ export const STATE_WORDS: Readonly<Record<StepState, string>> = {
   passed_over: "passed over",
   nothing: "holds nothing",
   retired: "retired, passed over",
+  raises: "raises to the minimum",
 };
 
 function RecordLink({ text, href }: { text: string; href?: string | null | undefined }) {
@@ -154,7 +158,13 @@ export function WalkTable({ label, steps, testId }: Omit<BoxWalkProps, "override
                 {step.value ?? <span className="muted">nothing</span>}
                 <Via step={step} />
               </td>
-              <td className={step.state === "decides" ? "walk-decides-word" : "muted"}>
+              <td
+                className={
+                  step.state === "decides" || step.state === "raises"
+                    ? "walk-decides-word"
+                    : "muted"
+                }
+              >
                 {STATE_WORDS[step.state]}
               </td>
             </tr>

@@ -1423,6 +1423,14 @@ main:has(.geography) {
 
 /* --- the rank and the bars of a report (P-178, P-180) -------------------------------- */
 
+/* What a row of a group or of a model is, beneath its name. */
+.row-detail {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 /* The Rank column is as narrow as its header, so that a table that fit before still fits. */
 th.rank,
 td.rank {
@@ -2065,9 +2073,16 @@ fieldset.extension-list {
 }
 
 .walk-decides .walk-state,
+.walk-raises .walk-state,
 .walk-decides-word {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* The minimum of a support weight that raises the value found: after the step that
+   decides, outlined in the accent, the value it raises to written plainly. */
+.walk-raises {
+  border: 2px solid var(--accent);
 }
 
 /* A step passed over, by the one before it or as retired: muted, its value struck. */
@@ -2329,4 +2344,22 @@ fieldset.extension-list {
   .tree-root {
     border-color: Highlight;
   }
+}
+
+/* --- the name of a row of a report (P-180) ------------------------------------------- */
+
+/* The person behind a label goes beneath it when the column is narrow, so that a table
+   with a Rank column still fits where it fit; the label itself is never broken. */
+.scroll th[scope="row"] .operator-mark {
+  white-space: normal;
+}
+
+.scroll th[scope="row"] .operator-mark > a {
+  white-space: nowrap;
+}
+
+.scroll th[scope="row"] .operator-person,
+.scroll th[scope="row"] .operator-mark .mark {
+  display: inline-block;
+  white-space: nowrap;
 }

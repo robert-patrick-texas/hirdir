@@ -49,14 +49,16 @@ const KINDS = [
 ];
 
 describe("what a summary is by", () => {
-  it("offers the fourteen groupings the server has, the operator, the places and the contract among them", () => {
+  it("offers the sixteen groupings the server has, the operator, the places and the contract among them", () => {
     expect(SUMMARY_BY.map((by) => by.value)).toEqual([
       "vendor",
+      "model",
       "kind",
       "type",
       "function",
       "owner",
       "operator",
+      "group",
       "site",
       "region",
       "contract",
@@ -81,17 +83,19 @@ describe("what a summary is by", () => {
     expect(byLabel(null)).toBe("");
   });
 
-  it("offers the management report its ten, the site first, with neither condition nor health", () => {
+  it("offers the management report its twelve, the site first, with neither condition nor health", () => {
     // By site is what the report shows unless asked otherwise, so it is offered first.
     expect(MANAGEMENT_BY.map((by) => by.value)).toEqual([
       "site",
       "region",
       "vendor",
+      "model",
       "kind",
       "type",
       "function",
       "owner",
       "operator",
+      "group",
       "contract",
       "tag",
     ]);

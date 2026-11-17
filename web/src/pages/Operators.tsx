@@ -2,6 +2,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
+import { BoxTree } from "../components/BoxTree";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { FormFields } from "../components/FormFields";
 import type { GridColumn } from "../components/grid/columns";
@@ -11,6 +12,7 @@ import { ContactChanges, PersonChooser } from "../components/Person";
 import { Notice, Problem } from "../components/Problem";
 import { EditForm } from "../components/RecordForm";
 import { Time } from "../components/Time";
+import { assignmentColumns, totalCount } from "../lib/assignments";
 import { formatTime, plural } from "../lib/format";
 import { queryBody, queryParams } from "../lib/gridQuery";
 import { useAction, useLoad, useTitle } from "../lib/hooks";
@@ -42,7 +44,6 @@ import {
   scopeHint,
   scopeLabel,
 } from "../lib/people";
-import { levelLabel, placePath } from "../lib/places";
 import { allows } from "../lib/roles";
 
 const COLUMNS: GridColumn<Operator>[] = [
@@ -477,19 +478,57 @@ function On({ operator }: { operator: Operator }) {
             <Link to={operatedGroupsPath(operator.hid)}>{plural(data.groups, "device group")}</Link>{" "}
             and {plural(data.places.length, "place")} as their own.
           </p>
-          {data.places.length > 0 && (
-            <ul data-testid="operator-places">
-              {data.places.map((place) => (
-                <li key={place.hid}>
-                  <Link to={placePath(place.level, place.hid)}>{place.path}</Link>
-                  <span className="muted"> · {levelLabel(place.level).toLowerCase()}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* 0.9.4: what it is on, drawn as a tree of boxes (P-177). */}
+          <OnTree operator={operator} />
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * What the label is on, as a tree of boxes (P-177): the operator at the top, then its
+ * places, its groups and its own items, each box with its counts, every count a link to
+ * exactly those items, and the exceptions within it marked.
+ */
+function OnTree({ operator }: { operator: Operator }) {
+  const found = useLoad(`operator-tree ${operator.hid} ${operator.row_version}`, (signal) =>
+    api.request("get", "/api/v1/operators/{hid}/assignments", {
+      path: { hid: operator.hid },
+      signal,
+    }),
+  );
+  const data = found.data;
+  const mark = markOf(operator);
+  return (
+    <div data-testid="operator-tree">
+      <Problem error={found.error} />
+      {found.loading && !data && (
+        <p role="status" className="muted loading-late">
+          Drawing what it is on…
+        </p>
+      )}
+      {data && (
+        <>
+          <BoxTree
+            label={`What ${operator.label} is on`}
+            root={{
+              key: operator.hid,
+              kind: "operator",
+              title: mark ? <OperatorMark mark={mark} withPerson /> : operator.label,
+              counts: [totalCount(data)],
+            }}
+            columns={assignmentColumns(data)}
+          />
+          <p className="hint">
+            Each count leads to its items in the grid, the minor items among them. A box with
+            something marked ! holds items beneath it that have another operator, their own or from
+            a group that ranks first. A place or a group with more beneath it than twenty shows the
+            first twenty, and leads to the rest.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

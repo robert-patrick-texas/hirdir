@@ -123,7 +123,9 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
 
   // Change the last day of support on the catalog entry: both items show it at once (S07).
   // The link of the item's facts: the walks of its values under Values in force name it too.
-  await region(page, "Identity").getByRole("link", { name: `${vendor} ${pid}` }).click();
+  await region(page, "Identity")
+    .getByRole("link", { name: `${vendor} ${pid}` })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: `${vendor} ${pid}` })).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(entryPath);
   const entryDetails = region(page, "Details");
