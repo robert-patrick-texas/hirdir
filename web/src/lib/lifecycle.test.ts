@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   dispositionsIn,
+  intentChoices,
   mayBeOnline,
   mayInheritAgain,
   nextStates,
   onlineText,
   type Rule,
   ruleOf,
+  standingChoices,
   standingOf,
   stateNames,
 } from "./lifecycle";
@@ -124,6 +126,78 @@ describe("dispositionsIn", () => {
   it("offers nothing where there is no state", () => {
     expect(dispositionsIn(RULES, null, "Spare")).toEqual([]);
     expect(dispositionsIn(RULES, "", null)).toEqual([]);
+  });
+});
+
+// What the form of standing offers, against the server's own cases for `standing_errors`
+// in tests/unit/test_rules.py: a combination is offered exactly where the server allows it.
+describe("standingChoices and intentChoices (P-191)", () => {
+  function offered(
+    state: string,
+    disposition: string | null,
+    online: boolean,
+    kept: string | null,
+  ): boolean {
+    const { dispositions, none } = standingChoices(RULES, state, kept);
+    const disposed = disposition === null ? none : dispositions.includes(disposition);
+    return disposed && intentChoices(RULES, state, disposition).includes(online);
+  }
+
+  const STANDINGS: [string, string | null, boolean, boolean][] = [
+    ["Purchased", null, false, true],
+    ["Purchased", null, true, false],
+    ["Purchased", "Staging", false, false],
+    ["Delivered", null, false, true],
+    ["Assigned", "Staging", false, true],
+    ["Assigned", "Spare", false, true],
+    ["Assigned", "Excess", false, true],
+    ["Assigned", "Excess", true, false],
+    ["Assigned", "Production", false, false],
+    ["Assigned", null, false, false],
+    ["Test", "Staging", true, true],
+    ["Test", "Staging", false, true],
+    ["Test", "Spare", false, false],
+    ["Prod", "Production", true, true],
+    ["Prod", "Production", false, false],
+    ["Prod", "Spare", true, true],
+    ["Prod", "Spare", false, true],
+    ["Prod", "Excess", false, false],
+    ["Prod", "Staging", true, false],
+    ["Released", null, false, true],
+    ["Archived", "Excess", false, false],
+  ];
+
+  it.each(STANDINGS)("in %s, %s and online %s is offered: %s", (state, disposition, online, ok) => {
+    expect(offered(state, disposition, online, null)).toBe(ok);
+  });
+
+  it("offers the disposition brought in, where the state keeps it", () => {
+    expect(offered("Down", "Spare", false, "Spare")).toBe(true);
+    expect(offered("Down", "Production", false, "Spare")).toBe(false);
+    expect(offered("Down", null, false, "Spare")).toBe(false);
+    expect(offered("Down", "Spare", true, "Spare")).toBe(false);
+    expect(offered("Down", null, false, null)).toBe(true);
+    expect(offered("Pending-Removal", "Excess", false, "Production")).toBe(true);
+    expect(offered("Pending-Removal", "Production", false, "Production")).toBe(true);
+    expect(offered("Pending-Removal", "Spare", false, "Production")).toBe(false);
+  });
+
+  it("offers a switch in production what its rule has, as the survey found it", () => {
+    expect(standingChoices(RULES, "Prod", "Production")).toEqual({
+      dispositions: ["Production", "Spare"],
+      none: false,
+    });
+    expect(intentChoices(RULES, "Prod", "Production")).toEqual([true]);
+    expect(intentChoices(RULES, "Prod", "Spare")).toEqual([true, false]);
+    expect(intentChoices(RULES, "Assigned", "Staging")).toEqual([false]);
+  });
+
+  it("offers everything before the rules are read, and the server judges", () => {
+    expect(standingChoices([], "Prod", "Production")).toEqual({
+      dispositions: ["Staging", "Production", "Spare", "Excess"],
+      none: true,
+    });
+    expect(intentChoices([], "Prod", "Production")).toEqual([true, false]);
   });
 });
 

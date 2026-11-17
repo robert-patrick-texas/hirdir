@@ -139,13 +139,15 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await expect(page.getByTestId("grid-total")).toHaveText("2 items");
   expect(await gridNames(page)).toEqual([first, second]);
   const grid = page.getByTestId("grid-items");
-  // Hide three columns, to bring the last ones into view, and ask for the estimated
-  // value, which the grid does not show until it is asked for.
+  // Hide four columns, to bring the last ones into view, and ask for the estimated
+  // value, which the grid does not show until it is asked for. Location and Site are
+  // shown from the start, and Expected online is not (P-193).
   await page.getByText("Columns", { exact: true }).click();
   const shown = page.getByRole("group", { name: "Columns to show" });
   await expect(shown.getByLabel("Estimated value", { exact: true })).not.toBeChecked();
-  for (const column of ["Expected online", "Owner", "Tags"]) {
-    await shown.getByLabel(column).uncheck();
+  await expect(shown.getByLabel("Expected online", { exact: true })).not.toBeChecked();
+  for (const column of ["Owner", "Location", "Site", "Tags"]) {
+    await shown.getByLabel(column, { exact: true }).uncheck();
   }
   await shown.getByLabel("Estimated value", { exact: true }).check();
   await page.getByText("Columns", { exact: true }).click();
@@ -251,13 +253,16 @@ test("catalog values and their sources, the grid, the lifecycle, a stale edit", 
   await expect(page.getByTestId("disposition")).toHaveText("Spare");
   await expect(page.getByTestId("intent")).toHaveText("Expected offline");
 
-  // Excess and online in Prod: the rules refuse it, the form says why, nothing changes.
-  await standing.getByLabel("Disposition").selectOption("Excess");
-  await standing.getByLabel("Expected online").selectOption({ label: "Yes" });
-  await standing.getByRole("button", { name: "Save standing" }).click();
+  // The form offers only what the rule of Prod allows (P-191): no Excess.
   await expect(
-    standing.getByText(/an item in Prod is one of Production, Spare, not Excess/),
-  ).toBeVisible();
+    standing.getByLabel("Disposition").locator("option", { hasText: "Excess" }),
+  ).toHaveCount(0);
+  // Production and offline in Prod, from the intent the item has, which is still offered:
+  // the rules refuse it, the form says why, nothing changes.
+  await standing.getByLabel("Disposition").selectOption("Production");
+  await standing.getByLabel("Expected online").selectOption({ label: "No" });
+  await standing.getByRole("button", { name: "Save standing" }).click();
+  await expect(standing.getByText(/a Production item in Prod is expected online/)).toBeVisible();
   await expect(page.getByTestId("disposition")).toHaveText("Spare");
   await expect(page.getByTestId("intent")).toHaveText("Expected offline");
 

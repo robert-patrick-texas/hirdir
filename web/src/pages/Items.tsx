@@ -6,7 +6,7 @@ import { BulkEdit } from "../components/BulkEdit";
 import { CoverItems } from "../components/Coverage";
 import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
-import { NewItem } from "../components/NewItem";
+import { madeLink, NewItem } from "../components/NewItem";
 import { Notice, Problem } from "../components/Problem";
 import { queryBody } from "../lib/gridQuery";
 import { useTitle } from "../lib/hooks";
@@ -46,6 +46,7 @@ export function Items() {
   const [turns, setTurns] = useState(0);
   const [reloads, setReloads] = useState(0);
   const [done, setDone] = useState("");
+  const [made, setMade] = useState<Item | null>(null); // By add another like it (P-192).
   const mayChange = allows(user.role, "inventory");
   const choices = useChoices();
   const rules = useRules();
@@ -69,12 +70,17 @@ export function Items() {
     <>
       <h1>Items</h1>
       <Problem error={choices.error ?? rules.error} />
-      <Notice text={done} />
+      <Notice text={done} {...(made && done === "Created" ? { link: madeLink(made) } : {})} />
       {adding && (
         <NewItem
           states={states}
           onCancel={() => setAdding(false)}
           onCreated={(item) => navigate(`/items/${encodeURIComponent(item.hid)}`)}
+          onAnother={(item) => {
+            setMade(item);
+            setDone("Created");
+            setReloads((count) => count + 1);
+          }}
         />
       )}
       {bulk && (

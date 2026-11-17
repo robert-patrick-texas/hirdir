@@ -209,7 +209,10 @@ describe("the standing and the owner in the item grid", () => {
 
   it("keeps the names those columns were remembered and exported under", () => {
     // An export writes the value in force under the plain name of the column.
-    const state = COLUMNS.filter((one) => !one.hide).map((one) => ({ colId: one.id }));
+    // Expected online is in the column chooser (P-193): asked for, it is exported.
+    const state = COLUMNS.filter((one) => !one.hide || one.id === "expected_online").map((one) => ({
+      colId: one.id,
+    }));
     const exported = exportColumns(COLUMNS, state);
     expect(exported).toContain("lifecycle_state");
     expect(exported).toContain("disposition");
@@ -622,12 +625,15 @@ describe("the location, the site and the region in the item grid", () => {
     expect(asked("owner_exception")).toMatchObject({ field: "owner_exception", kind: "boolean" });
   });
 
-  it("hides all four until they are asked for", () => {
+  it("shows the location and the site from the start, and hides the exception (P-193)", () => {
     const hidden = columnDefaults(COLUMNS)
       .filter((one) => one.hide)
       .map((one) => one.id);
-    for (const id of ["location.name", "site", "owner_exception", "owner_exception_reason"]) {
+    for (const id of ["owner_exception", "owner_exception_reason"]) {
       expect(hidden, id).toContain(id);
+    }
+    for (const id of ["location.name", "site"]) {
+      expect(hidden, id).not.toContain(id);
     }
   });
 });
@@ -900,7 +906,7 @@ describe("coverage, registrations and the purchase line in the item grid", () =>
 });
 
 describe("the columns a reader starts with", () => {
-  it("are the ones of 0.3.0, the health and the operator, which stands after the owner", () => {
+  it("are the ones of 0.3.0, the health and the operator, which stands after the owner, and where each is, in place of Expected online (P-193)", () => {
     const shown = columnDefaults(COLUMNS)
       .filter((one) => !one.hide)
       .map((one) => one.id);
@@ -911,10 +917,11 @@ describe("the columns a reader starts with", () => {
       "serial_number",
       "lifecycle_state",
       "disposition",
-      "expected_online",
       "health",
       "owner.label",
       "operator.label",
+      "location.name",
+      "site",
       "tags",
       "effective.ldos",
     ]);

@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -39,11 +39,13 @@ import { useAction, useLoad, useTitle } from "../lib/hooks";
 import {
   DISPOSITIONS,
   dispositionsIn,
+  intentChoices,
   mayBeOnline,
   mayInheritAgain,
   nextStates,
   onlineText,
   type Rule,
+  standingChoices,
   standingOf,
   stateNames,
 } from "../lib/lifecycle";
@@ -66,7 +68,7 @@ import {
 } from "../lib/options";
 import { ownerOption } from "../lib/owners";
 import type { FieldSpec } from "../lib/patch";
-import { placePath } from "../lib/places";
+import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
@@ -172,6 +174,8 @@ export function ItemDetail() {
           <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
         )}
       </h1>
+      {/* 0.9.5: links to the sections of the page that are on it (P-189). */}
+      {record && <SectionLinks version={`${record.hid} ${record.row_version}`} />}
       <Problem error={item.error} />
       <Problem error={choices.error ?? rules.error} />
       <Notice text={done} />
@@ -291,20 +295,82 @@ function Fact({
   label,
   children,
   change,
+  within,
+  more,
 }: {
   label: string;
   children: ReactNode;
   /** The name of the field of the form of details that changes it, for a link to it. */
   change?: string | false;
+  /** The form that field is in, where it is not the form of details. */
+  within?: string;
+  /** What stands after the value, as a link to the items there. */
+  more?: ReactNode;
 }) {
   return (
     <>
       <dt>{label}</dt>
       <dd>
         {children || <Dash />}
-        {change && <ChangeLink field={change} label={label} />}
+        {more}
+        {change && <ChangeLink field={change} label={label} {...(within ? { within } : {})} />}
       </dd>
     </>
+  );
+}
+
+/**
+ * Beside a place among the first facts, a link to the list of items at it and within it
+ * (P-189). Its name says which place.
+ */
+function ItemsHere({ hid, name, testId }: { hid: string; name: string; testId: string }) {
+  return (
+    <Link className="here-link" to={itemsWithin(hid)} data-testid={testId}>
+      items here<span className="visually-hidden"> at {name}</span>
+    </Link>
+  );
+}
+
+/**
+ * Under the name of an item, a row of links to the sections of its page (P-189). Only
+ * the sections that are on the page, for this item and this person, are named: they are
+ * read from the page as it stands, since each part decides for itself whether it shows.
+ * Each is a link to the section's heading, within the page.
+ */
+function SectionLinks({ version }: { version: string }) {
+  const nav = useRef<HTMLElement>(null);
+  const [sections, setSections] = useState<{ id: string; text: string }[]>([]);
+  useEffect(() => {
+    const page = nav.current?.parentElement;
+    if (!page || version === "") return;
+    function read() {
+      if (!page) return;
+      const found = [...page.querySelectorAll<HTMLElement>(":scope > section > h2[id]")].map(
+        (heading) => ({ id: heading.id, text: heading.textContent?.trim() ?? "" }),
+      );
+      setSections((was) =>
+        was.length === found.length &&
+        was.every((one, place) => one.id === found[place]?.id && one.text === found[place]?.text)
+          ? was
+          : found,
+      );
+    }
+    read();
+    const watcher = new MutationObserver(read);
+    watcher.observe(page, { childList: true, subtree: true, characterData: true });
+    return () => watcher.disconnect();
+  }, [version]);
+  const here = `${window.location.pathname}${window.location.search}`;
+  return (
+    <nav aria-label="Sections of the page" className="section-links" ref={nav}>
+      <ul>
+        {sections.map((section) => (
+          <li key={section.id}>
+            <a href={`${here}#${encodeURIComponent(section.id)}`}>{section.text}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 
@@ -319,14 +385,23 @@ const CHANGE_WAIT = 10_000;
  * follows when the field is there. It is a
  * button that reads as a link: it moves within the page and leaves its address as it is.
  */
-function ChangeLink({ field, label }: { field: string; label: string }) {
+function ChangeLink({
+  field,
+  label,
+  within = 'section[aria-labelledby="details"]',
+}: {
+  field: string;
+  label: string;
+  /** The form the field is in: the form of details, or that of a move (P-189). */
+  within?: string;
+}) {
   function go() {
     const until = performance.now() + CHANGE_WAIT;
     let moved = false;
     // The form waits for the lists it offers, which may come after its facts do: the
     // window moves to the form at once, and the keyboard to the field when it is there.
     function seek() {
-      const form = document.querySelector<HTMLElement>('section[aria-labelledby="details"]');
+      const form = document.querySelector<HTMLElement>(within);
       const input = form?.querySelector<HTMLElement>(`[name="${field}"]`) ?? null;
       if (input) {
         input.scrollIntoView({ block: "center" });
@@ -370,6 +445,7 @@ function Facts({ item, choices, mayChange }: FactsProps) {
   const location = item.effective.location_hid;
   const locationInherited = isFromAbove(location);
   const planned = item.effective.planned_location_hid;
+  const standing = standingOf(item);
   return (
     <section aria-labelledby="identity">
       <h2 id="identity">Identity</h2>
@@ -449,7 +525,19 @@ function Facts({ item, choices, mayChange }: FactsProps) {
         <Fact label="Operator" change={mayChange && "operator_hid"}>
           <Operator effective={item.effective.operator_hid} testId="operator" />
         </Fact>
-        <Fact label="Location" change={mayChange && "location_hid"}>
+        <Fact
+          label="Location"
+          change={mayChange && "location_hid"}
+          more={
+            typeof location.value === "string" && (
+              <ItemsHere
+                hid={location.value}
+                name={effectiveLabel(location)}
+                testId="items-at-location"
+              />
+            )
+          }
+        >
           {typeof location.value === "string" && (
             <span data-testid="location" data-source={location.source}>
               <Link
@@ -462,7 +550,15 @@ function Facts({ item, choices, mayChange }: FactsProps) {
             </span>
           )}
         </Fact>
-        <Fact label="Site">
+        <Fact
+          label="Site"
+          more={
+            location.site &&
+            location.site_hid && (
+              <ItemsHere hid={location.site_hid} name={location.site} testId="items-at-site" />
+            )
+          }
+        >
           {location.site && location.site_hid && (
             <Link to={placePath("site", location.site_hid)} data-testid="site">
               {location.site}
@@ -491,13 +587,32 @@ function Facts({ item, choices, mayChange }: FactsProps) {
             <FromAbove effective={planned} />
           </Fact>
         )}
+        {/* 0.9.5: the standing among the first facts, with Change to a move (P-189). */}
+        <Fact
+          label="Lifecycle state"
+          change={mayChange && "to"}
+          within='section[aria-labelledby="move"]'
+        >
+          {standing.state && (
+            <span
+              data-testid="standing-fact"
+              className={standing.inherited ? "inherited" : undefined}
+            >
+              {[standing.state, standing.disposition, onlineText(standing.online)]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </Fact>
         <Fact label="Management address">
           <ManagementAddresses addresses={item.addresses} />
         </Fact>
         <Fact label="Quantity">{String(item.quantity)}</Fact>
         <Fact label="Tags">{item.tags.join(", ")}</Fact>
         <Fact label="Description">{item.description}</Fact>
-        <Fact label="Comments">{item.comments}</Fact>
+        <Fact label="Comments" change={mayChange && "comments"}>
+          {item.comments}
+        </Fact>
         <Fact label="Procured">{item.procured_on}</Fact>
         <Fact label="Delivered">{item.delivered_on}</Fact>
         <Fact label="In service">{item.in_service_on}</Fact>
@@ -741,20 +856,6 @@ function Lifecycle(props: LifecycleProps) {
   const standing = standingOf(item);
   const lighter = standing.inherited ? "inherited" : undefined;
   const allowed = dispositionsIn(rules, item.lifecycle_state, item.disposition);
-  const withinState = useMemo<FieldSpec[]>(
-    () => [
-      {
-        name: "disposition",
-        label: "Disposition",
-        kind: "choice",
-        blank: "None",
-        options: DISPOSITIONS.map((name) => ({ value: name, label: name })),
-      },
-      // An item with a state is expected online or it is not: there is no blank to choose.
-      { name: "expected_online", label: "Expected online", kind: "tristate" },
-    ],
-    [],
-  );
   const hint =
     allowed.length > 0
       ? `An item in ${item.lifecycle_state} is ${allowed.join(" or ")}.`
@@ -817,19 +918,122 @@ function Lifecycle(props: LifecycleProps) {
           <p className="hint">
             Within a state this is an ordinary change. {hint} The state itself is changed by a move.
           </p>
-          <EditForm<Item, Schemas["ItemPatch"]>
-            specs={withinState}
-            record={item}
-            save={(body) =>
-              api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body })
-            }
-            onSaved={() => props.onChanged("The item's standing was changed.")}
+          <WithinState
+            item={item}
+            rules={rules}
+            onChanged={props.onChanged}
             onReload={props.onReload}
-            submitLabel="Save standing"
           />
         </section>
       )}
     </section>
+  );
+}
+
+/** The value of a yes-or-no select for an intent: blank for none. */
+function intentValue(online: boolean | null | undefined): string {
+  return online === true ? "true" : online === false ? "false" : "";
+}
+
+/**
+ * Change an item's disposition and intent within its state (P-191). Only what the rule of
+ * the state allows is offered, as the server's check has it: the dispositions of the rule,
+ * None only where it asks for none, and for Expected online only Yes where the disposition
+ * chosen must be online and only No where it may not be. What the item has now is offered
+ * all the same, allowed or not. The server judges the change; only what differs is sent.
+ */
+function WithinState({
+  item,
+  rules,
+  onChanged,
+  onReload,
+}: Pick<LifecycleProps, "item" | "rules" | "onChanged" | "onReload">) {
+  const action = useAction();
+  const [disposition, setDisposition] = useState(item.disposition ?? "");
+  const [online, setOnline] = useState(intentValue(item.expected_online));
+  const offered = standingChoices(rules, item.lifecycle_state, item.disposition);
+  const dispositions = DISPOSITIONS.filter(
+    (name) => offered.dispositions.includes(name) || name === item.disposition,
+  );
+  const intents = intentChoices(rules, item.lifecycle_state, disposition || null);
+  const known = ["disposition", "expected_online"];
+  const refused = fieldErrors(action.error, known).shown;
+  const changed =
+    disposition !== (item.disposition ?? "") || online !== intentValue(item.expected_online);
+
+  function chooseDisposition(next: string) {
+    setDisposition(next);
+    // An intent the disposition chosen does not allow gives way to the one it does.
+    const now = intentChoices(rules, item.lifecycle_state, next || null);
+    if (now.length === 1 && online !== intentValue(now[0])) setOnline(intentValue(now[0]));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const body: Schemas["ItemPatch"] = { row_version: item.row_version };
+    if (disposition !== (item.disposition ?? "")) body.disposition = disposition || null;
+    if (online !== intentValue(item.expected_online)) body.expected_online = online === "true";
+    const result = await action.run(() =>
+      api.request("patch", "/api/v1/items/{hid}", { path: { hid: item.hid }, body }),
+    );
+    if (result.ok) onChanged("The item's standing was changed.");
+  }
+
+  return (
+    <form onSubmit={submit} className="stack" noValidate>
+      <Problem error={action.error} shown={known} onReload={onReload} />
+      <div className="fields">
+        <SelectField
+          label="Disposition"
+          name="disposition"
+          value={disposition}
+          onChange={chooseDisposition}
+          error={refused.disposition}
+          disabled={action.busy}
+        >
+          {(offered.none || !item.disposition) && <option value="">None</option>}
+          {dispositions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Expected online"
+          name="expected_online"
+          value={online}
+          onChange={setOnline}
+          error={refused.expected_online}
+          disabled={action.busy}
+        >
+          {/* An item with a state is expected online or it is not: no blank to choose. */}
+          {item.expected_online == null && <option value="">—</option>}
+          {[true, false]
+            .filter((value) => intents.includes(value) || value === item.expected_online)
+            .map((value) => (
+              <option key={String(value)} value={intentValue(value)}>
+                {value ? "Yes" : "No"}
+              </option>
+            ))}
+        </SelectField>
+      </div>
+      <p className="actions">
+        <button type="submit" className="primary" disabled={action.busy || !changed}>
+          Save standing
+        </button>
+        <button
+          type="button"
+          disabled={action.busy || !changed}
+          onClick={() => {
+            setDisposition(item.disposition ?? "");
+            setOnline(intentValue(item.expected_online));
+            action.clear();
+          }}
+        >
+          Undo changes
+        </button>
+      </p>
+    </form>
   );
 }
 

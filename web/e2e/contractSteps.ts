@@ -65,11 +65,13 @@ export async function pickContract(form: Locator, number: string) {
 /**
  * The columns of the item grid that are on show from the start and that a scenario can
  * do without: the grid draws only the columns in view, so room is made for those asked for.
+ * 0.9.5: Location and Site are on show from the start, and Expected online is not (P-193).
  */
 export const ROOM = [
   "Serial number",
   "Disposition",
-  "Expected online",
+  "Location",
+  "Site",
   "Health",
   "Owner",
   "Operator",
