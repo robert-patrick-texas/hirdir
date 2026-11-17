@@ -1404,6 +1404,42 @@ Going back to 0.9.2 is by the backup the upgrade took, as under
 [Going back to the release before](#going-back-to-the-release-before): what was entered
 since is lost, and the users have their display names and emails again.
 
+### From 0.9.3 to 0.9.4
+
+The schema stays at revision `0012`: 0.9.4 has no migration. Nothing that is held is
+changed by the upgrade, and it writes no audit event. It takes its backup and stops and
+starts the service all the same. `/etc/hirdir/config.toml` gains no setting, so the
+upgrade says nothing of it.
+
+What is new:
+
+- **A minor item's own groups come first.** A minor item that is a member of a group of
+  its own, an optic in a group of optics, has that group's operator, location, planned
+  location and owner where it has none of its own, before those of the item it is in. Such
+  an item may show another value in force after the upgrade; it is worked out when it is
+  read, and nothing is written to it. A retired group passes nothing down to the groups
+  nested in it.
+- **Why a value is what it is**, on the page of an item and of a group; **what an operator
+  is on**, drawn on its page; and **a leaderboard**: a rank and a bar on every table of the
+  reports, the operators, how each has its items, and the device groups on the Scoreboard.
+- **The reports by group and by model**, and the items of each model on the Catalog.
+
+For a script that reads the API: `GET /items/{hid}/resolution`,
+`GET /device-groups/{hid}/resolution` and `GET /operators/{hid}/assignments` are new; the
+item list has `effective.operator_hid.source`, `effective.operator_hid.source_hid` and
+`group`; `by` on the summary and the management report takes `group` and `model`, and a row
+answers what is said of its group, its model or how its operator's items have it; and a
+catalog entry answers `items`.
+
+Going back to 0.9.3 needs no backup, because the schema is the same and 0.9.3 reads the
+database as 0.9.4 leaves it:
+
+```bash
+sudo apt install --allow-downgrades ./hirdir_0.9.3_amd64.deb
+```
+
+A minor item then has its values from the item it is in first, as 0.9.3 had it.
+
 ### If the upgrade stops
 
 In both cases below the service is left stopped, apt reports an error for `hirdir`,
@@ -1453,8 +1489,8 @@ it is expected. The second puts the backup in place, and the third finishes the
 installation and starts the service.
 
 A release that changed no schema is gone back from by the first command alone: it
-goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1 and 0.9.2
-are such releases. The section of each release above says what its upgrade changed.
+goes through, nothing is restored and nothing is lost. 0.4.2, 0.6.1, 0.9.1, 0.9.2
+and 0.9.4 are such releases. The section of each release above says what its upgrade changed.
 
 ## Remove
 
