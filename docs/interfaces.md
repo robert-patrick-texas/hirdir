@@ -1686,6 +1686,34 @@ Accounts and settings are not touched.
 | Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin |
 
+What 0.9.5 adds to these pages, for the work of each day:
+
+- **Home.** The totals come from the plain summary and do not wait for the summary by
+  operator, which is asked for apart for the one line that needs it; each total of
+  health is a link to the items with that health (P-195).
+- **Items.** Site and Location are shown from the start and Expected online is in the
+  column chooser (P-193). New item has a second button, Create and add another like it:
+  the page says the item was made, with a link to it, and the form stays open with what
+  the next one shares, and with the serial number, asset tag, name, host name and MAC
+  address blank (P-192).
+- **An item.** Under its name, links to the sections of the page. Among its first
+  facts, its lifecycle state, disposition and intent, with Change, and Change beside its
+  comments; beside its location and its site, a link, items here, to the list of items
+  filtered to that place (P-189). Where its disposition and intent are changed, only
+  what the lifecycle rule of its state allows is offered (P-191).
+- **Geography.** A box, Find a place, searches the sites by name and code and the
+  locations by name and code, and lists up to ten of each by their path, each a link
+  (P-188). On the page of a place, what is in force there, its contacts first, stands
+  above its files and links, and the email and the number of a contact are links that
+  write to it and call it (P-194).
+- **Reports.** The Scoreboard begins with links to its tables; a table of more than
+  twenty rows shows twenty and a button, Show all; the operators involved with a group
+  or a site are a number with the list behind it (P-196). The totals of health on the
+  summary are links to the items, within the view asked for (P-195).
+- **Contacts.** A contact that the server counts uses of, with no place, owner or
+  operator to list, is said to be named in agreements, contracts, vendors or circuits,
+  with the number, and not to be assigned nowhere (P-197).
+
 ### The grid
 
 One grid component is used on every list page.
@@ -1768,6 +1796,20 @@ A table wider than the page scrolls sideways within its own box and the page doe
 a form opened under a row of a table is brought wholly into the window when it fits there
 with the row it changes, and otherwise moves no further than keeps that row in view; and
 the audit trail links each change to the page of its record, where it has one (P-186).
+
+The menu bar has a box, Find an item, on every page: what is typed there opens the list
+of items with those words, minor items among them (P-187). In the filter box above any
+list, text that holds no condition of the short form is taken as words: a record matches
+when each word is held by one of the fields its list is known by, as an item's name,
+host name, serial number, asset tag and address. The words are sent as a tree of the
+filter grammar; a condition of the short form is sent as it always was. Text that is
+neither is answered with how that list's own short form reads.
+
+A form that changes a record keeps its buttons, Save and Undo, at the foot of the window
+while the form is in the window and its own foot is below it, and a form opened by a
+button New comes into the window with the keyboard in its first field (P-190).
+
+A count written in a sentence has the separator of thousands, as "34,778 items" (P-195).
 
 ### Times
 
