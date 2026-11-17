@@ -25894,7 +25894,8 @@
               "decides",
               "passed_over",
               "nothing",
-              "retired"
+              "retired",
+              "raises"
             ],
             "title": "Outcome",
             "type": "string"

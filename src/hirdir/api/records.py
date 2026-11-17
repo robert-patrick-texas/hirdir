@@ -1288,7 +1288,7 @@ class EffectiveOperator(EffectiveReference):
 ResolutionLevel = Literal[
     "own", "device_group", "parent_item", "catalog", "setting", "location", "site", "region"
 ]
-ResolutionOutcome = Literal["decides", "passed_over", "nothing", "retired"]
+ResolutionOutcome = Literal["decides", "passed_over", "nothing", "retired", "raises"]
 # A value of the walk: the HID of a reference, a decimal or a date as text, or a flag.
 WalkValue = str | bool | None
 

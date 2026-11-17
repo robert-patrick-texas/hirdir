@@ -164,7 +164,7 @@ def operated(
                         for one in nested[:MOST_BENEATH]
                     ],
                 ),
-                exceptions=counted(_all(_condition("group.hid", "eq", group.hid), others)),
+                exceptions=counted(_all(_condition("group", "within", group.hid), others)),
             )
         )
 

@@ -160,10 +160,11 @@ catalog, each with `value`, the value in force, `overrides`, the value it would 
 without its own where it has its own, and `steps` in the order of the walk. A step has
 `level`, one of `own`, `device_group`, `parent_item`, `catalog`, `setting`, `location`,
 `site` and `region`; the record it looks at, `hid` and `name`, and for a group its
-`type`, its `rank` among the item's groups from 1, and `via`, the group it is nested in
-that holds the value where the group holds none of its own; `value`, what that record
-holds, with its label; and `outcome`, `decides`, `passed_over`, `nothing` or `retired`, an operator or a group
-that is retired.
+`type`, its `rank` among the item's groups from 1, and `via_hid` and `via_name`, the group
+it is nested in that holds the value where the group holds none of its own; `value`, what that record
+holds, with its label; and `outcome`, `decides`, `passed_over`, `nothing`, `retired`, an operator or a group
+that is retired, or `raises`, the minimum of a support weight that raises the value found
+(P-155), which keeps the source it was found at.
 `GET /device-groups/{hid}/resolution` answers the same for a group, its own and then
 each group it is nested in. Both are read by every role, and work out what they say by
 the same walk as the value in force.
@@ -171,8 +172,9 @@ the same walk as the value in force.
 `GET /operators/{hid}/assignments` answers what an operator is on (P-177): `places`,
 each place given it as its own, with `level`, `path`, `items`, the items that have it
 from that place, `places_beneath`, the places beneath it that have it from there, and
-`exceptions`, those beneath it that have another; `groups`, each group given it as its
-own, with `type`, `items`, `groups_beneath` and `exceptions`; `own`, the items given it as
+`exceptions`, the items beneath it that have another operator; `groups`, each group given
+it as its own, with `type`, `items`, `groups_beneath` and `exceptions`, the items under it,
+at any depth of nesting, that have another; `own`, the items given it as
 their own, and `from_item`, the minor items that have it from the item they are in; and
 `totals`. Every count has `filter`, the filter of the item list that lists those items,
 by `effective.operator_hid`, `effective.operator_hid.source` and

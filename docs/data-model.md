@@ -243,8 +243,8 @@ of a controller domain are each where they hang. Every answer says where the val
 came from, `own`, `parent_item` or `device_group`, and from which record. The owner
 is had in the same way: an item with no owner of its own has the owner of its group, or
 of the item it is in, and is an exception when that owner is outside the
-team. A group still lists in `members_disagree` a member that has another owner, its
-own or from the item it is in.
+team. A group still lists in `members_disagree` a member whose owner in force is
+another: its own, from the item it is in, or from a group that ranks first.
 
 Taking a minor item out of its parent, by clearing `parent_item_hid` or naming another
 parent, keeps its record and its history. With no parent it is a major item, with

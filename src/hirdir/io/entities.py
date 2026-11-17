@@ -2077,42 +2077,39 @@ class Items(Entity):
         return [] if parent is None else [parent, *items.ancestors(run.db, parent)]
 
     @staticmethod
-    def _from_above(run: Run, record: Any | None, above: list[Item], field: str) -> str | None:
-        """Return what an item has in a field with none of its own: that of the nearest
-        item above it, or of a group the item at the top of the line is a member of."""
-        held = next((getattr(one, field) for one in above if getattr(one, field)), None)
-        if held is not None:
-            return held
+    def _from_above(
+        run: Run,
+        record: Any | None,
+        above: list[Item],
+        field: str,
+        skip: frozenset[str] | set[str] = frozenset(),
+    ) -> str | None:
+        """Return what an item has in a field with none of its own, by the walk of P-175:
+        its own groups, then the item above it and that item's groups, and so on to the
+        top. A value in `skip`, a retired operator, is passed over."""
         line = above if record is None else [record, *above]
-        if not line:
-            return None
-        top = line[-1].hid
-        return descent.from_groups(run.db, [top], field)[top].value
+        grouped = descent.from_groups(run.db, [one.hid for one in line], field, skip)
+        for one in line:
+            if one is not record:
+                value = getattr(one, field)
+                if value is not None and value not in skip:
+                    return value
+            found = grouped[one.hid].value
+            if found is not None:
+                return found
+        return None
 
     @staticmethod
     def _operator_above(
         run: Run, record: Any | None, given: Mapping[str, Any], above: list[Item]
     ) -> str | None:
-        """Return the operator an item has with none of its own: that of the item above
-        it, of a group the item at the top of the line is a member of, or of the place
-        it is, or will be, at."""
+        """Return the operator an item has with none of its own: from its own groups, the
+        item above it and that item's groups, up the line, or else from the place it is,
+        or will be, at."""
         gone = operators.released(run.db)
-        held = next(
-            (
-                one.operator_hid
-                for one in above
-                if one.operator_hid and one.operator_hid not in gone
-            ),
-            None,
-        )
+        held = Items._from_above(run, record, above, "operator_hid", gone)
         if held is not None:
             return held
-        line = above if record is None else [record, *above]
-        if line:
-            top = line[-1].hid
-            held = operators.from_groups(run.db, [top], gone)[top].value
-            if held is not None:
-                return held
         own = given.get("location_hid", record.location_hid if record is not None else None)
         place = own or Items._from_above(run, record, above, "location_hid")
         return operators.from_places(run.db, [place], gone)[place].value if place else None

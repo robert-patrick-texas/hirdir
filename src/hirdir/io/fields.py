@@ -182,37 +182,59 @@ ABOVE: tuple[Any, ...] = tuple(aliased(Item, name=f"above_{level}") for level in
 _LINE: tuple[Any, ...] = (Item, *ABOVE)
 
 
+# The first value each item has from its own groups, one table for each field, shared by
+# every level of every walk in a statement, so that it is worked out once (P-175).
+_FIRST: dict[str, Any] = {}
+
+
+def _first_from_groups(field: str, live: Any = None) -> Any:
+    """Return, as a table, each item that is a current member of a group with a value in
+    force in a field, with the value of the first such group, as `hirdir.domain.descent`
+    ranks them: a stack before a cluster before a controller domain before any other,
+    then by name and by HID; and `holder_hid`, the group that holds that value."""
+    if field in _FIRST:
+        return _FIRST[field]
+    reach = descent.group_reach(field, live)
+    member: Any = aliased(DeviceGroupMember, name=f"first_{field}_member")
+    group: Any = aliased(DeviceGroup, name=f"first_{field}_group")
+    rank = case(
+        *((group.type == kind, place) for place, kind in enumerate(descent.GROUP_ORDER)),
+        else_=len(descent.GROUP_ORDER),
+    )
+    ranked = (
+        select(
+            member.item_hid.label("item_hid"),
+            reach.c.value.label("value"),
+            reach.c.holder_hid.label("holder_hid"),
+            func.row_number()
+            .over(partition_by=member.item_hid, order_by=(rank, group.name_key, group.hid))
+            .label("place"),
+        )
+        .select_from(member)
+        .join(group, group.hid == member.group_hid)
+        .join(reach, reach.c.group_hid == group.hid)
+        .where(member.left_on.is_(None), group.record_status != "retired")
+        .subquery(f"ranked_{field}")
+    )
+    first = (
+        select(ranked.c.item_hid, ranked.c.value, ranked.c.holder_hid)
+        .where(ranked.c.place == 1)
+        .cte(f"first_{field}")
+    )
+    _FIRST[field] = first
+    return first
+
+
 def _from_groups(
     field: str, level: int, live: Any = None, column: str = "value"
 ) -> ColumnElement[Any]:
     """Return what the record at `level` of an item's line, 0 the item itself, has in a
-    field from the groups it is a current member of, as `hirdir.domain.descent` works it
-    out: that of the first group, a stack before a cluster before a controller domain
-    before any other and then by name, that has one in force, its own or from the group
-    it is nested in. With `column` of `holder_hid`, the group that holds that value."""
-    one = _LINE[level]
-    reach = descent.group_reach(field, live)
-    member: Any = aliased(DeviceGroupMember, name=f"{field}_{level}_{column}_member")
-    group: Any = aliased(DeviceGroup, name=f"{field}_{level}_{column}_group")
+    field from the groups it is a current member of: the value of the first of them that
+    has one in force. With `column` of `holder_hid`, the group that holds that value."""
+    first = _first_from_groups(field, live)
     return (
-        select(getattr(reach.c, column))
-        .select_from(member)
-        .join(group, group.hid == member.group_hid)
-        .join(reach, reach.c.group_hid == group.hid)
-        .where(
-            member.item_hid == one.hid,
-            member.left_on.is_(None),
-            group.record_status != "retired",
-        )
-        .order_by(
-            case(
-                *((group.type == kind, place) for place, kind in enumerate(descent.GROUP_ORDER)),
-                else_=len(descent.GROUP_ORDER),
-            ),
-            group.name_key,
-            group.hid,
-        )
-        .limit(1)
+        select(getattr(first.c, column))
+        .where(first.c.item_hid == _LINE[level].hid)
         .correlate(*_LINE)
         .scalar_subquery()
     )
@@ -236,12 +258,16 @@ LOCATION_IN_FORCE: ColumnElement[Any] = func.coalesce(*_walk("location_hid"))
 PLANNED_IN_FORCE: ColumnElement[Any] = func.coalesce(*_walk("planned_location_hid"))
 
 
+# The operator each location has from its place, shared by every statement's walks.
+_PLACES: Any = operators.location_reach()
+
+
 def _operator_in_force() -> ColumnElement[Any]:
     """Return the operator in force for an item, as `hirdir.domain.operators` works it
     out: the first of its walk, its own and its groups', then each item above it and
     that item's groups, or else that of the place it is at. An operator that is retired
     is passed over at every level."""
-    places = operators.location_reach()
+    places = _PLACES
     from_place = (
         select(places.c.operator_hid)
         .where(places.c.location_hid == LOCATION_IN_FORCE)
@@ -258,7 +284,7 @@ def _operator_source(hid: bool) -> ColumnElement[Any]:
     """Return how an item has its operator in force, `own`, `parent_item`,
     `device_group`, `location`, `site`, `region` or `none`, or with `hid` the record it
     has it from: the step of its walk that decides (P-177)."""
-    places = operators.location_reach()
+    places = _PLACES
 
     def of_place(column: Any) -> ColumnElement[Any]:
         return (
@@ -361,13 +387,13 @@ def nested_groups() -> Any:
     )
 
 
-def under_groups() -> Any:
+def under_groups(nested: Any = None) -> Any:
     """Return, as a table, each device group that is not retired paired with every item
     under it, each pair once (P-178): its current members, the current members of every
     group nested in it at any depth, and the minor items of all of them. An item is so
     in the row of each group it is under, as an item with several tags is in the row of
     each."""
-    nested = nested_groups()
+    nested = nested_groups() if nested is None else nested
     member: Any = aliased(DeviceGroupMember, name="under_member")
     minor: Any = aliased(Item, name="under_minor")
     start = (
@@ -388,7 +414,7 @@ def _under_group() -> tuple[ColumnElement[Any], Callable[[Session, str], ColumnE
     """Return the field of the groups an item is under, as a row of a report by group
     holds it (P-178): an expression that is blank where it is under none, and the test that
     it is under the group a filter names, by its HID or its name."""
-    under = under_groups()
+    under = UNDER_GROUPS
     some = select(func.min(under.c.group_hid)).where(under.c.item_hid == Item.hid).correlate(Item)
 
     def test(db: Session, text: str) -> ColumnElement[bool]:
@@ -400,6 +426,9 @@ def _under_group() -> tuple[ColumnElement[Any], Callable[[Session, str], ColumnE
     return some.scalar_subquery(), test
 
 
+# One of each, shared: a statement that names one twice names the same table (P-178).
+NESTED_GROUPS: Any = nested_groups()
+UNDER_GROUPS: Any = under_groups(NESTED_GROUPS)
 _UNDER_GROUP = _under_group()
 DEPTH: ColumnElement[Any] = case(
     *(
