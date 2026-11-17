@@ -3774,8 +3774,9 @@ class RowOperator(Model):
 
 
 class RowRecord(Model):
-    """What a row of a report by group or by model says of the record it is of (P-178,
-    P-180). Every field is null on the rows of anything else, and on the blank row."""
+    """What a row of a report by group, by model or by operator says of the record it is
+    of (P-178, P-180). Every field is null on the rows of anything else, and on the blank
+    row."""
 
     type: str | None = Field(
         default=None,
@@ -3789,6 +3790,22 @@ class RowRecord(Model):
     pid: str | None = Field(default=None, description="By model: its PID.")
     model_name: str | None = Field(default=None, description="By model: its name.")
     kind: str | None = Field(default=None, description="By model: its kind.")
+    own: int | None = Field(default=None, description="By operator: items given it as their own.")
+    from_item: int | None = Field(
+        default=None, description="By operator: minor items that have it from the item they are in."
+    )
+    from_group: int | None = Field(
+        default=None, description="By operator: items that have it from a group."
+    )
+    from_place: int | None = Field(
+        default=None, description="By operator: items that have it from a place."
+    )
+    groups_given: int | None = Field(
+        default=None, description="By operator: the groups given it as their own."
+    )
+    places_given: int | None = Field(
+        default=None, description="By operator: the regions, sites and locations given it."
+    )
 
 
 class SummaryRow(Measures, RowRecord):

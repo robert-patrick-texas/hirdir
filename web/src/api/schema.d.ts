@@ -10990,6 +10990,14 @@ export interface components {
       annual_support_cost: string;
       component_count: number;
       est_value: string;
+      /** By operator: items that have it from a group. */
+      from_group?: number | null;
+      /** By operator: minor items that have it from the item they are in. */
+      from_item?: number | null;
+      /** By operator: items that have it from a place. */
+      from_place?: number | null;
+      /** By operator: the groups given it as their own. */
+      groups_given?: number | null;
       /** Every item of the set, major and minor. */
       items: number;
       key: string | null;
@@ -11002,8 +11010,12 @@ export interface components {
       model_name?: string | null;
       /** By group: how many groups are nested in it, at any depth. */
       nested_groups?: number | null;
+      /** By operator: items given it as their own. */
+      own?: number | null;
       /** By model: its PID. */
       pid?: string | null;
+      /** By operator: the regions, sites and locations given it. */
+      places_given?: number | null;
       /** By group, the type of the group; by model, the type of the model. */
       type?: string | null;
       /** By model: the name of its vendor. */
@@ -12565,6 +12577,14 @@ export interface components {
     SummaryRow: {
       by_health: components["schemas"]["HealthCount"];
       component_count: number;
+      /** By operator: items that have it from a group. */
+      from_group?: number | null;
+      /** By operator: minor items that have it from the item they are in. */
+      from_item?: number | null;
+      /** By operator: items that have it from a place. */
+      from_place?: number | null;
+      /** By operator: the groups given it as their own. */
+      groups_given?: number | null;
       /** Every item of the set, major and minor. */
       items: number;
       /** The value, or the HID of the record. Null for none. */
@@ -12582,8 +12602,12 @@ export interface components {
       nested_groups?: number | null;
       /** With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null. */
       operators: components["schemas"]["RowOperator"][] | null;
+      /** By operator: items given it as their own. */
+      own?: number | null;
       /** By model: its PID. */
       pid?: string | null;
+      /** By operator: the regions, sites and locations given it. */
+      places_given?: number | null;
       support_weight: string;
       /** By group, the type of the group; by model, the type of the model. */
       type?: string | null;

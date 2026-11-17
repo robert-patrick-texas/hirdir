@@ -339,6 +339,68 @@ def _within(
     return test
 
 
+def nested_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with itself and
+    with every group nested in it at any depth. A retired group counts for nothing, so
+    what is nested in it is not reached through it, as nothing is passed down through it
+    (`hirdir.domain.descent`), and as the controllers of a domain are
+    not (`hirdir.domain.groups.controllers`)."""
+    inner: Any = aliased(DeviceGroup, name="nested_group")
+    start = (
+        select(DeviceGroup.hid.label("top_hid"), DeviceGroup.hid.label("group_hid"))
+        .where(DeviceGroup.record_status != "retired")
+        .cte("report_nested_groups", recursive=True)
+    )
+    # Each pair once: what is nested is never within itself, and were it so, the walk
+    # would still end.
+    return start.union(
+        select(start.c.top_hid, inner.hid)
+        .select_from(start)
+        .join(inner, inner.parent_group_hid == start.c.group_hid)
+        .where(inner.record_status != "retired")
+    )
+
+
+def under_groups() -> Any:
+    """Return, as a table, each device group that is not retired paired with every item
+    under it, each pair once (P-178): its current members, the current members of every
+    group nested in it at any depth, and the minor items of all of them. An item is so
+    in the row of each group it is under, as an item with several tags is in the row of
+    each."""
+    nested = nested_groups()
+    member: Any = aliased(DeviceGroupMember, name="under_member")
+    minor: Any = aliased(Item, name="under_minor")
+    start = (
+        select(nested.c.top_hid.label("group_hid"), member.item_hid.label("item_hid"))
+        .select_from(nested)
+        .join(member, member.group_hid == nested.c.group_hid)
+        .where(member.left_on.is_(None))
+        .cte("report_under_groups", recursive=True)
+    )
+    return start.union(
+        select(start.c.group_hid, minor.hid)
+        .select_from(start)
+        .join(minor, minor.parent_item_hid == start.c.item_hid)
+    )
+
+
+def _under_group() -> tuple[ColumnElement[Any], Callable[[Session, str], ColumnElement[bool]]]:
+    """Return the field of the groups an item is under, as a row of a report by group
+    holds it (P-178): an expression that is blank where it is under none, and the test that
+    it is under the group a filter names, by its HID or its name."""
+    under = under_groups()
+    some = select(func.min(under.c.group_hid)).where(under.c.item_hid == Item.hid).correlate(Item)
+
+    def test(db: Session, text: str) -> ColumnElement[bool]:
+        found = db.get(DeviceGroup, text.strip()) or groups.find_group(db, text)
+        if found is None:
+            raise refuse(f"there is no device group {text}")
+        return Item.hid.in_(select(under.c.item_hid).where(under.c.group_hid == found.hid))
+
+    return some.scalar_subquery(), test
+
+
+_UNDER_GROUP = _under_group()
 DEPTH: ColumnElement[Any] = case(
     *(
         (one.parent_item_hid.is_(None), level)
@@ -762,6 +824,14 @@ ITEMS = Listing(
         # The owner in force: a minor item has the owner of the item it is in.
         "owner.label": Field("text", Owner.label),
         "tags": _tags("item", Item),
+        # The groups it is under, at any depth of nesting and from the item it is in: what a
+        # row of a report by group holds (P-178). `group:within:<group>` and `group:empty`.
+        "group": Field(
+            "place",
+            _UNDER_GROUP[0],
+            within=_UNDER_GROUP[1],
+            within_takes="the HID or the name of a device group",
+        ),
         "group.hid": Field("reference", DeviceGroup.hid, among=_ITEM_GROUPS),
         # Sorted by the first of them, as the record lists its groups: by name.
         "group.name": Field(

@@ -72,3 +72,29 @@ def test_what_an_operator_is_on_is_counted_by_the_filters_it_links_to(make: Make
         found["totals"],
     ):
         assert _listed(make, count) == count["count"], count["filter"]
+
+
+def test_the_summary_by_operator_says_how_its_items_have_it(make: Maker) -> None:
+    """The leaderboard of operators: how the items of each have it, which add up to its
+    items, and the groups and places given it (P-178)."""
+    marks = _team(make)
+    ra = marks["RA"]["hid"]
+    places = make.layout()
+    _patch(make, f"/locations/{places['building']['hid']}", operator_hid=ra)
+    entry = make.entry(make.vendor())
+    switches = make.switches(entry, "sw", 4)
+    _patch(make, f"/items/{switches[0]['hid']}", location_hid=places["room"]["hid"])
+    make.group("custom-a", "custom", [(switches[1], "member")], operator_hid=ra)
+    _patch(make, f"/items/{switches[2]['hid']}", operator_hid=ra)
+    make.item(name="PS-A", parent_item_hid=switches[2]["hid"])
+
+    rows = {row["label"]: row for row in make.get("/reports/summary", by="operator")["rows"]}
+    mine = rows["RA"]
+    split = {name: mine[name] for name in ("own", "from_item", "from_group", "from_place")}
+    assert split == {"own": 1, "from_item": 1, "from_group": 1, "from_place": 1}
+    assert sum(split.values()) == mine["items"]
+    assert (mine["groups_given"], mine["places_given"]) == (1, 1)
+    # The blank row, and a row by anything else, say none of it.
+    assert rows[None]["own"] is None
+    by_vendor = make.get("/reports/summary", by="vendor")["rows"][0]
+    assert by_vendor["groups_given"] is None

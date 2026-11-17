@@ -18559,6 +18559,54 @@
             "title": "Est Value",
             "type": "string"
           },
+          "from_group": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items that have it from a group.",
+            "title": "From Group"
+          },
+          "from_item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: minor items that have it from the item they are in.",
+            "title": "From Item"
+          },
+          "from_place": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items that have it from a place.",
+            "title": "From Place"
+          },
+          "groups_given": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: the groups given it as their own.",
+            "title": "Groups Given"
+          },
           "items": {
             "description": "Every item of the set, major and minor.",
             "title": "Items",
@@ -18634,6 +18682,18 @@
             "description": "By group: how many groups are nested in it, at any depth.",
             "title": "Nested Groups"
           },
+          "own": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items given it as their own.",
+            "title": "Own"
+          },
           "pid": {
             "anyOf": [
               {
@@ -18645,6 +18705,18 @@
             ],
             "description": "By model: its PID.",
             "title": "Pid"
+          },
+          "places_given": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: the regions, sites and locations given it.",
+            "title": "Places Given"
           },
           "type": {
             "anyOf": [
@@ -27883,6 +27955,54 @@
             "title": "Component Count",
             "type": "integer"
           },
+          "from_group": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items that have it from a group.",
+            "title": "From Group"
+          },
+          "from_item": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: minor items that have it from the item they are in.",
+            "title": "From Item"
+          },
+          "from_place": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items that have it from a place.",
+            "title": "From Place"
+          },
+          "groups_given": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: the groups given it as their own.",
+            "title": "Groups Given"
+          },
           "items": {
             "description": "Every item of the set, major and minor.",
             "title": "Items",
@@ -27979,6 +28099,18 @@
             "description": "With `operators=true`: who looks after the items of the row, the one with the most first and nobody last. Otherwise null.",
             "title": "Operators"
           },
+          "own": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: items given it as their own.",
+            "title": "Own"
+          },
           "pid": {
             "anyOf": [
               {
@@ -27990,6 +28122,18 @@
             ],
             "description": "By model: its PID.",
             "title": "Pid"
+          },
+          "places_given": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "By operator: the regions, sites and locations given it.",
+            "title": "Places Given"
           },
           "support_weight": {
             "examples": [

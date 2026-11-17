@@ -65,3 +65,55 @@ def test_a_minor_items_own_group_comes_before_the_item_it_is_in(make: Maker) -> 
     )
     assert _in_force(make, optic, "location_hid")[:2] == (places["room"]["hid"], "parent_item")
     assert _listed(make, f"effective.location_hid:eq:{lab['hid']}") == set()
+
+
+def test_a_retired_group_passes_nothing_down(make: Maker) -> None:
+    """A group nested in a retired group has nothing from it, nor do its members: a
+    retired group counts for nothing, in the record, the list and the walk."""
+    places = make.layout()
+    domain = make.group("old-domain", "controller_domain", location_hid=places["room"]["hid"])
+    entry = make.entry(make.vendor())
+    switch = make.switches(entry, "sw", 1)[0]
+    cluster = make.group(
+        "wlc-pair", "cluster", [(switch, "active")], parent_group_hid=domain["hid"]
+    )
+    assert _in_force(make, switch, "location_hid")[0] == places["room"]["hid"]
+    now = make.get(f"/device-groups/{domain['hid']}")
+    make.post(f"/device-groups/{domain['hid']}/retire", {"row_version": now["row_version"]}, 200)
+
+    assert (
+        make.get(f"/device-groups/{cluster['hid']}")["effective"]["location_hid"]["value"] is None
+    )
+    assert _in_force(make, switch, "location_hid") == (None, "none", None)
+    assert _listed(make, f"effective.location_hid:eq:{places['room']['hid']}") == set()
+    walk = next(
+        one
+        for one in make.get(f"/device-groups/{cluster['hid']}/resolution")["fields"]
+        if one["field"] == "location_hid"
+    )
+    assert [(step["name"], step["outcome"]) for step in walk["steps"]] == [
+        ("wlc-pair", "nothing"),
+        ("old-domain", "retired"),
+    ]
+
+
+def test_a_group_row_and_the_item_list_under_that_group_agree(make: Maker) -> None:
+    """A row of the summary by group counts what `group:within` lists on the item list,
+    and the blank row what `group:empty:true` lists (P-178)."""
+    entry = make.entry(make.vendor())
+    switches = make.switches(entry, "sw", 5)
+    make.item(name="PS-A", parent_item_hid=switches[0]["hid"])
+    domain = make.group("east-wlc", "controller_domain", [(switches[0], "controller")])
+    make.group("wlc-pair", "cluster", [(switches[1], "active")], parent_group_hid=domain["hid"])
+    make.group("lobby", "custom", [(switches[1], "member"), (switches[2], "member")])
+
+    summary = make.get("/reports/summary", by="group")
+    rows = {row["label"]: row["items"] for row in summary["rows"]}
+    assert rows == {"east-wlc": 3, "wlc-pair": 1, "lobby": 2, None: 2}
+    for row in summary["rows"]:
+        condition = "group:empty:true" if row["key"] is None else f"group:within:{row['key']}"
+        assert len(_listed(make, condition)) == row["items"], row["label"]
+    # By name as well as by HID.
+    assert len(_listed(make, "group:within:East-WLC")) == 3
+    refused = make.get("/items", 422, filter="group:within:nowhere")
+    assert "no device group" in refused["detail"] + str(refused["errors"])

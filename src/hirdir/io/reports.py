@@ -35,8 +35,11 @@ from hirdir.db.models import (
     DeviceGroup,
     DeviceGroupMember,
     Item,
+    Location,
     Network,
     Owner,
+    Region,
+    Site,
     Tag,
     TagLink,
     Vendor,
@@ -148,6 +151,14 @@ class Described:
     pid: str | None = None
     model_name: str | None = None
     kind: str | None = None
+    # By operator: how its items have it, which add up to its items, and how many groups
+    # and places are given it as their own (P-178).
+    own: int | None = None
+    from_item: int | None = None
+    from_group: int | None = None
+    from_place: int | None = None
+    groups_given: int | None = None
+    places_given: int | None = None
 
 
 @dataclass(frozen=True)
@@ -340,50 +351,6 @@ def _terms(
     )
 
 
-def _nested_groups() -> Any:
-    """Return, as a table, each device group that is not retired paired with itself and
-    with every group nested in it at any depth. A retired group counts for nothing, so
-    what is nested in it is not reached through it, as the controllers of a domain are
-    not (`hirdir.domain.groups.controllers`)."""
-    inner: Any = aliased(DeviceGroup, name="nested_group")
-    start = (
-        select(DeviceGroup.hid.label("top_hid"), DeviceGroup.hid.label("group_hid"))
-        .where(DeviceGroup.record_status != "retired")
-        .cte("report_nested_groups", recursive=True)
-    )
-    # Each pair once: what is nested is never within itself, and were it so, the walk
-    # would still end.
-    return start.union(
-        select(start.c.top_hid, inner.hid)
-        .select_from(start)
-        .join(inner, inner.parent_group_hid == start.c.group_hid)
-        .where(inner.record_status != "retired")
-    )
-
-
-def _under_groups() -> Any:
-    """Return, as a table, each device group that is not retired paired with every item
-    under it, each pair once (P-178): its current members, the current members of every
-    group nested in it at any depth, and the minor items of all of them. An item is so
-    in the row of each group it is under, as an item with several tags is in the row of
-    each."""
-    nested = _nested_groups()
-    member: Any = aliased(DeviceGroupMember, name="under_member")
-    minor: Any = aliased(Item, name="under_minor")
-    start = (
-        select(nested.c.top_hid.label("group_hid"), member.item_hid.label("item_hid"))
-        .select_from(nested)
-        .join(member, member.group_hid == nested.c.group_hid)
-        .where(member.left_on.is_(None))
-        .cte("report_under_groups", recursive=True)
-    )
-    return start.union(
-        select(start.c.group_hid, minor.hid)
-        .select_from(start)
-        .join(minor, minor.parent_item_hid == start.c.item_hid)
-    )
-
-
 def _grouping(by: str) -> tuple[Any, Any, Any]:
     """Return what a report is grouped by: the key, its label, and a join it needs."""
     if by == "vendor":
@@ -437,7 +404,7 @@ def _grouping(by: str) -> tuple[Any, Any, Any]:
         return covering.c.contract_hid, covering.c.label, covered
     if by == "group":
         # Every group an item is under, and the blank row the items under none.
-        under = _under_groups()
+        under = fields.under_groups()
         named: Any = aliased(DeviceGroup, name="report_group")
 
         def grouped(query: Any) -> Any:
@@ -486,13 +453,68 @@ def _labels(db: Session, by: str, keys: Sequence[Any] = ()) -> dict[str, str]:
     return {choice.value: choice.label for choice in choices.list_choices(db, LABELLED[by])}
 
 
-def _described(db: Session, by: str, keys: Sequence[Any]) -> dict[str, dict[str, Any]]:
-    """Return what the record of each row says of itself, by group or by model: a
-    group's type, its current members and how many groups are nested in it; a model's
-    vendor, PID, name, kind and type. A report by anything else describes nothing."""
+# How an item has its operator, as the columns of a row by operator count it (P-178).
+SOURCE_COLUMNS = {
+    "own": "own",
+    "parent_item": "from_item",
+    "device_group": "from_group",
+    "location": "from_place",
+    "site": "from_place",
+    "region": "from_place",
+}
+
+
+def _by_operator(db: Session, terms: _Terms, hids: list[str]) -> dict[str, dict[str, Any]]:
+    """Return, for each operator of a report by operator, how the items of its row have
+    it, and how many groups and places are given it as their own (P-178)."""
+    told: dict[str, dict[str, Any]] = {
+        hid: {
+            "own": 0,
+            "from_item": 0,
+            "from_group": 0,
+            "from_place": 0,
+            "groups_given": 0,
+            "places_given": 0,
+        }
+        for hid in hids
+    }
+    counting = terms.source(
+        select(fields.OPERATOR_IN_FORCE, fields.OPERATOR_SOURCE, func.count(Item.hid))
+    ).group_by(fields.OPERATOR_IN_FORCE, fields.OPERATOR_SOURCE)
+    for hid, source, count in _run(db, counting):
+        column = SOURCE_COLUMNS.get(source)
+        if hid in told and column is not None:
+            told[hid][column] += count
+    given = (
+        (DeviceGroup, "groups_given"),
+        (Region, "places_given"),
+        (Site, "places_given"),
+        (Location, "places_given"),
+    )
+    for model, column in given:
+        counted = db.execute(
+            select(model.operator_hid, func.count())
+            .where(model.operator_hid.in_(hids), model.record_status != "retired")
+            .group_by(model.operator_hid)
+        )
+        for hid, count in counted:
+            if hid in told:
+                told[hid][column] += count
+    return told
+
+
+def _described(
+    db: Session, by: str, keys: Sequence[Any], terms: _Terms | None = None
+) -> dict[str, dict[str, Any]]:
+    """Return what the record of each row says of itself, by group, by model or by
+    operator: a group's type, its current members and how many groups are nested in it;
+    a model's vendor, PID, name, kind and type; how the items of an operator have it.
+    A report by anything else describes nothing."""
     hids = sorted({key for key in keys if key})
-    if not hids or by not in ("group", "model"):
+    if not hids or by not in ("group", "model", "operator"):
         return {}
+    if by == "operator":
+        return {} if terms is None else _by_operator(db, terms, hids)
     if by == "model":
         found = db.execute(
             select(CatalogEntry, Vendor.name)
@@ -509,7 +531,7 @@ def _described(db: Session, by: str, keys: Sequence[Any]) -> dict[str, dict[str,
             }
             for entry, vendor in found
         }
-    nested = _nested_groups()
+    nested = fields.nested_groups()
     beneath = dict(
         db.execute(
             select(nested.c.top_hid, func.count())
@@ -710,7 +732,7 @@ def summary(
     sums = _sums(db, terms, terms.weight, key, join)
     found = _run(db, counting.group_by(key, label))
     called = _labels(db, by, [row[0] for row in found])
-    told = _described(db, by, [row[0] for row in found])
+    told = _described(db, by, [row[0] for row in found], terms)
     involved = _involved(db, terms, key, join) if operators else None
     rows = [
         Row(
