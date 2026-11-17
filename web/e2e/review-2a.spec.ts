@@ -299,3 +299,95 @@ test("from an item to the items near it, to its state, to its comments and to it
   });
   expect(disabled.status(), "the file's own viewer is disabled at the end").toBe(200);
 });
+
+/** How far below the foot of the window an element ends, in pixels: 0 or less is in it. */
+async function belowTheWindow(target: Locator): Promise<number> {
+  return target.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().bottom - window.innerHeight),
+  );
+}
+
+test("Save stays in reach, the field with the keyboard is not under it, and New takes the keyboard (P-190)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  await places(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openItem(page, made.item ?? "", host("kiln-sw-01"));
+
+  // From Change beside the location to its field: Save is at the foot of the window.
+  await region(page, "Identity").getByRole("button", { name: "Change the location" }).click();
+  const details = region(page, "Details");
+  const location = details.getByLabel("Location", { exact: true });
+  await expect(location).toBeFocused();
+  const save = details.getByRole("button", { name: "Save", exact: true });
+  await expect(save).toBeInViewport({ ratio: 1 });
+  expect(await belowTheWindow(save), "Save is within the window").toBeLessThanOrEqual(0);
+
+  // Tab through the form from its first field: what has the keyboard is never beneath the
+  // buttons, which stay at the foot of the window.
+  const foot = details.locator(".form-foot");
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await details.locator("input, select, textarea").first().focus();
+  let steps = 0;
+  for (; steps < 80; steps += 1) {
+    const where = await page.evaluate(() => {
+      const focused = document.activeElement as HTMLElement | null;
+      const footer = document.querySelector('section[aria-labelledby="details"] .form-foot');
+      if (!focused || !footer || footer.contains(focused)) return null;
+      if (!focused.closest('section[aria-labelledby="details"]')) return null;
+      const box = focused.getBoundingClientRect();
+      const above = Math.min(footer.getBoundingClientRect().top, window.innerHeight);
+      return { top: box.top, bottom: box.bottom, above };
+    });
+    if (where === null) break;
+    expect(where.top, `field ${steps} is in the window`).toBeGreaterThanOrEqual(0);
+    expect(where.bottom, `field ${steps} is above the buttons`).toBeLessThanOrEqual(
+      where.above + 1,
+    );
+    await page.keyboard.press("Tab");
+  }
+  expect(steps, "the form has many fields to pass through").toBeGreaterThan(10);
+  await expect(foot).toBeInViewport();
+
+  // New contract, far down the page of contracts: the form comes into the window with the
+  // keyboard in its first field.
+  await page.goto("./contracts");
+  await expect(page.getByRole("heading", { level: 1, name: "Contracts" })).toBeVisible();
+  const newContract = page.getByRole("button", { name: "New contract" });
+  await newContract.scrollIntoViewIfNeeded();
+  await newContract.click();
+  const contractForm = region(page, "New contract");
+  await expect(contractForm.getByRole("heading", { name: "New contract" })).toBeInViewport();
+  await expect(contractForm.locator("input, select, textarea").first()).toBeFocused();
+  await contractForm.getByRole("button", { name: "Cancel" }).click();
+
+  // New item, while the lists it offers come late, as on a busy server.
+  await page.route("**/api/v1/catalog-entries*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await page.goto("./items");
+  await expect(page.getByRole("heading", { level: 1, name: "Items" })).toBeVisible();
+  await page.getByRole("button", { name: "New item" }).click();
+  const itemForm = region(page, "New item");
+  await expect(itemForm.getByLabel("Catalog entry")).toBeFocused();
+  await expect(itemForm.getByLabel("Catalog entry")).toBeInViewport();
+  await page.unroute("**/api/v1/catalog-entries*");
+  await itemForm.getByRole("button", { name: "Cancel" }).click();
+
+  // A page opened from a link begins at its top all the same, with no form taking the
+  // keyboard (P-167).
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Contracts" })
+    .click();
+  await expect(page.getByRole("heading", { level: 1, name: "Contracts" })).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator("main")).toBeFocused();
+
+  await expectClean(page, seen);
+});

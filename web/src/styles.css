@@ -435,6 +435,8 @@ legend {
    under, so that neither comes to rest beneath it. */
 html {
   scroll-padding-top: 3.5rem;
+  /* 0.9.5: and room for the buttons that stay at the foot of the window (P-190). */
+  scroll-padding-bottom: 4rem;
 }
 
 .live:empty {
@@ -598,6 +600,21 @@ tr.dim th {
 .here-link {
   margin-left: 0.6rem;
   font-size: 0.9rem;
+}
+
+/* 0.9.5: the buttons of a form that changes a record stay at the foot of the window while
+   the form is in the window and its own foot is below it (P-190). */
+.form-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 0.5rem 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.panel .form-foot {
+  background: var(--surface);
 }
 
 /* 0.9.5: under an item's name, links to the sections of its page (P-189). Not sticky. */

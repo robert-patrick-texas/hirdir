@@ -108,7 +108,8 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
         {...(notes ? { notes } : {})}
         disabled={action.busy}
       />
-      <p className="actions">
+      {/* 0.9.5: at the foot of the window while the form runs on below it (P-190). */}
+      <p className="actions form-foot">
         <button
           type="submit"
           className="primary"
@@ -130,6 +131,63 @@ export function EditForm<R extends { row_version: number }, B extends { row_vers
       </p>
     </form>
   );
+}
+
+// How long after a press of a button a form that opens is taken to be opened by it, in
+// milliseconds: a form may wait for the lists it offers, which a busy server sends late.
+const OPENED_WAIT = 10_000;
+
+/**
+ * The last press of a button, to tell a form opened by a press from one a page shows open
+ * as it loads, which begins at its top (P-167). Any click, of a link as well, takes the
+ * place of the one before; a press on another page is not this page's.
+ */
+let pressed: { at: number; path: string; button: Element } | null = null;
+
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "click",
+    (event) => {
+      const button = event.target instanceof Element ? event.target.closest("button") : null;
+      pressed = button ? { at: performance.now(), path: window.location.pathname, button } : null;
+    },
+    true,
+  );
+}
+
+/**
+ * Whether a form that has just opened was opened by the press of a button outside it, a
+ * moment before, on this page. The press is used up: it opens one form.
+ */
+function openedByPress(form: Element): boolean {
+  const press = pressed;
+  if (!press) return false;
+  if (performance.now() - press.at > OPENED_WAIT) return false;
+  if (press.path !== window.location.pathname || form.contains(press.button)) return false;
+  pressed = null;
+  return true;
+}
+
+/**
+ * A form opened by a press comes into the window and its first field takes the keyboard
+ * (P-190): the whole form where it fits in the window, and from its heading where not.
+ */
+function bringIntoView(section: HTMLElement): void {
+  const heading = section.querySelector<HTMLElement>("h2, h3");
+  if (section.getBoundingClientRect().height <= window.innerHeight) {
+    section.scrollIntoView({ block: "nearest" });
+  } else {
+    (heading ?? section).scrollIntoView({ block: "start" });
+  }
+  firstField(section)?.focus({ preventScroll: true });
+}
+
+/** The first field of a form that takes the keyboard. */
+function firstField(within: HTMLElement): HTMLElement | null {
+  const fields = within.querySelectorAll<HTMLElement>(
+    "form input:not([type=hidden]):not(:disabled), form select:not(:disabled), form textarea:not(:disabled)",
+  );
+  return [...fields].find((field) => field.getClientRects().length > 0) ?? null;
 }
 
 interface CreateFormProps<B, R> {
@@ -159,6 +217,12 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   const refused = fieldErrors(action.error, names).shown;
   const [form, refusedNow] = useShownRefusal();
   const headingId = `new-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const section = useRef<HTMLElement>(null);
+
+  // Opened by a press, the form comes into the window with the keyboard in it (P-190).
+  useEffect(() => {
+    if (section.current && openedByPress(section.current)) bringIntoView(section.current);
+  }, []);
 
   function change(name: string, value: FormValue) {
     setValues((was) => ({ ...was, [name]: value }));
@@ -183,7 +247,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   }
 
   return (
-    <section className="panel" aria-labelledby={headingId}>
+    <section className="panel" aria-labelledby={headingId} ref={section}>
       <h2 id={headingId}>{title}</h2>
       {children}
       <form onSubmit={submit} className="stack" noValidate ref={form}>
