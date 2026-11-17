@@ -1,6 +1,6 @@
-import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useId, useRef, useState } from "react";
 import { plural } from "../lib/format";
-import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
+import { useAsked, useFoundInView, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import type { Option } from "../lib/patch";
 import { Problem } from "./Problem";
 
@@ -62,6 +62,10 @@ export function PickField(props: SearchProps) {
   // person comes back to the tab: a record made meanwhile is found (P-183).
   useReloadOn(again, found.reload);
   useReloadOnReturn(found.refresh, searching);
+  // What is found is brought into the window, above the buttons at its foot (P-190).
+  const box = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useFoundInView(list, box, found.data);
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
@@ -105,6 +109,7 @@ export function PickField(props: SearchProps) {
       </p>
       <input
         id={id}
+        ref={box}
         type="search"
         name={name}
         value={typed}
@@ -127,40 +132,42 @@ export function PickField(props: SearchProps) {
           {error}
         </p>
       )}
-      <Problem error={found.error} />
-      <div role="status" aria-live="polite">
-        {searching && found.data && options.length === 0 && (
-          <>
-            <p className="muted">No {noun[0]} matches.</p>
-            {none?.(asked, again)}
-          </>
+      <div ref={list}>
+        <Problem error={found.error} />
+        <div role="status" aria-live="polite">
+          {searching && found.data && options.length === 0 && (
+            <>
+              <p className="muted">No {noun[0]} matches.</p>
+              {none?.(asked, again)}
+            </>
+          )}
+          {searching && found.loading && !found.data && (
+            <p className="muted loading-late">Searching…</p>
+          )}
+        </div>
+        {options.length > 0 && (
+          <ul className="pick-results" aria-label={`${many} that match`}>
+            {options.map((option) => (
+              <li key={option.value}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => choose({ value: option.value, label: option.label })}
+                >
+                  {option.label}
+                </button>
+                {option.draft && <span className="badge">Draft</span>}
+              </li>
+            ))}
+          </ul>
         )}
-        {searching && found.loading && !found.data && (
-          <p className="muted loading-late">Searching…</p>
+        {options.length > 0 && more > 0 && (
+          <p className="hint">
+            {plural(more, `more ${noun[0]}`)} {more === 1 ? "matches" : "match"}. Type more to
+            narrow them down.
+          </p>
         )}
       </div>
-      {options.length > 0 && (
-        <ul className="pick-results" aria-label={`${many} that match`}>
-          {options.map((option) => (
-            <li key={option.value}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => choose({ value: option.value, label: option.label })}
-              >
-                {option.label}
-              </button>
-              {option.draft && <span className="badge">Draft</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {options.length > 0 && more > 0 && (
-        <p className="hint">
-          {plural(more, `more ${noun[0]}`)} {more === 1 ? "matches" : "match"}. Type more to narrow
-          them down.
-        </p>
-      )}
     </div>
   );
 }

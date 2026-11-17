@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, useMemo, useState } from "react";
+import { type FormEvent, Fragment, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
@@ -22,7 +22,7 @@ import { MemberPicker } from "../components/MemberPicker";
 import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
-import { EditForm } from "../components/RecordForm";
+import { EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { Registrations } from "../components/Registrations";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
@@ -637,6 +637,9 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
     type,
     pending.map((row) => row.role),
   );
+  // Opened by New group, it comes into the window with the keyboard in it (P-190).
+  const section = useRef<HTMLElement>(null);
+  useOpenedIntoView(section);
 
   function change(name: string, value: FormValue) {
     setValues((was) => ({ ...was, [name]: value }));
@@ -674,7 +677,7 @@ function NewGroup({ onCancel, onCreated }: NewGroupProps) {
   }
 
   return (
-    <section className="panel" aria-labelledby="new-group">
+    <section className="panel" aria-labelledby="new-group" ref={section}>
       <h2 id="new-group">New group</h2>
       <Problem error={error} />
       <form onSubmit={submit} className="stack" noValidate>

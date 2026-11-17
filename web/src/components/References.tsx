@@ -6,15 +6,7 @@
 // opens in a new tab. With the Inventory role, files are added, chosen or dropped on the
 // section, and links; and each reference is changed in a panel of its own.
 
-import {
-  type DragEvent,
-  type FormEvent,
-  Fragment,
-  type ReactNode,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { type DragEvent, type FormEvent, Fragment, type ReactNode, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, type Schemas } from "../api";
 import { plural } from "../lib/format";
@@ -110,7 +102,10 @@ function chosenOf(
 
 /** The section Files and links of a record's page. */
 export function References({ holder, mayEdit, level = 2, children }: ReferencesProps) {
-  const id = useId();
+  // A name of its own, as the other sections of a page have, so that a link to it, as
+  // the section links of an item make, can be kept or sent (P-189). A page shows the
+  // section once: the item's, the circuit's, the catalog entry's and the place's do.
+  const id = "references";
   const sub = beneath(level);
   const what = recordNoun(holder.kind);
   const listed = useLoad(`references ${holder.kind} ${holder.hid}`, (signal) =>

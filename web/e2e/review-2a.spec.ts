@@ -459,10 +459,23 @@ test("Create and add another like it makes the item and keeps what the next one 
   await expect(serial).toHaveValue(`SN-${id}-A`);
   await expect(hostname).toHaveValue(host("batch-c"));
 
-  // Create alone opens the new item, as it did.
+  // Once one was made by the second button, Enter in a box makes the next as it does, as
+  // a scanner's Enter after the serial number would: the run goes on (A3 of the review).
   await serial.fill(`SN-${id}-C`);
+  await expect(form.getByTestId("enter-as-another")).toBeVisible();
+  await serial.press("Enter");
+  await expect(notice.getByRole("link", { name: label("Batch C") })).toBeVisible();
+  await expect(page).toHaveURL(/\/items$/);
+  await expect(serial).toBeFocused();
+  await expect(serial).toHaveValue("");
+  await expect(form.getByTestId("chosen-location_hid")).toContainText(label("Room 5"));
+
+  // Create alone opens the new item, as it did.
+  await serial.fill(`SN-${id}-D`);
+  await form.getByLabel("Name", { exact: true }).fill(label("Batch D"));
+  await hostname.fill(host("batch-d"));
   await form.getByRole("button", { name: "Create item" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: label("Batch C") })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: label("Batch D") })).toBeVisible();
 
   // The two made by the second button: the second has what the first shared.
   const read = async (hid: string) =>

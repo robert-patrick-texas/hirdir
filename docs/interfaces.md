@@ -1695,7 +1695,10 @@ What 0.9.5 adds to these pages, for the work of each day:
   column chooser (P-193). New item has a second button, Create and add another like it:
   the page says the item was made, with a link to it, and the form stays open with what
   the next one shares, and with the serial number, asset tag, name, host name and MAC
-  address blank (P-192).
+  address blank (P-192). Once an item has been made so, Enter in a box of the form makes
+  the next one as that button does, so that a scanner's Enter after a serial number
+  does not end the run; a box that takes Enter for itself, as a picker that searches,
+  keeps it.
 - **An item.** Under its name, links to the sections of the page. Among its first
   facts, its lifecycle state, disposition and intent, with Change, and Change beside its
   comments; beside its location and its site, a link, items here, to the list of items
@@ -1824,7 +1827,8 @@ renewals report and of circuit costs take the short form only, as before.
 
 A form that changes a record keeps its buttons, Save and Undo, at the foot of the window
 while the form is in the window and its own foot is below it, and a form opened by a
-button New comes into the window with the keyboard in its first field (P-190).
+button New comes into the window with the keyboard in its first field (P-190). What a
+field that searches finds is brought into the window as it comes, above those buttons.
 
 A count written in a sentence has the separator of thousands, as "34,778 items" (P-195).
 

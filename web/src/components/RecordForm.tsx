@@ -3,7 +3,15 @@
 // it belongs: a field's message beside its input, a stale version as a clear statement
 // that someone else changed the record, with an offer to read it again.
 
-import { type FormEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAction } from "../lib/hooks";
 import {
   buildCreate,
@@ -182,6 +190,37 @@ function bringIntoView(section: HTMLElement): void {
   firstField(section)?.focus({ preventScroll: true });
 }
 
+/**
+ * A form, its section, opened by a press comes into the window with the keyboard in its
+ * first field (P-190): for every form opened by a button New, those built here and those
+ * written by hand, as New group's.
+ */
+export function useOpenedIntoView(section: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    if (section.current && openedByPress(section.current)) bringIntoView(section.current);
+  }, [section]);
+}
+
+// The boxes in which Enter sends the form they stand in.
+const SENDS_ON_ENTER = new Set(["text", "search", "email", "tel", "url", "number", "password"]);
+
+/**
+ * Once a record has been made by the second button, Enter in a box of the form sends it
+ * as that button (P-192): a run of items, a scanner's Enter after each serial number, is
+ * not ended by the first button, which leaves the form. A box that takes Enter for itself,
+ * as a picker that searches, has said so first, and is left to it.
+ */
+function enterAsAnother(event: KeyboardEvent<HTMLFormElement>): void {
+  if (event.key !== "Enter" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+  if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+  const box = event.target;
+  if (!(box instanceof HTMLInputElement) || !SENDS_ON_ENTER.has(box.type)) return;
+  const button = event.currentTarget.querySelector<HTMLButtonElement>("button[data-another]");
+  if (!button || button.disabled) return;
+  event.preventDefault();
+  event.currentTarget.requestSubmit(button);
+}
+
 /** The first field of a form that takes the keyboard. */
 function firstField(within: HTMLElement): HTMLElement | null {
   const fields = within.querySelectorAll<HTMLElement>(
@@ -239,9 +278,7 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
   const section = useRef<HTMLElement>(null);
 
   // Opened by a press, the form comes into the window with the keyboard in it (P-190).
-  useEffect(() => {
-    if (section.current && openedByPress(section.current)) bringIntoView(section.current);
-  }, []);
+  useOpenedIntoView(section);
 
   const focus = another?.focus;
   useEffect(() => {
@@ -258,7 +295,8 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    // Which button sent it: Enter in a field is the first, which makes the record alone.
+    // Which button sent it: Enter in a field is the first, which makes the record alone,
+    // until one was made by the second, and then the second (`enterAsAnother`).
     const sender = (event.nativeEvent as SubmitEvent).submitter;
     const next = another && sender?.hasAttribute("data-another") ? another : null;
     const built = buildCreate<B>(specs, values);
@@ -286,7 +324,13 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
     <section className="panel" aria-labelledby={headingId} ref={section}>
       <h2 id={headingId}>{title}</h2>
       {children}
-      <form onSubmit={submit} className="stack" noValidate ref={form}>
+      <form
+        onSubmit={submit}
+        className="stack"
+        noValidate
+        ref={form}
+        {...(another && again > 0 ? { onKeyDown: enterAsAnother } : {})}
+      >
         <Problem error={action.error} shown={names} {...(labels ? { labels } : {})} />
         <FormFields
           specs={specs}
@@ -309,6 +353,11 @@ export function CreateForm<B, R>(props: CreateFormProps<B, R>) {
             Cancel
           </button>
         </p>
+        {another && again > 0 && (
+          <p className="hint" data-testid="enter-as-another">
+            Enter in a field now makes the next one as {another.label} does.
+          </p>
+        )}
       </form>
     </section>
   );

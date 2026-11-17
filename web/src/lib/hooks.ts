@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ApiError } from "../api/client";
 import { titleOf, useSite } from "./product";
 
@@ -246,4 +254,22 @@ export function useTitle(title: string): void {
   useEffect(() => {
     document.title = titleOf(title, productName);
   }, [title, productName]);
+}
+
+/**
+ * 0.9.5: what a picker found is brought into the window when it arrives for the box being
+ * typed in, so that the buttons that stay at the foot of the window do not cover it
+ * (P-190): only as far as it needs, and the padding of the page keeps it above them.
+ * `found` is the answer, a new one each time one arrives.
+ */
+export function useFoundInView(
+  list: RefObject<HTMLElement | null>,
+  box: RefObject<HTMLElement | null>,
+  found: unknown,
+): void {
+  useEffect(() => {
+    if (found === undefined || found === null) return;
+    if (!list.current || !box.current || document.activeElement !== box.current) return;
+    list.current.scrollIntoView({ block: "nearest" });
+  }, [list, box, found]);
 }

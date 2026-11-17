@@ -4,14 +4,14 @@
 // the first few that match are offered as buttons. Each one pressed is handed to the
 // page, which gathers them and sends them all together.
 
-import { type KeyboardEvent, useId, useState } from "react";
+import { type KeyboardEvent, useId, useRef, useState } from "react";
 import { api } from "../api";
 import { circuitLabel, circuitSearch } from "../lib/circuits";
 import type { FilterNode } from "../lib/filter";
 import { plural } from "../lib/format";
 import { queryBody } from "../lib/gridQuery";
 import { groupTypeLabel } from "../lib/groups";
-import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
+import { useAsked, useFoundInView, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import { PICK_LIMIT } from "../lib/pick";
 import { Problem } from "./Problem";
 
@@ -62,6 +62,10 @@ export function SearchPicker(props: SearchPickerProps) {
   // Asked again, by Enter, the same text or a return to the tab: read again (P-183).
   useReloadOn(again, found.reload);
   useReloadOnReturn(found.refresh, searching);
+  // What is found is brought into the window, above the buttons at its foot (P-190).
+  const box = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useFoundInView(list, box, found.data);
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
@@ -81,6 +85,7 @@ export function SearchPicker(props: SearchPickerProps) {
         <label htmlFor={id}>{label}</label>
         <input
           id={id}
+          ref={box}
           type="search"
           value={typed}
           disabled={disabled}
@@ -95,45 +100,47 @@ export function SearchPicker(props: SearchPickerProps) {
           {hint}
         </p>
       </div>
-      <Problem error={found.error} />
-      <div role="status" aria-live="polite">
-        {searching && found.data && offers.length === 0 && (
-          <p className="muted">
-            {found.data.total === 0
-              ? `No ${noun[0]} matches.`
-              : `Every ${noun[0]} that matches is taken.`}
+      <div ref={list}>
+        <Problem error={found.error} />
+        <div role="status" aria-live="polite">
+          {searching && found.data && offers.length === 0 && (
+            <p className="muted">
+              {found.data.total === 0
+                ? `No ${noun[0]} matches.`
+                : `Every ${noun[0]} that matches is taken.`}
+            </p>
+          )}
+          {searching && found.loading && !found.data && (
+            <p className="muted loading-late">Searching…</p>
+          )}
+        </div>
+        {offers.length > 0 && (
+          <ul className="pick-results" aria-label={`${capital} that match`}>
+            {offers.map((offer) => (
+              <li key={offer.hid}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onPick(offer);
+                    setTyped("");
+                    forget();
+                  }}
+                >
+                  {offer.label}
+                </button>
+                {offer.note && <span className="muted"> {offer.note}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {offers.length > 0 && more > 0 && (
+          <p className="hint">
+            {plural(more, `more ${noun[0]}`, `more ${noun[1]}`)} {more === 1 ? "matches" : "match"}.
+            Type more to narrow them down.
           </p>
         )}
-        {searching && found.loading && !found.data && (
-          <p className="muted loading-late">Searching…</p>
-        )}
       </div>
-      {offers.length > 0 && (
-        <ul className="pick-results" aria-label={`${capital} that match`}>
-          {offers.map((offer) => (
-            <li key={offer.hid}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => {
-                  onPick(offer);
-                  setTyped("");
-                  forget();
-                }}
-              >
-                {offer.label}
-              </button>
-              {offer.note && <span className="muted"> {offer.note}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {offers.length > 0 && more > 0 && (
-        <p className="hint">
-          {plural(more, `more ${noun[0]}`, `more ${noun[1]}`)} {more === 1 ? "matches" : "match"}.
-          Type more to narrow them down.
-        </p>
-      )}
     </div>
   );
 }
