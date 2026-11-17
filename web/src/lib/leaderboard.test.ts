@@ -12,6 +12,7 @@ import {
   SPLIT,
   scoreColumns,
   scoreCounts,
+  splitCsv,
   splitPath,
 } from "./scoreboard";
 import { sortRows } from "./sort";
@@ -117,12 +118,14 @@ describe("how the items of an operator have it", () => {
     expect(splitPath({ ...view, filter: "not a filter" }, OP, "own")).toBeNull();
   });
 
-  it("follow the health in the file of the operators", () => {
-    const lines = operatorsCsv([operator], "10.00").trimEnd().split("\r\n");
-    expect(lines[0]).toMatch(
-      /,unknown,own,from_item,from_group,from_place,groups_given,places_given$/,
-    );
-    expect(lines[1]).toMatch(/,10,0,0,0,2,1,4,3,1,2$/);
+  it("are a file of their own, one line for each operator and none for nobody", () => {
+    const lines = splitCsv([operator, nobody]).trimEnd().split("\r\n");
+    expect(lines).toEqual([
+      "operator_hid,operator,own,from_item,from_group,from_place,groups_given,places_given",
+      `${OP},row 00f1,2,1,4,3,1,2`,
+    ]);
+    // The file of the leaderboard keeps its own columns.
+    expect(operatorsCsv([operator], "10.00").split("\r\n")[0]).not.toContain("from_item");
   });
 });
 
