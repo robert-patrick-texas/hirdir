@@ -68,7 +68,12 @@ names of downloaded files (P-168), and whom to ask, the team that runs the
 installation, on About and, where an Admin chooses, on the sign-in page (P-169).
 0.9.3 follows 0.9.2 with what the owner asked after it was published: the kinds of
 external system an editable list, `system_kind`, that a site renames, adds to and
-retires values of as it does the other lists (P-170).
+retires values of as it does the other lists (P-170); a setting changed where it is
+listed (P-171); the contacts as the one list of people, of which a user and an
+operator are each a part, an operator internal where its person is a user and
+external where not, and two numbers for each person (P-172); and a username that an
+Admin changes (P-173). Its upgrade moves the name and the email of each user to a
+contact, and going back from it is by the backup.
 
 ## From 0.6.1 to 0.9.0
 

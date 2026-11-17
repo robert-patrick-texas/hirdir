@@ -126,6 +126,29 @@ of a file or a bulk edit, `max_export_hids` 10,000, and `import_batch_rows` 50 (
 for the one writer before it is answered `503`. Each is listed with the value the code
 uses, read from where it is used.
 
+### People
+
+Every person is a contact, and a user and an operator are each a part that a contact
+plays (P-172). `GET /contacts` answers, with each contact, `user`, the `hid` and
+`username` of the user it is, or nothing, and filters and sorts by `is_user`.
+
+`POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
+before, and the person: `contact_hid`, a contact that is no other user's and is not
+retired, or `contact`, with `name`, `email`, `organization`, `phone` and `phone2`, a
+new contact made in the same change, or neither. A service account takes neither.
+`PATCH /users/{hid}` takes `username`, another name that the same rule holds
+(P-173); `contact_hid`, another contact or `null` for none; and `disabled`. A user
+answers `contact`, its contact's `hid`, `name`, `email`, `phone`, `phone2` and
+`record_status`, and `display_name` and `email`, the contact's name and email, which
+a change of the user does not take: they are changed on the contact, by
+`PATCH /contacts/{hid}`. `q` on `GET /users` finds part of a username or of the
+name of its contact.
+
+An operator answers `contact` with that contact's `email`, `phone` and `phone2`,
+`user`, the user that contact is, where it is one, and `scope`: `internal` where the
+contact is a user's, `external` where it is not, and `null` where nobody is behind the
+label. `GET /operators` filters and sorts by `scope`.
+
 ## Filter grammar
 
 One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
@@ -176,7 +199,8 @@ references, `effective.owner_hid` is the owner in force, the item's own, that of
 item above it or that of its group, and `location_hid` and `planned_location_hid` the item's own; `site` and `region` are the
 names of its site and of the region the site is in, `site.code` the site's code, and
 `location.name` and `location.kind` those of the location; `operator.label` is the label of the operator in force and `operator.contact` the
-name of the person behind it, `operator.is_open` is true where nobody is,
+name of the person behind it, `operator.is_open` is true where nobody is, `operator.scope` is `internal` or
+`external` as the operator in force is (P-172),
 `effective.operator_hid` is that operator, blank for an item that nobody is assigned
 to, and `operator_hid` is the item's own. `owner_exception` is true
 for an item whose owner in force is outside the team, and `owner_exception_reason` is
@@ -320,7 +344,7 @@ the rows that a sort leaves tied.
 
 | Route | `sort` takes | With no `sort` |
 |---|---|---|
-| `GET /users` | `username`, `display_name`, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at` | by username |
+| `GET /users` | `username`, `display_name`, the name of its contact, `role`, `groups`, `is_service_account`, `disabled`, `last_sign_in_at` | by username |
 | `GET /audit-events` | `at`, `actor_name`, `via`, `action`, `record_type`, `record_hid` | newest first |
 | `GET /imports` | `created_at`, `file_name`, `entity`, `mode`, `status`, `row_count`, `created`, `updated`, `unchanged`, `rejected`, `created_by_name`, `rows_done`, `applied`, `stale`, `applied_at` | newest first |
 | `GET /imports/{hid}/rows` | `row`, `key`, `outcome`, `applied_outcome` | the order of the file |
@@ -401,8 +425,8 @@ contacts of vendors, and the support weight of a place.
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
-| `contacts` | `name`, `organization`, `email`, `phone`, `notes`, `record_status`, `tags` | |
-| `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open` |
+| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `user`, the username of the user the contact is |
+| `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and the `email`, `phone` and `phone2` of its contact |
 | `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
 | `locations` | `name`, `site`, `parent`, `code`, `kind`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
@@ -1415,7 +1439,7 @@ hirdir sites move 'Americas > Central > Site-2' 'Americas > East'
 hirdir items set <hid> location='Americas > Central > Site-2 > Building 1 > Room 102'
 hirdir items set --filter 'tags:has:for-site-3' planned_location='Americas > Central > Site-3 > Suite 300' --apply
 hirdir contacts list --filter 'organization:contains:Operations'
-hirdir operators list                            # the labels, who is behind each, which are open
+hirdir operators list                            # the labels, who is behind each, internal or external, which are open
 hirdir operators assign LM robin.achterberg@example.net   # hand over what LM looks after
 hirdir operators assign LM --open                # nobody behind it for now
 hirdir operators release LM                      # the label stands for nothing: the next level up decides
@@ -1529,6 +1553,7 @@ database directly, because it must work before any account exists:
 
 ```bash
 hirdir admin create-user --role admin NAME       # prints a new access code once
+hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org NAME   # and its contact
 hirdir admin reset-access-code NAME
 hirdir admin migrate
 hirdir admin backup
@@ -1597,8 +1622,8 @@ Accounts and settings are not touched.
 | Circuits | The grid of circuits, with Name, Enterprise ID, Type, Speed, Carrier, Carrier's number, A side, Z side, Monthly cost, Annual cost, Owner and Tags shown at first and the rest in the column chooser, filtered, sorted and exported by the server. A circuit has a page of its own: its fields, each side with its location's path, or its note where it has none, and its site contacts with the level each came from; its carriers with their numbers; the carrier's account team and support desk with where they came from, and those it names of its own; the devices on each side; its cost lines, with the monthly and annual totals; its groups; Files and links, its own references; and the forms to change it, to switch the side it counts at, and to retire it. A speed is entered as the port, and the rates down and up left blank for the full rate, and shown short, `1G / 200M / 20M`. Circuit groups have a list, with how many circuits each has and what they cost, and a page each, with its circuits to add and take out |
 | Addresses | Every address, with the item or group that has it; the networks |
 | Geography | The tree of regions, sites and locations with the items and components at or beneath each, and what is planned for each, for a filter of the item list; the inside of a site is fetched when it is opened. A place has a page of its own: its path, fields and tags, what it has in force with the level each thing came from, the contacts assigned to it, and the forms to change, move and retire it. A draft place lists what is planned for it, and making it active says first how many items that moves in. A region, a site and a location show their own links, each opening in a new tab, edited as a list; a place shows none of the places above it. Files and links lists a place's own references and then those of the places above it, each under the place it is on. A place shows its own support weight, a site the default where it has none and the minimum where it was raised, and a location's page lists the circuits that have a side there |
-| Contacts, Owners | Contacts: the list, and a contact with where it is assigned. Owners: the list, and an owner with its people, the primary first |
-| Operators | The labels, each with its colour, the person behind it and how much it is on. Hand a label over to another person, leave it open, release it and bring it back. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
+| Contacts, Owners | Contacts: the list of people, each marked where it is a user, and a contact with where it is assigned, the user it is and the operators it stands behind. Owners: the list, and an owner with its people, the primary first |
+| Operators | The labels, each with its colour, the person behind it, internal where that person is a user and external where not, the person's email and two numbers, and how much it is on. Hand a label over to another person, a contact that is a user, another contact or a new person, leave it open, release it and bring it back. The email and the numbers are changed there, on the person's contact. Wherever an operator is shown, in a grid, on a page or in a report, it is the label in its colour, as a link to this page, with the person's name beside it or on hover and a mark when it is open |
 | Contracts | The support agreements, each with the contracts grouped into it, and the contracts that stand by themselves. An agreement has a page of its own: its fields, its contracts with what each has from it and what each overrides, shown as an inherited value is shown everywhere, and the terms it had before, its purchase history, as a contract has its own. An override says what the agreement gives in its place, as the server answers it, and where the two are the same it says so: it stays as it is when the agreement's changes. A contract is put into an agreement, and taken out of one, on its own page. The list of contracts with how many items each covers. A contract has a page of its own: its fields and tags, and the items it covers, each with its dates, to add to several at a time and to end. **Renew** asks for the new number and the new period, says how many items follow, and changes the one record; a renewal that is still to begin is shown as the next term, and can be withdrawn; the terms it had before are listed beneath, each with the dates it had in force, a date it had from its agreement shown as inherited. Renewing an agreement is the same, and lists every contract that shares its period, each with a choice: keep its number, the default, take a new number that begins with the new term, or end with this term, and with the status it is to have, which the operator confirms there for the members that move forward: one, some or all of them are selected and given a choice and a status at once, and nothing else in the renewal changes a member's status. The answer says what was done with each, which members are to review, and how many items not to be renewed were left behind. An agreement's page lists its contracts, to select one, some or all and change them at once: their status, taken out of the agreement, or retired; and its members to review. A number that waits on the agreement's next term is shown as the contract's next term, with the agreement's dates. A contract may be marked not to be renewed, the team's note, which changes nothing by itself and is shown as such. The earlier terms of a contract are the parts of its history, each with its days and what began it: a renewal, joining an agreement or leaving one. **Renewals**, under Contracts, is the worklist: the counts of each list first, by vendor and agreement, each count leading to its rows when it is opened, and the rows of a list with their end, how long a renewal has been pending, marked when overdue, and how many items each covers. A change of a contract or an agreement that is refused as stale says, where it has a next term, that the term may have begun since the page was read. A contract that has lapsed is marked, and so is one whose renewal is pending, with the account manager to go through. A coverage that was a mistake is removed, and one that was ended because its item left is marked until the vendor has been told. The gaps and the expiries are the coverage report |
 | Purchases | The requests, each with its lines and what is still to come. A request has a page of its own: its lines, and for each the items that arrived on it, and where some of them are of another model than the line's, which 0.6.0 let in, how many, leading to them in the item grid. The list of lines has Of another model in its column chooser. Receiving a line asks for the serial numbers, the asset tags or the names of what arrived, or how many arrived that nothing is known of yet, the day and the location |
 | External systems | The systems, each with how many records are registered with it, and the registrations of each. An item and a device group show what they are registered with, and are registered from their own page; a member of a stack or a cluster also shows, to be read only, what that group is registered with. A registration that was a mistake is removed |
@@ -1607,7 +1632,7 @@ Accounts and settings are not touched.
 | Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements. Circuit costs: the year and the grouping to choose, by carrier unless another is chosen, each row with its circuits, the year's cost, and the monthly and annual figures, leading to its circuits |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on |
-| Admin | Users, groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. The Settings page has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
+| Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row (P-171). It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin |
 
 ### The grid

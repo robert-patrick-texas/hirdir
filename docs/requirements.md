@@ -60,6 +60,7 @@ cloud services, with their carriers, their monthly cost and the devices at each 
 | **Observed status** | What is seen of an item or a group: online, degraded or unreachable on the network, or present, seen by a person where it should be. Set by hand or by an import until a monitoring tool writes it. |
 | **Health** | What the condition, the observed status and the intent say together, as good, degraded, failed or unknown. For a stack or a cluster it follows from its members, and is worked out when read. |
 | **Owner** | The part of the organization that answers for an item: a team, a service, an outside party. It has its people, a primary and alternates. |
+| **Contact** | A person, or a shared mailbox, once: the name, the email and the numbers that every part a person plays reads. A user, who signs in, and an operator, who looks after what a label is on, are each such a part, and add only what is their own. |
 | **Operator** | A short label, initials or a code, that stands for the one member of the operations team who looks after what it is on: its steward. Given to an item, to a device group for all its members, or to a place for everything there. The person behind a label is changed in one place. |
 | **Network** | A label for an address space: a VRF, a tenant, a coloured network. |
 | **Registration** | A link from an item or group to an external system that knows it: a monitoring tool, an SDN controller, a cloud service. |

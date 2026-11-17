@@ -32,10 +32,13 @@ On a host that already has `hirdir`, the same command upgrades it: see
 ## Create the first Admin
 
 ```bash
-sudo hirdir admin create-user --role admin ada
+sudo hirdir admin create-user --role admin --name 'Ada Example' --email ada@example.org ada
 ```
 
 The command prints an access code once. Give `--access-code` to choose the code instead.
+`--name`, `--email`, `--phone` and `--phone2` make the contact that the user is: every
+person is a contact, and a user is a contact who signs in. Left out, the user has no
+contact and is shown by its username until an Admin gives it one.
 Everyone else is created in the web UI by an Admin.
 
 ## Put it behind nginx
@@ -1351,6 +1354,49 @@ sudo apt install --allow-downgrades ./hirdir_0.9.1_amd64.deb
 
 The page is named hirdir again and About names nobody. The settings of 0.9.2 stay in
 the database, unread by 0.9.1, and are in force again after the next upgrade.
+
+### From 0.9.2 to 0.9.3
+
+The schema goes from revision `0011` to `0012`. **This upgrade changes what is held**,
+which a release before 1.0.0 may do:
+
+- **Every person is a contact.** A user no longer keeps a display name or an email of
+  its own: it is the contact it names, and shows that contact's name, email and two
+  numbers. The upgrade gives each user that is no service account and has a display
+  name or an email a contact: the contact that already has that email, which is left as
+  it is, or a new contact with the user's display name, or its username where it had
+  none, and its email. A second user with the email of a contact that is already
+  another user's is given none. Each contact made and each user given one has an audit
+  event by `system`. Then `display_name` and `email` are dropped from the users, so a
+  service account is shown by its username and loses the display name it had.
+- **Contacts gain `phone2`**, a second number, blank.
+- **The kinds of external system are a list**, `system_kind`, loaded with the eight
+  kinds that were fixed, `monitoring` to `other`, which an Admin or Inventory now
+  renames, adds to and makes inactive in Admin › Choices. Every system keeps its kind.
+
+An operator keeps its contact. It is **internal** where that contact is a user's and
+**external** where it is not, so after the upgrade an operator whose contact has the
+email of a user is internal, and the others are external until somebody puts a user's
+contact behind them.
+
+What else is new:
+
+- **A setting is changed where it is listed**: Change opens the form beneath the row
+  of the setting.
+- **A username is changed** by an Admin, on the page of the user. The user signs in
+  under the new name; its sessions and tokens are kept.
+
+For a script that reads the API: a user answers `contact`, and `display_name` and
+`email` from it, which `PATCH /users/{hid}` no longer takes; it takes `username` and
+`contact_hid`, and `POST /users` takes `contact_hid` or `contact`. A contact answers
+`user` and `phone2`; an operator answers `scope` and its contact's numbers; and
+`external_systems.kind` is any value of the `system_kind` list, which
+`GET /choices?list=system_kind` gives. `hirdir admin create-user` takes `--name`,
+`--email`, `--phone` and `--phone2`.
+
+Going back to 0.9.2 is by the backup the upgrade took, as under
+[Going back to the release before](#going-back-to-the-release-before): what was entered
+since is lost, and the users have their display names and emails again.
 
 ### If the upgrade stops
 

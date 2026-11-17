@@ -488,12 +488,21 @@ site and of a region answers for those.
 
 ### `contacts` and `contact_assignments`
 
+The contacts are the one list of people: each person, or shared mailbox, once, with
+what is true of them whatever part they play. A part that a person plays is a record
+of its own that names the contact and holds only what belongs to that part: a user,
+who signs in (see Access records), and an operator, who looks after what a label is
+on. Nothing is copied from the contact to a part. A person who signs in, looks after
+a set of devices and is the technical contact of a site is one contact, and a new
+number entered once shows in all three places (P-172).
+
 | Field | Type | Notes |
 |---|---|---|
 | `contacts.name` | text | required. One record per person or shared mailbox |
-| `contacts.organization`, `phone`, `notes` | text | |
+| `contacts.organization`, `phone`, `phone2`, `notes` | text | `phone2` is a second number. Each is optional |
 | `contacts.email` | text | unique when present, without regard to case |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
+| `contacts.user` | read only | the `hid` and `username` of the user this contact is, or nothing; `is_user` is true where there is one |
 | `contact_assignments.contact_hid` | reference | blank only on an assignment that stops inheritance |
 | `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three, and not changed afterwards |
 | `contact_assignments.role` | choice | a value of the `contact_role` list: `shipping`, `technical`, `federal`, `operational`, `escalation` |
@@ -529,6 +538,13 @@ A short label that stands for the member of the team who looks after what it is 
 | `colour` | text | written `#1f6feb`, for the mark that lists and reports show |
 | `contact_hid` | reference | the person behind the label. Blank while nobody is |
 | `record_status` | choice | see Conventions |
+| `scope` | read only | `internal` where the contact behind it is a user's, `external` where it is not, external to `hirdir`; blank where nobody is behind it |
+
+The record of an operator answers its contact with that contact's `email`, `phone`
+and `phone2`, and the user that contact is, where it is one. They are the contact's:
+changed on the operator's page, they change on the contact, and so wherever that
+person is named. The person behind a label is a contact that is a user, another
+contact, or a new person, whose name, email and numbers make a new contact.
 
 Items, groups and places hold the label and never the person, so the person is
 changed in one place. Three things follow, each one change of one record with
@@ -1395,7 +1411,7 @@ here, because it is needed before the database can be asked. See
 
 | Record | Fields |
 |---|---|
-| `users` | `username` (unique), `display_name`, `email`, `is_service_account`, `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at` |
+| `users` | `username` (unique, and changed by an Admin, P-173), `contact_hid` (the contact the user is, unique; none for a service account), `is_service_account`, `access_code_hash`, `tokens_valid_after`, `disabled`, `last_sign_in_at` |
 | `user_groups` | `name` (unique), `description` |
 | `user_group_members` | `user_hid`, `group_hid` |
 | `role_grants` | `role` (`viewer`, `inventory`, `admin`), and exactly one of `user_hid` or `group_hid` |
@@ -1403,6 +1419,12 @@ here, because it is needed before the database can be asked. See
 
 A user's role is the highest of the roles granted to the user and to every group the
 user is in. A user with no grant can sign in and see nothing.
+
+A user is the part of a person who signs in (P-172). Its name, its email and its
+numbers are those of its contact, read when the user is read: the user answers
+`contact`, and `display_name` and `email`, the contact's name and email, to read
+only, blank where it has no contact. A user with no contact is shown by its
+username. A service account, which is no person, has no contact.
 
 ### `audit_events`
 
