@@ -12,7 +12,7 @@ import { SortTh } from "../components/SortTh";
 import { ConditionTotals, HeadlineTotals, ManagementTotals } from "../components/Totals";
 import { addressRoleLabel, holderKind, holderPath, networkText } from "../lib/addresses";
 import { contractPath } from "../lib/contracts";
-import { itemsPath, parseFilter, parseShort } from "../lib/filter";
+import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
 import { plural } from "../lib/format";
 import { HEALTHS } from "../lib/health";
 import { useLoad, useTitle } from "../lib/hooks";
@@ -205,7 +205,7 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
     const typed = draft.trim();
     // The short form is read here as the server reads it. A filter tree as JSON is the
     // server's to judge.
-    const parsed = typed.startsWith("{") ? null : parseShort(typed);
+    const parsed = typed.startsWith("{") ? null : parseFilter(typed, ITEM_WORDS);
     if (parsed && !parsed.ok) {
       setFilterError(parsed.error);
       return;
@@ -224,7 +224,7 @@ function ViewForm<B extends string>(props: ViewFormProps<B>) {
           value={draft}
           onChange={setDraft}
           autoComplete="off"
-          hint="The filter of the item list: field:op:value, as in tags:has:refresh-2030"
+          hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or the filter of the item list: field:op:value, as in tags:has:refresh-2030"
           error={filterError || filterRefused}
         />
         <SelectField
@@ -301,7 +301,7 @@ export function Summary() {
   const operators = useOperatorMarks(by === "operator");
   // Each total of health leads to the items it counts, within this view (P-195), once
   // the answer on show is the one of this view.
-  const read = parseFilter(view.filter);
+  const read = parseFilter(view.filter, ITEM_WORDS);
   const healthHref =
     read.ok && !summary.loading
       ? healthHrefOf(

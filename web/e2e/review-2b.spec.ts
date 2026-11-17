@@ -154,3 +154,130 @@ test("P-195: Home shows its totals before the summary by operator, and a total o
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
   await expectClean(page, seen);
 });
+
+// The items the scenarios of words find, by host name and by serial number.
+const words = { made: false, core: [] as string[] };
+
+async function wordItems(request: APIRequestContext, account: Account) {
+  const headers = await places(request, account);
+  if (!words.made) {
+    for (const host of [`core-${id}-1`, `core-${id}-2`, `edge-${id}-1`]) {
+      const { hid } = await make(request, headers, "/items", { hostname: host });
+      if (host.startsWith("core")) words.core.push(hid);
+    }
+    await make(request, headers, "/items", { name: label("Spare"), serial_number: `SN${id}Q` });
+    words.made = true;
+  }
+}
+
+test("P-187: plain words in the filter box find items, and Export CSV holds the rows shown", async ({
+  page,
+  account,
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  await wordItems(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await page.goto("./items");
+  const box = page.getByLabel("Filter", { exact: true });
+  await expect(box).toBeVisible();
+
+  // Two words, each held by one of the fields an item is known by: no condition typed.
+  await box.fill(`core ${id}`);
+  await box.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  await expect(box).not.toHaveAttribute("aria-invalid", "true");
+  // A serial number, in any case.
+  await box.fill(`sn${id}q`);
+  await box.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+
+  // Words, then Export CSV: the file holds the rows shown, and no other.
+  await box.fill(`core ${id}`);
+  await box.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export CSV" }).click();
+  const file = await download;
+  const path = testInfo.outputPath(file.suggestedFilename());
+  await file.saveAs(path);
+  const { readFile } = await import("node:fs/promises");
+  const lines = (await readFile(path, "utf8")).replace(/\n$/, "").split("\n");
+  expect(lines, "a header row and the two rows shown").toHaveLength(3);
+  expect(lines.slice(1).map((line) => line.split(",")[0]).sort()).toEqual([...words.core].sort());
+
+  // Text that is neither words nor conditions is answered with the list's own example.
+  await page.goto("./contacts");
+  const contacts = page.getByLabel("Filter", { exact: true });
+  await contacts.fill(`rowan tags:has:${id}`);
+  await contacts.press("Enter");
+  await expect(contacts).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText(/as in organization:contains:Operations/).first()).toBeVisible();
+  await expect(page.getByText(/lifecycle_state:in:Test,Prod/)).toHaveCount(0);
+  // And words find a contact by its name or its email.
+  await contacts.fill(`rowan.${id}@example`);
+  await contacts.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("1 contact");
+
+  // Owners has the box the other lists have.
+  await page.goto("./owners");
+  await expect(page.getByLabel("Filter", { exact: true })).toBeVisible();
+  await expectClean(page, seen);
+});
+
+test("P-187: words typed while the list is still being read on a busy server still find the items", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  await wordItems(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  // Every read of the item list answers late.
+  await page.route("**/api/v1/items/query", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue().catch(() => {});
+  });
+  await page.goto("./items");
+  const box = page.getByLabel("Filter", { exact: true });
+  // Before the whole list has come, twice: each read that is let go is ended.
+  await box.fill(`edge ${id}`);
+  await box.press("Enter");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await box.fill(`core ${id}`);
+  await box.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items", { timeout: 20_000 });
+  await page.unroute("**/api/v1/items/query");
+  await expectClean(page, seen);
+});
+
+test("P-187: Find an item, in the menu bar of every page, opens the items with those words", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await wordItems(request, account);
+  const seen = await watch(page.context());
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signIn(page, account);
+  await page.goto("./about");
+  const find = page.getByRole("search", { name: "Find an item" });
+  // On the row of who is signed in: the menu bar is no taller for it.
+  const signOut = await page.getByRole("button", { name: "Sign out" }).boundingBox();
+  const box = await find.boundingBox();
+  expect(box && signOut && Math.abs(box.y - signOut.y) < 4, "on the row of Sign out").toBe(true);
+
+  await page.evaluate(() => window.scrollTo(0, 200));
+  await find.getByRole("searchbox", { name: "Find an item" }).fill(`edge ${id}`);
+  await find.getByRole("searchbox", { name: "Find an item" }).press("Enter");
+  await expect(page).toHaveURL(/\/items\?filter=edge%20.*&minor=1$/);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await expect(page.getByLabel("Filter", { exact: true })).toHaveValue(`edge ${id}`);
+  // The page begins at its top, with the keyboard in its content (P-167).
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator("main")).toBeFocused();
+  await expectClean(page, seen);
+});

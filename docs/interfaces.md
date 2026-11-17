@@ -1803,7 +1803,24 @@ list, text that holds no condition of the short form is taken as words: a record
 when each word is held by one of the fields its list is known by, as an item's name,
 host name, serial number, asset tag and address. The words are sent as a tree of the
 filter grammar; a condition of the short form is sent as it always was. Text that is
-neither is answered with how that list's own short form reads.
+neither, as words with a condition after them, is answered with how that list's own short
+form reads. Up to eight words are taken at once. What a list is known by: an item by its
+`name`, `hostname`, `serial_number`, `asset_tag` and `address`; a contact by `name` and
+`email`; a catalog entry by `pid` and `model_name`; a vendor, a capacity line, an external
+system and a circuit group by `name`; an operator by `label`; an owner by `label` and
+`organization`; an agreement by `name` and `number`; a contract, on Contracts and on
+Renewals, by `number` and `agreement.name`; a device group by `name` and `hostname`; a
+circuit by `name`, `enterprise_circuit_id` and `carrier_circuit_number`; an address by
+`address`, `item.name` and `group.name`; a purchase request by `reference`, a purchase
+line by `request.reference`, `catalog.pid` and `catalog.model_name`; and a replacement
+by `old.name`, `old.serial_number`, `new.name` and `new.serial_number`. The words stay
+as typed in the box and in what the grid remembers, and each thing the grid does with
+its rows, the count, Select all that match, Copy, Export, Bulk edit and Cover with a
+contract, sends the same tree. The filter of a view of the items, on the summary, the
+management report, the scoreboard, Geography, coverage and end of life, takes words as
+the item list does: they stay as typed in the page's address and are sent as their tree,
+and a link from such a view to the item list carries them. The filter boxes of the
+renewals report and of circuit costs take the short form only, as before.
 
 A form that changes a record keeps its buttons, Save and Undo, at the foot of the window
 while the form is in the window and its own foot is below it, and a form opened by a

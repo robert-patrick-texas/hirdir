@@ -7,7 +7,7 @@
 // Nothing is counted or summed here.
 
 import type { Schemas } from "../api/client";
-import { all, any, type FilterNode, type ItemsView, itemsViewPath } from "./filter";
+import { all, any, type FilterNode, type ItemsView, itemsViewPath, sentFilter } from "./filter";
 import { plural } from "./format";
 import { groupTypeLabel } from "./groups";
 import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
@@ -198,7 +198,8 @@ export function summaryQuery<B extends string = By>(
   include_archived?: boolean;
   include_drafts?: boolean;
 } {
-  const filter = view.filter.trim();
+  // Words are sent as the tree of them (P-187).
+  const filter = sentFilter(view.filter);
   return {
     ...(filter === "" ? {} : { filter }),
     ...(view.by === "" ? {} : { by: view.by }),

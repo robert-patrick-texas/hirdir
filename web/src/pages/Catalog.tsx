@@ -328,6 +328,7 @@ export function Catalog() {
           rowLink={(entry) => `/catalog/${encodeURIComponent(entry.hid)}`}
           dimmed={(entry) => entry.record_status !== "active"}
           shortFilter="vendor:eq:Cisco pid:glob:C93*"
+          quickFields={["pid", "model_name"]}
           startFilter={startFilter}
           switches={{ archived: "Include retired", drafts: "Include drafts" }}
         >

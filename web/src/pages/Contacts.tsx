@@ -197,6 +197,7 @@ export function Contacts() {
         rowLink={(contact) => `/contacts/${encodeURIComponent(contact.hid)}`}
         dimmed={(contact) => contact.record_status !== "active"}
         shortFilter="organization:contains:Operations tags:has:on-call"
+        quickFields={["name", "email"]}
         startFilter={startFilter}
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >

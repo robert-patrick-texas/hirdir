@@ -3,7 +3,7 @@
 // force; nothing of that is worked out again here. This only lays the answers out.
 
 import type { Schemas } from "../api/client";
-import { all, any, type FilterNode, itemsPath } from "./filter";
+import { all, any, type FilterNode, itemsPath, sentFilter } from "./filter";
 import type { Option } from "./patch";
 
 export type Region = Schemas["RegionOut"];
@@ -145,7 +145,8 @@ export function treeQuery(
   include_archived?: boolean;
   include_drafts?: boolean;
 } {
-  const filter = view.filter.trim();
+  // Words are sent as the tree of them (P-187).
+  const filter = sentFilter(view.filter);
   return {
     ...(filter === "" ? {} : { filter }),
     ...(part.root === undefined ? {} : { root: part.root }),

@@ -501,6 +501,7 @@ export function Capacity() {
             rowLink={(line) => capacityLinePath(line.hid)}
             dimmed={(line) => line.record_status !== "active" || !line.in_date}
             shortFilter="side:eq:supply category:eq:staff"
+            quickFields={["name"]}
             startFilter={startFilter}
             switches={{ archived: "Include archived", drafts: "Include drafts" }}
           >

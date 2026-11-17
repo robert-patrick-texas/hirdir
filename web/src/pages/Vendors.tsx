@@ -117,6 +117,7 @@ export function Vendors() {
         rowId={(vendor) => vendor.hid}
         rowLink={(vendor) => `/vendors/${encodeURIComponent(vendor.hid)}`}
         shortFilter="name:contains:Networks review_status:eq:unreviewed"
+        quickFields={["name"]}
         startFilter={startFilter}
       >
         {allows(user.role, "inventory") && !adding && (

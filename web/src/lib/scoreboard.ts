@@ -8,7 +8,14 @@
 // compared here as a whole number of hundredths, never as a floating-point number.
 
 import type { Schemas } from "../api/client";
-import { all, type Condition, itemsPath, itemsViewPath, parseFilter } from "./filter";
+import {
+  all,
+  type Condition,
+  ITEM_WORDS,
+  itemsAndCondition,
+  itemsViewPath,
+  parseFilter,
+} from "./filter";
 import { HEALTHS } from "./health";
 import { markOf } from "./operators";
 import type { CountColumns } from "./rank";
@@ -276,13 +283,11 @@ export function underOpenLabels(rows: readonly ScoreRow[]): {
 
 /**
  * The grid of the items of one row: the filter of the view, with the condition of the
- * row added to it. Only a filter in the short form can be added to: for a view asked
- * for with a filter tree there is no such link, and null is answered.
+ * row added to it. Only a filter in the short form, or words (P-187), can be added to:
+ * for a view asked for with a filter tree there is no such link, and null is answered.
  */
 export function rowItemsPath(viewFilter: string, condition: string): string | null {
-  const filter = viewFilter.trim();
-  if (filter.startsWith("{")) return null;
-  return itemsPath(`${filter} ${condition}`.trim());
+  return itemsAndCondition(viewFilter, condition);
 }
 
 /** The condition that keeps the items of one operator, or those nobody is assigned to. */
@@ -380,7 +385,7 @@ export function splitPath(view: BoardView, hid: string | null, column: string): 
     return `/groups?filter=${encodeURIComponent(`operator_hid:eq:${hid}`)}`;
   const source = SOURCES[column];
   if (!source) return null;
-  const read = parseFilter(view.filter);
+  const read = parseFilter(view.filter, ITEM_WORDS);
   if (!read.ok) return null;
   const filter = all(
     read.filter,

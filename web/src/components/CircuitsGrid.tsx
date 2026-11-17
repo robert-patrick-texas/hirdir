@@ -30,6 +30,8 @@ interface CircuitsGridProps {
   shown?: readonly string[];
   /** Offer the filter box, with this example under it. */
   shortFilter?: string;
+  /** The fields words in the filter box are looked for in (P-187). */
+  quickFields?: readonly string[];
   /** A filter to start with, as from a link. */
   startFilter?: string | null;
   startSwitches?: { archived?: boolean; drafts?: boolean } | null;
@@ -43,7 +45,7 @@ interface CircuitsGridProps {
 /** The circuit grid, of the circuits a page names. */
 export function CircuitsGrid(props: CircuitsGridProps) {
   const { id, within, shown = [], shortFilter, startFilter, startSwitches, switches } = props;
-  const { reloadKey, actions, children } = props;
+  const { reloadKey, actions, children, quickFields } = props;
   const choices = useChoices();
   const wanted = shown.join(" ");
   const columns = useMemo(
@@ -69,6 +71,7 @@ export function CircuitsGrid(props: CircuitsGridProps) {
           {...(reloadKey === undefined ? {} : { reloadKey })}
           {...(actions ? { actions } : {})}
           {...(shortFilter === undefined ? {} : { shortFilter })}
+          {...(quickFields === undefined ? {} : { quickFields })}
           {...(startFilter === undefined ? {} : { startFilter })}
           {...(startSwitches === undefined ? {} : { startSwitches })}
           {...(switches

@@ -431,6 +431,7 @@ export function DeviceGroups() {
         rowLink={(group) => groupPath(group.hid)}
         dimmed={(group) => group.record_status !== "active"}
         shortFilter="type:eq:stack name:prefix:site2-"
+        quickFields={["name", "hostname"]}
         startFilter={startFilter}
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >

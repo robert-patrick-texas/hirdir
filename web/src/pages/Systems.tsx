@@ -193,6 +193,7 @@ export function Systems() {
           rowLink={(system) => systemPath(system.hid)}
           dimmed={(system) => system.record_status !== "active"}
           shortFilter="kind:eq:monitoring"
+          quickFields={["name"]}
           startFilter={startFilter}
           switches={{ archived: "Include archived", drafts: "Include drafts" }}
         >

@@ -8,7 +8,7 @@ import { Bar, Counted, RankCell, RankHead, RankNote } from "../components/Ranked
 import { ReportsNav } from "../components/ReportsNav";
 import { SortTh } from "../components/SortTh";
 import { type ItemView, ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
-import { itemsPath } from "../lib/filter";
+import { itemsPath, sentFilter } from "../lib/filter";
 import { plural } from "../lib/format";
 import { groupTypeLabel } from "../lib/groups";
 import { type Loaded, useLoad, useTitle } from "../lib/hooks";
@@ -59,7 +59,8 @@ const NO_GROUP = "In no group";
 
 /** The query of the summary for a view, by one thing, with the operators of each row. */
 function scoreQuery(view: ItemView, by: "operator" | "site" | "group") {
-  const filter = view.filter.trim();
+  // Words are sent as the tree of them (P-187).
+  const filter = sentFilter(view.filter);
   return {
     by,
     operators: true,
@@ -162,7 +163,7 @@ export function Scoreboard() {
         view={view}
         onShow={(next) => setParams(paramsOfView(next))}
         label="Filter"
-        hint="The filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank is every item."
+        hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or the filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank is every item."
       />
       <OperatorsBoard view={view} summary={operators} />
       <GroupsBoard view={view} summary={groups} />

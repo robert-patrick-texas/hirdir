@@ -1,5 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmButton } from "../components/ConfirmButton";
@@ -129,6 +129,8 @@ export function Owners() {
   useTitle("Owners");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const startFilter = params.get("filter");
   const [adding, setAdding] = useState(false);
   const tags = useTags();
   const specs = useMemo(() => ownerSpecs((tags.data ?? []).map((tag) => tag.label)), [tags.data]);
@@ -147,7 +149,9 @@ export function Owners() {
           submitLabel="Create owner"
         />
       )}
+      {/* 0.9.5: the filter box the other lists have, words among what it takes (P-187). */}
       <DataGrid<Owner>
+        key={startFilter ?? ""}
         id="owners"
         noun={["owner", "owners"]}
         entity="owners"
@@ -158,6 +162,9 @@ export function Owners() {
         rowId={(owner) => owner.hid}
         rowLink={(owner) => `/owners/${encodeURIComponent(owner.hid)}`}
         dimmed={(owner) => owner.record_status !== "active"}
+        shortFilter="is_external:eq:true label:prefix:Ops"
+        quickFields={["label", "organization"]}
+        startFilter={startFilter}
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >
         {allows(user.role, "inventory") && !adding && (

@@ -688,6 +688,7 @@ function OpenList({ report, opened, query, keep }: OpenListProps) {
           rowLink={(contract) => contractPath(contract.hid)}
           dimmed={(contract) => contract.record_status !== "active"}
           shortFilter="vendor:eq:Cisco renewal_overdue:eq:true"
+          quickFields={["number", "agreement.name"]}
           within={within}
         />
       )}

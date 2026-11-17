@@ -1,16 +1,60 @@
-import { Suspense, useEffect, useRef } from "react";
+import { type FormEvent, Suspense, useEffect, useId, useRef, useState } from "react";
 import {
   Link,
   NavigationType,
   NavLink,
   Outlet,
   useLocation,
+  useNavigate,
   useNavigationType,
 } from "react-router";
 import { useAuth } from "../auth";
+import { itemsPath } from "../lib/filter";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
 import { RenewalAlert } from "./RenewalAlert";
+
+/**
+ * 0.9.5: Find an item, in the menu bar of every page (P-187). What is typed opens the
+ * list of items with those words, minor items among them: the list takes words as it
+ * takes them in its own filter box, and a condition of the short form as a condition.
+ */
+function FindItem() {
+  const navigate = useNavigate();
+  const [typed, setTyped] = useState("");
+  const id = useId();
+
+  function find(event: FormEvent) {
+    event.preventDefault();
+    const words = typed.trim();
+    if (words === "") return;
+    setTyped("");
+    navigate(itemsPath(words));
+  }
+
+  return (
+    // The search landmark, as `<search>` is: a form of role search, in the element made
+    // for it.
+    <search aria-label="Find an item" className="find-item">
+      <form onSubmit={find}>
+        <label htmlFor={id} className="visually-hidden">
+          Find an item
+        </label>
+        <input
+          id={id}
+          type="search"
+          name="find"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          placeholder="Find an item"
+          autoComplete="off"
+          enterKeyHint="search"
+        />
+        <button type="submit">Find</button>
+      </form>
+    </search>
+  );
+}
 
 /** The frame around every page: the product name, the navigation, and who is signed in. */
 export function Shell() {
@@ -134,6 +178,7 @@ export function Shell() {
         <button type="button" onClick={signOut}>
           Sign out
         </button>
+        {allows(user.role, "viewer") && <FindItem />}
       </header>
       {/* The renewal alert of 0.7.0 (D-179), under the header of every page. */}
       <RenewalAlert />

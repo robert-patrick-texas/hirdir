@@ -389,6 +389,7 @@ export function Contracts() {
           rowLink={(contract) => contractPath(contract.hid)}
           dimmed={(contract) => contract.record_status !== "active"}
           shortFilter="status:eq:active agreement.name:contains:Enterprise"
+          quickFields={["number", "agreement.name"]}
           startFilter={startFilter}
           switches={{ archived: "Include archived", drafts: "Include drafts" }}
         >

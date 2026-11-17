@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import { NewPlace, PlaceDetail } from "../components/PlaceParts";
 import { Problem } from "../components/Problem";
 import { ItemViewForm, paramsOfView, viewOfParams } from "../components/ViewForm";
-import { itemsPath } from "../lib/filter";
+import { itemsAndCondition } from "../lib/filter";
 import { useLoad, useReloadOn, useTitle } from "../lib/hooks";
 import { useChoices } from "../lib/lists";
 import { choiceLabel, optionLabel, RECORD_STATUSES } from "../lib/options";
@@ -75,7 +75,7 @@ export function Geography() {
         view={view}
         onShow={(next) => setParams(paramsOfView(next))}
         label="Count the items that match"
-        hint="A filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
+        hint="Words find items by their name, hostname, serial_number, asset_tag or address. Or a filter of the item list: field:op:value, as in tags:has:refresh-2030. Blank counts every item."
         archivedHint="Retired places, and retired and archived items"
         draftsHint="Draft places and draft items"
       />
@@ -157,9 +157,9 @@ function PlaceTree({ view, turn, search, chosen, opened, onOpen }: PlaceTreeProp
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const data = tree.data;
   const rows = data ? treeRows(data.roots, closed) : [];
-  const short = view.filter.trim();
-  // The items that are nowhere, in the grid: only a filter in the short form can be added to.
-  const nowhere = short.startsWith("{") ? null : itemsPath(`${short} location:empty:true`.trim());
+  // The items that are nowhere, in the grid: only a filter in the short form, or words,
+  // can be added to.
+  const nowhere = itemsAndCondition(view.filter, "location:empty:true");
 
   function toggleRegion(hid: string) {
     setClosed((was) => {

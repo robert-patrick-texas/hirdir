@@ -50,7 +50,7 @@ import type { ApiError } from "../../api/client";
 import { useAuth } from "../../auth";
 import { routerBasename } from "../../lib/base";
 import { ClipboardRefused, copyText } from "../../lib/clipboard";
-import { all, type FilterNode, parseFilter } from "../../lib/filter";
+import { all, type FilterNode, fieldsText, parseFilter, type QuickFields } from "../../lib/filter";
 import { plural } from "../../lib/format";
 import { gridFilter, gridSort, type ListRequest, sortModelOf } from "../../lib/gridQuery";
 import { type GridLayout, GridStore, mergeLayout } from "../../lib/gridStore";
@@ -137,6 +137,11 @@ export interface DataGridProps<T> {
   dimmed?: (row: T) => boolean;
   /** Offer a box for the short filter form, with this example of it under the box. */
   shortFilter?: string;
+  /**
+   * 0.9.5: the fields a row is known by (P-187). Plain words in the box, with no
+   * condition, find the rows where each word is held by one of them.
+   */
+  quickFields?: readonly string[];
   /** A short filter to start with, as from a link, instead of the one remembered. */
   startFilter?: string | null;
   /** Offer the switches for records a list leaves out by default. */
@@ -197,6 +202,13 @@ function layoutOf(
 
 export function DataGrid<T>(props: DataGridProps<T>) {
   const { id, noun, columns, shortFilter, switches, reloadKey = 0, children } = props;
+  // What words in the box are looked for in, and the example its help gives.
+  const quickText = (props.quickFields ?? []).join(" ");
+  const quick = useMemo<QuickFields | undefined>(
+    () =>
+      quickText === "" ? undefined : { fields: quickText.split(" "), example: shortFilter ?? "" },
+    [quickText, shortFilter],
+  );
   const { entity, onBulkEdit, minor, actions = [] } = props;
   // The part of the list the grid is of, the same object until what it says changes.
   const withinText = JSON.stringify(props.within ?? {});
@@ -360,7 +372,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
 
   // Give the grid its source of rows, and a new one whenever what is asked for changes.
   // A new source empties the grid's cache, so every row on show is read again.
-  const parsed = useMemo(() => parseFilter(short), [short]);
+  const parsed = useMemo(() => parseFilter(short, quick), [short, quick]);
   const shortNode = parsed.ok ? parsed.filter : null;
   // The filter of the switch that is off. Read when the grid is made, as the columns are.
   const [without] = useState(() => minor?.without ?? null);
@@ -372,10 +384,17 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   useEffect(() => {
     if (!grid) return;
     const controller = new AbortController();
+    // The reads under way, each with what tells the grid it ended. The grid reads two
+    // blocks at a time at most, and waits for one to end before it reads another: a read
+    // that is let go, as when words are typed while the whole list is still being read on
+    // a busy server, is ended at once, or the grid would wait for it for ever (P-187).
+    const pending = new Set<() => void>();
     grid.deselectAll();
     setAllMatching(false);
     grid.setGridOption("datasource", {
       getRows: (params) => {
+        const letGo = () => params.failCallback();
+        pending.add(letGo);
         const sorted = gridSort(query, params.sortModel);
         const request: ListRequest = {
           filter: all(
@@ -394,12 +413,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         read(request, controller.signal).then(
           (page) => {
             if (controller.signal.aborted) return;
+            pending.delete(letGo);
             setError(null);
             setTotal(page.total);
             params.successCallback(page.items, page.total);
           },
           (thrown: unknown) => {
             if (controller.signal.aborted) return;
+            pending.delete(letGo);
             setError(toApiError(thrown));
             setTotal(null);
             params.failCallback();
@@ -407,11 +428,15 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         );
       },
     });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      for (const end of pending) end();
+      pending.clear();
+    };
   }, [grid, query, wanted]);
 
   function showShort(text: string) {
-    const result = parseFilter(text);
+    const result = parseFilter(text, quick);
     if (!result.ok) {
       setShortError(result.error);
       return;
@@ -624,7 +649,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               value={draft}
               onChange={setDraft}
               autoComplete="off"
-              hint={`field:op:value, as in ${shortFilter}. A filter tree as JSON is taken too.`}
+              hint={
+                quick
+                  ? `Words find ${noun[1]} by their ${fieldsText(quick.fields)}. Or field:op:value, as in ${shortFilter}. A filter tree as JSON is taken too.`
+                  : `field:op:value, as in ${shortFilter}. A filter tree as JSON is taken too.`
+              }
               error={shortError || undefined}
             />
             <button type="submit">Apply</button>

@@ -210,6 +210,7 @@ export function Purchases() {
         rowLink={(request) => requestPath(request.hid)}
         dimmed={(request) => request.status === "cancelled" || request.status === "draft"}
         shortFilter="status:in:pending,ordered pending_quantity:gt:0"
+        quickFields={["reference"]}
         startFilter={startFilter}
       >
         {allows(user.role, "inventory") && !adding && (
@@ -406,6 +407,7 @@ export function PurchaseLines() {
         rowLink={(line) => requestPath(line.request_hid)}
         dimmed={(line) => line.request_status === "cancelled" || line.request_status === "draft"}
         shortFilter="pending_quantity:gt:0 tracked:eq:true catalog.vendor:eq:Cisco"
+        quickFields={["request.reference", "catalog.pid", "catalog.model_name"]}
         startFilter={startFilter}
       />
     </>
