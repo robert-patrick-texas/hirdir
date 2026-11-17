@@ -645,6 +645,16 @@ describe("the location, the site and the region in the item grid", () => {
     expect(shown[6]?.id).toBe("location.name");
     expect(width).toBeLessThanOrEqual(1250);
   });
+
+  it("keeps a column that is hidden until asked for beside its neighbours (P-193)", () => {
+    const ids = COLUMNS.map((one) => one.id);
+    expect(ids.slice(0, 2)).toEqual(["name", "hostname"]);
+    expect(ids.indexOf("parent")).toBeLessThan(ids.indexOf("lifecycle_state"));
+    expect(ids.indexOf("planned_location")).toBe(ids.indexOf("location.name") + 1);
+    // Every column of the list is still there, once.
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("hid");
+  });
 });
 
 describe("the planned location in the item grid", () => {

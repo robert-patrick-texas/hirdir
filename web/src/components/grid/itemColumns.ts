@@ -101,13 +101,29 @@ export const FIRST_IN_VIEW: readonly string[] = [
   "disposition",
 ];
 
+// Where an item is, with the two columns beside it, stands before who has it; the
+// operator before the owner; the vendor and the disposition after them.
+const PLACE: readonly string[] = ["site", "location.name", "planned_location", "region"];
+const AFTER_THE_OWNER: readonly string[] = ["catalog.vendor", "disposition"];
+
+/**
+ * The list in the order of FIRST_IN_VIEW for the columns shown from the start. A column
+ * that is hidden until asked for keeps its neighbours, so that one turned on stands
+ * where it is looked for: the host name beside the name, the item above beside the
+ * serial number.
+ */
 function firstInView(columns: GridColumn<Item>[]): GridColumn<Item>[] {
-  const place = (column: GridColumn<Item>) => {
-    const at = FIRST_IN_VIEW.indexOf(column.id);
-    return at === -1 ? FIRST_IN_VIEW.length : at;
-  };
-  // A stable sort: the columns not named keep the order of the list.
-  return [...columns].sort((one, other) => place(one) - place(other));
+  const moved = new Set([...PLACE, "operator.label", ...AFTER_THE_OWNER]);
+  const named = (ids: readonly string[]) =>
+    ids.flatMap((id) => columns.filter((column) => column.id === id));
+  const ordered: GridColumn<Item>[] = [];
+  for (const column of columns) {
+    if (moved.has(column.id)) continue;
+    if (column.id === "owner.label") ordered.push(...named([...PLACE, "operator.label"]));
+    ordered.push(column);
+    if (column.id === "owner_exception_reason") ordered.push(...named(AFTER_THE_OWNER));
+  }
+  return ordered;
 }
 
 /**

@@ -53,15 +53,16 @@ const SENT = {
 const SHOWN = [
   "hid",
   "name",
-  "vendor",
   "pid",
   "serial_number",
   "lifecycle_state",
-  "disposition",
-  "expected_online",
   "health",
-  "owner",
+  "site",
+  "location",
   "operator",
+  "owner",
+  "vendor",
+  "disposition",
   "tags",
   "ldos",
 ];
@@ -378,7 +379,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
   expect(records.map((record) => SHOWN.map((name) => asCell(record[name])))).toEqual(
     exported.slice(1),
   );
-  expect(clipboard.slice(1).map((row) => row[4])).toEqual([serials[0], serials[2]]);
+  expect(clipboard.slice(1).map((row) => row[3])).toEqual([serials[0], serials[2]]);
   for (const row of clipboard.slice(1)) expect(row[0]).toMatch(/^[0-9a-f-]{36}$/);
   // The value in force, as the grid shows it: the item's own description is not a column
   // on show, and so is in none of the three.

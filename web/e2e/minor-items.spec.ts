@@ -264,7 +264,17 @@ test("S18: minor items have the owner and the standing of the item they are in",
     await columns.getByLabel(column, { exact: true }).check();
   }
   // The grid draws only the columns in view: room is made for the ones looked at here.
-  for (const column of ["Vendor", "Serial number", "Health", "Tags", "LDoS"]) {
+  for (const column of [
+    "Vendor",
+    "PID",
+    "Serial number",
+    "Health",
+    "Site",
+    "Location",
+    "Operator",
+    "Tags",
+    "LDoS",
+  ]) {
     await columns.getByLabel(column, { exact: true }).uncheck();
   }
   await page.getByText("Columns", { exact: true }).click();
