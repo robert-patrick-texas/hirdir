@@ -7,13 +7,14 @@ Every person is a contact, and a user is a part that a contact plays (P-172): a 
 gains `contact_hid` and loses `display_name` and `email`, which are its contact's from
 now on. Each user that is no service account and has a display name or an email is
 given a contact: the one that has its email already, where there is one and it is no
-other user's, which is left as it is; or, where no contact has that email, a new one
-with the user's display name, or its username where it has none, and its email where a
-contact takes it. Users that may sign in go first, then the disabled, each by username.
-Each user that had a display name or an email has an audit event by `system` that keeps
-what was dropped, and the contact it was given; a contact made has one, and a contact
-given to a user one more. A service account keeps no display name. Contacts gain
-`phone2`, a second number, and the kind of an external system takes 40 characters.
+other user's, which is left as it is; with no email, the one of its display name, as a
+file finds a contact by name; or else a new one with the user's display name, or its
+username where it has none, and its email where a contact takes it. Users that may
+sign in go first, then the disabled, each by username. Each user that had a display
+name or an email has an audit event by `system` that keeps what was dropped, and the
+contact it was given; a contact made has one, and a contact given to a user one more.
+A service account keeps no display name. Contacts gain `phone2`, a second number, and
+the kind of an external system takes 40 characters.
 
 Loads the `system_kind` list with the eight kinds of external system that were fixed
 until now (P-170), written out here so that the migration does not change with the
@@ -110,6 +111,19 @@ def _is_address(email: str) -> bool:
     return bool(local and at and domain) and " " not in email and "@" not in domain
 
 
+def _named(by_name: dict[str, list[tuple[str, str | None]]], name: str) -> str | None:
+    """Return the contact a user with no email is, by its display name, as a file finds a
+    contact by its name: the one contact of that name, or of several the one with no
+    email. None where there is none, or no one answers."""
+    if not name:
+        return None
+    named = by_name.get(_key(name), [])
+    if len(named) == 1:
+        return named[0][0]
+    bare = [hid for hid, email in named if email is None]
+    return bare[0] if len(bare) == 1 else None
+
+
 def _give_users_their_contacts(now: datetime) -> None:
     bind = op.get_bind()
     users = sa.table(
@@ -138,12 +152,12 @@ def _give_users_their_contacts(now: datetime) -> None:
         sa.column("row_version", sa.Integer),
     )
     audit = _audit(now)
-    by_email = {
-        row.email_key: row.hid
-        for row in bind.execute(
-            sa.select(contacts.c.hid, contacts.c.email_key).where(contacts.c.email_key.is_not(None))
-        )
-    }
+    by_email: dict[str, str] = {}
+    by_name: dict[str, list[tuple[str, str | None]]] = {}
+    for row in bind.execute(sa.select(contacts.c.hid, contacts.c.name_key, contacts.c.email_key)):
+        if row.email_key is not None:
+            by_email[row.email_key] = row.hid
+        by_name.setdefault(row.name_key, []).append((row.hid, row.email_key))
     taken: set[str] = set()
     events: list[dict[str, Any]] = []
     # A user that may sign in is given a contact before one that is disabled, and of
@@ -169,33 +183,41 @@ def _give_users_their_contacts(now: datetime) -> None:
         found = None
         if not user.is_service_account and (name or email):
             address = email if email and _is_address(email) else None
-            found = by_email.get(_key(address)) if address else None
-            if found is not None and found in taken:
-                found = None
-            elif found is None:
-                found = str(uuid.uuid7())
-                made = {"name": name or user.username, "email": address}
-                bind.execute(
-                    contacts.insert().values(
-                        hid=found,
-                        name=made["name"],
-                        name_key=_key(made["name"]),
-                        email=address,
-                        email_key=_key(address) if address else None,
-                        record_status="active",
-                        created_at=now,
-                        updated_at=now,
-                        row_version=1,
+            if address and _key(address) in by_email:
+                # A contact is one user's at most: the second user of one email has none.
+                match = by_email[_key(address)]
+                found = match if match not in taken else None
+            else:
+                # With no email, the contact of its name, as a file finds one by name; where
+                # there is none, or it is another user's, a contact of its own is made.
+                match = None if address else _named(by_name, name)
+                if match is not None and match not in taken:
+                    found = match
+                else:
+                    found = str(uuid.uuid7())
+                    made = {"name": name or user.username, "email": address}
+                    bind.execute(
+                        contacts.insert().values(
+                            hid=found,
+                            name=made["name"],
+                            name_key=_key(made["name"]),
+                            email=address,
+                            email_key=_key(address) if address else None,
+                            record_status="active",
+                            created_at=now,
+                            updated_at=now,
+                            row_version=1,
+                        )
                     )
-                )
-                if address:
-                    by_email[_key(address)] = found
-                made_changes = [
-                    {"field": field, "old": None, "new": value}
-                    for field, value in (*made.items(), ("record_status", "active"))
-                    if value is not None
-                ]
-                events.append(_event(now, "create", "contact", found, made_changes))
+                    if address:
+                        by_email[_key(address)] = found
+                    by_name.setdefault(_key(made["name"]), []).append((found, address))
+                    made_changes = [
+                        {"field": field, "old": None, "new": value}
+                        for field, value in (*made.items(), ("record_status", "active"))
+                        if value is not None
+                    ]
+                    events.append(_event(now, "create", "contact", found, made_changes))
         if found is not None:
             taken.add(found)
             changes.append({"field": "contact_hid", "old": None, "new": found})

@@ -326,11 +326,9 @@ def summary_out(db: Session, found: Any) -> shapes.SummaryOut:
     )
 
 
-def operators_out(
-    db: Session, found: list[Operator], *, admin: bool = False
-) -> list[shapes.OperatorOut]:
-    """Return operators, each with who is behind it and how much it is given to. Only an
-    Admin is told which user the person behind it is (P-172)."""
+def operators_out(db: Session, found: list[Operator]) -> list[shapes.OperatorOut]:
+    """Return operators, each with who is behind it, the user that person is where it is
+    one, and how much it is given to (P-172)."""
     people = _by_hid(db, Contact, {operator.contact_hid for operator in found})
     users = contacts.users_of(db, list(people))
     uses = operators.uses(db, [operator.hid for operator in found])
@@ -344,7 +342,7 @@ def operators_out(
                     operator, shapes.OperatorOut, ("contact", "user", "scope", "is_open", "uses")
                 ),
                 contact=_contact_ref(contact) if contact is not None else None,
-                user=_user_brief(user) if admin else None,
+                user=_user_brief(user),
                 scope=operators.scope(contact, users),
                 is_open=operators.is_open(operator, contact),
                 uses=uses[operator.hid],
@@ -585,11 +583,9 @@ def place_out(db: Session, level: str, record: Any) -> Any:
     return locations_out(db, [record])[0]
 
 
-def contacts_out(
-    db: Session, found: list[Contact], *, admin: bool = False
-) -> list[shapes.ContactOut]:
-    """Return contacts, each with its tags, the number of its assignments, and whether it
-    is a user's. Only an Admin is told which user (P-172)."""
+def contacts_out(db: Session, found: list[Contact]) -> list[shapes.ContactOut]:
+    """Return contacts, each with its tags, the number of its assignments, and the user it
+    is, where it is one (P-172)."""
     hids = [contact.hid for contact in found]
     labels = tags.labels_of(db, contacts.RECORD_TYPE, hids)
     uses = contacts.uses(db, hids)
@@ -600,7 +596,7 @@ def contacts_out(
             tags=labels[contact.hid],
             uses=uses[contact.hid],
             is_user=contact.hid in users,
-            user=_user_brief(users.get(contact.hid)) if admin else None,
+            user=_user_brief(users.get(contact.hid)),
         )
         for contact in found
     ]

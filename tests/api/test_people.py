@@ -157,10 +157,7 @@ def test_an_operator_is_internal_where_its_contact_is_a_user(
     desk = Maker(client, admin)
     user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
     lm = make.get(f"/operators/{lm['hid']}")
-    # Which user it is is told to an Admin alone.
-    assert (lm["scope"], lm["user"]) == ("internal", None)
-    told = desk.get(f"/operators/{lm['hid']}")["user"]
-    assert told == {"hid": user["hid"], "username": "robin"}
+    assert (lm["scope"], lm["user"]) == ("internal", {"hid": user["hid"], "username": "robin"})
     # Nothing was written to the operator: the scope is read with it.
     assert lm["row_version"] == 1
     assert [
@@ -194,8 +191,8 @@ def test_files_carry_the_second_number_and_say_who_is_a_user(
     Maker(client, admin).post("/users", {"username": "robin", "contact_hid": robin["hid"]})
     make.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
 
-    contacts = table(files.export("contacts", columns=["name", "phone2", "is_user"]))
-    assert (contacts[0]["phone2"], contacts[0]["is_user"]) == ("202 555 0177", "true")
+    contacts = table(files.export("contacts", columns=["name", "phone2", "user"]))
+    assert (contacts[0]["phone2"], contacts[0]["user"]) == ("202 555 0177", "robin")
     operators = table(
         files.export("operators", columns=["label", "scope", "contact_email", "contact_phone2"])
     )
@@ -299,21 +296,20 @@ def test_the_kinds_of_external_system_are_a_list_a_site_changes(
 # --- what the review of the server found ------------------------------------------
 
 
-def test_only_an_admin_is_told_which_user_a_contact_is(
+def test_every_role_is_told_which_user_a_contact_is(
     client: TestClient, admin: dict, viewer: dict
 ) -> None:
+    """Who signs in is the team that runs the network, as the directory of the enterprise
+    already tells them (P-172)."""
     desk = Maker(client, admin)
     robin = desk.contact("Robin Achterberg")
     user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
     desk.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
     looker = Maker(client, viewer)
     seen = looker.get(f"/contacts/{robin['hid']}")
-    assert (seen["is_user"], seen["user"]) == (True, None)
+    assert (seen["is_user"], seen["user"]) == (True, {"hid": user["hid"], "username": "robin"})
     operator = looker.get("/operators")["items"][0]
-    assert (operator["scope"], operator["user"]) == ("internal", None)
-    told = desk.get(f"/contacts/{robin['hid']}")
-    assert told["user"] == {"hid": user["hid"], "username": "robin"}
-    assert desk.get("/operators")["items"][0]["user"]["username"] == "robin"
+    assert (operator["scope"], operator["user"]["username"]) == ("internal", "robin")
 
 
 def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(make: Maker) -> None:
