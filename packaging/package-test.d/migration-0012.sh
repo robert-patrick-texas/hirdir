@@ -15,11 +15,14 @@
 # with its foreign key and its uniqueness, which on SQLite makes users anew. It gives
 # each user that is no service account and has a display name or an email a contact,
 # the users that may sign in before those that are disabled and each by username: the
-# contact that has that email already, in any case, which it leaves as it is; or a new
-# one, named with the display name, or with the username where there is none, that
-# holds the email where it is of the form name@host, and nothing where it is not. Of two
-# users with one email, the first has the contact and the second none, as a contact is
-# one user's at most. It writes audit events made by system, with the request ID
+# contact that has that email already, in any case, which it leaves as it is; for a
+# user with no email, or with one that is not of the form name@host, the contact of its
+# display name, as a file finds a contact by name, the only one of that name or of
+# several the only one with no email; or else a new one, named with the display name,
+# or with the username where there is none, that holds the email where it is of the
+# form name@host, and nothing where it is not. Of two users with one email, or matched
+# with one contact by name, the first has that contact, and the second none or one of
+# its own, as a contact is one user's at most. It writes audit events made by system, with the request ID
 # upgrade-0012: one for each contact it makes, one for each contact it gives a user,
 # with the user, and one for each user that had a display name or an email, the service
 # accounts among them, that keeps what was dropped and the contact it was given. Then it
@@ -53,6 +56,8 @@ declare -gA people_0012=()
 people_code=""
 # The contact from before that a user has the email of, in another case, by its HID.
 people_pat=""
+# Set where before_0012 makes the contacts that users are matched with by name.
+people_named=""
 # The external systems that before_0012 makes, by kind.
 declare -gA systems_0012=()
 
@@ -60,11 +65,20 @@ declare -gA systems_0012=()
 # name and the email it shows, and the contact it is, by its name and email and whether
 # it is a new one or one from before, or null; and by how much its row_version moves.
 people_wanted_0012() {
+    python3 -c 'import json, sys; print(json.dumps(sorted(json.loads(sys.stdin.read()), key=lambda u: u[0])))' <<<"$(people_listed_0012)"
+}
+
+# people_listed_0012: what people_wanted_0012 gives, in no order.
+people_listed_0012() {
     printf '%s' '[["upgrade-ana", "Upgrade Ana", "upgrade.ana@example.org", ["Upgrade Ana", "upgrade.ana@example.org", "new"], 1], ["upgrade-bot", "", "", null, 0], ["upgrade-jo", "", "", null, 0], ["upgrade-jo-2", "Upgrade Jo", "upgrade.jo@example.org", ["Upgrade Jo", "upgrade.jo@example.org", "new"], 1], ["upgrade-kim", "Upgrade Kim", "upgrade.kim@example.org", ["Upgrade Kim", "upgrade.kim@example.org", "new"], 1], ["upgrade-kim-2", "", "", null, 0], ["upgrade-lee", "", "", null, 0], ["upgrade-max", "Upgrade Max", "", ["Upgrade Max", null, "new"], 1]'
     if [ -n "$people_pat" ]; then
         printf '%s' ', ["upgrade-pat", "Upgrade Pat", "upgrade.pat@example.net", ["Upgrade Pat", "upgrade.pat@example.net", "from before"], 1]'
     fi
-    printf '%s' ', ["upgrade-quinn", "upgrade-quinn", "upgrade.quinn@example.org", ["upgrade-quinn", "upgrade.quinn@example.org", "new"], 1], ["upgrade-ren", "Upgrade Ren", "", ["Upgrade Ren", null, "new"], 1], ["upgrade-sol", "upgrade-sol", "", ["upgrade-sol", null, "new"], 1]]'
+    printf '%s' ', ["upgrade-quinn", "upgrade-quinn", "upgrade.quinn@example.org", ["upgrade-quinn", "upgrade.quinn@example.org", "new"], 1], ["upgrade-ren", "Upgrade Ren", "", ["Upgrade Ren", null, "new"], 1]'
+    if [ -n "$people_named" ]; then
+        printf '%s' ', ["upgrade-rowan", "Upgrade Rowan", "", ["Upgrade Rowan", null, "from before"], 1], ["upgrade-rowan-2", "Upgrade Rowan", "", ["Upgrade Rowan", null, "new"], 1], ["upgrade-rowan-3", "Upgrade Rowan", "upgrade.rowan@example.org", ["Upgrade Rowan", "upgrade.rowan@example.org", "new"], 1], ["upgrade-sky", "Upgrade Sky", "", ["Upgrade Sky", null, "from before"], 1], ["upgrade-dale", "Upgrade Dale", "", ["Upgrade Dale", null, "new"], 1]'
+    fi
+    printf '%s' ', ["upgrade-sol", "upgrade-sol", "", ["upgrade-sol", null, "new"], 1]]'
 }
 
 # events_wanted_0012: the audit events of the upgrade that are to be in the trail, as
@@ -197,6 +211,31 @@ before_0012() {
     fi
     if [ -n "$people_pat" ]; then
         bodies+=('{"username": "upgrade-pat", "display_name": "Pat of the upgrade", "email": "Upgrade.Pat@Example.NET"}')
+
+        # Contacts that a user with no email, or with one that is no address, is matched
+        # with by its display name, as a file finds a contact by name: one of its name
+        # alone; two of another, one with an email and one with none; and two of a third,
+        # each with none, of which neither answers. Their users: one of the first name
+        # with no email, which has that contact; a second of that name, whose match is the
+        # first's by then and which has a contact of its own; a third of that name with an
+        # email that is an address, which no contact has, and which has a contact of its
+        # own; one of the second name with an email that is no address, which has the
+        # contact with none; and one of the third name, which has a contact of its own.
+        made=""
+        for body in '{"name": "Upgrade Rowan"}' '{"name": "Upgrade Sky", "email": "upgrade.sky@example.org"}' \
+            '{"name": "Upgrade Sky"}' '{"name": "Upgrade Dale"}' '{"name": "Upgrade Dale", "organization": "Upgrade Witness Team"}'; do
+            api POST /contacts "$body"
+            made="$made $status"
+            witness_undo+=("contacts/$(json_field hid)")
+        done
+        expect "pkg $previous_version holds contacts for users to be matched with by name: Upgrade Rowan alone, two of Upgrade Sky, one with an email, and two of Upgrade Dale with none" \
+            "$made" " 201 201 201 201 201"
+        people_named=yes
+        bodies+=('{"username": "upgrade-rowan", "display_name": "Upgrade Rowan"}'
+            '{"username": "upgrade-rowan-2", "display_name": "Upgrade Rowan"}'
+            '{"username": "upgrade-rowan-3", "display_name": "Upgrade Rowan", "email": "upgrade.rowan@example.org"}'
+            '{"username": "upgrade-sky", "display_name": "Upgrade Sky", "email": "upgrade.sky at example.org"}'
+            '{"username": "upgrade-dale", "display_name": "Upgrade Dale"}')
     fi
     made=""
     wanted=""
@@ -219,9 +258,12 @@ before_0012() {
     made="$made $status"
     wanted="$wanted 200"
     api GET '/users?limit=1000'
-    expect "pkg $previous_version holds users of every kind that migration 0012 acts on, each with no role: with a display name and an email, with an email alone, two with one email, two with another, the first by username disabled, with neither, a service account with a display name, three with an email that is no address$([ -n "$people_pat" ] && echo ', and one with the email of the contact from before, Upgrade Pat, in another case, and a name of its own'); each keeps the name and the email it was given" \
+    expect "pkg $previous_version holds users of every kind that migration 0012 acts on, each with no role: with a display name and an email, with an email alone, two with one email, two with another, the first by username disabled, with neither, a service account with a display name, three with an email that is no address$([ -n "$people_pat" ] && echo ', one with the email of the contact from before, Upgrade Pat, in another case, and a name of its own, and five to be matched with a contact by name'); each keeps the name and the email it was given, and upgrade-jo is disabled" \
         "$made $status $(json 'sorted([u["username"], u["display_name"], u["email"], u["is_service_account"], u["disabled"], u["role"]] for u in d["items"] if u["username"] in "'"${!people_0012[*]}"'".split())')" \
-        "$wanted 200 [[\"upgrade-ana\", \"Upgrade Ana\", \"upgrade.ana@example.org\", false, false, null], [\"upgrade-bot\", \"Upgrade nightly robot\", \"\", true, false, null], [\"upgrade-jo\", \"Upgrade Jo, old account\", \"upgrade.jo@example.org\", false, true, null], [\"upgrade-jo-2\", \"Upgrade Jo\", \"upgrade.jo@example.org\", false, false, null], [\"upgrade-kim\", \"Upgrade Kim\", \"upgrade.kim@example.org\", false, false, null], [\"upgrade-kim-2\", \"Upgrade Kim, second account\", \"upgrade.kim@example.org\", false, false, null], [\"upgrade-lee\", \"\", \"\", false, false, null], [\"upgrade-max\", \"Upgrade Max\", \"upgrade max@example.org\", false, false, null], $([ -n "$people_pat" ] && echo '["upgrade-pat", "Pat of the upgrade", "Upgrade.Pat@Example.NET", false, false, null], ')[\"upgrade-quinn\", \"\", \"upgrade.quinn@example.org\", false, false, null], [\"upgrade-ren\", \"Upgrade Ren\", \"upgrade.ren@@example.org\", false, false, null], [\"upgrade-sol\", \"\", \"upgrade.sol\", false, false, null]]"
+        "$wanted 200 $(python3 -c '
+import json, sys
+given = [json.loads(body) for body in sys.argv[1:]]
+print(json.dumps(sorted([b["username"], b.get("display_name", ""), b.get("email", ""), b.get("is_service_account", False), b["username"] == "upgrade-jo", None] for b in given)))' "${bodies[@]}")"
     keep people-0012
 
     # What is meant to change of them, which the comparisons pass over by name: the
@@ -229,13 +271,14 @@ before_0012() {
     # by the API the version of each that is given one, and the name and the email that
     # each shows where they are now its contact's, or nothing.
     rows_apart[users]=$accounts
-    for name in upgrade-ana upgrade-quinn upgrade-kim upgrade-jo-2 upgrade-max upgrade-ren upgrade-sol ${people_pat:+upgrade-pat}; do
+    for name in upgrade-ana upgrade-quinn upgrade-kim upgrade-jo-2 upgrade-max upgrade-ren upgrade-sol \
+        ${people_pat:+upgrade-pat} ${people_named:+upgrade-rowan upgrade-rowan-2 upgrade-rowan-3 upgrade-sky upgrade-dale}; do
         rows_apart[users]="${rows_apart[users]},${people_0012[$name]}"
         changed="$changed ${people_0012[$name]}.row_version ${people_0012[$name]}.updated_at"
     done
     for entry in upgrade-quinn.display_name upgrade-max.email upgrade-ren.email upgrade-sol.display_name \
-        upgrade-sol.email ${people_pat:+upgrade-pat.display_name upgrade-pat.email} upgrade-kim-2.display_name \
-        upgrade-kim-2.email upgrade-jo.display_name upgrade-jo.email upgrade-bot.display_name; do
+        upgrade-sol.email ${people_pat:+upgrade-pat.display_name upgrade-pat.email} ${people_named:+upgrade-sky.email} \
+        upgrade-kim-2.display_name upgrade-kim-2.email upgrade-jo.display_name upgrade-jo.email upgrade-bot.display_name; do
         changed="$changed ${people_0012[${entry%.*}]}.${entry#*.}"
     done
     meant[users]="${meant[users]:-}$changed"
@@ -320,7 +363,7 @@ changed_0012() {
     # the contact is the one that had its email, or a new one, or none.
     api GET '/users?limit=1000'
     cp "$work/body" "$work/people-0012-now.json"
-    expect "pkg $when each user that $previous_version held with a display name or an email is a contact: with both, a new contact of that name and email; with an email alone, a new one named with its username; of two with one email, the first by username, and the second none, so it shows no name and no email; of two with another, the one that may sign in, though the other comes first by username and is disabled; with an email that is no address, with a space, with no @ or with a second, a new contact without it; $([ -n "$people_pat" ] && echo 'with the email of the contact from before in another case, that contact, whose name and email it now shows, at the next row_version; ')with neither, none; and the service account none, so it loses its display name" \
+    expect "pkg $when each user that $previous_version held with a display name or an email is a contact: with both, a new contact of that name and email; with an email alone, a new one named with its username; of two with one email, the first by username, and the second none, so it shows no name and no email; of two with another, the one that may sign in, though the other comes first by username and is disabled; with an email that is no address, with a space, with no @ or with a second, a new contact without it; $([ -n "$people_pat" ] && echo 'with the email of the contact from before in another case, that contact, whose name and email it now shows, at the next row_version; with no email, or one that is no address, the contact from before of its display name, the only one of that name or of two the only one with no email; with no email but a name whose contact another user has by then, or of which no one answers, or with an address that no contact has, a contact of its own; ')with neither, none; and the service account none, so it loses its display name" \
         "$status $(people_now mine)" "200 $(people_wanted_0012)"
     expect "pkg $when and so is each account of the pass: one with a display name is a new contact of that name, and the others have none" \
         "$(people_now theirs)" "$(accounts_wanted)"
@@ -330,7 +373,7 @@ changed_0012() {
     # is now a user's, and is otherwise as it was, which the comparison has looked at.
     if [ -n "$witness_site" ]; then
         api GET '/contacts?include_drafts=true&include_archived=true&limit=1000'
-        expect "pkg $when the contacts that the migration made are the users' that are new, each active, a user's, which the Admin is told is that user, and with no organization, no number and no second number; of the contacts from before only $([ -n "$people_pat" ] && echo 'Upgrade Pat, whose email a user had, is a user'"'"'s, upgrade-pat' || echo 'none is a user'"'"'s')" \
+        expect "pkg $when the contacts that the migration made are the users' that are new, each active, a user's and naming that user, and with no organization, no number and no second number; of the contacts from before only $([ -n "$people_pat" ] && echo 'Upgrade Pat, whose email a user had, is a user'"'"'s, upgrade-pat' || echo 'none is a user'"'"'s')" \
             "$status $(python3 -c '
 import json, sys
 then = {c["hid"] for c in json.load(open(sys.argv[1], encoding="utf-8"))["items"]}
@@ -401,12 +444,12 @@ print(found["hid"], found["row_version"])' "$work/kinds-0012.json" "$1"
 # of 0.9.2 refused; a user made with a new contact, by the API and by hirdir admin; a
 # number entered once on a contact, shown on the user and on the operator; an operator
 # made internal, external and open by the person behind it; which user a contact is,
-# told to the Admin alone; a username changed, which keeps the user's session; and the
-# list of the kinds of external system edited, a kind of the site's own given to a
-# system, a kind that a system holds made inactive and kept, a system with no kind
-# refused while other is not offered, and a kind longer than twenty characters. What
-# it adds is retired, or given back, so that the rest of this pass starts as it would
-# have.
+# read by every role that signs in; a username changed, which keeps the user's
+# session; and the list of the kinds of external system edited, a kind of the site's
+# own given to a system, a kind that a system holds made inactive and kept, a system
+# with no kind refused while other is not offered, and a kind longer than twenty
+# characters. What it adds is retired, or given back, so that the rest of this pass
+# starts as it would have.
 after_0012() {
     local admin=$token made wanted="" entry lee kim_contact session hid row noor fitter
     local system dns other code
@@ -488,19 +531,20 @@ after_0012() {
     expect "pkg a second number entered once on the contact that the upgrade made for upgrade-kim shows on the user$([ -n "$witness_site" ] && echo '; the open operator from before, UW8, given that contact, is internal and names the user and shows the number, given a contact that is no user'"'"'s is external, and with that contact retired is open and has no scope, as with nobody behind it')" \
         "$made" "200 [\"Upgrade Kim\", \"+1 555 0195\"]$wanted"
 
-    # Which user a contact is, the Admin alone is told: a View-only service token reads
-    # that a contact is a user's, and that an operator is internal, and not who.
+    # Which user a contact is, every role that signs in reads, as the Admin does: a
+    # View-only service token reads that a contact is a user's and which, and that an
+    # operator is internal and whose.
     if [ -n "$witness_site" ] && [ -n "${service_secret:-}" ]; then
         token=$service_secret
         api GET "/contacts/$kim_contact"
-        made="$status $(json '[d["is_user"], d["user"]]')"
+        made="$status $(json '[d["is_user"], (d["user"] or {}).get("username")]')"
         api GET '/operators?limit=1000'
-        made="$made $status $(json '[[o["scope"], o["user"]] for o in d["items"] if o["label"] == "UW7"]')"
+        made="$made $status $(json '[[o["scope"], (o["user"] or {}).get("username")] for o in d["items"] if o["label"] == "UW7"]')"
         token=$admin
         api GET "/contacts/$kim_contact"
         made="$made $(json '[d["is_user"], (d["user"] or {}).get("username")]')"
-        expect "pkg a View-only service token reads that the contact the upgrade made for upgrade-kim is a user's, and that UW7 is internal, and is not told which user; the Admin is" \
-            "$made" '200 [true, null] 200 [["internal", null]] [true, "upgrade-kim"]'
+        expect "pkg a View-only service token reads that the contact the upgrade made for upgrade-kim is a user's, and which, and that UW7 is internal, behind upgrade-pat, as the Admin reads them" \
+            "$made" "200 [true, \"upgrade-kim\"] 200 [[\"internal\", \"$([ -n "$people_pat" ] && echo upgrade-pat)\"]] [true, \"upgrade-kim\"]"
     fi
 
     # A username changed by an Admin: the session that the user had goes on, under the

@@ -1072,8 +1072,10 @@ and P-174 of [decisions.md](decisions.md) in full. The migration adds `phone2` t
 `contacts`, makes `users` anew with `contact_hid`, its foreign key and its uniqueness,
 and gives each user that is no service account and has a display name or an email a
 contact, the users that may sign in before the disabled and each by username: the
-contact that has that email already, or a new one, which takes the email only where it
-is of the form name@host. It writes audit events by `system`, with the request ID
+contact that has that email already; for a user with no email, or one that is not of
+the form name@host, the contact of its display name, as a file finds a contact by name;
+or else a new one, which takes the email only where it is of that form. It writes
+audit events by `system`, with the request ID
 `upgrade-0012`: a create of each contact it makes, an update of each contact it gives a
 user, which names the user, and an update of each user that had a display name or an
 email, which keeps them as they were and names the contact it was given. Then it makes
@@ -1083,8 +1085,12 @@ has put into it. With the previous release the file makes, beside the accounts o
 pass, users of every kind it acts on: with a display name and an email, with an email
 alone, two of one email, two of another of which the first by username is disabled,
 with neither, a service account with a display name, three with an email that is no
-address, with a space, with no `@` and with a second, and one with the email of a
-contact from before in another case and a name of its own; and an external system of
+address, with a space, with no `@` and with a second, one with the email of a
+contact from before in another case and a name of its own, and five with the names of
+contacts that it makes for them: three of a name that one contact has, two with no
+email and one with an address, one with an email that is no address and the name of
+two contacts of which one has none, and one with no email and the name of two
+contacts that have none; and an external system of
 each of the eight kinds, one of them retired and one made with no kind. It sees that
 the previous release refuses a contact on a user, a second number on a contact, a kind
 of the site's own and a value of the list, and puts a value of the site's own and a
@@ -1101,12 +1107,16 @@ After the upgrade no row refers to a record that is not there and no contact has
 second number. Each user shows its contact's name and email: a new contact of its
 display name, or of its username where it had none, and its email where it is an
 address; the contact from before, which is otherwise as it was, for the user that had
-its email in another case; and nothing for the second of two users of one email, for
+its email in another case, and for the first with no email of the name of one contact
+and for the one of the name of two, of which one has no email; a contact of its own
+for the second of that first name, whose match is by then the first's, for the one with
+an address and for the one of whose name no contact answers; and nothing for the
+second of two users of one email, for
 the disabled one of the other two, which come first by username, for the user that had
 neither and for the service account, which has lost its display name. The pass's
 account with a display name is a new contact of that name. The contacts that were made
 are those, each a user's and holding nothing more; of the contacts from before only the
-one is a user's; the operator behind which it stands is internal and the open one has
+three are users'; the operator behind which one of them stands is internal and the open one has
 no scope. The audit trail holds the events of the upgrade that the migration is said to
 write, and no other; the list holds the eight kinds in their order and with the labels
 the page has shown, beside the site's values, and every system has the kind it had.
@@ -1117,7 +1127,7 @@ a new contact by the API and by `hirdir admin create-user --name`, which refuses
 `--email` alone; a second number entered once shows on the user and on the operator,
 which is internal behind a user's contact, external behind another, and open, with no
 scope, when that contact is retired; a View-only token reads that a contact is a user's
-and an operator internal, and only the Admin which user; a username that an Admin
+and which, and that an operator is internal and whose, as the Admin does; a username that an Admin
 changes keeps the user's session; and of the list of kinds a label is changed, a value
 added and removed, the site's own given to a system, a value that a system holds made
 inactive and kept by that system, a system with no kind refused while `other` is not
