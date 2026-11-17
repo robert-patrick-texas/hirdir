@@ -142,6 +142,8 @@ export interface DataGridProps<T> {
    * condition, find the rows where each word is held by one of them.
    */
   quickFields?: readonly string[];
+  /** The field of MAC addresses a word that can be one is looked for in too, as an item's. */
+  quickMac?: string;
   /** A short filter to start with, as from a link, instead of the one remembered. */
   startFilter?: string | null;
   /** Offer the switches for records a list leaves out by default. */
@@ -204,10 +206,17 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const { id, noun, columns, shortFilter, switches, reloadKey = 0, children } = props;
   // What words in the box are looked for in, and the example its help gives.
   const quickText = (props.quickFields ?? []).join(" ");
+  const { quickMac } = props;
   const quick = useMemo<QuickFields | undefined>(
     () =>
-      quickText === "" ? undefined : { fields: quickText.split(" "), example: shortFilter ?? "" },
-    [quickText, shortFilter],
+      quickText === ""
+        ? undefined
+        : {
+            fields: quickText.split(" "),
+            example: shortFilter ?? "",
+            ...(quickMac === undefined ? {} : { mac: quickMac }),
+          },
+    [quickText, shortFilter, quickMac],
   );
   const { entity, onBulkEdit, minor, actions = [] } = props;
   // The part of the list the grid is of, the same object until what it says changes.
@@ -236,7 +245,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   });
   const [draft, setDraft] = useState(start.short);
   const [short, setShort] = useState(start.short);
-  const [shortError, setShortError] = useState("");
+  // What is wrong with the text in force, from the start: a link or a remembered filter
+  // the grid cannot read is said at once, not when Apply is next pressed (P-187).
+  const [shortError, setShortError] = useState(() => {
+    const read = parseFilter(start.short, quick);
+    return read.ok ? "" : read.error;
+  });
   const [includeArchived, setIncludeArchived] = useState(start.includeArchived);
   const [includeDrafts, setIncludeDrafts] = useState(start.includeDrafts);
   const [includeMinor, setIncludeMinor] = useState(start.includeMinor || minor?.start === true);
@@ -374,12 +388,24 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   // A new source empties the grid's cache, so every row on show is read again.
   const parsed = useMemo(() => parseFilter(short, quick), [short, quick]);
   const shortNode = parsed.ok ? parsed.filter : null;
+  // While the text in force cannot be read, no row is asked for: not every row under
+  // text that was not understood, for a count, a selection or an export to act on.
+  const readable = parsed.ok;
   // The filter of the switch that is off. Read when the grid is made, as the columns are.
   const [without] = useState(() => minor?.without ?? null);
   const leftOut = includeMinor ? null : without;
   const wanted = useMemo(
-    () => ({ shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within }),
-    [shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within],
+    () => ({
+      readable,
+      shortNode,
+      leftOut,
+      includeArchived,
+      includeDrafts,
+      reloadKey,
+      turn,
+      within,
+    }),
+    [readable, shortNode, leftOut, includeArchived, includeDrafts, reloadKey, turn, within],
   );
   useEffect(() => {
     if (!grid) return;
@@ -393,6 +419,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     setAllMatching(false);
     grid.setGridOption("datasource", {
       getRows: (params) => {
+        if (!wanted.readable) {
+          setError(null);
+          setTotal(0);
+          params.successCallback([], 0);
+          return;
+        }
         const letGo = () => params.failCallback();
         pending.add(letGo);
         const sorted = gridSort(query, params.sortModel);
@@ -545,6 +577,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
 
   /** The rows chosen: all that match, as a count, or the ones selected, by HID. */
   function chosenOf(api: GridApi<T>): Chosen | null {
+    if (!readable) return null;
     if (allMatching) return total ? { kind: "all", count: total } : null;
     const hids: string[] = [];
     for (const node of api.getSelectedNodes()) {
@@ -575,7 +608,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
    * text is the CSV export of those rows, so it holds what an exported file holds.
    */
   async function copy() {
-    const chosen = grid && entity ? chosenOf(grid) : null;
+    const chosen = grid && entity && readable ? chosenOf(grid) : null;
     if (!grid || !entity || !chosen) return;
     const body = exportRequest(
       entity,
@@ -608,7 +641,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
 
   /** Save the chosen rows as a file, or every row the filter keeps when none is chosen. */
   async function exportAs(format: FileFormat) {
-    if (!grid || !entity) return;
+    if (!grid || !entity || !readable) return;
     const chosen = chosenOf(grid) ?? { kind: "all", count: total ?? 0 };
     const body = exportRequest(
       entity,
@@ -632,8 +665,13 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     }
   }
 
-  const count =
-    total === null ? "" : total === 0 ? `No ${noun[1]}` : plural(total, noun[0], noun[1]);
+  const count = !readable
+    ? `No ${noun[1]} are shown: the filter in force cannot be read`
+    : total === null
+      ? ""
+      : total === 0
+        ? `No ${noun[1]}`
+        : plural(total, noun[0], noun[1]);
   const some = allMatching || selected > 0;
   const busy = working !== "";
 

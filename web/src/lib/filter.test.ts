@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   all,
   any,
+  canBeMac,
   type FilterNode,
   filterText,
   formatShort,
@@ -17,6 +18,7 @@ import {
   sentFilter,
   viewFilter,
   wordsFilter,
+  wordsOf,
 } from "./filter";
 
 function parsed(text: string) {
@@ -396,6 +398,62 @@ describe("plain words in a filter box (P-187)", () => {
     expect(isWords("hostname:prefix:sw")).toBe(false);
     expect(isWords('{"field":"name"}')).toBe(false);
     expect(isWords("")).toBe(false);
+  });
+
+  it("take a MAC address or an IPv6 address as words, whatever its first group is", () => {
+    for (const text of [
+      "aa:bb:cc:dd:ee:ff",
+      "AA-BB-CC-DD-EE-FF",
+      "fd00:abcd:1::5",
+      "db8:beef::1",
+      "2001:db8::1",
+      "fe80::1",
+      "00:00:5e:00:53:02",
+      "sw-01274 aa:bb:cc:dd:ee:ff",
+    ]) {
+      expect(isWords(text), text).toBe(true);
+      expect(parseFilter(text, ITEM_WORDS).ok, text).toBe(true);
+    }
+    // A condition, or a mistyped one, is still neither.
+    expect(isWords("hostname:contains:aa:bb")).toBe(false);
+    expect(isWords("core:sw:01")).toBe(false);
+    expect(parseFilter("core:sw:01", ITEM_WORDS).ok).toBe(false);
+  });
+
+  it("find an item by a MAC address, and only by a word that can be one", () => {
+    expect(wordsFilter("00:00:5e:00:53:02", ITEM_WORDS.fields, ITEM_WORDS.mac)).toEqual({
+      or: [
+        ...ITEM_WORDS.fields.map((field) => ({
+          field,
+          op: "contains",
+          value: "00:00:5e:00:53:02",
+        })),
+        { field: "mac_address", op: "contains", value: "00:00:5e:00:53:02" },
+      ],
+    });
+    for (const mac of ["00:00:5e", "00-00-5E-00-53-02", "0000.5e00.5302", "00005e005302"]) {
+      expect(canBeMac(mac), mac).toBe(true);
+    }
+    for (const other of ["site2", "2030", "192.0.2.10", "2001:db8::1", "17.9.4", "-", "a:b"]) {
+      expect(canBeMac(other), other).toBe(false);
+    }
+    // The server refuses any other text there: a word that cannot be one is not sent.
+    expect(parseFilter("site2", ITEM_WORDS)).toEqual({
+      ok: true,
+      filter: wordsFilter("site2", ITEM_WORDS.fields),
+    });
+    // A list with no MAC address is as it was.
+    expect(wordsFilter("00:00:5e", ["name"])).toEqual({
+      field: "name",
+      op: "contains",
+      value: "00:00:5e",
+    });
+  });
+
+  it("drop the double quotes round a word", () => {
+    expect(wordsOf('"core switch" "sw-01274"')).toEqual(["core", "switch", "sw-01274"]);
+    expect(wordsOf('"" lab')).toEqual(["lab"]);
+    expect(parseFilter('"sw-01274"', ITEM_WORDS)).toEqual(parseFilter("sw-01274", ITEM_WORDS));
   });
 
   it("go to the server of a view as the tree of them, and a condition as typed", () => {

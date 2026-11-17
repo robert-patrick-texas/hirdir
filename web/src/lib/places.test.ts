@@ -20,7 +20,6 @@ import {
   openingText,
   overriddenLevel,
   ownRoles,
-  placeFind,
   placePath,
   plannedGroupsWithin,
   plannedText,
@@ -135,24 +134,24 @@ describe("locationSearch", () => {
 });
 
 describe("Find a place (P-188)", () => {
-  it("looks for each word in the name or the code of a place", () => {
-    expect(placeFind("  ")).toBeNull();
-    expect(placeFind("rack B1")).toEqual({
-      and: [
-        {
-          or: [
-            { field: "name", op: "contains", value: "rack" },
-            { field: "code", op: "contains", value: "rack" },
-          ],
-        },
-        {
-          or: [
-            { field: "name", op: "contains", value: "B1" },
-            { field: "code", op: "contains", value: "B1" },
-          ],
-        },
-      ],
-    });
+  it("narrows a location by the site named with it, as the Location field does", () => {
+    // Each word of "S077 floor 2" is in one field or another: the site's code, the
+    // location's name. A path pasted is its words.
+    const found = locationSearch("S077 floor 2");
+    const words = found && "and" in found ? found.and : [];
+    expect(words).toHaveLength(3);
+    expect(words[0]).toEqual(
+      expect.objectContaining({
+        or: expect.arrayContaining([
+          { field: "site.code", op: "contains", value: "S077" },
+          { field: "site.name", op: "contains", value: "S077" },
+          { field: "parent.name", op: "contains", value: "S077" },
+        ]),
+      }),
+    );
+    expect(locationSearch("Americas > Site 001 > Floor 2")).toEqual(
+      locationSearch("Americas Site 001 Floor 2"),
+    );
   });
 });
 

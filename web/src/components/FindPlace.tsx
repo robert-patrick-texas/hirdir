@@ -1,8 +1,10 @@
 // 0.9.5: Find a place, above the tree of Geography (P-188). What is typed is searched for,
-// once the typing pauses and when Enter is pressed, among the sites and among the
-// locations, each by its name and its code, and up to ten of each that match are listed
-// by their path, each a link to its page, with how many more match. A draft is found, and
-// marked; a retired place is not found. The tree beneath is as it was.
+// once the typing pauses and when Enter is pressed, among the sites as a site is searched
+// for elsewhere, and among the locations as the Location field of an item searches them,
+// so that the site named with a room narrows it; up to ten of each that match are listed
+// by their path, each a link to its page, with how many more match. A draft is found,
+// and a retired place while the view of the tree has Retired places on; each is marked.
+// The tree beneath is as it was.
 
 import { type FormEvent, useId, useState } from "react";
 import { Link } from "react-router";
@@ -10,7 +12,7 @@ import { api } from "../api";
 import { plural } from "../lib/format";
 import { useAsked, useLoad, useReloadOn, useReloadOnReturn } from "../lib/hooks";
 import { optionLabel, RECORD_STATUSES } from "../lib/options";
-import { placeFind, placePath } from "../lib/places";
+import { locationSearch, placePath, siteSearch } from "../lib/places";
 import { TextField } from "./Field";
 import { Problem } from "./Problem";
 
@@ -28,6 +30,7 @@ interface Found {
 async function readPlaces(
   level: Level,
   filter: string,
+  retired: boolean,
   signal: AbortSignal,
 ): Promise<{ items: Found[]; total: number }> {
   const query = {
@@ -35,6 +38,7 @@ async function readPlaces(
     sort: ["name"],
     limit: PLACES_LISTED,
     include_drafts: true,
+    ...(retired ? { include_archived: true } : {}),
   };
   return level === "site"
     ? await api.request("get", "/api/v1/sites", { query, signal })
@@ -47,17 +51,19 @@ function Matches({
   asked,
   again,
   search,
+  retired,
 }: {
   level: Level;
   asked: string;
   again: number;
   search: string;
+  retired: boolean;
 }) {
-  const filter = placeFind(asked);
+  const filter = level === "site" ? siteSearch(asked) : locationSearch(asked);
   const text = filter === null ? "" : JSON.stringify(filter);
   const id = useId();
-  const found = useLoad(`find a place ${level} ${text}`, (signal) =>
-    text === "" ? Promise.resolve(null) : readPlaces(level, text, signal),
+  const found = useLoad(`find a place ${level} ${text} ${retired}`, (signal) =>
+    text === "" ? Promise.resolve(null) : readPlaces(level, text, retired, signal),
   );
   useReloadOn(again, found.reload);
   // A place made meanwhile in another tab is found when the person comes back (P-183).
@@ -108,8 +114,11 @@ function Matches({
   );
 }
 
-/** The box, Find a place, and what it finds. `search` is the view of the tree, kept. */
-export function FindPlace({ search }: { search: string }) {
+/**
+ * The box, Find a place, and what it finds. `search` is the view of the tree, kept, and
+ * `retired` its switch for retired places, which the box follows.
+ */
+export function FindPlace({ search, retired }: { search: string; retired: boolean }) {
   const [typed, setTyped] = useState("");
   const asked = useAsked(typed);
 
@@ -128,11 +137,19 @@ export function FindPlace({ search }: { search: string }) {
           value={typed}
           onChange={setTyped}
           autoComplete="off"
-          hint="A site or a location, by its name or its code."
+          hint="A site or a location, by its name or its code; a location with its site's, as in a path."
         />
       </form>
-      <Matches level="site" asked={asked.asked} again={asked.again} search={search} />
-      <Matches level="location" asked={asked.asked} again={asked.again} search={search} />
+      {(["site", "location"] as const).map((level) => (
+        <Matches
+          key={level}
+          level={level}
+          asked={asked.asked}
+          again={asked.again}
+          search={search}
+          retired={retired}
+        />
+      ))}
     </search>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
 import { BulkEdit } from "../components/BulkEdit";
@@ -8,7 +8,7 @@ import { DataGrid, type GridAction } from "../components/grid/DataGrid";
 import { itemColumns, itemIsDimmed, MAJOR_ITEMS } from "../components/grid/itemColumns";
 import { madeLink, NewItem } from "../components/NewItem";
 import { Notice, Problem } from "../components/Problem";
-import { ITEM_QUICK_FIELDS } from "../lib/filter";
+import { ITEM_MAC_FIELD, ITEM_QUICK_FIELDS } from "../lib/filter";
 import { queryBody } from "../lib/gridQuery";
 import { useTitle } from "../lib/hooks";
 import { stateNames } from "../lib/lifecycle";
@@ -34,6 +34,7 @@ export function Items() {
   useTitle("Items");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const startFilter = params.get("filter");
   // A link to particular items asks for the minor items among them too.
@@ -111,7 +112,9 @@ export function Items() {
       {!ready && <p role="status">Loading…</p>}
       {ready && (
         <DataGrid<Item>
-          key={`${startFilter ?? ""} ${withMinor} ${withArchived} ${withDrafts}`}
+          // Made anew on every visit, the same address asked again among them: Find an
+          // item with the words it found before puts them back in the grid's box (P-187).
+          key={`${location.key} ${startFilter ?? ""} ${withMinor} ${withArchived} ${withDrafts}`}
           id="items"
           noun={["item", "items"]}
           entity="items"
@@ -136,6 +139,7 @@ export function Items() {
           dimmed={itemIsDimmed}
           shortFilter="lifecycle_state:in:Test,Prod hostname:prefix:site2-"
           quickFields={ITEM_QUICK_FIELDS}
+          quickMac={ITEM_MAC_FIELD}
           startFilter={startFilter}
           startSwitches={
             withArchived || withDrafts

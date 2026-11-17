@@ -497,7 +497,9 @@ export function PlaceDetail(props: PlaceDetailProps) {
             <PlaceFacts place={record} choices={choices} to={to} />
             {/*
               0.9.5: what is in force here, its contacts first, before its files and links,
-              so that whom to call is in the first window of the page (P-194).
+              so that whom to call stands above them, not under the files and their form
+              (P-194). It is not in the first window: the menu bar, the view, Find a place
+              and the facts of the place come before it.
             */}
             <InForce
               level={level}

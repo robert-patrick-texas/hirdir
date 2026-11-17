@@ -2516,6 +2516,11 @@ fieldset.extension-list {
   max-width: 60vw;
 }
 
+/* What Find an item could not read, under its box, as wide as the box and its button. */
+.find-item-error {
+  max-width: 21rem;
+}
+
 /* --- 0.9.5, lane B: Find a place, above the tree of Geography (P-188) -------------------- */
 
 .find-place {

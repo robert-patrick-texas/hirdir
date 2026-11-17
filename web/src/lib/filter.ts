@@ -116,6 +116,12 @@ export type ShortResult = { ok: true; filter: FilterNode | null } | { ok: false;
 export interface QuickFields {
   fields: readonly string[];
   example: string;
+  /**
+   * A field compared with MAC addresses, as an item's `mac_address`: a word that can be a
+   * MAC address, or part of one, is looked for in it too. The server refuses any other
+   * text there, so no other word is.
+   */
+  mac?: string;
 }
 
 /** The fields an item is known by: what words typed above the items are looked for in. */
@@ -127,30 +133,74 @@ export const ITEM_QUICK_FIELDS: readonly string[] = [
   "address",
 ];
 
-/** The items' quick fields, with their example of the short form. */
-export const ITEM_WORDS: QuickFields = { fields: ITEM_QUICK_FIELDS, example: ITEMS_EXAMPLE };
+/** The field of an item compared with MAC addresses, which words that can be one are looked for in. */
+export const ITEM_MAC_FIELD = "mac_address";
+
+/** The items' quick fields, with their example of the short form and their MAC address. */
+export const ITEM_WORDS: QuickFields = {
+  fields: ITEM_QUICK_FIELDS,
+  example: ITEMS_EXAMPLE,
+  mac: ITEM_MAC_FIELD,
+};
 
 // The most words a filter takes: with a list's fields, the server takes 100 conditions.
 export const MOST_WORDS = 8;
 
+// A word of hex digits and the marks that part them, as a MAC address or an IPv6 address
+// is written: never a condition, whatever its first group is (aa:bb:cc:dd:ee:ff, fd00::5).
+const HEX_WORD = /^[0-9a-f]*(?:[:.-][0-9a-f]*)+$/i;
+
 /** Whether text holds anything shaped like a condition of the short form: then it is no words. */
 function hasCondition(text: string): boolean {
-  return new RegExp(SHORT.source, "i").test(text) || LIKE_A_CONDITION.test(text);
+  const rest = text
+    .split(/\s+/)
+    .filter((word) => !HEX_WORD.test(word))
+    .join(" ");
+  return new RegExp(SHORT.source, "i").test(rest) || LIKE_A_CONDITION.test(rest);
 }
 
-/** The words of plain text: what stands between spaces. */
+/**
+ * The words of plain text: what stands between spaces, with the double quotes round a
+ * word dropped, since a word is looked for as it is and not as a phrase.
+ */
 export function wordsOf(text: string): string[] {
-  return text.split(/\s+/).filter((word) => word !== "");
+  return text
+    .split(/\s+/)
+    .map((word) => word.replace(/^"+|"+$/g, ""))
+    .filter((word) => word !== "");
+}
+
+// A MAC address or the start or a part of one as people write it: pairs of hex digits
+// parted by colons or hyphens, groups of four parted by dots, or the twelve digits alone.
+const MAC_WORD =
+  /^(?:[0-9a-f]{2}(?:[:-][0-9a-f]{2}){1,5}|[0-9a-f]{4}(?:\.[0-9a-f]{4}){1,2}|[0-9a-f]{12})$/i;
+
+/**
+ * Whether a word can be a MAC address or part of one, as the server reads it there. A
+ * version, an IPv4 or an IPv6 address, or a word of digits alone, as 2030, is not.
+ */
+export function canBeMac(word: string): boolean {
+  return MAC_WORD.test(word);
 }
 
 /**
  * Plain words as a filter: each word held by one of the fields, as an AND of an OR of
- * `contains`, which every list takes. Blank text is no filter.
+ * `contains`, which every list takes, and by the field of MAC addresses where the list
+ * has one and the word can be one. Blank text is no filter.
  */
-export function wordsFilter(text: string, fields: readonly string[]): FilterNode | null {
+export function wordsFilter(
+  text: string,
+  fields: readonly string[],
+  mac?: string,
+): FilterNode | null {
   return all(
     ...wordsOf(text).map((value) =>
-      any(...fields.map((field) => ({ field, op: "contains" as const, value }))),
+      any(
+        ...fields.map((field) => ({ field, op: "contains" as const, value })),
+        mac !== undefined && canBeMac(value)
+          ? { field: mac, op: "contains" as const, value }
+          : null,
+      ),
     ),
   );
 }
@@ -275,7 +325,7 @@ export function parseFilter(text: string, quick?: QuickFields): ShortResult {
     if (wordsOf(trimmed).length > MOST_WORDS) {
       return { ok: false, error: `At most ${MOST_WORDS} words are looked for at once.` };
     }
-    return { ok: true, filter: wordsFilter(trimmed, quick.fields) };
+    return { ok: true, filter: wordsFilter(trimmed, quick.fields, quick.mac) };
   }
   if (!trimmed.startsWith("{")) {
     const short = parseShort(trimmed, quick?.example);

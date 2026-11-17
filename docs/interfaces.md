@@ -1704,14 +1704,22 @@ What 0.9.5 adds to these pages, for the work of each day:
   comments; beside its location and its site, a link, items here, to the list of items
   filtered to that place (P-189). Where its disposition and intent are changed, only
   what the lifecycle rule of its state allows is offered (P-191).
-- **Geography.** A box, Find a place, searches the sites by name and code and the
-  locations by name and code, and lists up to ten of each by their path, each a link
-  (P-188). On the page of a place, what is in force there, its contacts first, stands
-  above its files and links, and the email and the number of a contact are links that
-  write to it and call it (P-194).
+- **Geography.** A box, Find a place, searches the sites as a site is searched for
+  elsewhere, each word in its name, its code or its region's name, and the locations as
+  the Location field of an item searches them, each word in the name or the code of the
+  location, the name of the location it is in, the name or the code of its site or the
+  name of its region, so that the site named with a room narrows it; it lists up to ten
+  of each by their path, each a link. Drafts are found, and a retired place is found
+  when the view of the tree has Retired places on; both are marked (P-188). On the page
+  of a place, what is in force there, its contacts first, stands above its files and
+  links, and the email and the number of a contact are links that write to it and call
+  it (P-194).
 - **Reports.** The Scoreboard begins with links to its tables; a table of more than
   twenty rows shows twenty and a button, Show all; the operators involved with a group
-  or a site are a number with the list behind it (P-196). The totals of health on the
+  or a site are a number with the list behind it (P-196). A link to a table writes the
+  address as every link of the app does, under the path the site is served at, and
+  brings the window to the table with the keyboard on its heading; the page opened at an
+  address that names a table stands at it once the tables have come. The totals of health on the
   summary are links to the items, within the view asked for (P-195).
 - **Contacts.** A contact that the server counts uses of, with no place, owner or
   operator to list, is said to be named in agreements, contracts, vendors or circuits,
@@ -1801,13 +1809,23 @@ with the row it changes, and otherwise moves no further than keeps that row in v
 the audit trail links each change to the page of its record, where it has one (P-186).
 
 The menu bar has a box, Find an item, on every page: what is typed there opens the list
-of items with those words, minor items among them (P-187). In the filter box above any
+of items with those words, minor items among them (P-187). Text the list cannot read is
+not sent there: what is wrong with it is said under the box, which keeps it. The same
+words asked again make the list anew, its own filter box with them. In the filter box above any
 list, text that holds no condition of the short form is taken as words: a record matches
 when each word is held by one of the fields its list is known by, as an item's name,
 host name, serial number, asset tag and address. The words are sent as a tree of the
 filter grammar; a condition of the short form is sent as it always was. Text that is
 neither, as words with a condition after them, is answered with how that list's own short
-form reads. Up to eight words are taken at once. What a list is known by: an item by its
+form reads. A word of hex digits and the colons, dots or hyphens that part them, as a MAC
+address or an IPv6 address, is a word whatever its first group is, and the double quotes
+round a word are dropped. An item is found by its MAC address too, `mac_address`, for a
+word that can be one or a part of one: pairs of hex digits parted by colons or hyphens,
+groups of four parted by dots, or the twelve digits alone; the server refuses any other
+text there. A list opened with text in its box that it cannot read, from a link or as it
+was remembered, says why under the box at once, and while that text is in force asks for
+no row: the count, Select all that match, Copy, Export, Bulk edit and Cover with a
+contract have nothing to act on. Up to eight words are taken at once. What a list is known by: an item by its
 `name`, `hostname`, `serial_number`, `asset_tag` and `address`; a contact by `name` and
 `email`; a catalog entry by `pid` and `model_name`; a vendor, a capacity line, an external
 system and a circuit group by `name`; an operator by `label`; an owner by `label` and

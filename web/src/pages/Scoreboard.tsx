@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { saveFile } from "../components/grid/save";
@@ -87,28 +87,18 @@ const TABLES = [
 ] as const;
 
 /**
- * Links to the tables of the page (P-196). The address keeps the view and names the
- * table; the window is brought to it, and the keyboard with it.
+ * Links to the tables of the page (P-196). The router writes the address, which keeps
+ * the view, the path prefix with it, and names the table; `useToTable` brings the window
+ * to it, and the keyboard with it.
  */
 function TablesNav() {
   const { pathname, search } = useLocation();
-  function goTo(event: MouseEvent, id: string) {
-    const heading = document.getElementById(id);
-    if (!heading) return;
-    event.preventDefault();
-    window.history.replaceState(window.history.state, "", `${pathname}${search}#${id}`);
-    heading.scrollIntoView({ block: "start" });
-    heading.focus({ preventScroll: true });
-  }
   return (
     <nav aria-label="The tables of the scoreboard" className="page-tables">
       <ul>
         {TABLES.map((table) => (
           <li key={table.id}>
-            <Link
-              to={{ pathname, search, hash: table.id }}
-              onClick={(event) => goTo(event, table.id)}
-            >
+            <Link to={{ pathname, search, hash: table.id }} replace>
               {table.name}
             </Link>
           </li>
@@ -116,6 +106,25 @@ function TablesNav() {
       </ul>
     </nav>
   );
+}
+
+/**
+ * When the address names a table of the page, by a link above or as the page is opened,
+ * the window is brought to its heading and the keyboard put on it: once for each address,
+ * when every table has come, so that the rows drawn above do not move it away again.
+ */
+function useToTable(ready: boolean) {
+  const { hash, key } = useLocation();
+  const done = useRef("");
+  useEffect(() => {
+    const id = decodeURIComponent(hash.replace(/^#/, ""));
+    if (!ready || done.current === key || !TABLES.some((table) => table.id === id)) return;
+    const heading = document.getElementById(id);
+    if (!heading) return;
+    done.current = key;
+    heading.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [hash, key, ready]);
 }
 
 // What the blank row of each table is called: it is a row like the others.
@@ -210,6 +219,7 @@ export function Scoreboard() {
   const groups = useLoad(`score ${JSON.stringify(groupsQuery)}`, (signal) =>
     api.request("get", "/api/v1/reports/summary", { query: groupsQuery, signal }),
   );
+  useToTable([operators, sites, groups].every((one) => !one.loading));
 
   return (
     <>

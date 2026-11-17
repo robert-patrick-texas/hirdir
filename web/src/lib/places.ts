@@ -80,20 +80,8 @@ function searchWords(typed: string): string[] {
 }
 
 /**
- * 0.9.5: the filter of Find a place (P-188), for the sites and for the locations alike:
- * each word is in the name of the place or in its code. Blank text is no search.
- */
-export function placeFind(typed: string): FilterNode | null {
-  return all(
-    ...searchWords(typed).map((value) =>
-      any({ field: "name", op: "contains", value }, { field: "code", op: "contains", value }),
-    ),
-  );
-}
-
-/**
  * The filter that finds sites by the words a location was searched for with, where no
- * location matched (P-184): each word is in the name of the site, in its code, or in the
+ * location matched (P-184), and by what Find a place is given (P-188): each word is in the name of the site, in its code, or in the
  * name of its region, as the search for a location has it. Blank text is no search.
  */
 export function siteSearch(typed: string): FilterNode | null {
@@ -109,7 +97,8 @@ export function siteSearch(typed: string): FilterNode | null {
 }
 
 /**
- * The filter that finds locations by what was typed. The list of locations is filtered
+ * The filter that finds locations by what was typed, in a field and in Find a place
+ * (P-188). The list of locations is filtered
  * by the name of a location, of the location it is in, of its site and of the region
  * the site is in, and by its code and its site's, so each word typed has to be in one of
  * those: `site-2 102` finds Room 102 of Site-2, and a path that is pasted, from the

@@ -94,8 +94,8 @@ export function Geography() {
       <div className="geography-columns">
         <section aria-labelledby="tree" className="geography-tree">
           <h2 id="tree">Regions, sites and locations</h2>
-          {/* 0.9.5: a site or a location by its name or its code, above the tree (P-188). */}
-          <FindPlace search={search} />
+          {/* 0.9.5: a site or a location by its name, its code or its site's, above the tree (P-188). */}
+          <FindPlace search={search} retired={view.includeArchived} />
           {mayEdit && !adding && (
             <p className="actions">
               <button type="button" className="primary" onClick={() => setAdding(true)}>

@@ -9,7 +9,7 @@ import {
   useNavigationType,
 } from "react-router";
 import { useAuth } from "../auth";
-import { itemsPath } from "../lib/filter";
+import { ITEM_WORDS, itemsPath, parseFilter } from "../lib/filter";
 import { useSite } from "../lib/product";
 import { allows, roleLabel } from "../lib/roles";
 import { RenewalAlert } from "./RenewalAlert";
@@ -18,16 +18,26 @@ import { RenewalAlert } from "./RenewalAlert";
  * 0.9.5: Find an item, in the menu bar of every page (P-187). What is typed opens the
  * list of items with those words, minor items among them: the list takes words as it
  * takes them in its own filter box, and a condition of the short form as a condition.
+ * Text the list cannot read is not sent there, where it would show every item: what is
+ * wrong with it is said under the box, and the box keeps it to be put right. Asked again
+ * with the same words, the list is made anew, with the box of its own filter as they say.
  */
 function FindItem() {
   const navigate = useNavigate();
   const [typed, setTyped] = useState("");
+  const [error, setError] = useState("");
   const id = useId();
 
   function find(event: FormEvent) {
     event.preventDefault();
     const words = typed.trim();
     if (words === "") return;
+    const read = parseFilter(words, ITEM_WORDS);
+    if (!read.ok) {
+      setError(read.error);
+      return;
+    }
+    setError("");
     setTyped("");
     navigate(itemsPath(words));
   }
@@ -45,13 +55,23 @@ function FindItem() {
           type="search"
           name="find"
           value={typed}
-          onChange={(event) => setTyped(event.target.value)}
+          onChange={(event) => {
+            setTyped(event.target.value);
+            setError("");
+          }}
           placeholder="Find an item"
           autoComplete="off"
           enterKeyHint="search"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
         />
         <button type="submit">Find</button>
       </form>
+      {error && (
+        <p className="field-error find-item-error" id={`${id}-error`} role="alert">
+          {error}
+        </p>
+      )}
     </search>
   );
 }

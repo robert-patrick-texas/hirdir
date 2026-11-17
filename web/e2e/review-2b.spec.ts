@@ -123,6 +123,19 @@ test("P-195: Home shows its totals before the summary by operator, and a total o
   for (const n of [1, 2, 3]) {
     await make(request, headers, "/items", { hostname: `hl-${n}-${id}` });
   }
+  // Beside them, two the total does not count, of the same health: one in a state outside
+  // count_states, and one of a kind outside count_kinds. A link of health alone would
+  // open them too (B6 of the review of 0.9.5).
+  await make(request, headers, "/items", { hostname: `hl-4-${id}`, lifecycle_state: "Delivered" });
+  const vendor = (await make(request, headers, "/vendors", { name: label("Hollow Soft") })).hid;
+  const software = (
+    await make(request, headers, "/catalog-entries", {
+      vendor_hid: vendor,
+      pid: `HS-${id}`,
+      kind: "software",
+    })
+  ).hid;
+  await make(request, headers, "/items", { hostname: `hl-5-${id}`, catalog_entry_hid: software });
   const seen = await watch(page.context());
   await signIn(page, account);
 
@@ -284,10 +297,71 @@ test("P-187: Find an item, in the menu bar of every page, opens the items with t
   // The page begins at its top, with the keyboard in its content (P-167).
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.locator("main")).toBeFocused();
+
+  // The same words again, after the list's own filter was changed: the list is made anew
+  // with them (B5 of the review of 0.9.5).
+  const grid = page.getByLabel("Filter", { exact: true });
+  await grid.fill(`core ${id}`);
+  await grid.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("2 items");
+  const findBox = find.getByRole("searchbox", { name: "Find an item" });
+  await findBox.fill(`edge ${id}`);
+  await findBox.press("Enter");
+  await expect(grid).toHaveValue(`edge ${id}`);
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
   await expectClean(page, seen);
 });
 
-test("P-188: Find a place lists the sites and the locations by name and code, each a link, with how many more", async ({
+test("P-187: text that cannot be read never shows every item, from Find an item or in a link", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await wordItems(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  let reads = 0;
+  page.on("request", (sent) => {
+    if (sent.url().includes("/api/v1/items/query")) reads += 1;
+  });
+
+  // Find an item reads the text first: it stays on the page and says what is wrong.
+  await page.goto("./about");
+  const find = page.getByRole("search", { name: "Find an item" });
+  const box = find.getByRole("searchbox", { name: "Find an item" });
+  await box.fill("core:sw:01");
+  await box.press("Enter");
+  await expect(find.getByRole("alert")).toContainText("The short form is field:op:value");
+  await expect(box).toHaveAttribute("aria-invalid", "true");
+  await expect(box).toHaveValue("core:sw:01");
+  await expect(page).toHaveURL(/\/about$/);
+
+  // A list opened with that text says why at once, and asks for no row: nothing to count,
+  // to select, to export or to edit in bulk.
+  reads = 0;
+  await page.goto(`./items?filter=${encodeURIComponent("core:sw:01")}&minor=1`);
+  const filter = page.getByLabel("Filter", { exact: true });
+  await expect(filter).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText(/^Words alone find a record by its/)).toBeVisible();
+  await expect(page.getByTestId("grid-total")).toHaveText(
+    "No items are shown: the filter in force cannot be read",
+  );
+  for (const name of ["Select all that match", "Export CSV", "Export JSON"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
+  }
+  await expect(page.getByTestId("grid-items").locator(".ag-row")).toHaveCount(0);
+  expect(reads, "no row was asked for").toBe(0);
+
+  // Text that reads takes its place, and the rows come.
+  await filter.fill(`edge ${id}`);
+  await filter.press("Enter");
+  await expect(page.getByTestId("grid-total")).toHaveText("1 item");
+  await expect(filter).not.toHaveAttribute("aria-invalid", "true");
+  await expectClean(page, seen);
+});
+
+test("P-188: Find a place lists the sites and the locations, a location narrowed by its site, each a link, with how many more", async ({
   page,
   account,
   request,
@@ -333,6 +407,14 @@ test("P-188: Find a place lists the sites and the locations by name and code, ea
   await expect(locations.getByRole("listitem")).toContainText("Draft");
   await expect(locations).not.toContainText(label("Old bay"));
 
+  // The site named with the room narrows it, by the site's code or as a path is pasted
+  // (B3 of the review of 0.9.5).
+  const cage = `${label("Eastmarch")} > ${label("Quarry Point")} > ${label("Cage 4")}`;
+  await box.fill(`QP-${id} cage`);
+  await expect(locations.getByRole("link")).toHaveText([cage]);
+  await box.fill(`${label("Quarry Point")} > Cage`);
+  await expect(locations.getByRole("link")).toHaveText([cage]);
+
   // Ten of each, and how many more match.
   await box.fill(`Shelf ${id}`);
   await expect(locations.getByRole("link")).toHaveCount(10);
@@ -345,6 +427,14 @@ test("P-188: Find a place lists the sites and the locations by name and code, ea
   await expect(page).toHaveURL(new RegExp(`/geography/site/${made.site}`));
   // The tree beneath is as it was.
   await expect(page.getByRole("heading", { name: "Regions, sites and locations" })).toBeVisible();
+
+  // With Retired places on in the view, a retired place is found, and marked (B8).
+  await page.goto("./geography?archived=1");
+  await box.fill(`bay ${id}`);
+  await expect(locations.getByRole("listitem")).toHaveCount(2);
+  await expect(locations.getByRole("listitem").filter({ hasText: label("Old bay") })).toContainText(
+    "Retired",
+  );
   await expectClean(page, seen);
 });
 
@@ -383,10 +473,20 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   const groups = page.getByTestId("score-groups");
   const rows = groups.locator("tbody tr");
   await expect(rows).toHaveCount(20, { timeout: 30_000 });
-  // The link brings the table into the window, and the keyboard to it.
+  // The link brings the table into the window, and the keyboard to it. The address is
+  // the router's, so that a path prefix is kept (B1 of the review of 0.9.5).
+  const before = new URL(page.url());
+  const keyOf = () => page.evaluate(() => (window.history.state as { key?: string } | null)?.key);
+  const keyBefore = await keyOf();
   await tables.getByRole("link", { name: "Groups" }).click();
   await expect(page.getByRole("heading", { name: "Groups", exact: true })).toBeFocused();
   await expect(page.getByRole("heading", { name: "Groups", exact: true })).toBeInViewport();
+  const after = new URL(page.url());
+  expect(after.pathname).toBe(before.pathname);
+  expect(after.search).toBe(before.search);
+  expect(after.hash).toBe("#score-groups");
+  // A move the router made has a key of its own; an address written past it keeps the old.
+  expect(await keyOf(), "the router made the move").not.toBe(keyBefore);
 
   // The first, with the most weight, is first; the rank is of all the rows.
   await expect(rows.first()).toHaveAttribute("data-label", label("Ring 01"));
@@ -421,6 +521,16 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   await page.getByRole("button", { name: "Show all 22 groups" }).click();
   await expect(rows).toHaveCount(22);
   await expect(rows.last()).toHaveAttribute("data-label", label("Ring 01"));
+
+  // Opened at an address that names a table, the page stands at that table.
+  await page.goto("./about");
+  await page.goto(
+    `./reports/scoreboard?${new URLSearchParams({ filter: `grp ${id}` })}#score-sites`,
+  );
+  const sitesHeading = page.getByRole("heading", { name: "Sites", exact: true });
+  await expect(sitesHeading).toBeFocused();
+  await expect(sitesHeading).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expectClean(page, seen);
 });
 
