@@ -411,8 +411,9 @@ assignments, every support agreement and contract with what it covers, every pur
 request with its lines, every external system with its registrations, every capacity
 line, every circuit with its parts and groups, every reference with the content of its
 file, and every tag, the stored imports, and the history of those records. It keeps
-the accounts, groups, roles and service tokens, so people sign in as before, and the
-settings, choices and lifecycle rules, so the site's set-up is as it was. The backup it
+the accounts, groups, roles and service tokens, so people sign in as before, with the
+contact each user is and its history, and the settings, choices and lifecycle rules, so
+the site's set-up is as it was. The backup it
 takes first is one of the 14 that are kept, and its path is printed: `hirdir admin
 restore` puts it back.
 
@@ -1365,19 +1366,23 @@ which a release before 1.0.0 may do:
   numbers. The upgrade gives each user that is no service account and has a display
   name or an email a contact: the contact that already has that email, which is left as
   it is, or a new contact with the user's display name, or its username where it had
-  none, and its email. A second user with the email of a contact that is already
-  another user's is given none. Each contact made and each user given one has an audit
-  event by `system`. Then `display_name` and `email` are dropped from the users, so a
-  service account is shown by its username and loses the display name it had.
+  none, and its email where it is of the form name@host. The users that may sign in go
+  before those that are disabled, so of two users of one email the one still in use is
+  given the contact and the other none. Then `display_name` and `email` are dropped
+  from the users, so a service account is shown by its username and loses the display
+  name it had. The audit event of each user that had either, by `system`, holds what was
+  dropped and the contact it was given; each contact made and each contact given to a
+  user has one too.
 - **Contacts gain `phone2`**, a second number, blank.
+- **A reset keeps the contact each user is**, with its history, as it keeps the accounts.
 - **The kinds of external system are a list**, `system_kind`, loaded with the eight
   kinds that were fixed, `monitoring` to `other`, which an Admin or Inventory now
   renames, adds to and makes inactive in Admin › Choices. Every system keeps its kind.
 
 An operator keeps its contact. It is **internal** where that contact is a user's and
-**external** where it is not, so after the upgrade an operator whose contact has the
-email of a user is internal, and the others are external until somebody puts a user's
-contact behind them.
+**external** where it is not, so after the upgrade an operator whose contact the upgrade
+gave to a user is internal, and the others are external until somebody puts a user's
+contact behind them; one whose contact is retired is open, and is neither.
 
 What else is new:
 

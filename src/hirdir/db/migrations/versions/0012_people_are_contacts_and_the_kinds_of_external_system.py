@@ -8,9 +8,12 @@ gains `contact_hid` and loses `display_name` and `email`, which are its contact'
 now on. Each user that is no service account and has a display name or an email is
 given a contact: the one that has its email already, where there is one and it is no
 other user's, which is left as it is; or, where no contact has that email, a new one
-with the user's display name, or its username where it has none, and its email. A
-contact made and a user given one each have an audit event by `system`. A service
-account keeps no display name. Contacts gain `phone2`, a second number.
+with the user's display name, or its username where it has none, and its email where a
+contact takes it. Users that may sign in go first, then the disabled, each by username.
+Each user that had a display name or an email has an audit event by `system` that keeps
+what was dropped, and the contact it was given; a contact made has one, and a contact
+given to a user one more. A service account keeps no display name. Contacts gain
+`phone2`, a second number, and the kind of an external system takes 40 characters.
 
 Loads the `system_kind` list with the eight kinds of external system that were fixed
 until now (P-170), written out here so that the migration does not change with the
@@ -101,6 +104,12 @@ def _audit(now: datetime) -> Any:
     )
 
 
+def _is_address(email: str) -> bool:
+    """Say whether a contact takes email, as the contacts of 0.9.3 check it: name@host."""
+    local, at, domain = email.partition("@")
+    return bool(local and at and domain) and " " not in email and "@" not in domain
+
+
 def _give_users_their_contacts(now: datetime) -> None:
     bind = op.get_bind()
     users = sa.table(
@@ -111,6 +120,7 @@ def _give_users_their_contacts(now: datetime) -> None:
         sa.column("display_name", sa.String),
         sa.column("email", sa.String),
         sa.column("is_service_account", sa.Boolean),
+        sa.column("disabled", sa.Boolean),
         sa.column("contact_hid", sa.String),
         sa.column("updated_at", sa.DateTime),
         sa.column("row_version", sa.Integer),
@@ -136,52 +146,70 @@ def _give_users_their_contacts(now: datetime) -> None:
     }
     taken: set[str] = set()
     events: list[dict[str, Any]] = []
-    people = bind.execute(
-        sa.select(users.c.hid, users.c.username, users.c.display_name, users.c.email)
-        .where(users.c.is_service_account.is_(False))
-        .order_by(users.c.username_key)
+    # A user that may sign in is given a contact before one that is disabled, and of
+    # those alike the first by username: a contact is one user's at most.
+    everyone = bind.execute(
+        sa.select(
+            users.c.hid,
+            users.c.username,
+            users.c.display_name,
+            users.c.email,
+            users.c.is_service_account,
+        ).order_by(users.c.disabled, users.c.username_key)
     ).all()
-    for person in people:
-        name = (person.display_name or "").strip()
-        email = (person.email or "").strip()
-        if not name and not email:
-            continue
-        found = by_email.get(_key(email)) if email else None
-        if found is not None and found in taken:
-            # A contact is one user's at most: the first by username has it.
-            continue
-        if found is None:
-            found = str(uuid.uuid7())
-            made = {"name": name or person.username, "email": email or None}
-            bind.execute(
-                contacts.insert().values(
-                    hid=found,
-                    name=made["name"],
-                    name_key=_key(made["name"]),
-                    email=made["email"],
-                    email_key=_key(email) if email else None,
-                    record_status="active",
-                    created_at=now,
-                    updated_at=now,
-                    row_version=1,
+    for user in everyone:
+        name = (user.display_name or "").strip()
+        email = (user.email or "").strip()
+        # What is dropped from the user is in its event, so the trail keeps what it was.
+        changes = [
+            {"field": field, "old": value, "new": None}
+            for field, value in (("display_name", name), ("email", email))
+            if value
+        ]
+        found = None
+        if not user.is_service_account and (name or email):
+            address = email if email and _is_address(email) else None
+            found = by_email.get(_key(address)) if address else None
+            if found is not None and found in taken:
+                found = None
+            elif found is None:
+                found = str(uuid.uuid7())
+                made = {"name": name or user.username, "email": address}
+                bind.execute(
+                    contacts.insert().values(
+                        hid=found,
+                        name=made["name"],
+                        name_key=_key(made["name"]),
+                        email=address,
+                        email_key=_key(address) if address else None,
+                        record_status="active",
+                        created_at=now,
+                        updated_at=now,
+                        row_version=1,
+                    )
                 )
+                if address:
+                    by_email[_key(address)] = found
+                made_changes = [
+                    {"field": field, "old": None, "new": value}
+                    for field, value in (*made.items(), ("record_status", "active"))
+                    if value is not None
+                ]
+                events.append(_event(now, "create", "contact", found, made_changes))
+        if found is not None:
+            taken.add(found)
+            changes.append({"field": "contact_hid", "old": None, "new": found})
+            link = {"field": "user_hid", "old": None, "new": user.hid}
+            events.append(_event(now, "update", "contact", found, [link]))
+        if not changes:
+            continue
+        if found is not None:
+            bind.execute(
+                users.update()
+                .where(users.c.hid == user.hid)
+                .values(contact_hid=found, updated_at=now, row_version=users.c.row_version + 1)
             )
-            if email:
-                by_email[_key(email)] = found
-            changes = [
-                {"field": field, "old": None, "new": value}
-                for field, value in (*made.items(), ("record_status", "active"))
-                if value is not None
-            ]
-            events.append(_event(now, "create", "contact", found, changes))
-        taken.add(found)
-        bind.execute(
-            users.update()
-            .where(users.c.hid == person.hid)
-            .values(contact_hid=found, updated_at=now, row_version=users.c.row_version + 1)
-        )
-        change = {"field": "contact_hid", "old": None, "new": found}
-        events.append(_event(now, "update", "user", person.hid, [change]))
+        events.append(_event(now, "update", "user", user.hid, changes))
     if events:
         op.bulk_insert(audit, events)
 
@@ -214,12 +242,17 @@ def upgrade() -> None:
     with op.batch_alter_table("users") as users:
         users.drop_column("display_name")
         users.drop_column("email")
+    # A kind is a value of a list now, which may be as long as any other value of one.
+    with op.batch_alter_table("external_systems") as systems:
+        systems.alter_column("kind", type_=sa.String(40), existing_type=sa.String(20))
     _load_defaults("system_kind", SYSTEM_KINDS, now)
 
 
 def downgrade() -> None:
     choices = sa.table("choices", sa.column("list", sa.String))
     op.execute(choices.delete().where(choices.c.list == "system_kind"))
+    with op.batch_alter_table("external_systems") as systems:
+        systems.alter_column("kind", type_=sa.String(20), existing_type=sa.String(40))
     with op.batch_alter_table("users") as users:
         users.add_column(
             sa.Column("display_name", sa.String(200), nullable=False, server_default="")

@@ -502,7 +502,7 @@ number entered once shows in all three places (P-172).
 | `contacts.organization`, `phone`, `phone2`, `notes` | text | `phone2` is a second number. Each is optional |
 | `contacts.email` | text | unique when present, without regard to case |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
-| `contacts.user` | read only | the `hid` and `username` of the user this contact is, or nothing; `is_user` is true where there is one |
+| `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is; `user`, the `hid` and `username` of that user, is told to an Admin alone |
 | `contact_assignments.contact_hid` | reference | blank only on an assignment that stops inheritance |
 | `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three, and not changed afterwards |
 | `contact_assignments.role` | choice | a value of the `contact_role` list: `shipping`, `technical`, `federal`, `operational`, `escalation` |
@@ -538,7 +538,7 @@ A short label that stands for the member of the team who looks after what it is 
 | `colour` | text | written `#1f6feb`, for the mark that lists and reports show |
 | `contact_hid` | reference | the person behind the label. Blank while nobody is |
 | `record_status` | choice | see Conventions |
-| `scope` | read only | `internal` where the contact behind it is a user's, `external` where it is not, external to `hirdir`; blank where nobody is behind it |
+| `scope` | read only | `internal` where the contact behind it is a user's, `external` where it is not, external to `hirdir`; blank where nobody is behind it, as where its contact is retired |
 
 The record of an operator answers its contact with that contact's `email`, `phone`
 and `phone2`, and the user that contact is, where it is one. They are the contact's:

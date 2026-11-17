@@ -129,8 +129,9 @@ uses, read from where it is used.
 ### People
 
 Every person is a contact, and a user and an operator are each a part that a contact
-plays (P-172). `GET /contacts` answers, with each contact, `user`, the `hid` and
-`username` of the user it is, or nothing, and filters and sorts by `is_user`.
+plays (P-172). `GET /contacts` answers, with each contact, `is_user`, true where it is
+a user's, and filters and sorts by it; and, to an Admin alone, `user`, the `hid` and
+`username` of that user, or nothing.
 
 `POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
 before, and the person: `contact_hid`, a contact that is no other user's and is not
@@ -144,10 +145,11 @@ a change of the user does not take: they are changed on the contact, by
 `PATCH /contacts/{hid}`. `q` on `GET /users` finds part of a username or of the
 name of its contact.
 
-An operator answers `contact` with that contact's `email`, `phone` and `phone2`,
-`user`, the user that contact is, where it is one, and `scope`: `internal` where the
-contact is a user's, `external` where it is not, and `null` where nobody is behind the
-label. `GET /operators` filters and sorts by `scope`.
+An operator answers `contact` with that contact's `email`, `phone` and `phone2`;
+`scope`, `internal` where the contact is a user's, `external` where it is not, and
+`null` where nobody is behind the label, no contact or one that is retired; and, to an
+Admin alone, `user`, the user that contact is, where it is one. `GET /operators`
+filters and sorts by `scope`.
 
 ## Filter grammar
 
@@ -425,7 +427,7 @@ contacts of vendors, and the support weight of a place.
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
-| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `user`, the username of the user the contact is |
+| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `is_user`, true where the contact is a user's |
 | `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and `contact_email`, `contact_phone` and `contact_phone2`, those of its contact |
 | `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
@@ -1591,7 +1593,7 @@ their coverage and their contacts, purchase requests with their lines, external 
 registrations, capacity lines and the records of the balance, tags and stored imports,
 and the audit events of those records, and writes one audit event that says so and
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
-lifecycle rules stay. `--everything` removes those too and leaves the database as a
+lifecycle rules stay, and so does the contact each user is, with its history (P-174). `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
 
 `hirdir admin load-examples` loads the fictional inventory of `examples/`, which the

@@ -9337,6 +9337,8 @@ export interface components {
       created_at: string;
       email: string | null;
       hid: string;
+      /** The contact is the person a user is. */
+      is_user: boolean;
       name: string;
       notes: string | null;
       organization: string | null;
@@ -9346,7 +9348,7 @@ export interface components {
       row_version: number;
       tags: string[];
       updated_at: string;
-      /** The user this contact is, where it is one. */
+      /** The user this contact is, where it is one. Told to an Admin alone. */
       user: components["schemas"]["UserBrief"] | null;
       /** How many places and owners it is assigned to, and operators it stands behind. */
       uses: number;
@@ -11084,7 +11086,7 @@ export interface components {
       /** internal where its contact is a user's, external where not; none if nobody. */
       scope: "internal" | "external" | null;
       updated_at: string;
-      /** The user its contact is, where it is one. */
+      /** The user its contact is, where it is one. Told to an Admin alone. */
       user: components["schemas"]["UserBrief"] | null;
       /** How many items, groups and places are given it as their own. */
       uses: number;

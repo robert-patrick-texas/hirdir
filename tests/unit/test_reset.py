@@ -19,6 +19,7 @@ from hirdir.db.models import (
     AuditEvent,
     Base,
     Choice,
+    Contact,
     DeviceGroup,
     DeviceGroupMember,
     ImportJob,
@@ -26,6 +27,7 @@ from hirdir.db.models import (
     ItemReplacement,
     LifecycleRule,
     Network,
+    Operator,
     Setting,
     Tag,
     User,
@@ -36,8 +38,10 @@ from hirdir.domain import (
     addresses,
     audit,
     catalog,
+    contacts,
     groups,
     items,
+    operators,
     replacements,
     reset,
     settings,
@@ -227,3 +231,31 @@ def test_no_route_of_the_api_resets_anything(installed: Config) -> None:
     paths = list(create_app(installed).openapi()["paths"])
     assert "/api/v1/items" in paths
     assert not [path for path in paths if "reset" in path]
+
+
+def test_a_reset_keeps_the_contact_each_user_is(installed: Config) -> None:
+    """A user is a part that a contact plays (P-172): the person stays with the account,
+    with its history, and the inventory it was named in goes."""
+    with make_sessions(make_engine(installed.database_url))() as db:
+        lee, _ = accounts.create_user(
+            db, audit.SYSTEM, username="lee", contact={"name": "Lee Example"}
+        )
+        context = audit.AuditContext(actor_hid=None, via="api", request_id="r-3")
+        contacts.create_contact(db, context, {"name": "Site Desk", "email": "desk@example.org"})
+        operators.create_operator(db, context, {"label": "LE", "contact_hid": lee.contact_hid})
+        kept_hid = lee.contact_hid
+        db.commit()
+    result = runner.invoke(app, ["admin", "reset"], input="reset\n")
+    assert result.exit_code == 0, result.output
+    assert held(installed, Operator) == 0
+    with make_sessions(make_engine(installed.database_url))() as db:
+        assert [contact.hid for contact in db.scalars(select(Contact))] == [kept_hid]
+        assert db.scalar(select(User.contact_hid).where(User.username == "lee")) == kept_hid
+        history = db.scalars(
+            select(AuditEvent.action).where(
+                AuditEvent.record_type == "contact", AuditEvent.record_hid == kept_hid
+            )
+        )
+        assert list(history) == ["create", "update"]
+        # What is left is no inventory: the examples may be loaded into it.
+        assert reset.held(db) == {}

@@ -14,6 +14,7 @@ from hirdir import clock
 from hirdir.auth import codes, tokens
 from hirdir.auth.roles import Role, highest
 from hirdir.auth.throttle import Throttle
+from hirdir.db import dialect
 from hirdir.db.models import (
     Contact,
     RoleGrant,
@@ -112,8 +113,12 @@ def list_users(
     """
     query = select(User).outerjoin(Contact, Contact.hid == User.contact_hid)
     if q:
-        pattern = f"%{_key(q)}%"
-        query = query.where(or_(User.username_key.like(pattern), Contact.name_key.like(pattern)))
+        query = query.where(
+            or_(
+                dialect.contains_text(User.username.expression, q),
+                dialect.contains_text(Contact.name.expression, q),
+            )
+        )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     if arrange is not None:
         query = arrange(query)
@@ -188,6 +193,19 @@ def _checked_contact(db: Session, hid: str, user: User | None, service: bool) ->
     return contact
 
 
+def _told(db: Session, context: AuditContext, user: User, old: str | None, new: str | None) -> None:
+    """Record on each contact that it is now, or is no longer, the person a user is.
+
+    What a contact is, a user's or not, decides whether an operator it stands behind is
+    internal or external, so its history says so, and a kept answer that shows it is no
+    longer good once it changes (P-172).
+    """
+    if old is not None:
+        audit.record(db, context, "update", "contact", old, [change("user_hid", user.hid, None)])
+    if new is not None:
+        audit.record(db, context, "update", "contact", new, [change("user_hid", None, user.hid)])
+
+
 def create_user(
     db: Session,
     context: AuditContext,
@@ -221,7 +239,12 @@ def create_user(
     if not is_service_account:
         code = _checked_code(access_code) if access_code is not None else codes.generate()
     if contact is not None:
-        person = contacts.create_contact(db, context, dict(contact))
+        try:
+            person = contacts.create_contact(db, context, dict(contact))
+        except (Invalid, Conflict) as error:
+            # What is wrong is a field of the new contact, and is named so.
+            error.fields = {f"contact.{name}": text for name, text in error.fields.items()}
+            raise
     user = User(
         username=username,
         username_key=_key(username),
@@ -245,6 +268,7 @@ def create_user(
             *([change("contact_hid", None, user.contact_hid)] if user.contact_hid else []),
         ],
     )
+    _told(db, context, user, None, user.contact_hid)
     return user, code
 
 
@@ -284,6 +308,9 @@ def update_user(
             _end_sessions(user)
     shown = [entry for entry in changes if entry["field"] != "username_key"]
     audit.record(db, context, "update", "user", user.hid, shown)
+    for entry in shown:
+        if entry["field"] == "contact_hid":
+            _told(db, context, user, entry["old"], entry["new"])
     return user
 
 
