@@ -521,6 +521,11 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
         ("u-4", "lee", "", "", 0),
         ("u-5", "sync", "Monitoring sync", "noc@example.com", 1),
         ("u-6", "kai", "", "kai@example.com", 0),
+        # Of two users of one email, the one that may sign in is given the contact.
+        ("u-7", "a-old", "", "shared@example.org", 0),
+        ("u-8", "b-new", "", " Shared@Example.org ", 0),
+        # An email that a contact would refuse is not copied.
+        ("u-9", "odd", "Odd Person", "not-an-address", 0),
     )
     with engine.begin() as connection:
         for hid, username, name, email, service in users:
@@ -539,6 +544,7 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
                     "service": service,
                 },
             )
+        connection.execute(text("UPDATE users SET disabled = 1 WHERE hid = 'u-7'"))
         # Dana is a contact already, as a site's technical contact.
         connection.execute(
             text(
@@ -580,28 +586,48 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
             "sync": None,
             # With no display name, the contact is named with the username.
             "kai": "kai <kai@example.com>",
+            "a-old": None,
+            "b-new": "b-new <Shared@Example.org>",
+            "odd": "Odd Person <>",
         }
         dana = connection.execute(
             text("SELECT name, row_version FROM contacts WHERE hid = 'c-1'")
         ).one()
         assert tuple(dana) == ("Dana Ruiz", 5)
-        assert connection.execute(text("SELECT count(*) FROM contacts")).scalar() == 3
+        assert connection.execute(text("SELECT count(*) FROM contacts")).scalar() == 5
         made = connection.execute(
             text(
-                "SELECT record_type, action, via FROM audit_events WHERE request_id ="
-                " 'upgrade-0012' ORDER BY record_type, action"
+                "SELECT record_type, action, count(*) FROM audit_events WHERE request_id ="
+                " 'upgrade-0012' AND via = 'system' GROUP BY record_type, action"
+                " ORDER BY record_type, action"
             )
         ).all()
+        # Four contacts made, five given to a user, and eight users with what was dropped.
         assert [tuple(row) for row in made] == [
-            ("contact", "create", "system"),
-            ("contact", "create", "system"),
-            ("user", "update", "system"),
-            ("user", "update", "system"),
-            ("user", "update", "system"),
+            ("contact", "create", 4),
+            ("contact", "update", 5),
+            ("user", "update", 8),
         ]
-        assert connection.execute(text("SELECT count(*) FROM audit_events")).scalar() == events + 5
-        robin = connection.execute(text("SELECT row_version FROM users WHERE hid = 'u-1'")).one()
-        assert robin[0] == 4
+        total = connection.execute(text("SELECT count(*) FROM audit_events")).scalar_one()
+        assert total == events + 17
+        dropped = {
+            hid: changes if isinstance(changes, list) else json.loads(changes)
+            for hid, changes in connection.execute(
+                text(
+                    "SELECT record_hid, changes FROM audit_events WHERE record_type = 'user'"
+                    " AND request_id = 'upgrade-0012'"
+                )
+            )
+        }
+        assert dropped["u-5"] == [
+            {"field": "display_name", "old": "Monitoring sync", "new": None},
+            {"field": "email", "old": "noc@example.com", "new": None},
+        ]
+        assert dropped["u-2"][0] == {"field": "display_name", "old": "Dana R", "new": None}
+        assert dropped["u-2"][-1] == {"field": "contact_hid", "old": None, "new": "c-1"}
+        assert "u-4" not in dropped
+        versions = dict(connection.execute(text("SELECT hid, row_version FROM users")).all())
+        assert (versions["u-1"], versions["u-3"]) == (4, 3)
         columns = [row[1] for row in connection.execute(text("PRAGMA table_info(users)"))]
         assert "display_name" not in columns
         assert "email" not in columns

@@ -264,9 +264,10 @@ def is_user(contact_hid: Any) -> ColumnElement[bool]:
 
 def operator_scope(contact: Any) -> ColumnElement[Any]:
     """Return `internal` where the contact behind a label is a user's, `external` where
-    it is not, and nothing where nobody is behind it (P-172)."""
+    it is not, and nothing where nobody is behind it: no contact, or one that is retired,
+    as an open label has (P-172)."""
     return case(
-        (contact.hid.is_(None), None),
+        (or_(contact.hid.is_(None), contact.record_status == "retired"), None),
         (is_user(contact.hid), operators.INTERNAL),
         else_=operators.EXTERNAL,
     )

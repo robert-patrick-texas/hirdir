@@ -129,8 +129,9 @@ uses, read from where it is used.
 ### People
 
 Every person is a contact, and a user and an operator are each a part that a contact
-plays (P-172). `GET /contacts` answers, with each contact, `user`, the `hid` and
-`username` of the user it is, or nothing, and filters and sorts by `is_user`.
+plays (P-172). `GET /contacts` answers, with each contact, `is_user`, true where it is
+a user's, and filters and sorts by it; and, to an Admin alone, `user`, the `hid` and
+`username` of that user, or nothing.
 
 `POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
 before, and the person: `contact_hid`, a contact that is no other user's and is not
@@ -144,10 +145,11 @@ a change of the user does not take: they are changed on the contact, by
 `PATCH /contacts/{hid}`. `q` on `GET /users` finds part of a username or of the
 name of its contact.
 
-An operator answers `contact` with that contact's `email`, `phone` and `phone2`,
-`user`, the user that contact is, where it is one, and `scope`: `internal` where the
-contact is a user's, `external` where it is not, and `null` where nobody is behind the
-label. `GET /operators` filters and sorts by `scope`.
+An operator answers `contact` with that contact's `email`, `phone` and `phone2`;
+`scope`, `internal` where the contact is a user's, `external` where it is not, and
+`null` where nobody is behind the label, no contact or one that is retired; and, to an
+Admin alone, `user`, the user that contact is, where it is one. `GET /operators`
+filters and sorts by `scope`.
 
 ## Filter grammar
 
@@ -425,7 +427,7 @@ contacts of vendors, and the support weight of a place.
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
-| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `user`, the username of the user the contact is |
+| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `is_user`, true where the contact is a user's |
 | `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and `contact_email`, `contact_phone` and `contact_phone2`, those of its contact |
 | `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
@@ -1591,7 +1593,7 @@ their coverage and their contacts, purchase requests with their lines, external 
 registrations, capacity lines and the records of the balance, tags and stored imports,
 and the audit events of those records, and writes one audit event that says so and
 names the backup. Accounts, groups, roles, service tokens, settings, choices and
-lifecycle rules stay. `--everything` removes those too and leaves the database as a
+lifecycle rules stay, and so does the contact each user is, with its history (P-174). `--everything` removes those too and leaves the database as a
 fresh installation has it, with no account and an empty audit trail.
 
 `hirdir admin load-examples` loads the fictional inventory of `examples/`, which the
@@ -1632,7 +1634,7 @@ Accounts and settings are not touched.
 | Reports | Scoreboard: the operators, each with the components, managed nodes and support weight it looks after, the most first, with what nobody is assigned to and what is under an open label; and the sites likewise, each with the operators involved there. Summary: components, managed nodes, support weight and health, whole and by owner, state, vendor and the rest. Management: estimated value and annual support cost, whole and by site unless another grouping is chosen. Duplicates. Coverage: the items in service with no cover, the items out of service that a contract still counts, each with those contracts, Still counted under, as a column of the item list, what runs out soon, what more than one contract covers, what is covered while a renewal is pending, and the contracts that have lapsed. End of life: past and approaching, for each of the four dates, and by fiscal year. Replacements. Circuit costs: the year and the grouping to choose, by carrier unless another is chosen, each row with its circuits, the year's cost, and the monthly and annual figures, leading to its circuits |
 | The renewal alert | After signing in, a person with the Inventory or the Admin role is shown a banner under the header of every page, once a day while `GET /renewals/alert` says to show it: how many contracts have lapsed, have a renewal pending, of which overdue, and end within the warning period, and the agreements on the same lists, each leading to its list on the Renewals page. Dismissing it sends `POST /renewals/alert/seen`, and it is not shown again until the next day |
 | Files and links | A section of the page of a catalog entry, an item, a region, a site, a location and a circuit (P-162). The record's links of 0.7.0 come first, where it has them; then its references, grouped by where each comes from, its own first, each with its title, kind, size or address, and who added it and when. A picture is opened in a viewer within the page, and every other file is downloaded with its name; a link opens in a new tab, as the links of 0.7.0 do. With the Inventory role: Add files, one or several at once, chosen or dropped on the section, each given a title, which starts as its file name, and a kind, with a bar for how far each upload has got; Add a link; and on each reference Edit, New edition, Put on other records, Take off this record, and Erase. Taking off the last record, and Erase, say first that the content is erased at once and that the backups on the server keep a copy until they rotate out, 14 days unless the server is set otherwise. A file that is refused says why, and the others go on |
-| Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row (P-171). It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
+| Admin | Users, each with its contact, whose email and numbers it shows and changes, and a username that an Admin changes; groups, role grants, service tokens, settings, choices, lifecycle rules, tags, and Files: every reference, with its kind, its size and how many records it is on, sorted and narrowed by the server, each leading to the records it is on. On the Settings page an Admin's Change opens the form of that setting directly beneath its row, and the table fits a window 1280 pixels wide (P-171); Edit on Tags and Lifecycle rules and Change on Files open their forms beneath their row too. It has, for an Admin, a button, Check kept reports, which says how many kept answers were checked and names any that differed. Every role sees this area: tags, choices and lifecycle rules are there for all to read and for Inventory to edit, and the rest shows to an Admin only |
 | About | The product, by the name the site gives it, and that the software is hirdir with its version; what it runs on, Python, SQLite and the revision of the schema. Whom to ask: the organization, the email address to write to, the number to call, its link dialling the number without its extension, and the address to open, each that is set and none that is not, or that nobody has been named, with a link to Admin › Settings for an Admin |
 
 ### The grid

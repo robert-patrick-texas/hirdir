@@ -832,7 +832,7 @@ class ExternalSystem(Bookkeeping, Base):
     hid: Mapped[str] = _hid()
     name: Mapped[str] = mapped_column(String(200))
     name_key: Mapped[str] = mapped_column(String(200))
-    kind: Mapped[str] = mapped_column(String(20), default="other")
+    kind: Mapped[str] = mapped_column(String(40), default="other")
     url: Mapped[str | None] = mapped_column(String(2000), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     record_status: Mapped[str] = mapped_column(String(10), default="active")
