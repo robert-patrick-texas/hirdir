@@ -496,6 +496,20 @@ export function PlaceDetail(props: PlaceDetailProps) {
             </p>
             <PlaceFacts place={record} choices={choices} to={to} />
             {/*
+              0.9.5: what is in force here, its contacts first, before its files and links,
+              so that whom to call is in the first window of the page (P-194).
+            */}
+            <InForce
+              level={level}
+              place={record}
+              effective={effective}
+              mayEdit={editable}
+              to={to}
+              onInheritAgain={inheritAgain}
+              action={again}
+              onReload={place.reload}
+            />
+            {/*
               0.9.0: its references and those of the places above it, each under the place
               it is on, after its own links of 0.7.0 (P-162, P-163). A retired place keeps
               its references and takes more (P-158).
@@ -520,16 +534,6 @@ export function PlaceDetail(props: PlaceDetailProps) {
                 onReload={place.reload}
               />
             </References>
-            <InForce
-              level={level}
-              place={record}
-              effective={effective}
-              mayEdit={editable}
-              to={to}
-              onInheritAgain={inheritAgain}
-              action={again}
-              onReload={place.reload}
-            />
             <AssignedHere
               level={level}
               place={record}

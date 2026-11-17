@@ -24,11 +24,38 @@ import {
   type Standing,
   standingOf,
 } from "../lib/places";
+import { mailtoHref, telHref } from "../lib/product";
 import type { SortColumns } from "../lib/sort";
 import { useSorting } from "../lib/useSorting";
 import { OperatorMark } from "./Operator";
 import { Problem } from "./Problem";
 import { SortTh } from "./SortTh";
+
+/**
+ * 0.9.5: after a contact's name, its organization, then its address and its number as
+ * links that write to it and call it, as on a contract and a circuit (P-194). A number
+ * with nothing to dial stays text.
+ */
+function Reached({
+  contact,
+}: {
+  contact: { organization?: string | null; email?: string | null; phone?: string | null };
+}) {
+  const { organization, email, phone } = contact;
+  const dial = phone ? telHref(phone) : null;
+  return (
+    <>
+      {organization && <span> · {organization}</span>}
+      {email && (
+        <span>
+          {" · "}
+          <a href={mailtoHref(email)}>{email}</a>
+        </span>
+      )}
+      {phone && <span> · {dial === null ? phone : <a href={dial}>{phone}</a>}</span>}
+    </>
+  );
+}
 
 /** The address of the page of a place, with the view of the tree kept. */
 export type To = (level: string, hid: string) => { pathname: string; search: string };
@@ -208,9 +235,7 @@ export function InForce(props: InForceProps) {
                                 >
                                   {contact.name}
                                 </Link>
-                                {contactLine({ ...contact, name: "" }) && (
-                                  <span> · {contactLine({ ...contact, name: "" })}</span>
-                                )}
+                                <Reached contact={contact} />
                                 {contact.record_status !== "active" && (
                                   <span className="badge">
                                     {optionLabel(RECORD_STATUSES, contact.record_status)}
