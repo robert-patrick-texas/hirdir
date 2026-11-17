@@ -1044,25 +1044,54 @@ stays at A, a circuit group, the report of what circuits cost, a default circuit
 a Try that saves and audits nothing, and the check of kept answers, which finds nothing
 differing, are tried, and all of it is taken out again.
 
+`migration-0011.sh` is the one that 0.9.0 brought, and what it looks for is what
+[install.md](install.md#from-080-to-090) tells an operator of that upgrade. The
+migration creates `reference_files` and then `reference_attachments`, which the pass
+whose migration fails puts in its way, and loads the `reference_kind` list beside any
+value a site has put into it. It alters no table that holds a site's records, changes
+nothing that is held and writes no audit event; beside the database, the package makes
+the store of the content, `/var/lib/hirdir/files`, empty, puts
+`max_reference_megabytes` into the settings file, commented out, and writes the nginx
+snippet again with the larger of the two limits. With the previous release the file
+sees that the list is refused and puts two values of a site's own into it in the
+database, one of them a default under a label of the site's, enters that value in
+another list by the API, and sees that the previous release has no reference, no list
+of what a record has and no setting of the kinds of file. After the upgrade the two
+tables are empty, the catalog entry, the item, the room and the site from before have no
+reference of their own or from above, the list holds its twelve defaults beside the
+site's values and the other list is as the site made it, the setting of the kinds of
+file is at its default beside the two that are fixed, and the store, the settings file
+and the snippet are as install.md says. Last, files and a link are put on the records
+from before, one of them on three at once, the retired item among them; each is listed
+where it is attached and from above, nearest first, and comes back byte for byte; and
+all four are erased again, so that the store is empty.
+
 `migration-0012.sh` is the one that 0.9.3 brought, and what it looks for is what
-[install.md](install.md#from-092-to-093) tells an operator of that upgrade. The
-migration adds `phone2` to
+[install.md](install.md#from-092-to-093) tells an operator of that upgrade, and P-172
+and P-174 of [decisions.md](decisions.md) in full. The migration adds `phone2` to
 `contacts`, makes `users` anew with `contact_hid`, its foreign key and its uniqueness,
-gives each user that is no service account and has a display name or an email a
-contact, the one that has that email already or a new one, writes an audit event by
-`system`, with the request ID `upgrade-0012`, for each contact it makes and each user it
-gives one, makes `users` anew again without `display_name` and `email`, and loads the
-`system_kind` list beside any value a site has put into it. With the previous release
-the file makes, beside the accounts of the pass, users of every kind it acts on: with a
-display name and an email, with an email alone, two of one email, with neither, a
-service account with a display name, and one with the email of a contact from before
-in another case and a name of its own; and an external system of each of the eight
-kinds, one of them retired and one made with no kind. It sees that the previous release
-refuses a contact on a user, a second number on a contact, a kind of the site's own and
-a value of the list, and puts a value of the site's own and a default under a label of
-the site's into the list in the database. The file names `users` as a table beside the
-inventory, the two columns that the migration drops from it and the column, the
-foreign key and the uniqueness it adds, `phone2`, the rows of the users that are given a
+and gives each user that is no service account and has a display name or an email a
+contact, the users that may sign in before the disabled and each by username: the
+contact that has that email already, or a new one, which takes the email only where it
+is of the form name@host. It writes audit events by `system`, with the request ID
+`upgrade-0012`: a create of each contact it makes, an update of each contact it gives a
+user, which names the user, and an update of each user that had a display name or an
+email, which keeps them as they were and names the contact it was given. Then it makes
+`users` anew again without `display_name` and `email`, makes `external_systems` anew
+with a `kind` of 40 characters, and loads the `system_kind` list beside any value a site
+has put into it. With the previous release the file makes, beside the accounts of the
+pass, users of every kind it acts on: with a display name and an email, with an email
+alone, two of one email, two of another of which the first by username is disabled,
+with neither, a service account with a display name, three with an email that is no
+address, with a space, with no `@` and with a second, and one with the email of a
+contact from before in another case and a name of its own; and an external system of
+each of the eight kinds, one of them retired and one made with no kind. It sees that
+the previous release refuses a contact on a user, a second number on a contact, a kind
+of the site's own and a value of the list, and puts a value of the site's own and a
+default under a label of the site's into the list in the database. The file names
+`users` as a table beside the inventory, the two columns that the migration drops from
+it and the column, the foreign key and the uniqueness it adds, `phone2`, the `kind`
+that `external_systems` declares otherwise, the rows of the users that are given a
 contact and of the accounts of the pass, which sign in, and, of the users as the API
 gives them, the version of each that is given a contact and the name and the email of
 each that shows another; it says that contacts and choices may be added, and names the
@@ -1070,26 +1099,31 @@ request ID of the events.
 
 After the upgrade no row refers to a record that is not there and no contact has a
 second number. Each user shows its contact's name and email: a new contact of its
-display name, or of its username where it had none, and its email; the contact from
-before, which is otherwise as it was, for the user that had its email in another case;
-and nothing for the second of two users of one email, the user that had neither and the
-service account, which has lost its display name. The pass's account with a display
-name is a new contact of that name. The contacts that were made are those, each one
-user's and holding nothing more; of the contacts from before only the one is a user's;
-the operator behind which it stands is internal and the open one has no scope. The
-audit trail has one event for each contact made and each user given one, by `system`,
-and no other event of the upgrade; the list holds the eight kinds in their order and
-with the labels the page has shown, beside the site's values, and every system has the
-kind it had. Last, a contact is given to a user from before and refused to the service
-account and to the second user of the one email; a display name and an email are
-refused by `PATCH` and `POST /users`; a user is made with a new contact by the API and
-by `hirdir admin create-user --name`, which refuses `--email` alone; a second number
-entered once shows on the user and on the operator, which is internal behind a user's
-contact and external behind another; a username that an Admin changes keeps the user's
-session; and of the list of kinds a label is changed, a value added and removed, the
-site's own given to a system, a value that a system holds made inactive and kept by that
-system, and a system with no kind refused while `other` is not offered. What is made
-is retired or put back.
+display name, or of its username where it had none, and its email where it is an
+address; the contact from before, which is otherwise as it was, for the user that had
+its email in another case; and nothing for the second of two users of one email, for
+the disabled one of the other two, which come first by username, for the user that had
+neither and for the service account, which has lost its display name. The pass's
+account with a display name is a new contact of that name. The contacts that were made
+are those, each a user's and holding nothing more; of the contacts from before only the
+one is a user's; the operator behind which it stands is internal and the open one has
+no scope. The audit trail holds the events of the upgrade that the migration is said to
+write, and no other; the list holds the eight kinds in their order and with the labels
+the page has shown, beside the site's values, and every system has the kind it had.
+Last, a contact is given to a user from before, which is audited on the user and on the
+contact, and refused to the service account and to the second user of the one email; a
+display name and an email are refused by `PATCH` and `POST /users`; a user is made with
+a new contact by the API and by `hirdir admin create-user --name`, which refuses
+`--email` alone; a second number entered once shows on the user and on the operator,
+which is internal behind a user's contact, external behind another, and open, with no
+scope, when that contact is retired; a View-only token reads that a contact is a user's
+and an operator internal, and only the Admin which user; a username that an Admin
+changes keeps the user's session; and of the list of kinds a label is changed, a value
+added and removed, the site's own given to a system, a value that a system holds made
+inactive and kept by that system, a system with no kind refused while `other` is not
+offered, and a kind of 27 characters given to a system. What is made is retired or put
+back. Further on in the pass, `hirdir admin reset` must keep the contact that each user
+is, as it was and with its history, and clear the others.
 
 **A migration that fails**, in a release that has one, is made to fail in the database,
 never by changing the package, and how is read from the package as well. Where the new
@@ -1114,8 +1148,9 @@ marked, the conditions are loaded and the memberships of the items that are Rele
 ended, each with its audit event, and all of that has to be undone: the pass looks for
 the rows of the members as they were, and for an audit trail with no event more. For
 migration `0012` it comes when `users` has been made anew twice, contacts made and
-users given them, each with its audit event, two columns dropped and a list loaded:
-the pass looks for `users` and `contacts` with the columns and the rows they had. The
+users given them, with their audit events, two columns dropped, `external_systems`
+made anew and a list loaded: the pass looks for `users`, `contacts` and
+`external_systems` with the columns and the rows they had. The
 trigger disturbs nothing else: the previous release serves with it in place, and the
 backup that the upgrade takes holds it. The file of a migration may ask for the trigger
 though the migration creates a table, for one that creates its tables before it changes

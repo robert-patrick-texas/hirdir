@@ -3797,8 +3797,24 @@ inventory_left() {
     inside /opt/hirdir/venv/bin/python -c '
 import sqlite3, sys
 held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
-count = lambda table: held.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+# From 0.9.3 the contact that each user is is kept with the accounts (P-172, P-174), and
+# is no record of the inventory.
+people = any(column[1] == "contact_hid" for column in held.execute("PRAGMA table_info(users)"))
+inventory = {"contacts": " WHERE hid NOT IN (SELECT contact_hid FROM users WHERE contact_hid IS NOT NULL)"} if people else {}
+count = lambda table: held.execute(f"SELECT count(*) FROM {table}" + inventory.get(table, "")).fetchone()[0]
 print(*(table for table in sys.argv[1].split() + ["users"] if count(table)))' "$inventory_tables" 2>&1
+}
+
+# people_kept: the contacts that users are, which a reset keeps: how many there are, one
+# checksum of what they hold and of what the users hold of them, and how many events
+# of their history the audit trail has.
+people_kept() {
+    inside /opt/hirdir/venv/bin/python -c '
+import hashlib, sqlite3
+held = sqlite3.connect("/var/lib/hirdir/hirdir.db")
+people = held.execute("SELECT u.hid, c.* FROM users u JOIN contacts c ON c.hid = u.contact_hid ORDER BY u.hid").fetchall()
+events = held.execute("SELECT count(*) FROM audit_events WHERE record_type = ? AND record_hid IN (SELECT contact_hid FROM users)", ("contact",)).fetchone()[0]
+print(len(people), "contacts", hashlib.sha256(repr(people).encode()).hexdigest(), events, "events")' 2>&1
 }
 
 # export_request FORMAT FILTER [COLUMN...]: the body of POST /exports for items, sorted
@@ -4051,10 +4067,14 @@ files() {
     inside bash -c 'echo no | hirdir admin reset' >"$work/reset.out" 2>&1 || code=$?
     expect "pkg with the service stopped it asks for the word reset, and without it changes nothing: every table that a reset clears holds rows, the replacements, groups, members, networks and addresses of 0.4.0, the regions, sites, locations, contacts, operators, assignments and members of owners of 0.5.0, the agreements, contracts, coverage, purchase requests, purchase lines, external systems, registrations and capacity lines of 0.6.0, and the targets of a capacity line, the records of the capacity balance, the contacts of the contracts and the renewal alerts that were seen of 0.7.0, and the circuits, their carriers, cost lines, devices and contacts, the contacts of vendors and the circuit groups with their members of 0.8.0, and the references and what they are on of 0.9.0 too" \
         "$code $(grep -c 'nothing was changed' "$work/reset.out") $(inventory_left)" "1 1 $inventory_tables users"
+    local people
+    people=$(people_kept)
     code=0
     inside hirdir admin reset --yes >"$work/reset.out" 2>&1 || code=$?
     expect "pkg hirdir admin reset --yes clears the inventory, every one of those tables, and keeps the accounts" \
         "$code $(inventory_left)" "0 users"
+    expect "pkg and keeps the contact that each user is, as it was, with its history: ${people%% contacts*} contacts, and nothing else of the contacts" \
+        "$(people_kept) $(sqlite_value /var/lib/hirdir/hirdir.db 'SELECT count(*) FROM contacts')" "$people ${people%% contacts*}"
     expect "pkg it erases the content of the file from the store, says so, and its backup holds it beside it" \
         "$(grep -c '^the content of 1 files was erased from /var/lib/hirdir/files; the backup holds it in /var/lib/hirdir/backups/files$' "$work/reset.out") $(inside find /var/lib/hirdir/files -type f ! -path '*/.incoming/*' 2>&1 | wc -l) $(inside test -f "/var/lib/hirdir/backups/files/$(sha "$work/reset-plan.pdf" | cut -c1-2)/$(sha "$work/reset-plan.pdf")" && echo held)" \
         "1 0 held"
