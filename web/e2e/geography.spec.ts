@@ -348,17 +348,13 @@ test("S24: the places are laid out, and the tree counts what is at or beneath ea
   await expect(page.getByLabel("Filter", { exact: true })).toHaveValue(`location:within:${hid}`);
   await expect(page.getByTestId("grid-total")).toHaveText("3 items");
 
-  // Location and Site are columns of the grid, hidden until they are asked for. The
+  // Location and Site are columns of the grid, shown from the start (P-193). The
   // location is the one in force, lighter where it comes from the item above.
   const grid = page.getByTestId("grid-items");
-  await expect(grid.locator('[role="columnheader"][col-id="location.name"]')).toHaveCount(0);
-  await expect(grid.locator('[role="columnheader"][col-id="site"]')).toHaveCount(0);
   await page.getByText("Columns", { exact: true }).click();
   const columns = page.getByRole("group", { name: "Columns to show" });
-  await expect(columns.getByLabel("Location", { exact: true })).not.toBeChecked();
-  await expect(columns.getByLabel("Site", { exact: true })).not.toBeChecked();
-  await columns.getByLabel("Location", { exact: true }).check();
-  await columns.getByLabel("Site", { exact: true }).check();
+  await expect(columns.getByLabel("Location", { exact: true })).toBeChecked();
+  await expect(columns.getByLabel("Site", { exact: true })).toBeChecked();
   await expect(columns.getByLabel("Region", { exact: true })).not.toBeChecked();
   await columns.getByLabel("Region", { exact: true }).check();
   // The grid draws only the columns in view: room is made for the ones looked at here.
