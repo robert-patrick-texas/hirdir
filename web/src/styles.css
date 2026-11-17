@@ -511,7 +511,10 @@ dialog .actions {
 
 /* --- tables and facts ------------------------------------------------------------- */
 
+/* The box a wide table scrolls in: what is hidden for a screen reader inside it, as the
+   label of a sort, is placed within it and does not widen the page (P-186). */
 .scroll {
+  position: relative;
   overflow-x: auto;
   margin: 0 0 0.75rem;
 }

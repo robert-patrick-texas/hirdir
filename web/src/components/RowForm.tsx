@@ -38,7 +38,12 @@ interface FormRowProps {
 export function FormRow({ of, columns, children }: FormRowProps) {
   const cell = useRef<HTMLTableCellElement>(null);
   useEffect(() => {
-    if (cell.current) firstField(cell.current)?.focus();
+    const opened = cell.current;
+    if (!opened) return;
+    firstField(opened)?.focus();
+    // P-186: the whole form, its button to save with it, is brought into the window where
+    // it fits; where it does not, "nearest" leaves its top, and the row above, in view.
+    opened.scrollIntoView?.({ block: "nearest" });
   }, []);
   return (
     <tr className="row-form" data-form-of={of}>

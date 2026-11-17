@@ -380,7 +380,7 @@ function PastJobs({ turn, current }: { turn: number; current: string }) {
       {jobs.data && (
         <>
           <div className="scroll">
-            <table data-testid="import-jobs">
+            <table data-testid="import-jobs" className="wrap-heads">
               <caption className="visually-hidden">
                 {source === "bulk" ? "Bulk edits" : "Imports of files"}, newest first until a header
                 is clicked

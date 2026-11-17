@@ -8,6 +8,7 @@ import {
   isOutcome,
   isWorking,
   type Job,
+  kindPath,
   leftOutCount,
   leftOutQuery,
   outcomeCount,
@@ -264,5 +265,34 @@ describe("recordPath", () => {
     expect(recordPath("addresses", "a-1")).toBeNull();
     expect(recordPath("device_group_members", "m-1")).toBeNull();
     expect(recordPath("items", null)).toBeNull();
+  });
+});
+
+describe("kindPath", () => {
+  it("is the page of the record the audit trail names, by its kind and HID", () => {
+    expect(kindPath("item", "i-1")).toBe("/items/i-1");
+    expect(kindPath("catalog_entry", "c-1")).toBe("/catalog/c-1");
+    expect(kindPath("circuit_group", "cg 1")).toBe("/circuit-groups/cg%201");
+    expect(kindPath("purchase_request", "p-1")).toBe("/purchases/p-1");
+    expect(kindPath("external_system", "x-1")).toBe("/systems/x-1");
+    expect(kindPath("site", "s-1")).toBe("/geography/site/s-1");
+    expect(kindPath("location", "l-1")).toBe("/geography/location/l-1");
+    expect(kindPath("import_job", "j-1")).toBe("/import/j-1");
+  });
+
+  it("is nothing for a kind with no page, and for a change that names no record", () => {
+    expect(kindPath("tag", "t-1")).toBeNull();
+    expect(kindPath("address", "a-1")).toBeNull();
+    expect(kindPath("device_group_member", "m-1")).toBeNull();
+    expect(kindPath("setting", "s-1")).toBeNull();
+    expect(kindPath("item", null)).toBeNull();
+    expect(kindPath("item", "")).toBeNull();
+  });
+
+  it("names the page of an account or a group of accounts only for an Admin", () => {
+    expect(kindPath("user", "u-1")).toBeNull();
+    expect(kindPath("user_group", "g-1", false)).toBeNull();
+    expect(kindPath("user", "u-1", true)).toBe("/admin/users/u-1");
+    expect(kindPath("user_group", "g-1", true)).toBe("/admin/groups/g-1");
   });
 });

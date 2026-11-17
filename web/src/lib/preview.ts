@@ -222,16 +222,62 @@ export function leftOutCount(job: Job, outcome: LeftOut): number {
   return outcome === "stale" ? job.stale : refusedAtApply(job);
 }
 
-const PAGE_OF: Readonly<Record<string, string>> = {
-  items: "/items/",
-  catalog_entries: "/catalog/",
-  vendors: "/vendors/",
-  owners: "/owners/",
-  device_groups: "/groups/",
+/**
+ * The page of each kind of record that has one, by the kind the audit trail names it by
+ * (P-186). A kind with no page of its own, a tag, an address or a member of a group, is
+ * not here.
+ */
+const PAGE_OF_KIND: Readonly<Record<string, string>> = {
+  item: "/items/",
+  catalog_entry: "/catalog/",
+  vendor: "/vendors/",
+  owner: "/owners/",
+  device_group: "/groups/",
+  operator: "/operators/",
+  contact: "/contacts/",
+  circuit: "/circuits/",
+  circuit_group: "/circuit-groups/",
+  agreement: "/agreements/",
+  contract: "/contracts/",
+  purchase_request: "/purchases/",
+  external_system: "/systems/",
+  capacity_line: "/capacity/",
+  import_job: "/import/",
+  region: "/geography/region/",
+  site: "/geography/site/",
+  location: "/geography/location/",
+  user: "/admin/users/",
+  user_group: "/admin/groups/",
 };
+
+/** The kinds whose page only an Admin may open. */
+const ADMIN_KINDS: ReadonlySet<string> = new Set(["user", "user_group"]);
+
+/** The kind of record of each entity an import or a bulk edit names. */
+const KIND_OF_ENTITY: Readonly<Record<string, string>> = {
+  items: "item",
+  catalog_entries: "catalog_entry",
+  vendors: "vendor",
+  owners: "owner",
+  device_groups: "device_group",
+};
+
+/**
+ * The page of a record, by the kind the audit trail names it by, as a path of the app,
+ * where its kind has one. A page that only an Admin may open is a page only for an Admin.
+ */
+export function kindPath(
+  kind: string,
+  hid: string | null | undefined,
+  admin = false,
+): string | null {
+  const page = PAGE_OF_KIND[kind];
+  if (page === undefined || !hid || (ADMIN_KINDS.has(kind) && !admin)) return null;
+  return `${page}${encodeURIComponent(hid)}`;
+}
 
 /** The page of the record a row names, as a path of the app, where its kind has one. */
 export function recordPath(entity: string, hid: string | null | undefined): string | null {
-  const page = PAGE_OF[entity];
-  return page !== undefined && hid ? `${page}${encodeURIComponent(hid)}` : null;
+  const kind = KIND_OF_ENTITY[entity];
+  return kind === undefined ? null : kindPath(kind, hid);
 }

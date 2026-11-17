@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
+import { useAuth } from "../auth";
 import { TextField } from "../components/Field";
 import { Pager, toOffset } from "../components/Pager";
 import { Problem } from "../components/Problem";
@@ -8,6 +9,8 @@ import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { formatChanges } from "../lib/format";
 import { useLoad, useTitle } from "../lib/hooks";
+import { kindPath } from "../lib/preview";
+import { allows } from "../lib/roles";
 import { AUDIT_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 
@@ -77,6 +80,8 @@ function keyed(lines: readonly string[]): Array<{ key: string; line: string }> {
 /** The audit trail, newest first until a header is clicked. */
 export function Audit() {
   useTitle("Audit");
+  const { user } = useAuth();
+  const admin = allows(user.role, "admin");
   const [params, setParams] = useSearchParams();
   const action = params.get("action") ?? "";
   const recordType = params.get("record_type") ?? "";
@@ -210,6 +215,7 @@ export function Audit() {
               <tbody>
                 {sort.arrange(items, holdsAll).map((event) => {
                   const changes = formatChanges(event.changes);
+                  const page = kindPath(event.record_type, event.record_hid, admin);
                   return (
                     <tr key={event.hid}>
                       <td className="nowrap">
@@ -220,7 +226,11 @@ export function Audit() {
                       <td>{event.action}</td>
                       <td>
                         {event.record_type}
-                        {event.record_hid && <span className="hid mono">{event.record_hid}</span>}
+                        {event.record_hid && (
+                          <span className="hid mono">
+                            {page ? <Link to={page}>{event.record_hid}</Link> : event.record_hid}
+                          </span>
+                        )}
                       </td>
                       <td>
                         {changes.length > 0 && (
