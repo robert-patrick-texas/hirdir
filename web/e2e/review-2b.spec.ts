@@ -423,3 +423,45 @@ test("P-196: the Scoreboard links to its tables, shows twenty rows of a long one
   await expect(rows.last()).toHaveAttribute("data-label", label("Ring 01"));
   await expectClean(page, seen);
 });
+
+test("P-197: a contact named for an agreement is not said to be assigned nowhere", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const headers = await places(request, account);
+  const vendor = await make(request, headers, "/vendors", { name: label("Larkspur Networks") });
+  const agreement = await make(request, headers, "/agreements", {
+    name: label("Field support"),
+    vendor_hid: vendor.hid,
+  });
+  const manager = await make(request, headers, "/contacts", { name: label("Imogen Hale") });
+  const idle = await make(request, headers, "/contacts", { name: label("Tobias Wren") });
+  await make(request, headers, `/agreements/${agreement.hid}/contacts`, {
+    contact_hid: manager.hid,
+    role: "account_manager",
+  });
+  // Rowan, a contact of the site, is the support contact of the agreement as well.
+  await make(request, headers, `/agreements/${agreement.hid}/contacts`, {
+    contact_hid: made.contact,
+    role: "support_contact",
+  });
+  const seen = await watch(page.context());
+  await signIn(page, account);
+
+  const where = page.getByRole("region", { name: "Where it is assigned" });
+  await page.goto(`./contacts/${manager.hid}`);
+  await expect(where.getByTestId("contact-elsewhere")).toHaveText(
+    "This contact is named 1 time, in agreements, contracts, vendors or circuits, which this page does not list yet.",
+  );
+  await expect(where.getByText("This contact is assigned nowhere.")).toHaveCount(0);
+
+  await page.goto(`./contacts/${made.contact}`);
+  await expect(where.getByTestId("contact-elsewhere")).toContainText("named 1 more time");
+
+  await page.goto(`./contacts/${idle.hid}`);
+  await expect(where.getByText("This contact is assigned nowhere.")).toBeVisible();
+  await expect(where.getByTestId("contact-elsewhere")).toHaveCount(0);
+  await expectClean(page, seen);
+});
