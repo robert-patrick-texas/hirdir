@@ -502,7 +502,7 @@ number entered once shows in all three places (P-172).
 | `contacts.organization`, `phone`, `phone2`, `notes` | text | `phone2` is a second number. Each is optional |
 | `contacts.email` | text | unique when present, without regard to case |
 | `contacts.record_status` | choice | see Conventions. A contact takes tags |
-| `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is; `user`, the `hid` and `username` of that user, is told to an Admin alone |
+| `contacts.is_user`, `user` | read only | `is_user` is true where the contact is the person a user is, and `user` is the `hid` and `username` of that user |
 | `contact_assignments.contact_hid` | reference | blank only on an assignment that stops inheritance |
 | `contact_assignments.region_hid`, `site_hid` or `location_hid` | reference | exactly one of the three, and not changed afterwards |
 | `contact_assignments.role` | choice | a value of the `contact_role` list: `shipping`, `technical`, `federal`, `operational`, `escalation` |

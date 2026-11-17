@@ -712,8 +712,8 @@ def reset(
     Removes every item with its addresses and memberships, every device group,
     network, catalog entry, vendor, owner and tag, every reference with the content of
     its file, the stored imports and the history of those records. Accounts, roles,
-    settings, choices and lifecycle rules stay, unless --everything is given. A backup
-    is taken first, with the files.
+    the contact each user is, settings, choices and lifecycle rules stay, unless
+    --everything is given. A backup is taken first, with the files.
     """
     config = _load()
     target = _sqlite_path(config)
@@ -742,7 +742,9 @@ def reset(
             "tokens, the settings, the choices, the lifecycle rules and the whole audit trail."
         )
     else:
-        typer.echo("Accounts, roles, settings, choices and lifecycle rules stay.")
+        typer.echo(
+            "Accounts, roles, the contact each user is, settings, choices and lifecycle rules stay."
+        )
     if not yes and typer.prompt('Type "reset" to go on', default="", show_default=False) != "reset":
         raise _fail("nothing was changed")
     kept = _backup(config)

@@ -526,6 +526,8 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
         ("u-8", "b-new", "", " Shared@Example.org ", 0),
         # An email that a contact would refuse is not copied.
         ("u-9", "odd", "Odd Person", "not-an-address", 0),
+        # With no email, the contact of its name, as a file finds a contact by name.
+        ("u-10", "quinn", "Quinn Example", "", 0),
     )
     with engine.begin() as connection:
         for hid, username, name, email, service in users:
@@ -552,6 +554,13 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
                 " created_at, updated_at, row_version) VALUES ('c-1', 'Dana Ruiz', 'dana ruiz',"
                 " 'dana.ruiz@example.org', 'dana.ruiz@example.org', 'active', '2026-01-01',"
                 " '2026-01-01', 5)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO contacts (hid, name, name_key, record_status, created_at,"
+                " updated_at, row_version) VALUES ('c-2', 'Quinn Example', 'quinn example',"
+                " 'active', '2026-01-01', '2026-01-01', 2)"
             )
         )
         connection.execute(
@@ -589,12 +598,15 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
             "a-old": None,
             "b-new": "b-new <Shared@Example.org>",
             "odd": "Odd Person <>",
+            "quinn": "Quinn Example <>",
         }
         dana = connection.execute(
             text("SELECT name, row_version FROM contacts WHERE hid = 'c-1'")
         ).one()
         assert tuple(dana) == ("Dana Ruiz", 5)
-        assert connection.execute(text("SELECT count(*) FROM contacts")).scalar() == 5
+        assert connection.execute(text("SELECT count(*) FROM contacts")).scalar() == 6
+        quinn = connection.execute(text("SELECT contact_hid FROM users WHERE hid = 'u-10'"))
+        assert quinn.scalar() == "c-2"
         made = connection.execute(
             text(
                 "SELECT record_type, action, count(*) FROM audit_events WHERE request_id ="
@@ -602,14 +614,14 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
                 " ORDER BY record_type, action"
             )
         ).all()
-        # Four contacts made, five given to a user, and eight users with what was dropped.
+        # Four contacts made, six given to a user, and nine users with what was dropped.
         assert [tuple(row) for row in made] == [
             ("contact", "create", 4),
-            ("contact", "update", 5),
-            ("user", "update", 8),
+            ("contact", "update", 6),
+            ("user", "update", 9),
         ]
         total = connection.execute(text("SELECT count(*) FROM audit_events")).scalar_one()
-        assert total == events + 17
+        assert total == events + 19
         dropped = {
             hid: changes if isinstance(changes, list) else json.loads(changes)
             for hid, changes in connection.execute(

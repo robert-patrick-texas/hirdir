@@ -130,8 +130,8 @@ uses, read from where it is used.
 
 Every person is a contact, and a user and an operator are each a part that a contact
 plays (P-172). `GET /contacts` answers, with each contact, `is_user`, true where it is
-a user's, and filters and sorts by it; and, to an Admin alone, `user`, the `hid` and
-`username` of that user, or nothing.
+a user's, and filters and sorts by it, and `user`, the `hid` and `username` of that
+user, or nothing. Every role reads both.
 
 `POST /users` takes `username`, `is_service_account`, `access_code` and `role` as
 before, and the person: `contact_hid`, a contact that is no other user's and is not
@@ -147,9 +147,9 @@ name of its contact.
 
 An operator answers `contact` with that contact's `email`, `phone` and `phone2`;
 `scope`, `internal` where the contact is a user's, `external` where it is not, and
-`null` where nobody is behind the label, no contact or one that is retired; and, to an
-Admin alone, `user`, the user that contact is, where it is one. `GET /operators`
-filters and sorts by `scope`.
+`null` where nobody is behind the label, no contact or one that is retired; and
+`user`, the user that contact is, where it is one. `GET /operators` filters and sorts
+by `scope`.
 
 ## Filter grammar
 
@@ -427,7 +427,7 @@ contacts of vendors, and the support weight of a place.
 | `vendors` | `name`, `aliases`, `notes`, `review_status` | |
 | `vendor_contacts` | `vendor`, `role`, `contact`, `priority` | |
 | `catalog_entries` | `vendor`, `pid`, `model_name`, `kind`, `type`, `function`, `description`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `est_value`, `support_weight`, `annual_support_cost`, `stack_discount_pct`, `successor_vendor`, `successor_pid`, `do_not_renew`, `links`, `review_status`, `record_status`, `tags` | `stack_discount_pct_source` |
-| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `is_user`, true where the contact is a user's |
+| `contacts` | `name`, `organization`, `email`, `phone`, `phone2`, `notes`, `record_status`, `tags` | `user`, the username of the user the contact is |
 | `operators` | `label`, `description`, `colour`, `contact`, `record_status` | `is_open`, `scope`, and `contact_email`, `contact_phone` and `contact_phone2`, those of its contact |
 | `regions` | `name`, `parent`, `code`, the shipping set, `operator`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path` |
 | `sites` | `name`, `region`, `code`, the address fields, the shipping set, `operator`, `latitude`, `longitude`, `support_weight`, `links`, `notes`, `record_status`, `tags` | `path`, `support_weight_source` |
@@ -1603,7 +1603,9 @@ while the service is running, where the inventory holds any record that a reset 
 and where an import is queued or being applied: what a reset clears afterwards is then
 the examples, with whatever was added beside them, and nothing of the site's own. A
 stored preview, a renewal alert that was seen and the weekly record of the capacity
-balance do not count. Each CSV file is imported in the load order, a preview and an
+balance do not count, nor does the contact a user is, which a reset keeps; the examples
+may change such a contact where its email is one of theirs (P-174). Each CSV file is
+imported in the load order, a preview and an
 apply as any import is, kept as a stored import named for its file and audited as
 `system`. A file with a rejected row stops it there and names the rows; what the files
 before it made stays, for a reset to clear. It prints how many records each file made.
