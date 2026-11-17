@@ -48,7 +48,8 @@ def test_a_user_is_made_with_its_contact_and_shows_that_contacts_details(
     )["user"]
     assert (dana["display_name"], dana["contact"]["phone2"]) == ("Dana Ruiz", "x9")
     made_contact = desk.audit(record_type="contact", record_hid=dana["contact_hid"])
-    assert [event["action"] for event in made_contact] == ["create"]
+    # Newest first: made, then given to the user.
+    assert [event["action"] for event in made_contact] == ["update", "create"]
     assert desk.audit(record_type="user", record_hid=dana["hid"])[0]["changes"][-1] == {
         "field": "contact_hid",
         "old": None,
@@ -156,7 +157,10 @@ def test_an_operator_is_internal_where_its_contact_is_a_user(
     desk = Maker(client, admin)
     user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
     lm = make.get(f"/operators/{lm['hid']}")
-    assert (lm["scope"], lm["user"]) == ("internal", {"hid": user["hid"], "username": "robin"})
+    # Which user it is is told to an Admin alone.
+    assert (lm["scope"], lm["user"]) == ("internal", None)
+    told = desk.get(f"/operators/{lm['hid']}")["user"]
+    assert told == {"hid": user["hid"], "username": "robin"}
     # Nothing was written to the operator: the scope is read with it.
     assert lm["row_version"] == 1
     assert [
@@ -190,8 +194,8 @@ def test_files_carry_the_second_number_and_say_who_is_a_user(
     Maker(client, admin).post("/users", {"username": "robin", "contact_hid": robin["hid"]})
     make.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
 
-    contacts = table(files.export("contacts", columns=["name", "phone2", "user"]))
-    assert (contacts[0]["phone2"], contacts[0]["user"]) == ("202 555 0177", "robin")
+    contacts = table(files.export("contacts", columns=["name", "phone2", "is_user"]))
+    assert (contacts[0]["phone2"], contacts[0]["is_user"]) == ("202 555 0177", "true")
     operators = table(
         files.export("operators", columns=["label", "scope", "contact_email", "contact_phone2"])
     )
@@ -290,3 +294,89 @@ def test_the_kinds_of_external_system_are_a_list_a_site_changes(
     make.patch(f"/choices/{other['hid']}", {"row_version": other["row_version"], "active": False})
     refused = make.post("/external-systems", {"name": "Nameless"}, 422)
     assert "monitoring" in errors(refused)["kind"]
+
+
+# --- what the review of the server found ------------------------------------------
+
+
+def test_only_an_admin_is_told_which_user_a_contact_is(
+    client: TestClient, admin: dict, viewer: dict
+) -> None:
+    desk = Maker(client, admin)
+    robin = desk.contact("Robin Achterberg")
+    user = desk.post("/users", {"username": "robin", "contact_hid": robin["hid"]})["user"]
+    desk.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
+    looker = Maker(client, viewer)
+    seen = looker.get(f"/contacts/{robin['hid']}")
+    assert (seen["is_user"], seen["user"]) == (True, None)
+    operator = looker.get("/operators")["items"][0]
+    assert (operator["scope"], operator["user"]) == ("internal", None)
+    told = desk.get(f"/contacts/{robin['hid']}")
+    assert told["user"] == {"hid": user["hid"], "username": "robin"}
+    assert desk.get("/operators")["items"][0]["user"]["username"] == "robin"
+
+
+def test_a_label_whose_contact_is_retired_is_open_and_has_no_scope(make: Maker) -> None:
+    dana = make.contact("Dana Ruiz")
+    op2 = make.post("/operators", {"label": "Op2", "contact_hid": dana["hid"]})
+    make.post(f"/contacts/{dana['hid']}/retire", {"row_version": dana["row_version"]}, 200)
+    shown = make.get(f"/operators/{op2['hid']}")
+    assert (shown["is_open"], shown["scope"]) == (True, None)
+    assert make.get("/operators", filter="scope:empty:true")["total"] == 1
+    item = make.item(name="site2-sw-03", operator_hid=op2["hid"])
+    assert make.get(f"/items/{item['hid']}")["operator"]["scope"] is None
+
+
+def test_what_is_wrong_with_a_new_contact_is_named_as_its_field(
+    client: TestClient, admin: dict
+) -> None:
+    desk = Maker(client, admin)
+    desk.contact("Robin Achterberg")
+    taken = desk.post(
+        "/users",
+        {"username": "robin", "contact": {"name": "R", "email": "robin.achterberg@example.net"}},
+        409,
+    )
+    assert "contact.email" in errors(taken)
+    bad = desk.post("/users", {"username": "robin", "contact": {"name": "R", "email": "x"}}, 422)
+    assert "contact.email" in errors(bad)
+    # Nothing was made: the user and its contact are one change.
+    assert [one["username"] for one in desk.get("/users", q="robin")["items"]] == []
+
+
+def test_a_kept_answer_is_worked_out_again_when_a_user_is_given_a_contact(
+    client: TestClient, admin: dict, make: Maker
+) -> None:
+    from hirdir.io import kept
+
+    kept.drop()
+    robin = make.contact("Robin Achterberg")
+    lm = make.post("/operators", {"label": "LM", "contact_hid": robin["hid"]})
+    make.item(name="site2-sw-01", operator_hid=lm["hid"], lifecycle_state="Prod")
+    first = make.get("/reports/coverage", section="uncovered")
+    assert first["items"][0]["operator"]["scope"] == "external"
+    Maker(client, admin).post("/users", {"username": "robin", "contact_hid": robin["hid"]})
+    again = make.get("/reports/coverage", section="uncovered")
+    assert again["items"][0]["operator"]["scope"] == "internal"
+    checked = Maker(client, admin).post("/kept-answers/check", {}, 200)
+    assert checked["differed"] == []
+
+
+def test_the_kind_of_a_system_in_a_file(client: TestClient, inventory: dict, make: Maker) -> None:
+    files = Files(client, inventory)
+    make.post("/choices", {"list": "system_kind", "value": "ipam", "label": "IPAM"})
+    files.load("external_systems", "name,kind\nAddressBook,ipam\nNetWatch,\n")
+    found = {one["name"]: one["kind"] for one in make.get("/external-systems")["items"]}
+    assert found == {"AddressBook": "ipam", "NetWatch": "other"}
+    refused = files.preview("external_systems", "name,kind\nOdd,unheard_of\n")
+    assert refused["job"]["rejected"] == 1
+
+
+def test_a_renamed_service_account_keeps_its_tokens(client: TestClient, admin: dict) -> None:
+    desk = Maker(client, admin)
+    bot = desk.post("/users", {"username": "sync", "is_service_account": True})["user"]
+    token = desk.post(f"/users/{bot['hid']}/service-tokens", {"name": "nightly"})["secret"]
+    desk.post("/role-grants", {"role": "viewer", "user_hid": bot["hid"]})
+    desk.patch(f"/users/{bot['hid']}", {"row_version": bot["row_version"], "username": "sync-2"})
+    me = client.get(f"{API}/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert (me.status_code, me.json()["username"]) == (200, "sync-2")

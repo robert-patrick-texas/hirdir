@@ -1189,8 +1189,9 @@ class Contacts(Entity):
         NOTES,
         STATUS,
         TAGS,
-        # The username of the user the contact is (P-172): users are not carried by files.
-        Column("user", limit=64, settable=False),
+        # Whether the contact is the person a user is (P-172). Users are not carried by
+        # files, and which user it is is told to an Admin alone.
+        Column("is_user", "boolean", settable=False),
         *BOOKKEEPING,
     )
     _direct = ("name", "organization", "email", "phone", "phone2", "notes", "tags")
@@ -1238,7 +1239,7 @@ class Contacts(Entity):
                 **{name: getattr(contact, name) for name in self._direct if name != "tags"},
                 "record_status": contact.record_status,
                 "tags": labels[contact.hid],
-                "user": users[contact.hid].username if contact.hid in users else None,
+                "is_user": contact.hid in users,
             }
             for contact in found
         ]
@@ -2491,7 +2492,7 @@ class ExternalSystems(Entity):
         HID,
         Column("name"),
         Column("kind", limit=40),
-        Column("url", limit=4000),
+        Column("url", limit=2000),
         NOTES,
         STATUS,
         *BOOKKEEPING,

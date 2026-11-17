@@ -11,7 +11,7 @@ which it is.
 
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from hirdir.db.models import (
@@ -191,12 +191,22 @@ BOOKKEEPING: tuple[Any, ...] = (
 )
 
 
+def _which(model: Any) -> tuple[Any, ...]:
+    """Return what picks the rows of a table that a reset clears: all of them, but for the
+    contacts that are users', which are kept with the accounts, as the person each user is
+    (P-172)."""
+    if model is Contact:
+        return (Contact.hid.not_in(select(User.contact_hid).where(User.contact_hid.is_not(None))),)
+    return ()
+
+
+def _count(db: Session, model: Any) -> int:
+    return db.scalar(select(func.count()).select_from(model).where(*_which(model))) or 0
+
+
 def counts(db: Session) -> dict[str, int]:
     """Return how many rows each table that a reset clears holds."""
-    return {
-        model.__tablename__: db.scalar(select(func.count()).select_from(model)) or 0
-        for model in CLEARED
-    }
+    return {model.__tablename__: _count(db, model) for model in CLEARED}
 
 
 def held(db: Session) -> dict[str, int]:
@@ -206,7 +216,7 @@ def held(db: Session) -> dict[str, int]:
     for model in CLEARED:
         if model in BOOKKEEPING:
             continue
-        count = db.scalar(select(func.count()).select_from(model)) or 0
+        count = _count(db, model)
         if count:
             found[model.__tablename__] = count
     return found
@@ -215,8 +225,9 @@ def held(db: Session) -> dict[str, int]:
 def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str, int]:
     """Remove the inventory and its history, and record that it was done.
 
-    Accounts, roles, settings, choices and lifecycle rules are left as they are. One
-    audit event says what was removed and names the backup that still holds it.
+    Accounts, roles, settings, choices and lifecycle rules are left as they are, and so
+    is the contact each user is, with its history. One audit event says what was removed
+    and names the backup that still holds it.
     """
     removed = counts(db)
     # A catalog entry may name another as its successor, an item may be in another, a
@@ -226,17 +237,18 @@ def clear_inventory(db: Session, context: AuditContext, backup: str) -> dict[str
     db.execute(update(DeviceGroup).values(parent_group_hid=None))
     db.execute(update(Region).values(parent_region_hid=None))
     db.execute(update(Location).values(parent_location_hid=None))
+    people = select(User.contact_hid).where(User.contact_hid.is_not(None))
     for model in CLEARED:
-        db.execute(delete(model))
-    removed["audit_events"] = (
-        db.scalar(
-            select(func.count())
-            .select_from(AuditEvent)
-            .where(AuditEvent.record_type.in_(RECORD_TYPES))
-        )
-        or 0
+        db.execute(delete(model).where(*_which(model)))
+    # The history of a contact that is kept stays with it.
+    gone = and_(
+        AuditEvent.record_type.in_(RECORD_TYPES),
+        or_(AuditEvent.record_type != "contact", AuditEvent.record_hid.not_in(people)),
     )
-    db.execute(delete(AuditEvent).where(AuditEvent.record_type.in_(RECORD_TYPES)))
+    removed["audit_events"] = (
+        db.scalar(select(func.count()).select_from(AuditEvent).where(gone)) or 0
+    )
+    db.execute(delete(AuditEvent).where(gone))
     audit.record(
         db,
         context,

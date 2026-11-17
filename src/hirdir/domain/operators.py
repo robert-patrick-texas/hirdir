@@ -74,9 +74,10 @@ def scope(contact: Contact | None, users: Mapping[str, User]) -> Scope | None:
     """Say whether the person behind a label is a user, `internal`, or is not, `external`.
 
     `users` gives the user each contact is, by the contact's HID, as
-    `hirdir.domain.contacts.users_of` returns it. A label with nobody behind it has none.
+    `hirdir.domain.contacts.users_of` returns it. A label with nobody behind it, no
+    contact or one that is retired, has none: it is open.
     """
-    if contact is None:
+    if contact is None or contact.record_status == "retired":
         return None
     return INTERNAL if contact.hid in users else EXTERNAL
 

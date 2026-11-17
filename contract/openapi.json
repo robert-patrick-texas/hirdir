@@ -8368,6 +8368,11 @@
             "title": "Hid",
             "type": "string"
           },
+          "is_user": {
+            "description": "The contact is the person a user is.",
+            "title": "Is User",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -8450,7 +8455,7 @@
                 "type": "null"
               }
             ],
-            "description": "The user this contact is, where it is one."
+            "description": "The user this contact is, where it is one. Told to an Admin alone."
           },
           "uses": {
             "description": "How many places and owners it is assigned to, and operators it stands behind.",
@@ -8468,6 +8473,7 @@
           "notes",
           "record_status",
           "tags",
+          "is_user",
           "user",
           "uses",
           "row_version",
@@ -19660,7 +19666,7 @@
                 "type": "null"
               }
             ],
-            "description": "The user its contact is, where it is one."
+            "description": "The user its contact is, where it is one. Told to an Admin alone."
           },
           "uses": {
             "description": "How many items, groups and places are given it as their own.",
