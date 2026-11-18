@@ -149,6 +149,8 @@ def test_s08_an_item_with_only_vendor_pid_serial_number_and_owner(inventory: Inv
         "group_registrations": [],
         # Connected to no circuit (P-147).
         "circuits": [],
+        # It took nobody's place, and nothing took its own (P-241).
+        "replacements": [],
     }
     for field, value in item.items():
         if field in given | derived or field in ("created_by", "updated_by"):
