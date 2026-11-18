@@ -74,7 +74,10 @@ export async function importFile(
   await expect(count(page, "created")).toHaveText(String(rows.length));
   await expect(count(page, "rejected")).toHaveText("0");
   await page
-    .getByRole("button", { name: `Apply ${rows.length} ${rows.length === 1 ? "row" : "rows"}` })
+    // A count in a sentence has the separator of thousands (P-195): "Apply 1,000 rows".
+    .getByRole("button", {
+      name: `Apply ${rows.length.toLocaleString("en-US")} ${rows.length === 1 ? "row" : "rows"}`,
+    })
     .click();
   await whenApplied(page, rows.length, { timeout: 3 * waiting.timeout });
   await expect(job).toHaveAttribute("data-status", "applied");
