@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from hirdir.api import files, lists, shapes, views
 from hirdir.api import records as r
@@ -15,6 +15,7 @@ from hirdir.domain.lifecycle import UNSET
 from hirdir.io import bulk, fields, imports, tables
 
 router = APIRouter(prefix="/items", tags=["Items"], route_class=IdempotentRoute)
+replaced = APIRouter(prefix="/item-replacements", tags=["Items"], route_class=IdempotentRoute)
 
 
 def _page(db: Db, listed: lists.ListRequest) -> Page[r.ItemOut]:
@@ -186,7 +187,10 @@ def replace_item(
     """Record that another item took the place of this one, and link the two.
 
     The other item is one that exists, or is created here. It takes over this item's
-    place in every group it is a current member of. Neither is moved in the lifecycle.
+    place in every group it is a current member of. An item is replaced, and takes
+    another's place, as often as that happens (P-241). Neither is moved by a rule: each
+    is changed only as the request names, the new one by `drop_identity`, `disposition`
+    and `expected_online`, the old one by `old_item`, in the same change (P-242).
     """
     replacement = replacements.replace(
         db,
@@ -200,6 +204,31 @@ def replace_item(
         replaced_on=body.replaced_on,
     )
     return shapes.replacement_out(db, replacement)
+
+
+@router.post("/{hid}/make-stack", status_code=201)
+def make_stack(
+    hid: str, body: r.MakeStack, _: Inventory, context: Audit, db: Db
+) -> r.DeviceGroupOut:
+    """Make a stack of an item that is in none, with the item as its first member.
+
+    The stack takes the item's host name, FQDN and addresses, and the location, planned
+    location, owner and operator it has of its own, which the item gives up in the same
+    change and has from the stack from then on (P-243). `members` are added after it.
+    """
+    raise HTTPException(status_code=501, detail="not built yet")
+
+
+@replaced.post("/{hid}/remove", status_code=204)
+def remove_replacement(
+    hid: str, body: r.ReplacementRemove, _: Admin, context: Audit, db: Db
+) -> None:
+    """Remove a replacement that was a mistake, with a reason (P-238).
+
+    The audit event of the removal holds what it was, and each of the two items has an
+    event of it. What it handed over, memberships and connections of circuits, stays.
+    """
+    raise HTTPException(status_code=501, detail="not built yet")
 
 
 @router.get("/{hid}/resolution")
@@ -232,4 +261,4 @@ def item_history(
     )
 
 
-ROUTERS = (router,)
+ROUTERS = (router, replaced)

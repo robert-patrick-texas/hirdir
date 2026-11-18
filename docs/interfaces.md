@@ -23,7 +23,7 @@ and CLI's types are generated from it.
 | Large filters | `POST /items/query` takes the same parameters as a JSON body, and so does `/query` on catalog entries, device groups, addresses, locations, circuits and circuit groups |
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back. `POST /items/retire` and `POST /device-groups/retire` retire several at once, each as its own route does (P-228): see [Retiring several, and deleting](#retiring-several-and-deleting) |
-| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. An Admin deletes an item or a device group that was a mistake and that nothing else depends on with `POST /items/delete` and `POST /device-groups/delete` (P-227). Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
+| Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. An Admin deletes an item or a device group that was a mistake and that nothing else depends on with `POST /items/delete` and `POST /device-groups/delete` (P-227), and removes a replacement that was a mistake with `POST /item-replacements/{hid}/remove` (P-238). Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
 | Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, which for an item or a device group that was deleted holds `deleted`, when, by whom and why, read from the audit trail (P-236), `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
@@ -35,7 +35,7 @@ and CLI's types are generated from it.
 | Access | `POST /auth/sign-in`, `POST /auth/sign-out-everywhere`, `GET /auth/me` |
 | Accounts (Admin) | `/users`, `/user-groups`, `/role-grants`, `/users/{hid}/access-code`, `/users/{hid}/service-tokens` |
 | Catalog | `/vendors`, `/catalog-entries`, `GET /vendors/{hid}/portfolio`; `GET` and `POST /vendors/{hid}/contacts`, `PATCH` and `DELETE /vendors/{hid}/contacts/{link_hid}` |
-| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once |
+| Items | `/items`, `GET /items/{hid}/children`, `GET /items/{hid}/history`, `GET /items/{hid}/resolution`, `POST /items/{hid}/transition`, `POST /items/{hid}/replace`, `POST /items/{hid}/make-stack`; `POST /items/retire` and, for an Admin, `POST /items/delete`, of several at once; for an Admin, `POST /item-replacements/{hid}/remove` |
 | Groups | `/device-groups`, `POST /device-groups/{hid}/retire`, `GET /device-groups/{hid}/resolution`, `GET` and `POST /device-groups/{hid}/members`, `PATCH /device-groups/{hid}/members/{member_hid}`; `POST /device-groups/retire` and, for an Admin, `POST /device-groups/delete`, of several at once |
 | Addresses | `/networks`, `/addresses` |
 | Geography | `/regions`, `/sites`, `/locations`, each with `POST .../{hid}/retire`; `GET /geography/tree`; `GET /regions/{hid}/effective`, `GET /sites/{hid}/effective`, `GET /locations/{hid}/effective`; `GET /regions/{hid}/opening`, `GET /sites/{hid}/opening`, `GET /locations/{hid}/opening` |
@@ -64,7 +64,7 @@ and CLI's types are generated from it.
 | Download a reference file | yes | yes | yes |
 | Upload, link, change, attach, take off, replace and erase references | | yes | yes |
 | Create, change, retire, import, bulk-update inventory records, and retire several at once | | yes | yes |
-| Delete an item or a device group that was a mistake (P-227) | | | yes |
+| Delete an item or a device group that was a mistake (P-227), and remove a replacement that was one (P-238) | | | yes |
 | Edit choices, tags | | yes | yes |
 | Edit settings and lifecycle rules, force a lifecycle move, and so the kinds of file a reference may be | | | yes |
 | List and check the kept answers of the long reports | | | yes |
@@ -273,6 +273,131 @@ custom group has a position only where one is given, and any. `POST
 /items/{hid}/replace` ends the old item's membership and gives the new item its
 position, as it is, in the same change.
 
+### Replacing an item
+
+`POST /items/{hid}/replace`, for the Inventory role, is sent on the item that leaves,
+with its `row_version`, and records that another took its place (P-241, P-242):
+
+```json
+{ "row_version": 7, "new_item_hid": "0193a1f9-...", "reason": "rma",
+  "reference": "RMA-0000001", "replaced_on": "2026-11-18",
+  "drop_identity": true, "disposition": "Production", "expected_online": true,
+  "old_item": { "lifecycle_state": "Pending-Removal", "state_reason": "failed",
+                "condition": "failed" } }
+```
+
+- `new_item_hid` names an item that exists and is not retired, or `new_item` holds the
+  fields of a new item, which this request creates, as `POST /items` takes them; one of
+  the two, and not both. `reason` is a value of the `replacement_reason` list,
+  `reference` an RMA, service request or ticket number, and `replaced_on`, left out,
+  today. The answer, `201`, is the replacement with both of its items.
+- An item is replaced, and takes another's place, as often as that happens. Two things
+  are refused: an item that takes its own place, a `422` on `new_item_hid`; and a
+  replacement of the same item by the same other on the day of one there is, a `409` on
+  `new_item_hid` that names that replacement as `existing`, with `record_type`
+  `item_replacement` and the two items as its `label`. The `row_version` of the item
+  that leaves moves with the replacement, so the same request sent twice is refused the
+  second time as stale, a `409`, and makes one replacement.
+- The new item takes over the old one's current memberships of groups, with the same
+  role and position, and its connections of circuits, on the same sides (P-147).
+- `drop_identity`, true, is for the replacement of a current member of a stack: in the
+  same change the item that comes gives up its own `hostname` and `fqdn`, its
+  addresses, each removed as `DELETE /addresses/{hid}` removes it, and its own
+  `location_hid`, as a member that joins a stack with `drop_identity` does (P-217).
+  Where the item that leaves is a current member of no stack it is refused, a `422` on
+  `drop_identity`. Left out, false.
+- `disposition` and `expected_online`, given, are the new item's from that change,
+  checked by the rule of its lifecycle state as `PATCH /items/{hid}` checks them; left
+  out or `null`, each stays as it is. The new item created by the same request may be
+  given the three as well.
+- `old_item` is what the item that left is to have from the replacement, as `item` of
+  the end of a membership is (P-218): any of `hostname`, `fqdn`, `location_hid`,
+  `lifecycle_state`, `state_reason`, `disposition`, `expected_online` and `condition`,
+  each meaning what it means there. It is applied once the old item's memberships have
+  ended and its circuits are handed over, so that its rules see an item that has left.
+  It is done with the request, so it is given with a `replaced_on` that has come, today
+  or before: with a day to come it is refused, a `422` on `replaced_on`. `null` or left
+  out, nothing of the old item changes but its version.
+- A refusal of what the new item is to have names the field as sent, `drop_identity`,
+  `disposition`, `expected_online`; of what the old item is to have, as
+  `old_item.lifecycle_state`, `old_item.condition` and so on. One request does all of
+  it, or nothing: a refusal of any part leaves no replacement, no membership ended or
+  begun, and neither item changed.
+- Each item has an event `replace` of it in its history. Each change of either item
+  that the request names, and each address removed, is audited as its own change, with
+  the request ID of the request, and holds among its `changes` the entry `replacing`,
+  with the HID of the replacement as `new`; what follows from a move of the old item,
+  the end of its other memberships and of its coverage when it is released, is audited
+  as it always is, with no such entry.
+
+An item's answer, on `GET /items/{hid}` and in the list, holds `replacements`: each
+replacement the item is part of, the latest first, by `replaced_on` and then by when it
+was entered. Each holds its `hid`, `part`, which is `left` where this item left and
+`item` took its place, and `came` where this item took the place of `item`; `item`, the
+other item as another record names it; `reason`, `reference`, `replaced_on` and
+`row_version`. `replaces` and `replaced_by` are the latest of each part, or `null`, and
+are what the list, its filter and an export read, so that an item replaced twice is one
+row of the list and of a report.
+
+An Admin removes a replacement that was a mistake, that a wrong file or a wrong press
+recorded, with `POST /item-replacements/{hid}/remove` (P-238):
+
+```json
+{ "reason": "recorded on the wrong switch" }
+```
+
+`reason` is required, and is refused blank, a `422`. The answer is `204`, as the
+removal of a coverage that was a mistake answers. The audit event of the removal,
+`delete` of the replacement, holds its reason and every field of the replacement as it
+was, and each of the two items has an event `replacement_removed` in its history, whose
+`changes` hold `replaced_by` or `replaces`, the other item, as `old`, and the reason as
+`new` of `reason`. What the replacement handed over stays as it is, the
+memberships of groups and the connections of circuits, each a fact of its own that is
+put right on the page of its group or its circuit; and neither item is changed but in
+its version. The two items are then as any other: each is deleted by `POST
+/items/delete`, or refused, by the rule of P-227, as if the replacement had never been.
+Nothing else removes a replacement. A replacement that was deleted answers `404`, as a
+deleted record does.
+
+### Making a stack of a switch that stands alone
+
+`POST /items/{hid}/make-stack`, for the Inventory role, makes a stack of an item that
+is in none, and puts the item into it as its first member, at position 1 (P-243):
+
+```json
+{ "row_version": 4, "name": "site2-sw-stack12",
+  "members": [ { "item_hid": "0193a1fa-...", "drop_identity": true,
+                 "disposition": "Production", "expected_online": true } ] }
+```
+
+- `name` is the stack's; left out or blank, the item's own name, and its host name where
+  it has no name. A name that another group has is refused, a `409` on `name` that names
+  that group as `existing`, as `POST /device-groups` refuses it.
+- The stack takes from the item what a stack holds for its members: its `hostname` and
+  `fqdn`; each of its addresses, moved to the stack as it is, with its HID, its network,
+  its role and whether it is the primary one; and the `location_hid`,
+  `planned_location_hid`, `owner_hid` and `operator_hid` that the item has of its own.
+  The item gives each of them up in the same change, and has the four from the stack
+  from then on, read when it is read, as any member has them: nothing is held twice.
+  Its serial number, model, asset tag, state, tags, coverage, registrations and
+  circuits stay its own. The stack is active, and has no parent group.
+- `members` are more members, each as `POST /device-groups/{hid}/members` takes one,
+  `drop_identity`, `disposition` and `expected_online` among them (P-217), added after
+  the first by the rules of that route: a member given no position takes the lowest
+  free one, 2 for the first. A refusal of one names it by its place in the list, from 0:
+  `members.0.item_hid`, `members.0.disposition`.
+- It is refused, a `422` on `item_hid`, for a minor item, for an item that is retired,
+  and for one that has left the team's hands, in Released or Archived; and, a `409` on
+  `item_hid`, for one that is a current member of a stack already, naming that stack as
+  `existing`. A refusal of any part leaves no stack made and the item as it was.
+- The answer, `201`, is the new device group, as `POST /device-groups` answers. The
+  audit trail holds the stack made, the membership, the change of the item, its host
+  name, its FQDN and the four it gives up, and each address moved, as an `update` of
+  the address whose `item_hid` and `group_hid` change. Each of these but the stack's own
+  creation holds among its `changes` the entry `joining_group`, with the HID of the
+  stack as `new`, and is found by `GET /audit-events?record_hid=` from the item, the
+  stack and the address alike.
+
 ### Retiring several, and deleting
 
 `POST /items/retire` and `POST /device-groups/retire`, for the Inventory role, retire the
@@ -339,8 +464,9 @@ item installed in it; `item_replacement` for a replacement, labelled with the tw
 `device_group` for a group nested in it. Each is taken away first where it can be: a
 coverage that was a mistake is removed, a minor item is taken out or deleted with it,
 the purchase line is cleared from the item, the circuit's device and the reference's
-attachment are removed. A replacement is never taken away, and an item that is part of
-one is retired.
+attachment are removed. A replacement that was a mistake is removed by an Admin, with
+a reason, by `POST /item-replacements/{hid}/remove` (P-238); one that happened stays,
+and an item that is part of it is retired.
 
 With `dry_run` nothing is changed and the answer is the same: it is what the web page
 shows before it asks. Without it, what `deleted` names is gone when the answer comes,
@@ -728,7 +854,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Registrations | A row names a `system` and one of `item` and `group`. A registration is not removed by an import: a row gives it the status `removed` |
 | Links | `links` of a region, a site, a location and a catalog entry holds the links of the record in their order, each written `text <url>`, or `<url>` where it has no text, and joined with `;`: `Data sheet <https://www.example.com/c9300.pdf>; <https://www.example.com/c9300-install.html>`. The text of a link runs to its `<`, so it may hold a `;`, and each link ends with its `>`. A JSON file holds the same text. The cell is the whole list: a row that names it changes the links whole, and `!clear` leaves the record none. An export writes them so, and a file carries them out and back unchanged. A link that is not written so, or whose address is not a web address, rejects the row, naming the link |
 | Capacity lines | `effect` is `add`, as it is when left blank, or `multiply`. `applies_to` of a line that multiplies names the staff lines it works on, each by its name, joined with `;`: a line whose name holds a `;` cannot be named there, and is named on its own page or through the API instead. A line that multiplies leaves `quantity` and `units_each` blank, and is worked after the lines of the same file it may apply to, wherever it stands |
-| Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
+| Replacements | A row of `item_replacements` names the item that left, `old_item`, and the item that took its place, `new_item`, both of which exist. It is matched by its `hid`, or else by its two items and its `replaced_on` (P-241). A row that gives no `replaced_on` is the one replacement of those two items where there is one, and a new one, of today, where there is none; where there are several it is rejected, and asks for the day. A row that matches one changes its `reason` and `reference` alone, and one that would give it another item or another day is rejected. An export writes `replaced_on` on every row, so that a file exported loads back and changes nothing, an item replaced twice and two items that swapped places and back among them. Loaded into an inventory that has neither, it is loaded after the items and after the members of groups: what the file of members shows as handed over is then not handed over a second time |
 | Circuits | A row of `circuits` finds its circuit by `hid`; then by `enterprise_circuit_id`; then by `carrier` with `carrier_circuit_number`, the primary carrier and the number it gives the circuit, which are the primary carrier's columns, so that a number a carrier gives as another of a circuit's carriers finds nothing here, and the row is refused for the number another circuit has; then by a `name` that one circuit alone has among those that are not retired; and is otherwise a new circuit. The first of these that the row gives decides, as for items: a row with an enterprise circuit ID that no circuit has is a new circuit. More than one answer is an error on the row, never a guess. So two circuits of one name with neither an enterprise circuit ID nor a primary carrier's number cannot be told apart by a file loaded without their HIDs, as two items of one name with neither a serial number nor an asset tag cannot: loaded into an empty inventory, the second row is rejected as naming the record of the first, and such circuits are given an enterprise circuit ID to travel. `down_mbps` and `up_mbps` are the circuit's own, blank being the full rate of the port, and a row that gives the port's rate to a circuit that has none of its own leaves it so. `circuit` in the other files of circuits names one by its HID, its enterprise circuit ID or a name that one circuit alone has, and an export writes the enterprise circuit ID where there is one, then the name, and the HID where another circuit answers to the same name. `a_location` and `z_location` are the path of a location or its HID, and `!clear` leaves a side with no location, which then needs its note. `groups` names the circuit's groups, joined with `;`, and is the whole list, as `tags` is. A carrier that is no vendor yet is made one, `unreviewed`. A new circuit with no `cost_side` takes the setting `circuit_cost_side`. `side` of a contact of a circuit is blank for one of the carrier's, with the role `account_manager` or `support_contact`, and `a` or `z` for a site contact, with a role of the `contact_role` list. An import removes no carrier, cost line, device or contact of a circuit |
 | Load order | tags, vendors, catalog entries, contacts, vendor contacts, operators, regions, sites, locations, contact assignments, owners, owner members, networks, external systems, agreements, contracts, contract contacts, purchase requests, purchase lines, items (parents before children), device groups, members, replacements, addresses, coverage, registrations, capacity lines, circuit groups, circuits, circuit carriers, circuit costs, circuit contacts, circuit devices. Addresses come after the groups, because a group has addresses too, and the devices of circuits after the items and the groups they name |
 | Audit | Each record an import creates or changes has its own audit event, with `via` of `import`, and all of them share the request ID of the apply, in whichever batch they were made; after a resume, the request ID of the resume. The preview is an event on the job, and so are `apply_started`, `apply_resumed` and `apply_stopped`, the last made by the server, and `apply` at the end, with the counts of what the apply did |
@@ -1429,6 +1555,15 @@ as a sign-in does (P-157).
 
 ## Geography
 
+A region, a site and a location take a `code`, unique among regions, among sites, and
+within its site for a location. A code that a site has is refused for a region, and a
+region's for a site, a `409` on `code` that names the record that has it as `existing`,
+by `POST` and `PATCH`, by the page and by a file alike (P-237), so that a path that
+begins with a code leads to one place. A region and a site that hold one code from
+before stay so: a change of anything else of either goes through, and a path that
+begins with that code finds neither, as the [data model](data-model.md#regions-sites-locations)
+page says.
+
 `GET /geography/tree` answers the regions, their sites and the locations within them
 as one tree, each node with what is at or beneath it:
 
@@ -1825,6 +1960,8 @@ hirdir items retire <hid> <hid> <hid>                  # several at once, for th
 hirdir items delete <hid> <hid> --reason 'a wrong file'    # an Admin: says what it would do, and asks
 hirdir groups retire site2-sw-stack9
 hirdir groups delete <hid> --reason 'a wrong file' --yes
+hirdir items make-stack site2-sw-access-07 --name site2-sw-stack12 --member FCW0000X008
+hirdir replacements remove <hid> --reason 'recorded on the wrong switch'   # an Admin: asks first
 hirdir export items --filter 'tags:has:refresh-2030' --format json --output refresh.json
 hirdir export items --own-values --place-codes --output items.csv   # places as S2 > R102
 hirdir report summary --by health --format json
@@ -1903,7 +2040,9 @@ refused leaves the others as they went.
 | Exit codes | `0` done, `2` usage, `3` not signed in or not allowed, `4` validation or rejected rows, `5` conflict, a row left out as stale among them, `6` server or network, or an apply that stopped |
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An apply | `hirdir import --apply` and `hirdir items set` wait for the server to apply the change in the background, and say how far it has got, unless `--no-wait` is given. Stopping the command does not stop the apply. The rows the apply left out as stale are listed with why, and the command exits `5`; rows the rules refused at the apply exit `4`; a job that stopped exits `6` and says how to resume it. `hirdir imports show HID` prints a stored preview of an import or a bulk edit and how far its apply has got, and with `--wait` waits for its end as an apply does. `hirdir imports apply HID` applies a stored preview, or resumes one that stopped, and waits likewise |
-| An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
+| An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model, and each of its replacements, the latest first, with the other item, which of the two it was, the reason, the reference and the day (P-241) |
+| A stack of one switch | `hirdir items make-stack ITEM [--name NAME] [--member ITEM]...` makes a stack of an item that is in none, by `POST /items/{hid}/make-stack`, and prints the stack; each `--member` is one more member, added as a member that joins with its name and place given up, `drop_identity` (P-243) |
+| A replacement that was a mistake | `hirdir replacements remove HID --reason TEXT`, for an Admin, prints the replacement, its two items and its day, asks `Remove this replacement?`, and goes on only when it is answered yes, or `--yes` is given by a script; it then removes it by `POST /item-replacements/{hid}/remove` (P-238) |
 | Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what was retired already, what was refused with why and what was not found; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |

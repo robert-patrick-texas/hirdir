@@ -1319,6 +1319,21 @@ class ReplacementRef(Model):
     replaced_on: date
 
 
+class ReplacementEntry(Model):
+    """One replacement an item is part of, and which of its two items this one was (P-241)."""
+
+    hid: str = Field(description="The replacement.")
+    part: Literal["left", "came"] = Field(
+        description="`left`: this item left, and `item` took its place. `came`: this item "
+        "took the place of `item`."
+    )
+    item: ItemRef = Field(description="The other item.")
+    reason: str
+    reference: str | None
+    replaced_on: date
+    row_version: int
+
+
 class EffectiveLocation(EffectiveReference):
     """A location in force, with its site. The label is its path."""
 
@@ -1524,8 +1539,16 @@ class ItemOut(Model):
         description="For an endpoint of a controller domain: the controllers of that domain."
     )
     addresses: list[AddressRef] = Field(description="Its addresses, the primary one first.")
-    replaces: ReplacementRef | None = Field(description="The item whose place this one took.")
-    replaced_by: ReplacementRef | None = Field(description="The item that took its place.")
+    replaces: ReplacementRef | None = Field(
+        description="The item whose place this one took, the latest where it took several."
+    )
+    replaced_by: ReplacementRef | None = Field(
+        description="The item that took its place, the latest where it was replaced several times."
+    )
+    replacements: list[ReplacementEntry] = Field(
+        description="Every replacement it is part of, the latest first: by `replaced_on`, "
+        "then by when it was entered (P-241)."
+    )
     covered: bool = Field(description="A contract covers it today.")
     contract_count: int = Field(
         description="How many contracts cover it today. More than one is worth a look."
@@ -1709,23 +1732,6 @@ class Transition(Model):
     )
 
 
-class Replace(Model):
-    """The replacement of an item: what takes its place, why and when."""
-
-    row_version: int = Field(description="The version of the item that leaves.")
-    new_item_hid: Hid | None = Field(
-        default=None, description="An item that exists and takes the place."
-    )
-    new_item: ItemCreate | None = Field(
-        default=None, description="Or the fields of a new item, created by this request."
-    )
-    reason: str = Field(max_length=40, description="A value of the replacement_reason list.")
-    reference: Name | None = Field(
-        default=None, description="An RMA, service request or ticket number."
-    )
-    replaced_on: date | None = Field(default=None, description="Left out, today.")
-
-
 class ReplacementOut(Model):
     """Two items linked by a replacement."""
 
@@ -1809,7 +1815,7 @@ class LeavingItem(Model):
     """What an item that leaves a group is to have from the end (P-218).
 
     Each is checked by the item's own rules once the membership has ended. A field left
-    out stays as it is, and null clears hostname, fqdn and location_hid.
+    out stays as it is, and null clears hostname, fqdn, location_hid and condition.
     """
 
     hostname: HostName | None = None
@@ -1833,6 +1839,86 @@ class LeavingItem(Model):
     expected_online: bool | None = Field(
         default=None,
         description="With lifecycle_state, as a transition takes it; without, as an edit does.",
+    )
+    condition: str | None = Field(
+        default=None,
+        max_length=40,
+        description="A value of the item_condition list. Null clears it; left out, it stays "
+        "(P-245).",
+    )
+
+
+class Replace(Model):
+    """The replacement of an item: what takes its place, why and when, and what each of
+    the two is to have from it (P-242)."""
+
+    row_version: int = Field(description="The version of the item that leaves.")
+    new_item_hid: Hid | None = Field(
+        default=None, description="An item that exists and takes the place."
+    )
+    new_item: ItemCreate | None = Field(
+        default=None, description="Or the fields of a new item, created by this request."
+    )
+    reason: str = Field(max_length=40, description="A value of the replacement_reason list.")
+    reference: Name | None = Field(
+        default=None, description="An RMA, service request or ticket number."
+    )
+    replaced_on: date | None = Field(default=None, description="Left out, today.")
+    drop_identity: bool = Field(
+        default=False,
+        description=(
+            "Where the item that leaves is a current member of a stack: in the same change "
+            "the item that comes gives up its own hostname, FQDN, addresses and location, as "
+            "a member that joins a stack with it does (P-217)."
+        ),
+    )
+    disposition: str | None = Field(
+        default=None,
+        max_length=12,
+        description=(
+            "Given, the disposition of the item that comes, as the rule of its lifecycle "
+            "state allows. Left out, it stays as it is."
+        ),
+    )
+    expected_online: bool | None = Field(
+        default=None,
+        description=(
+            "Given, whether the item that comes is expected online, as the rule of its "
+            "lifecycle state allows. Left out, it stays as it is."
+        ),
+    )
+    old_item: LeavingItem | None = Field(
+        default=None,
+        description=(
+            "What the item that leaves is to have from the replacement, as the end of a "
+            "membership takes `item` (P-218): applied once its memberships have ended. Given "
+            "with a replaced_on that has come."
+        ),
+    )
+
+
+class ReplacementRemove(Model):
+    """Why a replacement that was a mistake is removed, by an Admin (P-238)."""
+
+    reason: LongText = Field(
+        min_length=1, description="Required, and kept in the audit event of the removal."
+    )
+
+
+class MakeStack(Model):
+    """A stack made of an item that stands alone, with the item as its first member (P-243)."""
+
+    row_version: int = Field(description="The version of the item.")
+    name: Name | None = Field(
+        default=None, description="The stack's name. Left out or blank, the item's own."
+    )
+    members: list[MemberAdd] = Field(
+        default=[],
+        max_length=settings.MOST_ITEMS_PER_REQUEST,
+        description=(
+            "More members, each as `POST /device-groups/{hid}/members` takes one, added "
+            "after the first."
+        ),
     )
 
 

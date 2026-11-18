@@ -4152,6 +4152,43 @@ export interface paths {
       };
     };
   };
+  "/api/v1/item-replacements/{hid}/remove": {
+    /**
+     * Remove a replacement that was a mistake, with a reason (P-238).
+     *
+     * The audit event of the removal holds what it was, and each of the two items has an
+     * event of it. What it handed over, memberships and connections of circuits, stays.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReplacementRemove"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        204: {
+          content?: never;
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items": {
     /**
      * List items, by name unless a sort says otherwise.
@@ -4536,6 +4573,46 @@ export interface paths {
       };
     };
   };
+  "/api/v1/items/{hid}/make-stack": {
+    /**
+     * Make a stack of an item that is in none, with the item as its first member.
+     *
+     * The stack takes the item's host name, FQDN and addresses, and the location, planned
+     * location, owner and operator it has of its own, which the item gives up in the same
+     * change and has from the stack from then on (P-243). `members` are added after it.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        path: {
+          hid: string;
+        };
+        header?: {
+          /** A value of the caller's choosing. The same request sent again with the same key within 24 hours is answered with the first answer and not carried out again. */
+          "Idempotency-Key"?: string | null;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["MakeStack"];
+        };
+      };
+      responses: {
+        /** Successful Response */
+        201: {
+          content: {
+            "application/json": components["schemas"]["DeviceGroupOut"];
+          };
+        };
+        /** Validation Error */
+        422: {
+          content: {
+            "application/json": components["schemas"]["HTTPValidationError"];
+          };
+        };
+      };
+    };
+  };
   "/api/v1/items/{hid}/references": {
     /** List the references a item has: its own, then those of its model, then those of the location it is at in force and of each place above it, nearest first, each once, and by title within a level. */
     get: {
@@ -4571,7 +4648,10 @@ export interface paths {
      * Record that another item took the place of this one, and link the two.
      *
      * The other item is one that exists, or is created here. It takes over this item's
-     * place in every group it is a current member of. Neither is moved in the lifecycle.
+     * place in every group it is a current member of. An item is replaced, and takes
+     * another's place, as often as that happens (P-241). Neither is moved by a rule: each
+     * is changed only as the request names, the new one by `drop_identity`, `disposition`
+     * and `expected_online`, the old one by `old_item`, in the same change (P-242).
      */
     post: {
       parameters: {
@@ -10941,9 +11021,11 @@ export interface components {
       record_status: "draft" | "active" | "retired";
       /** The external systems it is registered with. */
       registrations: components["schemas"]["RegistrationRef"][];
-      /** The item that took its place. */
+      /** The item that took its place, the latest where it was replaced several times. */
       replaced_by: components["schemas"]["ReplacementRef"] | null;
-      /** The item whose place this one took. */
+      /** Every replacement it is part of, the latest first: by `replaced_on`, then by when it was entered (P-241). */
+      replacements: components["schemas"]["ReplacementEntry"][];
+      /** The item whose place this one took, the latest where it took several. */
       replaces: components["schemas"]["ReplacementRef"] | null;
       row_version: number;
       serial_number: string | null;
@@ -11054,9 +11136,11 @@ export interface components {
      * What an item that leaves a group is to have from the end (P-218).
      *
      * Each is checked by the item's own rules once the membership has ended. A field left
-     * out stays as it is, and null clears hostname, fqdn and location_hid.
+     * out stays as it is, and null clears hostname, fqdn, location_hid and condition.
      */
     LeavingItem: {
+      /** A value of the item_condition list. Null clears it; left out, it stays (P-245). */
+      condition?: string | null;
       /** With lifecycle_state, as a transition takes it; without, as an edit does. */
       disposition?: string | null;
       /** With lifecycle_state, as a transition takes it; without, as an edit does. */
@@ -11321,6 +11405,15 @@ export interface components {
       record_hid: string;
       record_type: "vendor" | "catalog_entry";
       state: "active" | "draft" | "retired" | "deleted";
+    };
+    /** A stack made of an item that stands alone, with the item as its first member (P-243). */
+    MakeStack: {
+      /** More members, each as `POST /device-groups/{hid}/members` takes one, added after the first. */
+      members?: components["schemas"]["MemberAdd"][];
+      /** The stack's name. Left out or blank, the item's own. */
+      name?: string | null;
+      /** The version of the item. */
+      row_version: number;
     };
     /** What a count of components adds to a `filter` of the answer (P-206). */
     ManagementConditions: {
@@ -12597,12 +12690,23 @@ export interface components {
       totals: components["schemas"]["RenewalTotals"];
       within_days: number;
     };
-    /** The replacement of an item: what takes its place, why and when. */
+    /**
+     * The replacement of an item: what takes its place, why and when, and what each of
+     * the two is to have from it (P-242).
+     */
     Replace: {
+      /** Given, the disposition of the item that comes, as the rule of its lifecycle state allows. Left out, it stays as it is. */
+      disposition?: string | null;
+      /** Where the item that leaves is a current member of a stack: in the same change the item that comes gives up its own hostname, FQDN, addresses and location, as a member that joins a stack with it does (P-217). */
+      drop_identity?: boolean;
+      /** Given, whether the item that comes is expected online, as the rule of its lifecycle state allows. Left out, it stays as it is. */
+      expected_online?: boolean | null;
       /** Or the fields of a new item, created by this request. */
       new_item?: components["schemas"]["ItemCreate"] | null;
       /** An item that exists and takes the place. */
       new_item_hid?: string | null;
+      /** What the item that leaves is to have from the replacement, as the end of a membership takes `item` (P-218): applied once its memberships have ended. Given with a replaced_on that has come. */
+      old_item?: components["schemas"]["LeavingItem"] | null;
       /** A value of the replacement_reason list. */
       reason: string;
       /** An RMA, service request or ticket number. */
@@ -12610,6 +12714,19 @@ export interface components {
       /** Left out, today. */
       replaced_on?: string | null;
       /** The version of the item that leaves. */
+      row_version: number;
+    };
+    /** One replacement an item is part of, and which of its two items this one was (P-241). */
+    ReplacementEntry: {
+      /** The replacement. */
+      hid: string;
+      /** The other item. */
+      item: components["schemas"]["ItemRef"];
+      /** `left`: this item left, and `item` took its place. `came`: this item took the place of `item`. */
+      part: "left" | "came";
+      reason: string;
+      reference: string | null;
+      replaced_on: string;
       row_version: number;
     };
     /** Two items linked by a replacement. */
@@ -12636,6 +12753,11 @@ export interface components {
       reference: string | null;
       replaced_on: string;
       serial_number: string | null;
+    };
+    /** Why a replacement that was a mistake is removed, by an Admin (P-238). */
+    ReplacementRemove: {
+      /** Required, and kept in the audit event of the removal. */
+      reason: string;
     };
     /** One replacement, as a row of the report. */
     ReplacementRow: {
