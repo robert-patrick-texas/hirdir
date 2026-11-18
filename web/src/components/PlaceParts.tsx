@@ -40,6 +40,7 @@ import {
   type Location,
   levelLabel,
   locationsToMoveTo,
+  mapLink,
   type Opening,
   type OwnRole,
   openedText,
@@ -664,7 +665,21 @@ function PlaceFacts(props: { place: Place; choices: readonly Choice[] | undefine
         <>
           <Fact label="Street address">{street.join(", ")}</Fact>
           <Fact label="Coordinates">
-            {coordinates ? `${place.latitude}, ${place.longitude}` : ""}
+            {/* 0.9.7: a link to the map the setting names, in a new tab (P-229). */}
+            {coordinates && mapLink(place.map_url) ? (
+              <a
+                href={mapLink(place.map_url) ?? ""}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="place-map"
+              >
+                {place.latitude}, {place.longitude}
+              </a>
+            ) : coordinates ? (
+              `${place.latitude}, ${place.longitude}`
+            ) : (
+              ""
+            )}
           </Fact>
         </>
       )}

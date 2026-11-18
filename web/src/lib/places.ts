@@ -4,6 +4,7 @@
 
 import type { Schemas } from "../api/client";
 import { all, any, type FilterNode, itemsPath, sentFilter } from "./filter";
+import { isWebAddress } from "./links";
 import type { Option } from "./patch";
 
 export type Region = Schemas["RegionOut"];
@@ -291,6 +292,15 @@ export function noContactText(
   if (role.source === "own") return "None here, and nothing further up is looked at";
   const where = role.source_path ? ` ${role.source_path}` : "";
   return `None: the ${role.source}${where} says so, and nothing further up is looked at`;
+}
+
+/**
+ * 0.9.7: the map of a place, from `map_url`, which the server makes of the setting
+ * `map_link` and the place's coordinates (P-229): null where there is none, and where it
+ * is not an address on the web, which is then not followed.
+ */
+export function mapLink(url: string | null | undefined): string | null {
+  return url && isWebAddress(url) ? url : null;
 }
 
 /** An address as lines to read: the street, then the city with its state and code, then the country. */
