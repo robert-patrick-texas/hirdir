@@ -14,6 +14,7 @@ No row is changed and no event is written: every replacement that is held was th
 only one of each of its items, and so is the only one of its two items on its day.
 """
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "0013"
@@ -33,8 +34,26 @@ def upgrade() -> None:
         replacements.create_index("ix_item_replacements_new_item_hid", ["new_item_hid"])
 
 
+def _more_than_once(column: str) -> int:
+    """Return how many items are in more than one replacement as `column`."""
+    held = sa.table("item_replacements", sa.column("old_item_hid"), sa.column("new_item_hid"))
+    item = held.c[column]
+    twice = sa.select(item).group_by(item).having(sa.func.count() > 1).subquery()
+    counted = op.get_bind().execute(sa.select(sa.func.count()).select_from(twice))
+    return int(counted.scalar() or 0)
+
+
 def downgrade() -> None:
-    # Going back holds where no item was replaced, or took a place, a second time.
+    # Going back holds where no item was replaced, or took a place, a second time. Where
+    # one was, it is refused in words before the copy of the table would fail on it.
+    left, came = _more_than_once("old_item_hid"), _more_than_once("new_item_hid")
+    if left or came:
+        raise RuntimeError(
+            f"{left} items were replaced more than once and {came} items took the place of "
+            "another more than once, which the schema before 0013 cannot hold: go back to "
+            "0.9.7 by the backup the upgrade made, as install.md says under 'Going back to "
+            "the release before'"
+        )
     with op.batch_alter_table("item_replacements") as replacements:
         replacements.drop_index("ix_item_replacements_new_item_hid")
         replacements.drop_index("ix_item_replacements_old_item_hid")

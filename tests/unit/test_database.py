@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -653,3 +654,63 @@ def test_the_upgrade_to_0012_makes_every_user_that_is_a_person_a_contact(
     with make_engine(url).connect() as connection:
         back = dict(connection.execute(text("SELECT username, display_name FROM users")).all())
         assert (back["robin"], back["lee"]) == ("Robin Achterberg", "")
+
+
+def _replaced(connection: Any, hid: str, old: str, new: str, day: str) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO item_replacements (hid, old_item_hid, new_item_hid, reason,"
+            " replaced_on, created_at, updated_at, row_version)"
+            " VALUES (:hid, :old, :new, 'rma', :day, '2026-01-01', '2026-01-01', 1)"
+        ),
+        {"hid": hid, "old": old, "new": new, "day": day},
+    )
+
+
+def test_going_back_from_0013_with_an_item_replaced_twice_is_refused_in_words(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path / 'hirdir.db'}"
+    command.upgrade(migrate.alembic_config(url), "0012")
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        for number in (1, 2, 3):
+            connection.execute(
+                text(
+                    "INSERT INTO items (hid, name, quantity, record_status, created_at,"
+                    " updated_at, row_version)"
+                    " VALUES (:hid, :name, 1, 'active', '2026-01-01', '2026-01-01', 1)"
+                ),
+                {"hid": f"i-{number}", "name": f"site2-sw-{number:02d}"},
+            )
+        _replaced(connection, "r-1", "i-1", "i-2", "2026-01-05")
+    engine.dispose()
+
+    # The upgrade keeps the one replacement there is.
+    migrate.upgrade(url)
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM item_replacements")).scalar() == 1
+        # An item replaced a second time, and one that took a place a second time.
+        _replaced(connection, "r-2", "i-1", "i-3", "2026-02-05")
+        _replaced(connection, "r-3", "i-3", "i-2", "2026-03-05")
+    engine.dispose()
+
+    with pytest.raises(RuntimeError) as refused:
+        command.downgrade(migrate.alembic_config(url), "0012")
+    said = str(refused.value)
+    assert said.startswith(
+        "1 items were replaced more than once and 1 items took the place of another more"
+    )
+    assert "by the backup the upgrade made" in said
+    engine = make_engine(url)
+    with engine.begin() as connection:
+        # Nothing was changed: the schema is still 0013's, and every row is there.
+        assert migrate.current(engine) == "0013"
+        assert connection.execute(text("SELECT count(*) FROM item_replacements")).scalar() == 3
+        connection.execute(text("DELETE FROM item_replacements WHERE hid IN ('r-2', 'r-3')"))
+    engine.dispose()
+    # With each item in one replacement of each part, going back holds.
+    command.downgrade(migrate.alembic_config(url), "0012")
+    with make_engine(url).connect() as connection:
+        assert connection.execute(text("SELECT hid FROM item_replacements")).scalar() == "r-1"
