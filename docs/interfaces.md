@@ -1869,7 +1869,16 @@ What 0.9.6 changes:
   Find an item and the item list find the members of a stack by the stack's name, and
   say above the rows that the words name a device group, with a link to it; the list of
   groups finds a stack by a member's serial number; a member's row names its stack and
-  position (P-220). The picker of members shows each switch's state, disposition and
+  position (P-220). The plain words of the item list look in `group.name`, the names of
+  the groups an item is a current member of (the item list has no field of a group's host
+  name); a word that is the name or the host name of a device group, ignoring case, is
+  named beside the heading Items, at most three groups, each with its number of members,
+  from one request to the list of groups sent beside the list's own. The line stands
+  beside the heading, so that it moves no row when it comes. The column Stack, beside
+  Name from the start, shows a member's stack and position, as `cw07-idf03-acc1 #2`,
+  from the groups every row of the list carries; it is filtered and sorted by the names
+  of the item's groups, as Groups is. The plain words of the list of groups look in
+  `name`, `hostname` and `member.serial_number`. The picker of members shows each switch's state, disposition and
   place and the stack it is in, offers the spares first, and does not let one that is in
   a stack be chosen for another (P-221): it is shown, with why, as is one in a cluster
   for another cluster and one in Released or Archived. The spares are a second search

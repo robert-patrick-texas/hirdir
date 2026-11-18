@@ -41,6 +41,13 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
   endpoint: "Endpoint",
 };
 
+/**
+ * What the plain words of the list of groups are looked for in: the name, the host name,
+ * and since 0.9.6 the serial number of any current member, so that a stack is found by a
+ * member's (P-220).
+ */
+export const GROUP_WORDS: readonly string[] = ["name", "hostname", "member.serial_number"];
+
 export const MASTER = "master";
 // The largest position the server takes.
 const LAST_POSITION = 10000;

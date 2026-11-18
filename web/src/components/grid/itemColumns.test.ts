@@ -651,9 +651,11 @@ describe("the location, the site and the region in the item grid", () => {
   it("puts what an item is, how it is and where it is first, within 1,250 pixels (P-193)", () => {
     const shown = columnDefaults(COLUMNS).filter((one) => !one.hide);
     expect(shown.map((one) => one.id).slice(0, FIRST_IN_VIEW.length)).toEqual([...FIRST_IN_VIEW]);
-    // The grid of a window 1280 pixels wide is 1,250 wide: the first seven fit in it.
-    const width = shown.slice(0, 7).reduce((sum, one) => sum + (one.width ?? 200), 0);
-    expect(shown[6]?.id).toBe("location.name");
+    // The grid of a window 1280 pixels wide is 1,250 wide: the first eight fit in it,
+    // since 0.9.6 the stack of a member among them (P-220).
+    const width = shown.slice(0, 8).reduce((sum, one) => sum + (one.width ?? 200), 0);
+    expect(shown[1]?.id).toBe("stack");
+    expect(shown[7]?.id).toBe("location.name");
     expect(width).toBeLessThanOrEqual(1250);
   });
 
@@ -943,6 +945,8 @@ describe("the columns a reader starts with", () => {
       .map((one) => one.id);
     expect(shown).toEqual([
       "name",
+      // 0.9.6: a member's stack and position, beside its name (P-220).
+      "stack",
       "catalog.pid",
       "serial_number",
       "lifecycle_state",

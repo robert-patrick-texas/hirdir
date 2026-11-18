@@ -46,6 +46,7 @@ import {
   type DeviceGroup,
   defaultRole,
   GROUP_TYPES,
+  GROUP_WORDS,
   groupTypeLabel,
   MANAGED_AS,
   MASTER,
@@ -431,7 +432,7 @@ export function DeviceGroups() {
         rowLink={(group) => groupPath(group.hid)}
         dimmed={(group) => group.record_status !== "active"}
         shortFilter="type:eq:stack name:prefix:site2-"
-        quickFields={["name", "hostname"]}
+        quickFields={GROUP_WORDS}
         startFilter={startFilter}
         switches={{ archived: "Include retired", drafts: "Include drafts" }}
       >

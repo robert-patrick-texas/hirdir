@@ -2621,3 +2621,24 @@ fieldset.extension-list {
   color: var(--warn);
   font-weight: 600;
 }
+
+/* The heading of a list with the line beside it that names the group its words name. The
+   line is one line, cut short where the window is narrow, so that it never pushes the rows. */
+.list-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+}
+
+.list-head h1 {
+  flex: none;
+}
+
+.groups-named {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

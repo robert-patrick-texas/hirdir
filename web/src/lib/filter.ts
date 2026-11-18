@@ -124,13 +124,18 @@ export interface QuickFields {
   mac?: string;
 }
 
-/** The fields an item is known by: what words typed above the items are looked for in. */
+/**
+ * The fields an item is known by: what words typed above the items are looked for in.
+ * 0.9.6: the name of a group it is a member of among them, so that the members of a
+ * stack are found by the stack's name (P-220).
+ */
 export const ITEM_QUICK_FIELDS: readonly string[] = [
   "name",
   "hostname",
   "serial_number",
   "asset_tag",
   "address",
+  "group.name",
 ];
 
 /** The field of an item compared with MAC addresses, which words that can be one are looked for in. */

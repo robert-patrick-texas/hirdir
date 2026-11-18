@@ -337,6 +337,8 @@ describe("plain words in a filter box (P-187)", () => {
         { field: "serial_number", op: "contains", value: "sw-01274" },
         { field: "asset_tag", op: "contains", value: "sw-01274" },
         { field: "address", op: "contains", value: "sw-01274" },
+        // 0.9.6: and the name of a group it is in, as a stack's (P-220).
+        { field: "group.name", op: "contains", value: "sw-01274" },
       ],
     });
     expect(parseFilter("rowan example.org", CONTACTS)).toEqual({
