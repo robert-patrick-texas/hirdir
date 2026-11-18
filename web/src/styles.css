@@ -2706,3 +2706,20 @@ main.fault-whole {
 main.fault-whole .new-version {
   margin: 0 0 1rem;
 }
+
+/* A value of a list or a table that names another record (P-232): a link in the colour
+   of the text around it, a lighter inherited value lighter still, with no underline but
+   while the pointer is on it and while it, or its cell of a grid, has the keyboard's
+   focus. The name that opens a row's own record stays the link it is. */
+a.value-link,
+.grid-host .ag-cell a.value-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.value-link:hover,
+a.value-link:focus-visible,
+.grid-host .ag-cell a.value-link:hover,
+.grid-host .ag-cell-focus a.value-link {
+  text-decoration: underline;
+}

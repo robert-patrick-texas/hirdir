@@ -91,6 +91,7 @@ import {
 import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
+import { oneLink, page, systemLinks } from "../lib/valueLinks";
 
 const MEMBERS_PAGE = 100;
 
@@ -177,6 +178,8 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     sortField: "master.name",
     column: null,
     value: (group) => (group.master ? itemName(group.master) : ""),
+    links: (group) =>
+      oneLink(group.master ? itemName(group.master) : "", page("item", group.master?.hid)),
     hide: true,
     width: 180,
   },
@@ -188,6 +191,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     sortField: "observed_master.name",
     column: null,
     value: (group) => (group.observed_master ? itemName(group.observed_master) : ""),
+    links: (group) =>
+      oneLink(
+        group.observed_master ? itemName(group.observed_master) : "",
+        page("item", group.observed_master?.hid),
+      ),
     hint: (group) =>
       group.master_as_intended === false ? "Not the intended master, which is no fault" : "",
     hide: true,
@@ -246,6 +254,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "Owner",
     kind: "text",
     value: (group) => effectiveLabel(group.effective.owner_hid),
+    links: (group) =>
+      oneLink(
+        effectiveLabel(group.effective.owner_hid),
+        page("owner", group.effective.owner_hid.value),
+      ),
     effective: (group) => group.effective.owner_hid,
     hint: (group) => inheritedHint(ownerSource(group.effective.owner_hid, groupAbove(group))),
     width: 170,
@@ -291,6 +304,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     header: "In group",
     kind: "text",
     value: (group) => group.parent?.name,
+    links: (group) => oneLink(group.parent?.name, page("device_group", group.parent?.hid)),
     width: 170,
   },
   {
@@ -303,6 +317,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     kind: "text",
     column: "location",
     value: (group) => nameOf(group.effective.location_hid.label),
+    links: (group) =>
+      oneLink(
+        nameOf(group.effective.location_hid.label),
+        page("location", group.effective.location_hid.value),
+      ),
     effective: (group) => group.effective.location_hid,
     hint: (group) => locationHint(group.effective.location_hid),
     hide: true,
@@ -319,6 +338,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     field: "planned_location.name",
     sortField: "planned_location.name",
     value: (group) => nameOf(group.effective.planned_location_hid.label),
+    links: (group) =>
+      oneLink(
+        nameOf(group.effective.planned_location_hid.label),
+        page("location", group.effective.planned_location_hid.value),
+      ),
     effective: (group) => group.effective.planned_location_hid,
     hint: (group) => locationHint(group.effective.planned_location_hid),
     hide: true,
@@ -330,6 +354,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     kind: "text",
     column: null,
     value: (group) => group.effective.location_hid.site,
+    links: (group) =>
+      oneLink(
+        group.effective.location_hid.site,
+        page("site", group.effective.location_hid.site_hid),
+      ),
     effective: (group) => group.effective.location_hid,
     hide: true,
     width: 150,
@@ -341,6 +370,11 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     kind: "text",
     column: null,
     value: (group) => group.effective.location_hid.region,
+    links: (group) =>
+      oneLink(
+        group.effective.location_hid.region,
+        page("region", group.effective.location_hid.region_hid),
+      ),
     effective: (group) => group.effective.location_hid,
     hide: true,
     width: 150,
@@ -388,6 +422,7 @@ const COLUMNS: GridColumn<DeviceGroup>[] = [
     kind: "text",
     column: null,
     value: (group) => registeredWith(group.registrations),
+    links: (group) => systemLinks(group.registrations),
     hide: true,
     width: 180,
   },

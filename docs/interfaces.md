@@ -2041,6 +2041,24 @@ One grid component is used on every list page.
   its own shows it from the top. A browser that refuses the storage shows the list from
   its top (P-203).
 
+- Every value of a list that names another record is a link to that record's page
+  (P-232): in the item list the stack, the groups, the location, the planned location,
+  the site, the region, the owner, the operator, the vendor, the PID and the model, the
+  item a minor item is in, the contracts, the systems it is registered with and the
+  purchase request of its line; in the list of groups the masters, the owner, the
+  operator, the group it is in, the places and the systems; in the list of circuits the
+  carrier, the places of the two sides, the owner, the site its cost is of and its
+  groups; and likewise in the other lists. Such a link is in the colour of the text
+  around it, a lighter inherited value lighter, with no underline but while the pointer is
+  on it and while its cell has the keyboard's focus. The name that opens the row's own
+  record stays the link it is. A cell that names several records, as the groups of an
+  item, has a link for each, parted by commas. A press on a link opens its page and does
+  not select the row; a press with Ctrl, Shift or the middle button is the browser's, as a
+  new tab, and selects nothing either. Enter on such a cell opens the page of the first
+  record it names, as Enter on any other cell opens the row's own. A value that names a
+  record with no page, a tag or a network, stays text. What is copied and exported is
+  unchanged: the same text as the cell's.
+
 Cell-range selection and editing in the grid are LATER.
 
 ### The frame of every page
