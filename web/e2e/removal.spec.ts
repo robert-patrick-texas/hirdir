@@ -285,6 +285,8 @@ test("Admin: an item deleted from its page shows the list, saying so, and its pa
   await expect(page.getByTestId("deleted-reason")).toHaveText(
     `The reason given: a wrong file ${suffix}`,
   );
+  // The reason is said once: the server's detail no longer ends with it.
+  expect((await problem.innerText()).split(`a wrong file ${suffix}`)).toHaveLength(2);
   await expectClean(page, seen, ["404 GET"]);
 });
 
