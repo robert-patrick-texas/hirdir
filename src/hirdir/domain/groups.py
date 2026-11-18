@@ -622,8 +622,10 @@ def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> 
 
 
 # What a stack made of a switch that stands alone takes from it, and the switch gives up
-# in the same change (P-243): the four it has from the stack from then on, beside its
-# name, which a stack holds for its members, and its addresses.
+# in the same change (P-243): its host name and FQDN, which a stack holds for its
+# members, and the four it has from the stack from then on; its addresses go with them.
+# The stack is given a name, the item's own unless the request gives another, and the
+# item keeps its own name, as a member that joins a stack keeps it (P-217).
 STACK_HOLDS = (
     "hostname",
     "fqdn",
