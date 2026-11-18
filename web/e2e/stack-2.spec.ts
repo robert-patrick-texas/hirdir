@@ -188,3 +188,79 @@ test("a stack made of two spares by New group: each has the box, ticked, and Pro
   }
   await expectClean(page, seen);
 });
+
+/** The row of a member of the stack, by the name the row shows. */
+function memberRow(page: Page, name: string): Locator {
+  return page.getByTestId("members").locator("tbody tr[data-item]", { hasText: name });
+}
+
+async function openStack(page: Page, name: string) {
+  await page.goto(`./groups?filter=${encodeURIComponent(`name:eq:${name}`)}`);
+  await page.getByTestId("grid-device-groups").getByRole("link", { name, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+}
+
+test("a failed member is replaced from its row in one press: the spare takes its position, the stack's name and place, and Production, and the failed one is to go back to its maker, marked Failed (P-242, P-245)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, firstStack);
+  const failed = spareSerials[1] ?? "";
+  const spare = spares[2] ?? "";
+  await memberRow(page, failed)
+    .getByRole("button", { name: `Replace ${failed}` })
+    .click();
+  // The form opens under the row it replaces.
+  const form = page.getByRole("region", { name: `Replace ${failed}` });
+  await expect(page.locator("tr.row-form")).toHaveCount(1);
+  await form.getByLabel("The item that takes its place", { exact: true }).fill(spare);
+  // The picker of members: the spares first, each with where it stands (P-221).
+  await expect(offers(form).locator("li").first()).toContainText(
+    `Prod · Spare · ${site} > ${depot}`,
+  );
+  await offers(form)
+    .getByRole("button", { name: new RegExp(`^${spare}`) })
+    .click();
+  const box = form.getByRole("group", { name: spare });
+  await expect(box.getByLabel("It takes the stack's name and place")).toBeChecked();
+  await expect(box.getByLabel("Disposition")).toHaveValue("Production");
+  await expect(box.getByLabel("Expected online")).toHaveValue("true");
+  await form.getByLabel("Reason").selectOption({ label: "RMA" });
+  await form.getByLabel("Reference").fill(`RMA-${id}`);
+  const what = form.getByRole("group", { name: "What becomes of it" });
+  await what.getByLabel("To be returned to the manufacturer").check();
+  await expect(what.getByLabel("Lifecycle state")).toHaveValue("Pending-Removal");
+  await expect(what.getByLabel("Condition")).toHaveValue("failed");
+  await form.getByRole("button", { name: "Replace", exact: true }).click();
+
+  // The answer names both, each a link; the row shows the new member at the same position.
+  const said = page.locator(".alert-ok");
+  await expect(said).toContainText(`${failed} was replaced by `);
+  await expect(said).toContainText(
+    ` as member 2 of ${firstStack}. It takes the stack's name and place:`,
+  );
+  await expect(said).toContainText("marked Failed");
+  await expect(said.getByRole("link", { name: failed })).toBeVisible();
+  await expect(said.getByRole("link")).toHaveCount(2);
+  const came = memberRow(page, spareSerials[2] ?? "");
+  await expect(came.locator("td").first()).toHaveText("2");
+  await expect(memberRow(page, failed)).toHaveCount(0);
+
+  // What the server did, each item read again.
+  await said.getByRole("link", { name: failed }).click();
+  await expect(page.getByRole("heading", { level: 1, name: failed })).toBeVisible();
+  await expect(page.getByTestId("standing-fact")).toContainText("Pending-Removal");
+  await expect(page.getByRole("region", { name: "Condition and health" })).toContainText(
+    "ConditionFailed",
+  );
+  await openItem(page, spareSerials[2] ?? "");
+  await expect(page.getByTestId("stack-member")).toHaveText(`Member 2 of ${firstStack}`);
+  await expect(page.getByTestId("standing-fact")).toContainText("Production");
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
+  await expectClean(page, seen);
+});

@@ -2347,6 +2347,29 @@ What 0.9.6 changes:
   change the item, on a major item that is not retired, not in Released or Archived and
   in no stack: the stack is searched for by its name among the stacks, the next position
   is offered, and the answer is said at the top of the page, which reads the item again.
+  The row of a current member of any group has Replace beside End, for the Inventory
+  role (P-242), and each of the three forms of a member's row, Change, End and Replace,
+  opens under its row, across the table, as the forms of rows do since 0.9.3 (P-171).
+  Replace reads the item that leaves when it opens, for its version and its groups, and
+  asks: what takes its place, an item in the inventory, searched for by the picker of
+  members of P-221 (the spares first, each with where it stands; in a stack, major items,
+  one in another stack shown and not to be chosen), or a new item created there; in a
+  stack, under it, the box of the stack's name and place with the line of what it
+  removes, ticked from the start, and Disposition and Expected online for a spare, as
+  Add members has them, sending `drop_identity`, `disposition` and `expected_online`;
+  Reason, of the `replacement_reason` list, Reference and Replaced on; and What becomes
+  of it for the item that leaves, the four choices of End with the same fields and a
+  Condition, of the `item_condition` list, which To be returned to the manufacturer starts
+  at Failed (P-245), sent as `old_item`. What becomes of it is asked of every
+  replacement, in a group or not, since the item that leaves is the one a person moves
+  next; Nothing now is chosen when it opens and sends nothing. It is one request, `POST
+  /items/{hid}/replace`; a refusal is said beside the field it names, as
+  `old_item.condition`, and what was typed stays. The answer at the top of the page names
+  the item that left and the one that came, each as a link, the position and the stack,
+  what the box removed, what the one that came is now and what became of the one that
+  left; the members are read again, and the new member's row stands at the position
+  that was the old one's. Replace this item on an item's page is the same form, offered
+  whether or not the item was replaced before (P-241).
 
 ### The grid
 

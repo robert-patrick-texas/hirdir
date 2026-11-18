@@ -69,6 +69,7 @@ import { itemsWithin, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
 import { dateValue, decimalValue } from "../lib/sort";
+import type { SaidPart } from "../lib/stacks";
 import { HISTORY_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
 import { useSorting } from "../lib/useSorting";
@@ -150,12 +151,13 @@ export function ItemDetail() {
   );
   const choices = useChoices();
   const rules = useRules();
-  const [done, setDone] = useState("");
+  // 0.9.8: what was done, and the same in parts with records as links (P-242).
+  const [done, setDone] = useState<{ text: string; parts?: SaidPart[] }>({ text: "" });
   const states = useMemo(() => stateNames(rules.data ?? []), [rules.data]);
   useTitle(item.data ? itemName(item.data) : "Item");
 
-  function changed(text: string) {
-    setDone(text);
+  function changed(text: string, parts?: SaidPart[]) {
+    setDone(parts ? { text, parts } : { text });
     item.reload();
   }
 
@@ -177,7 +179,7 @@ export function ItemDetail() {
       {record && <SectionLinks version={`${record.hid} ${record.row_version}`} />}
       <Problem error={item.error} />
       <Problem error={choices.error ?? rules.error} />
-      <Notice text={done} />
+      <Notice {...done} />
       {item.loading && !record && <p role="status">Loading…</p>}
       {record && (
         <>
