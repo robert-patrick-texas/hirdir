@@ -237,8 +237,9 @@ left: its location in force is no longer the group's. `lifecycle_state` moves th
 `POST /items/{hid}/transition` does, by a move the rules list and never by force, with
 `state_reason` as its reason and `disposition` and `expected_online` as named; a move to
 Released or Archived ends the other memberships the item has, as any such move does.
-Without `lifecycle_state`, `disposition` and `expected_online` are checked as on
-`PATCH /items/{hid}`, and `state_reason` is refused. A refusal names the field as
+Without `lifecycle_state`, or with the state the item has already, which is no move,
+`disposition` and `expected_online` are checked as on `PATCH /items/{hid}`, and a
+`state_reason` other than the one the item has is refused, as a file of items has it. A refusal names the field as
 `item.hostname`, `item.lifecycle_state` and so on, and leaves the membership and the
 item as they were. `item` without `left_on`, or on a membership that has ended, is
 refused. Each change of the item is audited as its change, and holds among its
