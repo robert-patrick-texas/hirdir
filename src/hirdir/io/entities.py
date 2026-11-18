@@ -3905,6 +3905,43 @@ JOINING = (
 )
 
 
+def _taken_on(db: Session, item: Item, joining: Mapping[str, Any]) -> list[str]:
+    """Say what a member that joins gives up and is given, for the preview of its row.
+
+    The rules that check it are those of the request that adds a member (P-217); this
+    only tells a person what the row would do to the item.
+    """
+    said: list[str] = []
+    if joining.get("drop_identity"):
+        gone = [
+            f"its {what} {value} is cleared"
+            for what, value in (("host name", item.hostname), ("FQDN", item.fqdn))
+            if value
+        ]
+        gone += [
+            f"its address {address.address} is removed"
+            for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]
+        ]
+        if item.location_hid:
+            where = geography.Atlas(db).location_path(item.location_hid) or item.location_hid
+            gone.append(f"its own location {where} is cleared")
+        said.append(
+            "takes the stack's name and place: " + ("; ".join(gone) if gone else "nothing to clear")
+        )
+    standing = [
+        f"{name} {_said(joining[name])}"
+        for name in groups.STANDING
+        if joining.get(name) is not None
+    ]
+    if standing:
+        said.append("is given " + " and ".join(standing))
+    return said
+
+
+def _said(value: Any) -> str:
+    return ("true" if value else "false") if isinstance(value, bool) else str(value)
+
+
 class DeviceGroupMembers(Entity):
     """The memberships of device groups, the ones that have ended among them."""
 
@@ -3994,6 +4031,7 @@ class DeviceGroupMembers(Entity):
     def write(self, run: Run, record: Any | None, values: Mapping[str, Any], new: bool) -> Any:
         db, context = run.db, run.context
         given = _plain_fields(values, self._direct)
+        joining = _new(_plain_fields(values, tuple(column.name for column in JOINING)))
         if record is None:
             for name in ("group", "item"):
                 if not values.get(name):
@@ -4003,11 +4041,23 @@ class DeviceGroupMembers(Entity):
             group = run.group(values["group"])
             item = run.item(values["item"], "item")
             self._marks(run, group, given, values)
+            if values.get("left_on") is None:
+                run.notes.extend(_taken_on(db, item, joining))
             made = groups.add_members(
-                db, context, group.hid, [{"item_hid": item.hid, **_new(given)}]
+                db,
+                context,
+                group.hid,
+                [{"item_hid": item.hid, **_new(given), **joining}],
+                indexed=False,
             )[0]
             self._seen_as_master(run, made, values)
             return made
+        if joining.get("drop_identity") or set(joining) - {"drop_identity"}:
+            # What a member takes on is taken on as it joins, once (P-217).
+            run.notes.append(
+                "a membership that is there already: drop_identity, disposition and "
+                "expected_online are for a member that joins, and are passed over"
+            )
         for name, model in (("group", DeviceGroup), ("item", Item)):
             if name not in values:
                 continue

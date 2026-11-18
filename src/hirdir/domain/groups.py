@@ -5,7 +5,8 @@ hold a cluster. Membership keeps its own dates, so that the stack a switch belon
 last year can still be answered: a membership is ended, and never removed.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Generator, Iterable, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
@@ -22,7 +23,7 @@ from hirdir.db.models import (
     Operator,
     Owner,
 )
-from hirdir.domain import geography, health, items, records, settings, tags
+from hirdir.domain import addresses, audit, geography, health, items, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -177,7 +178,8 @@ def next_positions(db: Session, found: Sequence[DeviceGroup]) -> dict[str, int |
             )
         )
         for group_hid, position in rows:
-            held[group_hid].add(position)
+            if position is not None:
+                held[group_hid].add(position)
     return {
         group.hid: lowest_free(held[group.hid]) if group.type == "stack" else None
         for group in found
@@ -677,9 +679,10 @@ def _check_joining(db: Session, group: DeviceGroup, item: Item) -> None:
         )
     )
     name = items.shown_name(item)
+    # The sentence does not begin with the item's name, which a page would capitalise.
     if already is not None:
         raise Conflict(
-            f"{name} is a member of {group.name} already",
+            f"the item {name} is a member of {group.name} already",
             {"item_hid": "this item is a member of the group already"},
         )
     if group.type not in items.MAJOR_ONLY:
@@ -693,9 +696,77 @@ def _check_joining(db: Session, group: DeviceGroup, item: Item) -> None:
     for other in items.major_only_groups(db, item.hid):
         if other.type == what and other.hid != group.hid:
             raise Conflict(
-                f"{name} is a member of the {what} {other.name}",
+                f"the item {name} is a member of the {what} {other.name}",
                 {"item_hid": f"an item is a member of one {what} at a time: {other.name}"},
             )
+
+
+# What a member that joins a stack gives up of its own, so that the stack's is in force
+# (P-217): its addresses go with them.
+IDENTITY = ("hostname", "fqdn", "location_hid")
+STANDING = ("disposition", "expected_online")
+
+
+def _joining(
+    group: DeviceGroup, given: Mapping[str, Any], ended: bool, where: str
+) -> tuple[bool, dict[str, Any]]:
+    """Return whether a member gives up its name and place, and what its item is to have.
+
+    Only what the request names is changed. A membership that has ended already, entered
+    for the record, changes nothing of its item.
+    """
+    drop = given.get("drop_identity")
+    if drop is not None and not isinstance(drop, bool):
+        raise Invalid("drop_identity is not acceptable", {f"{where}drop_identity": "true or false"})
+    named = {name: given[name] for name in STANDING if given.get(name) is not None}
+    if ended and (drop or named):
+        first = "drop_identity" if drop else next(iter(named))
+        raise Invalid(
+            "a membership that has ended changes nothing of its item",
+            {f"{where}{first}": "given with a member that joins, and not with left_on"},
+        )
+    if drop and group.type != "stack":
+        raise Invalid(
+            "only a member of a stack takes the stack's name and place",
+            {
+                f"{where}drop_identity": f"the members of a {group.type.replace('_', ' ')} "
+                "keep their own names"
+            },
+        )
+    return bool(drop), {**(dict.fromkeys(IDENTITY) if drop else {}), **named}
+
+
+@contextmanager
+def _named_at(where: str) -> Generator[None]:
+    """Name each field of a refusal as the member it is about: `members.0.disposition`."""
+    try:
+        yield
+    except (Invalid, Conflict) as error:
+        if where:
+            error.fields = {f"{where}{name}": message for name, message in error.fields.items()}
+        raise
+
+
+def _take_on(
+    db: Session,
+    context: AuditContext,
+    group: DeviceGroup,
+    item: Item,
+    drop: bool,
+    fields: dict[str, Any],
+    where: str,
+) -> None:
+    """Give an item that joins a group what the request names for it, by the item's rules.
+
+    Each change is audited as the item's, or as the removal of its address, and says that
+    it was made by joining the group (P-217).
+    """
+    joining = audit.because(context, "joining_group", None, group.hid)
+    with _named_at(where):
+        items.update_item(db, joining, item.hid, item.row_version, dict(fields))
+        if drop:
+            for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
+                addresses.delete_address(db, joining, address.hid)
 
 
 def add_members(
@@ -703,13 +774,21 @@ def add_members(
     context: AuditContext,
     group_hid: str,
     members: Sequence[dict[str, Any]],
+    *,
+    indexed: bool = True,
 ) -> list[DeviceGroupMember]:
-    """Add items to a group, all together.
+    """Add items to a group, all together, or none of them.
 
     A membership that is given `left_on` is one that has ended already, entered for
     the record: a file may hold the history of a group. A stack has at most one member
     marked as the master that is intended: one that is added so takes the mark from
-    the member that had it.
+    the member that had it. A member that joins a stack with `drop_identity` gives up
+    its own host name, FQDN, addresses and location in the same change, and one given
+    a `disposition` or `expected_online` has them from it (P-217).
+
+    `indexed` names the fields of a refusal of what a member brings with it by the
+    member's place in the list, `members.0.disposition`, as a request has them; a row
+    of a file, which is one member, names them as they are.
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
@@ -722,7 +801,8 @@ def add_members(
     settings.check_items(db, len(members), "members", "members")
     day = today(db)
     made = []
-    for given in members:
+    for place, given in enumerate(members):
+        where = f"members.{place}." if indexed else ""
         item_hid = given.get("item_hid") or ""
         item = db.get(Item, item_hid)
         if item is None:
@@ -749,6 +829,7 @@ def add_members(
             raise Invalid(
                 "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
             )
+        drop, taken_on = _joining(group, given, left is not None, where)
         role = _checked_role(group, given.get("role"))
         if left is None and group.type == "stack" and role == MASTER:
             if any(one.role == MASTER and one.left_on is None for one in made):
@@ -766,6 +847,8 @@ def add_members(
             left_on=left,
         )
         records.created(db, context, MEMBER_TYPE, member, MEMBER_FIELDS)
+        if taken_on:
+            _take_on(db, context, group, item, drop, taken_on, where)
         made.append(member)
     return made
 

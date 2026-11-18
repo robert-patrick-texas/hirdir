@@ -212,8 +212,8 @@ memberships made.
   removed as `DELETE /addresses/{hid}` removes it, and its own `location_hid` is
   cleared, so that the stack's location is in force. Its planned location, owner and
   operator stay as they are. It is refused for a cluster, a controller domain and a
-  custom group, and with a membership that has ended already, given with `left_on`.
-  Left out, false.
+  custom group, and, with `disposition` and `expected_online`, on a row of a file that
+  enters a membership that has ended already, with its `left_on`. Left out, false.
 - `disposition` and `expected_online`, given, are the item's from that change, checked
   by the rule of its lifecycle state as `PATCH /items/{hid}` checks them. Left out or
   `null`, each stays as it is: nothing follows from the other, so Production for a
