@@ -200,3 +200,24 @@ def test_the_commands_retire_and_delete_several_and_list_what_an_import_made(
     assert make.get(f"/device-groups/{stack['hid']}")["record_status"] == "retired"
     run("groups", "delete", "site9-stack-wrong", "--reason", "a wrong file", "--yes")
     make.get(f"/device-groups/{stack['hid']}", 404)
+
+
+def test_a_command_takes_a_thousand_records_at_most_and_does_not_split_them(
+    run, make: Maker, admin: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kept = make.item(hostname="site9-sw-kept")
+    many = [f"01900000-0000-7000-8000-{number:012d}" for number in range(1000)]
+    for command in (("items", "retire"), ("groups", "retire")):
+        refused = run(*command, kept["hid"], *many, expect=2)
+        assert "at most 1,000 are retired by one command, and 1,001 were given" in (refused.output)
+    monkeypatch.setenv("HIRDIR_TOKEN", admin["Authorization"].removeprefix("Bearer "))
+    refused = run("items", "delete", kept["hid"], *many, "--reason", "x", "--yes", expect=2)
+    assert "at most 1,000 are deleted by one command, and 1,001 were given" in refused.output
+    assert make.get(f"/items/{kept['hid']}")["record_status"] == "active"
+    # A thousand, one named twice among them, are one request.
+    done = json.loads(
+        run(
+            "items", "retire", kept["hid"], *many[:999], kept["hid"], "--format", "json", expect=4
+        ).stdout
+    )
+    assert ([one["hid"] for one in done["retired"]], len(done["missing"])) == ([kept["hid"]], 999)

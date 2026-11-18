@@ -1497,7 +1497,7 @@ and is refused, not rounded, when it has more.
 | `help_email` | blank | the email address to write to, for help with this installation. A plain address: at most 254 characters, one `@` and a domain with a dot, no space and none of `? & = % / : ; , " ' < >` |
 | `help_phone` | blank | the number to call, shown as it is typed. At most 40 characters of digits, spaces, letters and `+ - ( ) . , # *`, a digit among them |
 | `help_url` | blank | an address on the web for help, such as the team's page, opened in a new tab. `https://` or `http://`, as a link is |
-| `map_link` | `https://www.google.com/maps/search/?api=1&query={latitude},{longitude}` | the address of a map, with `{latitude}` and `{longitude}` where the coordinates of a site or a location go: the coordinates on the place's page open it in a new tab, and following it sends the map's site those coordinates and nothing else. Blank, the coordinates are plain numbers, as where there is no access to the internet. Blank, or an address of `https://` or `http://`, as a link is, that holds both `{latitude}` and `{longitude}` (P-229) |
+| `map_link` | `https://www.google.com/maps/search/?api=1&query={latitude},{longitude}` | the address of a map, with `{latitude}` and `{longitude}` where the coordinates of a site or a location go: the coordinates on the place's page open it in a new tab, and following it sends the map's site those coordinates and nothing else. Blank, the coordinates are plain numbers, as where there is no access to the internet. Blank, or an address of `https://` or `http://`, as a link is, of a host with no user or password before it and neither place in it, with both `{latitude}` and `{longitude}` after the host, and none of `"`, `'`, `<`, `>`, a backslash or a control character anywhere; a value stored before the rule was so, which it refuses, gives no place a map (P-229) |
 | `help_on_sign_in` | false | true lists whom to ask on the sign-in page too, which anyone who reaches the site sees; false keeps it to About |
 
 Every other value of a rule is fixed in the code, and `GET /settings` lists each with
@@ -1550,7 +1550,8 @@ with it, each as `old`: `addresses`, `memberships` and `registrations`, a list o
 each was. Each address, membership and registration that went with it has an event
 `delete` of its own beside, with what it was and `deleted_with`, the HID of the record,
 as `new`; a stack whose seen master it was has an `update` that clears it. The events
-the record had before stay, and are found by its HID; nothing is removed from the trail.
+the record had before stay, and are found by its HID: a deletion removes nothing from
+the trail, and `hirdir admin reset` is the one thing that does.
 
 ### `import_jobs` and `import_rows`
 

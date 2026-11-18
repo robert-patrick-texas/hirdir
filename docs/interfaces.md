@@ -346,13 +346,15 @@ With `dry_run` nothing is changed and the answer is the same: it is what the web
 shows before it asks. Without it, what `deleted` names is gone when the answer comes,
 in one change. Each deletion is the audit event `delete` of its record, with who, when,
 the reason, every field of the record as it was, and what went with it, as `audit_events`
-on the [data model](data-model.md#audit_events) page says. Nothing is removed from the
-audit trail: the events the record had before stay, and `GET /audit-events?record_hid=`
-finds them by its HID. A HID that was deleted is never given again. `GET` and `PATCH`
+on the [data model](data-model.md#audit_events) page says. A deletion removes nothing
+from the audit trail: the events the record had before stay, and `GET
+/audit-events?record_hid=` finds them by its HID; `hirdir admin reset`, on the server,
+is the one thing that clears the trail of what it clears. A HID that was deleted is never given again. `GET` and `PATCH`
 of a record that was deleted, and its other routes that read the record first, its
 retire, history, members and children among them, answer `404`, whose `detail` says that
 it was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,
-`actor_name` and `reason`; a request that names it among `hids` counts it in `missing`.
+`actor_name` and `reason`; a request that names it among `hids` counts it in `missing`,
+and a row of a file that names it by its `hid` is rejected with the same words.
 A change of the item that was under way at the same moment, its joining a group or a
 contract covering it, either is stored first, and the deletion then sees it and is
 refused, or comes second and is refused as a change of a record that is not there.
@@ -1555,7 +1557,8 @@ by the place's coordinates, as the answer writes them, six places of decimal deg
 ```
 
 It is null where the place has no coordinates of its own, which are not inherited, and
-where the setting is blank, as an installation with no access to the internet sets it.
+where the setting is blank, as an installation with no access to the internet sets it,
+or holds a value stored before its rule was what it is, which the rule now refuses.
 Nothing else of the place is in it. A region has no coordinates and no `map_url`.
 
 ## Contacts of agreements and contracts
@@ -1901,7 +1904,7 @@ refused leaves the others as they went.
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An apply | `hirdir import --apply` and `hirdir items set` wait for the server to apply the change in the background, and say how far it has got, unless `--no-wait` is given. Stopping the command does not stop the apply. The rows the apply left out as stale are listed with why, and the command exits `5`; rows the rules refused at the apply exit `4`; a job that stopped exits `6` and says how to resume it. `hirdir imports show HID` prints a stored preview of an import or a bulk edit and how far its apply has got, and with `--wait` waits for its end as an apply does. `hirdir imports apply HID` applies a stored preview, or resumes one that stopped, and waits likewise |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
-| Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire` for each 1,000, and print what was retired, what was retired already, what was refused with why and what was not found; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once (P-227, P-228) |
+| Retiring and deleting several | `hirdir items retire ITEM...` and `hirdir groups retire GROUP...` retire the records named, each named as the commands name one, by one request of `POST /items/retire` or `POST /device-groups/retire`, and print what was retired, what was retired already, what was refused with why and what was not found; anything refused or not found exits `4`, after the rest is done. `hirdir items delete ITEM... --reason TEXT` and `hirdir groups delete GROUP... --reason TEXT`, for an Admin, first ask the server what the deletion would do, with `dry_run`, and print it: what would be deleted, and each that would be refused with what depends on it. They then ask `Delete N items?`, and go on only when it is answered yes, or `--yes` is given by a script; `--dry-run` prints what would be done and stops there. A record named twice counts once. One command takes 1,000 records at most, which one request judges together, a switch with its power supplies: more is refused with how many were given, exit `2`, and nothing is done (P-227, P-228) |
 | The records an import made | `hirdir imports created HID` lists, for a past import, each record it made with its row, its kind, its name, what it is now and its HID, and then the vendors and catalog entries it made for a row that named them; `--format json` writes the answer of `GET /imports/{hid}/created` whole, every page of it (P-234) |
 | Places by code | `hirdir export ENTITY --place-codes` writes each place the short way, as `place_codes` of `POST /exports` does (P-235). A path that a command takes, `--root` and `--filter` among them, may hold codes as a file's may |
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |

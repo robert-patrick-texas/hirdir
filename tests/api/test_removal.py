@@ -12,6 +12,7 @@ from hirdir.domain import errors as domain_errors
 from hirdir.domain import items as item_rules
 from hirdir.domain import removal
 from tests.api.inventory import API, Maker, errors
+from tests.api.test_files import Files
 from tests.api.test_hardening import _together
 
 NOBODY = "01900000-0000-7000-8000-000000000000"
@@ -109,6 +110,8 @@ def test_one_that_is_refused_leaves_the_others_as_they_went(
     inventory: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # No rule refuses to retire an item today, so the refusal is planted here: it is
+    # what `refused` would hold, and that one refused undoes only its own part.
     one, two = _switches(make, 2)
     retire = item_rules.retire_item
 
@@ -454,6 +457,28 @@ def test_a_deletion_leaves_what_a_report_kept_unused(
 
     after = make.get("/reports/coverage")
     assert after["totals"] != before["totals"]
+
+
+def test_a_file_that_names_a_deleted_hid_is_told_it_was_deleted(
+    client: TestClient, make: Maker, admin: dict[str, str]
+) -> None:
+    (one,) = _switches(make, 1)
+    group = make.group("site9-gone", "custom")
+    _delete(client, admin, "/items", [one["hid"]])
+    _delete(client, admin, "/device-groups", [group["hid"]])
+    files = Files(client, make.headers)
+    for entity, hid, what in (
+        ("items", one["hid"], "item"),
+        ("device_groups", group["hid"], "device group"),
+    ):
+        (row,) = files.preview(entity, f"hid,name\n{hid},again\n")["rows"]
+        assert row["outcome"] == "rejected"
+        said = errors({"errors": row["reasons"]})["hid"]
+        assert said.startswith(f"the {what} {hid} was deleted on "), said
+        assert said.endswith(" by ada"), said
+    # One that never was is told so, as before.
+    (row,) = files.preview("items", f"hid,name\n{NOBODY},again\n")["rows"]
+    assert errors({"errors": row["reasons"]})["hid"] == f"there is no record {NOBODY}"
 
 
 def test_every_route_of_a_deleted_record_that_reads_it_says_it_was_deleted(
