@@ -488,6 +488,7 @@ class Item(Bookkeeping, Base):
     __table_args__ = (
         UniqueConstraint("asset_tag_key", name="items_asset_tag"),
         UniqueConstraint("catalog_entry_hid", "serial_key", name="items_catalog_serial"),
+        CheckConstraint("host_item_hid IS NULL OR host_group_hid IS NULL", name="items_one_host"),
         Index("items_updated_at", "updated_at"),
     )
 
@@ -532,6 +533,22 @@ class Item(Bookkeeping, Base):
         ForeignKey("items.hid"), default=None, index=True
     )
     position: Mapped[str | None] = mapped_column(String(100), default=None)
+    # What it runs on, for a virtual machine, a virtual context and a container (P-246):
+    # the host a person names, an item or a stack or a cluster, and the item it was seen on.
+    host_item_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("items.hid", name="fk_items_host_item_hid"), default=None, index=True
+    )
+    host_group_hid: Mapped[str | None] = mapped_column(
+        # A group names items too, the master that was seen: this key is made after both
+        # tables are, so that they are made in an order.
+        ForeignKey("device_groups.hid", name="fk_items_host_group_hid", use_alter=True),
+        default=None,
+        index=True,
+    )
+    observed_host_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("items.hid", name="fk_items_observed_host_hid"), default=None, index=True
+    )
+    host_observed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     # The line of a purchase request it arrived on.
     purchase_line_hid: Mapped[str | None] = mapped_column(
         ForeignKey("purchase_lines.hid"), default=None, index=True
@@ -1288,6 +1305,13 @@ class ImportJob(Base):
     applied: Mapped[int] = mapped_column(Integer, default=0)
     stale: Mapped[int] = mapped_column(Integer, default=0)
     skip_rejected: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    # An import of items that was read from an external system, and whether it is
+    # everything that system reports (P-248).
+    system_hid: Mapped[str | None] = mapped_column(
+        ForeignKey("external_systems.hid", name="fk_import_jobs_system_hid"), default=None
+    )
+    complete: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    not_reported: Mapped[int] = mapped_column(Integer, default=0)
     failure: Mapped[str | None] = mapped_column(Text, default=None)
     applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     applied_by: Mapped[str | None] = mapped_column(String(36), default=None)

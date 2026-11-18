@@ -37,7 +37,8 @@ where it came from.**
 | Circuit: the contacts of each role, `account_manager` and `support_contact`, all of one role together | its primary carrier, the vendor |
 | Circuit: the site contacts of each side, per role | the location of that side, resolved as for the location |
 | Catalog entry: `stack_discount_pct` | the global setting |
-| Item: `location_hid`, `planned_location_hid`, `owner_hid`, `operator_hid` | its own groups; for a minor item, then the item it is in and that item's groups, up to the top; a group answers with its own or that of the group it is nested in. See "Groups, and which of them decides" below |
+| Item: `location_hid`, `planned_location_hid`, `owner_hid`, `operator_hid` | its own groups; for a minor item, then the item it is in and that item's groups, up to the top; for an item that runs on a host, then its host and the groups of that, up in the same way (P-246); a group answers with its own or that of the group it is nested in. See "Groups, and which of them decides" below |
+| Item of the kind `virtual_context`: `serial_number`, where it has none | the item it runs on. See "What runs on a host" |
 | Item: `operator_hid`, where none of those has one | the location it is at, the locations above that, the site, and each region outward |
 | Minor item: `lifecycle_state`, `disposition`, `expected_online`, taken together | the nearest item above it that has a lifecycle state |
 | Contract: `reseller_hid`, `starts_on`, `ends_on`, `support_level`, `account_manager`, `support_contact`, `support_url`, each by itself | the support agreement it is grouped into |
@@ -56,7 +57,7 @@ The API returns an inheritable field as its own stored value plus an `effective`
 }
 ```
 
-`source` is one of `own`, `catalog`, `parent_item`, `device_group`, `location`, `site`,
+`source` is one of `own`, `catalog`, `parent_item`, `host`, `device_group`, `location`, `site`,
 `region`, `agreement`, `vendor`, `port`, `setting` or `none`. `location` is a location above the one asked about. Grids and exports show the effective value and offer a
 `<field>_source` column. Writing a value sets the item's own. Writing `null` returns it
 to inheriting.
@@ -96,7 +97,12 @@ a time, and takes the first value it finds:
    below;
 3. for a minor item, the item it is in, and then that item's own groups; then the item
    that one is in, and its groups, and so on to the top (P-175);
-4. for the operator alone, where nothing above has one: the location the item is at in
+4. for an item that runs on a host, what it runs on: the host item, and then that
+   item's own groups, and on from it as from any item, the item it is in or what it
+   runs on in its turn; or the stack or the cluster it runs on, which answers as a
+   group does (P-246). A minor item of a virtual machine comes to the machine by step
+   3 and to the machine's host by this one;
+5. for the operator alone, where nothing above has one: the location the item is at in
    force, the locations above it, its site, and each region outward.
 
 A group answers with its own value, or else the value of the group it is nested in, or
@@ -120,7 +126,8 @@ own group is nearer to it than the item it is in. A value of the item's own alwa
 decides: the access points of a domain are each where they hang.
 
 **What the answer says.** Every value in force comes with its source, `own`,
-`parent_item` or `device_group`, then `location`, `site` or `region` for the operator,
+`parent_item`, `host` where the record the item runs on holds it, or `device_group`,
+then `location`, `site` or `region` for the operator,
 and with the HID of the record that holds it, which for a group may be the one that the
 item's group is nested in. Nothing is copied down: putting an operator on the group
 changes what every member that has none shows, and writes to none of them. Being passed
@@ -157,7 +164,7 @@ What is true of every item of one model. Unique on (`vendor_hid`, `pid`).
 | `vendor_hid` | reference | required |
 | `pid` | text | required. The product ID as the vendor writes it: `C9300-48P` |
 | `model_name` | text | "Catalyst 9300 48-port PoE+" |
-| `kind` | choice | `hardware`, `virtual_machine`, `software`, `service`. Left out, `hardware` |
+| `kind` | choice | `hardware`, `virtual_machine`, `virtual_context`, `container`, `software`, `service`. Left out, `hardware`. A virtual context is a virtual device context of a switch, or the like of it in a firewall. The three in the middle run on a host: see "What runs on a host" under `items`. Not changed to a kind that has no host while an item of the model names one |
 | `type` | choice | switch, router, firewall, wireless-controller, access-point, phone, server, test-equipment, power-supply, module, application, and so on |
 | `function` | choice | access, aggregation, core, edge, management, and so on |
 | `description` | text | "access, 48-port" |
@@ -189,6 +196,8 @@ lifecycle fields included.
 | `description`, `comments` | text | |
 | `parent_item_hid` | reference | set on a minor item: the item it is installed in or attached to |
 | `position` | text | where in the parent: "PS-A", "Slot 3", "Bay 7". Only a minor item has one |
+| `host_item_hid`, `host_group_hid` | reference | what the item runs on, as a person names it: an item, or a stack or a cluster. One or neither. Only an item of a kind that runs on a host has one. See "What runs on a host" |
+| `observed_host_hid`, `host_observed_at` | reference, timestamp | the item it was seen to run on, and when: an observation, set together |
 | `quantity` | integer, default 1 | seats or licences for software and services |
 | `lifecycle_state` | choice | see below |
 | `disposition` | choice | see below |
@@ -245,6 +254,98 @@ is had in the same way: an item with no owner of its own has the owner of its gr
 of the item it is in, and is an exception when that owner is outside the
 team. A group still lists in `members_disagree` a member whose owner in force is
 another: its own, from the item it is in, or from a group that ranks first.
+
+**What runs on a host** (P-226, P-246). A virtual machine on a hypervisor, a virtual
+context in a switch and a long-lived container are items of their own, each seen on
+the network by its name and its address, and each runs on something: an item, or a
+stack or a cluster where the hosts are one. It is the reverse of a member of a stack,
+which takes the stack's name and address and keeps its own place in the records: what
+runs on a host keeps its name, its addresses and its state, and has its place from
+its host.
+
+- **Which items.** An item whose model is of the kind `virtual_machine`,
+  `virtual_context` or `container`. An item of another kind, or with no model, is
+  given no host. Such an item may be entered with no host, and is then marked for
+  review, `no_host`: see "What is to be looked at".
+- **The host is two facts**, as the master of a stack is. `host_item_hid` or
+  `host_group_hid` is the host that is *intended*, which a person names: the server
+  the machine was built on, the cluster it belongs to, the switch a context is
+  configured in. `observed_host_hid` is the host it was *seen* on, with
+  `host_observed_at`: a machine moves between the hosts of a cluster with or without
+  anybody's doing, so this is an observation, set by hand or by an import and LATER
+  by a tool. Clearing it clears its moment; a moment more than a day ahead is
+  refused. No rule depends on it. `host_differs` on the record is true where both are
+  known and the item seen is neither the host named nor a current member of the stack
+  or cluster named, which is no fault.
+- **What may be a host.** An item of the kind `hardware` or `virtual_machine`, or with
+  no model, that is not retired and has not left the team's hands when it is named; a
+  minor item as well, since a blade in a chassis is one. Never the item itself, nor
+  one that runs on it, and the line of hosts is at most three long: a container in a
+  virtual machine on a server. A group that hosts is a `stack` or a `cluster`, the two
+  that are one device, and is not retired. The item seen is any item that is not the
+  item itself.
+- **A major item.** What runs on a host is installed in nothing: it has no
+  `parent_item_hid`, and an item with a parent is given no host. It may have minor
+  items of its own, and be a member of groups, as any major item.
+- **What it has from its host**: its location, its planned location, its owner and
+  its operator, where it has none of its own and its own groups have none, resolved
+  when it is read and never copied down, with the source `host` and the record that
+  holds the value. Moving the server moves what runs on it and writes to none of it.
+  An override is the item's own value, as everywhere. Nothing of its standing comes
+  from its host: its lifecycle state, disposition and intent are its own, and a blank
+  state is blank.
+- **A virtual context shows its host's serial number.** It has none of its own to
+  enter: what a tool reads from it is the chassis's. Where its `serial_number` is
+  blank and it runs on an item, `effective.serial_number` is that item's, with the
+  source `host`; the list and the page show it as from its host. It is not stored,
+  not unique to the context and not what a row of a file is matched by. A virtual
+  machine and a container show none but their own.
+- **Counting.** Each is a major item of a kind in `count_kinds` from the start: a
+  component, a managed node of its own, and its support weight, by the rules of
+  "Counting and weight". It is counted where it is, which is where its host is.
+- **What runs on a record** is listed by `GET /items/{hid}/hosted` and `GET
+  /device-groups/{hid}/hosted`: each item that names it, and beneath each what runs
+  on that, with `depth`; retired ones only where asked. The record of an item and of a
+  group says how many run on it, `hosted_count`, of those not retired.
+
+**What follows from a host** (P-247).
+
+- **Retiring an item retires what runs on it**, and what runs on that, in the same
+  change: each has its own `retire` event, which names in `retired_with` the host it
+  went with, and each ends its memberships and its coverage as any item retired does.
+  A virtual context cannot be without its switch. This is unlike a stack on purpose,
+  whose retirement ends its memberships and leaves its switches as they are.
+  `POST /items/retire` with `dry_run` changes nothing and answers the same, with
+  `hosted`, the items that go with those named: it is what the web shows before it
+  asks. Bringing the host back brings back none of them.
+- **Retiring a stack or a cluster that something runs on is refused**, naming what
+  runs on it: each is given another host, or retired, first. Retiring one host of a
+  cluster leaves what runs on the cluster with the cluster.
+- **Deleting** (P-227) is refused for an item or a group that an item names as its
+  host, retired or not, with the items that name it. What was seen to run on a
+  deleted item is cleared of it, with an event that says so.
+- **A replacement hands over what runs on the item that left** to the item that came,
+  each with an event of its own that names the replacement, as it hands over the
+  memberships and the circuits, unless the request gives `hand_over_hosted` false.
+  The item that comes must be one that may be a host, where anything is handed over.
+  The host that was seen is not handed over.
+- Nothing else follows by a rule. A host that leaves the team's hands, by a move to
+  Released or to Archived, changes nothing of what runs on it, which is then marked
+  for review, `host_gone`; so is an item brought back while its host is retired.
+
+**What is to be looked at** (P-249). `review` on an item's record lists the reasons a
+person should look at it, each with what it is about, and is empty where there is
+none:
+
+| Reason | When | Put right by |
+|---|---|---|
+| `no_host` | the item is of a kind that runs on a host, and names none | naming its host |
+| `host_gone` | the host it names is retired, or is an item that has left the team's hands | naming another host, or retiring the item |
+| `not_reported` | an external system it is registered with reports it no more: a registration of the item has that status (see `external_systems`) | finding out what became of it: it is retired by a person, or the next report names it again |
+
+A reason is a mark. It refuses no change and moves nothing, and is worked out when the
+record is read. A retired item has none. `review` filters and shows on the item list:
+`review:eq:no_host`, and `review:empty:false` for every item with a reason.
 
 Taking a minor item out of its parent, by clearing `parent_item_hid` or naming another
 parent, keeps its record and its history. With no parent it is a major item, with
@@ -1138,7 +1239,7 @@ taken back by lowering its quantity to what was received.
 | `registrations.system_hid` | reference | not changed afterwards |
 | `registrations.item_hid` or `registrations.group_hid` | reference | exactly one, and not changed afterwards |
 | `registrations.external_id` | text | the other system's key for it |
-| `registrations.status` | choice | `registered`, `pending`, `removed`. Left out, `registered` |
+| `registrations.status` | choice | `registered`, `pending`, `removed`, `not_reported`. Left out, `registered`. `not_reported` is given by an import that is everything its system reports, to what it does not name (P-248) |
 | `registrations.confirmed_at` | timestamp | when the other system last agreed. Blank until somebody says |
 
 An item or a group is registered with one system once. A registration that ends is
@@ -1146,6 +1247,32 @@ given the status `removed` and stays on record; when it begins again it is the s
 record, registered once more. One that was a mistake is removed outright by `DELETE`,
 with an audit event that holds what it was. A retired system takes no new
 registration, and none that begins again.
+
+**What a tool reports** (P-248). An import of items may name `system`, the external
+system its file was read from; its rows then have `external_id`, that system's
+identifier of each thing. Such a row is matched before every other rule of "Identity
+and matching" but the HID: it is the item registered with that system under that
+identifier, whatever its name or its host is now, so that a rename or a move in the
+tool makes no second record. Where no item is registered so, the row is matched as
+any row is, and the item it finds or makes is registered with the system under the
+identifier, in the same change. Two items registered under one identifier, and an
+item that the system knows under another identifier than the row gives, are errors on
+the row, never a guess. Every row that is matched or registered so says that the
+system reports the item now: its registration is `registered`, with `confirmed_at`
+the moment the import was applied, and `external_id` as given.
+
+With `complete`, the file is everything that system reports. Once it has been applied
+whole, with no row rejected, left out or stale, every item whose registration with
+the system is `registered` and which no row of the file named is given the status
+`not_reported`, with an audit event each that names the import. Nothing else of the
+item changes: it is not retired, not moved and not unregistered, and is marked for
+review, `not_reported`, until a person has looked. The next file that names it makes
+it `registered` again. A file with a row that was not applied marks nothing, and
+says so. The preview says how many would be marked, and names the first of them.
+`pending` and `removed` registrations are left as they are, and so are the
+registrations of device groups, which a file of items does not name. Which things a
+tool sends is the tool's to decide: short-lived containers are left out by what
+pushes, and `hirdir` tracks what it is sent.
 
 A registration is on the record it was made for. A stack that a monitoring system
 knows as one device is registered as the stack: the registration is listed on the
@@ -1618,6 +1745,9 @@ A preview of a change to many records, kept so that what is applied is what was 
 | `applied`, `stale` | integer | how many rows the apply applied, and how many it did not because their record had changed since the preview |
 | `row_count`, `created`, `updated`, `unchanged`, `rejected` | integer | the counts of rows by what the preview found |
 | `skip_rejected` | boolean | whether it was applied without its rejected rows |
+| `system_hid` | reference | an import of items only: the external system the file was read from, by whose identifier its rows are matched (P-248). Blank for every other |
+| `complete` | boolean | with `system_hid`: the file is everything that system reports, so that what it does not name is marked `not_reported` when it is applied whole |
+| `not_reported` | integer | how many items that would mark, as the preview found, and how many it marked once applied |
 | `failure` | text | why a `failed` job was not applied, or why a `stopped` one stopped |
 | `applied_at`, `applied_by` | timestamp, user HID | when it was applied, and by whom |
 
@@ -1805,6 +1935,9 @@ When an import row or, later, a discovery observation must be matched to an item
 first rule that applies decides, and no later rule is tried:
 
 1. `hid` is given: that record, or an error if there is none.
+   Then, for a row of a file that names the system it was read from and gives
+   `external_id`: the item registered with that system under that identifier, where
+   there is one (P-248; see `external_systems`). Where there is none, the rules below.
 2. Vendor, PID and serial number are given: the item with that triple. A row that
    gives a serial number and `purchase_line` and no vendor or PID is of the line's
    model, and its serial number finds the item of that model, or else the item on that
