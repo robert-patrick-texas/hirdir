@@ -1804,7 +1804,9 @@ location it has would be named wrongly.
 On the page of an item, the catalog entry, the owner, the operator and the location
 among its first facts each have Change beside them, for a person who may change the
 item: a button that reads as a link, it moves to that field of the form of details and
-puts the keyboard there, and leaves the page's address as it is (P-185).
+puts the keyboard there, and leaves the page's address as it is (P-185). Where the parts
+of the page above the field come after, on a busy server, the window follows the field,
+so that it stays where Change put it.
 
 A table wider than the page scrolls sideways within its own box and the page does not;
 a form opened under a row of a table is brought wholly into the window when it fits there

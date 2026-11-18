@@ -377,6 +377,37 @@ function SectionLinks({ version }: { version: string }) {
 // How long Change waits for a field of the form of details to be there, in milliseconds.
 const CHANGE_WAIT = 10_000;
 
+// How long a field that Change moved to is held where it stands, in milliseconds.
+const SETTLE = 15_000;
+
+/**
+ * Hold a field where it stands in the window while the page settles. The parts of a page
+ * above the field may come after Change has moved to it, on a busy server, and push it
+ * down and out of the window with the keyboard still in it. For a quarter of a minute,
+ * while the keyboard is in the field, the window follows the field when the page above
+ * it grows or shrinks. A person who scrolls is not held: scrolling does not move the
+ * field on the page, and only that is followed.
+ */
+function keepInView(field: HTMLElement): void {
+  const until = performance.now() + SETTLE;
+  const top = () => field.getBoundingClientRect().top;
+  // Where the field stands on the page, and in the window, when last looked at.
+  let onPage = top() + window.scrollY;
+  let inWindow = top();
+  const look = () => {
+    if (document.activeElement !== field || performance.now() > until) return;
+    if (Math.abs(top() + window.scrollY - onPage) > 1) {
+      // The page moved under the field. Where the browser has not followed, follow.
+      const drift = top() - inWindow;
+      if (Math.abs(drift) > 1) window.scrollBy(0, drift);
+      onPage = top() + window.scrollY;
+    }
+    inWindow = top();
+    window.setTimeout(look, 150);
+  };
+  window.setTimeout(look, 150);
+}
+
 /**
  * From a fact to the field of the form of details that changes it (P-185): the window
  * moves to the field and the keyboard is put in it, a list to choose from or a box to
@@ -406,6 +437,7 @@ function ChangeLink({
       if (input) {
         input.scrollIntoView({ block: "center" });
         input.focus({ preventScroll: true });
+        keepInView(input);
         return;
       }
       if (form && !moved) {

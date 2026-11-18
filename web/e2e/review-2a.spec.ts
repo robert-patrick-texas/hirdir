@@ -221,6 +221,12 @@ test("from an item to the items near it, to its state, to its comments and to it
   });
   const seen = await watch(page.context());
   await signIn(page, account);
+  // On a busy server the parts of the page above the form come late and push it down
+  // after Change has moved to it: the field is still in the window when they have come.
+  await page.route("**/api/v1/items/*/resolution*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
   await openItem(page, edge.hid, host("kiln-sw-edge"));
   const identity = region(page, "Identity");
 
@@ -231,6 +237,7 @@ test("from an item to the items near it, to its state, to its comments and to it
   await identity.getByRole("button", { name: "Change the lifecycle state" }).click();
   const to = region(page, "Move to another state").getByLabel("Move to");
   await expect(to).toBeFocused();
+  await expect(region(page, "Values in force").getByTestId("walks")).toBeVisible();
   await expect(to).toBeInViewport();
   // And Change beside its comments, to their field of the form of details.
   await page.evaluate(() => window.scrollTo(0, 0));
