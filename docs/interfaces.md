@@ -1758,8 +1758,10 @@ What 0.9.6 changes:
   keeps the destination site and the expected date; a line's destination site offers
   the draft sites, marked; the table of a request's lines fits the window, and one
   link, Every item it brought, opens the items that arrived on its lines (P-208).
-  Receive opens its form in the window with the keyboard in its first box, and its
-  location is searched within the line's destination site from the start (P-209). The
+  Receive opens its form in the window with the keyboard in the box of what arrived,
+  and its location is searched within the line's destination site from the start, the
+  site's first locations offered before anything is typed and its one location chosen
+  where it has only one; Only at the site, cleared, searches every site (P-209). The
   plain words of the list of lines look in the destination site, and Destination site
   and Expected are in view (P-210).
 - **A vendor.** The table of models shows twenty and a button, Show all; the vendor's

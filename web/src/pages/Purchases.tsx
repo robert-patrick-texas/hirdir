@@ -1,14 +1,14 @@
-import { type FormEvent, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, type Schemas } from "../api";
 import { useAuth } from "../auth";
-import { SelectField, TextAreaField, TextField } from "../components/Field";
+import { CheckField, SelectField, TextAreaField, TextField } from "../components/Field";
 import type { GridColumn } from "../components/grid/columns";
 import { DataGrid } from "../components/grid/DataGrid";
 import { LocationField } from "../components/LocationField";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
-import { CreateForm, EditForm } from "../components/RecordForm";
+import { CreateForm, EditForm, useOpenedIntoView } from "../components/RecordForm";
 import { SortTh } from "../components/SortTh";
 import { Time } from "../components/Time";
 import { effectiveLabel, effectiveText } from "../lib/effective";
@@ -1029,9 +1029,29 @@ function Receive({
   const [count, setCount] = useState("");
   const [day, setDay] = useState(() => today());
   const [location, setLocation] = useState("");
+  // 0.9.6: the location is looked for where the line is going, unless the person says
+  // otherwise, and is the site's one location where it has only one (P-209).
+  const site = line.destination_site;
+  const [onlyThere, setOnlyThere] = useState(site !== null);
+  const [touched, setTouched] = useState(false);
+  const only = useLoad(`receive one location ${site?.hid ?? ""}`, (signal) =>
+    site === null ? Promise.resolve(null) : oneLocationOf(site.hid, signal),
+  );
+  const theOne = only.data ?? null;
+  const chosen = location === "" && !touched && theOne ? theOne.value : location;
   const [found, setFound] = useState({ error: "", countError: "" });
   const action = useAction();
   const known = ["delivered_on", "location_hid", "quantity"];
+  // Opened by Receive, the form comes into the window with the keyboard in the box of
+  // what arrived (P-209, as P-190 for a new form).
+  const section = useRef<HTMLElement>(null);
+  useOpenedIntoView(section);
+  useEffect(() => {
+    const form = section.current;
+    if (form?.contains(document.activeElement)) {
+      form.querySelector<HTMLElement>('[name="arrived"]')?.focus({ preventScroll: true });
+    }
+  }, []);
   const refused = fieldErrors(action.error, known).shown;
   const stopped = notReceivable(line);
   const read = arrivedOf(typed, by, count, line.pending_quantity);
@@ -1059,7 +1079,7 @@ function Receive({
           row_version: line.row_version,
           ...receiptOf(read),
           ...(day === "" ? {} : { delivered_on: day }),
-          ...(location === "" ? {} : { location_hid: location }),
+          ...(chosen === "" ? {} : { location_hid: chosen }),
         },
       }),
     );
@@ -1085,7 +1105,12 @@ function Receive({
   }
 
   return (
-    <section className="panel" aria-labelledby="receive-line" data-testid="receive-line">
+    <section
+      ref={section}
+      className="panel"
+      aria-labelledby="receive-line"
+      data-testid="receive-line"
+    >
       <h3 id="receive-line">
         Receive on {line.name}: {lineModel(line)}
       </h3>
@@ -1165,14 +1190,38 @@ function Receive({
               hint="Left blank, today."
             />
             <LocationField
+              // A new search when where it looks changes: what was found elsewhere is not kept.
+              key={onlyThere ? "there" : "anywhere"}
               label="Location they were put in"
               name="location_hid"
-              value={location}
-              onChange={setLocation}
+              value={chosen}
+              onChange={(hid) => {
+                setTouched(true);
+                setLocation(hid);
+              }}
+              known={theOne ? [theOne] : []}
               blank="Not said"
               disabled={action.busy}
               error={refused.location_hid}
+              site={onlyThere && site ? site.hid : undefined}
+              {...(site
+                ? {
+                    hint: onlyThere
+                      ? `Looked for at ${site.name}, where the line is going.`
+                      : "Looked for at every site.",
+                  }
+                : {})}
             />
+            {site && (
+              <CheckField
+                label={`Only at ${site.name}`}
+                name="only_at_site"
+                checked={onlyThere}
+                onChange={setOnlyThere}
+                disabled={action.busy}
+                hint="Clear it to choose a location at any other site."
+              />
+            )}
           </div>
           <p className="actions">
             <button
@@ -1193,6 +1242,26 @@ function Receive({
 }
 
 type Item = Schemas["ItemOut"];
+
+/** The one location of a site, by its path, or null where it has none or more than one. */
+async function oneLocationOf(
+  site: string,
+  signal: AbortSignal,
+): Promise<{ value: string; label: string } | null> {
+  const page = await api.request("post", "/api/v1/locations/query", {
+    body: queryBody({
+      filter: { field: "site_hid", op: "eq", value: site },
+      sort: ["name"],
+      limit: 2,
+      offset: 0,
+      include_archived: false,
+      include_drafts: true,
+    }),
+    signal,
+  });
+  const [one] = page.items;
+  return page.total === 1 && one ? { value: one.hid, label: one.path } : null;
+}
 
 /** The items that arrived on a line: those that name it, read from the item list. */
 function Arrived({ line, onClose }: { line: PurchaseLine; onClose: () => void }) {
