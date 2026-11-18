@@ -1976,7 +1976,7 @@ balance do not count, nor does the contact a user is, which a reset keeps; the e
 may change such a contact where its email is one of theirs (P-174). Each CSV file is
 imported in the load order, a preview and an
 apply as any import is, kept as a stored import named for its file and audited as
-`system`. A file with a rejected row stops it there and names the rows; what the files
+`system`, under a request ID of its own, which the records it made share. A file with a rejected row stops it there and names the rows; what the files
 before it made stays, for a reset to clear. It prints how many records each file made.
 Accounts and settings are not touched.
 

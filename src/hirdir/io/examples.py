@@ -9,7 +9,7 @@ server and from nowhere else: no route calls it.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -19,6 +19,7 @@ from hirdir.auth.roles import Role
 from hirdir.db.models import ImportJob, ImportRow
 from hirdir.domain import audit, reset
 from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.ids import new_hid
 from hirdir.io import imports
 from hirdir.io.entities import LOAD_ORDER
 
@@ -141,9 +142,12 @@ def load(
     loaded = []
     for name in LOAD_ORDER:
         file = file_name(name)
+        # Each file is a request of its own, as an import through the API is: what it
+        # made shares its request ID, and no other file's does.
+        context = replace(audit.SYSTEM, request_id=new_hid())
         job = imports.preview(
             db,
-            audit.SYSTEM,
+            context,
             ROLE,
             data=(source / file).read_bytes(),
             format_=FORMAT,
@@ -158,7 +162,7 @@ def load(
                 _rejected(db, job.hid),
             )
         hid = job.hid
-        imports.begin_apply(db, audit.SYSTEM, hid, source="file")
+        imports.begin_apply(db, context, hid, source="file")
         db.commit()
         status = imports.work_job(db, hid, as_role=ROLE)
         # The worker lets go of what it held between its batches: the job is read again.

@@ -497,22 +497,91 @@ def _context(db: Session, hid: str) -> AuditContext:
     return AuditContext(actor_hid=event.actor_hid, via=event.via, request_id=event.request_id)
 
 
+APPLY_BEGINS = ("apply_started", "apply_resumed")
+APPLY_ENDS = ("apply_stopped", "apply")
+
+
+@dataclass(frozen=True)
+class _Applying:
+    """One time a job was asked to be applied, until that apply stopped or ended."""
+
+    job_hid: str
+    request_id: str
+    actor_hid: str | None
+    begun: Any
+    ended: Any
+
+    def holds(self, event: AuditEvent) -> bool:
+        return (
+            event.request_id == self.request_id
+            and event.actor_hid == self.actor_hid
+            and self.begun <= event.at
+            and (self.ended is None or event.at <= self.ended)
+        )
+
+
+def _applying(db: Session, requests: set[str]) -> list[_Applying]:
+    """Return each time a job of those requests was asked to be applied, the earliest
+    first, with when that apply stopped or ended, or None while it goes on."""
+    events = db.execute(
+        select(
+            AuditEvent.record_hid,
+            AuditEvent.action,
+            AuditEvent.request_id,
+            AuditEvent.actor_hid,
+            AuditEvent.at,
+        )
+        .where(
+            AuditEvent.record_type == "import_job",
+            AuditEvent.action.in_(APPLY_BEGINS + APPLY_ENDS),
+            AuditEvent.request_id.in_(requests),
+        )
+        .order_by(AuditEvent.at, AuditEvent.hid)
+    )
+    found: list[_Applying] = []
+    open_: dict[str, int] = {}
+    for job_hid, action, request_id, actor_hid, at in events:
+        if action in APPLY_BEGINS:
+            open_[job_hid or ""] = len(found)
+            found.append(_Applying(job_hid or "", request_id, actor_hid, at, None))
+        elif (job_hid or "") in open_:
+            place = open_.pop(job_hid or "")
+            found[place] = replace(found[place], ended=at)
+    return found
+
+
 def _stubs_made(db: Session, hid: str) -> set[str]:
     """Return the vendors and catalog entries that the batches a job has applied made
-    only because a row named them, and that no row has described since."""
-    requests = select(AuditEvent.request_id).where(
-        AuditEvent.record_type == "import_job",
-        AuditEvent.record_hid == hid,
-        AuditEvent.action.in_(("apply_started", "apply_resumed")),
+    only because a row named them, and that no row has described since.
+
+    They are the events of the request that began or resumed the job's apply, made by
+    whoever asked, in the time until that apply stopped or ended. Two applies may share
+    a request ID, as the jobs of `hirdir admin load-examples` once did and as a caller
+    that sends one `X-Request-Id` twice does, and one may be asked for while another is
+    applied. One job is applied at a time, in the order asked: an event that falls
+    within the times of two is of the one asked for first.
+    """
+    requests = set(
+        db.scalars(
+            select(AuditEvent.request_id).where(
+                AuditEvent.record_type == "import_job",
+                AuditEvent.record_hid == hid,
+                AuditEvent.action.in_(APPLY_BEGINS),
+            )
+        )
     )
-    made = select(AuditEvent.record_hid, AuditEvent.action).where(
+    times = _applying(db, requests)
+    made = select(AuditEvent).where(
         AuditEvent.request_id.in_(requests),
         AuditEvent.record_type.in_(("vendor", "catalog_entry")),
         AuditEvent.action.in_(("create", "update")),
     )
     created, described = set(), set()
-    for record_hid, action in db.execute(made):
-        (created if action == "create" else described).add(record_hid)
+    for event in db.scalars(made):
+        within = next((one for one in times if one.holds(event)), None)
+        if within is None or within.job_hid != hid:
+            continue
+        (created if event.action == "create" else described).add(event.record_hid)
     own = set(
         db.scalars(
             select(ImportRow.record_hid).where(
