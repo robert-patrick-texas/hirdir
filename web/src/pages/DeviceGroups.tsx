@@ -51,6 +51,7 @@ import {
   MANAGED_AS,
   MASTER,
   type Member,
+  type MemberAdd,
   managedAsText,
   ownerDisputed,
   type PendingMember,
@@ -79,6 +80,7 @@ import { pickLabel } from "../lib/pick";
 import { nameOf, placePath } from "../lib/places";
 import { fieldErrors } from "../lib/problems";
 import { allows } from "../lib/roles";
+import { MEMBER_FIELDS, refusedRows } from "../lib/stacks";
 import { registeredWith } from "../lib/systems";
 import { MEMBERS_SORT } from "../lib/tableSorts";
 import { useServerSort } from "../lib/useServerSort";
@@ -1541,9 +1543,15 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
   const [pending, setPending] = useState<PendingMember[]>([]);
   const [joined, setJoined] = useState("");
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  // The members last sent, to put what the server refused of each beside its row.
+  const [sent, setSent] = useState<readonly MemberAdd[]>([]);
   const action = useAction();
-  const known = ["joined_on"];
+  const rowFields = sent.flatMap((_, index) =>
+    MEMBER_FIELDS.map((field) => `members.${index}.${field}`),
+  );
+  const known = ["joined_on", ...rowFields];
   const refused = fieldErrors(action.error, known).shown;
+  const answered = refusedRows(sent, refused, action.error?.existing ?? null);
   const adding = pending.map((row) => row.role);
   const problem = stackProblem(group.type, adding);
   const takes =
@@ -1562,6 +1570,7 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
       action.clear();
       return;
     }
+    setSent(built.members);
     const result = await action.run(() =>
       api.request("post", "/api/v1/device-groups/{hid}/members", {
         path: { hid: group.hid },
@@ -1582,7 +1591,10 @@ function AddMembers({ group, current, taken, onCancel, onAdded }: AddMembersProp
           onChange={setPending}
           taken={taken}
           positions={(current ?? []).map((member) => member.position)}
-          errors={rowErrors}
+          // 0.9.6: the lowest free position, as the server says (P-219).
+          next={group.next_position}
+          errors={{ ...answered.errors, ...rowErrors }}
+          holders={answered.holders}
           disabled={action.busy}
         />
         <div className="fields">

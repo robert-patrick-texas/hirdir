@@ -1,16 +1,17 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import type { Schemas } from "../api";
 import { itemName } from "../lib/format";
 import {
   defaultRole,
   groupTypeLabel,
-  nextPosition,
   type PendingMember,
   roleLabel,
   roleOptions,
 } from "../lib/groups";
 import { MAJOR_ONLY, memberOffer, SPARES } from "../lib/pick";
 import { nextSort, type SortColumns, type SortState, sortRows } from "../lib/sort";
+import { offeredPosition } from "../lib/stacks";
 import type { SortControl } from "../lib/useSorting";
 import { ItemPicker } from "./ItemPicker";
 import { SortTh } from "./SortTh";
@@ -27,8 +28,15 @@ interface MemberPickerProps {
   taken?: readonly string[];
   /** The positions that are taken already, to offer the next one. */
   positions?: ReadonlyArray<number | null>;
+  /**
+   * 0.9.6: the position the server offers the next member, the stack's `next_position`:
+   * the lowest that no current member holds (P-219). Left out, the lowest free from 1.
+   */
+  next?: number | null;
   /** What is wrong with a row, by the HID of its item. */
   errors?: Readonly<Record<string, string>>;
+  /** The member that holds the position a row was refused, as a link, by the HID of its item (P-219). */
+  holders?: Readonly<Record<string, { to: string; label: string }>>;
   disabled?: boolean;
 }
 
@@ -63,7 +71,17 @@ function inOrder(pending: readonly PendingMember[], order: readonly string[]): P
  * headers; that changes the order on show only, not the order the members are sent in.
  */
 export function MemberPicker(props: MemberPickerProps) {
-  const { type, pending, onChange, taken = [], positions = [], errors = {}, disabled } = props;
+  const {
+    type,
+    pending,
+    onChange,
+    taken = [],
+    positions = [],
+    next,
+    errors = {},
+    disabled,
+  } = props;
+  const { holders = {} } = props;
   const roles = roleOptions(type);
   const numbered = type === "stack";
   // The members of a stack and of a cluster are major items.
@@ -92,7 +110,7 @@ export function MemberPicker(props: MemberPickerProps) {
         item_hid: item.hid,
         name: itemName(item),
         role: defaultRole(type),
-        position: numbered ? String(nextPosition(used)) : "",
+        position: numbered ? String(offeredPosition(next, used)) : "",
       },
     ]);
   }
@@ -144,7 +162,20 @@ export function MemberPicker(props: MemberPickerProps) {
                   <th scope="row">
                     {row.name}
                     {errors[row.item_hid] && (
-                      <span className="field-error"> {errors[row.item_hid]}</span>
+                      <span className="field-error" data-testid="member-error">
+                        {" "}
+                        {errors[row.item_hid]}
+                        {holders[row.item_hid] && (
+                          <>
+                            {" "}
+                            It is held by{" "}
+                            <Link to={holders[row.item_hid]?.to ?? ""}>
+                              {holders[row.item_hid]?.label}
+                            </Link>
+                            .
+                          </>
+                        )}
+                      </span>
                     )}
                   </th>
                   <td>

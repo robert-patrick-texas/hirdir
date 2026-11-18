@@ -1924,7 +1924,11 @@ What 0.9.6 changes:
   and Production for a spare (P-217). Ending a membership of a stack asks What becomes
   of it: to the spare pool with a new name and place, to be returned to the
   manufacturer, excess, or nothing now, saved with the end (P-218). The position offered
-  is the lowest that is free, and one that a current member holds is refused (P-219).
+  is the lowest that is free, and one that a current member holds is refused (P-219):
+  the first member added is offered the stack's `next_position`, and each further one of
+  the same request the next that neither a current member nor another row holds; a
+  position refused is said beside its row, with the member that holds it as a link, from
+  the refusal's `existing`.
   Find an item and the item list find the members of a stack by the stack's name, and
   say above the rows that the words name a device group, with a link to it; the list of
   groups finds a stack by a member's serial number; a member's row names its stack and
