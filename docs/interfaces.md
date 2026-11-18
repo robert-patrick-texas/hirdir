@@ -200,6 +200,66 @@ by `effective.operator_hid`, `effective.operator_hid.source` and
 the item list does, and lists at most 20 places and 20 groups beneath each, with how many
 more there are.
 
+### The members of a device group
+
+`POST /device-groups/{hid}/members` takes `members`, each with `item_hid`, `role`,
+`position` and `joined_on`, and `drop_identity`, `disposition` and `expected_online`
+(P-217); `POST /device-groups` takes the same in its `members`. All of them are made, or
+none: a refusal of one leaves no member added and no item changed. The answer is the
+memberships made.
+
+- `drop_identity`, true, is for a member of a stack: in the same change as the
+  membership the item's own `hostname` and `fqdn` are cleared, each of its addresses is
+  removed as `DELETE /addresses/{hid}` removes it, and its own `location_hid` is
+  cleared, so that the stack's location is in force. Its planned location, owner and
+  operator stay as they are. It is refused for a cluster, a controller domain and a
+  custom group, and, with `disposition` and `expected_online`, on a row of a file that
+  enters a membership that has ended already, with its `left_on`. Left out, false.
+- `disposition` and `expected_online`, given, are the item's from that change, checked
+  by the rule of its lifecycle state as `PATCH /items/{hid}` checks them. Left out or
+  `null`, each stays as it is: nothing follows from the other, so Production for a
+  spare in Prod is sent with `expected_online` true.
+- A refusal of one of these names the field with the member's place in the list, from
+  0: `members.0.drop_identity`, `members.0.disposition`, `members.0.expected_online`.
+- Each change of the item is audited as a change of the item, and each address removed
+  as the removal of that address, with the request ID of the request. Each such event
+  holds among its `changes` the entry `joining_group`, with the HID of the group as
+  `new`. The item's event holds the host name, the FQDN and the location it had, and
+  the event of each address what it was: its item, the address, its network and its
+  role (O-02).
+
+`PATCH /device-groups/{hid}/members/{member_hid}` that gives `left_on` may carry `item`
+(P-218): what the item is to have from the end, any of `hostname`, `fqdn`,
+`location_hid`, `lifecycle_state`, `state_reason`, `disposition` and `expected_online`.
+A field left out stays as it is, and `null` clears `hostname`, `fqdn` and
+`location_hid`, as on `PATCH /items/{hid}`. The membership is ended first and the item
+is changed after, in the same change, so that the item's rules see an item that has
+left: its location in force is no longer the group's. `lifecycle_state` moves the item as
+`POST /items/{hid}/transition` does, by a move the rules list and never by force, with
+`state_reason` as its reason and `disposition` and `expected_online` as named; a move to
+Released or Archived ends the other memberships the item has, as any such move does.
+Without `lifecycle_state`, or with the state the item has already, which is no move,
+`disposition` and `expected_online` are checked as on `PATCH /items/{hid}`, and a
+`state_reason` other than the one the item has is refused, as a file of items has it. A refusal names the field as
+`item.hostname`, `item.lifecycle_state` and so on, and leaves the membership and the
+item as they were. `item` without `left_on`, or on a membership that has ended, is
+refused. Each change of the item is audited as its change, and holds among its
+`changes` the entry `leaving_group`, with the HID of the group as `old`.
+
+A position in a stack is held by one current member (P-219). A member added at a
+position that another current member of the stack holds, or moved to it, is refused
+with a `409` that names that member's item as `existing`, and two members of one request
+at one position with a `422`. A membership that has ended keeps its number and holds
+nothing. A stack that holds two members at one position already is left as it is, and
+other changes of it go through; either of the two may be moved to a free position. A
+member added to a stack with no position takes the lowest from 1 that no current member
+holds and that no other member of the same request is given; `next_position` of the
+stack, on `GET /device-groups/{hid}` and in the lists of groups, is that position, and
+is `null` for a group of another type. A member of a cluster, a controller domain or a
+custom group has a position only where one is given, and any. `POST
+/items/{hid}/replace` ends the old item's membership and gives the new item its
+position, as it is, in the same change.
+
 ## Filter grammar
 
 One grammar is used by list routes, exports, bulk updates, the CLI and the grid.
@@ -496,7 +556,7 @@ contacts of vendors, and the support weight of a place.
 | `items` | `vendor`, `pid`, `serial_number`, `asset_tag`, `name`, `hostname`, `fqdn`, `mac_address`, `parent`, `position`, `description`, `comments`, `quantity`, `lifecycle_state`, `disposition`, `expected_online`, `state_reason`, `condition`, `observed_status`, `observed_at`, `owner`, `operator`, `location`, `planned_location`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `procured_on`, `delivered_on`, `in_service_on`, `warranty_start`, `warranty_end`, `purchase_line`, `est_value`, `support_weight`, `annual_support_cost`, `end_of_sale`, `end_of_sw_support`, `end_of_hw_support`, `ldos`, `do_not_renew`, `record_status`, `tags` | `model_name`, `kind`, `type`, `function`, `state_changed_at`, `is_major`, `depth`, `health`, `site` and `region` by their names, `owner_exception` and `owner_exception_reason`, `covered`, `covered_until`, `contract_count` and `contracts`, the numbers of the contracts that cover it today, `out_of_service_contracts`, the numbers of those that still count it while it is out of service, `purchase_line_mismatch`, and a `_source` for each of the fourteen fields that inherit, `do_not_renew_source` among them |
 | `addresses` | `item`, `group`, `address`, `network`, `role`, `is_primary` | `family` |
 | `device_groups` | `name`, `type`, `hostname`, `fqdn`, `parent`, `owner`, `operator`, `location`, `planned_location`, `managed_as`, `expected_members`, `observed_status`, `observed_at`, `mgmt_address`, `mgmt_ipv4`, `mgmt_ipv6`, `mgmt_network`, `record_status`, `tags` | `serial_number`, `members`, `health` |
-| `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at` | |
+| `device_group_members` | `group`, `item`, `role`, `position`, `joined_on`, `left_on`, `observed_master`, `master_observed_at`, and `drop_identity`, `disposition` and `expected_online`, which an export writes only when they are asked for by name, and then blank (P-217) | |
 | `item_replacements` | `old_item`, `new_item`, `reason`, `reference`, `replaced_on` | |
 | `external_systems` | `name`, `kind`, `url`, `notes`, `record_status` | |
 | `registrations` | `system`, `item`, `group`, `external_id`, `status`, `confirmed_at` | |
@@ -548,7 +608,7 @@ its side, its role and its contact. For items, the order on the data model page.
 | Not to be renewed | `do_not_renew` of a catalog entry is `true` or `false`, and `!clear` makes it `false`. `do_not_renew` of an item is its own word, and `!clear` gives it its model's again; a row that holds the very flag the item has from its model leaves it inheriting, as for every value of the catalog. An export of items in force writes the flag in force with `do_not_renew_source`, and one with `own_values` the item's own. A bulk edit sets it as a file does |
 | The operator | `operator` on an item, a device group, a region, a site and a location names an operator by its label, and `!clear` returns the record to the operator it has from above. A row that names the operator an item has anyway, from the item above it, its group or its place, leaves it inheriting. The person behind a label is in the file of `operators`, in `contact`: an email address, or a name that one contact alone has, and `!clear` leaves the label open. An import does not retire an operator |
 | An external owner | An item or a group that a row gives to an owner outside the team is marked as an exception by that alone. The reason is the owner's, in `exception_reason` of the file of owners; `owner_exception` and `owner_exception_reason` of an item are written by an export and passed over by an import |
-| Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A row of members with the role `master` marks the master that is intended, and takes the mark from the member that had it. `observed_master`, true on the row of one member, records on the stack that this member is seen to be master, with `master_observed_at` or else the moment of the change. One file names one intended master and one observed master of a stack at most: a second row that names one is rejected |
+| Groups | A group is loaded before its members. The groups of one file are worked a group before the groups within it, wherever they stand. A row of members with the role `master` marks the master that is intended, and takes the mark from the member that had it. `observed_master`, true on the row of one member, records on the stack that this member is seen to be master, with `master_observed_at` or else the moment of the change. One file names one intended master and one observed master of a stack at most: a second row that names one is rejected. A row that adds a member to a stack may give `drop_identity` true, and a row that adds a member `disposition` and `expected_online`, which mean what they mean on `POST /device-groups/{hid}/members`; the preview notes on each such row what is cleared and what is removed. A row of a membership that is there already is not given them again, and its notes say so (P-217). A row that adds a member to a stack with no `position` takes the lowest free one, and the rows of a file that give a stack's members their positions are worked before those that give none (P-219) |
 | Observation | `observed_status` is `online`, `degraded`, `unreachable` or `present`, and `observed_at` the moment it was seen: left out, the moment of the change, and with no zone named, in the application's time zone. A row that states a status as it is, with no moment, changes nothing, where a person who does so on a page or by a bulk edit has looked again and sets the moment to now. `!clear` in `observed_status` clears both, and a moment is not cleared by itself. What a preview tells of a row leaves out a moment that the clock will set, since the apply is made later. A site that reads the status of its devices from another tool, or walks its store room, loads the result as a file of `hostname`, `observed_status` and `observed_at` |
 | Missing references | A vendor or catalog entry that does not exist is created and marked `unreviewed`. Any other missing reference rejects the row. A catalog entry that a file's own later row describes is created by that row, and is then as reviewed as the row says |
 | Blank cells | Leave the stored value alone. In JSON, so does a field that is left out, or one that is empty text |
@@ -1636,7 +1696,7 @@ refused leaves the others as they went.
 | Changes | Anything that changes more than one record previews first and needs `--apply` |
 | An apply | `hirdir import --apply` and `hirdir items set` wait for the server to apply the change in the background, and say how far it has got, unless `--no-wait` is given. Stopping the command does not stop the apply. The rows the apply left out as stale are listed with why, and the command exits `5`; rows the rules refused at the apply exit `4`; a job that stopped exits `6` and says how to resume it. `hirdir imports show HID` prints a stored preview of an import or a bulk edit and how far its apply has got, and with `--wait` waits for its end as an apply does. `hirdir imports apply HID` applies a stored preview, or resumes one that stopped, and waits likewise |
 | An item, by what it is known | Where a command takes an item, it takes the HID, or a serial number, an asset tag or a name that one item alone has. More than one is listed, and nothing is done. `hirdir items show` prints the item with the links of its model |
-| A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
+| A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, the serial number that follows, and the position a member added with none takes (P-219). No command adds a member by itself: a file of `device_group_members` does, by `hirdir import`, with `drop_identity`, `disposition` and `expected_online` among its columns (P-217) |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
 | Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. The table leaves out the filter of each row; `--format json` holds it, with the conditions of the counts, to give to `hirdir items list --filter` (P-206). `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |

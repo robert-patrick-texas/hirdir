@@ -5,7 +5,8 @@ hold a cluster. Membership keeps its own dates, so that the stack a switch belon
 last year can still be answered: a membership is ended, and never removed.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Iterable, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
@@ -22,7 +23,17 @@ from hirdir.db.models import (
     Operator,
     Owner,
 )
-from hirdir.domain import geography, health, items, records, settings, tags
+from hirdir.domain import (
+    addresses,
+    audit,
+    geography,
+    health,
+    items,
+    lifecycle,
+    records,
+    settings,
+    tags,
+)
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -149,6 +160,40 @@ def member_counts(db: Session, group_hids: Sequence[str]) -> dict[str, int]:
         for group_hid, count in counted:
             counts[group_hid] = count
     return counts
+
+
+def lowest_free(held: Iterable[int | None]) -> int:
+    """Return the lowest position from 1 that is not among those held."""
+    taken = {position for position in held if position is not None}
+    position = 1
+    while position in taken:
+        position += 1
+    return position
+
+
+def next_positions(db: Session, found: Sequence[DeviceGroup]) -> dict[str, int | None]:
+    """Return, for each stack, the position a member added with none takes (P-219).
+
+    It is the lowest from 1 that no current member holds. A group of another type has
+    none: its members have a position only where one is given.
+    """
+    stacks = [group.hid for group in found if group.type == "stack"]
+    held: dict[str, set[int]] = {hid: set() for hid in stacks}
+    if stacks:
+        rows = db.execute(
+            select(DeviceGroupMember.group_hid, DeviceGroupMember.position).where(
+                DeviceGroupMember.group_hid.in_(stacks),
+                DeviceGroupMember.left_on.is_(None),
+                DeviceGroupMember.position.is_not(None),
+            )
+        )
+        for group_hid, position in rows:
+            if position is not None:
+                held[group_hid].add(position)
+    return {
+        group.hid: lowest_free(held[group.hid]) if group.type == "stack" else None
+        for group in found
+    }
 
 
 def masters(db: Session, group_hids: Sequence[str]) -> dict[str, Item]:
@@ -644,9 +689,10 @@ def _check_joining(db: Session, group: DeviceGroup, item: Item) -> None:
         )
     )
     name = items.shown_name(item)
+    # The sentence does not begin with the item's name, which a page would capitalise.
     if already is not None:
         raise Conflict(
-            f"{name} is a member of {group.name} already",
+            f"the item {name} is a member of {group.name} already",
             {"item_hid": "this item is a member of the group already"},
         )
     if group.type not in items.MAJOR_ONLY:
@@ -660,9 +706,138 @@ def _check_joining(db: Session, group: DeviceGroup, item: Item) -> None:
     for other in items.major_only_groups(db, item.hid):
         if other.type == what and other.hid != group.hid:
             raise Conflict(
-                f"{name} is a member of the {what} {other.name}",
+                f"the item {name} is a member of the {what} {other.name}",
                 {"item_hid": f"an item is a member of one {what} at a time: {other.name}"},
             )
+
+
+# What a member that joins a stack gives up of its own, so that the stack's is in force
+# (P-217): its addresses go with them.
+IDENTITY = ("hostname", "fqdn", "location_hid")
+STANDING = ("disposition", "expected_online")
+
+
+def _joining(
+    group: DeviceGroup, given: Mapping[str, Any], ended: bool, where: str
+) -> tuple[bool, dict[str, Any]]:
+    """Return whether a member gives up its name and place, and what its item is to have.
+
+    Only what the request names is changed. A membership that has ended already, entered
+    for the record, changes nothing of its item.
+    """
+    drop = given.get("drop_identity")
+    if drop is not None and not isinstance(drop, bool):
+        raise Invalid("drop_identity is not acceptable", {f"{where}drop_identity": "true or false"})
+    named = {name: given[name] for name in STANDING if given.get(name) is not None}
+    if ended and (drop or named):
+        first = "drop_identity" if drop else next(iter(named))
+        raise Invalid(
+            "a membership that has ended changes nothing of its item",
+            {f"{where}{first}": "given with a member that joins, and not with left_on"},
+        )
+    if drop and group.type != "stack":
+        raise Invalid(
+            "only a member of a stack takes the stack's name and place",
+            {
+                f"{where}drop_identity": f"the members of a {group.type.replace('_', ' ')} "
+                "keep their own names"
+            },
+        )
+    return bool(drop), {**(dict.fromkeys(IDENTITY) if drop else {}), **named}
+
+
+@contextmanager
+def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator[None]:
+    """Name each field of a refusal as the member it is about: `members.0.disposition`.
+
+    `renamed` gives the name the request has for a field the rule names otherwise.
+    """
+    try:
+        yield
+    except (Invalid, Conflict) as error:
+        if where:
+            error.fields = {
+                f"{where}{(renamed or {}).get(name, name)}": message
+                for name, message in error.fields.items()
+            }
+        raise
+
+
+def _take_on(
+    db: Session,
+    context: AuditContext,
+    group: DeviceGroup,
+    item: Item,
+    drop: bool,
+    fields: dict[str, Any],
+    where: str,
+) -> None:
+    """Give an item that joins a group what the request names for it, by the item's rules.
+
+    Each change is audited as the item's, or as the removal of its address, and says that
+    it was made by joining the group (P-217).
+    """
+    joining = audit.because(context, "joining_group", None, group.hid)
+    with _named_at(where):
+        items.update_item(db, joining, item.hid, item.row_version, dict(fields))
+        if drop:
+            for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
+                addresses.delete_address(db, joining, address.hid)
+
+
+class _Positions:
+    """The positions of a stack as the members of one request are added to it (P-219).
+
+    It is read once the one writer's place is taken (D-104), so that of two requests at
+    one moment the second sees what the first stored. A position is held by a current
+    member; one that has ended keeps its number and holds nothing.
+    """
+
+    def __init__(self, db: Session, group: DeviceGroup, members: Sequence[Mapping[str, Any]]):
+        self.db = db
+        self.group = group
+        self.held: dict[int, DeviceGroupMember] = {}
+        for member in current_members(db, group.hid):
+            if member.position is not None:
+                self.held.setdefault(member.position, member)
+        # What the request gives, which a member given none does not take.
+        self.asked = {
+            given["position"]
+            for given in members
+            if given.get("left_on") is None and _is_position(given.get("position"))
+        }
+        self.given: set[int] = set()
+
+    def place(self, position: int | None, where: str) -> int:
+        """Return the position a member takes, or refuse one that is held."""
+        if position is None:
+            position = lowest_free([*self.held, *self.asked, *self.given])
+        elif position in self.given:
+            raise Invalid(
+                "two members are given one position",
+                {f"{where}position": f"another of these members is given position {position}"},
+            )
+        elif position in self.held:
+            _refuse_held(self.db, self.group, self.held[position], position, f"{where}position")
+        self.given.add(position)
+        return position
+
+
+def _is_position(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _refuse_held(
+    db: Session, group: DeviceGroup, holder: DeviceGroupMember, position: int, field: str
+) -> None:
+    """Refuse a position of a stack that another current member holds, naming its item."""
+    item = db.get_one(Item, holder.item_hid)
+    name = items.shown_name(item)
+    raise Conflict(
+        f"position {position} of {group.name} is held by {name}",
+        {field: f"another current member holds position {position}: {name}"},
+        items.existing_item(item),
+    )
 
 
 def add_members(
@@ -670,13 +845,25 @@ def add_members(
     context: AuditContext,
     group_hid: str,
     members: Sequence[dict[str, Any]],
+    *,
+    indexed: bool = True,
+    handed_over: bool = False,
 ) -> list[DeviceGroupMember]:
-    """Add items to a group, all together.
+    """Add items to a group, all together, or none of them.
 
     A membership that is given `left_on` is one that has ended already, entered for
     the record: a file may hold the history of a group. A stack has at most one member
     marked as the master that is intended: one that is added so takes the mark from
-    the member that had it.
+    the member that had it. A member that joins a stack with `drop_identity` gives up
+    its own host name, FQDN, addresses and location in the same change, and one given
+    a `disposition` or `expected_online` has them from it (P-217). A current member of
+    a stack holds its position alone, and one given none takes the lowest free one
+    (P-219).
+
+    `indexed` names the fields of a refusal of what a member brings with it by the
+    member's place in the list, `members.0.disposition`, as a request has them; a row
+    of a file, which is one member, names them as they are. `handed_over` is a
+    replacement's: the new item takes the old one's position as it is.
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
@@ -689,7 +876,11 @@ def add_members(
     settings.check_items(db, len(members), "members", "members")
     day = today(db)
     made = []
-    for given in members:
+    # The members of a stack are numbered (P-219). A replacement hands its position over
+    # as it is, which another member may hold from before this rule.
+    numbered = _Positions(db, group, members) if group.type == "stack" and not handed_over else None
+    for place, given in enumerate(members):
+        where = f"members.{place}." if indexed else ""
         item_hid = given.get("item_hid") or ""
         item = db.get(Item, item_hid)
         if item is None:
@@ -716,7 +907,11 @@ def add_members(
             raise Invalid(
                 "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
             )
+        drop, taken_on = _joining(group, given, left is not None, where)
         role = _checked_role(group, given.get("role"))
+        position = _checked_position(given.get("position"))
+        if numbered is not None and left is None:
+            position = numbered.place(position, where)
         if left is None and group.type == "stack" and role == MASTER:
             if any(one.role == MASTER and one.left_on is None for one in made):
                 raise Invalid(
@@ -728,11 +923,13 @@ def add_members(
             group_hid=group.hid,
             item_hid=item.hid,
             role=role,
-            position=_checked_position(given.get("position")),
+            position=position,
             joined_on=joined,
             left_on=left,
         )
         records.created(db, context, MEMBER_TYPE, member, MEMBER_FIELDS)
+        if taken_on:
+            _take_on(db, context, group, item, drop, taken_on, where)
         made.append(member)
     return made
 
@@ -766,11 +963,25 @@ def update_member(
     Marking a member as the intended master of a stack takes the mark from the member
     that had it, in the same change. No rule stops a member leaving, the master among
     them: a stack may be left with no intended master, and with none that is seen.
+
+    `item`, given with the end of a current membership, is what the item is to have
+    from the end: it is changed by its own rules once the membership has ended (P-218).
     """
     dialect.hold_other_writers(db)
     group = get_group(db, group_hid)
     member = get_member(db, group_hid, member_hid)
     ended = member.left_on is not None
+    back = fields.get("item")
+    if back is not None and ended:
+        raise Invalid(
+            "this membership has ended",
+            {"item": "what becomes of the item is given as it leaves; change it on its own page"},
+        )
+    if back is not None and fields.get("left_on") is None:
+        raise Invalid(
+            "what becomes of the item is given with the end",
+            {"item": "give left_on with it"},
+        )
     values: dict[str, Any] = {}
     if "role" in fields:
         values["role"] = _checked_role(group, fields["role"])
@@ -793,13 +1004,72 @@ def update_member(
             "the dates are not acceptable", {"left_on": "must not be before the day it joined"}
         )
     leaving = left is not None and not ended
+    moved = values.get("position") if "position" in changing else None
+    if group.type == "stack" and left is None and moved is not None:
+        # A current member is moved only to a position nobody else holds (P-219). Two
+        # that hold one from before stay so until one of them is moved.
+        for other in current_members(db, group.hid):
+            if other.position == moved and other.hid != member.hid:
+                _refuse_held(db, group, other, moved, "position")
     marking = values.get("role") == MASTER and member.role != MASTER
     if group.type == "stack" and marking and not leaving and not ended:
         _unmark_master(db, context, group.hid, member.hid)
     records.apply(db, context, MEMBER_TYPE, member, row_version, values)
     if leaving:
         _forget_observed_master(db, context, group, member.item_hid)
+    if back:
+        # The membership has ended first, so that the item's rules see one that has left.
+        _give_back(db, context, group, member.item_hid, back)
     return member
+
+
+# What an item that leaves a group may be given with the end, beside its standing.
+LEAVING = ("hostname", "fqdn", "location_hid")
+
+
+def _give_back(
+    db: Session, context: AuditContext, group: DeviceGroup, item_hid: str, given: Mapping[str, Any]
+) -> None:
+    """Give an item that has left a group what the request says it is to have (P-218).
+
+    Each part is applied by the item's own rules, as a file of items applies them: a
+    state that is not the item's moves it by a transition, with the reason as its why
+    and the disposition and intent as named; otherwise these are an edit, and a reason
+    is refused. Each change is audited as the item's, and says it was made by leaving.
+    """
+    leaving = audit.because(context, "leaving_group", group.hid, None)
+    item = items.get_item(db, item_hid)
+    with _named_at("item.", {"to": "lifecycle_state", "reason": "state_reason"}):
+        state = given.get("lifecycle_state")
+        if "lifecycle_state" in given and state is None:
+            raise Invalid(
+                "a lifecycle state is not cleared",
+                {"lifecycle_state": "an item leaves a state by moving to another"},
+            )
+        moving = state is not None and lifecycle.state_name(state) != item.lifecycle_state
+        reason = given.get("state_reason")
+        fields = {name: given[name] for name in LEAVING if name in given}
+        if not moving:
+            if reason is not None and records.key(reason) != records.key(item.state_reason or ""):
+                raise Invalid(
+                    "a reason is given with a move",
+                    {"state_reason": "a reason is taken with a move to another lifecycle state"},
+                )
+            fields.update({name: given[name] for name in STANDING if name in given})
+        if fields:
+            items.update_item(db, leaving, item.hid, item.row_version, fields)
+        if moving:
+            items.transition(
+                db,
+                leaving,
+                item.hid,
+                item.row_version,
+                to=state,
+                role=None,
+                reason=reason,
+                disposition=given.get("disposition", lifecycle.UNSET),
+                expected_online=given.get("expected_online", lifecycle.UNSET),
+            )
 
 
 def leave_all(db: Session, context: AuditContext, item_hid: str) -> None:

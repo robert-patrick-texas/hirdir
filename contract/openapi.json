@@ -11740,6 +11740,18 @@
             "title": "Name",
             "type": "string"
           },
+          "next_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A stack: the lowest position from 1 that no current member holds, which a member added with none takes (P-219). Null for a group of another type.",
+            "title": "Next Position"
+          },
           "observed_at": {
             "anyOf": [
               {
@@ -12000,6 +12012,7 @@
           "master_observed_at",
           "master_as_intended",
           "member_count",
+          "next_position",
           "addresses",
           "registrations",
           "circuits",
@@ -16873,6 +16886,101 @@
         "title": "LapsedContracts",
         "type": "object"
       },
+      "LeavingItem": {
+        "additionalProperties": false,
+        "description": "What an item that leaves a group is to have from the end (P-218).\n\nEach is checked by the item's own rules once the membership has ended. A field left\nout stays as it is, and null clears hostname, fqdn and location_hid.",
+        "properties": {
+          "disposition": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With lifecycle_state, as a transition takes it; without, as an edit does.",
+            "title": "Disposition"
+          },
+          "expected_online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With lifecycle_state, as a transition takes it; without, as an edit does.",
+            "title": "Expected Online"
+          },
+          "fqdn": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fqdn"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          },
+          "lifecycle_state": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The state to move to, by a move the rules list, as a transition makes it.",
+            "title": "Lifecycle State"
+          },
+          "location_hid": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Hid"
+          },
+          "state_reason": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A value of the state_reason list: why it moves. With lifecycle_state only.",
+            "title": "State Reason"
+          }
+        },
+        "title": "LeavingItem",
+        "type": "object"
+      },
       "LifecycleRuleOut": {
         "additionalProperties": false,
         "description": "What one lifecycle state allows, and where an item may move from it.",
@@ -18927,6 +19035,37 @@
         "additionalProperties": false,
         "description": "An item to make a member of a group.",
         "properties": {
+          "disposition": {
+            "anyOf": [
+              {
+                "maxLength": 12,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given, the item's disposition from this change, as the rule of its lifecycle state allows. Left out, it stays as it is.",
+            "title": "Disposition"
+          },
+          "drop_identity": {
+            "default": false,
+            "description": "A member of a stack only: in the same change the item's own hostname and FQDN are cleared, its addresses removed and its own location cleared, so that the stack's is in force (P-217).",
+            "title": "Drop Identity",
+            "type": "boolean"
+          },
+          "expected_online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given, whether the item is expected online from this change, as the rule of its lifecycle state allows. Left out, it stays as it is.",
+            "title": "Expected Online"
+          },
           "item_hid": {
             "maxLength": 36,
             "title": "Item Hid",
@@ -18956,6 +19095,7 @@
                 "type": "null"
               }
             ],
+            "description": "In a stack, one that no other current member holds. Left out, a member of a stack takes the lowest free one from 1, the stack's `next_position` (P-219).",
             "title": "Position"
           },
           "role": {
@@ -19065,6 +19205,17 @@
         "additionalProperties": false,
         "description": "Fields of a membership to change, and the version they were read at.",
         "properties": {
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeavingItem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Given with left_on on a current membership: what the item is to have from the end, changed with it (P-218)."
+          },
           "joined_on": {
             "anyOf": [
               {
@@ -19101,6 +19252,7 @@
                 "type": "null"
               }
             ],
+            "description": "In a stack, one that no other current member holds (P-219).",
             "title": "Position"
           },
           "role": {
@@ -36616,7 +36768,7 @@
         ]
       },
       "post": {
-        "description": "Make items members of a group, all together.\n\nOne that is added to a stack as `master`, the master that is intended, takes the\nmark from the member that had it.",
+        "description": "Make items members of a group, all together, or none of them.\n\nOne that is added to a stack as `master`, the master that is intended, takes the\nmark from the member that had it. A member of a stack holds its position alone, and\none given none takes the lowest free one (P-219). With `drop_identity` a member of a\nstack gives up its own hostname, FQDN, addresses and location in the same change, and\n`disposition` and `expected_online` are the item's from it (P-217).",
         "operationId": "add_members_api_v1_device_groups__hid__members_post",
         "parameters": [
           {
@@ -36692,7 +36844,7 @@
     },
     "/api/v1/device-groups/{hid}/members/{member_hid}": {
       "patch": {
-        "description": "Change a membership. `left_on` ends it; it is never removed.\n\nMarking a member as the intended master of a stack takes the mark from the member\nthat had it. The master that is seen is recorded on the stack itself.",
+        "description": "Change a membership. `left_on` ends it; it is never removed.\n\nMarking a member as the intended master of a stack takes the mark from the member\nthat had it. The master that is seen is recorded on the stack itself. With `left_on`,\n`item` says what the item is to have from the end, changed after the end in the\nsame change (P-218).",
         "operationId": "update_member_api_v1_device_groups__hid__members__member_hid__patch",
         "parameters": [
           {

@@ -16,7 +16,7 @@ from hirdir.db import dialect
 from hirdir.db.models import Item, ItemReplacement
 from hirdir.domain import audit, choices, circuit_records, groups, items, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
+from hirdir.domain.errors import Conflict, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "item_replacement"
 FIELDS = ("old_item_hid", "new_item_hid", "reason", "reference", "replaced_on")
@@ -56,12 +56,6 @@ def _line_before(db: Session, item_hid: str) -> set[str]:
     return before - {item_hid}
 
 
-def _named(db: Session, hid: str) -> Existing:
-    """Return the item a refusal of a second replacement names (P-207)."""
-    item = db.get(Item, hid)
-    return items.existing_item(item) if item is not None else Existing(items.RECORD_TYPE, hid, hid)
-
-
 def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: date) -> None:
     """Give the new item the old one's place in each group it is a current member of."""
     for member, group in groups.memberships_of(db, [old.hid])[old.hid]:
@@ -85,12 +79,15 @@ def _take_over(db: Session, context: AuditContext, old: Item, new: Item, day: da
                     f"the item it would replace is a member of {group.name}"
                 },
             )
+        # The old membership ends first, so that its position is free for the new item,
+        # which takes it as it is (P-219).
         groups.update_member(db, context, group.hid, member.hid, None, {"left_on": day})
         groups.add_members(
             db,
             context,
             group.hid,
             [{"item_hid": new.hid, "role": role, "position": position, "joined_on": day}],
+            handed_over=True,
         )
 
 
@@ -138,7 +135,6 @@ def replace(
         raise Conflict(
             "this item has been replaced already",
             {"new_item_hid": f"it was replaced by {taken.new_item_hid} on {taken.replaced_on}"},
-            _named(db, taken.new_item_hid),
         )
     if new_item is not None:
         new = items.create_item(db, context, dict(new_item))
@@ -161,7 +157,6 @@ def replace(
             raise Conflict(
                 "this item took the place of another already",
                 {"new_item_hid": f"it took the place of {taken.old_item_hid}"},
-                _named(db, taken.old_item_hid),
             )
         if new.hid in _line_before(db, old.hid):
             raise Invalid(
