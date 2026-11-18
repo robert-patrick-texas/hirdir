@@ -790,8 +790,9 @@ record with no status of its own, a tag, a network, an address or a membership, 
 `active` while it stands. `also` lists, after them and whole, the vendors and the
 catalog entries that the import made only because a row named them and that no row of
 it described. Nothing new is stored: a row that made a record keeps its HID, and the
-audit trail the request that made the others. A preview that was not applied, and a
-bulk edit, made nothing, and list none.
+audit trail the request that made the others. A preview that was not applied made
+nothing, and lists none. A bulk edit makes no item, so its `items` are none, and its
+`also` lists the models it made where it gave items one that the catalog had not.
 
 ### Bulk edit
 
@@ -1976,7 +1977,7 @@ balance do not count, nor does the contact a user is, which a reset keeps; the e
 may change such a contact where its email is one of theirs (P-174). Each CSV file is
 imported in the load order, a preview and an
 apply as any import is, kept as a stored import named for its file and audited as
-`system`. A file with a rejected row stops it there and names the rows; what the files
+`system`, under a request ID of its own, which the records it made share. A file with a rejected row stops it there and names the rows; what the files
 before it made stays, for a reset to clear. It prints how many records each file made.
 Accounts and settings are not touched.
 

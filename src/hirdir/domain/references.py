@@ -32,7 +32,7 @@ from hirdir.db.models import (
     Site,
     Vendor,
 )
-from hirdir.domain import audit, choices, descent, file_kinds, items, records, settings
+from hirdir.domain import audit, choices, deleted, descent, file_kinds, items, records, settings
 from hirdir.domain.audit import AuditContext, change
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.geography import Atlas, Place
@@ -190,6 +190,9 @@ def get_holder(db: Session, kind: str, hid: str) -> Holder:
     model = KINDS[kind][1]
     found = db.get(model, hid)
     if found is None:
+        if kind == items.RECORD_TYPE:
+            # An item that an Admin deleted says so, as its other routes do (P-236).
+            raise deleted.missing(db, kind, hid, "item")
         raise NotFound(f"there is no {kind.replace('_', ' ')} {hid}")
     return Holder(kind, found)
 

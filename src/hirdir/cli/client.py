@@ -75,6 +75,10 @@ def _refusal(response: httpx2.Response) -> typer.Exit:
     try:
         problem = response.json()
         detail = problem.get("detail") or problem.get("title") or response.reason_phrase
+        # A record that was deleted: the reason is in `deleted`, and not in the words.
+        reason = (problem.get("deleted") or {}).get("reason")
+        if reason:
+            detail += f": {reason}"
         for entry in problem.get("errors", []):
             detail += f"\n  {entry['field']}: {entry['message']}"
     except ValueError:
