@@ -12,6 +12,7 @@ import { CheckField, SelectField } from "../components/Field";
 import { HealthWithReasons, Observation, ObservedText } from "../components/Health";
 import { Memberships, MinorItems, Place, Replacement } from "../components/ItemStructure";
 import { LinkList } from "../components/Links";
+import { MinorLine } from "../components/MinorLine";
 import { Operator, OperatorNote } from "../components/Operator";
 import { Pager } from "../components/Pager";
 import { Notice, Problem } from "../components/Problem";
@@ -168,6 +169,8 @@ export function ItemDetail() {
           <span className="badge">{optionLabel(RECORD_STATUSES, record.record_status)}</span>
         )}
       </h1>
+      {/* 0.9.6: what a minor item is and where, under its heading (P-216). */}
+      {record && <MinorLine item={record} choices={choices.data} />}
       {/* 0.9.5: links to the sections of the page that are on it (P-189). */}
       {record && <SectionLinks version={`${record.hid} ${record.row_version}`} />}
       <Problem error={item.error} />

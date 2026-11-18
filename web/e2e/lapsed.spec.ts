@@ -98,8 +98,10 @@ test("a contract that has lapsed, and its renewal pending and then entered", asy
   await expect(gridRow(page, "grid-contracts", number).locator('[col-id="lapsed"]')).toHaveText(
     "Lapsed",
   );
-  // So does the table of the contracts that stand by themselves.
+  // So does the table of the contracts that stand by themselves, once the tables by
+  // agreement are opened (P-212).
   await page.goto("./contracts");
+  await page.getByTestId("contracts-grouped-line").click();
   await expect(
     page
       .getByTestId("contracts-grouped")

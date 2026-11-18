@@ -1834,16 +1834,32 @@ What 0.9.6 changes:
   all, with the number; sorted by a date, the models with none come last, whichever
   way. The vendor's items stand above its agreements and contracts, with the filter box
   of the item list and its plain words, which narrow within the vendor's items (P-211).
-- **Contracts.** The grid of every contract comes first, with the tables by agreement
-  after it, folded closed; on Renewals the rows of a count that is opened come into the
-  window; the list of agreements shows the account manager (P-212). The items a
-  contract covers have the filter box, and ending a coverage on the contract's last
-  day is said to change nothing before it is sent (P-213). Renew begins with the dates
-  that follow the present term and a blank purchase reference, and says how many items
-  follow, stay behind and begin with the new term (P-214). An agreement's page has the
-  annual cost of each of its contracts and their total (P-215).
-- **A minor item.** Under its heading, what it is, its position in the item it is in
-  and the site, and a link to the spares of its model there (P-216).
+- **Contracts.** The grid of every contract comes first, with the contracts that have
+  lapsed counted above it, and the tables by agreement after it, folded closed behind a
+  line that says how many agreements there are and read when it is opened; on Renewals
+  the rows of a count that is opened come into the window, with the keyboard on their
+  heading; the list of agreements shows the account manager, beside the vendor (P-212). The items a
+  contract covers have the filter box, its plain words looking in the item's name,
+  serial number and asset tag; ending a coverage on the contract's last day is said to
+  change nothing before it is sent, with how to leave an item out of a renewal, and
+  after an End the page says what the server kept, never that a coverage it kept open
+  was ended (P-213). Renew begins with the dates
+  that follow the present term, from the day after it ends for a year whatever its
+  length, with a button, Keep the present period, for a new number alone; a record whose
+  end is its agreement's, or that has a term to come, begins with its dates as they are.
+  The purchase reference begins blank. Under the button of a contract's renewal, each
+  counted by the server: the coverages that have the contract's period and follow, the
+  items it covers today that are marked not to be renewed and stay behind, as a link to
+  them, the coverages that begin after the present term, with the new one, and those
+  that end on a day of their own by then (P-214). An agreement's page has the
+  annual cost of each of its contracts, which is always the contract's own, and a row
+  of their total, beside the agreement's own figure and not in place of it: a contract
+  with no cost counts as none, and the row says how many have none; a draft is not
+  counted (P-215).
+- **A minor item.** Under its heading, one line: its type and model, its position in
+  the item it is in, that item as a link, and the site it has in force; and a link,
+  Spares of this model here, to the item list filtered to its catalog entry, that site
+  and the disposition Spare in force, minor items included (P-216).
 
 ### The grid
 

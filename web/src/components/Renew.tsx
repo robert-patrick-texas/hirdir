@@ -11,6 +11,7 @@ import {
   type Agreement,
   type Contract,
   type ContractRenew,
+  followingPeriod,
   LAPSED_NOTE,
   nextTermText,
   RENEW_SPECS,
@@ -18,6 +19,7 @@ import {
   renewBody,
   renewPeriodProblem,
   renewProblem,
+  renewStart,
 } from "../lib/contracts";
 import { today } from "../lib/format";
 import { useAction } from "../lib/hooks";
@@ -57,6 +59,11 @@ interface RenewProps<R extends Renewed, A extends R = R> {
   submitLabel: string;
   /** Something to read above the form, as that a blank date is the agreement's. */
   note?: ReactNode;
+  /**
+   * 0.9.6 (P-214): what is said under the button of the form, while it is open: how many
+   * items follow into the new term, how many stay behind and how many begin with it.
+   */
+  scope?: ReactNode;
   send: (body: RenewBody) => Promise<A>;
   /** What to say of a renewal that is in force at once. */
   renewed: (record: A) => string;
@@ -77,10 +84,14 @@ interface RenewProps<R extends Renewed, A extends R = R> {
 export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A>) {
   const { record, name, what, follows, submitLabel, note, send, renewed, onChanged, onReload } =
     props;
-  const { afterword, more, onRenewed } = props;
+  const { afterword, more, onRenewed, scope } = props;
   const [open, setOpen] = useState(false);
   const stored = record as R & Readonly<Record<string, unknown>>;
-  const [values, setValues] = useState<FormValues>(() => formOf(RENEW_SPECS, stored));
+  // 0.9.6 (P-214): the form begins with the period that follows the present term, and
+  // a blank purchase reference.
+  const start = () => renewStart(stored, formOf(RENEW_SPECS, stored));
+  const [values, setValues] = useState<FormValues>(start);
+  const following = record.next_term ? null : followingPeriod(record.ends_on);
   const [found, setFound] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState("");
   const action = useAction();
@@ -215,10 +226,29 @@ export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A
             disabled={action.busy}
           />
           <p className="hint">
+            {following &&
+              `The new period begins as the one that follows the present term, ${following.starts_on} to ${following.ends_on}: from the day after it ends, for a year. `}
             A period that begins today or earlier is in force at once, and the status is then
             Active. A period that begins after today is kept as the next term: say the day it ends,
-            or leave that blank for none. The present term runs on until then.
+            or leave that blank for none. The present term runs on until then. The purchase
+            reference begins blank: the new term has the one typed here, and no other.
           </p>
+          {following && (
+            <p className="actions">
+              {/* For a renewal that gives a new number alone: the period stays as it is. */}
+              <button
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  const present = formOf(RENEW_SPECS, stored);
+                  change("starts_on", present.starts_on ?? "");
+                  change("ends_on", present.ends_on ?? "");
+                }}
+              >
+                Keep the present period
+              </button>
+            </p>
+          )}
           {more?.form}
           <p className="actions">
             <button
@@ -233,7 +263,7 @@ export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A
               disabled={action.busy}
               onClick={() => {
                 setOpen(false);
-                setValues(formOf(RENEW_SPECS, stored));
+                setValues(start());
                 setFound({});
                 setProblem("");
                 action.clear();
@@ -242,6 +272,7 @@ export function Renew<R extends Renewed, A extends R = R>(props: RenewProps<R, A
               Cancel
             </button>
           </p>
+          {scope && <div data-testid="renew-follows">{scope}</div>}
         </form>
       )}
     </section>

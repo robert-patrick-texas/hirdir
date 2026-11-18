@@ -1784,6 +1784,29 @@ td.rank {
   white-space: nowrap;
 }
 
+/* 0.9.6: the tables by agreement, folded after the grid of every contract (P-212). */
+.contracts-by-agreement > summary {
+  cursor: pointer;
+  color: var(--accent);
+  width: fit-content;
+}
+
+.contracts-by-agreement-tables {
+  margin-top: 0.5rem;
+}
+
+/* 0.9.6: what a minor item is and where, under its heading (P-216). */
+.minor-line {
+  margin: -0.25rem 0 0.75rem;
+  color: var(--muted);
+}
+
+/* 0.9.6: what a renewal carries, under the button of its form (P-214). */
+.renew-scope ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
 /* === 0.7.0: an apply in the background, the trend of the capacity balance, links === */
 
 /* --- an apply in the background --------------------------------------------------- */

@@ -284,8 +284,10 @@ test("D-139: an agreement, a contract in it, what the contract has from it and w
   await expect(inForce(page, "ends_on")).toHaveAttribute("data-standing", "inherited");
   await expect(inForce(page, "ends_on")).toContainText(agreementEnds);
 
-  // The page of contracts groups both under the agreement.
+  // The page of contracts groups both under the agreement, once its tables by agreement
+  // are opened (P-212).
   await page.goto("./contracts");
+  await page.getByTestId("contracts-grouped-line").click();
   const grouped = page
     .getByTestId("contracts-grouped")
     .locator(`table[data-agreement="${agreement}"]`);
