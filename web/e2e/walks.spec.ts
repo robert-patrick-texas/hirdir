@@ -45,6 +45,11 @@ async function make(
   return (await answer.json()) as { hid: string };
 }
 
+/** Open the line the walks stand behind: they are folded until asked for (P-198). */
+async function openWalks(page: Page): Promise<void> {
+  await page.getByTestId("why-each-value").locator("> summary").click();
+}
+
 /** The walk of one value on the page on show. */
 function walkOf(page: Page, field: string): Locator {
   return page.getByTestId("walk-field").and(page.locator(`[data-field="${field}"]`));
@@ -126,6 +131,19 @@ test("the walk of each value of an item and of a group, as a row of boxes", asyn
   await page.goto(`./items/${optic.hid}`);
   await expect(page.getByRole("heading", { level: 1, name: label("sfp") })).toBeVisible();
   const values = page.getByRole("region", { name: "Values in force" });
+  // The walks are folded when the page opens, and not read from the server until they
+  // are asked for: the table of the values in force stands open above the line (P-198).
+  const fold = values.getByTestId("why-each-value");
+  await expect(fold.locator("> summary")).toHaveText("Why it has each value");
+  await expect(fold).not.toHaveAttribute("open", "");
+  await expect(values.locator("table").first()).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("walk-field")).toHaveCount(0);
+  const asked = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith(`/items/${optic.hid}/resolution`),
+  );
+  await openWalks(page);
+  expect((await asked).status()).toBe(200);
   const operator = walkOf(page, "operator_hid");
   await expect(operator).toHaveAttribute("data-source", "device_group");
   await expect(operator.getByRole("heading", { level: 3 })).toHaveText(`Operator: ${label("RA")}`);
@@ -185,6 +203,7 @@ test("the walk of each value of an item and of a group, as a row of boxes", asyn
   // The switch: its own operator decides, and overrides the one of its group.
   await page.goto(`./items/${sw.hid}`);
   await expect(page.getByRole("heading", { level: 1, name: label("sw") })).toBeVisible();
+  await openWalks(page);
   const own = walkOf(page, "operator_hid");
   await expect(own).toHaveAttribute("data-source", "own");
   await expect(boxes(own).nth(0)).toHaveAttribute("data-state", "decides");
@@ -204,6 +223,7 @@ test("the walk of each value of an item and of a group, as a row of boxes", asyn
   // A group nested in another: its own holds nothing, the group it is in decides.
   await page.goto(`./groups/${inner.hid}`);
   await expect(page.getByRole("heading", { level: 1, name: label("inner") })).toBeVisible();
+  await openWalks(page);
   const nested = walkOf(page, "operator_hid");
   await expect(nested.getByRole("heading", { level: 3 })).toHaveText(`Operator: ${label("PR")}`);
   await expect(boxes(nested)).toHaveCount(2);

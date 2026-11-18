@@ -1728,6 +1728,13 @@ What 0.9.5 adds to these pages, for the work of each day:
   operator to list, is said to be named in agreements, contracts, vendors or circuits,
   with the number, and not to be assigned nowhere (P-197).
 
+What 0.9.6 changes:
+
+- **An item, a device group.** Under Values in force, the walks of why the record has
+  each value stand behind a line, Why it has each value, closed when the page opens;
+  a press opens them, and they are read from the server then (P-198). The table of
+  the values in force and the source of each stays open.
+
 ### The grid
 
 One grid component is used on every list page.

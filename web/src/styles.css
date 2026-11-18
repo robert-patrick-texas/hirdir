@@ -2536,3 +2536,19 @@ fieldset.extension-list {
 .find-place .plain-list li {
   overflow-wrap: anywhere;
 }
+
+/* --- why a record has each value, folded until it is asked for (P-198) ------------ */
+
+.why-each-value {
+  margin: 0 0 0.75rem;
+}
+
+.why-each-value > summary {
+  cursor: pointer;
+  color: var(--accent);
+  width: fit-content;
+}
+
+.why-each-value[open] > summary {
+  margin-bottom: 0.5rem;
+}

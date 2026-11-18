@@ -234,6 +234,8 @@ test("from an item to the items near it, to its state, to its comments and to it
   await expect(identity.getByTestId("standing-fact")).toHaveText(
     "Prod · Production · Expected online",
   );
+  // The walks above the form are asked for, and come late (P-198 folds them until then).
+  await region(page, "Values in force").getByTestId("why-each-value").locator("> summary").click();
   await identity.getByRole("button", { name: "Change the lifecycle state" }).click();
   const to = region(page, "Move to another state").getByLabel("Move to");
   await expect(to).toBeFocused();

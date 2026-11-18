@@ -857,17 +857,19 @@ function ValuesInForce({ item }: { item: Item }) {
           </tbody>
         </table>
       </div>
-      {/* 0.9.4: why it has each value, the walk of each as a row of boxes (P-176). */}
-      <p className="hint" id="walks-intro">
-        Why it has each value: the records it looks at in their order, its own first, then its own
-        groups, the item it is in and that item's groups, and for the operator where it is. The
-        first that holds a value decides, and those after it are passed over.
-      </p>
+      {/* 0.9.4: why it has each value, the walk of each as a row of boxes (P-176); folded
+          until it is asked for since 0.9.6 (P-198). */}
       <WhyEachValue
         of="item"
         hid={item.hid}
         version={`${item.row_version} ${JSON.stringify(item.effective)}`}
-      />
+      >
+        <p className="hint" id="walks-intro">
+          The records it looks at in their order, its own first, then its own groups, the item it is
+          in and that item's groups, and for the operator where it is. The first that holds a value
+          decides, and those after it are passed over.
+        </p>
+      </WhyEachValue>
     </section>
   );
 }
