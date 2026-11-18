@@ -92,7 +92,7 @@ import {
   queryColumns,
 } from "./columns";
 import { saveFile } from "./save";
-import { TickHeader } from "./tickHeader";
+import { TickHeader, type TickHeaderParams } from "./tickHeader";
 
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -149,6 +149,11 @@ export interface GridAction<T> {
    * "all that match", of which the grid has read only a part.
    */
   rowsOnly?: boolean;
+  /**
+   * 0.9.7: what is said, with the button not to be pressed, where more rows are ticked
+   * than it takes, as Retire and Delete take 1,000 at most; null where it takes them.
+   */
+  tooMany?: (ticked: number) => string | null;
   /** `rows` holds what the grid read of the rows chosen: none of them for "all that match". */
   run: (chosen: Chosen, view: GridView, rows: T[]) => void;
 }
@@ -320,6 +325,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     () => new Set(start.columns.filter((column) => column.hide).map((column) => column.id)),
   );
   const [total, setTotal] = useState<number | null>(null);
+  // The same, as the box in the heading reads it while the grid takes a block of rows.
+  const listTotal = useRef<number | null>(null);
   const [selected, setSelected] = useState(0);
   // Every row the filter keeps is chosen, whether the grid has read it or not.
   const [allMatching, setAllMatching] = useState(false);
@@ -464,9 +471,14 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         // by TickHeader, for the rows on show (P-233).
         headerCheckbox: false,
         enableClickSelection: true,
+        // A press on a row ticks it or unticks it, and unticks nothing else; Shift still
+        // takes the rows between. A press on a link follows it and ticks nothing (0.9.7).
+        enableSelectionWithoutKeys: true,
       },
       selectionColumnDef: {
         headerComponent: TickHeader,
+        // How many rows the list holds, for the box to know when every one is read.
+        headerComponentParams: { total: () => listTotal.current } satisfies TickHeaderParams,
         headerName: "Ticked",
         lockPosition: "left",
         suppressMovable: true,
@@ -594,6 +606,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         if (!wanted.readable) {
           setError(null);
           setTotal(0);
+          listTotal.current = 0;
           params.successCallback([], 0);
           return;
         }
@@ -620,6 +633,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             pending.delete(letGo);
             setError(null);
             setTotal(page.total);
+            listTotal.current = page.total;
             params.successCallback(page.items, page.total);
             if (toTick.size > 0) {
               const nodes = [];
@@ -906,6 +920,16 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const busy = working !== "";
   // How many rows each button acts on, as it says (P-233).
   const chosenCount = { ticked: selected, allMatching, total };
+  // What the buttons that take fewer rows than are ticked say of it, each once.
+  const tooMany = allMatching
+    ? []
+    : [
+        ...new Set(
+          actions
+            .map((action) => action.tooMany?.(selected) ?? null)
+            .filter((text): text is string => text !== null),
+        ),
+      ];
 
   return (
     <div className="grid-page">
@@ -1080,7 +1104,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             <button
               type="button"
               key={action.label}
-              disabled={!some || busy || (action.rowsOnly === true && allMatching)}
+              disabled={
+                !some ||
+                busy ||
+                (action.rowsOnly === true && allMatching) ||
+                (!allMatching && (action.tooMany?.(selected) ?? null) !== null)
+              }
               title={
                 action.rowsOnly && allMatching
                   ? "Select the rows themselves: this takes particular rows."
@@ -1099,6 +1128,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
               Working…
             </span>
           )}
+          {tooMany.map((text) => (
+            <p key={text} className="hint grid-too-many" data-testid="grid-too-many">
+              {text}
+            </p>
+          ))}
         </fieldset>
       </div>
       <div
@@ -1110,12 +1144,12 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         {note}
       </p>
       <p className="hint">
-        Click a heading to sort, and hold Shift to sort by a further column. Click a row to select
-        it, with Shift for a range and Ctrl for several, or tick the box at its left to add it to
-        those ticked; the box in the heading ticks every row on show, and clears them. A double
-        click opens the row, and a press on a link opens what it names. With the keyboard: Enter on
-        a heading sorts, Ctrl+Enter opens its filter, Space selects a row, and Enter opens it, or on
-        a value that names another record opens that record.
+        Click a heading to sort, and hold Shift to sort by a further column. Click a row, or the box
+        at its left, to tick it or untick it: the other rows stay as they are. Shift with a click
+        ticks the rows between. A click on a link follows it and ticks nothing. The box in the
+        heading ticks the rows read so far, and clears them. A double click opens the row. With the
+        keyboard: Enter on a heading sorts, Ctrl+Enter opens its filter, Space selects a row, and
+        Enter opens it, or on a value that names another record opens that record.
         {entity &&
           " Copy and Export take the selected rows, with the columns on show and hid first. With no row selected, Export takes every row that matches."}
         {entity &&

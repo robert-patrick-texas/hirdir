@@ -12,6 +12,7 @@ import {
   stateLabel,
   stayTicked,
   tickable,
+  tooManyText,
 } from "./removal";
 
 const one = { hid: "0193a1f4-0001", label: "site7-sw-example-01" };
@@ -62,6 +63,18 @@ describe("what a Delete did, or would do (P-227)", () => {
     expect(stayTicked(answer)).toEqual([two.hid]);
   });
 
+  it("says nothing of ticks on a record's page, where nothing is ticked", () => {
+    const answer = { dry_run: false, deleted: [], refused: [refused], missing: [] };
+    expect(deletedText("item", answer, false)).toBe("No items were deleted. 1 item refused:");
+    expect(
+      retiredText(
+        "item",
+        { retired: [], already: [], refused: [{ ...two, detail: "why" }], missing: [] },
+        false,
+      ),
+    ).toBe("No items were retired. 1 item refused:");
+  });
+
   it("names what is in the way, with a link where its kind has a page", () => {
     expect(dependentPath({ record_type: "contract", hid: "C-1" })).toBe("/contracts/C-1");
     expect(dependentPath({ record_type: "purchase_line", hid: "PL-1" })).toBeNull();
@@ -88,6 +101,13 @@ describe("what a Delete did, or would do (P-227)", () => {
     );
     expect(createdPath({ record_type: "item", record_hid: "I-1", state: "deleted" })).toBeNull();
     expect(stateLabel("deleted")).toBe("Deleted");
+  });
+
+  it("says before any request that one takes 1,000 at most", () => {
+    expect(tooManyText(1000)).toBeNull();
+    expect(tooManyText(1204)).toBe(
+      "Retire and Delete take at most 1,000 rows at a time, and 1,204 are ticked: untick some first.",
+    );
   });
 
   it("counts with the separator of thousands", () => {

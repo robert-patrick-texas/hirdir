@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tickState, withCount } from "./selection";
+import { tickName, tickState, withCount } from "./selection";
 
 describe("the buttons that act on the rows chosen say how many (P-233)", () => {
   it("counts the rows ticked", () => {
@@ -25,10 +25,22 @@ describe("the buttons that act on the rows chosen say how many (P-233)", () => {
 });
 
 describe("the box in the heading (P-233)", () => {
-  it("is clear, part ticked, or ticked by the rows on show", () => {
-    expect(tickState(0, 0)).toBe("none");
-    expect(tickState(10, 0)).toBe("none");
-    expect(tickState(10, 4)).toBe("some");
-    expect(tickState(10, 10)).toBe("all");
+  it("is clear, part ticked, or ticked when every row of the list is read and ticked", () => {
+    expect(tickState(0, 0, null)).toBe("none");
+    expect(tickState(10, 0, 10)).toBe("none");
+    expect(tickState(10, 4, 10)).toBe("some");
+    expect(tickState(10, 10, 10)).toBe("all");
+  });
+
+  it("is only part ticked while part of the list is read, however many of those are", () => {
+    expect(tickState(100, 100, 260)).toBe("some");
+    expect(tickState(160, 160, 260)).toBe("some");
+    expect(tickState(100, 100, null)).toBe("some");
+  });
+
+  it("says what it does, with how many rows read", () => {
+    expect(tickName(100, false)).toBe("Tick the 100 rows read so far");
+    expect(tickName(1, true)).toBe("Clear the 1 row read so far");
+    expect(tickName(1200, false)).toBe("Tick the 1,200 rows read so far");
   });
 });

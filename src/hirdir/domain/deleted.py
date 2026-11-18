@@ -48,12 +48,13 @@ def missing(db: Session, record_type: str, hid: str, what: str) -> NotFound:
     actor = db.get(User, event.actor_hid) if event.actor_hid else None
     name = actor.username if actor is not None else None
     reason = reason_of(event)
+    # The reason is in `reason` alone, and not said again in the words: it may be long.
     said = (
         f"the {what} {hid} was deleted on {clock.shown(event.at, settings.time_zone(db))} "
         f"by {name or 'the system'}"
     )
     return Deleted(
-        f"{said}: {reason}" if reason else said,
+        said,
         at=event.at,
         actor_hid=event.actor_hid,
         actor_name=name,

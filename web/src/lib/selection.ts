@@ -23,11 +23,21 @@ export function withCount(label: string, chosen: ChosenCount, rowsOnly = false):
   return label;
 }
 
-/** What the box in the heading shows: no row on show ticked, some of them, or every one. */
+/** What the box in the heading shows: no row ticked, some, or every row of the list. */
 export type TickState = "none" | "some" | "all";
 
-/** The box of the heading, from the rows on show and how many of them are ticked. */
-export function tickState(shown: number, ticked: number): TickState {
-  if (shown === 0 || ticked === 0) return "none";
-  return ticked >= shown ? "all" : "some";
+/**
+ * The box of the heading, from the rows read so far, how many of them are ticked, and how
+ * many the list holds. It is ticked only when every row of the list is read and ticked:
+ * the rows read may be a part of the list, as the first block of 260 (0.9.7 review).
+ */
+export function tickState(read: number, ticked: number, total: number | null): TickState {
+  if (read === 0 || ticked === 0) return "none";
+  return ticked >= read && total !== null && read >= total ? "all" : "some";
+}
+
+/** What the box of the heading does when pressed, as its name says it. */
+export function tickName(read: number, everyReadTicked: boolean): string {
+  const rows = `${read.toLocaleString("en-US")} ${read === 1 ? "row" : "rows"} read so far`;
+  return everyReadTicked ? `Clear the ${rows}` : `Tick the ${rows}`;
 }
