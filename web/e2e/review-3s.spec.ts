@@ -54,6 +54,8 @@ const other = host("idf2-acc1");
 const members = [serial("FCWA"), serial("FCWB")];
 const strayMember = serial("FCWX");
 const spares = [host("spare-sw-01"), host("spare-sw-02")];
+// A spare that joins a stack drops its host name: it is found by its serial number then.
+const spareSerials = spares.map((one) => serial(`SP${one.slice(-2)}`));
 const standalone = host("lab-sw1");
 const site = label("Campus 70");
 const room = label("IDF 01");
@@ -95,7 +97,7 @@ async function records(request: APIRequestContext, account: Account): Promise<vo
     await item({
       hostname: one,
       fqdn: `${one}.example.net`,
-      serial_number: serial(`SP${one.slice(-2)}`),
+      serial_number: spareSerials[spares.indexOf(one)],
       location_hid: depotHid,
       lifecycle_state: "Prod",
       disposition: "Spare",
@@ -295,9 +297,156 @@ test("a member's page says it is member 2 of its stack with the stack's names, a
     .getByRole("list", { name: "Stacks that match" })
     .getByRole("button", { name: stack })
     .click();
-  await expect(form.getByLabel("Position")).toHaveValue("3");
+  await expect(form.getByLabel("Position", { exact: true })).toHaveValue("3");
+  // The box of the stack's name and place is there, ticked, as on the stack's page (P-217).
+  await expect(form.getByLabel("It takes the stack's name and place")).toBeChecked();
   await form.getByRole("button", { name: "Join the stack" }).click();
-  await expect(page.getByText(`${spare} joined the stack ${stack} as member 3.`)).toBeInViewport();
+  await expect(page.getByText(`${spare} was added to ${stack} as member 3.`)).toBeInViewport();
   await expect(fact).toHaveText(`Member 3 of ${stack}`);
+  await expectClean(page, seen);
+});
+
+test("a failed member is replaced from the stack's page: End, to be returned to its maker, then Add, the freed position offered, and the spare takes the stack's name and place (P-217 to P-219)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(150_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, stack);
+  const failed = members[1] ?? "";
+  const table = page.getByTestId("members");
+
+  // End, with what becomes of it: to be returned to the manufacturer, which fills the
+  // move to Pending-Removal for the reason RMA, not expected online.
+  await table
+    .locator("tbody tr", { hasText: failed })
+    .getByRole("button", { name: `End the membership of ${failed}` })
+    .click();
+  const ending = page.getByRole("region", { name: `End the membership of ${failed}` });
+  const what = ending.getByRole("group", { name: "What becomes of it" });
+  await expect(what.getByLabel("Nothing now")).toBeChecked();
+  await what.getByLabel("To be returned to the manufacturer").check();
+  await expect(what.getByLabel("Lifecycle state")).toHaveValue("Pending-Removal");
+  await expect(what.getByLabel("Reason")).toHaveValue("rma");
+  await expect(what.getByLabel("Expected online")).toHaveValue("false");
+  await ending.getByRole("button", { name: "End membership" }).click();
+  const said = page.locator(".alert-ok");
+  await expect(said).toContainText(`The membership of ${failed} ended on`);
+  await expect(said).toContainText("moved to Pending-Removal");
+  await expect(said.getByRole("link", { name: failed })).toBeVisible();
+  // The ended row stays in view, marked ended.
+  const gone = table.locator("tbody tr", { hasText: failed });
+  await expect(gone).toHaveAttribute("data-current", "false");
+  await expect(gone).toContainText("Ended");
+
+  // Add: the spare, the freed position offered, the box ticked with what it removes.
+  await page.getByRole("button", { name: "Add members" }).click();
+  const form = page.getByRole("region", { name: "Add members" });
+  const spare = spares[0] ?? "";
+  await form.getByLabel("Find an item to add", { exact: true }).fill(spare);
+  await form
+    .getByRole("list", { name: "Items that match" })
+    .getByRole("button", { name: new RegExp(`^${spare}`) })
+    .click();
+  await expect(form.getByLabel(`Position of ${spare}`)).toHaveValue("2");
+  const box = form.getByRole("group", { name: spare });
+  await expect(box.getByLabel("It takes the stack's name and place")).toBeChecked();
+  await expect(box.getByTestId("drops")).toHaveText(
+    `Removed from ${spare}: the host name ${spare}, the FQDN ${spare}.example.net and its own location ${label("Campus Works")} > ${site} > ${depot}. The stack's are in force for it.`,
+  );
+  await expect(box.getByLabel("Disposition")).toHaveValue("Production");
+  await expect(box.getByLabel("Expected online")).toHaveValue("true");
+  await form.getByRole("button", { name: "Add member" }).click();
+  await expect(said).toContainText(
+    `${spare} was added to ${stack} as member 2. It takes the stack's name and place:`,
+  );
+  await expect(said).toBeInViewport();
+
+  // What the server did: the failed switch is to go back; the spare has the stack's names.
+  await openItem(page, failed);
+  await expect(page.getByTestId("standing-fact")).toContainText("Pending-Removal");
+  await openItem(page, spareSerials[0] ?? "");
+  await expect(page.getByTestId("stack-member")).toHaveText(`Member 2 of ${stack}`);
+  await expect(page.getByTestId("stack-hostname")).toContainText(stack);
+  await expect(page.getByTestId("standing-fact")).toContainText("Production");
+  await expect(page.getByTestId("location")).toHaveAttribute("data-source", "device_group");
+  await expectClean(page, seen);
+});
+
+test("a position that a current member holds is refused beside its row, naming that member (P-219)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, stack);
+  await page.getByRole("button", { name: "Add members" }).click();
+  const form = page.getByRole("region", { name: "Add members" });
+  await form.getByLabel("Find an item to add", { exact: true }).fill(standalone);
+  await form
+    .getByRole("list", { name: "Items that match" })
+    .getByRole("button", { name: new RegExp(`^${standalone}`) })
+    .click();
+  await form.getByLabel(`Position of ${standalone}`).fill("1");
+  await form
+    .getByRole("group", { name: standalone })
+    .getByLabel("It takes the stack's name and place")
+    .uncheck();
+  await expect(form.getByRole("group", { name: standalone }).getByTestId("drops")).toHaveText(
+    `${standalone} keeps its own name, addresses and place: nothing of it is changed.`,
+  );
+  await form.getByRole("button", { name: "Add member" }).click();
+  const refused = form.getByTestId("member-error");
+  await expect(refused).toBeVisible();
+  await expect(refused.getByRole("link", { name: members[0] ?? "" })).toBeVisible();
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await expectClean(page, seen, ["409 POST"]);
+});
+
+test("a member leaves a stack to the spare pool with a new name and a place, in the one form of End (P-218)", async ({
+  page,
+  account,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await records(request, account);
+  const seen = await watch(page.context());
+  await signIn(page, account);
+  await openStack(page, stack);
+  // The spare that joined from its own page, member 3, which has no name of its own now.
+  const leaving = spareSerials[1] ?? "";
+  const pooled = host("spare-sw-91");
+  await page
+    .getByTestId("members")
+    .locator("tbody tr", { hasText: leaving })
+    .getByRole("button", { name: `End the membership of ${leaving}` })
+    .click();
+  const ending = page.getByRole("region", { name: `End the membership of ${leaving}` });
+  const what = ending.getByRole("group", { name: "What becomes of it" });
+  await what.getByLabel("To the spare pool").check();
+  await expect(what.getByLabel("Disposition")).toHaveValue("Spare");
+  await expect(what.getByLabel("Expected online")).toHaveValue("false");
+  await expect(what.getByLabel("Lifecycle state")).toHaveValue("");
+  await what.getByLabel("Hostname").fill(pooled);
+  await what.getByLabel("FQDN").fill(`${pooled}.example.net`);
+  await what.getByLabel("Location").fill(depot);
+  await what
+    .getByRole("button", { name: new RegExp(depot) })
+    .first()
+    .click();
+  await ending.getByRole("button", { name: "End membership" }).click();
+  const said = page.locator(".alert-ok");
+  await expect(said).toContainText(`named ${pooled}`);
+  await said.getByRole("link", { name: pooled }).click();
+  await expect(page.getByRole("heading", { level: 1, name: pooled })).toBeVisible();
+  await expect(page.getByTestId("standing-fact")).toContainText("Spare");
+  await expect(page.getByTestId("location")).toContainText(depot);
+  await expect(page.getByTestId("stack-member")).toContainText("In no stack");
   await expectClean(page, seen);
 });
