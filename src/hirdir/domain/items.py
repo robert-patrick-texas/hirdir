@@ -36,7 +36,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.lifecycle import UNSET
 
 RECORD_TYPE = "item"
@@ -203,6 +203,11 @@ def the_one(db: Session, text: str, field: str) -> Item:
 def shown_name(item: Item) -> str:
     """Return what an item is called where one line must name it."""
     return item.name or item.hostname or item.serial_number or item.asset_tag or item.hid
+
+
+def existing_item(item: Item) -> Existing:
+    """Return an item as the record a refusal names, by the name it is shown by (P-207)."""
+    return Existing(RECORD_TYPE, item.hid, shown_name(item))
 
 
 def reference_text(item: Item) -> str:
@@ -604,6 +609,7 @@ def _check_unique(
                 f"there is already an item of this vendor and PID with the serial number "
                 f"{twin.serial_number}: {twin.hid}",
                 {"serial_number": "another item of this vendor and PID has this serial number"},
+                existing_item(twin),
             )
     if asset_tag_key:
         twin = db.scalar(select(Item).where(Item.asset_tag_key == asset_tag_key, Item.hid != own))
@@ -611,6 +617,7 @@ def _check_unique(
             raise Conflict(
                 f"there is already an item with the asset tag {twin.asset_tag}: {twin.hid}",
                 {"asset_tag": "another item has this asset tag"},
+                existing_item(twin),
             )
 
 

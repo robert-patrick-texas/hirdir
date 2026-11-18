@@ -22566,6 +22566,17 @@
             "title": "Errors",
             "type": "array"
           },
+          "existing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem."
+          },
           "status": {
             "title": "Status",
             "type": "integer"
@@ -22605,6 +22616,33 @@
           "message"
         ],
         "title": "ProblemField",
+        "type": "object"
+      },
+      "ProblemRecord": {
+        "additionalProperties": false,
+        "description": "The record that already has the value a change was refused for (P-207).",
+        "properties": {
+          "hid": {
+            "title": "Hid",
+            "type": "string"
+          },
+          "label": {
+            "description": "What it is known by: an item by its host name, name, asset tag or serial number, a model by its vendor and PID, any other by its name or label.",
+            "title": "Label",
+            "type": "string"
+          },
+          "record_type": {
+            "description": "Its kind, as the audit trail names it: `item`, `catalog_entry`, `vendor`.",
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hid",
+          "record_type",
+          "label"
+        ],
+        "title": "ProblemRecord",
         "type": "object"
       },
       "PurchaseLineAdd": {

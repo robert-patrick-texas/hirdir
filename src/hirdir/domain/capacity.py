@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from hirdir.db.models import CapacityLine, CapacityLineTarget, CapacityRecord, Region, Site, Vendor
 from hirdir.domain import audit, choices, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "capacity_line"
 SIDES = ("supply", "demand")
@@ -316,6 +316,7 @@ def _checked(
             raise Conflict(
                 f"there is already a {side} line {taken.name}",
                 {"name": "another line of this side has this name"},
+                Existing(RECORD_TYPE, taken.hid, taken.name),
             )
     return values, targets
 

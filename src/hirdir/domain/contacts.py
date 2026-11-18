@@ -25,7 +25,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import audit, choices, geography, records, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "contact"
 ASSIGNMENT_TYPE = "contact_assignment"
@@ -148,6 +148,7 @@ def _checked(db: Session, fields: dict[str, Any], contact: Contact | None) -> di
                 raise Conflict(
                     f"{taken.name} already has the email address {taken.email}",
                     {"email": "another contact has this email address"},
+                    Existing(RECORD_TYPE, taken.hid, taken.name),
                 )
         values["email"] = email
         values["email_key"] = records.key(email) if email else None

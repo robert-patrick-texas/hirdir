@@ -11714,6 +11714,8 @@ export interface components {
     Problem: {
       detail?: string;
       errors?: components["schemas"]["ProblemField"][];
+      /** On a 409 for a value another record has, such as a serial number, an asset tag, a PID or a name: that record. Left out of every other problem. */
+      existing?: components["schemas"]["ProblemRecord"] | null;
       status: number;
       title: string;
       type?: string;
@@ -11722,6 +11724,14 @@ export interface components {
     ProblemField: {
       field: string;
       message: string;
+    };
+    /** The record that already has the value a change was refused for (P-207). */
+    ProblemRecord: {
+      hid: string;
+      /** What it is known by: an item by its host name, name, asset tag or serial number, a model by its vendor and PID, any other by its name or label. */
+      label: string;
+      /** Its kind, as the audit trail names it: `item`, `catalog_entry`, `vendor`. */
+      record_type: string;
     };
     /**
      * A new line of a purchase request: a model, or a part number for what is not

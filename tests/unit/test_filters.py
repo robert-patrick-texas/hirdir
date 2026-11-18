@@ -265,3 +265,31 @@ def test_filters_are_joined_without_growing_deeper() -> None:
         ]
     }
     assert filters.to_tree(None) is None
+
+
+def test_a_field_the_list_has_not_is_answered_with_the_nearest_it_has() -> None:
+    known = ["hostname", "catalog.type", "group.type", "catalog.pid", "serial_number", "name"]
+    # The same name under a related record first, in the order the list gives them.
+    assert filters.nearest("type", known) == ["catalog.type", "group.type"]
+    # Then names spelt nearly alike, the nearest first.
+    assert filters.nearest("hostnme", known) == ["hostname"]
+    assert filters.nearest("serial", known) == ["serial_number"]
+    # At most three, and none where nothing is near.
+    many = [f"{part}.name" for part in ("a", "b", "c", "d")]
+    assert filters.nearest("name", many) == ["a.name", "b.name", "c.name"]
+    assert filters.nearest("zzqqxx", known) == []
+    # The sentence of a refusal, of a filter and of a sort.
+    with pytest.raises(Invalid) as refused:
+        filters.to_sql(filters.parse("nme:eq:x"), FIELDS)
+    assert refused.value.fields["filter"] == (
+        "nme is not a field this list can be filtered by; the nearest field it has is name"
+    )
+    with pytest.raises(Invalid) as refused:
+        filters.parse_sort(["sizes"], FIELDS)
+    assert refused.value.fields["sort"] == (
+        "sizes is not a field this list can be sorted by; the nearest field it has is size"
+    )
+    assert filters.not_a_field("type", "filtered", known) == (
+        "type is not a field this list can be filtered by; "
+        "the nearest fields it has are catalog.type and group.type"
+    )

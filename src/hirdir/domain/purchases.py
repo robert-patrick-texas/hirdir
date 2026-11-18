@@ -23,7 +23,7 @@ from hirdir.db import dialect
 from hirdir.db.models import CatalogEntry, Item, Location, PurchaseLine, PurchaseRequest, Site
 from hirdir.domain import items, records, settings
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 RECORD_TYPE = "purchase_request"
 LINE_TYPE = "purchase_line"
@@ -110,6 +110,7 @@ def _checked(
             raise Conflict(
                 f"there is already a purchase request {taken.reference}",
                 {"reference": "another purchase request has this reference"},
+                Existing(RECORD_TYPE, taken.hid, taken.reference),
             )
         values["reference"] = reference
         values["reference_key"] = records.key(reference)

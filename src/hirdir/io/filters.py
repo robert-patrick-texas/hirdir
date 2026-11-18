@@ -7,9 +7,10 @@ joined by AND. A list route says which fields it allows; this module checks a fi
 against them and turns it into SQL.
 """
 
+import difflib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,10 @@ MAX_CONDITIONS = 100
 MAX_LIST = 1000
 MAX_TEXT = 1000
 BIGGEST = 2**63 - 1
+# The most fields a refusal of a field the list does not have offers in its place.
+MAX_NEAREST = 3
+# How alike two names are, from 0 to 1, for one to be offered for the other.
+NEAR_SPELLING = 0.6
 
 COMPARING = ("eq", "ne", "in", "empty")
 ORDERING = ("lt", "lte", "gt", "gte", "between")
@@ -111,6 +116,39 @@ Node = Condition | Branch
 def refuse(message: str) -> Invalid:
     """Return the error for a filter that is not acceptable."""
     return Invalid("the filter is not acceptable", {"filter": message})
+
+
+def nearest(name: str, known: Iterable[str]) -> list[str]:
+    """Return the fields a list has that are nearest a name it does not have (P-207).
+
+    The same name under a related record comes first, `catalog.type` for `type`, in the
+    order the list gives its fields; then the names spelt nearly alike, the nearest
+    first. At most three, and none where nothing is near.
+    """
+    names = [one for one in known if one != name]
+    under = [one for one in names if one.endswith(f".{name}")]
+    alike = difflib.get_close_matches(name, names, n=MAX_NEAREST, cutoff=NEAR_SPELLING)
+    found = list(dict.fromkeys([*under, *alike]))
+    return found[:MAX_NEAREST]
+
+
+def _in_words(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def not_a_field(name: str, doing: str, known: Iterable[str]) -> str:
+    """Say that a list cannot be filtered or sorted by a name, and which fields are near."""
+    said = f"{name} is not a field this list can be {doing} by"
+    near = nearest(name, known)
+    if not near:
+        return said
+    if len(near) == 1:
+        return f"{said}; the nearest field it has is {near[0]}"
+    return f"{said}; the nearest fields it has are {_in_words(near)}"
+
+
+def _filtered_by(field: Field) -> bool:
+    return field.expression is not None or field.test is not None
 
 
 # --- reading a filter ----------------------------------------------------------------
@@ -326,8 +364,9 @@ def _condition(
 ) -> ColumnElement[bool]:
     name, op, value = condition.field, condition.op, condition.value
     field = fields.get(name)
-    if field is None or (field.expression is None and field.test is None):
-        raise refuse(f"{name} is not a field this list can be filtered by")
+    if field is None or not _filtered_by(field):
+        known = (key for key, one in fields.items() if _filtered_by(one))
+        raise refuse(not_a_field(name, "filtered", known))
     if op not in OPERATORS:
         raise refuse(f"{op} is not an operator; the operators are {', '.join(OPERATORS)}")
     if op not in KINDS[field.kind]:
@@ -465,9 +504,9 @@ def parse_sort(source: list[str] | None, fields: Mapping[str, Field]) -> list[So
             name = name.lstrip("+-").strip()
             field = fields.get(name)
             if field is None or not sorted_by(field):
+                known = (key for key, one in fields.items() if sorted_by(one))
                 raise Invalid(
-                    "the sort is not acceptable",
-                    {"sort": f"{name} is not a field this list can be sorted by"},
+                    "the sort is not acceptable", {"sort": not_a_field(name, "sorted", known)}
                 )
             if all(key.field != name for key in keys):
                 keys.append(SortKey(name, descending))

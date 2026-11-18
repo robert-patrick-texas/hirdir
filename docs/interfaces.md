@@ -23,7 +23,7 @@ and CLI's types are generated from it.
 | Updates | `PATCH` with only the fields to change and the `row_version` it was read at. A field left out is left alone. A field sent as `null` is cleared, and one that inherits then inherits again. A change that changes nothing leaves the version alone |
 | Retiring | `POST /items/{hid}/retire` with the `row_version`. `PATCH` with `record_status` of `active` or `draft` brings a record back |
 | Removing | `DELETE /addresses/{hid}`, `DELETE /contact-assignments/{hid}`, `DELETE /owners/{hid}/members/{member_hid}`, `DELETE /contracts/{hid}/coverage/{coverage_hid}`, `DELETE /agreements/{hid}/contacts/{link_hid}`, `DELETE /contracts/{hid}/contacts/{link_hid}`, `DELETE /registrations/{hid}`, `DELETE /capacity-records/{hid}`, `DELETE /vendors/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/contacts/{link_hid}`, `DELETE /circuits/{hid}/carriers/{link_hid}`, `DELETE /circuits/{hid}/costs/{line_hid}`, `DELETE /circuits/{hid}/devices/{link_hid}`, `DELETE /circuit-groups/{hid}/members/{member_hid}` and `DELETE /reference-files/{hid}/attachments/{attachment_hid}` for one that was a mistake, `DELETE /reference-files/{hid}`, which erases a reference with its content (P-160), and `DELETE` on a network or a tag that nothing uses. Nothing else is removed: a coverage that was true for a time is ended with a date, a registration that ends is given the status `removed`, and a purchase line is lowered to what was received |
-| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides, `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
+| Errors | RFC 9457 problem documents. `401` not signed in, `403` role too low, `404`, `409` stale `row_version` or uniqueness, naming the field that collides and, where another record has the value, a serial number, an asset tag, a PID, a name or a label, naming that record as `existing`: its `hid`, its `record_type`, as the audit trail names a kind, and its `label`, what it is known by (P-207), `422` invalid input with a list of fields. A lifecycle move or combination that the rules refuse is a `422`. Two requests that collide at the same moment are answered like any other collision: `409`. A change that waited more than five seconds for another to be stored is a `503` with `Retry-After`: nothing of it was done, and it may be sent again. An import or a bulk edit that is being applied holds other changes up a batch at a time, a fraction of a second, and lets them in between two batches. An error nobody foresaw is a `500` problem document that names its request ID, and the details go to the log |
 | Request ID | Every response carries `X-Request-Id`. The same value is on the audit events it caused |
 | Idempotency | A `POST` that changes an inventory record, a tag or a choice, an import or a bulk edit accepts `Idempotency-Key`, a value of the caller's choosing of at most 200 characters. The answer to a request that succeeded is kept for 24 hours for that caller and key, and the same request sent again is answered with it, marked `Idempotency-Replayed: true`, and carried out no second time. The same key on a different request is a `422`. While the first request is still being worked on, a second is a `409`. An answer of more than a megabyte is not kept. Should the server stop after storing a change and before keeping its answer, the key stays taken: the request sent again is a `409`, never a second change, and what it was to change is read to see that it was. The answer kept for an apply of an import or a bulk edit is its `202`, the job as it was when the apply was begun: the job itself says how far it has got since. A query, which is a list asked for with a `POST`, takes no key, nor does an upload of a reference, which is refused where its content is on the record already (P-160), and a caller who no longer holds the Inventory role is given no kept answer. The routes of accounts refuse the header with a `422`: their answers may hold an access code or a token, which is shown once and kept nowhere |
 
@@ -290,7 +290,7 @@ record has them. The lists of regions, sites and locations have
 `support_weight`, the place's own, and the list of sites `effective.support_weight`, the
 weight a site counts at: its own or `default_site_weight`, raised to
 `minimum_site_weight`. For a field an item may have several of, `eq` is true when one of them matches, and `ne` and `empty` when none does.
-A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. Every comparison
+A field that an item may have several of is sorted by the least of them; see [Sorting](#sorting). A field or operator the route does not allow is a `422`. A field the list does not have is refused with the nearest fields it has, at most three: the same name under a related record first, `catalog.type` for `type` on the item list, then the names spelt nearly alike, and none where nothing is near (P-207). Every comparison
 of text ignores case, a regular expression included. A field that is a fixed choice,
 such as `lifecycle_state`, takes `eq`, `ne`, `in` and `empty` only.
 
@@ -312,7 +312,8 @@ operator; the JSON form takes any value. `filter=` also takes the JSON form.
 in a URL. Text sorts without regard to case, blank values come last in either
 direction, and rows that tie keep a steady order, so paging never repeats or skips one.
 On the item list, `name` filters and sorts by the hostname when the name is blank. A
-field the route is not sorted by is a `422`.
+field the route is not sorted by is a `422`, which names the nearest fields it is sorted
+by as a filter does: `location.name` for `location` (P-207).
 
 A list is sorted by any field it is filtered by, with two exceptions. A field that
 takes `within` is a place, and a list is sorted by the name of the place and not by
@@ -1812,7 +1813,11 @@ away when the next change on that page is sent, stays away if that change is ref
 and once it is done the page says what it says of it, the same words again after a
 second save of the same record. Room is kept for it at the top of the window, so
 that a field the keyboard moves to, or a row a form opens under, does not come to rest
-beneath it.
+beneath it. A change refused because another record has the value says, under the
+server's sentence, which record that is, "The item that has it:", with the record as a
+link to its page by what it is known by (P-207); a record whose kind has no page, a tag
+or a choice, is named without a link, and so is a user or a user group to anyone but an
+Admin.
 
 A field that finds a record by what is typed searches again when Enter is pressed, when
 the same text is typed again, and when the person comes back to the tab with a search

@@ -35,7 +35,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import choices, records, tags
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
 REGION, SITE, LOCATION = "region", "site", "location"
 Level = Literal["region", "site", "location"]
@@ -532,12 +532,16 @@ def _same_as_address(fields: dict[str, Any], values: dict[str, Any], record: Any
         )
 
 
-def _taken(what: str, name: str) -> Conflict:
-    return Conflict(f"there is already a {what} {name} there", {"name": f"a {what} there has it"})
+def _taken(what: str, twin: Any) -> Conflict:
+    return Conflict(
+        f"there is already a {what} {twin.name} there",
+        {"name": f"a {what} there has it"},
+        Existing(what, twin.hid, twin.name),
+    )
 
 
 def _check_code(
-    db: Session, model: Any, values: dict[str, Any], record: Any | None, *where: Any
+    db: Session, what: str, model: Any, values: dict[str, Any], record: Any | None, *where: Any
 ) -> None:
     key = values.get("code_key")
     if not key:
@@ -545,7 +549,9 @@ def _check_code(
     twin = db.scalar(select(model).where(model.code_key == key, *where))
     if twin is not None and (record is None or twin.hid != record.hid):
         raise Conflict(
-            f"the code {twin.code} is taken by {twin.name}", {"code": "another record has it"}
+            f"the code {twin.code} is taken by {twin.name}",
+            {"code": "another record has it"},
+            Existing(what, twin.hid, twin.name),
         )
 
 
@@ -560,7 +566,7 @@ def _sibling_regions(db: Session, parent_hid: str | None, key: str, but: str | N
         )
     )
     if twin is not None:
-        raise _taken("region", twin.name)
+        raise _taken("region", twin)
 
 
 def _sibling_sites(db: Session, region_hid: str | None, key: str, but: str | None) -> None:
@@ -572,7 +578,7 @@ def _sibling_sites(db: Session, region_hid: str | None, key: str, but: str | Non
         )
     )
     if twin is not None:
-        raise _taken("site", twin.name)
+        raise _taken("site", twin)
 
 
 def _linked(db: Session, model: Any, name: str, hid: Any, record: Any | None, what: str) -> Any:
@@ -694,7 +700,7 @@ def _checked_region(db: Session, fields: dict[str, Any], region: Region | None) 
         _sibling_regions(db, parent, key, own)
         # A path names one record: a site there must not answer to the same name.
         _sibling_sites(db, parent, key, None)
-    _check_code(db, Region, values, region)
+    _check_code(db, "region", Region, values, region)
     return values
 
 
@@ -720,7 +726,7 @@ def _checked_site(db: Session, fields: dict[str, Any], site: Site | None) -> dic
     if key is not None and ("name_key" in values or "region_hid" in values):
         _sibling_sites(db, region_hid, key, own)
         _sibling_regions(db, region_hid, key, None)
-    _check_code(db, Site, values, site)
+    _check_code(db, "site", Site, values, site)
     return values
 
 
@@ -817,8 +823,8 @@ def _checked_location(
             )
         )
         if twin is not None:
-            raise _taken("location", twin.name)
-    _check_code(db, Location, values, location, Location.site_hid == site_hid)
+            raise _taken("location", twin)
+    _check_code(db, "location", Location, values, location, Location.site_hid == site_hid)
     return values
 
 

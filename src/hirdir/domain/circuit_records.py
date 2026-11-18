@@ -35,7 +35,7 @@ from hirdir.db.models import (
 )
 from hirdir.domain import audit, choices, circuits, items, records, settings, tags
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 from hirdir.domain.inheritance import NOTHING, Effective
 
 RECORD_TYPE = "circuit"
@@ -452,6 +452,7 @@ def _twin_enterprise_id(db: Session, key: str, own: str | None) -> None:
             f"there is already a circuit with the enterprise circuit ID "
             f"{twin.enterprise_circuit_id}: {twin.hid}",
             {"enterprise_circuit_id": "another circuit has this enterprise circuit ID"},
+            Existing(RECORD_TYPE, twin.hid, twin.enterprise_circuit_id or twin.name),
         )
 
 
@@ -486,9 +487,12 @@ def check_number(
     )
     other = primary.hid if primary is not None else listed.circuit_hid if listed else None
     if other is not None:
+        twin = primary if primary is not None else db.get(Circuit, other)
+        label = (twin.enterprise_circuit_id or twin.name) if twin is not None else other
         raise Conflict(
             f"this carrier gives circuit {other} this number already",
             {field: "the carrier gives another circuit this number"},
+            Existing(RECORD_TYPE, other, label),
         )
 
 
