@@ -861,6 +861,24 @@ def test_the_reports_that_look_ahead_are_printed(
     replaced = run("report", "replacements").stdout
     assert replaced.splitlines()[1].split()[1:] == ["site2-sw-1", "site2-sw-2", "RMA", "RMA-1"]
     assert "1 replacement: RMA 1" in replaced
+    # An item lists each of its replacements, the latest first (P-241).
+    make.post(
+        f"/items/{switches[1]['hid']}/replace",
+        {
+            "row_version": make.get(f"/items/{switches[1]['hid']}")["row_version"],
+            "new_item_hid": switches[0]["hid"],
+            "reason": "refresh",
+        },
+    )
+    shown = [
+        line.split(None, 1)
+        for line in run("items", "show", switches[1]["hid"]).stdout.splitlines()
+        if line.startswith("replac")
+    ]
+    assert [(name, said.split(" on ")[0]) for name, said in shown] == [
+        ("replaced_by:", "site2-sw-1"),
+        ("replaces:", "site2-sw-1"),
+    ]
 
     make.post(
         "/capacity-lines",

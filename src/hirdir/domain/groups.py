@@ -36,7 +36,7 @@ from hirdir.domain import (
     tags,
 )
 from hirdir.domain.audit import AuditContext
-from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
+from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound, StaleVersion
 
 RECORD_TYPE = "device_group"
 MEMBER_TYPE = "device_group_member"
@@ -621,6 +621,99 @@ def create_group(db: Session, context: AuditContext, fields: dict[str, Any]) -> 
     return group
 
 
+# What a stack made of a switch that stands alone takes from it, and the switch gives up
+# in the same change (P-243): the four it has from the stack from then on, beside its
+# name, which a stack holds for its members, and its addresses.
+STACK_HOLDS = (
+    "hostname",
+    "fqdn",
+    "location_hid",
+    "planned_location_hid",
+    "owner_hid",
+    "operator_hid",
+)
+
+
+def make_stack(
+    db: Session,
+    context: AuditContext,
+    item_hid: str,
+    row_version: int,
+    name: Any = None,
+    members: Sequence[dict[str, Any]] = (),
+) -> DeviceGroup:
+    """Make a stack of an item that is in none, with the item as its first member.
+
+    The stack takes from the item what a stack holds for its members: its host name and
+    FQDN, its addresses, each moved as it is, and the location, planned location, owner
+    and operator it has of its own. The item gives each up in the same change, and has
+    them from the stack from then on, so that nothing is held twice. The rest of it stays
+    its own. `members` are added after it, each as a member that joins a stack is. Every
+    change of the item and each address moved says the stack it was made for, in
+    `joining_group` (P-243).
+    """
+    dialect.hold_other_writers(db)
+    item = items.get_item(db, item_hid)
+    if item.row_version != row_version:
+        raise StaleVersion(
+            f"this record is at version {item.row_version}, "
+            f"and the change was made against version {row_version}"
+        )
+    shown = items.shown_name(item)
+    if item.parent_item_hid is not None:
+        raise Invalid(
+            f"{shown} is a minor item",
+            {"item_hid": "a stack is made of a major item, and this one has a parent"},
+        )
+    if item.record_status == "retired":
+        raise Invalid(f"{shown} is retired", {"item_hid": "this item is retired"})
+    if item.lifecycle_state in items.OUT_OF_HANDS:
+        raise Invalid(
+            f"{shown} has left the team's hands",
+            {"item_hid": f"an item in {item.lifecycle_state} is in no group"},
+        )
+    for other in items.major_only_groups(db, item.hid):
+        if other.type == "stack":
+            raise Conflict(
+                f"the item {shown} is a member of the stack {other.name}",
+                {"item_hid": f"an item is a member of one stack at a time: {other.name}"},
+                Existing(RECORD_TYPE, other.hid, other.name),
+            )
+    called = records.clean(name) or item.name or item.hostname
+    if called is None:
+        raise Invalid(
+            "the stack has no name", {"name": "give the stack a name: the item has none of its own"}
+        )
+    group = create_group(
+        db,
+        context,
+        {"type": "stack", "name": called, **{field: getattr(item, field) for field in STACK_HOLDS}},
+    )
+    joining = audit.because(context, "joining_group", None, group.hid)
+    add_members(db, joining, group.hid, [{"item_hid": item.hid, "position": 1}])
+    for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
+        addresses.move_to_group(db, joining, address.hid, group.hid)
+    items.update_item(db, joining, item.hid, item.row_version, dict.fromkeys(STACK_HOLDS))
+    if members:
+        with _within_members():
+            add_members(db, context, group.hid, list(members))
+    return group
+
+
+@contextmanager
+def _within_members() -> Generator[None]:
+    """Name each field of a refusal of the more members of a request under `members`,
+    where the rule has not named it by its place in the list already."""
+    try:
+        yield
+    except (Invalid, Conflict) as error:
+        error.fields = {
+            (name if name.startswith("members") else f"members.{name}"): message
+            for name, message in error.fields.items()
+        }
+        raise
+
+
 def update_group(
     db: Session, context: AuditContext, hid: str, row_version: int, fields: dict[str, Any]
 ) -> DeviceGroup:
@@ -765,26 +858,25 @@ def _named_at(where: str, renamed: Mapping[str, str] | None = None) -> Generator
         raise
 
 
-def _take_on(
+def take_on(
     db: Session,
-    context: AuditContext,
-    group: DeviceGroup,
+    caused: AuditContext,
     item: Item,
     drop: bool,
-    fields: dict[str, Any],
+    fields: Mapping[str, Any],
     where: str,
 ) -> None:
     """Give an item that joins a group what the request names for it, by the item's rules.
 
-    Each change is audited as the item's, or as the removal of its address, and says that
-    it was made by joining the group (P-217).
+    Each change is audited as the item's, or as the removal of its address, and says in
+    the cause of `caused` what it was made by: joining the group (P-217), or the
+    replacement whose item takes a member's place (P-242).
     """
-    joining = audit.because(context, "joining_group", None, group.hid)
     with _named_at(where):
-        items.update_item(db, joining, item.hid, item.row_version, dict(fields))
+        items.update_item(db, caused, item.hid, item.row_version, dict(fields))
         if drop:
             for address in addresses.of_holders(db, "item_hid", [item.hid])[item.hid]:
-                addresses.delete_address(db, joining, address.hid)
+                addresses.delete_address(db, caused, address.hid)
 
 
 class _Positions:
@@ -942,7 +1034,8 @@ def add_members(
         )
         records.created(db, context, MEMBER_TYPE, member, MEMBER_FIELDS)
         if taken_on:
-            _take_on(db, context, group, item, drop, taken_on, where)
+            joining = audit.because(context, "joining_group", None, group.hid)
+            take_on(db, joining, item, drop, taken_on, where)
         made.append(member)
     return made
 
@@ -1044,29 +1137,33 @@ def update_member(
         _forget_observed_master(db, context, group, member.item_hid)
     if back:
         # The membership has ended first, so that the item's rules see one that has left.
-        _give_back(db, context, group, member.item_hid, back)
+        leaving = audit.because(
+            context, "leaving_group", group.hid, None, of=(items.RECORD_TYPE, member.item_hid)
+        )
+        give_back(db, leaving, member.item_hid, back, "item.")
     return member
 
 
-# What an item that leaves a group may be given with the end, beside its standing.
-LEAVING = ("hostname", "fqdn", "location_hid")
+# What an item that leaves a group may be given with the end, beside its standing: its
+# condition among them, which follows from nothing by a rule (P-245).
+LEAVING = ("hostname", "fqdn", "location_hid", "condition")
 
 
-def _give_back(
-    db: Session, context: AuditContext, group: DeviceGroup, item_hid: str, given: Mapping[str, Any]
+def give_back(
+    db: Session, caused: AuditContext, item_hid: str, given: Mapping[str, Any], where: str
 ) -> None:
     """Give an item that has left a group what the request says it is to have (P-218).
 
     Each part is applied by the item's own rules, as a file of items applies them: a
     state that is not the item's moves it by a transition, with the reason as its why
     and the disposition and intent as named; otherwise these are an edit, and a reason
-    is refused. Each change is audited as the item's, and says it was made by leaving.
+    is refused. Each change is audited as the item's, and says in the cause of `caused`
+    what it was made by: leaving the group, or the replacement of the item (P-242). A
+    refusal names each field after `where`: `item.condition`, `old_item.condition`.
     """
     item = items.get_item(db, item_hid)
-    leaving = audit.because(
-        context, "leaving_group", group.hid, None, of=(items.RECORD_TYPE, item.hid)
-    )
-    with _named_at("item.", {"to": "lifecycle_state", "reason": "state_reason"}):
+    leaving = caused
+    with _named_at(where, {"to": "lifecycle_state", "reason": "state_reason"}):
         state = given.get("lifecycle_state")
         if "lifecycle_state" in given and state is None:
             raise Invalid(

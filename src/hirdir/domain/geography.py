@@ -678,6 +678,20 @@ def _check_code(
             {"code": "another record has it"},
             Existing(what, twin.hid, twin.name),
         )
+    # A code that a region has is refused for a site, and a site's for a region, so that
+    # a path that begins with a code leads to one place (P-237). A pair that holds one
+    # code from before stays so until the code of one of them is changed.
+    other = {"region": ("site", Site), "site": ("region", Region)}.get(what)
+    if other is None or (record is not None and record.code_key == key):
+        return
+    kind, holder = other
+    twin = db.scalar(select(holder).where(holder.code_key == key).order_by(holder.hid).limit(1))
+    if twin is not None:
+        raise Conflict(
+            f"the code {twin.code} is taken by the {kind} {twin.name}",
+            {"code": f"a {kind} has it, and a path that begins with it would find neither"},
+            Existing(kind, twin.hid, twin.name),
+        )
 
 
 def _sibling_regions(db: Session, parent_hid: str | None, key: str, but: str | None) -> None:

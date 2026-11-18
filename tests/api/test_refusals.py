@@ -112,25 +112,32 @@ def test_a_refusal_of_anything_else_names_no_record(make: Maker) -> None:
     assert "existing" not in invalid
 
 
-def test_a_second_replacement_names_no_record_that_has_a_value(make: Maker) -> None:
-    # Nothing is had that another record has: the field says which replacement stands.
+def test_the_same_replacement_on_one_day_names_the_one_there_is(make: Maker) -> None:
+    # An item is replaced as often as that happens (P-241): what is refused is the same
+    # two items, the same way, on one day, and the refusal names that replacement.
     old, new, other = (make.item(name=name) for name in ("ex-old", "ex-new", "ex-other"))
 
     def replace(item: dict[str, Any], by: dict[str, Any], expect: int = 201) -> dict[str, Any]:
         now = make.get(f"/items/{item['hid']}")
-        body = {"row_version": now["row_version"], "reason": "rma", "new_item_hid": by["hid"]}
+        body = {
+            "row_version": now["row_version"],
+            "reason": "rma",
+            "new_item_hid": by["hid"],
+            "replaced_on": "2026-11-02",
+        }
         return make.post(f"/items/{item['hid']}/replace", body, expect)
 
-    replace(old, new)
-    again = replace(old, other, 409)
-    assert (again["detail"], "existing" in again) == ("this item has been replaced already", False)
-    assert new["hid"] in errors(again)["new_item_hid"]
-    taken = replace(other, new, 409)
-    assert (taken["detail"], "existing" in taken) == (
-        "this item took the place of another already",
-        False,
-    )
-    assert old["hid"] in errors(taken)["new_item_hid"]
+    made = replace(old, new)
+    replace(old, other)
+    replace(other, new)
+    again = replace(old, new, 409)
+    assert again["detail"] == "ex-old replaced by ex-new on 2026-11-02 is recorded already"
+    assert existing(again) == {
+        "hid": made["hid"],
+        "record_type": "item_replacement",
+        "label": "ex-old replaced by ex-new",
+    }
+    assert "new_item_hid" in errors(again)
 
 
 def test_a_filter_of_a_field_the_list_has_not_names_the_nearest(make: Maker) -> None:

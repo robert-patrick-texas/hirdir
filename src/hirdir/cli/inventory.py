@@ -201,6 +201,9 @@ circuits = _lists("circuits", "circuits")
 circuit_groups = _lists("circuit_groups", "circuit groups")
 geography = typer.Typer(no_args_is_help=True, help="The regions, sites and locations as one tree.")
 report = typer.Typer(no_args_is_help=True, help="Reports.")
+replacements = typer.Typer(
+    no_args_is_help=True, help="Replacements: one that was a mistake is removed by an Admin."
+)
 GROUPS = {
     "items": items,
     "vendors": vendors,
@@ -225,6 +228,7 @@ GROUPS = {
     "circuit-groups": circuit_groups,
     "geography": geography,
     "report": report,
+    "replacements": replacements,
 }
 
 
@@ -376,11 +380,11 @@ def show(
         lines.append(("controller", _named(controller) + within))
     for address in found["addresses"]:
         lines.append(("address", _address(address)))
-    for name in ("replaces", "replaced_by"):
-        if found[name]:
-            other = found[name]
-            why = " ".join(part for part in (other["reason"], other["reference"]) if part)
-            lines.append((name, f"{_named(other)} on {other['replaced_on']} ({why})"))
+    # Every replacement it is part of, the latest first (P-241).
+    for one in found.get("replacements") or []:
+        why = " ".join(part for part in (one["reason"], one["reference"]) if part)
+        name = "replaced_by" if one["part"] == "left" else "replaces"
+        lines.append((name, f"{_named(one['item'])} on {one['replaced_on']} ({why})"))
     for name, effective in found["effective"].items():
         shown = ("owner_hid", "operator_hid", "location_hid", *FROM_ABOVE)
         if name not in shown and effective["value"] is not None:
@@ -1341,6 +1345,78 @@ items.command("retire")(_retire_many("/items", find_item, "items", "ITEM..."))
 items.command("delete")(_delete_many("/items", find_item, "items", "ITEM..."))
 groups.command("retire")(_retire_many("/device-groups", find_group, "device groups", "GROUP..."))
 groups.command("delete")(_delete_many("/device-groups", find_group, "device groups", "GROUP..."))
+
+
+@replacements.command("remove")
+def remove_replacement(
+    hid: Annotated[str, typer.Argument(help="The HID of the replacement.")],
+    reason: Annotated[
+        str | None, typer.Option(help="Why it was a mistake: kept in the audit trail.")
+    ] = None,
+    yes: Yes = False,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Remove a replacement that was a mistake, for an Admin: says which, and asks.
+
+    What it handed over, memberships and connections of circuits, stays as it is
+    (P-238).
+    """
+    if not (reason or "").strip():
+        raise client.fail("--reason says why the replacement was a mistake", 2)
+    target = client.load_target(url, token)
+    found = client.call(target, "GET", "/reports/replacements", params={"filter": f"hid:eq:{hid}"})[
+        "items"
+    ]
+    if not found:
+        raise client.fail(f"there is no replacement {hid}", client.EXIT_INVALID)
+    one = found[0]
+    said = (
+        f"{_named(one['old_item'])} replaced by {_named(one['new_item'])} "
+        f"on {one['replaced_on']} ({one['reason_label']})"
+    )
+    typer.echo(said)
+    if not yes:
+        typer.confirm("Remove this replacement? The audit trail keeps it as it was.", abort=True)
+    client.call(target, "POST", f"/item-replacements/{hid}/remove", {"reason": reason})
+    typer.echo(f"removed: {said}")
+
+
+@items.command("make-stack")
+def make_stack(
+    item: Annotated[str, typer.Argument(help="An HID, serial number, asset tag or name.")],
+    name: Annotated[
+        str | None, typer.Option(help="The stack's name. Left out, the item's own.")
+    ] = None,
+    member: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="One more member, which takes the stack's name and place as it joins. "
+            "Given again for each."
+        ),
+    ] = None,
+    url: Url = None,
+    token: Token = None,
+) -> None:
+    """Make a stack of an item that stands alone, with the item as its first member.
+
+    The stack takes the item's host name, FQDN and addresses, and the location, planned
+    location, owner and operator it has of its own, which it has from the stack from
+    then on (P-243).
+    """
+    target = client.load_target(url, token)
+    found = find_item(target, item)
+    body: dict[str, Any] = {"row_version": found["row_version"]}
+    if name is not None:
+        body["name"] = name
+    if member:
+        body["members"] = [
+            {"item_hid": find_item(target, text)["hid"], "drop_identity": True} for text in member
+        ]
+    stack = client.call(target, "POST", f"/items/{found['hid']}/make-stack", body)
+    typer.echo(f"made the stack {stack['name']}  {stack['hid']}")
+    for one in client.call(target, "GET", f"/device-groups/{stack['hid']}/members")["items"]:
+        typer.echo(f"  {one['position']}: {_named(one['item'])}")
 
 
 # --- places --------------------------------------------------------------------------
