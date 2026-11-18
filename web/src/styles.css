@@ -2642,3 +2642,20 @@ fieldset.extension-list {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* 0.9.7, lane W2 */
+
+/* The box in the heading of the column of boxes, which ticks every row in view (P-233). */
+.grid-tick-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.grid-tick-all input {
+  margin: 0;
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}

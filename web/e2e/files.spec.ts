@@ -354,7 +354,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
 
   // Copy: tab-separated text with a header row.
   let sent = exportsSent(page);
-  await page.getByRole("button", { name: "Copy", exact: true }).click();
+  await page.getByRole("button", { name: /^Copy( \(|$)/ }).click();
   await expect(page.getByText("Copied 2 items to the clipboard, with a header row.")).toBeVisible();
   const copied = (await sent).postDataJSON();
   expect(copied.hids).toHaveLength(2);
@@ -409,7 +409,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
     "all 3 items that match the filter selected",
   );
   sent = exportsSent(page);
-  await page.getByRole("button", { name: "Copy", exact: true }).click();
+  await page.getByRole("button", { name: /^Copy( \(|$)/ }).click();
   await expect(page.getByText("Copied 3 items to the clipboard, with a header row.")).toBeVisible();
   const all = (await sent).postDataJSON();
   expect(all.hids).toBeUndefined();
@@ -435,7 +435,7 @@ test("S16: the clipboard and the exported files hold the same rows and columns",
   await expect(page.getByTestId("grid-selected")).toContainText("1 selected");
   await page.getByRole("button", { name: "Clear selection" }).click();
   await expect(page.getByTestId("grid-selected")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Copy( \(|$)/ })).toBeDisabled();
 
   await page.getByText("Columns", { exact: true }).click();
   await page.getByRole("button", { name: "Reset layout and filters" }).click();
@@ -456,7 +456,7 @@ test("a clipboard that refuses: the rows are shown, selected, to be copied by ha
   await signIn(page, account);
   await openGrid(page);
   await page.getByRole("button", { name: "Select all that match" }).click();
-  await page.getByRole("button", { name: "Copy", exact: true }).click();
+  await page.getByRole("button", { name: /^Copy( \(|$)/ }).click();
   await expect(page.getByRole("heading", { name: "Copy by hand" })).toBeVisible();
   const box = page.getByRole("textbox", { name: "Copy by hand" });
   const rows = cells(await box.inputValue(), "\t");
