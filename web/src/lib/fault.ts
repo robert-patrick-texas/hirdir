@@ -44,12 +44,21 @@ export function retriedPart<C extends ComponentType<never>>(
           throw thrown;
         }) as unknown as Promise<{ default: ComponentType<object> }>,
     );
+  const held: HeldPart = { current: make() };
   const reset = () => {
-    current = make();
+    held.current = make();
   };
-  let current = make();
-  const Part = (props: object) => createElement(current, props);
-  return Part as unknown as C;
+  return DrawnPart.bind(held) as unknown as C;
+}
+
+/** What a part draws now: the one made last. */
+interface HeldPart {
+  current: ComponentType<object>;
+}
+
+/** A part, drawn as the one it holds now; bound to what it holds by `retriedPart`. */
+function DrawnPart(this: HeldPart, props: object) {
+  return createElement(this.current, props);
 }
 
 /** Make every part that could not be fetched be fetched anew when it is next opened. */
