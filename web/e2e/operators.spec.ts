@@ -231,6 +231,14 @@ test("labels are made; a site, a stack and a switch are given one, and what is b
   for (const host of switches) {
     await pick(group, "Find an item to add", `${prefix}sw`, host);
   }
+  // 0.9.8: each member chosen for a stack has the box of a member that joins, ticked
+  // (P-244); these keep their own names, by which this file finds them.
+  for (const host of switches) {
+    await group
+      .getByRole("group", { name: host })
+      .getByLabel("It takes the stack's name and place")
+      .uncheck();
+  }
   await expect(group.getByTestId("chosen-operator_hid")).toHaveText("None of its own");
   await chooseOperator(group, core, lee);
   await expect(group.getByTestId("chosen-operator_hid")).toHaveText(`${core} · ${lee}`);

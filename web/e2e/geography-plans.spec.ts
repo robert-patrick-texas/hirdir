@@ -358,6 +358,14 @@ test("a new site is planned: spares and a stack are given a planned location the
   for (const host of stackSwitches) {
     await pick(newGroup, "Find an item to add", stackPrefix, host);
   }
+  // 0.9.8: each member chosen for a stack has the box of a member that joins, ticked
+  // (P-244); these keep their own names and places, which this scenario reads.
+  for (const host of stackSwitches) {
+    await newGroup
+      .getByRole("group", { name: host })
+      .getByLabel("It takes the stack's name and place")
+      .uncheck();
+  }
   await chooseLocation(newGroup, `Store ${id}`, store);
   await chooseLocation(newGroup, annexRoomName, annexRoom, "Planned location");
   // It is given an owner too, the one outside the team: its switches have none.
