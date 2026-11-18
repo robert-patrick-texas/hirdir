@@ -3720,6 +3720,21 @@ ManagementBy = Literal[
 ]
 
 
+ItemsFilter = Annotated[
+    str | None,
+    Field(
+        description=(
+            "The filter of `GET /items` that keeps exactly the items `items` counts, within "
+            "the view asked for, to be sent with its `include_archived` and "
+            "`include_drafts` and with the minor items asked for (P-206): the short form "
+            "where it can say it, and otherwise the filter tree as JSON, as `filter=` takes "
+            "either. Blank for every item. Null where it, with a condition of `conditions` "
+            "joined to it, would hold more conditions or nest deeper than a filter may."
+        )
+    ),
+]
+
+
 class HealthCount(Model):
     """The components of each health."""
 
@@ -3741,6 +3756,7 @@ class Counted(Model):
             "also where the headline count leaves the kind out."
         )
     )
+    filter: ItemsFilter
 
 
 class Measures(Model):
@@ -3751,6 +3767,35 @@ class Measures(Model):
     managed_node_count: int
     support_weight: WeightSum
     by_health: HealthCount
+    filter: ItemsFilter
+
+
+class HealthConditions(Model):
+    """What a count of each health adds to a filter of the answer: its components of that health."""
+
+    good: str
+    degraded: str
+    failed: str
+    unknown: str
+
+
+class CountConditions(Model):
+    """What each count adds to a `filter` of the answer, joined to it by AND, to keep
+    exactly what it counts (P-206). Each is a filter of `GET /items`, written as a
+    `filter` of the answer is."""
+
+    component_count: str = Field(
+        description="The components among the items, as `component_count` counts them."
+    )
+    component_count_by_kind: str = Field(
+        description=(
+            "For an entry of `by_kind`: the major items in hand, of whatever kind, as its "
+            "`component_count` counts them."
+        )
+    )
+    by_health: HealthConditions = Field(
+        description="The components of each health, as `by_health` counts them."
+    )
 
 
 class SummaryTotals(Measures):
@@ -3827,6 +3872,15 @@ class SummaryOut(Model):
     by: SummaryBy | None
     totals: SummaryTotals
     rows: list[SummaryRow]
+    conditions: CountConditions
+
+
+class ManagementConditions(Model):
+    """What a count of components adds to a `filter` of the answer (P-206)."""
+
+    component_count: str = Field(
+        description="The components among the items, as `component_count` counts them."
+    )
 
 
 class ManagementMeasures(Model):
@@ -3836,6 +3890,7 @@ class ManagementMeasures(Model):
     component_count: int
     est_value: MoneySum
     annual_support_cost: MoneySum
+    filter: ItemsFilter
 
 
 class ManagementRow(ManagementMeasures, RowRecord):
@@ -3851,6 +3906,7 @@ class ManagementOut(Model):
     by: ManagementBy = Field(description="What the rows are by: the site, unless asked.")
     totals: ManagementMeasures
     rows: list[ManagementRow]
+    conditions: ManagementConditions
 
 
 class AddressHolder(Model):

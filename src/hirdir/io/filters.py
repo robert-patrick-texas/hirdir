@@ -268,6 +268,63 @@ def where(field: str, op: str, value: Any) -> dict[str, Any]:
     return {"field": field, "op": op, "value": value}
 
 
+def _short_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return ",".join(_short_value(part) for part in value)
+    return "" if value is None else str(value)
+
+
+def _as_read(node: Node) -> list[tuple[str, str, Any]]:
+    """Return the conditions of an AND of conditions, each value as the short form reads it."""
+    parts = (node,) if isinstance(node, Condition) else node.parts
+    read: list[tuple[str, str, Any]] = []
+    for part in parts:
+        if not isinstance(part, Condition):
+            return []
+        value = part.value
+        held = [_short_value(one) for one in value] if isinstance(value, list) else value
+        read.append((part.field, part.op, held if isinstance(held, list) else _short_value(held)))
+    return read
+
+
+def as_text(tree: dict[str, Any] | None) -> str:
+    """Return a filter as `filter=` takes it, for a link to a list (P-206): the short form
+    where it says the same conditions, and otherwise the tree in JSON. No filter is blank.
+
+    The short form has no OR and no nesting, and a value that holds a comma in a list, a
+    space at either end or what looks like a condition is not read back as it was.
+    """
+    if tree is None:
+        return ""
+    node = from_tree(tree)
+    if isinstance(node, Branch) and node.joined_by != "and":
+        return json.dumps(tree, ensure_ascii=False)
+    conditions = _as_read(node)
+    if conditions:
+        short = " ".join(f"{field}:{op}:{_short_value(value)}" for field, op, value in conditions)
+        try:
+            back = _as_read(from_short(short))
+        except Invalid:
+            back = []
+        if back == conditions:
+            return short
+    return json.dumps(tree, ensure_ascii=False)
+
+
+def size(tree: dict[str, Any] | None) -> tuple[int, int]:
+    """Return how many conditions a filter holds and how deep it nests: 0 deep for one
+    condition, 1 for an AND or an OR of them."""
+    if tree is None:
+        return 0, 0
+    for joined_by in ("and", "or"):
+        if joined_by in tree:
+            parts = [size(part) for part in tree[joined_by]]
+            return sum(one for one, _ in parts), 1 + max((deep for _, deep in parts), default=0)
+    return 1, 0
+
+
 # --- turning a filter into SQL -------------------------------------------------------
 
 

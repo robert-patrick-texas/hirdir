@@ -3,9 +3,9 @@ import {
   amountText,
   byLabel,
   conditionLabel,
+  countHref,
+  countPath,
   countText,
-  healthHrefOf,
-  healthItemsView,
   isBy,
   isByPlace,
   isManagementBy,
@@ -44,10 +44,10 @@ const CHOICES = [
   },
 ];
 const KINDS = [
-  { key: "hardware", label: "hardware", items: 46, component_count: 42 },
-  { key: "virtual_machine", label: "virtual_machine", items: 3, component_count: 3 },
-  { key: "software", label: "software", items: 5, component_count: 4 },
-  { key: "service", label: "service", items: 2, component_count: 2 },
+  { key: "hardware", label: "hardware", items: 46, component_count: 42, filter: "" },
+  { key: "virtual_machine", label: "virtual_machine", items: 3, component_count: 3, filter: "" },
+  { key: "software", label: "software", items: 5, component_count: 4, filter: "" },
+  { key: "service", label: "service", items: 2, component_count: 2, filter: "" },
 ];
 
 describe("what a summary is by", () => {
@@ -230,7 +230,7 @@ describe("the kinds beside the headline", () => {
   });
 
   it("puts the items of no kind beside the headline", () => {
-    const none = { key: null, label: null, items: 2, component_count: 2 };
+    const none = { key: null, label: null, items: 2, component_count: 2, filter: "" };
     const shown = kindsShown([...KINDS, none], ["hardware"]);
     expect(shown.counted.map((kind) => kind.key)).toEqual(["hardware"]);
     expect(shown.beside).toContain(none);
@@ -270,65 +270,61 @@ describe("numbers on the page", () => {
   });
 });
 
-describe("a total of health as the items it counts (P-195)", () => {
-  const STATES = ["Prod", "Test"];
-  const KINDS = ["hardware", "virtual"];
+describe("a count of a report as the items it counts (P-206)", () => {
+  const CONDITIONS = {
+    component_count: '{"and": [{"field": "is_major", "op": "eq", "value": true}]}',
+    component_count_by_kind: "is_major:eq:true",
+    by_health: {
+      good: "is_major:eq:true health:eq:good",
+      degraded: "is_major:eq:true health:eq:degraded",
+      failed: "is_major:eq:true health:eq:failed",
+      unknown: "is_major:eq:true health:eq:unknown",
+    },
+  };
+  const PLAIN = { includeArchived: false, includeDrafts: false };
 
-  it("is the components of that health, as the server counts them, within the view", () => {
-    const view = healthItemsView(
-      { filter: { field: "tags", op: "has", value: "edge" }, include_archived: true },
-      "failed",
-      STATES,
-      KINDS,
+  function filterOf(path: string | null): string | null {
+    return path === null ? null : new URLSearchParams(path.split("?")[1]).get("filter");
+  }
+
+  it("joins the filter of the set to the condition of the count, both the server's", () => {
+    const href = countHref(CONDITIONS, PLAIN);
+    const row = { filter: "catalog.vendor_hid:eq:v-1" };
+    expect(filterOf(href(row, "items", 3))).toBe("catalog.vendor_hid:eq:v-1");
+    expect(filterOf(href(row, "health.failed", 2))).toBe(
+      "catalog.vendor_hid:eq:v-1 is_major:eq:true health:eq:failed",
     );
-    expect(view).toEqual({
-      filter: {
-        and: [
-          { field: "tags", op: "has", value: "edge" },
-          { field: "is_major", op: "eq", value: true },
-          {
-            or: [
-              { field: "lifecycle_state", op: "empty", value: true },
-              { field: "lifecycle_state", op: "in", value: STATES },
-            ],
-          },
-          {
-            or: [
-              { field: "catalog.kind", op: "in", value: KINDS },
-              { field: "catalog.kind", op: "empty", value: true },
-            ],
-          },
-          { field: "health", op: "eq", value: "failed" },
-        ],
-      },
-      include_archived: true,
-    });
-  });
-
-  it("counts an item with no kind only where hardware is counted", () => {
-    const view = healthItemsView({ filter: null }, "good", [], ["software"]);
-    expect(view?.filter).toEqual({
-      and: [
-        { field: "is_major", op: "eq", value: true },
-        { field: "lifecycle_state", op: "empty", value: true },
-        { field: "catalog.kind", op: "in", value: ["software"] },
-        { field: "health", op: "eq", value: "good" },
+    // A condition in JSON is read as a tree, and the two are one AND.
+    expect(filterOf(href(row, "component_count", 2))).toBe(
+      "catalog.vendor_hid:eq:v-1 is_major:eq:true",
+    );
+    expect(filterOf(href(row, "component_count_by_kind", 1))).toBe(
+      "catalog.vendor_hid:eq:v-1 is_major:eq:true",
+    );
+    // A set with an OR is written as a tree.
+    const either = {
+      or: [
+        { field: "catalog.kind", op: "eq", value: "hardware" },
+        { field: "catalog.kind", op: "empty", value: true },
       ],
-    });
+    };
+    const opened = filterOf(href({ filter: JSON.stringify(either) }, "items", 1));
+    expect(JSON.parse(opened ?? "")).toEqual(either);
   });
 
-  it("is no link where the settings are not known", () => {
-    expect(healthItemsView({ filter: null }, "good", null, KINDS)).toBeNull();
-    expect(healthItemsView({ filter: null }, "good", STATES, null)).toBeNull();
-    const href = healthHrefOf({ filter: null }, undefined);
-    expect(href("good")).toBeNull();
+  it("leads to the item list with the minor items and the switches of the view", () => {
+    const href = countHref(CONDITIONS, { includeArchived: true, includeDrafts: true });
+    expect(href({ filter: "" }, "items", 9)).toBe("/items?filter=&minor=1&archived=1&drafts=1");
   });
 
-  it("leads to the item list, with the minor items asked for", () => {
-    const href = healthHrefOf({ filter: null }, [
-      { key: "count_states", value: STATES },
-      { key: "count_kinds", value: ["hardware"] },
-    ]);
-    expect(href("degraded")).toMatch(/^\/items\?filter=%7B.*&minor=1$/);
+  it("is no link for a count of none, a set with no filter, or a count with no condition", () => {
+    const href = countHref(CONDITIONS, PLAIN);
+    expect(href({ filter: "health:eq:good" }, "items", 0)).toBeNull();
+    expect(href({ filter: null }, "items", 4)).toBeNull();
+    expect(href({}, "items", 4)).toBeNull();
+    const money = countHref({ component_count: "is_major:eq:true" }, PLAIN);
+    expect(money({ filter: "" }, "health.good", 4)).toBeNull();
+    expect(countHref(null, PLAIN)({ filter: "" }, "component_count", 4)).toBeNull();
+    expect(countPath("nonsense words", "", 4, PLAIN)).toBeNull();
   });
 });

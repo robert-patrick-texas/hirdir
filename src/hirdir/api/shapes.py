@@ -329,7 +329,10 @@ def summary_out(db: Session, found: Any) -> shapes.SummaryOut:
             )
         )
     return shapes.SummaryOut(
-        by=found.by, totals=shapes.SummaryTotals.model_validate(found.totals), rows=rows
+        by=found.by,
+        totals=shapes.SummaryTotals.model_validate(found.totals),
+        rows=rows,
+        conditions=shapes.CountConditions.model_validate(found.conditions),
     )
 
 

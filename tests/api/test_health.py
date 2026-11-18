@@ -848,6 +848,8 @@ def test_the_summary_holds_health_and_no_money(make: Maker) -> None:
         "by_health",
         "by_condition",
         "by_kind",
+        # 0.9.6: the filter of the item list for what it counts (P-206).
+        "filter",
     }
     assert (totals["items"], totals["component_count"], totals["support_weight"]) == (4, 3, "3")
     # The components by health: the minor item is not one of them.
@@ -915,8 +917,21 @@ def test_the_management_report_holds_the_money_and_no_health(
         "groups_given",
         "places_given",
     )
-    row = {"key": None, "label": None, **money, **dict.fromkeys(described)}
-    assert whole == {"by": "site", "totals": money, "rows": [row]}
+    # 0.9.6: each with the filter of the item list for what it counts, and the condition of
+    # its components; the report holds no condition of health (P-206).
+    row = {
+        "key": None,
+        "label": None,
+        **money,
+        **dict.fromkeys(described),
+        "filter": "site_hid:empty:true",
+    }
+    assert whole == {
+        "by": "site",
+        "totals": {**money, "filter": ""},
+        "rows": [row],
+        "conditions": {"component_count": whole["conditions"]["component_count"]},
+    }
     assert [
         (row["label"], row["est_value"], row["annual_support_cost"]) for row in by_owner["rows"]
     ] == [

@@ -661,6 +661,41 @@ row of the owner, state and disposition in force for it. An item with several ta
 in the row of each, and the totals count it once. A stack whose members fall in two
 rows is a managed node in both, and one in the totals.
 
+**What a count lists** (P-206). In both, `totals`, each row and each entry of
+`by_kind` and `by_condition` has `filter`: the filter of the item list that keeps
+exactly the items its `items` counts, within the view asked for. It holds the request's
+own filter and the condition of the row, and is sent to `GET /items` with the same
+`include_archived` and `include_drafts`, the minor items asked for. It is written in
+the short form where the short form says it, `catalog.type:eq:switch site_hid:eq:…`, and
+otherwise as the filter tree in JSON, as `filter=` takes either: the row of the kind
+`hardware`, which holds the items with no kind as well, has an OR. It is blank on the
+totals of a view with no filter, and null where it, with a condition below joined to it,
+would hold more conditions or nest deeper than a filter may. The answer has
+`conditions` once, each a filter written as a `filter` is, which joined by AND to a
+`filter` of the answer keeps what one of its counts counts: `component_count`, the
+components; `component_count_by_kind`, for an entry of `by_kind`, the major items in
+hand of whatever kind; and, in the summary, `by_health`, the components of each health.
+So each count of items, of components and of health opens as the list of what it
+counts, and the rule of what is counted stays here. `managed_node_count` counts devices
+on the network, not items, and `support_weight`, `est_value` and `annual_support_cost`
+are sums: none of them is a list. A row is kept by:
+
+| `by` | A row | The blank row |
+|---|---|---|
+| `vendor`, `model`, `type`, `function` | `catalog.vendor_hid`, `catalog_entry_hid`, `catalog.type`, `catalog.function` `eq` its key | the same field `empty` |
+| `kind` | `catalog.kind` `eq` its key, and for `hardware` or `catalog.kind` `empty` | none |
+| `owner`, `operator` | `effective.owner_hid`, `effective.operator_hid` `eq` its key | the same field `empty` |
+| `site` | `site_hid` `eq` its key | `site_hid` `empty` |
+| `region` | `location` `within` its key | `region_hid` `empty` |
+| `contract` | `contract.hid` `eq` its key | `covered` `eq` false |
+| `group` | `group` `within` its key | `group` `empty` |
+| `lifecycle_state`, `disposition` | `effective.lifecycle_state`, `effective.disposition` `eq` its key | the same field `empty` |
+| `condition`, `health` | `condition`, `health` `eq` its key | the same field `empty` |
+| `tag` | `tags` `has` its label | `tags` `empty` |
+
+Every grouping can be opened. A test holds, for every row and total of the examples,
+that the item list asked with its filter counts what the report says.
+
 `GET /reports/duplicates` lists each address that is held more than once under one
 network, with the unlabelled address space as one network of its own: the address, the
 network, and the items and groups that hold it. A holder that a list leaves out by
@@ -1585,7 +1620,7 @@ refused leaves the others as they went.
 | A group | `hirdir groups show` takes the HID or the name, and prints the group with its health, its current members and their roles, and for a stack the master that is intended, the one that is seen, and the serial number that follows |
 | A place | Where a command takes a region, a site or a location, it takes the HID or the path. `hirdir regions show`, `hirdir sites show` and `hirdir locations show` print the place with what it has in force: the contacts of each role and the shipping address and instructions, each with the level it came from, its links, each as its text and its address, and its support weight: a region's and a location's own, and a site's in force, marked where it is the default of the setting or was raised to the minimum. `hirdir sites move SITE REGION` gives a site another region, and `hirdir regions move REGION PARENT` a region another parent, `top` for none: one change, after which the paths and the totals follow |
 | The geography | `hirdir geography tree` prints the regions, their sites and the locations within them, indented, each with its items and components, and the items that are nowhere beneath. `--root` starts from one place, `--no-locations` stops at the sites, and `--filter`, `--include-drafts` and `--include-archived` choose the view as they do for a list |
-| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
+| Reports | `hirdir report summary` and `hirdir report management` take `--filter`, `--by`, `--include-drafts` and `--include-archived`, and print the totals and one row for each value. The management report is by site unless `--by` says otherwise. The table leaves out the filter of each row; `--format json` holds it, with the conditions of the counts, to give to `hirdir items list --filter` (P-206). `hirdir report duplicates` lists the addresses held more than once. `hirdir report coverage` and `hirdir report end-of-life` print the counts, and with `--section` the items of one of them; `hirdir report replacements` lists the replacements; `hirdir renewals` prints the renewal worklist, the counts of each list by vendor and agreement, and with `--section` the rows of one list; `hirdir report capacity` prints demand beside supply by category, the balance and the coverage, with and without the drafts, then what each line that multiplies adds and the lines it works on, and the demand and the share of each region and of what is nowhere; the support weight is printed with its parts, the items, the places and the circuits, and how many of each counted at a default and were raised to a minimum |
 | The balance over time | `hirdir capacity record` records the balance as it is now, in place of this week's record, with `--note` to say why. `hirdir capacity records` lists the records, one week to a row, the oldest first, each with the demand, the supply, the balance and the coverage of both views, whether it was corrected, and its note; `--format csv` and `json` write all of them |
 | A contract | `hirdir contracts show` takes the HID or the number, and prints the contract with the items it covers. `hirdir contracts cover CONTRACT` covers the items of a `--filter`, or the items named after it, from `--from` to `--to` or for the contract's own dates: a preview unless `--apply` is given. It sends them as many at a time as the setting `max_items_per_request` says. `hirdir contracts renew CONTRACT` gives it a new `--number` and a new period, `--from` and `--to`, in one change, and says how many items follow; a period that begins after today is kept as the next term, which `--withdraw` withdraws. `hirdir agreements renew AGREEMENT` does the same for a support agreement, with `--member CONTRACT=same`, `CONTRACT=new:NUMBER` or `CONTRACT=ends` for each contract that shares its period and is to do other than keep its number, and `hirdir agreements show AGREEMENT` prints it with the terms it had before. An earlier term of a contract marks a date that was its agreement's |
 | Contacts of a contract | `hirdir contracts show` and `hirdir agreements show` print the account managers and the support contacts in force, each with how to reach them, a retired one marked so, and on a contract those it has from its agreement marked `(agreement)`. `hirdir contracts add-contact CONTRACT CONTACT --role ROLE` names a contact, with `--priority` for its place in the list, and `hirdir contracts remove-contact CONTRACT CONTACT --role ROLE` removes one; `hirdir agreements add-contact` and `remove-contact` do the same for an agreement. A contact is named by its email address, a name that one contact alone has, or its HID |
@@ -1749,9 +1784,12 @@ What 0.9.6 changes:
 - **Contacts.** A contact's page lists every record that names the contact, by kind,
   each a link, with the role the contact has there, from `GET /contacts/{hid}/uses`
   (P-205).
-- **Reports.** Every count of the summary and of the management report is a link to
-  the items it counts, by the filter the server gives with it; Home's totals of health
-  use the same (P-206).
+- **Reports.** Every count of items, of components and of health of the summary and
+  of the management report, in the totals and in each row, is a link to the items it
+  counts, by the filter the server gives with it and the condition it gives for the
+  count; Home's totals use the same, and the page builds no such filter of its own
+  (P-206). A count of none is no link, and neither is a count of managed nodes, a support
+  weight or a sum of money.
 - **A refusal.** Where a record is refused because another has its serial number, asset
   tag, PID or name, the page names that record as a link; a filter refused for a field
   its list does not have names the nearest one it has (P-207).

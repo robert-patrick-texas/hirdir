@@ -9784,10 +9784,25 @@ export interface components {
       pid: string | null;
       serial_number: string | null;
     };
+    /**
+     * What each count adds to a `filter` of the answer, joined to it by AND, to keep
+     * exactly what it counts (P-206). Each is a filter of `GET /items`, written as a
+     * `filter` of the answer is.
+     */
+    CountConditions: {
+      /** The components of each health, as `by_health` counts them. */
+      by_health: components["schemas"]["HealthConditions"];
+      /** The components among the items, as `component_count` counts them. */
+      component_count: string;
+      /** For an entry of `by_kind`: the major items in hand, of whatever kind, as its `component_count` counts them. */
+      component_count_by_kind: string;
+    };
     /** The items and the components that share one value: a kind, or a condition. */
     Counted: {
       /** The components among them. By kind, the major items in hand of that kind, also where the headline count leaves the kind out. */
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       items: number;
       key: string | null;
       label: string | null;
@@ -10349,6 +10364,13 @@ export interface components {
     Health: {
       detail?: string;
       status: string;
+    };
+    /** What a count of each health adds to a filter of the answer: its components of that health. */
+    HealthConditions: {
+      degraded: string;
+      failed: string;
+      good: string;
+      unknown: string;
     };
     /** The components of each health. */
     HealthCount: {
@@ -10970,11 +10992,18 @@ export interface components {
       site: string;
       site_hid: string;
     };
+    /** What a count of components adds to a `filter` of the answer (P-206). */
+    ManagementConditions: {
+      /** The components among the items, as `component_count` counts them. */
+      component_count: string;
+    };
     /** What the management report counts of a set of items. */
     ManagementMeasures: {
       annual_support_cost: string;
       component_count: number;
       est_value: string;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** Every item of the set, major and minor. */
       items: number;
     };
@@ -10982,6 +11011,7 @@ export interface components {
     ManagementOut: {
       /** What the rows are by: the site, unless asked. */
       by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "tag";
+      conditions: components["schemas"]["ManagementConditions"];
       rows: components["schemas"]["ManagementRow"][];
       totals: components["schemas"]["ManagementMeasures"];
     };
@@ -10990,6 +11020,8 @@ export interface components {
       annual_support_cost: string;
       component_count: number;
       est_value: string;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** By operator: items that have it from a group. */
       from_group?: number | null;
       /** By operator: minor items that have it from the item they are in. */
@@ -12580,6 +12612,7 @@ export interface components {
     /** A summary of a view of the items, for the people who run the network. */
     SummaryOut: {
       by: "vendor" | "kind" | "type" | "function" | "owner" | "operator" | "site" | "region" | "contract" | "group" | "model" | "lifecycle_state" | "disposition" | "condition" | "health" | "tag" | null;
+      conditions: components["schemas"]["CountConditions"];
       rows: components["schemas"]["SummaryRow"][];
       totals: components["schemas"]["SummaryTotals"];
     };
@@ -12587,6 +12620,8 @@ export interface components {
     SummaryRow: {
       by_health: components["schemas"]["HealthCount"];
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** By operator: items that have it from a group. */
       from_group?: number | null;
       /** By operator: minor items that have it from the item they are in. */
@@ -12630,6 +12665,8 @@ export interface components {
       by_health: components["schemas"]["HealthCount"];
       by_kind: components["schemas"]["Counted"][];
       component_count: number;
+      /** The filter of `GET /items` that keeps exactly the items `items` counts, within the view asked for, to be sent with its `include_archived` and `include_drafts` and with the minor items asked for (P-206): the short form where it can say it, and otherwise the filter tree as JSON, as `filter=` takes either. Blank for every item. Null where it, with a condition of `conditions` joined to it, would hold more conditions or nest deeper than a filter may. */
+      filter: string | null;
       /** Every item of the set, major and minor. */
       items: number;
       managed_node_count: number;

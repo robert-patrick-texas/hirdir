@@ -44,6 +44,7 @@ describe("the four counts of health", () => {
       managed_node_count: 1,
       support_weight: "1.00",
       operators: null,
+      filter: "",
     }));
     expect(sortRows(rows, columns, first).map((row) => row.key)).toEqual(["c", "b", "a"]);
     // Another column still starts with the least, as every header does.

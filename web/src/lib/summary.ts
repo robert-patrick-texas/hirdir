@@ -7,7 +7,14 @@
 // Nothing is counted or summed here.
 
 import type { Schemas } from "../api/client";
-import { all, any, type FilterNode, type ItemsView, itemsViewPath, sentFilter } from "./filter";
+import {
+  all,
+  type FilterNode,
+  type ItemsView,
+  itemsViewPath,
+  parseFilter,
+  sentFilter,
+} from "./filter";
 import { plural } from "./format";
 import { groupTypeLabel } from "./groups";
 import { CONDITION_LIST, HEALTHS, healthLabel } from "./health";
@@ -208,57 +215,80 @@ export function summaryQuery<B extends string = By>(
   };
 }
 
+/** What each count of a report adds to the filter of the set it is of (P-206). */
+export type CountConditions = Schemas["CountConditions"];
+export type ManagementConditions = Schemas["ManagementConditions"];
+
 /**
- * 0.9.5: the items that a total of health counts, as a view of the item list (P-195):
- * the components of that health, as the server counts them, within the view the total
- * is of. A component is a major item whose state is blank or one of `count_states` and
- * whose kind is one of `count_kinds`, an item with no kind counting as hardware. Null
- * where the settings are not known, since the list would not then hold the number.
+ * Which count of a set is opened: its items, its components, the major items in hand of
+ * an entry by kind, or its components of one health, as `health.good`.
  */
-export function healthItemsView(
-  view: { filter: FilterNode | null; include_archived?: boolean; include_drafts?: boolean },
-  health: string,
-  countStates: readonly string[] | null,
-  countKinds: readonly string[] | null,
-): ItemsView | null {
-  if (countStates === null || countKinds === null || countKinds.length === 0) return null;
-  const filter = all(
-    view.filter,
-    { field: "is_major", op: "eq", value: true },
-    any(
-      { field: "lifecycle_state", op: "empty", value: true },
-      countStates.length > 0
-        ? { field: "lifecycle_state", op: "in", value: [...countStates] }
-        : null,
-    ),
-    any(
-      { field: "catalog.kind", op: "in", value: [...countKinds] },
-      countKinds.includes("hardware") ? { field: "catalog.kind", op: "empty", value: true } : null,
-    ),
-    { field: "health", op: "eq", value: health },
-  );
-  return {
-    filter,
-    ...(view.include_archived ? { include_archived: true } : {}),
-    ...(view.include_drafts ? { include_drafts: true } : {}),
-  };
+export type CountOf = "items" | "component_count" | "component_count_by_kind" | `health.${string}`;
+
+/** A set a report counts: the totals, a row, or an entry by kind or by condition. */
+export interface CountedSet {
+  /** The filter of the item list for its items, as the server gave it; null for none. */
+  filter?: string | null;
+}
+
+/** Where a count of a set leads: the items it counts, or null for no link. */
+export type CountHref = (set: CountedSet, of: CountOf, count: number) => string | null;
+
+/** The switches of the view a report was asked for, which the item list is sent with. */
+export interface Switches {
+  includeArchived: boolean;
+  includeDrafts: boolean;
 }
 
 /**
- * Where a total of health of a view leads, for the settings as they were read: the item
- * list of what it counts, or null where that list cannot be made exactly.
+ * 0.9.6: the item list of what one count of a report counts (P-206): the filter the
+ * server gave for the set, joined by AND to the condition it gave for the count, with
+ * the switches of the view and the minor items. Nothing of the rule of what is counted
+ * is here: both parts are the server's. Null for a count of none, for a set the server
+ * gave no filter for, and for what cannot be read.
  */
-export function healthHrefOf(
-  view: { filter: FilterNode | null; include_archived?: boolean; include_drafts?: boolean },
-  settings: ReadonlyArray<{ key: string; value: unknown }> | null | undefined,
-): (health: string) => string | null {
-  const states = settingList(settings, "count_states");
-  const kinds = settingList(settings, "count_kinds");
-  return (health) => {
-    const items = healthItemsView(view, health, states, kinds);
-    return items === null ? null : itemsViewPath(items);
+export function countPath(
+  set: string | null | undefined,
+  condition: string,
+  count: number,
+  view: Switches,
+): string | null {
+  if (count <= 0 || set === null || set === undefined) return null;
+  const parts = [parseFilter(set), parseFilter(condition)];
+  const filters: FilterNode[] = [];
+  for (const part of parts) {
+    if (!part.ok) return null;
+    if (part.filter) filters.push(part.filter);
+  }
+  const items: ItemsView = {
+    filter: all(...filters),
+    ...(view.includeArchived ? { include_archived: true } : {}),
+    ...(view.includeDrafts ? { include_drafts: true } : {}),
+  };
+  return itemsViewPath(items);
+}
+
+/**
+ * Where each count of a report leads, by the conditions of its answer and the switches
+ * of its view. A count the answer has no condition for is no link: the management
+ * report counts no health.
+ */
+export function countHref(
+  conditions: Partial<CountConditions> | ManagementConditions | null | undefined,
+  view: Switches,
+): CountHref {
+  const known: Partial<CountConditions> = conditions ?? {};
+  return (set, of, count) => {
+    let condition: string | undefined;
+    if (of === "items") condition = "";
+    else if (of === "component_count") condition = known.component_count;
+    else if (of === "component_count_by_kind") condition = known.component_count_by_kind;
+    else condition = known.by_health?.[of.slice("health.".length) as keyof HealthConditions];
+    return condition === undefined ? null : countPath(set.filter, condition, count, view);
   };
 }
+
+type HealthConditions = CountConditions["by_health"];
 
 /** A setting that is a list of words, such as `count_kinds`, or null when it is not known. */
 export function settingList(

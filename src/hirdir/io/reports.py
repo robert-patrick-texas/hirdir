@@ -5,7 +5,7 @@ worked out by the database, in one statement for each answer, over the view that
 filter and the default view choose, so a summary always agrees with the list it is of.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -107,6 +107,8 @@ class Counted:
     label: str | None
     items: int
     component_count: int
+    # The filter of the item list that keeps its items (P-206).
+    filter: str | None = ""
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,9 @@ class Measures:
     managed_node_count: int = 0
     support_weight: Decimal = Decimal(0)
     by_health: HealthCount = HealthCount()
+    # The filter of the item list that keeps the items it counts (P-206): blank for every
+    # item, and None where it would be larger than a filter may be.
+    filter: str | None = ""
 
 
 @dataclass(frozen=True)
@@ -172,12 +177,27 @@ class Row(Measures, Described):
 
 
 @dataclass(frozen=True)
+class Conditions:
+    """What a count adds to the filter of the items of a row, a total or an entry of
+    `by_kind` or `by_condition`, joined to it by AND, to keep what it counts (P-206).
+    Each is a filter of the item list, as `filters.as_text` writes it."""
+
+    # The components among the items, as `component_count` counts them.
+    component_count: str
+    # The major items in hand of whatever kind, as `component_count` of a kind counts them.
+    component_count_by_kind: str
+    # The components of each health.
+    by_health: Mapping[str, str]
+
+
+@dataclass(frozen=True)
 class Summary:
     """A summary of a view of the items, for the people who run the network."""
 
     by: str | None
     totals: Totals
     rows: list[Row] = field(default_factory=list)
+    conditions: Conditions | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +208,8 @@ class Money:
     component_count: int = 0
     est_value: Decimal = Decimal(0)
     annual_support_cost: Decimal = Decimal(0)
+    # The filter of the item list that keeps the items it counts (P-206).
+    filter: str | None = ""
 
 
 @dataclass(frozen=True)
@@ -205,6 +227,7 @@ class Management:
     by: str | None
     totals: Money
     rows: list[MoneyRow] = field(default_factory=list)
+    conditions: Conditions | None = None
 
 
 def _whole(column: Any) -> ColumnElement[Any]:
@@ -665,12 +688,18 @@ def _in_order(rows: list[Any]) -> list[Any]:
 
 
 def _counted(
-    db: Session, terms: _Terms, key: Any, labels: dict[str, str], component: Any
+    db: Session,
+    terms: _Terms,
+    key: Any,
+    labels: dict[str, str],
+    component: Any,
+    listed: Callable[[Any], str | None],
 ) -> list[Counted]:
     """Return the items and the components of each value of a key.
 
     `component` says what a component is here: of the kinds the headline counts, or of
-    whatever kind, where the kinds themselves are what is being told apart.
+    whatever kind, where the kinds themselves are what is being told apart. `listed`
+    gives the filter of the item list that keeps the items of a value.
     """
     found = _run(
         db,
@@ -679,9 +708,131 @@ def _counted(
         ).group_by(key),
     )
     return [
-        Counted(key=value, label=labels.get(value, value), items=items, component_count=components)
+        Counted(
+            key=value,
+            label=labels.get(value, value),
+            items=items,
+            component_count=components,
+            filter=listed(value),
+        )
         for value, items, components in found
     ]
+
+
+# --- the filter of what each count counts (P-206) --------------------------------------
+
+# The field of the item list that keeps the items of a row of each grouping, by the same
+# value the report groups by, and so the blank row by `empty`. The others are below.
+ROW_FIELDS = {
+    "vendor": "catalog.vendor_hid",
+    "type": "catalog.type",
+    "function": "catalog.function",
+    "owner": "effective.owner_hid",
+    "operator": "effective.operator_hid",
+    "site": "site_hid",
+    "model": "catalog_entry_hid",
+    "lifecycle_state": "effective.lifecycle_state",
+    "disposition": "effective.disposition",
+    "condition": "condition",
+    "health": "health",
+}
+# The kind an item is counted as where neither it nor its catalog entry says one.
+UNKNOWN_KIND = "hardware"
+# A filter that keeps nothing: every item has a HID.
+NOTHING = filters.where("hid", "empty", True)
+
+
+def _row_condition(by: str, key: Any, label: Any) -> dict[str, Any]:
+    """Return the condition of the item list that keeps the items of one row of a report
+    by `by`: the row of `key`, whose label the statement found as `label`."""
+    if by in ROW_FIELDS:
+        name = ROW_FIELDS[by]
+        if key is None:
+            return filters.where(name, "empty", True)
+        return filters.where(name, "eq", key)
+    if by == "kind":
+        return _kind_condition(key)
+    if by == "region":
+        # Every item at or beneath the region; the blank row is what is in no region.
+        if key is None:
+            return filters.where("region_hid", "empty", True)
+        return filters.where("location", "within", key)
+    if by == "contract":
+        if key is None:
+            return filters.where("covered", "eq", False)
+        return filters.where("contract.hid", "eq", key)
+    if by == "group":
+        if key is None:
+            return filters.where("group", "empty", True)
+        return filters.where("group", "within", key)
+    # By tag: a tag is found by its label, which no other tag has.
+    if key is None:
+        return filters.where("tags", "empty", True)
+    return filters.where("tags", "has", label)
+
+
+def _kind_condition(kind: Any) -> dict[str, Any]:
+    """Return the condition that an item is of a kind, as `KIND` counts it."""
+    if kind != UNKNOWN_KIND:
+        return filters.where("catalog.kind", "eq", kind)
+    return {
+        "or": [
+            filters.where("catalog.kind", "eq", kind),
+            filters.where("catalog.kind", "empty", True),
+        ]
+    }
+
+
+def _in_hand(db: Session) -> dict[str, Any]:
+    """Return the condition that an item is a major item in hand, of whatever kind: its
+    state blank or one of `count_states`."""
+    states = list(settings.value(db, "count_states"))
+    blank = filters.where("lifecycle_state", "empty", True)
+    state = {"or": [blank, filters.where("lifecycle_state", "in", states)]} if states else blank
+    return {"and": [filters.where("is_major", "eq", True), state]}
+
+
+def _component(db: Session) -> dict[str, Any]:
+    """Return the condition that an item is a component, as `component_count` counts it:
+    in hand, and of a kind of `count_kinds`."""
+    kinds = list(settings.value(db, "count_kinds"))
+    if not kinds:
+        return NOTHING
+    of_kind = [filters.where("catalog.kind", "in", kinds)]
+    if UNKNOWN_KIND in kinds:
+        of_kind.append(filters.where("catalog.kind", "empty", True))
+    kind = of_kind[0] if len(of_kind) == 1 else {"or": of_kind}
+    return filters.both(_in_hand(db), kind) or NOTHING
+
+
+class _Lists:
+    """The filters of the item list for what a report over one view counts (P-206)."""
+
+    def __init__(self, db: Session, filter_: Any) -> None:
+        self.view = filters.to_tree(filters.parse(filter_))
+        component = _component(db)
+        by_health = {
+            value: filters.both(component, filters.where("health", "eq", value)) or NOTHING
+            for value in health.HEALTHS
+        }
+        self.conditions = Conditions(
+            component_count=filters.as_text(component),
+            component_count_by_kind=filters.as_text(_in_hand(db)),
+            by_health={value: filters.as_text(tree) for value, tree in by_health.items()},
+        )
+        # The most a count adds to a filter, so that each filter it is joined to stays
+        # within what a filter may be.
+        self._most = max(by_health.values(), key=filters.size)
+
+    def of(self, condition: dict[str, Any] | None = None) -> str | None:
+        """Return the filter of the items of the view that meet a condition: blank for
+        every item of the view, and None where it, with what a count adds to it, would
+        hold more conditions or nest deeper than a filter may."""
+        joined = filters.both(self.view, condition)
+        count, deep = filters.size(filters.both(joined, self._most))
+        if count > filters.MAX_CONDITIONS or deep > filters.MAX_DEPTH:
+            return None
+        return filters.as_text(joined)
 
 
 def summary(
@@ -701,15 +852,24 @@ def summary(
     """
     _checked_by(by, SUMMARY_BY)
     terms = _terms(db, filter_, include_archived, include_drafts)
+    lists = _Lists(db, filter_)
     counts = (terms.items, terms.components, terms.nodes, *terms.health)
     whole = _run(db, terms.source(select(*counts)))[0]
     order = {kind: place for place, kind in enumerate(settings.CATALOG_KINDS)}
     conditions = [choice.value for choice in choices.list_choices(db, "item_condition")]
     totals = Totals(
         **_measures(whole, _sums(db, terms, terms.weight).get(None, [0, 0])),
+        filter=lists.of(),
         by_condition=tuple(
             sorted(
-                _counted(db, terms, Item.condition, _labels(db, "condition"), terms.component),
+                _counted(
+                    db,
+                    terms,
+                    Item.condition,
+                    _labels(db, "condition"),
+                    terms.component,
+                    lambda value: lists.of(_row_condition("condition", value, None)),
+                ),
                 key=lambda one: (
                     one.key is None,
                     conditions.index(one.key) if one.key in conditions else len(conditions),
@@ -718,13 +878,20 @@ def summary(
         ),
         by_kind=tuple(
             sorted(
-                _counted(db, terms, KIND, {}, terms.counted_whatever_kind),
+                _counted(
+                    db,
+                    terms,
+                    KIND,
+                    {},
+                    terms.counted_whatever_kind,
+                    lambda value: lists.of(_kind_condition(value)),
+                ),
                 key=lambda one: order.get(one.key, len(order)),
             )
         ),
     )
     if by is None:
-        return Summary(None, totals)
+        return Summary(None, totals, conditions=lists.conditions)
     key, label, join = _grouping(by)
     counting = terms.source(select(key, label, *counts))
     if join is not None:
@@ -740,11 +907,12 @@ def summary(
             label=called.get(row[1], row[1]),
             **told.get(row[0], {}),
             **_measures(row[2:], sums.get(row[0], [0, 0])),
+            filter=lists.of(_row_condition(by, row[0], row[1])),
             operators=None if involved is None else tuple(involved.get(row[0], ())),
         )
         for row in found
     ]
-    return Summary(by, totals, _in_order(rows))
+    return Summary(by, totals, _in_order(rows), lists.conditions)
 
 
 def _involved(db: Session, terms: _Terms, key: Any, join: Any) -> dict[Any, list[Involved]]:
@@ -805,9 +973,12 @@ def management(
     _checked_by(by, MANAGEMENT_BY)
     by = by or "site"
     terms = _terms(db, filter_, include_archived, include_drafts)
+    lists = _Lists(db, filter_)
     counts = (terms.items, terms.components)
     whole = _run(db, terms.source(select(*counts)))[0]
-    totals = Money(**_money(whole, _sums(db, terms, terms.money).get(None, [0, 0])))
+    totals = Money(
+        **_money(whole, _sums(db, terms, terms.money).get(None, [0, 0])), filter=lists.of()
+    )
     key, label, join = _grouping(by)
     counting = terms.source(select(key, label, *counts))
     if join is not None:
@@ -822,10 +993,11 @@ def management(
             label=called.get(row[1], row[1]),
             **told.get(row[0], {}),
             **_money(row[2:], sums.get(row[0], [0, 0])),
+            filter=lists.of(_row_condition(by, row[0], row[1])),
         )
         for row in found
     ]
-    return Management(by, totals, _in_order(rows))
+    return Management(by, totals, _in_order(rows), lists.conditions)
 
 
 def by_location(
