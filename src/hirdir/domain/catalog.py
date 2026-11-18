@@ -7,8 +7,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from hirdir.db import dialect
 from hirdir.db.models import CatalogEntry, Vendor
-from hirdir.domain import choices, not_renewed, records, settings, tags
+from hirdir.domain import choices, hosting, not_renewed, records, settings, tags
 from hirdir.domain.audit import AuditContext
 from hirdir.domain.errors import Conflict, Existing, Invalid, NotFound
 
@@ -206,6 +207,18 @@ def _checked_entry(
         kind = records.key(str(fields["kind"] or ""))
         if kind not in KINDS:
             raise Invalid("the kind is not acceptable", {"kind": f"one of {', '.join(KINDS)}"})
+        if entry is not None and kind != entry.kind and not hosting.runs_on_a_host(kind):
+            # An item of the model that names a host keeps a model of a kind that has one.
+            dialect.hold_other_writers(db)
+            hosted = hosting.model_hosts(db, entry.hid)
+            if hosted is not None:
+                raise Invalid(
+                    "an item of the model runs on a host",
+                    {
+                        "kind": f"{hosting.shown_name(hosted)} is of this model and runs on a "
+                        f"host; a {kind.replace('_', ' ')} runs on nothing. Clear its host first"
+                    },
+                )
         values["kind"] = kind
     for name, list_name in (("type", "catalog_type"), ("function", "catalog_function")):
         if name in fields:

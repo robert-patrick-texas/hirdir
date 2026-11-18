@@ -1150,25 +1150,29 @@ class _Hosting:
     def host(self, item: Item) -> shapes.HostRef | None:
         if item.host_item_hid is not None and item.host_item_hid in self.hosts.items:
             host = self.hosts.items[item.host_item_hid]
-            return shapes.HostRef(
-                item_hid=host.hid,
-                group_hid=None,
-                name=item_rules.shown_name(host),
-                type=None,
-                pid=self.pids.get(host.hid),
-                lifecycle_state=host.lifecycle_state,
-                record_status=host.record_status,
+            return shapes.HostRef.model_validate(
+                {
+                    "item_hid": host.hid,
+                    "group_hid": None,
+                    "name": item_rules.shown_name(host),
+                    "type": None,
+                    "pid": self.pids.get(host.hid),
+                    "lifecycle_state": host.lifecycle_state,
+                    "record_status": host.record_status,
+                }
             )
         if item.host_group_hid is not None and item.host_group_hid in self.hosts.groups:
             group = self.hosts.groups[item.host_group_hid]
-            return shapes.HostRef(
-                item_hid=None,
-                group_hid=group.hid,
-                name=group.name,
-                type=group.type,
-                pid=None,
-                lifecycle_state=None,
-                record_status=group.record_status,
+            return shapes.HostRef.model_validate(
+                {
+                    "item_hid": None,
+                    "group_hid": group.hid,
+                    "name": group.name,
+                    "type": group.type,
+                    "pid": None,
+                    "lifecycle_state": None,
+                    "record_status": group.record_status,
+                }
             )
         return None
 
