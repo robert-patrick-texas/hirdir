@@ -480,6 +480,8 @@ def _labels(db: Session, by: str, keys: Sequence[Any] = ()) -> dict[str, str]:
 SOURCE_COLUMNS = {
     "own": "own",
     "parent_item": "from_item",
+    # What runs on a host has it from an item above it as well (P-246).
+    "host": "from_item",
     "device_group": "from_group",
     "location": "from_place",
     "site": "from_place",

@@ -287,7 +287,11 @@ def _holders(db: Session, found: dict[str, Effective], above: dict[str, Item]) -
     its_groups = _by_hid(
         db,
         DeviceGroup,
-        {one.source_hid for one in found.values() if one.source == operators.SOURCE_GROUP},
+        {
+            one.source_hid
+            for one in found.values()
+            if one.source in (operators.SOURCE_GROUP, inheritance.HOST)
+        },
     )
     named.update((hid, group.name) for hid, group in its_groups.items())
     atlas = geography.Atlas(db)
@@ -890,7 +894,14 @@ def items_out(db: Session, items: list[Item]) -> list[shapes.ItemOut]:
     """Return items with what they refer to and the values in force of what they inherit."""
     hids = [item.hid for item in items]
     lines = item_rules.lines_above(db, items)
-    above = {one.hid: one for line in lines.values() for one in line}
+    # What each is installed in, and what it runs on (P-246): what a value comes from.
+    walks = item_rules.walks_above(db, items, lines)
+    above = {
+        step.record.hid: step.record
+        for walk in walks.values()
+        for step in walk
+        if isinstance(step.record, Item)
+    }
     entries = _by_hid(db, CatalogEntry, {item.catalog_entry_hid for item in items})
     vendors = _by_hid(db, Vendor, {entry.vendor_hid for entry in entries.values()})
     owned = descent.of_items(db, items, lines, "owner_hid")

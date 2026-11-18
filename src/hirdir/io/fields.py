@@ -78,6 +78,7 @@ from hirdir.domain import (
     geography,
     groups,
     health,
+    hosting,
     inheritance,
     lifecycle,
     not_renewed,
@@ -241,15 +242,155 @@ def _from_groups(
     )
 
 
+# --- the walk through what an item runs on (P-246) -------------------------------------
+#
+# What runs on a host has, after its own line, what its host has: the host and its
+# groups, the items the host is installed in and their groups, then what the top of
+# that line runs on in its turn, or the stack or the cluster it runs on, which answers
+# as a group does. A line of hosts is at most three long, so the walk is read by a fixed
+# number of joins, as the line of minor items is; and it is worked out once for each
+# statement, for the items that run on a host alone, so that an inventory in which
+# nothing does pays one look at an empty table.
+
+_HOSTED: Any = aliased(Item, name="hosted_item")
+# Each hop of the line of hosts: the host, the items it is installed in, the top of
+# those, and the group the top of the line before runs on.
+_HOPS: tuple[tuple[Any, ...], ...] = tuple(
+    (
+        aliased(Item, name=f"host_{hop}"),
+        *(aliased(Item, name=f"host_{hop}_above_{level}") for level in range(MAX_DEPTH)),
+    )
+    for hop in range(hosting.MAX_LINE - 1)
+)
+_HOST_GROUPS: tuple[Any, ...] = tuple(
+    aliased(DeviceGroup, name=f"host_group_{hop}") for hop in range(hosting.MAX_LINE - 1)
+)
+
+
+def _top_host(line: Sequence[Any], column: str) -> ColumnElement[Any]:
+    """Return what the top of a line of items runs on, by one of the two columns: only a
+    major item names a host, so it is the one of the line that names one."""
+    return func.coalesce(*(getattr(one, column) for one in reversed(line)))
+
+
+def _hosts_joined(query: Select[Any]) -> Select[Any]:
+    """Join to a statement of `_HOSTED` the records of its line of hosts."""
+    below: tuple[Any, ...] = (_HOSTED,)
+    for hop, line in enumerate(_HOPS):
+        host = line[0]
+        top_item = _HOSTED.host_item_hid if hop == 0 else _top_host(below, "host_item_hid")
+        top_group = _HOSTED.host_group_hid if hop == 0 else _top_host(below, "host_group_hid")
+        group = _HOST_GROUPS[hop]
+        query = query.outerjoin(
+            group, and_(group.hid == top_group, group.record_status != "retired")
+        ).outerjoin(host, host.hid == top_item)
+        for upper, lower in zip(line[1:], line[:-1], strict=True):
+            query = query.outerjoin(upper, upper.hid == lower.parent_item_hid)
+        below = line
+    return query
+
+
+def _group_of_alias(field: str, one: Any, live: Any, column: str) -> ColumnElement[Any]:
+    """Return what a record of the line of hosts has from its own groups."""
+    first = _first_from_groups(field, live)
+    return (
+        select(getattr(first.c, column))
+        .where(first.c.item_hid == one.hid)
+        .correlate(one)
+        .scalar_subquery()
+    )
+
+
+def _host_group_value(field: str, group: Any, live: Any, column: str) -> ColumnElement[Any]:
+    """Return what a stack or a cluster that something runs on has in force: its own, or
+    that of the group it is nested in; with `column` of `holder_hid`, the group that
+    holds it."""
+    reach = descent.group_reach(field, live)
+    return (
+        select(getattr(reach.c, column))
+        .where(reach.c.group_hid == group.hid)
+        .correlate(group)
+        .scalar_subquery()
+    )
+
+
+_THROUGH: dict[tuple[str, bool], Any] = {}
+
+
+def _through_hosts(field: str, live: Any = None) -> Any:
+    """Return, as a table, each item that runs on a host with what it has from it in a
+    field: `value`, `holder_hid`, the record that holds it, and `source`, `host` where
+    that is an item of the line of hosts or the group it runs on itself, and
+    `device_group` where it is a group of one of those items or a group the group it runs
+    on is nested in, as `hirdir.domain.descent.of_items` says."""
+    cached = (field, live is not None)
+    if cached in _THROUGH:
+        return _THROUGH[cached]
+    steps: list[tuple[ColumnElement[Any], ColumnElement[Any], ColumnElement[Any]]] = []
+    for hop, line in enumerate(_HOPS):
+        group = _HOST_GROUPS[hop]
+        holder = _host_group_value(field, group, live, "holder_hid")
+        steps.append(
+            (
+                _host_group_value(field, group, live, "value"),
+                holder,
+                case((holder == group.hid, literal("host")), else_=literal(descent.SOURCE_GROUP)),
+            )
+        )
+        for one in line:
+            own = getattr(one, field)
+            steps.append((live(own) if live is not None else own, one.hid, literal("host")))
+            steps.append(
+                (
+                    _group_of_alias(field, one, live, "value"),
+                    _group_of_alias(field, one, live, "holder_hid"),
+                    literal(descent.SOURCE_GROUP),
+                )
+            )
+    value = func.coalesce(*(step[0] for step in steps))
+
+    def chosen(at: int) -> ColumnElement[Any]:
+        return case(*((step[0].is_not(None), step[at]) for step in steps), else_=None)
+
+    rows = _hosts_joined(
+        select(
+            _HOSTED.hid.label("item_hid"),
+            value.label("value"),
+            chosen(1).label("holder_hid"),
+            chosen(2).label("source"),
+        ).select_from(_HOSTED)
+    ).where(or_(_HOSTED.host_item_hid.is_not(None), _HOSTED.host_group_hid.is_not(None)))
+    through = dialect.materialized(rows, f"through_hosts_{field}")
+    _THROUGH[cached] = through
+    return through
+
+
+# The top of an item's own line: the one whose host it has the rest of its walk from.
+_TOP: ColumnElement[Any] = func.coalesce(*(one.hid for one in reversed(_LINE)))
+
+
+def _from_hosts(field: str, live: Any = None, column: str = "value") -> ColumnElement[Any]:
+    """Return what an item has in a field through what the top of its line runs on."""
+    through = _through_hosts(field, live)
+    return (
+        select(getattr(through.c, column))
+        .where(through.c.item_hid == _TOP)
+        .correlate(*_LINE)
+        .scalar_subquery()
+    )
+
+
 def _walk(field: str, live: Any = None) -> list[ColumnElement[Any]]:
     """Return the steps of an item's walk up its line for a field, in order (P-175): at
-    each record, its own value and then its groups'. A record the line does not reach is
-    an outer join that holds nothing."""
+    each record, its own value and then its groups'; and last what it has through what
+    the top of its line runs on (P-246). A record the line does not reach is an outer
+    join that holds nothing."""
     steps: list[ColumnElement[Any]] = []
     for level, one in enumerate(_LINE):
         own = getattr(one, field)
         steps.append(live(own) if live is not None else own)
         steps.append(_from_groups(field, level, live))
+    steps.append(_from_hosts(field, live))
     return steps
 
 
@@ -304,6 +445,13 @@ def _operator_source(hid: bool) -> ColumnElement[Any]:
         grouped = _from_groups("operator_hid", level, operators.live)
         holder = _from_groups("operator_hid", level, operators.live, "holder_hid")
         whens.append((grouped.is_not(None), holder if hid else literal("device_group")))
+    through = _from_hosts("operator_hid", operators.live)
+    whens.append(
+        (
+            through.is_not(None),
+            _from_hosts("operator_hid", operators.live, "holder_hid" if hid else "source"),
+        )
+    )
     whens.append(
         (
             of_place(places.c.operator_hid).is_not(None),
