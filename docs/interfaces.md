@@ -352,7 +352,8 @@ finds them by its HID. A HID that was deleted is never given again. `GET` and `P
 of a record that was deleted, and its other routes that read the record first, its
 retire, history, members and children among them, answer `404`, whose `detail` says that
 it was deleted, when and by whom, and whose `deleted` holds `at`, `actor_hid`,
-`actor_name` and `reason`; a request that names it among `hids` counts it in `missing`.
+`actor_name` and `reason`; a request that names it among `hids` counts it in `missing`,
+and a row of a file that names it by its `hid` is rejected with the same words.
 A change of the item that was under way at the same moment, its joining a group or a
 contract covering it, either is stored first, and the deletion then sees it and is
 refused, or comes second and is refused as a change of a record that is not there.

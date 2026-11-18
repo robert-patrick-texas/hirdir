@@ -27,9 +27,9 @@ from hirdir import clock
 from hirdir.auth.roles import Role
 from hirdir.db import dialect, engine
 from hirdir.db.models import AuditEvent, ImportJob, ImportRow, User
-from hirdir.domain import accounts, audit, records
+from hirdir.domain import accounts, audit, deleted, records
 from hirdir.domain.audit import AuditContext, change
-from hirdir.domain.errors import Conflict, Invalid, NotAllowed, NotFound
+from hirdir.domain.errors import Conflict, Deleted, Invalid, NotAllowed, NotFound
 from hirdir.io import columns as cells
 from hirdir.io import files
 from hirdir.io.entities import Entity, Run, entity
@@ -81,6 +81,21 @@ def _reasons(which: Entity, error: Exception) -> list[dict[str, str]]:
     return [reason(which.renamed.get(name, name), message) for name, message in named.items()]
 
 
+# The kinds of record that an Admin deletes, as a refusal names one (P-227).
+DELETED_KINDS = {"item": "item", "device_group": "device group"}
+
+
+def _no_record(db: Session, which: Entity, hid: str) -> str:
+    """Say that a row's HID names no record: or, where an Admin deleted it, when and by
+    whom, as its 404 says."""
+    what = DELETED_KINDS.get(which.record_type)
+    if what is not None:
+        gone = deleted.missing(db, which.record_type, hid, what)
+        if isinstance(gone, Deleted):
+            return str(gone)
+    return f"there is no record {hid}"
+
+
 def _typed(which: Entity, values: dict[str, Any]) -> dict[str, Any]:
     typed = {}
     for name, value in values.items():
@@ -116,7 +131,7 @@ def _one(run: Run, which: Entity, values: dict[str, Any], result: Result) -> Non
     if hid:
         record = db.get(which.model, hid)
         if record is None:
-            raise Invalid("there is no such record", {"hid": f"there is no record {hid}"})
+            raise Invalid("there is no such record", {"hid": _no_record(db, which, hid)})
     else:
         record = which.find(run, values)
     result.key = which.key(values, record)
